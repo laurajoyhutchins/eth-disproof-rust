@@ -1,0 +1,23 @@
+# Required remote checkpoint, triggered directly from GitHub by Cloud Build.
+# This is NOT the 30-second agent-local checkpoint.
+steps:
+  - id: full-exact-head-checkpoint
+    name: python:3.13-bookworm
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        python -m scripts.cloudbuild_ci validate --expected-sha '${COMMIT_SHA}'
+        python -m pip install --disable-pip-version-check -e '.[test,typecheck]'
+        python -m mypy --strict --no-incremental
+        python -m mypy --strict --follow-imports=silent scripts/evidence.py scripts/verify.py scripts/change_impact.py scripts/shard_contract.py scripts/aggregate_checkpoint.py scripts/cost_ledger.py build_native.py
+        python -m scripts.cloudbuild_ci checkpoint --expected-sha '${COMMIT_SHA}'
+artifacts:
+  objects:
+    location: 'gs://project-6b810532-a302-48dc-b56-sudoku-ci/checkpoint/$BUILD_ID/'
+    paths:
+      - 'artifacts/pure/impact.json'
+      - 'artifacts/shards/**/*'
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1200s

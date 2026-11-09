@@ -1,0 +1,21 @@
+# Expensive native and independent-oracle verification; release/manual trigger.
+steps:
+  - id: native-and-independent-oracles
+    name: python:3.13-bookworm
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        python -m scripts.cloudbuild_ci validate --expected-sha '${COMMIT_SHA}'
+        python -m pip install --disable-pip-version-check -e '.[test,native,flint-oracle,sat-oracle,math-audit,symmetry-graph]'
+        python -m pip install --disable-pip-version-check 'setuptools>=65'
+        python -m scripts.cloudbuild_ci native --expected-sha '${COMMIT_SHA}'
+artifacts:
+  objects:
+    location: 'gs://project-6b810532-a302-48dc-b56-sudoku-ci/native/$BUILD_ID/'
+    paths:
+      - 'artifacts/native/**/*'
+      - 'artifacts/native-build.json'
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 2400s

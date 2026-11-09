@@ -19,6 +19,7 @@ except ImportError:
 from .factors import Factor, FactorBuilder, FactorKey, ChildFactor
 from .polynomial import PolynomialOps
 from .ordering import select_variable
+from .scope_plan import inspect_scope
 from ..runtime.budget import ModeBudget
 
 class ModeEliminator:
@@ -215,10 +216,11 @@ class ModeEliminator:
         return False
 
     def _eliminate_one(self, var: int) -> None:
-        incident=[f for f in self.factors if var in f.scope]
-        rest=[f for f in self.factors if var not in f.scope]
-        union=set().union(*(f.scope for f in incident)) if incident else {var}
-        out_scope=tuple(sorted(union-{var}))
+        step=inspect_scope(var, tuple(f.scope for f in self.factors))
+        attached=set(step.incident)
+        incident=[self.factors[i] for i in step.incident]
+        rest=[f for i,f in enumerate(self.factors) if i not in attached]
+        out_scope=step.output
         if self._use_sparse_join(incident):
             return self._eliminate_one_sparse(var,incident,rest)
         # Only assignments with remaining total weight below p can survive.

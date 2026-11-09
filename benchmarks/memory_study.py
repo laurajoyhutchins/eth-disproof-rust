@@ -82,7 +82,8 @@ def validate_sample(sample: MemorySample, *, case_id: str) -> None:
             or not isfinite(sample.elapsed_seconds) or sample.elapsed_seconds < 0):
         raise ValueError("Incorrect, refused or incomplete exact-memory sample")
     fields = (
-        "rss_before_bytes", "rss_after_bytes", "rss_high_water_bytes",
+        "rss_before_bytes", "rss_after_bytes", "rss_rusage_peak_bytes",
+        "rss_high_water_bytes",
         "rss_high_water_growth_bytes",
         "python_tracemalloc_baseline_bytes", "python_tracemalloc_end_bytes",
         "python_tracemalloc_peak_bytes", "python_tracemalloc_peak_growth_bytes",
@@ -91,7 +92,9 @@ def validate_sample(sample: MemorySample, *, case_id: str) -> None:
            or sample.memory[key] < 0 for key in fields):
         raise ValueError("Invalid or missing byte measurement")
     rss = sample.memory
-    if (rss["rss_high_water_bytes"] < max(rss["rss_before_bytes"], rss["rss_after_bytes"])
+    if (rss["rss_high_water_bytes"] != max(
+            rss["rss_before_bytes"], rss["rss_after_bytes"],
+            rss["rss_rusage_peak_bytes"])
             or rss["rss_high_water_growth_bytes"] != max(
                 0, rss["rss_high_water_bytes"] - rss["rss_before_bytes"])
             or rss["python_tracemalloc_peak_bytes"] < max(
@@ -226,7 +229,11 @@ def sample_once(case_id: str) -> MemorySample:
         elapsed = time.perf_counter() - start
         current, peak = tracemalloc.get_traced_memory()
         after = _process_rss()
-        high_water = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+        rusage_peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+        # On some Linux runners, ru_maxrss may lag the immediately observed
+        # VmRSS by a few pages. Preserve the raw value, and never report a
+        # maximum below an actual resident-set observation.
+        high_water = max(before, after, rusage_peak)
     finally:
         tracemalloc.stop()
     sample = MemorySample(
@@ -236,6 +243,7 @@ def sample_once(case_id: str) -> MemorySample:
         memory={
             "rss_before_bytes": before,
             "rss_after_bytes": after,
+            "rss_rusage_peak_bytes": rusage_peak,
             "rss_high_water_bytes": high_water,
             "rss_high_water_growth_bytes": max(0, high_water - before),
             "python_tracemalloc_baseline_bytes": baseline,
@@ -263,7 +271,7 @@ def aggregate_samples(
     return {
         "schema_version": SCHEMA, "status": "verified",
         "instrumentation": {
-            "rss": "Linux RUSAGE_SELF high-water KiB converted to bytes",
+            "rss": "Max of raw Linux RUSAGE_SELF ru_maxrss and before/after /proc VmRSS; raw ru_maxrss also retained",
             "rss_baseline": "/proc/self/status VmRSS prior to tracemalloc",
             "traced_peak": "tracemalloc Python-tracked bytes since reset_peak; excludes native untracked buffers",
             "source": "one fresh worker process per case per repeat",

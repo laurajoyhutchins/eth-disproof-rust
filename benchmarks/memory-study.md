@@ -30,10 +30,14 @@ The worker records Linux `ru_maxrss` (KiB converted to bytes), observed
 allocations, elapsed time, and solver's own accounting counters. Be precise
 about **what these cannot show**:
 
-- `ru_maxrss` is a process high-water mark, including imports, fixtures,
-  native memory, allocator behavior, and Python runtime. Its difference from
-  baseline is not a causal measurement of algorithm allocation; zero growth
-  does not mean zero allocation.
+- `ru_maxrss` is a process high-water counter, including imports, fixtures,
+  native memory, allocator behavior, and Python runtime. On some Linux runners
+  it may lag a nearby `VmRSS` reading. The report preserves raw `ru_maxrss`
+  and computes `rss_high_water_bytes` as the maximum of raw peak, observed
+  pre-operation `VmRSS`, and observed post-operation `VmRSS`. This reconciled
+  field is an observation, not a continuous, exact peak measurement. Its
+  difference from baseline is not causal allocation; zero growth does not
+  mean zero allocation.
 - `tracemalloc` measures tracked Python allocations, not all allocations
   made by Cython, FLINT or the native allocator. It changes runtime and may
   affect the peak. The peak minus starting trace is an observation, not an

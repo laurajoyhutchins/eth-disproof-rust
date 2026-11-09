@@ -16,12 +16,39 @@ def sudoku_network(puzzle: Puzzle) -> Network:
     from .direct_network import DirectNetwork, Vertex as DirectVertex
     original=DirectNetwork.from_puzzle(puzzle)
     sides: dict[str, list[Vertex]] = {'cell':[], 'unit':[]}
+    width = original.wire_bits
+    side = puzzle.side
+
+    def decode(bits: tuple[int, ...], start: int) -> int:
+        return sum(bit << offset for offset, bit in enumerate(bits[start:start + width]))
+
+    def compile_oracle(vertex: DirectVertex) -> Vertex:
+        # Compile a local Boolean tensor, not a full network assignment.
+        # The original DirectNetwork evaluator remains the independent oracle.
+        ports = tuple(vertex.ports)
+        if vertex.kind == 'cell':
+            clue = vertex.clue
+
+            def cell_oracle(bits: tuple[int, ...], R: TensorRing) -> NestedCoords:
+                if len(bits) != len(ports) or any(bit not in (0, 1, False, True) for bit in bits):
+                    raise ValueError('Non-Boolean port')
+                a = decode(bits, 0)
+                b = decode(bits, width)
+                c = decode(bits, 2 * width)
+                return R.scalar(int(a == b == c and a < side and (clue == 0 or clue == a + 1)))
+
+            return Vertex(vertex.name, ports, cell_oracle)
+        if vertex.kind == 'unit':
+            def unit_oracle(bits: tuple[int, ...], R: TensorRing) -> NestedCoords:
+                if len(bits) != len(ports) or any(bit not in (0, 1, False, True) for bit in bits):
+                    raise ValueError('Non-Boolean port')
+                digits = (decode(bits, start) for start in range(0, len(bits), width))
+                return R.scalar(int(len(ports) == side * width and len(set(digits)) == side))
+            return Vertex(vertex.name, ports, unit_oracle)
+        raise ValueError('Unexpected tensor kind')
+
     for vertex in original.vertices:
-        def oracle(bits: tuple[int, ...], R: TensorRing, vertex: DirectVertex = vertex) -> NestedCoords:
-            assignment=[0]*original.edge_count
-            for edge,b in zip(vertex.ports,bits):assignment[edge]=b
-            return R.scalar(original.local_entry(vertex,assignment))
-        sides[vertex.kind].append(Vertex(vertex.name,tuple(vertex.ports),oracle))
+        sides[vertex.kind].append(compile_oracle(vertex))
     net=Network(sides['cell'],sides['unit'],original.edge_count)
     net.validate()
     return net

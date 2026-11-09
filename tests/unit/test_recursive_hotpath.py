@@ -172,3 +172,29 @@ def test_reference_packet_terms_also_refuse_truncated_modes() -> None:
     with pytest.raises(ValueError, match='one multiplicity per mode'):
         make_child(net, packing, modes, (0,) * (len(modes) - 1),
                    1, ring.one, ring, 0, 0, context)
+
+
+def test_children_keep_source_labels_and_compiled_packet_labels() -> None:
+    net = port_graph_with_cross_mode()
+    packing = pack(net, 2, 1, (((0,),), ((1,),)))
+    ring = Padic(5, modulus_polynomial(5), 9)
+    modes = mode_catalog(net, packing, 1, ring.p)
+    beta = (0,) * len(modes)
+    context = EvaluationContext(1, ring.one, ring, packing.a)
+    direct = make_child(net, packing, modes, beta, 1, ring.one, ring,
+                        0, 0, context)
+    plan = CompiledChildPlan(net, packing, 0, 0)
+    compiled = plan.instantiate(modes, beta, 1, ring.one, ring, context)
+    parent_names = {vertex.name for vertex in net.left + net.right}
+    assert [vertex.name for vertex in direct.left] == [
+        vertex.name for vertex in compiled.left]
+    assert all(vertex.name in parent_names for vertex in direct.left)
+    assert [vertex.name for vertex in compiled.right] == [
+        spec.name for spec in plan.packet_ports]
+    assert [vertex.name for vertex in direct.right] == [
+        vertex.name for vertex in compiled.right]
+    # A second compilation uses the original name, not a growing keep: prefix.
+    next_packing = pack(compiled, 2, 1)
+    next_plan = CompiledChildPlan(compiled, next_packing, 0, 0)
+    assert all(vertex.name in {v.name for v in compiled.left + compiled.right}
+               for vertex in next_plan.kept)

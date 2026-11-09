@@ -29,6 +29,7 @@ from non_exponential_sudoku.eth.design import (
 )
 from non_exponential_sudoku.eth.factor_width import FactorWidthAudit, audit_factor_width
 from non_exponential_sudoku.eth.polynomial import ReplacementSystem
+from non_exponential_sudoku.eth.parameters import audit_bounded_cnf
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,11 +132,14 @@ def certified_witness_profile(r: int, size: int) -> dict[str, object]:
     if audit.measurement_rows != r * (r - 1):
         raise ArithmeticError('measurement count changed')
     lam = (formula.nvars - 1).bit_length()
+    occurrences = Counter(abs(v) for clause in formula.clauses for v in clause)
+    paper = audit_bounded_cnf(formula)
     return {
         'r': r, 'nvars': formula.nvars, 'lambda_bits': lam,
         'clauses': len(formula.clauses),
         'literal_incidence': sum(map(len, formula.clauses)),
-        'max_occurrences': 3, 'max_clause_width': 3 if (size-r+1) % 2 else 2,
+        'max_occurrences': max(occurrences.values(), default=0),
+        'max_clause_width': max(map(len, formula.clauses), default=0),
         'measurement_rows': cert.total_measurements,
         'measurement_D': design.D,
         'tau': str(design.tau),
@@ -147,7 +151,8 @@ def certified_witness_profile(r: int, size: int) -> dict[str, object]:
         'max_induced_scope_groups': audit.max_scope_groups,
         'log2_largest_dense_factor_domain': audit.max_domain_bits,
         'count_from_independent_formula': witness.expected_count,
-        'paper_parameter_schedule_admitted': False,
+        'paper_parameter_schedule_admitted': paper.admitted,
+        'paper_parameter_failures': paper.failures,
     }
 
 

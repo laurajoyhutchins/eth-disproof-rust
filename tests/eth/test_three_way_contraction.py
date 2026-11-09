@@ -82,8 +82,15 @@ def test_benchmark_outcome_includes_noncomparable_work_and_memory_scopes() -> No
         assert outcome["peak_traced_bytes"] >= 0
         assert outcome["arithmetic_work_units"] >= 0
         assert outcome["maximum_rational_coefficient_bits"] > 0
-        assert outcome["bit_work_proxy"] >= 0
-        assert outcome["bit_work_proxy_is_actual_bit_operations"] is False
+        assert "bit_work_proxy" not in outcome
+        trace = outcome["fraction_bit_accounting"]
+        assert trace["status"] == "reference-arithmetic-bounded"
+        assert trace["reference_schoolbook_bit_steps_upper_bound"] > 0
+        assert trace["euclidean_gcd_calls"] > 0
+        assert trace["exact_result_replays_verified"] > 0
+        assert trace["bound_is_for_actual_CPython_machine_execution"] is False
+        assert trace["bound_is_for_complete_algorithm"] is False
+        assert trace["bare_integer_and_nonFraction_arithmetic_unaccounted"] is True
 
 
 @pytest.mark.integration

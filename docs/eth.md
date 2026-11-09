@@ -919,22 +919,94 @@ an exact bond across the separated matching cut has rank 2**k;
 interleaving removes that particular width growth. This does
 not prove a lower bound for arbitrary contraction order.
 
-**Algebraic and bit-work accounting:** Every completed result records
-the strategy's scope basis; peak retained factor entries and induced
-scope, or tensor pre/post compression bonds and core entries; the
-maximum rational coefficient numerator/denominator bit size;
-a strategy-specific charged arithmetic work counter; exact Taylor
-coefficients; runtime and peak Python traced allocations.
-As a coarse diagnostic the benchmark also reports
+**Algebraic and operand-dependent bit accounting (replaces the
+obsolete maximum-bit proxy):** Every completed result records its
+scope basis; peak retained factor entries or tensor bonds/cores;
+charged logical arithmetic work, maximum rational coefficient bits,
+exact Taylor coefficients, elapsed time and traced Python allocations.
 
-`bit_work_proxy = charged_work_units * max_coefficient_bits**2`.
+The earlier `charged_work_units * max_coefficient_bits**2` diagnostic
+has been **removed** from the benchmark. Those counters charged
+different logical units, and even a correct square bound at the maximum
+bit width would not count the actual integer operands or normalization.
 
-This is **NOT** measured machine bit operations, a proven bit-complexity
-upper bound, or a fully comparable count: the two factor evaluators
-and tensor evaluator use different counter conventions and may have
-different uncharged overhead. It is deliberately labeled as a
-proxy, not substituted for actual bit-complexity accounting.
-`tracemalloc` also does not represent full process RSS.
+The new `benchmarks/eth/rational_bit_accounting.py` runs each
+completed exact evaluator a **second time outside the timed and
+tracemalloc-measured region**. An exact Python profiling hook observes
+every invoked `Fraction` arithmetic primitive and its real signed
+integer numerator/denominator operands, including work performed
+during measurement certification and tensor rank sweeps. An
+**independent integer-only reference replay** reconstructs the reduced
+result for every rational addition, subtraction, multiplication,
+division and integer-pair construction. Every replay result is checked
+exactly against the value returned by Python Fraction; mismatches,
+unmodeled methods, unsupported constructor types and unavailable
+hooks cause a hard failure, not a plausible-looking zero.
+
+The replay charges the following **constructive schoolbook bit-step
+upper bounds for the specified integer arithmetic algorithm**, using
+the actual bit lengths a,b of the operands at *each* integer step:
+
+- integer addition/subtraction: `4*(max(a,b)+1)`
+- grade-school integer multiplication: `8*(a+1)*(b+1)`
+- shift/subtract integer division/remainder: `64*(a+1)*(b+1)`
+- Euclidean gcd: the **sum of the individual charged division steps**
+  obtained from the actual Euclidean remainder sequence, not a
+  single assumption based on the maximum numerator size
+
+That is a value-dependent, executable witness for a conservative
+upper bound on the bit steps of a **specified rational reference
+arithmetic implementation** following the observed operation sequence.
+It includes rational normalization, all recorded intermediate integer
+sizes, exact Euclidean iterations, constructors and supported
+comparisons. Unlike the old proxy, the bound varies with *actual
+operands*, even for two calculations with the same number of
+logical jet operations and the same algebraic graph. Each strategy
+reports primitive call counts, integer adds/multiplications/divisions,
+gcd calls, gcd quotient/remainder steps, peak intermediate integer
+bits, and the summed reference bit-step bound.
+
+**Executed witness trace:** The full 24-case matrix ran successfully
+in GitHub Actions run `42710246380` on CPython 3.13.
+Strict production typing across 76 source files and 36 targeted
+tests passed. All 71 exact completed arms reproduced their native
+Fraction outputs from integer-only reference arithmetic, with
+**zero unmodeled Fraction methods**. The remaining arm refused
+before completion under the explicit factor-table cap, and no
+bit-bound value was invented.
+
+Representative **reference-schoolbook bit-step bounds** (these are
+whole rational traces, not merely the final Taylor arithmetic):
+
+| Family | Variables, J | Group-mask route | Fused-variable route | Tensor-jet route |
+|---|---|---:|---:|---:|
+| positive path | 6, 2 | 87,895,372 | 1,338,428 | 10,354,492 |
+| clique | 6, 2 | 260,114,928 | 3,122,828 | 25,897,072 |
+| clique | 12, 0 | refused | 39,459,476 | 294,354,460 |
+| separated matching | 12, 0 | 1,839,784 | 930,492 | 31,650,568 |
+| paired matching | 12, 0 | 1,839,784 | 930,492 | 15,051,800 |
+
+The order-sensitive tensor contraction changes the *actual observed
+reference arithmetic* substantially: separated matching requires
+151,246 Fraction method calls and 70,863 Euclidean division steps;
+interleaved matching requires 74,008 Fraction method calls and
+34,880 Euclidean divisions. The fused-variable route is unchanged
+by group ordering. These counts are reproducible trace evidence,
+not an asymptotic theorem.
+
+**Do not expand the claim:** This is NOT measured machine bit
+instructions for CPython, a hardware-independent upper bound on
+CPython's bigint implementation, nor a rigorous whole-program
+bit-complexity bound. Raw integer operations *outside* Fraction,
+hashing, object allocation, Python control flow, memory management,
+and refusal paths are excluded. The three exact strategies use
+different Python code and can perform untracked structural work.
+The report contains explicit `bound_is_for_complete_algorithm=false`
+and `bound_is_for_actual_CPython_machine_execution=false` fields,
+plus `bare_integer_and_nonFraction_arithmetic_unaccounted=true`.
+A capacity refusal has **no invented bit-step bound**. The historical
+logical-operation counters remain separate. Traced Python allocations
+from `tracemalloc` are not total process RSS.
 
 **Fixed resource policy:** both classical factor routes use the same
 factor entry, total entry, work, jet-operation and rational-bit
@@ -966,9 +1038,11 @@ PYTHONPATH=src:. python -m pytest -q tests/eth/test_three_way_contraction.py
 PYTHONPATH=src:. python -m benchmarks.eth.three_way_contraction
 ```
 
-The command emits machine-readable JSON for each family and
-refusal. Future serious bit-complexity conclusions require
-per-primitive operand-size instrumentation (including rational
-normalization and gcd work), peak retained *total* algebraic
-storage, and growing-order tests that preserve the same parameter
-regime. Until then, keep all three exact methods opt-in.
+The command emits machine-readable JSON for each family,
+including witnessed reference-rational bit costs when the evaluator
+completes. A true **whole-algorithm** bit-complexity certificate still
+requires tracking all non-Fraction big-integer operations, total
+retained algebraic storage, Python-independent control-flow
+operation bounds, and growing-order tests under a fixed regime.
+No argument about asymptotic ETH complexity follows from the
+measured finite traces. Keep all three exact methods opt-in.

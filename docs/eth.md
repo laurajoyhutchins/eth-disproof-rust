@@ -239,6 +239,69 @@ The rank sweep is reproducible via
 `PYTHONPATH=src:. python -c "from benchmarks.eth.projector_probe import rank_audit; print(rank_audit())"`.
 
 
+## Boolean-difference fusion into exact polynomial factor elimination (opt-in)
+
+The original separated Taylor evaluator explicitly sums all pairs
+`U subset E subset [n]` with `|E|<=q`, which requires
+
+`sum_{j=0}^{min(q,n)} binom(n,j)*2**j`
+
+restricted contractions **per center**. This is the source of the
+Taylor-pair explosion measured by the full CNF benchmark.
+
+There is an exact algebraic reorganization. For a fixed Boolean assignment
+`x`, each restricted term replaces the original evaluation at `t` by
+`P_e,v(t) * x_v + (P_e,v(t+z)-P_e,v(t)) * 1_{v in U}`,
+with `E` forced active in `x`. The alternating `U`-sum is the
+multivariate Boolean finite difference on `E`. It annihilates all
+products involving fewer than `|E|` of the increments; each increment
+is divisible by `z`. Hence terms `|E|>q` vanish modulo `z**(q+1)`.
+Summing the **entire** Boolean finite difference first telescopes to the
+single polynomial factor contraction
+
+```
+[z**<=q] sum_{x in {0,1}^n} prod_{clauses e}
+    (1 - prod_{literal ell in e} false_ell(
+        sum_v P[e,ell,v](t+z) * x[v]))
+```
+
+where `false_ell(a) = 1-a` for positive literals and `a` for negative
+literals. This identity retains the *same* certified deformed polynomial
+and the exact same Taylor coefficients, but never explicitly materializes
+the `(E,U)` expansion.
+
+`summation='fused'` is an **opt-in** third evaluator that applies exact
+variable elimination to clause factors with scopes determined by the
+nonzero *truncated polynomial coefficients*. It retains the original
+independent measurement certificate and checks exact bit and resource
+limits. `taylor_pairs=0` now means the explicit pair loop did not run.
+Factor assignments, maximum table entries, and induced factor scope
+still record the real work. The scope basis is **Boolean variables of
+the prepared CNF leaf**, including any count-preserving reduction auxiliary
+variables, unlike the `summation='eliminate'` group-mask evaluator.
+The two kinds of scope counts are **not** comparable without translation.
+
+This is classical factor elimination applied to a polynomial deformation.
+Its worst-case width can still be `n`. A measurement certificate with
+few rows does **not** guarantee sparse polynomial coefficient supports;
+spectral mixing may make them dense. The fused backend is therefore an
+independent test of whether finite-difference materialization was the
+dominant bottleneck, **not** a proof of subexponential #SAT or of the
+paper's quantitative admission. The separated tuple and group-factor
+implementations remain available and the default remains `tuples`.
+
+The integration tests compare every Taylor coefficient at multiple
+nonzero centers and truncation orders against the original evaluator,
+check completed end-to-end counts against an independent Boolean oracle,
+and require fail-closed capacity refusal on oversized fused factor tables.
+
+Reproduce selectively:
+
+```bash
+python -m pytest -q -m integration tests/eth/test_fused_taylor.py
+python -m scripts.eth_reference --summation fused
+```
+
 ## Exact Taylor group-factor elimination (opt-in)
 
 `taylor_coefficients_separated(..., summation='eliminate')` and

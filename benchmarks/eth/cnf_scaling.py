@@ -35,7 +35,7 @@ from scripts.evidence import fingerprints, git_provenance, native_binaries
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = "1.0.0"
 FAMILIES = ("path", "matching", "xor_pairs", "clique")
-SUMMATIONS = ("tuples", "eliminate")
+SUMMATIONS = ("tuples", "eliminate", "fused")
 MODES = ("baseline", "observed")
 DEFAULT_FAMILIES = ("path", "matching", "clique")
 DEFAULT_SIZES = (2, 4, 6)
@@ -91,8 +91,13 @@ def _rss_bytes() -> int:
 
 def _leaf_evidence(leaves: tuple[Any, ...]) -> dict[str, int]:
     """Aggregate only completed mathematical leaves, never partial failures."""
+    bases = {v.factor_scope_basis for v in leaves}
+    if len(bases) != 1:
+        raise ArithmeticError("Inconsistent Taylor factor scope units across leaves")
     return {
         "leaves_completed": len(leaves),
+        "factor_scope_basis": next(iter(bases)),
+        "max_prepared_variables": max(v.prepared_variables for v in leaves),
         "constructed_leaves": sum(v.method == "certified-construction" for v in leaves),
         "tiny_base_leaves": sum(v.method == "two-assignment-base" for v in leaves),
         "centers": sum(v.centers for v in leaves),

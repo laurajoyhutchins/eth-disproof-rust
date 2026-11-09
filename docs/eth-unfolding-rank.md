@@ -143,6 +143,40 @@ contains at most one variable on each side, giving a rank-at-most-2
 certificate. For the grouped crossing-pair example, the bound is
 `2**k` and is attained at every nonzero `T`.
 
+## Source-pinned first measurements of the certified construction
+
+The source-pinned
+[CNF rank run](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42710068603)
+at commit `cebd89107de04ae635c2b4d0dd92cb9ff2ed8a17`
+completed all its bounded exact rank and full-pipeline checks.
+
+The grouped `x|y` crossing-pair ranks at `T=1` were
+`2,4,8,16` for `k=1,2,3,4`. The interleaved orders had maximum
+rank `2` throughout, and exhaustive best-order search confirmed
+optimum `2` for `k<=3` (up to 62 separate subset cuts).
+
+For the **actual, certified** `r=Q=R=2` construction on path
+CNFs, the exact Q-rank profiles in natural variable order were:
+
+| Input CNF | Center | Natural rank profile | Exact best-order peak | Sum of deformed tensor |
+| --- | ---: | --- | ---: | ---: |
+| path n=3 | 1 | 2, 1 | 2 | 3 |
+| path n=3 | 2 | 2, 2 | 2 | 1 |
+| path n=4 | 1 | 2, 1, 1 | 2 | 3 |
+| path n=4 | 2 | 2, 2, 1 | 2 | -1 |
+
+The factor-support boundary upper bounds were **tight** for every
+reported cut. Every tensor sum agreed with an independently
+constructed whole deformation polynomial `H(T)`; evaluating at
+`T=0` gives the original exact counts (5 and 8, respectively).
+A nonzero-center deformation sum can be negative and is **not** a
+Boolean model count. These small observations do **not** establish
+that path-family ranks stay bounded at growing n, or that the actual
+construction admits a cheap rank factorization.
+
+The raw evidence is retained in the
+[cnf-unfolding-rank artifact](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42710068603/artifacts/13716020846).
+
 ## What this proves and does not prove
 
 - **Proved:** A precise, representation-invariant cut rank for

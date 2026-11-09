@@ -92,7 +92,7 @@ class ImplicitAuxiliaryDesign:
 
     @property
     def dimension(self) -> int:
-        return self.r ** (2 * self.Q)
+        return int(self.r ** (2 * self.Q))
 
     def label_index(self, label: AuxiliaryLabel) -> int:
         """Index compatible with lexicographic dense auxiliary labels."""
@@ -428,8 +428,10 @@ def construct_from_schedules(
     for s in range(Q):
         if any(sum(1 for seq in a if seq[s] == g) * r > 2 * n for g in range(r)):
             raise ValueError('schedule violates small-group bound')
-    dense = isinstance(auxiliary, AuxiliaryDesign)
-    lookup = {label: i for i, label in enumerate(auxiliary.labels)} if dense else {}
+    if isinstance(auxiliary, AuxiliaryDesign):
+        lookup = {label: i for i, label in enumerate(auxiliary.labels)}
+    else:
+        lookup = {}
 
     def row_at(source: AuxiliaryLabel, target: AuxiliaryLabel) -> Polynomial:
         if isinstance(auxiliary, AuxiliaryDesign):

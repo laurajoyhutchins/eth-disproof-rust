@@ -1,0 +1,52 @@
+name: Native cutover evidence
+
+on:
+  push:
+    branches:
+      - 'verify/native-cutover-*'
+  workflow_dispatch:
+
+jobs:
+  measure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install benchmark toolchain
+        run: python -m pip install -e '.[native,test,benchmark]'
+      - name: Install direct-build backend
+        run: python -m pip install 'setuptools>=65'
+      - name: Build and attest Cython kernels
+        run: python build_native.py --force
+      - name: Differential contracts and report tests
+        run: |
+          python -m pytest -q tests/contracts/test_native_kernel_differential.py tests/contracts/test_sparse_native_jet_arithmetic.py tests/integration/test_recursive_optimized.py tests/unit/test_native_cutover_report.py
+      - name: Benchmark sparse elimination (Python vs Cython)
+        env:
+          SUDOKU_BENCH_PAIRS: 'sparse-grid3:python,sparse-grid3:cython,sparse-grid4:python,sparse-grid4:cython,dense-grid3:python,dense-grid3:cython'
+          SUDOKU_BENCHMARK_ROUNDS: '7'
+        run: |
+          mkdir -p artifacts
+          python -m pytest -q tests/benchmark/test_native_dlx_timing.py --benchmark-only --benchmark-save-data --benchmark-json=artifacts/native-sparse-timing.json
+      - name: Benchmark packet and leaf recursion (Python vs Cython)
+        env:
+          SUDOKU_RECURSIVE_PAIRS: 'parity-2wire:reference,parity-2wire:packet,parity-2wire:leaf,sudoku-4wire:reference,sudoku-4wire:packet,sudoku-4wire:leaf,sudoku-8wire:reference,sudoku-8wire:packet,sudoku-8wire:leaf,nested-2wire:reference,nested-2wire:packet,nested-2wire:leaf,crossing-4wire:reference,crossing-4wire:packet,crossing-4wire:leaf'
+          SUDOKU_BENCHMARK_ROUNDS: '7'
+        run: |
+          python -m pytest -q tests/benchmark/test_recursive_timing.py --benchmark-only --benchmark-save-data --benchmark-json=artifacts/native-recursive-timing.json
+      - name: Evaluate paired speedups
+        run: |
+          python scripts/native_cutover_report.py artifacts/native-sparse-timing.json artifacts/native-recursive-timing.json --output artifacts/native-cutover-report.json
+      - name: Preserve native cutover evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-cutover-evidence
+          path: |
+            artifacts/native-build.json
+            artifacts/native-*-timing.json
+            artifacts/native-cutover-report.json
+          if-no-files-found: warn

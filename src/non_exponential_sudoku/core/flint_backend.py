@@ -37,6 +37,7 @@ class _ModPolynomial(Protocol):
     def __add__(self, other: _ModPolynomial) -> _ModPolynomial: ...
     def __sub__(self, other: _ModPolynomial) -> _ModPolynomial: ...
     def mul_mod(self, other: _ModPolynomial, modulus: _ModPolynomial) -> _ModPolynomial: ...
+    def pow_mod(self, power: int, modulus: _ModPolynomial) -> _ModPolynomial: ...
 
 
 class _PolynomialContext(Protocol):
@@ -83,6 +84,7 @@ class FlintRingArithmetic:
     def __init__(self, ring: RingSpec) -> None:
         self.e = ring.e
         self.mask = ring.mask
+        self.newton_steps = ring.p.bit_length() + 1
         self.ctx = _load_flint().fmpz_mod_poly_ctx(1 << ring.p)
         self.modulus = self.ctx([(ring.f >> i) & 1 for i in range(ring.e + 1)])
 
@@ -106,15 +108,25 @@ class FlintRingArithmetic:
     def pow(self, a: Sequence[int], power: int) -> tuple[int, ...]:
         if power < 0:
             raise ValueError("Negative powers are not supported by this adapter")
-        result = self.ctx([1])
-        base = self._poly(a)
-        while power:
-            if power & 1:
-                result = result.mul_mod(base, self.modulus)
-            power >>= 1
-            if power:
-                base = base.mul_mod(base, self.modulus)
-        return self._coords(result)
+        return self._coords(self._poly(a).pow_mod(power, self.modulus))
+
+    def inverse_lift(self, a: Sequence[int], seed: Sequence[int]) -> tuple[int, ...]:
+        """Newton-lift a known inverse modulo 2, without tuple round trips.
+
+        ``fmpz_mod_poly.inverse_mod`` is not a safe general inverse routine
+        over this composite coefficient modulus. Instead, the independent
+        Padic implementation computes the GF(2**e) inverse as ``seed``;
+        the existing Newton identity then executes entirely inside FLINT.
+        """
+        value = self._poly(a)
+        inverse = self._poly(seed)
+        two = self.ctx([2])
+        for _ in range(self.newton_steps):
+            inverse = inverse.mul_mod(
+                two - value.mul_mod(inverse, self.modulus), self.modulus,
+            )
+        assert value.mul_mod(inverse, self.modulus) == self.ctx([1])
+        return self._coords(inverse)
 
 
 @dataclass(frozen=True)
@@ -137,3 +149,15 @@ def _cached_ring(e: int, f: int, p: int) -> FlintRingArithmetic:
 def flint_mul(ring: RingSpec, a: Sequence[int], b: Sequence[int]) -> tuple[int, ...]:
     """Reuse the FLINT polynomial modulus/context for repeated multiplications."""
     return _cached_ring(ring.e, ring.f, ring.p).mul(a, b)
+
+
+def flint_pow(ring: RingSpec, a: Sequence[int], power: int) -> tuple[int, ...]:
+    """Exponentiate within FLINT; convert the result to public coordinates once."""
+    return _cached_ring(ring.e, ring.f, ring.p).pow(a, power)
+
+
+def flint_inverse_lift(
+    ring: RingSpec, a: Sequence[int], seed: Sequence[int],
+) -> tuple[int, ...]:
+    """Keep Newton iterates native over the validated 2-adic quotient ring."""
+    return _cached_ring(ring.e, ring.f, ring.p).inverse_lift(a, seed)

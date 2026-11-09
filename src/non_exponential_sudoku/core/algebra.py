@@ -5,7 +5,9 @@ from fractions import Fraction
 from collections.abc import Iterable, Sequence
 from typing import TypeAlias, TypeVar
 from .lazy_coefficients import CoefficientRing
-from .flint_backend import flint_enabled, flint_mul
+from .flint_backend import (
+    flint_enabled, flint_inverse_lift, flint_mul, flint_pow,
+)
 from ..runtime.budget import CapacityError
 from ..runtime.cost_ledger import ring_call, native_call
 from functools import lru_cache
@@ -126,6 +128,10 @@ class Padic:
     def pow(self,a: RingCoords,n: int) -> RingCoords:
         ring_call("pow", self)
         if n<0: return self.pow(self.inv(a),-n)
+        if not n: return self.one
+        if flint_enabled():
+            native_call("flint_padic_pow")
+            return flint_pow(self, a, n)
         r=self.one
         while n:
             if n&1: r=self.mul(r,a)
@@ -148,6 +154,9 @@ class Padic:
                 a=fm(a,a); n>>=1
             return r
         z=self.basis(fp(bits,(1<<self.e)-2))
+        if flint_enabled():
+            native_call("flint_padic_inv")
+            return flint_inverse_lift(self, a, z)
         for _ in range(self.p.bit_length()+1):
             z=self.mul(z,self.sub(self.scalar(2),self.mul(a,z)))
         assert self.mul(a,z)==self.one

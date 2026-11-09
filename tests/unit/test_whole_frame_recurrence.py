@@ -187,3 +187,4 @@ def test_hypothetical_closure_is_not_a_theorem_and_no_silent_green() -> None:
     assert trial >= result.frames[0].log2_named_local_work_ceiling
     with pytest.raises(UnclosedRecurrence):
         result.require_complete_theorem()
+

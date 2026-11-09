@@ -15,6 +15,7 @@ from typing import Final
 from non_exponential_sudoku.contraction.engine import paper_schedule_parameters
 from non_exponential_sudoku.runtime.config import ContractorConfig
 from reference.nested_ring_bit_cost import finite_shape_bit_envelope
+from reference.oracle_lineage import paper_single_path_descriptor_bound
 from reference.packet_preparation_work import cauchy_context_calls, prepared_child_work
 from reference.precision_envelope import PaperFrameEnvelope, paper_frame_envelopes
 from reference.recovery_bit_work import recovery_work
@@ -83,6 +84,8 @@ class ConditionalPaperRecurrence:
     # Product of per-depth child-call ceilings; not the total bit cost.
     log2_path_fanout_ceiling: int
     early_numeric_fallback_leaf_edge_ceiling: int
+    max_single_path_oracle_descriptors: int
+    max_single_path_oracle_name_bits: int
     open_premises: tuple[str, ...] = OPEN_PREMISES
 
     def require_complete_theorem(self) -> None:
@@ -224,7 +227,20 @@ def assemble_paper_recurrence(
             or vertices > config.s * config.s
             or input_name_bits > config.s * config.s):
         raise UnclosedRecurrence('finite polynomial input shape required: M,p<=s; V,names<=s^2')
+    # The source child constructor retains exact parent oracle references;
+    # each nonempty packet creates one finite local PacketEntry. The paper
+    # shrinkage check bounds the cumulative *single-path* descriptor count.
+    # The previous model incorrectly reused only the root input-name size
+    # when charging child preparation at every later depth.
+    lineage = paper_single_path_descriptor_bound(
+        root_edges=edges, root_vertices=vertices,
+        root_input_name_bits=input_name_bits,
+    )
+    if lineage.max_visible_name_bits is None:
+        raise UnclosedRecurrence('root input-name bit contract required')
     frames = paper_frame_envelopes(config, edges, vertices)
+    if any(frame.vertices > lineage.max_vertices for frame in frames):
+        raise UnclosedRecurrence('frame vertex envelope violates inherited oracle bound')
     # paper_frame_envelopes emits only potential active frames followed by
     # one terminal frame. Numeric packing failure is accounted separately.
     result: list[FrameBudgetSkeleton] = []
@@ -235,7 +251,9 @@ def assemble_paper_recurrence(
                 0, 0, 0, 0, 0, 0, 0, 0, 0, frame.edges,
             ))
         else:
-            result.append(_active_frame(frame, config, input_name_bits=input_name_bits))
+            result.append(_active_frame(
+                frame, config, input_name_bits=lineage.max_visible_name_bits,
+            ))
     if not result[-1].terminal:
         raise UnclosedRecurrence('terminal frame required')
     count_log = 0
@@ -254,5 +272,7 @@ def assemble_paper_recurrence(
             s=config.s, lambda_bits=lam, maximum_slot_exponent=max_a,
             terminal_edges=result[-1].edges,
         )
-    return ConditionalPaperRecurrence(config.s, tuple(result), count_log,
-                                     fanout_log, fallback)
+    return ConditionalPaperRecurrence(
+        config.s, tuple(result), count_log, fanout_log, fallback,
+        lineage.max_vertices, lineage.max_visible_name_bits,
+    )

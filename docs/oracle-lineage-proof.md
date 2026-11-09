@@ -69,6 +69,38 @@ recursion tree. Nor does it bound caches retaining packet descriptors from
 many siblings, memory ownership, coefficient bit lengths, per-packet
 preparation, or the work of calling any inherited or original oracle.
 
+## Closing the inherited vertex-name bit-cost term
+
+Both source constructors name new packet vertices exactly
+`packet:{k}:g{group}`. On the literal paper schedule, `group<64` and every
+packet index `k<M_0`. An integer with value less than `M_0` has at most
+`max(1,bit_length(M_0))` decimal digits, while a group below 64 has at most
+six. The fixed prefix and separator require nine ASCII characters.
+
+If the root input has at most `D_0` UTF-8 name bits, the name payload visible
+on any successful child path is therefore bounded by
+
+\[
+ D_d\le D_0+
+ \left\lfloor\frac{32M_0}{29}\right\rfloor
+ \cdot8\bigl(9+\max(1,\operatorname{bitlength}(M_0))+6\bigr).
+\]
+
+This is polynomial whenever root metadata is polynomial and `M_0<=s`.
+It is a bound on characters encoded in names, **not** the complete Python
+object graph. In particular, mode catalogs and prepared coefficient tuples
+have separate source-dependent costs.
+
+Previously `assemble_paper_recurrence` passed the same root-name-bit count
+to every `prepared_child_work` call. That was an underaccounting risk once
+recursive children had generated packet names. It now uses the uniform
+single-path bound for each level and rejects frame vertex bounds that exceed
+the derived descriptor ceiling. The exported conditional model records
+`max_single_path_oracle_descriptors` and
+`max_single_path_oracle_name_bits`, without marking any unresolved theorem
+premise as proved.
+
+
 ## What this closes, and what it does not
 
 The **vertex-count term** in a whole-frame size recurrence is now justified

@@ -13,6 +13,7 @@ from ..core.modes import Mode
 from ..core.lazy_coefficients import NestedCoords
 from .children import ChildComponent
 from .packets import EvaluationContext
+from .zero_support import certify_zero
 if TYPE_CHECKING:
     from .engine import ContractionEngine
 
@@ -84,6 +85,28 @@ class ChildEvaluator:
         c.stats.child_cache_misses+=1
         c.stats.child_networks+=1
         charge("child_networks_constructed")
+        # Only a local-support depletion certificate may bypass recursion.
+        # Unproven or over-budget children retain their exact evaluator.
+        policy = c.config.recursion.zero_support
+        if policy.enabled:
+            c.stats.zero_support_attempts += 1
+            certificate = certify_zero(child, self.ring, policy)
+            c.stats.zero_support_evaluated_rows += certificate.evaluated_rows
+            if certificate.verdict == 'unsupported':
+                c.stats.zero_support_unsupported += 1
+            elif certificate.verdict == 'zero':
+                c.stats.zero_support_certificates += 1
+                if trace is not None:
+                    trace.observe(
+                        operation='child_zero_certificate',
+                        topology=(tuple(v.ports for v in child.left),
+                                  tuple(v.ports for v in child.right)),
+                        exact_input=(id(self.net), id(self.packing), id(self.ring),
+                                     self.coordinate, group, component,
+                                     tuple(selected_modes), tuple(assignment), self.t, self.z),
+                        started_ns=started, output=self.ring.zero,
+                    )
+                return self.ring.zero
         # Topology identifies incidence only. Distinct coefficient assignments
         # may construct the same topology yet require different exact answers.
         if trace is None:

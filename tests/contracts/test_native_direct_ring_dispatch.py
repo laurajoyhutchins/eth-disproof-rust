@@ -29,7 +29,7 @@ def test_direct_packet_ring_operations_skip_python_method_dispatch(
     jet_degree: int, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     native = pytest.importorskip("native_recursive")
-    base = Padic(3, modulus_polynomial(3), 19)
+    base = Padic(8, modulus_polynomial(8), 19)
     ring = JetRing(base, jet_degree) if jet_degree else base
     expected = _run_packet(native, ring)
     owner = JetRing if jet_degree else Padic
@@ -49,7 +49,7 @@ def test_observed_packet_keeps_ring_call_accounting(
     jet_degree: int, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     native = pytest.importorskip("native_recursive")
-    base = Padic(3, modulus_polynomial(3), 19)
+    base = Padic(8, modulus_polynomial(8), 19)
     ring = JetRing(base, jet_degree) if jet_degree else base
     expected = _run_packet(native, ring)
     owner = JetRing if jet_degree else Padic
@@ -80,7 +80,7 @@ def test_scoped_flint_keeps_explicit_ring_backend(monkeypatch: pytest.MonkeyPatc
     native = pytest.importorskip("native_recursive")
     from non_exponential_sudoku.core.flint_backend import flint_arithmetic
 
-    ring = Padic(3, modulus_polynomial(3), 19)
+    ring = Padic(8, modulus_polynomial(8), 19)
     expected = _run_packet(native, ring)
     original = Padic.mul
     calls = 0
@@ -102,7 +102,7 @@ def test_native_leaf_direct_ring_method_bypass_is_exact(
     use_plan: bool, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     native = pytest.importorskip("native_recursive")
-    ring = Padic(3, modulus_polynomial(3), 17)
+    ring = Padic(8, modulus_polynomial(8), 17)
     net = simple_network(
         3,
         [((0, 1), {(0, 0): 2, (1, 1): 3}),

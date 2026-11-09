@@ -339,7 +339,9 @@ def minimax_unfolding_order(
 
     # Sort candidates by (maximum bond rank, lexicographic order) for
     # deterministic, auditable tie-breaking.
-    best: dict[int, tuple[int, tuple[int, ...]]] = {0: (1, ())}
+    # A zero tensor has rank-zero unfolding at every internal cut.
+    # Starting from 1 incorrectly promotes its optimum to 1.
+    best: dict[int, tuple[int, tuple[int, ...]]] = {0: (0, ())}
     for subset in range(1, full + 1):
         possible: list[tuple[int, tuple[int, ...]]] = []
         for variable in range(n):
@@ -347,10 +349,15 @@ def minimax_unfolding_order(
             if not subset & bit:
                 continue
             prior_max, prior_order = best[subset ^ bit]
-            peak = max(prior_max, ranks.get(subset, 1))
+            peak = max(prior_max, ranks.get(subset, 0))
             possible.append((peak, prior_order + (variable,)))
         best[subset] = min(possible)
     optimum, order = best[full]
+    # For n <= 1 no internal TT bond exists; report the conventional
+    # empty-profile value of one. For n >= 2, the exact zero-tensor
+    # optimum is legitimately zero.
+    if n <= 1:
+        optimum = 1
     prefix = 0
     cut_ranks: list[int] = []
     for variable in order[:-1]:

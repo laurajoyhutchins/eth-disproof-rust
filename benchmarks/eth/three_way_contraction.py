@@ -17,12 +17,14 @@ The reference #SAT count is independently checked at T=0 for every
 family. At small n an independent full deformation polynomial also
 checks every reported Taylor coefficient.
 
-Arithmetic counters use DIFFERENT accounting conventions. The displayed
-'bit_work_proxy' is operation_units * max_coefficient_bits**2, a coarse
-schoolbook-style *diagnostic*, NOT measured machine bit operations, a
-rigorous bit-complexity upper bound, or a comparable cost model. Timing
-and Python tracemalloc allocations are measured under matching conditions,
-one arm at a time. CapacityError is an explicit outcome, never a fallback.
+Actual operand bit lengths are now observed in a separate second execution
+for each completed arm. Every Fraction arithmetic primitive is replayed with
+witnessed integer operands and a constructive schoolbook bit-cost bound,
+including Euclidean gcd iterations and exact normalization. This is an
+upper bound for the SPECIFIED rational reference computation only; not a
+whole-program bound or measured CPython machine bit operations. Non-Fraction
+integer arithmetic, hashing, allocation and Python overhead are outside
+the bounded scope and explicitly reported. CapacityError is first-class.
 """
 from __future__ import annotations
 
@@ -45,6 +47,7 @@ from non_exponential_sudoku.eth.tensor_jet import (
 )
 from non_exponential_sudoku.eth.tensor_train import TensorLimits
 from non_exponential_sudoku.runtime.budget import CapacityError
+from benchmarks.eth.rational_bit_accounting import trace_fraction_bit_work
 
 Family = Literal["independent", "path", "clique", "alternating-path",
                  "matching-separated", "matching-paired"]
@@ -188,7 +191,6 @@ def _measured(
     shared: dict[str, Any] = {
         "elapsed_seconds": seconds,
         "peak_traced_bytes": peak,
-        "bit_work_proxy_is_actual_bit_operations": False,
     }
     if refused is not None:
         return None, {
@@ -198,26 +200,43 @@ def _measured(
             "reason": str(refused),
             "arithmetic_work_units": None,
             "maximum_rational_coefficient_bits": None,
-            "bit_work_proxy": None,
+            "fraction_bit_accounting": {"status": "not-measured-on-capacity-refusal"},
         }
     if result is None:
         raise AssertionError("exact evaluator ended without result or CapacityError")
     return result, {**shared, "status": "exact"}
 
 
-def _work(
-    outcome: dict[str, Any], operations: int, bits: int,
+def _observed_rational_work(
+    outcome: dict[str, Any],
+    evaluation: Callable[[], _Result],
+    expected: _Result,
+    operations: int,
+    bits: int,
 ) -> dict[str, Any]:
+    """Replay and verify exact Fraction operands separately from timing.
+
+    The reported constructive bit bound is for the observed rational
+    primitives under a fully specified schoolbook implementation. It
+    does NOT cover native CPython machine execution or all algorithmic
+    integer work. Keep charged logical unit counters as separate data.
+    """
     if operations < 0 or bits < 0:
         raise AssertionError("invalid exact arithmetic counters")
+    replay, trace = trace_fraction_bit_work(evaluation)
+    if type(replay) is not type(expected) or (
+        replay.coefficients != expected.coefficients
+    ):
+        raise ArithmeticError("bit-accounting replay changed exact result")
     return {
         **outcome,
         "arithmetic_work_units": operations,
         "maximum_rational_coefficient_bits": bits,
-        "bit_work_proxy": operations * bits * bits,
-        "bit_work_proxy_formula": "charged_units * maximum_rational_bits**2",
+        "fraction_bit_accounting": {
+            "status": "reference-arithmetic-bounded",
+            **trace.report(),
+        },
     }
-
 
 def run_case(
     family: str, groups: int, order: int,
@@ -248,16 +267,20 @@ def run_case(
     for method in ("group-mask-elimination", "boolean-variable-elimination",
                    "tensor-jet"):
         if method == "tensor-jet":
-            result, basic = _measured(lambda: contract_certified_taylor(
-                formula, design, replacement, at=_CENTER,
-                order=order, limits=tensor_limits,
-            ))
+            def tensor_evaluation() -> TensorTaylorResult:
+                return contract_certified_taylor(
+                    formula, design, replacement, at=_CENTER,
+                    order=order, limits=tensor_limits,
+                )
+            result, basic = _measured(tensor_evaluation)
             if result is not None:
                 if not isinstance(result, TensorTaylorResult):
                     raise AssertionError("tensor evaluator returned wrong result type")
                 stats = result.stats
-                basic = _work(basic, stats.rational_operations,
-                              stats.maximum_coefficient_bits)
+                basic = _observed_rational_work(
+                    basic, tensor_evaluation, result,
+                    stats.rational_operations, stats.maximum_coefficient_bits,
+                )
                 basic.update({
                     "work_counter_kind": "charged-rational-coefficient-operations",
                     "scope_basis": "ordered-tensor-cut",
@@ -276,17 +299,20 @@ def run_case(
         else:
             strategy: Literal["eliminate", "fused"] = (
                 "eliminate" if method == "group-mask-elimination" else "fused")
-            result, basic = _measured(lambda: taylor_coefficients_separated(
-                formula, design, replacement,
-                at=_CENTER, order=order,
-                summation=strategy, limits=taylor_limits,
-            ))
+            def factor_evaluation() -> TaylorResult:
+                return taylor_coefficients_separated(
+                    formula, design, replacement, at=_CENTER,
+                    order=order, summation=strategy, limits=taylor_limits,
+                )
+            result, basic = _measured(factor_evaluation)
             if result is not None:
                 if not isinstance(result, TaylorResult):
                     raise AssertionError("factor evaluator returned wrong result type")
                 stats = result.stats
-                basic = _work(basic, stats.jet_operations,
-                              stats.max_coefficient_bits)
+                basic = _observed_rational_work(
+                    basic, factor_evaluation, result,
+                    stats.jet_operations, stats.max_coefficient_bits,
+                )
                 basic.update({
                     "work_counter_kind": "charged-jet-coefficient-operations",
                     "scope_basis": stats.factor_scope_basis,
@@ -352,8 +378,11 @@ def probe() -> dict[str, Any]:
             "center-specific certification included"
         ),
         "arithmetic_comparability": (
-            "counters charge different unit conventions; bit_work_proxy "
-            "is not measured machine bit operations or a rigorous bit bound"
+            "logical counters have different conventions; exact Fraction "
+            "operands and Euclidean normalization are traced separately. "
+            "reference_schoolbook_bit_steps_upper_bound is a constructive "
+            "bound for a specified rational reference ALU only, NOT the "
+            "total algorithm or measured CPython machine bit operations"
         ),
         "cases": rows,
     }

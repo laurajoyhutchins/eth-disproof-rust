@@ -1,0 +1,20 @@
+name: Sudoku oracle checkpoint duration audit
+on:
+  push:
+    branches:
+      - 'verify/sudoku-oracle-checkpoint-profile-*'
+  workflow_dispatch:
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install checkpoint packages
+        run: python -m pip install -e '.[test]'
+      - name: Full checkpoint with timings
+        run: python -m pytest -q -m checkpoint --durations=35

@@ -33,8 +33,10 @@ def run_case(name: str, *, pre_factor: bool):
     return engine.stats
 
 
-@pytest.mark.checkpoint
-@pytest.mark.parametrize('name', ('sudoku-4wire', 'nested-2wire'))
+@pytest.mark.parametrize('name', (
+    pytest.param('sudoku-4wire', marks=pytest.mark.checkpoint),
+    pytest.param('nested-2wire', marks=pytest.mark.integration),
+))
 def test_prefactor_reduces_charged_children_without_changing_count(name: str) -> None:
     before = run_case(name, pre_factor=False)
     after = run_case(name, pre_factor=True)
@@ -95,7 +97,7 @@ def test_pre_factor_refusal_falls_back_to_exact_child() -> None:
     assert engine.stats.pre_factor_certificates == 0
 
 
-@pytest.mark.checkpoint
+@pytest.mark.integration
 def test_child_limit_applies_to_uncertified_work_not_upper_bound() -> None:
     case = get_case('sudoku-4wire', 'plans')
     baseline = run_case('sudoku-4wire', pre_factor=True)
@@ -145,7 +147,7 @@ def test_standalone_factor_builder_skips_certified_rows_before_budget_charge() -
     assert stats.mode_dp_local_child_evaluations == 2
 
 
-@pytest.mark.checkpoint
+@pytest.mark.integration
 def test_pre_factor_cache_budget_does_not_change_exact_result() -> None:
     from non_exponential_sudoku.runtime.cache import CachePolicy
     case = get_case('sudoku-4wire', 'plans')
@@ -163,7 +165,7 @@ def test_pre_factor_cache_budget_does_not_change_exact_result() -> None:
         assert engine.stats.pre_factor_certificates == 4
 
 
-@pytest.mark.checkpoint
+@pytest.mark.integration
 def test_pre_factor_clears_cached_support_on_child_refusal() -> None:
     from non_exponential_sudoku.runtime.cache import CachePolicy
     case = get_case('sudoku-4wire', 'plans')

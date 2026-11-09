@@ -83,13 +83,14 @@ def impossible_packet_target_degree(
             continue
         if mode.packet < 0:
             return None
-        total = demanded.get(mode.packet, 0) + multiplicity
-        demanded[mode.packet] = total
-        available = row_capacity.get((mode.packet, group))
-        if available is None:
-            # A corrupt or foreign packet ID must be rejected by the
-            # constructor rather than misclassified as a proof of zero.
+        if (mode.packet, group) not in row_capacity:
+            # Foreign packet IDs must be rejected by the constructor
+            # rather than misclassified as a proof of zero.
             return None
+        demanded[mode.packet] = demanded.get(mode.packet, 0) + multiplicity
+    # Check the complete selected descriptor before emitting a certificate.
+    for packet, total in demanded.items():
+        available = row_capacity[(packet, group)]
         if total > available:
-            return PacketDegreeZero(mode.packet, group, total, available)
+            return PacketDegreeZero(packet, group, total, available)
     return None

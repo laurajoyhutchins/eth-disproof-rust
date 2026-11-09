@@ -2,11 +2,11 @@
 
 This branch is a **conceptual reconstruction** of the completed progress in `nonexp-sudoku`, not a reconstruction of how experiments happened in real time. The original PR discussions and source commits remain accessible on the historical `main` lineage. The original pre-PR concept commits and their smoke-test metadata remain in [HISTORY-MANIFEST.json](../HISTORY-MANIFEST.json).
 
-**Original-main source pinned for reconciliation:** [`e5b4c376`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/e5b4c376a6a59bc0d524549d7cd354eb669fbdd9), including merged PRs through #82 on November 9, 2026. This reconstructed candidate additionally contains a source-boundary cleanup merged via [PR #80](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/80) into the curated branch, so its final tree is intentionally not identical to main.
+**Original-main source pinned for reconciliation:** [`c98b4a56`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/c98b4a56dc91d4b5b1f8a6d7066c9cc07bea954c), including merged PRs through #83 on November 9, 2026. This reconstructed candidate additionally contains a source-boundary cleanup merged via [PR #80](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/80) into the curated branch, so its final tree is intentionally not identical to main.
 
 ## Read this history
 
-The first nine synthetic milestones **point to exact Git trees of real merged mainline checkpoints**. Their SHA values, parents, and messages are new. A tenth milestone reconciles later original-main changes by importing their original blob SHAs into the cleaned tree. Because the reference-oracle extraction is retained, milestone 10 is **not** claimed to be identical to the original main tree. Separate documentation commits record this mapping.
+The first nine synthetic milestones **point to exact Git trees of real merged mainline checkpoints**. Their SHA values, parents, and messages are new. Tenth and eleventh milestones reconcile later original-main changes by importing their original blob SHAs into the cleaned tree. Because the reference-oracle extraction is retained, milestones 10 and 11 are **not** claimed to be identical to the original main tree. Separate documentation commits record this mapping.
 
 | Phase | Curated commit | Corresponding main tree commit | Integrated work at that checkpoint | Interpretation |
 | --- | --- | --- | --- | --- |
@@ -22,7 +22,9 @@ The first nine synthetic milestones **point to exact Git trees of real merged ma
 
 | 10. reconciliation | [`577214c7`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/577214c7a8eb02f33c1173ff45be8456d08d53d8) | [`e5b4c376`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/e5b4c376a6a59bc0d524549d7cd354eb669fbdd9) | PRs 72, 76, 79, 82 | Import original mathematical work without undoing the reference-only Sudoku oracle cleanup |
 
-The PR-number descriptions indicate the major merged work completed in each *chronological interval*. They are not exhaustive patch ownership or a guarantee that all those PRs can be cherry-picked independently. The nine source-identical milestone trees and the tenth independently reconciled tree are intentional. Phase 10 preserves the cleaned runtime/ref boundary, while importing source blobs from the pinned merged-main snapshot. No unknown mathematical patch was reconstructed from inference.
+| 11. continuation rank | [`PENDING`](https://github.com/laurajoyhutchins/nonexp-sudoku/tree/history/clean-slate-20261109) | [`c98b4a56`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/c98b4a56dc91d4b5b1f8a6d7066c9cc07bea954c) | PR 83 | Continue the exact Sudoku continuation-rank and tensor-bond obstruction research |
+
+The PR-number descriptions indicate the major merged work completed in each *chronological interval*. They are not exhaustive patch ownership or a guarantee that all those PRs can be cherry-picked independently. The nine source-identical milestone trees and two independently reconciled trees are intentional. Phases 10 and 11 preserve the cleaned runtime/ref boundary, while importing source blobs from the pinned merged-main snapshot. No unknown mathematical patch was reconstructed from inference.
 
 ## What is supported
 
@@ -57,4 +59,4 @@ These are *excluded from the snapshot*, not deleted from GitHub. The source cont
 4. Reconcile commits merged into historical `main` after the pinned source head; never assume the snapshot is live current main.
 5. Promotion of this graph to `main` is a **history replacement**, not an ordinary pull-request merge. Use a protected backup and an explicit, leased ref update only after owner approval.
 
-**Verification distinction:** Nine original-snapshot tree identities are structural evidence. The source-boundary move passed strict mypy and the pure-Python checkpoint at PR #80 (1,022 passed, 170 skipped, 464 deselected); optional native/FLINT/Ganak and full integration tiers were not rerun by the synthetic history operation. The reconciled branch tip requires new exact-head verification.
+**Verification distinction:** Nine original-snapshot tree identities are structural evidence. The source-boundary move passed strict mypy and the pure-Python checkpoint at PR #80 (1,022 passed, 170 skipped, 464 deselected); optional native/FLINT/Ganak and full integration tiers were not rerun by the synthetic history operation. This branch's reconciled tip requires new exact-head verification.

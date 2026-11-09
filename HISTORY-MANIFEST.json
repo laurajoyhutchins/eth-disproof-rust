@@ -70,8 +70,8 @@
       "stage_smoke": "1 passed, 11 deferred to final full checkpoint"
     }
   ],
-  "instructions": "The original 13 stage-smoke records describe pre-PR conceptual history only. Nine post-PR source snapshots have exact historical trees; stage ten overlays pinned merged-main research onto the previously tested runtime/reference cleanup. Verify strict typing, complete pure checkpoint, integration and optional native/FLINT/Ganak parity before promoting main. Never confuse mathematical theorem gates with passing finite tests.",
-  "pinned_source_head": "e5b4c376a6a59bc0d524549d7cd354eb669fbdd9",
+  "instructions": "The original 13 stage-smoke records describe pre-PR conceptual history only. Nine post-PR source snapshots have exact historical trees; stages ten and eleven overlay pinned merged-main research onto the previously tested runtime/reference cleanup. Verify strict typing, complete pure checkpoint, integration and optional native/FLINT/Ganak parity before promoting main. Never confuse mathematical theorem gates with passing finite tests.",
+  "pinned_source_head": "c98b4a56dc91d4b5b1f8a6d7066c9cc07bea954c",
   "post_pr_history": [
     {
       "commit": "f711cc3c9c921ae96b8e13ef1308a0f3bb0425ac",
@@ -153,6 +153,15 @@
       "source_tree_exact": false,
       "source_blob_sha_reuse": true,
       "stage_smoke": "Source overlay and structural import move; exact-head tests required"
+    },
+    {
+      "commit": "(authored in following history commit)",
+      "concept": "Sudoku continuation-rank and tensor-bond obstruction witnesses",
+      "source_sha": "c98b4a56dc91d4b5b1f8a6d7066c9cc07bea954c",
+      "merged_prs_in_interval": "83",
+      "source_tree_exact": false,
+      "source_blob_sha_reuse": true,
+      "stage_smoke": "Pending exact-head verification"
     }
   ],
   "excluded_from_snapshot": [

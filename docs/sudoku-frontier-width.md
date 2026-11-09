@@ -233,6 +233,16 @@ families; row-major is asymptotically width-optimal for the full
 Sudoku obligation frontier; and certain ETH group-factor graphs
 admit no low-width order at all.
 
+A follow-on theorem is now proved in
+[Sudoku continuation rank](sudoku-continuation-rank.md): at every cut,
+the **exact rank** of the labelled full-solution prefix/suffix matrix
+equals the number of extendable frontier signatures. Thus distinct
+extendable signatures have disjoint continuation languages, and at
+the first row of a blank Sudoku the row-major tensor bond rank is
+exactly `n!`. This is a rank obstruction for that representation,
+not a general runtime lower bound; symmetry aggregation and implicit
+symbolic contraction remain separate possibilities.
+
 The remaining research question is **representation-aware width**:
 can a certified transformation maintain smaller *reachable supports*,
 exact quotient states, low-rank tensor bonds, or bounded-size

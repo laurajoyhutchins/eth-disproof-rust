@@ -26,6 +26,11 @@ PAIRS: tuple[tuple[str, str, str, str], ...] = (
     ("sudoku-8wire", "reference", "leaf", "leaf-elimination"),
     ("nested-2wire", "reference", "leaf", "leaf-elimination"),
     ("crossing-4wire", "reference", "leaf", "leaf-elimination"),
+    ("parity-2wire", "plans", "leaf-plans", "compiled-leaf"),
+    ("sudoku-4wire", "plans", "leaf-plans", "compiled-leaf"),
+    ("sudoku-8wire", "plans", "leaf-plans", "compiled-leaf"),
+    ("nested-2wire", "plans", "leaf-plans", "compiled-leaf"),
+    ("crossing-4wire", "plans", "leaf-plans", "compiled-leaf"),
 )
 
 def results_from(files: list[Path]) -> dict[tuple[str, str], dict[str, Any]]:

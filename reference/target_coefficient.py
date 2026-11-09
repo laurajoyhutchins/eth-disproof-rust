@@ -18,9 +18,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Sequence
+from typing import cast
 
 from non_exponential_sudoku.core.algebra import Padic
-from non_exponential_sudoku.core.jets import JetRing
+from non_exponential_sudoku.core.jets import JetRing, NestedRing
 from non_exponential_sudoku.core.lazy_coefficients import NestedCoords
 
 
@@ -65,8 +66,9 @@ def expanded_coefficient_reference(
     This is for bounded differential tests, never large-size dispatch.
     """
     _check_rows(rows, target)
+    R = cast(NestedRing, ring)
     zero = (0,) * len(target)
-    states: dict[tuple[int, ...], NestedCoords] = {zero: ring.one}
+    states: dict[tuple[int, ...], NestedCoords] = {zero: R.one}
     if stats is not None:
         stats.peak_states = max(stats.peak_states, len(states))
     for row in rows:
@@ -75,8 +77,8 @@ def expanded_coefficient_reference(
             if stats is not None:
                 stats.states_visited += 1
                 stats.retained_transitions += 1
-            nxt[powers] = ring.add(
-                nxt.get(powers, ring.zero), ring.mul(coefficient, row.constant),
+            nxt[powers] = R.add(
+                nxt.get(powers, R.zero), R.mul(coefficient, row.constant),
             )
             for i, factor in row.terms:
                 if powers[i] >= target[i]:
@@ -84,13 +86,13 @@ def expanded_coefficient_reference(
                 next_powers = powers[:i] + (powers[i] + 1,) + powers[i+1:]
                 if stats is not None:
                     stats.retained_transitions += 1
-                nxt[next_powers] = ring.add(
-                    nxt.get(next_powers, ring.zero), ring.mul(coefficient, factor),
+                nxt[next_powers] = R.add(
+                    nxt.get(next_powers, R.zero), R.mul(coefficient, factor),
                 )
         states = nxt
         if stats is not None:
             stats.peak_states = max(stats.peak_states, len(states))
-    return states.get(target, ring.zero)
+    return states.get(target, R.zero)
 
 
 def _target_component(
@@ -100,16 +102,17 @@ def _target_component(
     stats: ExtractionStats,
 ) -> NestedCoords:
     """One connected component, with future-row feasibility pruning."""
+    R = cast(NestedRing, ring)
     count = len(desired)
     capacity = [0] * count
     for row in rows:
         for i in {i for i, _ in row.terms}:
             capacity[i] += 1
     if any(capacity[i] < desired[i] for i in range(count)):
-        return ring.zero
+        return R.zero
     target_total = sum(desired)
     if target_total > len(rows):
-        return ring.zero
+        return R.zero
 
     def viable(powers: tuple[int, ...], rows_left: int) -> bool:
         if target_total - sum(powers) > rows_left:
@@ -117,7 +120,7 @@ def _target_component(
         return all(desired[i] - powers[i] <= capacity[i] for i in range(count))
 
     empty = (0,) * count
-    states: dict[tuple[int, ...], NestedCoords] = {empty: ring.one}
+    states: dict[tuple[int, ...], NestedCoords] = {empty: R.one}
     stats.peak_states = max(stats.peak_states, len(states))
     for row_index, row in enumerate(rows):
         # The current row is no longer available *after* this transition.
@@ -129,8 +132,8 @@ def _target_component(
             stats.states_visited += 1
             if viable(powers, left):
                 stats.retained_transitions += 1
-                nxt[powers] = ring.add(
-                    nxt.get(powers, ring.zero), ring.mul(coefficient, row.constant),
+                nxt[powers] = R.add(
+                    nxt.get(powers, R.zero), R.mul(coefficient, row.constant),
                 )
             else:
                 stats.pruned_transitions += 1
@@ -140,16 +143,16 @@ def _target_component(
                 raised = powers[:i] + (powers[i] + 1,) + powers[i+1:]
                 if viable(raised, left):
                     stats.retained_transitions += 1
-                    nxt[raised] = ring.add(
-                        nxt.get(raised, ring.zero), ring.mul(coefficient, factor),
+                    nxt[raised] = R.add(
+                        nxt.get(raised, R.zero), R.mul(coefficient, factor),
                     )
                 else:
                     stats.pruned_transitions += 1
         states = nxt
         stats.peak_states = max(stats.peak_states, len(states))
         if not states:
-            return ring.zero
-    return states.get(desired, ring.zero)
+            return R.zero
+    return states.get(desired, R.zero)
 
 
 def target_coefficient_by_components(
@@ -166,12 +169,13 @@ def target_coefficient_by_components(
     Retains only one component's coefficient dictionary at a time.
     """
     _check_rows(rows, target)
+    R = cast(NestedRing, ring)
     observed = stats if stats is not None else ExtractionStats()
     positive = [i for i, b in enumerate(target) if b]
     if not positive:
-        result = ring.one
+        result = R.one
         for row in rows:
-            result = ring.mul(result, row.constant)
+            result = R.mul(result, row.constant)
         return result
 
     parent = list(range(len(target)))
@@ -198,16 +202,16 @@ def target_coefficient_by_components(
             for i, _ in terms[1:]:
                 union(first, i)
     if any(i not in available for i in positive):
-        return ring.zero
+        return R.zero
 
     groups: dict[int, list[int]] = {}
     for i in positive:
         groups.setdefault(find(i), []).append(i)
     component_rows: dict[int, list[LinearRow]] = {root: [] for root in groups}
-    result = ring.one
+    result = R.one
     for row in filtered_rows:
         if not row.terms:
-            result = ring.mul(result, row.constant)
+            result = R.mul(result, row.constant)
         else:
             component_rows[find(row.terms[0][0])].append(row)
     observed.components = len(groups)
@@ -220,8 +224,8 @@ def target_coefficient_by_components(
         ]
         local_target = tuple(target[i] for i in component_modes)
         value = _target_component(ring, local_rows, local_target, observed)
-        result = ring.mul(result, value)
-        if result == ring.zero:
+        result = R.mul(result, value)
+        if result == R.zero:
             break
     return result
 
@@ -244,24 +248,25 @@ def evaluate_packet_target_coefficient(
     ring = entry.work_ring
     if not isinstance(ring, (Padic, JetRing)) or getattr(entry, "native", None) is not None:
         raise TypeError("only eager Python packet entries are supported")
+    R = cast(NestedRing, ring)
     rows: list[LinearRow] = []
     for row, left_pos, right_terms in entry.geometry.row_terms:
-        local = ring.zero
+        local = R.zero
         for pos, displacement in right_terms:
             if bits[pos]:
-                local = ring.add(local, entry.cauchy[displacement])
+                local = R.add(local, entry.cauchy[displacement])
         ybit = bits[left_pos]
-        constant = local if ybit else ring.sub(ring.one, local)
+        constant = local if ybit else R.sub(R.one, local)
         terms = tuple(
-            (i, coefficient if ybit else ring.neg(coefficient))
+            (i, coefficient if ybit else R.neg(coefficient))
             for i, coefficient in entry.terms.contributions[row]
         )
         rows.append(LinearRow(constant, terms))
     result = target_coefficient_by_components(ring, rows, entry.terms.desired, stats=stats)
     for mode, multiplicity, tile in entry.terms.tile_bits:
-        value = ring.zero
+        value = R.zero
         for pos, coefficient in tile:
             if bits[pos]:
-                value = ring.add(value, ring.scalar(coefficient ** mode.b))
-        result = ring.mul(result, ring.pow(value, multiplicity))
+                value = R.add(value, R.scalar(coefficient ** mode.b))
+        result = R.mul(result, R.pow(value, multiplicity))
     return result

@@ -21,6 +21,8 @@ def test_checkpoint_requires_exact_source_two_shards_and_complete_aggregate() ->
         assert f'id: shard-{shard}' in config
         assert f'--shard-count 2 --shard-index {shard}' in config
         assert f'artifacts/shards/checkpoint-shard-{shard}' in config
+    # Separate shard reports do not imply filesystem isolation in Cloud Build.
+    assert "waitFor: ['shard-0']" in config
     assert "waitFor: ['shard-0', 'shard-1']" in config
     assert 'scripts.aggregate_checkpoint --root artifacts/shards' in config
     assert '--head "$$expected" --count 2' in config

@@ -45,7 +45,8 @@ steps:
   - id: shard-1
     name: python:3.13-bookworm
     entrypoint: bash
-    waitFor: ['plan']
+    # All Cloud Build steps share /workspace; avoid concurrent mutation there.
+    waitFor: ['shard-0']
     args:
       - -ceu
       - |

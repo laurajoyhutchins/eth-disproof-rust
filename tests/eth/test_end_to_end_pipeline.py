@@ -94,6 +94,7 @@ def test_general_width_is_reduced_before_sparsification() -> None:
     formula = CNFFormula(4, ((1, 2, 3, 4),))
     config = replace(
         ReferencePipelineConfig(),
+        sparsification=reference_sparsification_parameters(3, 512),
         construction_limits=ConstructionLimits(max_variables=2),
     )
     with pytest.raises(CapacityError, match='transferred CNF dimensions'):

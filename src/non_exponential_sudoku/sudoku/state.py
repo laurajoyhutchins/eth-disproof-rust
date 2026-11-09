@@ -48,11 +48,13 @@ def initial_domains(puzzle: Puzzle) -> tuple[int, ...] | None:
 class SupportProjectionLimits:
     """Bound matching work without changing the counting semantics."""
 
+    max_candidates: int = 500_000
     max_matching_checks: int = 2_000_000
     max_unit_scans: int = 200_000
 
     def __post_init__(self) -> None:
-        if (type(self.max_matching_checks) is not int or self.max_matching_checks < 1
+        if (type(self.max_candidates) is not int or self.max_candidates < 1
+                or type(self.max_matching_checks) is not int or self.max_matching_checks < 1
                 or type(self.max_unit_scans) is not int or self.max_unit_scans < 1):
             raise ValueError('Support projection limits must be positive integers')
 
@@ -87,10 +89,16 @@ def support_projected_domains(
     completion. All results and limits are independent of any counting backend.
     A contradiction returns None; a work-budget refusal raises CapacityError.
     """
+    side = puzzle.side
+    if (puzzle.b < 1 or len(puzzle.entries) != side * side or any(
+            type(value) is not int or value < 0 or value > side
+            for value in puzzle.entries)):
+        raise ValueError('Invalid Sudoku board dimensions or entries')
+    if side ** 3 > limits.max_candidates:
+        raise CapacityError('Sudoku matching-projection candidate limit')
     initial = initial_domains(puzzle)
     if initial is None:
         return None
-    side = puzzle.side
     domains = list(initial)
     units = tuple(tuple(unit) for unit in puzzle.units())
     incident: list[list[int]] = [[] for _ in domains]

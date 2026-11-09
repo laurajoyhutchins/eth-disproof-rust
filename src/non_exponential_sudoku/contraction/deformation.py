@@ -26,7 +26,8 @@ from .admission import estimate_first_factor
 from .child_evaluator import ChildEvaluator
 from .packets import EvaluationContext
 from ..runtime.work_trace import WorkTrace
-from .planning import ComponentCapacityExceeded, FactorizationPlan, build_factorization_plan
+from .planning import ComponentCapacityExceeded, build_factorization_plan
+from .valuation_cache import ValuationCache
 
 if TYPE_CHECKING:
     from .engine import ContractionEngine
@@ -44,7 +45,7 @@ class DeformationExecution:
     def evaluate_deformation(
         self, net: Network, packing: Packing, modes: list[Mode], t: int,
         z: NestedCoords, ring: TensorRing, depth: int,
-        *, factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None = None,
+        *, factor_plan_cache: ValuationCache | None = None,
     ) -> NestedCoords:
         with (self.cost_ledger.phase("deformation") if self.cost_ledger is not None
               else nullcontext()):
@@ -54,7 +55,7 @@ class DeformationExecution:
     def _evaluate_deformation_impl(
         self, net: Network, packing: Packing, modes: list[Mode], t: int,
         z: NestedCoords, ring: TensorRing, depth: int,
-        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None,
+        factor_plan_cache: ValuationCache | None,
     ) -> NestedCoords:
         coordinate = v2(t)
         context = EvaluationContext(
@@ -96,11 +97,11 @@ class DeformationExecution:
         z: NestedCoords, ring: TensorRing, depth: int, coordinate: int,
         occupied: set[int], affected: dict[int, tuple[int, ...]],
         context: EvaluationContext,
-        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None,
+        factor_plan_cache: ValuationCache | None,
     ) -> NestedCoords:
         self.stats.skipped_empty_groups += packing.r - len(occupied)
-        cache_key = (coordinate, ring.p)
-        plan = factor_plan_cache.get(cache_key) if factor_plan_cache is not None else None
+        plan = (factor_plan_cache.get_plan(net, packing, modes, coordinate, ring.p)
+                if factor_plan_cache is not None else None)
         try:
             if plan is None:
                 plan = build_factorization_plan(
@@ -109,7 +110,8 @@ class DeformationExecution:
                     max_components=self.config.limits.max_components,
                 )
                 if factor_plan_cache is not None:
-                    factor_plan_cache[cache_key] = plan
+                    factor_plan_cache.store_plan(
+                        net, packing, modes, coordinate, ring.p, plan)
         except ComponentCapacityExceeded as exc:
             # Partial planning statistics remain observable on refusal.
             self.stats.mode_dp_local_arity_before = max(

@@ -131,6 +131,75 @@ is **not** a full paper-admitted execution. Conversely, the
 virtual full-Step-5 witness satisfies the symbolic premises but
 does **not** execute the lemma's constructive algorithm.
 
+## A source-derived rank bound for this admitted unit family
+
+There is an exact structural consequence of **Step 4**, separate
+from the balance inequalities. Every variable of the unit-clause
+CNF occurs **once**. In the source's transfer, an occurrence
+receives an auxiliary label `u` and a copy index `j`.
+Each copy has at most one variable at any label, hence at most
+`D=r**(2Q)` original variables. The replacement for an
+occurrence assigned to copy `j` is of the form
+
+```
+<P_u(T), zeta^(j)(X)>.
+```
+
+By definition this form references only variables placed in
+the **same** copy. Because all clauses are unit clauses, their
+deformed satisfaction factors can therefore be regrouped as
+
+```
+F_T(X) = PRODUCT_{j=1}^h F_(T,j)(X_(V_j)),
+V_j pairwise disjoint; |V_j| <= D.
+```
+
+This is a factorization of the *assignment tensor before summing
+over Boolean assignments*, valid as an identity over `Q[T]`
+and at every rational deformation center. For a tensor-train
+order that lists the variables copy by copy:
+
+- A cut between two copies has separation rank at most **1**.
+- A cut inside one copy has rank at most
+  `2**floor(|V_j|/2) <= 2**floor(D/2)`, using the
+  smaller Boolean side as an exact delta-function basis.
+- Consequently, the **minimum possible** peak exact
+  tensor-train rank obeys
+  `B(F_T) <= 2**floor(D/2)`.
+- For the rational matrix of a single Taylor coefficient
+  `[z**ell]F_(t+z)`, the conservative bound is
+  `(ell+1)*2**floor(D/2)`; expand the
+  `ell+1` coefficient convolutions of each separated term.
+
+The full-Step-5 symbolic witness already proves
+`D**128 <= 2n`. Hence, **for this independent-unit-clause
+family**, the mathematical TT rank upper bound is at most
+
+```
+2 ** ((2*n)**(1/128) / 2),
+```
+
+a subexponential function of n. This is a *representation
+existence* bound for an especially easy counting family;
+there is **no** claim of efficiently computing those TT factors,
+bounding their bit sizes, or extending the conclusion to
+coupled, adversarial CNFs. Indeed, `#F_n=1` is already trivial.
+
+The finite n=4096 schedule produces **256 copies**, each with
+**16** variables; its exact uniform rank upper certificate
+is therefore `2**8=256` at any rational center. The
+coefficient-of-order-two bound is `3*256=768`.
+`unit_copy_partition` enumerates and checks all
+occurrence-to-copy labels, while a separate small
+`construct_from_schedules` test inspects every nonzero
+coefficient of the **actual spectral transfer** and
+verifies copy locality against `uniform_support_profile`.
+No 4,096-variable spectral tensor is constructed.
+
+This is a meaningful admitted-family structural result, but
+not an algorithmic refutation of ETH and not a lower bound
+for general Sudoku or #SAT.
+
 ## What we have and what remains missing
 
 1. **Now available:** One explicitly described family for which

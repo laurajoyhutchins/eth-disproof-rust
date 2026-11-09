@@ -8,7 +8,7 @@ on:
 
 jobs:
   measure:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, "overcenter-gcp-${{ github.run_id }}-sudoku-cutover-${{ github.run_attempt }}"]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4

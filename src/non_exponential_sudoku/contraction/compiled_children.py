@@ -23,6 +23,7 @@ from .packets import PacketEntry, PacketGeometry, prepare_packet_geometry
 @dataclass(frozen=True)
 class PacketPorts:
     packet_id: int
+    name: str
     edges: tuple[int, ...]
     port_map: Mapping[tuple[str, int], int]
     rows: tuple[int, ...]
@@ -68,7 +69,7 @@ class CompiledChildPlan:
                     k=edge_to_packet[edge]
                     locations.setdefault(k,[]).append((side,edge_to_slot[edge],child_edge))
                 n+=len(ports)
-                kept.append(Vertex('keep:'+v.name,ports,v.oracle))
+                kept.append(Vertex(v.name,ports,v.oracle))
         packet_ports=[]
         for k,p in enumerate(packing.packets):
             if selected_packets is not None and k not in selected_packets:
@@ -77,7 +78,8 @@ class CompiledChildPlan:
             port_map={(side,slot):j for j,(side,slot,_) in enumerate(mapping)}
             geometry=prepare_packet_geometry(packing,k,group,coordinate,
                                              port_map,left_owner)
-            packet_ports.append(PacketPorts(k,tuple(edge for _,_,edge in mapping),
+            packet_ports.append(PacketPorts(k,f'packet:{k}:g{group}',
+                                            tuple(edge for _,_,edge in mapping),
                                             port_map,geometry.rows,geometry))
         # No child mutates this list; it is shared across sibling Network
         # views, avoiding another list allocation per mode assignment.
@@ -131,5 +133,5 @@ class CompiledChildPlan:
                 )
                 if cache is not None:
                     cache.put(key, oracle)
-            right.append(Vertex(f'packet:{spec.packet_id}:g{self.group}',spec.edges,oracle))
+            right.append(Vertex(spec.name,spec.edges,oracle))
         return Network(self.kept,right,self.edges,leaf_plan=self.leaf_plan)

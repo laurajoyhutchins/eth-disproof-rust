@@ -15,9 +15,7 @@ from reference.global_mode_support import exact_weighted_assignment_count
 from non_exponential_sudoku.core.modes import mode_catalog
 from non_exponential_sudoku.core.packing import pack
 
-pytestmark = pytest.mark.checkpoint
-
-
+@pytest.mark.checkpoint
 def test_same_packet_geometry_and_precision_on_both_arms() -> None:
     for label in ("center-L4-p5-n2", "center-L8-p11-n2",
                   "recursive-p5", "recursive-p7"):
@@ -27,6 +25,7 @@ def test_same_packet_geometry_and_precision_on_both_arms() -> None:
         assert spec.network.edges >= 2
 
 
+@pytest.mark.checkpoint
 def test_independent_legacy_catalog_support_is_no_smaller() -> None:
     case = make_case("center-L4-p9-n2")
     assert case.labels is not None
@@ -45,6 +44,7 @@ def test_independent_legacy_catalog_support_is_no_smaller() -> None:
     assert new_count < old_count
 
 
+@pytest.mark.integration
 def test_real_recurrence_uses_original_and_pruned_weights_with_exact_result() -> None:
     old = run_sample("recursive-p5", "original")
     new = run_sample("recursive-p5", "pruned")
@@ -55,6 +55,7 @@ def test_real_recurrence_uses_original_and_pruned_weights_with_exact_result() ->
     assert summary["comparisons"][0]["old_total_modes"] >= summary["comparisons"][0]["new_total_modes"]
 
 
+@pytest.mark.integration
 def test_refusal_is_not_misreported_as_equivalent_or_faster() -> None:
     old = run_sample("center-L4-p5-n2", "original")
     newer = run_sample("center-L4-p5-n2", "pruned")

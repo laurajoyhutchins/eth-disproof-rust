@@ -1,0 +1,37 @@
+# Python caches, installations, and build products
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Native Cython products (sources are the *.pyx and *.pxd files)
+*.so
+*.pyd
+*.dll
+*.dylib
+native_ring.c
+native_sparse.c
+native_recursive.c
+
+# Generated verification and performance reports
+artifacts/
+benchmark-results/
+growth-results/
+recursive-results/
+typecheck-results/
+
+# Local runtime / notebook state
+.ipynb_checkpoints/
+.DS_Store
+
+# Generated evidence belongs in versioned release artifacts, not Git source
+docs/evidence/

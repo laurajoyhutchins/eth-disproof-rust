@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "non-exponential-sudoku"
+version = "0.40.0.dev0"
+description = "Research toward a non-exponential exact algorithm for generalized Sudoku"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+typecheck = ["mypy==2.4.1"]
+native = ["Cython>=3,<4"]
+math-audit = ["sympy>=1.13,<2"]
+# Independent optional exact #SAT oracle; never required by production.
+sat-oracle = ["pyganak>=2.9,<3"]
+# Requires binary python-flint or system libflint to build from source.
+flint-oracle = ["python-flint>=0.9,<1"]
+symmetry-graph = ["networkx>=3.4,<4"]
+benchmark = ["pytest>=8,<10", "pytest-benchmark>=4,<6", "Cython>=3,<4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+junit_family = "xunit2"
+junit_duration_report = "call"
+junit_suite_name = "non_exponential_sudoku"
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "checkpoint: fast deterministic contract checks; required after each edit",
+    "integration: recursive and multi-component correctness checks",
+    "extended: expensive geometry, resource and native-equivalence checks",
+    "benchmark: explicitly requested performance experiments, not correctness gating",
+    "requires_native: test exercises an optional native kernel",
+    "requires_flint: test exercises FLINT arithmetic",
+    "requires_ganak: test exercises exact Ganak counting",
+]
+
+# Strict type checking covers the maintained production Python package.
+# Reference models, test fixtures, and research scripts have separate coverage.
+[tool.mypy]
+python_version = "3.13"
+mypy_path = ["src", "."]
+explicit_package_bases = true
+files = ["src/non_exponential_sudoku"]
+strict = true
+show_error_codes = true
+warn_unused_configs = true

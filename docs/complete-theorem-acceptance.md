@@ -148,3 +148,125 @@ Run:
 PYTHONPATH=src:. python -m pytest -q tests/unit/test_total_exact_cnf.py
 python -m mypy --strict reference/total_exact_cnf.py
 ```
+
+## Universal final deformation coefficient height is polynomial
+
+An unconditional, **representation-independent output-size lemma** now
+has an executable reference in \`reference/eth_output_height.py\`,
+with tests in \`tests/unit/test_eth_output_height.py\`. It applies
+to **every** valid occurrence-specific rational \`ReplacementSystem\`,
+including the actual spectral auxiliary replacements, at **every**
+rational interpolation center. It does *not* require or imply
+manuscript parameter admission.
+
+Put \(n\) for declared Boolean variables, \(m\) for clauses,
+\(\ell\) for total literal occurrences, \(d\) for the maximum
+replacement-polynomial degree, and \(K\) for the total number of
+explicitly stored rational polynomial coefficients, including
+zeros. Let \(b\ge1\) bound the bit lengths of every input
+coefficient numerator/denominator and the exact center's
+numerator/denominator. Define
+
+\[
+  E=b(K+d),\quad C=n(d+1),\quad
+  J=d+\lceil\log_2(C+1)\rceil+
+      \lceil\log_2(d+1)\rceil.
+\]
+
+Then every reduced coefficient \(h_j\) of the exact rational polynomial
+\(H(t+z)\), not merely the first few Taylor jets, satisfies
+
+\[
+ \boxed{
+  \operatorname{bits}(\operatorname{num} h_j)
+       \le n+m+\ell(E+J)+1,\qquad
+  \operatorname{bits}(\operatorname{den} h_j)
+       \le \ell E+1,
+ }
+\]
+
+and \(\deg_z H(t+z)\le\ell d\). These are integer
+ceilings depending polynomially on the **expanded rational replacement
+input**, not necessarily on a succinct description of an auxiliary
+construction. The canonical dense polynomial representation satisfies
+\(K\le n\ell(d+1)\), so the bit bound is polynomial in
+\(n,m,\ell,d,b\). However, a complete paper theorem must
+**separately prove** that its implicitly generated coefficients
+have polynomial degree and bit length in the original network/CNF
+parameter and that producing the needed entries is total and
+sufficiently cheap. No such conclusion is obtained merely from
+this output lemma. The bound remains valid for \(\ell=0\), an
+empty clause, contradictory clauses, and negative literals.
+
+**Proof.** Write the center as \(t=p/q\) and take the global
+positive common denominator
+
+\[
+  Q=q^d\prod_{\text{all }K\text{ coefficients }a} \operatorname{den}(a).
+\]
+
+Every shifted coefficient \(a_k\binom{k}{j}p^{k-j}/q^{k-j}\)
+is integral after multiplication by \(Q\).
+The coefficient's absolute numerator is at most
+\(2^{E+d}\), because \(\binom{k}{j}\le2^d\)
+and all remaining integer factors have total bit exponent at most
+\(b(K+d)\). Every substituted Boolean literal sums at most
+\(C=n(d+1)\) such terms; \((1-L)\) adds at most \(Q\).
+Hence each false-literal coefficient times \(Q\) has absolute
+value at most \((C+1)2^{E+d}\). Expanding the
+outer product of \(m\) clause factors has at most \(2^m\)
+selected products, each with at most \(\ell\) literal factors.
+Every product coefficient has at most \((d+1)^\ell\)
+selections. Finally sum over at most \(2^n\) Boolean
+assignments. Thus each coefficient of \(Q^\ell H(t+z)\) has
+absolute value at most \(2^{n+m+\ell(E+J)}\);
+every output denominator divides \(Q^\ell\).
+Reducing rational coefficients cannot enlarge either bit
+length beyond these ceilings.
+
+This is a polynomial bound on **information in the final answer**,
+including its exact high-order Taylor coefficients. It is **not**
+a bound on intermediate rational numerator growth, the cost of
+producing/representing \(Q\), the number of tensor bonds,
+the size of a factor table, measurement certification, oracle
+work, retained memory or runtime totality. In particular, the
+complete-bipartite CNF in the preceding section has a short
+constant answer and still materializes exponentially many
+dense table cells under the specified ordering.
+
+**Executed independent validation:** GitHub workflow
+\`42716567030\` passed 27 coefficient-bound tests and strict
+typing (78 production source files plus the proof module).
+The tests independently enumerate the full Boolean deformation
+polynomial for signed, empty and contradictory CNFs, randomized
+degree-two rational replacements and large rational inputs.
+They verify the stronger common-denominator divisibility witness,
+not only bit lengths. The actual small spectral projector
+construction is tested at **every emitted interpolation center**,
+without pretending it meets the literal manuscript schedule.
+
+This closes the **final-output coefficient-height** sublemma
+without closing any intermediate representation or source-totality
+premise. The full paper theorem acceptance remains **RED**.
+
+## Implicit spectral auxiliary coefficient heights
+
+The source-specific extension in [eth-implicit-spectral-height.md](eth-implicit-spectral-height.md)
+proves an independent, uniform rational-height bound for the **actual**
+implicit Walsh kernel, every `row_at` polynomial and every restricted
+exceptional projector entry. For parameters `r,Q,R` satisfying the
+source input domain, queried row numerator/denominator bit lengths are
+`O(Q log(Q+1) + R log(Q+1))`, independent of the virtual
+matrix dimension `D=r**(2Q)`. The occurrence transfer adds only
+`O(log(ell+1))` bits; its degree is at most `R-1`, and the
+expanded replacement has at most `n*ell*R` rational coefficients.
+The composed final-output bound can therefore be computed from the
+original CNF dimensions and spectral parameters **without generating
+that expanded replacement**.
+
+This settles a separate bit-height obligation for the source's
+implicit coefficient **values**, not its global construction cost.
+The current strict paper entrypoint still uses selector measurements;
+projected Gram/RREF transfer, balancing work, all recursive children,
+resource-cap non-refusal and large intermediate ranks need independent
+cost and totality proofs. The complete theorem acceptance remains RED.

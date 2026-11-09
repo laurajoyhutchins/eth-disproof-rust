@@ -617,3 +617,107 @@ They establish that the tensor representation can produce actual
 small-instance arithmetic savings, not that it is the best default
 or the paper's runtime result. Python remains the reference; no
 unproved native-kernel cutover is made.
+
+### Exact tensor Taylor jets over a truncated polynomial ring
+
+The opt-in module `eth/tensor_jet.py` extends the independently
+certified order-zero tensor train to the exact local ring
+
+`A_J = Q[z]/(z**(J+1))`.
+
+`contract_certified_taylor(formula, design, replacements, at=t,
+order=J)` returns the **complete coefficient vector** of
+`H(t+z) mod z**(J+1)`, with per-clause bond history, exact arithmetic
+work and coefficient bit limits. Unlike the paper's Boolean-difference
+Taylor identity, this evaluator **directly shifts the original
+replacement coefficient polynomials** and assembles each signed
+literal as the sum of its group-local polynomial contributions.
+Every design is independently certified at the chosen center, but
+the varying derivative coefficients are not required to lie in the
+center's measurement rowspace. This is a different exact evaluation
+path, not a proof of the paper's bound.
+
+**Why rational RREF is not valid.** The jet `z` is nonzero but
+noninvertible in `A_J` when J>=1, so selecting pivots from only
+the constant coefficient can silently discard a nonzero derivative.
+The exact jet factorization in `_jet_column_factor` uses a minimal
+z-adic valuation pivot `p=z**v*u(z)`, where the unit part satisfies
+`u(0)!=0`. Every entry of the current pivot row has valuation
+at least v and is divisible by p in the quotient ring. Its quotient
+is computed by finite power-series division by **u**, never by
+the nilpotent z**v. Subtracting the outer product of that column
+and quotient row clears both its pivot row and column exactly.
+Repeated extraction yields an identity `M=U*V` in `A_J`, even
+for all-zero constant coefficient matrices. The process uses at most
+`min(rows,columns)` nonzero factors; it does **not** prove the
+smallest possible module bond rank.
+
+Both left and right tensor compression sweeps use this exact
+ring identity. Every product is truncated after degree J; no
+floating-point rank threshold or division by a nonunit occurs.
+`TensorLimits` additionally bounds Taylor order, replacement
+degree and the aggregate coefficients stored in a tensor core
+or factor matrix. These supplement the original bond, group-mask,
+rational-operation and coefficient-bit limits. All exhausted
+budgets refuse the operation.
+
+The separate
+`count_origin_from_tensor_designs(formula, centers, replacements,
+order=J)` runs that exact tensor-Taylor computation at each supplied
+nonzero center, then passes its jets to the independently developed
+count-only Hermite CRT. A **proved degree upper bound** from the
+replacement polynomials and **strictly more Hermite conditions**
+than that degree are required before any work. The result is
+range/integrality checked against `[0,2**n]`; it neither executes
+the Boolean-cube counting oracle nor substitutes an unjustified
+degree bound. It remains an *explicit alternative*; the existing
+Boolean-difference `taylor_coefficients_separated` and
+`count_origin_from_manual_designs` APIs are unchanged.
+
+**Exact validation** on GitHub Actions, CPython 3.13, workflow
+`42698224532`: 21 targeted tests passed, with strict production
+typing. These include seeded rectangular nilpotent matrices,
+constant-zero derivative-nonzero factors, complete degree-two
+deformations against *both* independent separated Taylor and
+exhaustive deformation-polynomial oracles at multiple centers and
+orders 1,2,3, actual spectral-projected constructions, Hermite
+origin recovery using different centers, and explicit budget
+refusals. A nilpotent count case with
+`P(T)=1-T` at center `t=1` has Taylor data `(0,-2)` and
+correctly reconstructs two satisfying assignments at T=0.
+
+**Measured costs** from run `42697587887` (single GitHub-hosted
+runner, Python 3.13, independent `tracemalloc` tracing for each
+method, no speedup extrapolation):
+
+| Input | Order J | Final exact bonds | Tensor seconds | Separate Boolean-difference seconds | Tensor peak traced B |
+|---|---:|---|---:|---:|---:|
+| manual 4-variable degree-two deformation | 0 | 4 | 0.125 | 0.020 | 178,442 |
+| manual 4-variable degree-two deformation | 1 | 4 | 0.187 | 0.111 | 202,200 |
+| manual 4-variable degree-two deformation | 2 | 4 | 0.222 | 0.221 | 156,116 |
+| manual 4-variable degree-two deformation | 3 | 4 | 0.286 | 0.348 | 274,096 |
+| real 6-variable spectral construction | 0 | 3,3 | 0.335 | 0.033 | 120,160 |
+| real 6-variable spectral construction | 1 | 4,4 | 0.522 | 0.250 | 143,616 |
+| real 6-variable spectral construction | 2 | 4,4 | 0.597 | 1.046 | 148,504 |
+
+The spectral example at J=2 shows ~1.75x lower measured runtime
+than the reference, but the reference wins at J=0 and J=1. The
+tensor path had **larger traced Python memory use in every case**.
+The four-variable deformed input reached 1,802-bit intermediate
+rational coefficients at order 3; limiting only bond dimension
+is therefore insufficient. All measured values matched the
+independent exact reference coefficient-by-coefficient. This
+neither proves speed at higher J nor admits the literal
+n-derived paper parameters.
+
+Reproduce:
+
+```bash
+PYTHONPATH=src:. python -m pytest -q tests/eth/test_tensor_jet.py
+PYTHONPATH=src:. python -m benchmarks.eth.tensor_jet_probe
+```
+
+The remaining main risk is that intermediate polynomial bonds
+or rational coefficient bits grow too quickly as n and J increase.
+The tensor path does not yet improve the paper's asymptotic
+worst-case claim, even where it wins a finite instance.

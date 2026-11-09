@@ -88,6 +88,26 @@ def test_small_coupled_blocks_factor_without_cross_product(blocks: int) -> None:
     assert after.peak_states <= 2
 
 
+
+@pytest.mark.parametrize("n", [4, 6, 9])
+def test_connected_sparse_incidence_still_reduces_intermediate_states(n: int) -> None:
+    ring = _ring()
+    # A connected cycle. Every row can choose its own mode or its successor.
+    # The only full assignments are the two perfect matchings.
+    rows = tuple(
+        LinearRow(ring.zero, ((j, ring.one), ((j + 1) % n, ring.one)))
+        for j in range(n)
+    )
+    goal = (1,) * n
+    before, after = ExtractionStats(), ExtractionStats()
+    old = expanded_coefficient_reference(ring, rows, goal, stats=before)
+    new = target_coefficient_by_components(ring, rows, goal, stats=after)
+    assert new == old == ring.scalar(2)
+    assert after.components == 1
+    assert after.largest_component_modes == n
+    assert after.peak_states <= before.peak_states
+    assert after.pruned_transitions > 0
+
 def _enumerate_product(ring: Padic | JetRing,
                        rows: tuple[LinearRow, ...],
                        target: tuple[int, ...]) -> object:

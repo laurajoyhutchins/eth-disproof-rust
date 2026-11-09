@@ -195,7 +195,8 @@ def run_contraction(
                 else:
                     key = tuple(assignment[g] for g in output_scope)
                     output[key] = add(output.get(key, Fraction(0)), weight)
-                    observe(*attached_tables, output)
+                    if len(output) > max_entries:
+                        raise CapacityRefusal('dense output factor entry budget')
         else:
             partial: dict[tuple[int, ...], Fraction] = {(): Fraction(1)}
             seen: tuple[int, ...] = ()
@@ -229,7 +230,8 @@ def run_contraction(
             for assignment, weight in partial.items():
                 key = tuple(assignment[seen.index(g)] for g in output_scope)
                 output[key] = add(output.get(key, Fraction(0)), weight)
-                observe(*attached_tables, partial, output)
+                if len(output) > max_entries:
+                    raise CapacityRefusal('support output factor entry budget')
             # Release partial support before checking the retained output.
             partial = {}
         output = {key: value for key, value in output.items() if value}

@@ -49,3 +49,16 @@ def test_count_with_huge_global_exceptional_subspace() -> None:
                for _, center in design.centers for matrix in center.matrices
                for row in matrix)
     assert count_from_constructed(formula, design) == count_bruteforce(formula) == 4
+
+
+def test_restricted_projector_rank_obstruction() -> None:
+    """Observed full restricted rank is a *lower bound* on measurement rows."""
+    from benchmarks.eth.projector_probe import rank_audit
+
+    evidence = rank_audit()
+    assert [item['nvars'] for item in evidence] == [4, 8, 16, 24]
+    for item in evidence:
+        n = item['nvars']
+        assert item['min_rank'] == item['max_rank'] == n
+        assert item['max_row_l1'] == 1
+        assert item['observed_tau'] == '1/2'

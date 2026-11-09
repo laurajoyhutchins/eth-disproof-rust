@@ -18,7 +18,7 @@ from non_exponential_sudoku.eth import (
     CNFFormula, ConstructionLimits, construct_from_schedules,
     count_bruteforce, count_from_constructed, deterministic_schedules,
 )
-from non_exponential_sudoku.eth.construction import construct_implicit_auxiliary
+from non_exponential_sudoku.eth.construction import (\n    _projected_group_rows, construct_implicit_auxiliary,\n)
 
 
 def _case(Q: int, R: int, *, count: bool) -> dict[str, object]:
@@ -66,11 +66,58 @@ def _case(Q: int, R: int, *, count: bool) -> dict[str, object]:
     return result
 
 
+def rank_audit() -> list[dict[str, object]]:
+    """Measure minimum exact projector rowspace ranks as active n grows.
+
+    Disjoint 2-clauses ensure every declared variable appears exactly once.
+    The local projector rows are independently certified elsewhere against
+    the original tensor basis; this profiles their unavoidable ranks, not
+    the performance of a CNF solver.
+    """
+    Q, R, r = 12, 2, 2
+    auxiliary = construct_implicit_auxiliary(
+        r=r, Q=Q, R=R, measurement_basis='projector')
+    report: list[dict[str, object]] = []
+    for n in (4, 8, 16, 24):
+        formula = CNFFormula(n, tuple((2 * e + 1, 2 * e + 2)
+                                      for e in range(n // 2)))
+        a, d = deterministic_schedules(formula, r=r, Q=Q)
+        filled: dict[tuple[tuple[int, int], ...], int] = {}
+        for e, clause in enumerate(formula.clauses):
+            for lit in clause:
+                v = abs(lit) - 1
+                label = tuple((a[v][s], d[e][s]) for s in range(Q))
+                if label in filled:
+                    raise ArithmeticError('rank witness has colliding labels')
+                filled[label] = v
+        counts = []
+        max_l1 = 0
+        for s in range(Q):
+            groups = tuple(tuple(v for v in range(n) if a[v][s] == g)
+                           for g in range(r))
+            matrices = tuple(_projected_group_rows(auxiliary, filled, group)
+                             for group in groups)
+            counts.append(sum(map(len, matrices)))
+            max_l1 = max(max_l1, max((
+                sum(abs(value) for value in row)
+                for matrix in matrices for row in matrix
+            ), default=0))
+        report.append({
+            'nvars': n, 'Q': Q, 'R': R,
+            'min_rank': min(counts), 'max_rank': max(counts),
+            'max_row_l1': max_l1,
+            'observed_tau': str(Fraction(max(counts), 2 * n)),
+            'paper_target_tau_for_these_n': str(Fraction(1, r * (n - 1).bit_length())),
+        })
+    return report
+
+
 def probe() -> dict[str, object]:
     return {
         'status': 'measured-exact-projection-not-ETH-worst-case-bound',
         'cases': [_case(2, 2, count=True), _case(12, 2, count=True),
                   _case(48, 8, count=True)],
+        'rank_audit': rank_audit(),
     }
 
 

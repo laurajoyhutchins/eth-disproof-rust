@@ -273,7 +273,9 @@ def test_default_ledger_skips_operand_scans() -> None:
 
 
 def test_timed_recursive_execution_matches_baseline() -> None:
-    case = get_case("nested-2wire", "reference")
+    # Small active fixture keeps the per-commit checkpoint bounded.
+    # Deep nested work is exercised by the separate opt-in cost study.
+    case = get_case("parity-2wire", "reference")
     reference = ContractionEngine(case.config).contract(case.network)
     ledger = CostLedger(observe_operand_bits=True)
     observed = ContractionEngine(case.config, cost_ledger=ledger).contract(case.network)

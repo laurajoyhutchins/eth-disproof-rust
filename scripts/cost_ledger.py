@@ -31,13 +31,16 @@ def main() -> int:
         "reference", "plans", "packet", "leaf", "combined", "memo", "memo-all"])
     parser.add_argument("--max-frames", type=int, default=20_000)
     parser.add_argument("--max-centers", type=int, default=20_000)
+    parser.add_argument("--operand-bits", action="store_true",
+                        help="Observe input coordinate bit lengths for add/sub/mul")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     source_before = fingerprints()
     git_before = git_provenance()
     native_before = native_binaries()
     case = get_case(args.case, args.variant)
-    ledger = CostLedger(max_frames=args.max_frames, max_centers=args.max_centers)
+    ledger = CostLedger(max_frames=args.max_frames, max_centers=args.max_centers,
+                        observe_operand_bits=args.operand_bits)
     engine = ContractionEngine(case.config, cost_ledger=ledger)
     result: int | None = None
     error: str | None = None

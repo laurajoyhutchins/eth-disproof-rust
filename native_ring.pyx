@@ -3,24 +3,56 @@
 The operations remain Python arbitrary-precision integers; only loops are native.
 """
 cdef tuple mul_coords(tuple a, tuple b, int e, object f, object mask):
+    """Exact modular polynomial product; never narrow arbitrary-size integers."""
     if e < 1 or len(a) != e or len(b) != e:
         raise ValueError("Ring coordinate length mismatch")
-    cdef list tmp=[0]*(2*e-1)
-    cdef int i,j
+    cdef Py_ssize_t i, j
+    cdef bint scalar_a=True, scalar_b=True
     cdef object ai, bj, h
-    for i in range(e):
-        ai=a[i]
-        if ai:
-            for j in range(e):
-                bj=b[j]
+    cdef list tmp, taps
+    # A scalar of Z/(2**p) has no extension variable U. This common
+    # case never needs convolution or reduction modulo f(U).
+    for i in range(1,e):
+        if a[i] & mask:
+            scalar_a=False
+        if b[i] & mask:
+            scalar_b=False
+        if not scalar_a and not scalar_b:
+            break
+    if scalar_a:
+        return tuple([(a[0]*b[i])&mask for i in range(e)])
+    if scalar_b:
+        return tuple([(a[i]*b[0])&mask for i in range(e)])
+
+    tmp=[0]*(2*e-1)
+    if a is b:
+        # Squaring halves cross-product multiplications, including when
+        # coordinates exceed machine-word width or are noncanonical.
+        for i in range(e):
+            ai=a[i]
+            if not ai:
+                continue
+            tmp[2*i] += ai*ai
+            for j in range(i+1,e):
+                bj=a[j]
                 if bj:
-                    tmp[i+j] = tmp[i+j] + ai*bj
+                    tmp[i+j] += 2*ai*bj
+    else:
+        for i in range(e):
+            ai=a[i]
+            if ai:
+                for j in range(e):
+                    bj=b[j]
+                    if bj:
+                        tmp[i+j] += ai*bj
+    # Cache modulus exponents per multiplication instead of testing every
+    # f bit separately for each high coefficient.
+    taps=[j for j in range(e) if (f>>j)&1]
     for i in range(2*e-2,e-1,-1):
         h=tmp[i] & mask
         if h:
-            for j in range(e):
-                if (f>>j)&1:
-                    tmp[i-e+j] = tmp[i-e+j]-h
+            for j in taps:
+                tmp[i-e+j] -= h
     return tuple([tmp[i]&mask for i in range(e)])
 
 cdef tuple add_coords(tuple a, tuple b, object mask):

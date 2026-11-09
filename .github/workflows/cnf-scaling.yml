@@ -59,19 +59,19 @@ jobs:
           name: eth-spectral-rank-growth
           path: artifacts/eth-spectral-rank-growth.json
           if-no-files-found: warn
-      - name: Verify original paper and Lean admission crosswalk
+      - name: Verify source-pinned paper admission crosswalk
         run: |
           python -m pytest -q tests/eth/test_paper_admitted_witness.py -m checkpoint
           python -m pytest -q tests/eth/test_paper_admitted_witness.py -m integration
           python -m benchmarks.eth.paper_admitted_witness \
             --lambda-bits 17179869184 --finite-n 4096 \
-            --output artifacts/eth-paper-lean-admission.json
-      - name: Preserve source-pinned paper admission witness
+            --output artifacts/eth-paper-admission.json
+      - name: Preserve paper admission witness
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: eth-paper-lean-admission
-          path: artifacts/eth-paper-lean-admission.json
+          name: eth-paper-admission
+          path: artifacts/eth-paper-admission.json
           if-no-files-found: warn
       - name: Preserve raw exact, refusal, and timeout evidence
         if: always()

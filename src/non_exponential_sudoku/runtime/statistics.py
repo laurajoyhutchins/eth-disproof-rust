@@ -21,6 +21,7 @@ class Counters:
     recursive_calls:int=0
     leaves:int=0
     mode_tuples:int=0
+    direct_packet_deformations:int=0
     child_networks:int=0
     interpolation_evaluations:int=0
     depth_counts:dict[int,int]=field(default_factory=dict)

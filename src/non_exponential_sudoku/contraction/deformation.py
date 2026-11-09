@@ -28,6 +28,7 @@ from .packets import EvaluationContext
 from ..runtime.work_trace import WorkTrace
 from .planning import ComponentCapacityExceeded, build_factorization_plan
 from .valuation_cache import ValuationCache
+from .packet_factorization import evaluate_packet_deformation
 
 if TYPE_CHECKING:
     from .engine import ContractionEngine
@@ -57,6 +58,16 @@ class DeformationExecution:
         z: NestedCoords, ring: TensorRing, depth: int,
         factor_plan_cache: ValuationCache | None,
     ) -> NestedCoords:
+        if self.config.mode.strategy == 'packet_eliminate':
+            # Exact alternative summation order. No weighted mode factors,
+            # child networks, or mode cache are constructed in this route.
+            value = evaluate_packet_deformation(
+                net, packing, t, z, ring,
+                max_width=self.config.leaf.max_width,
+                max_factor_bytes=self.config.leaf.max_factor_bytes,
+            )
+            self.stats.direct_packet_deformations += 1
+            return value
         coordinate = v2(t)
         context = EvaluationContext(
             t, z, ring, packing.a,

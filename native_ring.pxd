@@ -1,6 +1,2 @@
 cdef tuple mul_coords(tuple a, tuple b, int e, object f, object mask)
 cdef tuple add_coords(tuple a, tuple b, object mask)
-cpdef tuple jet_add(tuple a, tuple b, object mask)
-cpdef tuple jet_sub(tuple a, tuple b, object mask)
-cpdef tuple jet_neg(tuple a, object mask)
-cpdef tuple jet_mul(tuple a, tuple b, int e, object f, object mask)

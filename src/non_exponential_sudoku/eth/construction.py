@@ -465,8 +465,8 @@ def _projected_group_rows(
             common_denominator = lcm(common_denominator, value.denominator)
         integers = [int(value * common_denominator) for value in row]
         common_divisor = 0
-        for value in integers:
-            common_divisor = gcd(common_divisor, abs(value))
+        for integer in integers:
+            common_divisor = gcd(common_divisor, abs(integer))
         if common_divisor == 0:
             continue
         candidate = tuple(value // common_divisor for value in integers)
@@ -475,9 +475,9 @@ def _projected_group_rows(
             factor = reduced[pivot]
             if factor:
                 reduced = [a - factor * b for a, b in zip(reduced, vector)]
-        pivot = next((j for j, value in enumerate(reduced) if value), None)
-        if pivot is not None:
-            pivots[pivot] = tuple(value / reduced[pivot] for value in reduced)
+        new_pivot = next((j for j, value in enumerate(reduced) if value), None)
+        if new_pivot is not None:
+            pivots[new_pivot] = tuple(value / reduced[new_pivot] for value in reduced)
             basis.append(candidate)
     return tuple(basis)
 

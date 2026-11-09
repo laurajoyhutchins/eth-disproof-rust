@@ -301,3 +301,14 @@ closed on the explicit budget. The chain example demonstrates an
 implementable structural regime rather than a solution for arbitrary
 worst-case CNF, and does not satisfy the manuscript's huge literal
 n-derived parameter schedule.
+
+
+**Independent integration verification:** one-off GitHub run
+`42677879381` installed `python-flint` and passed all five
+`tests/integration/test_implicit_large_dimension.py` cases,
+including the 64-variable factorized chain, plus the explicit
+FLINT-vs-Python exact-jet equality check (one passed). The
+`factorized_taylor.py` engine uses the same checked jet arithmetic
+on both backends. This is mathematical equivalence evidence on
+the tested fixtures, not a benchmark establishing which arithmetic
+backend is faster in this new contraction regime.

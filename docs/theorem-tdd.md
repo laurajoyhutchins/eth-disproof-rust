@@ -12,8 +12,8 @@ Run the explicitly opt-in research acceptance suite:
 PYTHONPATH=src:. python -m pytest -q research_acceptance/test_complete_bit_recurrence.py
 ```
 
-The suite contains four green checks of conditional recurrence algebra and
-failure-closed cost accounting and an opaque-oracle counterexample, plus the intentionally **red**
+The suite contains green checks of conditional recurrence algebra, failure-closed cost
+accounting, fabricated-ledger refusal and opaque-oracle work, plus the deliberately **red**
 `test_complete_bit_recurrence_for_current_paper_solver`. The research test
 lives outside the default `tests/` discovery path and all checkpoint,
 integration and extended gates. It has **no xfail or skip**.
@@ -37,17 +37,20 @@ machine-checked certificate before `current_local_bit_evidence` can contain
 it. Time measurements, event-ledger counters, and branch caps are not valid
 substitutes for bit-cost lemmas.
 
-The first actionable gap is **recursive packet-entry-oracle closure**: a
-newly generated oracle needs a bounded description size, cost of evaluation,
-and coefficient precision, recursively, for every admitted child. Other
-open terms include packing, factor elimination, exact rational recovery,
-modulus construction, and terminal work with no capacity refusal.
+Several source-loop costs now have conditional envelopes and are charged
+in `reference/whole_frame_recurrence.py`, including packing, mode ordering,
+catalog construction, child preparation, coefficient arithmetic and recovery.
+Those envelopes are **not** a complete universal cost certificate: generated
+oracle bit-work, source correspondence, capacity non-refusal and working-set
+bit accounting still require independent proofs.
 
-Closing the local recurrence still would **not** prove `2^{o(N)}` for `N`
-Sudoku cells. The direct encoding has `M=Theta(N log N)` Boolean edges and
-`2^{O(M/sqrt(log M))}` alone only gives `2^{O(N sqrt(log N))}` in the cell
-parameter. Exactness, unconditional completion, the complete recurrence, and
-the final asymptotic conversion are separate acceptance obligations.
+The acceptance now has three distinct gates, documented in
+[complete-theorem-acceptance.md](complete-theorem-acceptance.md):
+complete local bit work; source correspondence and totality; and, for Sudoku,
+the asymptotic conversion to **cells**, not just network edges. The current
+conditional frame bound `2^{O(s loglog(s)/(log s)^(1/4))}`, with direct
+encoding `s=Theta(N log N)`, does **not** imply `2^{o(N)}`. This is a
+limitation of the displayed upper bound, not a runtime lower bound.
 
 ## Advancement rule
 

@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "src")]
 
 from scripts.change_impact import plan as calculate_impact  # noqa: E402
-from scripts.checkpoint_shard import owned_nodeids  # noqa: E402
+from scripts.shard_contract import owned_nodeids  # noqa: E402
 from scripts.evidence import (  # noqa: E402
     fingerprints, git_provenance, native_binaries, validate_attestation,
 )

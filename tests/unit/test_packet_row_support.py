@@ -260,3 +260,32 @@ def test_hall_reference_matches_independent_small_exact_matching() -> None:
                               for row in [selected[j]] * n)
             assert hall_packet_rows_possible(modes, (0, 1, 2), beta, 0) == (
                 independently_match(requested))
+
+
+def test_finite_uniform_pair_packing_exhibits_the_cross_mode_family() -> None:
+    # Small r=2 geometric analog of the symbolic r=64 paper-admitted family.
+    # It is not itself a paper-active network; it validates the exact packing
+    # and mode-catalog mechanics used in the large formula-only witness.
+    r, a, per_ordered_class = 2, 2, 4
+    labels = tuple((j % r, j // r) for j in range(r ** a))
+    pairs = tuple((left, right) for left in labels for right in labels
+                  for _ in range(per_ordered_class))
+    net = simple_network(len(pairs),
+        [([j], {(0,): 1, (1,): 1}) for j in range(len(pairs))],
+        [([j], {(0,): 1, (1,): 1}) for j in range(len(pairs))])
+    packing = pack(net, r, a,
+                   (tuple(left for left, _ in pairs),
+                    tuple(right for _, right in pairs)))
+    assert len(packing.packets) == len(pairs) // (1 << a)
+    assert all(all(edge is not None for edge in pkt.slots)
+               for pkt in packing.packets)
+    modes = mode_catalog(net, packing, 1, 15)
+    crossed = {m.packet for m in modes}
+    assert len(crossed) == len(packing.packets) * (r - 1) // r
+    for packet in crossed:
+        chosen = [m for m in modes if m.packet == packet and m.y0 == 0]
+        assert chosen
+        assert {1, 2, 3}.issubset({m.b for m in chosen})
+        assert all(m.weight == a + 1 + m.b for m in chosen)
+        assert all(len(m.rows) == (1 << a) // 2 for m in chosen)
+        assert all(any(j == 1 for _, j in m.tile) for m in chosen)

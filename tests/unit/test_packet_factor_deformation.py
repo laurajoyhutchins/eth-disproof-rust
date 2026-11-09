@@ -121,3 +121,31 @@ def test_packet_elimination_refuses_before_oracle_if_width_too_small() -> None:
 def test_mode_strategy_rejects_invalid_value() -> None:
     with pytest.raises(ValueError, match="Invalid mode strategy"):
         ModeConfig(strategy="unknown")
+
+
+@pytest.mark.integration
+def test_twenty_independent_wires_contract_without_exhaustive_bit_cube() -> None:
+    # The lifted graph has forty binary wires. Direct 2**40 enumeration
+    # would be prohibitive, but all packet/original factors have bounded
+    # width and the result follows from independent packet products.
+    count = 20
+    tab = {(0,): 1, (1,): 1}
+    net = simple_network(count, [((i,), tab) for i in range(count)],
+                         [((i,), tab) for i in range(count)])
+    labels = (tuple((2*i, 0) for i in range(count)),
+              tuple((2*i+1, 0) for i in range(count)))
+    packing = pack(net, 64, 2, labels)
+    engine = ContractionEngine(ContractorConfig(count, count+4,
+                                                 schedule="geometry64"))
+    ring = Padic(engine.e, engine.f, count+4)
+    answer = evaluate_packet_deformation(
+        net, packing, 1, ring.zero, ring,
+        max_width=8, max_factor_bytes=32*1024*1024,
+    )
+    assert answer == ring.scalar(1 << count)
+
+
+@pytest.mark.checkpoint
+def test_packet_strategy_does_not_prove_literal_paper_schedule() -> None:
+    with pytest.raises(ValueError, match="not the paper recurrence"):
+        ContractorConfig(2, 5, mode=ModeConfig(strategy="packet_eliminate"))

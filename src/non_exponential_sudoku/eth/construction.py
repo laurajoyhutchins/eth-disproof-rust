@@ -12,8 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from fractions import Fraction
-from itertools import product
-from math import floor
+from itertools import combinations, product
+from math import comb, floor
 from typing import Literal, Sequence
 
 from non_exponential_sudoku.runtime.budget import CapacityError
@@ -84,16 +84,49 @@ class ConstructedDesigns:
 
 
 def _interpolation_polynomial(points: tuple[int, ...]) -> Polynomial:
-    """Unique degree < len(points) rational polynomial f(j)=(-1)^j."""
+    """Alternating values on consecutive integers in the Newton basis.
+
+    Delta**k (-1)**(a+j) at j=0 is (-1)**a * (-2)**k.
+    This avoids repeatedly constructing full Lagrange basis polynomials.
+    """
+    if not points or any(point != points[0] + i for i, point in enumerate(points)):
+        raise ValueError('spectral interpolation points must be consecutive')
+    start = points[0]
     result = ZERO
-    for point in points:
-        basis = ONE
-        for other in points:
-            if other != point:
-                basis = basis * Polynomial((Fraction(-other), Fraction(1)))
-                basis = basis.scale(Fraction(1, point - other))
-        result = result + basis.scale(-1 if point % 2 else 1)
+    basis = ONE
+    for order in range(len(points)):
+        result = result + basis.scale((-1 if start % 2 else 1) * (-2) ** order)
+        if order + 1 < len(points):
+            basis = (basis * Polynomial((Fraction(-start - order), Fraction(1)))).scale(
+                Fraction(1, order + 1))
     return result
+
+
+def _walsh_coefficients(polynomial: Polynomial, Q: int) -> dict[int, Fraction]:
+    """Sparse Walsh coefficients of f(popcount(mask)), grouped by Hamming weight.
+
+    All masks of the same cardinality share one coefficient.  The s-th
+    coefficient is (-1)**s / 2**Q times a binomially weighted sum of
+    the s-th forward differences of f on 0..Q.  It vanishes for
+    s > degree(f).  No 2**Q x 2**Q Fourier transform is constructed.
+    """
+    if type(Q) is not int or Q < 0:
+        raise ValueError('Q must be a nonnegative integer')
+    differences = [polynomial.evaluate(j) for j in range(Q + 1)]
+    coefficients: dict[int, Fraction] = {}
+    for cardinality in range(min(Q, polynomial.degree) + 1):
+        value = sum(
+            (comb(Q - cardinality, j) * term
+             for j, term in enumerate(differences)), Fraction(0),
+        ) / (1 << Q)
+        if cardinality % 2:
+            value = -value
+        if value:
+            for positions in combinations(range(Q), cardinality):
+                coefficients[sum(1 << position for position in positions)] = value
+        differences = [right - left for left, right in
+                       zip(differences, differences[1:])]
+    return coefficients
 
 
 def _local_eigenvectors(r: int) -> tuple[tuple[tuple[int, ...], bool], ...]:
@@ -158,19 +191,11 @@ def construct_auxiliary(
     if len(measured) > limits.max_measurement_rows:
         raise CapacityError('ETH auxiliary exceptional direction limit')
 
-    # Fourier/Walsh expansion of f(W), W=1/2 sum(I-Pi_s).
-    # V0 f(W)=sum_S beta[S] product_{s not in S} Pi_s.
-    betas: dict[int, Fraction] = {}
-    for mask_s in range(1 << Q):
-        coefficient = sum(
-            (f.evaluate(mask_e.bit_count()) *
-             (-1 if (mask_e & mask_s).bit_count() % 2 else 1)
-             for mask_e in range(1 << Q)), Fraction(0)
-        ) / (1 << Q)
-        if coefficient:
-            if mask_s.bit_count() > R - 1:
-                raise ArithmeticError('spectral support violates degree bound')
-            betas[mask_s] = coefficient
+    # Fourier/Walsh expansion of f(W).  The transform depends only on
+    # subset cardinality; a full 4**Q pair enumeration is unnecessary.
+    betas = _walsh_coefficients(f, Q)
+    if any(mask.bit_count() > R - 1 for mask in betas):
+        raise ArithmeticError('spectral support violates degree bound')
 
     rows: list[tuple[Polynomial, ...]] = []
     max_degree = 0

@@ -92,3 +92,56 @@ def test_shared_budget_clears_on_recursive_refusal() -> None:
     assert engine.shared_cache.live_bytes == 0
     assert engine._frames == {}
     assert engine.contract(case.network)[0] == case.expected
+
+
+def test_prepared_packet_and_packet_entry_memo_share_retention() -> None:
+    from non_exponential_sudoku.contraction.compiled_children import CompiledChildPlan
+    from non_exponential_sudoku.contraction.packets import (
+        BoundedPacketMemo, EvaluationContext, PreparedPacketCache,
+        _prepared_owned_bytes,
+    )
+    from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
+    from non_exponential_sudoku.core.modes import mode_catalog
+    from non_exponential_sudoku.core.packing import pack
+    from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+
+    net = port_graph_with_cross_mode()
+    packing = pack(net, 2, 1, (((0,),), ((1,),)))
+    ring = Padic(5, modulus_polynomial(5), 13)
+    modes = mode_catalog(net, packing, 1, ring.p)
+    plan = CompiledChildPlan(net, packing, 0, 0)
+    context = EvaluationContext(1, ring.one, ring, 1)
+    oracle = plan.instantiate(modes, (0,) * len(modes),
+                              1, ring.one, ring, context).right[0].oracle
+    key = ("prepared",)
+    estimate = _prepared_owned_bytes(key, oracle)
+    shared = SharedCacheBudget(estimate)
+    prepared = PreparedPacketCache(8, max_bytes=estimate, shared=shared)
+    memo = BoundedPacketMemo(ring, entries=8, max_bytes=estimate,
+                             shared=shared)
+    prepared.put(key, oracle)
+    assert shared.live_bytes == estimate
+    memo.put(("memo",), ring.one)
+    assert memo.skipped_shared_budget == 1
+    assert memo.live_bytes == 0
+    prepared.clear()
+    assert shared.live_bytes == 0
+    assert memo.entry_bytes <= estimate
+    memo.put(("memo",), ring.one)
+    assert memo.live_bytes == memo.entry_bytes
+    assert shared.live_bytes == memo.entry_bytes
+    memo.clear()
+    assert shared.live_bytes == 0
+
+
+def test_shared_pool_rejects_invalid_requests_without_changing_state() -> None:
+    budget = SharedCacheBudget(20)
+    owner = object()
+    assert budget.try_set(owner, 11)
+    assert not budget.try_set(owner, 21)
+    assert budget.live_bytes == 11
+    assert budget.skipped_reservations == 1
+    with pytest.raises(ValueError, match="reservation"):
+        budget.try_set(owner, -1)
+    budget.release(owner)
+    assert budget.live_bytes == 0

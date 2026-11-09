@@ -165,7 +165,12 @@ def test_rank_experiment_is_source_stable_and_does_not_claim_a_solver_bound() ->
     report = experiment(max_pairs=2)
     assert report["status"] == "complete"
     assert report["inputs_stable"] is True
-    assert len(report["constructed_samples"]) >= 1
+    assert len(report["constructed_samples"]) >= 4
+    assert {s["nvars"] for s in report["constructed_samples"]} == {3, 4}
+    assert all(s["certified_best_order"]["max_rank"]
+               <= s["rank_profile"]["max_rank"]
+               for s in report["constructed_samples"])
     assert report["pair_witnesses"][-1]["grouped_at_one"]["max_rank"] == 4
     assert report["pair_witnesses"][-1]["interleaved_at_one"]["max_rank"] == 2
+    assert report["pair_witnesses"][-1]["exhaustive_best_order"]["max_rank"] == 2
     assert report["interpretation"]["worst_case"].startswith("no non-exponential")

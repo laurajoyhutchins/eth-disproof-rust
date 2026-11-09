@@ -70,8 +70,8 @@
       "stage_smoke": "1 passed, 11 deferred to final full checkpoint"
     }
   ],
-  "instructions": "Original 13 stage-smoke records describe pre-PR conceptual history only. The nine new commits are exact original merged snapshots; verify the final curated head with strict typing, checkpoints, integration, optional native/oracle parity and source-head reconciliation before replacing main.",
-  "pinned_source_head": "d53190383fbf7a4f97e576c8b3a8db75c4f30155",
+  "instructions": "The original 13 stage-smoke records describe pre-PR conceptual history only. Nine post-PR source snapshots have exact historical trees; stage ten overlays pinned merged-main research onto the previously tested runtime/reference cleanup. Verify strict typing, complete pure checkpoint, integration and optional native/FLINT/Ganak parity before promoting main. Never confuse mathematical theorem gates with passing finite tests.",
+  "pinned_source_head": "e5b4c376a6a59bc0d524549d7cd354eb669fbdd9",
   "post_pr_history": [
     {
       "commit": "f711cc3c9c921ae96b8e13ef1308a0f3bb0425ac",
@@ -144,6 +144,15 @@
       "merged_prs_in_interval": "71, 73, 75",
       "source_tree_exact": true,
       "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    },
+    {
+      "commit": "577214c7a8eb02f33c1173ff45be8456d08d53d8",
+      "concept": "Original-main research reconciliation without undoing reference-only Sudoku oracle cleanup",
+      "source_sha": "e5b4c376a6a59bc0d524549d7cd354eb669fbdd9",
+      "merged_prs_in_interval": "72, 76, 79, 82",
+      "source_tree_exact": false,
+      "source_blob_sha_reuse": true,
+      "stage_smoke": "Source overlay and structural import move; exact-head tests required"
     }
   ],
   "excluded_from_snapshot": [
@@ -152,8 +161,9 @@
     "PR #52",
     "PR #64 (closed unmerged)",
     "PR #66",
-    "PR #72",
     "PR #74"
   ],
-  "docs": "docs/curated-history.md"
+  "docs": "docs/curated-history.md",
+  "archive_ref": "archive/pre-clean-slate-20261109",
+  "reference_cleanup_pr": 80
 }

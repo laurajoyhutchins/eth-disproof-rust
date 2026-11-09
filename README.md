@@ -46,8 +46,8 @@ python scripts/verify.py checkpoint --require-backend flint --require-backend ga
 For the mathematical arguments see [Sudoku state algebra](docs/sudoku.md),
 [CNF and interpolation](docs/eth.md), [recursive contraction](docs/mathematics.md),
 and [open proof obligations](docs/claims.md). Run `git log --reverse --format='%h %s'`
-to read the repository in conceptual order. The pre-PR concept commits and nine curated
-post-PR snapshots were **constructed from original, real Git trees** to explain
+to read the repository in conceptual order. The pre-PR concept commits and nine source-identical
+post-PR snapshots plus one later reconciled milestone were **constructed from original, real Git trees** to explain
 progress, not to reproduce experimentation chronology; see
 [history and provenance](docs/curated-history.md).
 

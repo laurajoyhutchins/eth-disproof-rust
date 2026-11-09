@@ -44,6 +44,7 @@ def child_components(net: Network, packing: Packing, group: int, coordinate: int
     """Exact connected-component partition of the *topology* of make_child.
 
     The parent vertices and packet nodes form a bipartite incidence graph.
+    Weighted iterative union-find avoids recursion-depth-dependent failure.
     Its topology is independent of Cauchy parameters and mode multiplicities.
     We omit only packet nodes with zero incident child ports, whose entries
     are identically one for this group (no mode may target/source such a node).
@@ -52,13 +53,31 @@ def child_components(net: Network, packing: Packing, group: int, coordinate: int
     packet_for_edge = {edge: k for k, packet in enumerate(packing.packets)
                        for edge in packet.slots if edge is not None}
     parent: dict[_Node, _Node] = {}
+    sizes: dict[_Node, int] = {}
+
     def find(x: _Node) -> _Node:
-        parent.setdefault(x, x)
-        if parent[x] != x: parent[x] = find(parent[x])
-        return parent[x]
+        if x not in parent:
+            parent[x] = x
+            sizes[x] = 1
+            return x
+        root = x
+        while parent[root] != root:
+            root = parent[root]
+        while parent[x] != x:
+            nxt = parent[x]
+            parent[x] = root
+            x = nxt
+        return root
+
     def union(a: _Node, b: _Node) -> None:
         a, b = find(a), find(b)
-        if a != b: parent[b] = a
+        if a == b:
+            return
+        if sizes[a] < sizes[b]:
+            a, b = b, a
+        parent[b] = a
+        sizes[a] += sizes[b]
+        del sizes[b]
     kept: list[tuple[_Node, tuple[str, int]]] = []
     for side, vertices, labels in (('Y', net.left, packing.groups_left),
                                    ('X', net.right, packing.groups_right)):

@@ -217,7 +217,9 @@ def count_total_reference(formula: CNFFormula) -> TotalReferenceResult:
     n, m = formula.nvars, len(formula.clauses)
     w = max((len(clause) for clause in formula.clauses), default=0)
     meter = _Count(total_reference_envelope(n, m, w))
+    meter.step()  # Call entry, input descriptor validation, initial scalar.
     factors: list[_Dense] = []
+    meter.storage(factors)  # The empty Boolean universe also has state.
     for clause in formula.clauses:
         # Produce a sorted unique scope without a hash table or sort.
         variables: list[int] = []

@@ -29,6 +29,20 @@ jobs:
             --repeats 1 --timeout 8 \
             --threshold 64 --r 2 --Q 2 --R 2 \
             --output artifacts/cnf-scaling.json
+      - name: Check exact CNF unfolding rank and ordering obstruction
+        run: |
+          python -m pytest -q tests/eth/test_unfolding_rank.py -m checkpoint
+          python -m pytest -q tests/eth/test_unfolding_rank.py -m integration
+          python -m benchmarks.eth.unfolding_rank \
+            --max-pairs 4 \
+            --output artifacts/eth-unfolding-rank.json
+      - name: Preserve source-pinned exact cut-rank evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnf-unfolding-rank
+          path: artifacts/eth-unfolding-rank.json
+          if-no-files-found: warn
       - name: Preserve raw exact, refusal, and timeout evidence
         if: always()
         uses: actions/upload-artifact@v4

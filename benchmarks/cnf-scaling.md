@@ -50,11 +50,15 @@ Outcomes:
 - `verified`: the entire exact count completed and matched the independent count
 - `capacity_refusal`: the solver exhausted a declared budget, count is null
 - `timeout`: the worker exceeded the wall limit, count is null
-- `failed`: wrong answer, missing evidence, process error, or inconsistent arms;
-  the entire report fails, rather than absorbing the sample into a median
+- `discordant_outcomes`: the two arms had different valid completion/refusal/
+  timeout outcomes. Preserve both raw samples and report **no paired speed
+  ratio** or verified paired completion. This can expose tracing overhead
+- `failed`: wrong answer, missing evidence, process error, or malformed arms;
+  the entire report fails rather than absorbing the sample into a median
 
 A `complete` report means every requested attempt has an explicit,
-reconciled outcome. It does **not** mean every formula was solved.
+classified outcome, including noncomparable pairs. It does **not** mean
+every formula was solved or every timing comparison was meaningful.
 `all_cases_solved` and `outcome_counts` distinguish those claims.
 
 On refusal or timeout, **no partial factors, coefficient sizes, or leaf counts

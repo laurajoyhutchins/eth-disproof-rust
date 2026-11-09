@@ -187,7 +187,12 @@ def _execute_leaf_plan(plan: LeafPlan, tables: dict[int, tuple[NestedCoords, ...
                             term = R.mul(term, value)
                         if term == zero:
                             break
-                    acc = R.add(acc, term)
+                    # acc begins canonical and is only updated by R.add.
+                    # Identity, not equality, protects normalization of
+                    # noncanonical values supplied by arbitrary vertex oracles.
+                    if term is not zero:
+                        if term is not zero:
+                        acc = R.add(acc, term)
                 out.append(acc)
         else:
             for mask in range(1 << len(step.out_scope)):

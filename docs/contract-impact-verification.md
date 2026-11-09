@@ -31,16 +31,18 @@ It is not conditionally skipped based on this PR selection.
 ## Fast complete checkpoint without losing cases
 
 The full checkpoint runs in **two independent GitHub runner VMs**, not
-competing CPU-bound workers on one throttled runner. Each one collects the
-unchanged `-m checkpoint` test suite and deterministically owns one half of
-the pytest node IDs (SHA-256 partition). Test names and parameters are never
-changed, skipped deliberately, or downgraded to integration to improve time.
+competing CPU-bound workers on one throttled runner. Each runs the unchanged `-m checkpoint` marker selection on an owned
+subset of test files. The deterministic SHA-256 file partition ensures
+collection-time optional-dependency skips belong to exactly one runner.
+Test names and parameters are never changed, skipped deliberately, or
+downgraded to integration to improve time.
 
 The terminal required `checkpoint` job consumes both exact-head artifacts,
 requires both jobs to have succeeded, compares their source fingerprints and
 change-impact plans, independently validates both JUnit files, and checks
-the disjoint union of their selected node IDs against the original **entire**
-checkpoint collection. Missing, duplicate, stale, or misassigned cases
+the disjoint union of selected test files against the **entire** test-file
+inventory, including modules skipped during collection. Missing, duplicate,
+stale, or misassigned files
 fail closed. The original single-process verifier and optional native/backend
 workflow remain unsharded.
 

@@ -72,6 +72,11 @@ class ContractionEngine(DeformationExecution):
         self.stats.leaves += 1
         if self.config.leaf.strategy=='eliminate':
             if self.config.recursion.native_leaf:
+                if (self.config.leaf.max_width != 16
+                        or self.config.leaf.lookup_entries != 8192
+                        or self.config.leaf.max_factor_bytes != 128*1024*1024):
+                    raise ValueError(
+                        'Native leaf does not support custom Leaf resource policies')
                 try:
                     import native_recursive
                 except ImportError as exc:

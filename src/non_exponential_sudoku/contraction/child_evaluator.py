@@ -30,9 +30,14 @@ class ChildEvaluator:
         self.depth=depth
         self.coordinate=coordinate
         self.context=context
-        self._workspace=contractor._frames.setdefault(
-            depth, FrameWorkspace(cache_policy=contractor.config.recursion.compiled_plans,
-                                  leaf=contractor.config.leaf))
+        workspace = contractor._frames.get(depth)
+        if workspace is None:
+            workspace = FrameWorkspace(
+                cache_policy=contractor.config.recursion.compiled_plans,
+                leaf=contractor.config.leaf,
+            )
+            contractor._frames[depth] = workspace
+        self._workspace = workspace
 
     def evaluate(self, group: int, assignment: Sequence[int], *,
                  mode_indices: Sequence[int] | None = None,
@@ -47,8 +52,15 @@ class ChildEvaluator:
         with (c.cost_ledger.phase("child_construction") if c.cost_ledger is not None
               else nullcontext()):
             if c.config.recursion.child_plans:
+                before_evictions = self._workspace.plans.evictions
                 plan,hit=self._workspace.get_plan(self.net,self.packing,group,
                                                    self.coordinate,component)
+                c.stats.child_plan_cache_evictions += (
+                    self._workspace.plans.evictions - before_evictions)
+                c.stats.child_plan_cache_peak_estimated_bytes = max(
+                    c.stats.child_plan_cache_peak_estimated_bytes,
+                    self._workspace.plans.peak_bytes,
+                )
                 if hit:
                     c.stats.child_plan_cache_hits+=1
                 else:

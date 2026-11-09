@@ -83,9 +83,14 @@ def mode_catalog(net: Network, packets: Packing, t: int, p: int,
             valuations = tuple(v2(t - y0 + x) for x in target_rows)
             if any(v > i for v in valuations):
                 raise ValueError('Invalid crossing mode geometry')
+            # For b>=0, w(x,b) decreases with v. The worst target row
+            # is therefore the one with the largest displacement valuation.
+            v_max = max(valuations)
+            base_weight = a + 1 - v_max
+            increment = i + 1 - v_max
             for b in range(p-1):
                 if b>0 and not any(j>0 for _,j,_ in tile): break
-                weight = min((a+1-v) + b*(i+1-v) for v in valuations)
+                weight = base_weight + b * increment
                 if weight >= p:
                     # Monotone in b; all following geometric powers vanish
                     # modulo 2**p and need no Mode or child tensor.

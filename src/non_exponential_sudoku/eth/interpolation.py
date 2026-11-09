@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import comb
 from fractions import Fraction
-from typing import Any, Protocol, Sequence, TypeVar
+from typing import Any, Literal, Protocol, Sequence, TypeVar
 
 from non_exponential_sudoku.runtime.budget import CapacityError
 
@@ -494,6 +494,7 @@ def count_from_manual_designs(
     taylor_limits: TaylorLimits = TaylorLimits(),
     hermite_limits: HermiteLimits = HermiteLimits(),
     backend: ArithmeticBackend = "python",
+    summation: Literal['tuples', 'eliminate'] = 'tuples',
 ) -> ManualCountResult:
     """ETH-004 end-to-end reference: certified designs -> Taylor -> #F.
 
@@ -518,7 +519,8 @@ def count_from_manual_designs(
     collected: list[TaylorResult] = []
     for center, (_, design) in zip(centers_normalized, centers):
         collected.append(taylor_coefficients_separated(
-            formula, design, replacements, at=center, order=order, limits=taylor_limits, backend=backend))
+            formula, design, replacements, at=center, order=order,
+            limits=taylor_limits, backend=backend, summation=summation))
     interpolation = interpolate_hermite(
         tuple(HermiteDatum(result.center, result.coefficients) for result in collected),
         degree_bound=degree, limits=hermite_limits, backend=backend,
@@ -539,6 +541,7 @@ def count_origin_from_manual_designs(
     taylor_limits: TaylorLimits = TaylorLimits(),
     hermite_limits: HermiteLimits = HermiteLimits(),
     backend: ArithmeticBackend = "python",
+    summation: Literal['tuples', 'eliminate'] = 'tuples',
 ) -> OriginManualCountResult:
     """Exact count-only readout from separately certified Taylor jets.
 
@@ -566,7 +569,7 @@ def count_origin_from_manual_designs(
     for center, (_, design) in zip(centers_normalized, centers):
         collected.append(taylor_coefficients_separated(
             formula, design, replacements, at=center, order=order,
-            limits=taylor_limits, backend=backend,
+            limits=taylor_limits, backend=backend, summation=summation,
         ))
     result = interpolate_origin_hermite(
         tuple(HermiteDatum(entry.center, entry.coefficients) for entry in collected),

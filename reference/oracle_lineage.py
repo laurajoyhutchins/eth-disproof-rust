@@ -41,10 +41,13 @@ class PaperPathOracleBound:
     max_new_packet_descriptors: int
     max_vertices: int
     applies_only_to_successful_paper_shrinkage: bool = True
+    root_input_name_bits: int | None = None
+    max_visible_name_bits: int | None = None
 
 
 def paper_single_path_descriptor_bound(
     *, root_edges: int, root_vertices: int,
+    root_input_name_bits: int | None = None,
 ) -> PaperPathOracleBound:
     """Bound the number of distinct packet descriptors on one *paper* path.
 
@@ -54,16 +57,33 @@ def paper_single_path_descriptor_bound(
     At depth d the child retains each parent vertex at most once and creates
     <=P_d new packet vertices; hence V_d<=V_0+sum_(j<d)P_j.
 
-    Counts only descriptors / vertex references. Original oracle *bodies*,
-    packet coefficient payloads, caches, sibling branches, intermediate
-    arithmetic and total computation time are not bounded by this result.
+    If root_input_name_bits is supplied, the result additionally bounds the
+    total *UTF-8 name bits* simultaneously visible along the path. The paper
+    implementation uses 64 groups and writes only names of the form
+    `packet:{k}:g{group}`. Each packet ID k<M0 needs at most
+    max(1,M0.bit_length()) decimal digits, while group<64 needs at most
+    6 digits. Thus each generated name uses at most
+    8*(9+max(1,M0.bit_length())+6) bits.
+
+    Counts only descriptors / vertex references and their names. Original
+    oracle *bodies*, packet coefficient payloads, caches, sibling branches,
+    intermediate arithmetic and total computation time are not bounded here.
     """
     if (type(root_edges) is not int or type(root_vertices) is not int
             or root_edges < 0 or root_vertices < 0):
         raise ValueError("nonnegative integer edge and vertex counts required")
+    if (root_input_name_bits is not None and
+            (type(root_input_name_bits) is not int or root_input_name_bits < 0)):
+        raise ValueError("root input name bit length must be a nonnegative integer")
     created = 32 * root_edges // 29
+    max_name_bits = None if root_input_name_bits is None else (
+        root_input_name_bits +
+        created * 8 * (9 + max(1, root_edges.bit_length()) + 6)
+    )
     return PaperPathOracleBound(
         root_edges, root_vertices, created, root_vertices + created,
+        root_input_name_bits=root_input_name_bits,
+        max_visible_name_bits=max_name_bits,
     )
 
 

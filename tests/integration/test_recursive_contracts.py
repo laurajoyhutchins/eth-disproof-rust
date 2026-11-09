@@ -6,7 +6,8 @@ from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial, poly_
 from non_exponential_sudoku.core.packing import pack, audit_packing
 from non_exponential_sudoku.core.modes import mode_catalog, weighted_tuples
 from non_exponential_sudoku.core.network import simple_network
-from non_exponential_sudoku.sudoku.encoding import sudoku_network, independently_evaluate_F
+from non_exponential_sudoku.sudoku.encoding import sudoku_network
+from reference.sudoku_network_oracle import independently_evaluate_F
 from non_exponential_sudoku.runtime.budget import CapacityError
 from non_exponential_sudoku.contraction.packets import cauchy_values, cross_mode_coefficient
 from non_exponential_sudoku.sudoku.three_cnf import Puzzle

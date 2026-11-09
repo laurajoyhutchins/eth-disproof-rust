@@ -13,7 +13,7 @@ from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
 from non_exponential_sudoku.core.modes import Mode, mode_catalog, weighted_tuples, cross_mode_valuation
 from non_exponential_sudoku.core.packing import pack
 from non_exponential_sudoku.contraction.packets import cross_mode_coefficient
-from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode, independently_evaluate_F
+from reference.sudoku_network_oracle import port_graph_with_cross_mode, independently_evaluate_F
 from non_exponential_sudoku.core.network import simple_network
 from reference.legacy_mode_catalog import original_catalog
 

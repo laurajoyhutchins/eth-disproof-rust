@@ -18,7 +18,7 @@ from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
 from non_exponential_sudoku.core.jets import JetRing
 from non_exponential_sudoku.core.modes import mode_catalog
 from non_exponential_sudoku.core.packing import pack
-from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+from reference.sudoku_network_oracle import port_graph_with_cross_mode
 from reference.target_coefficient import (
     ExtractionStats, LinearRow, evaluate_packet_target_coefficient,
     expanded_coefficient_reference, target_coefficient_by_components,

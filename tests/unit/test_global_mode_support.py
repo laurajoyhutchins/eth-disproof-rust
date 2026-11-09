@@ -15,7 +15,7 @@ import pytest
 from non_exponential_sudoku.core.modes import mode_catalog, weighted_tuples
 from non_exponential_sudoku.core.packing import pack
 from non_exponential_sudoku.runtime.config import ContractorConfig
-from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+from reference.sudoku_network_oracle import port_graph_with_cross_mode
 from reference.global_mode_support import (
     center_color_precision_product, colored_partition_log2_ceiling,
     exact_weighted_assignment_count, paper_global_mode_support_envelopes,

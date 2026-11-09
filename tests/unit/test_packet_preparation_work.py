@@ -15,7 +15,7 @@ from non_exponential_sudoku.contraction.packets import EvaluationContext, Packet
 from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
 from non_exponential_sudoku.core.modes import mode_catalog
 from non_exponential_sudoku.core.packing import pack
-from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+from reference.sudoku_network_oracle import port_graph_with_cross_mode
 from reference.packet_preparation_work import (
     CROSS_MISS_CALLS, RingCalls, UncertifiedPreparation,
     cauchy_context_calls, prepared_child_work,

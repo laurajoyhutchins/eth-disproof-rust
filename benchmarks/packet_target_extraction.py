@@ -21,7 +21,7 @@ from non_exponential_sudoku.contraction.children import make_child
 from non_exponential_sudoku.contraction.packets import EvaluationContext, PacketEntry
 from non_exponential_sudoku.core.modes import mode_catalog
 from non_exponential_sudoku.core.packing import pack
-from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+from reference.sudoku_network_oracle import port_graph_with_cross_mode
 from reference.packet_oracle_work import packet_evaluation_envelope
 from reference.target_coefficient import (
     ExtractionStats, LinearRow,

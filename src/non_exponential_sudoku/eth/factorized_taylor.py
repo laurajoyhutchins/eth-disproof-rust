@@ -192,8 +192,8 @@ def eliminate_restricted(
     for factor in factors:
         if factor.scope:
             raise ArithmeticError('factor elimination left unbound groups')
-        value = factor.values.get(())
-        if value is None:
+        terminal = factor.values.get(())
+        if terminal is None:
             return evaluator.zero
-        result = arithmetic.mul(result, value)
+        result = arithmetic.mul(result, terminal)
     return result

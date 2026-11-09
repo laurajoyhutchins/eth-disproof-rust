@@ -35,6 +35,7 @@ class ChildEvaluator:
             workspace = FrameWorkspace(
                 cache_policy=contractor.config.recursion.compiled_plans,
                 leaf=contractor.config.leaf,
+                shared_cache=contractor.shared_cache,
             )
             contractor._frames[depth] = workspace
         self._workspace = workspace

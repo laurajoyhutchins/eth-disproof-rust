@@ -109,6 +109,8 @@ class RecursionConfig:
         max_bytes=8*1024*1024, max_entries=128))
     compiled_plans: CachePolicy=field(default_factory=lambda: CachePolicy(
         max_bytes=8*1024*1024, max_entries=64))
+    # Optional contraction-wide cache retention; does not cap arithmetic RSS.
+    shared_cache_bytes: int | None=None
 
     def __post_init__(self) -> None:
         if any(not isinstance(v,bool) for v in (self.child_plans,self.native_packet,self.native_leaf)):
@@ -122,6 +124,10 @@ class RecursionConfig:
         if (not isinstance(self.child_cache, CachePolicy)
                 or not isinstance(self.compiled_plans, CachePolicy)):
             raise TypeError('Cache policies must be CachePolicy instances')
+        if self.shared_cache_bytes is not None and (
+            type(self.shared_cache_bytes) is not int or self.shared_cache_bytes < 1
+        ):
+            raise ValueError('Invalid shared cache budget')
 
 @dataclass(frozen=True)
 class ContractorConfig:

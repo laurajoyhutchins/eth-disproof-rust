@@ -83,6 +83,16 @@ def test_dense_sixteen_variable_clause_does_not_enumerate_a_factor_table() -> No
     assert result.stats.multilinear_support_peak <= 1 + n + comb(n, 2)
     assert result.stats.multilinear_support_peak < 1 << n
     assert result.stats.factor_assignments_tested == 0
+    # The *same* mathematically exact instance cannot fit as a 2**16
+    # explicit Boolean-variable factor table under the identical cap.
+    # This witnesses a genuine representational distinction, not a
+    # claim about worst-case runtime or the source paper's schedule.
+    with pytest.raises(CapacityError, match="factor entry limit"):
+        taylor_coefficients_separated(
+            formula, _single_group(formula), replacements,
+            at=Fraction(0), order=2, summation="fused",
+            limits=TaylorLimits(max_factor_entries=256, max_factor_work=50_000),
+        )
 
 
 @pytest.mark.integration

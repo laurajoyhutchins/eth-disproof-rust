@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections import OrderedDict
-from ..runtime.cache import SharedCacheBudget, defaultdict
+from collections import OrderedDict, defaultdict
+from ..runtime.cache import SharedCacheBudget
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from types import MappingProxyType

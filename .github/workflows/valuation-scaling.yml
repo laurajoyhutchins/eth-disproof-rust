@@ -1,0 +1,47 @@
+name: Exact valuation scaling
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'verify/valuation-scaling-*'
+
+jobs:
+  exact-scaling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install exact reference requirements
+        run: python -m pip install -e '.[test]'
+      - name: Paired fresh-process exact scaling
+        run: python -m benchmarks.valuation_scaling --repeats 2 --timeout 40 --memory-mib 768 --output artifacts/valuation-scaling.json
+      - name: Dense four-slot diagnostic (refusal is not completion)
+        run: |
+          set +e
+          python -m benchmarks.valuation_scaling --cases recursive-L4-dense-p5 --repeats 1 --timeout 40 --memory-mib 768 --output artifacts/valuation-dense-refusal.json
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ] && [ "$status" -ne 2 ]; then exit "$status"; fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("artifacts/valuation-dense-refusal.json").read_text())
+          pairs = data["comparisons"]
+          assert len(pairs) == 1
+          samples = pairs[0]["original_samples"] + pairs[0]["pruned_samples"]
+          assert len(samples) == 2
+          assert all(s["status"] in ("capacity_refused", "verified") for s in samples)
+          assert all(s["actual"] == s["expected"] for s in samples if s["status"] == "verified")
+          print("Dense stress arms:", [s["status"] for s in samples])
+          print("This diagnostic never counts a refusal as an exact completion.")
+          PY
+      - name: Preserve both complete and refusal evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: valuation-scaling-evidence
+          path: artifacts/valuation-*.json
+          if-no-files-found: warn

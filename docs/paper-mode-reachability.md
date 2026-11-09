@@ -1,5 +1,12 @@
 # Reachable packet-mode states under the literal paper schedule
 
+**Follow-up:** [Global mode-factor support](global-mode-support.md) now proves
+that the *admissible weighted factor-table row domain* is also `2^{o(s)}`
+under the successful literal paper schedule. Statements below identifying
+global support as open describe the earlier, strictly local proof boundary;
+they do not invalidate the later weighted-partition argument. Total bit work,
+recursively inherited oracle costs and unconditional completion remain open.
+
 **A positive but local theorem.** For every *prepared eager-Python packet
 entry* reached during a paper-schedule call that satisfies the declared
 packing and precision premises, the number of exponent-vector states held by

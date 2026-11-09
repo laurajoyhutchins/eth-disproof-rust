@@ -12,7 +12,8 @@ from non_exponential_sudoku.core.network import _check_leaf_factor_budget
 
 def packet_evaluate(tuple bits, object ring, tuple left_positions,
                     tuple row_cauchy, object contributions, tuple desired,
-                    tuple tile_slots, tuple right_positions):
+                    tuple tile_slots, tuple right_positions,
+                    bint positions_are_bits=False):
     """Exact packet evaluation using mixed-radix coefficient indices.
 
     No Python dict of exponent tuples, and no Python-level per-row callbacks.
@@ -21,7 +22,8 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
     """
     cdef Py_ssize_t k, n=len(desired), x, y, idx, step, size
     cdef object cap=1, stride
-    cdef list strides=[], states, nxt_dense, bits_right=[]
+    cdef list strides=[], states, nxt_dense
+    cdef object bits_right
     cdef dict coeffs, nxt, target_map={}
     cdef object zero=ring.zero, one=ring.one, add=ring.add, mul=ring.mul
     cdef object sub=ring.sub, neg=ring.neg, pow_=ring.pow, scalar=ring.scalar
@@ -36,13 +38,21 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
             pass
     # Store packet right-bit values in a single slot-indexed array. The slot
     # vector may contain absent ports; these are zero by construction.
-    if right_positions:
-        size=max(pos for pos,_ in right_positions)+1
+    if positions_are_bits:
+        # PacketEntry binds slot IDs to bit positions once at construction.
+        # Reuse the same assignment tuple directly, with no per-call
+        # scatter, maximal-slot scan, or temporary Python list.
+        bits_right=bits
+        size=len(bits)
     else:
-        size=0
-    bits_right=[0]*size
-    for y,idx in right_positions:
-        bits_right[y]=bits[idx]
+        # Keep the public kernel ABI for direct independent-oracle calls.
+        if right_positions:
+            size=max(pos for pos,_ in right_positions)+1
+        else:
+            size=0
+        bits_right=[0]*size
+        for y,idx in right_positions:
+            bits_right[y]=bits[idx]
     if n==0:
         # Most packet oracles have no target modes. Preserve the direct
         # Cauchy product instead of building a one-state coefficient DP.
@@ -134,15 +144,20 @@ cdef object _execute_compiled_leaf(object plan, dict tables, object R,
     cdef object scalar=one, step, involved, table, indices, value
     cdef object acc, term, row, positions, out_scope
     cdef list out
-    cdef Py_ssize_t mask, bit, ix, offset, pos
+    cdef Py_ssize_t mask, bit, ix, offset, pos, involved_entries
+    # The exact same live-table envelope as the Python reference, but
+    # updated incrementally instead of rescanning all surviving tables
+    # after every elimination.
+    cdef Py_ssize_t live_entries=sum(len(table) for table in tables.values())
     for step in plan.steps:
         if not step.incident:
             scalar=mul(scalar,R.scalar(2))
             continue
         involved=[tables.pop(index) for index in step.incident]
+        involved_entries=sum(len(table) for table in involved)
+        live_entries-=involved_entries
         _check_leaf_factor_budget(
-            sum(len(table) for table in tables.values()) +
-            sum(len(table) for table in involved) +
+            live_entries + involved_entries +
             (1 << len(step.out_scope)), R, max_factor_bytes)
         out=[]
         if step.lookup is not None:
@@ -188,6 +203,7 @@ cdef object _execute_compiled_leaf(object plan, dict tables, object R,
                 out.append(acc)
         if step.out_scope:
             tables[step.output_id]=tuple(out)
+            live_entries+=len(out)
         else:
             scalar=mul(scalar,out[0])
             if scalar==zero:

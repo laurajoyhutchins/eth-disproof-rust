@@ -57,7 +57,9 @@ def test_certified_clique_has_exact_induced_width(r: int) -> None:
 @pytest.mark.checkpoint
 def test_missing_boundary_measurement_invalidates_certificate() -> None:
     witness = build_clique_witness(3, 2)
-    matrices = (witness.design.matrices[0][1:], *witness.design.matrices[1:])
+    # The largest group is referenced by BOTH lower-index owners.  Removing
+    # its first boundary direction must invalidate the cross-group witness.
+    matrices = (*witness.design.matrices[:2], witness.design.matrices[2][1:])
     corrupted = replace(witness.design, matrices=matrices)
     with pytest.raises(ValueError, match='row space'):
         certify_measurements(
@@ -82,7 +84,7 @@ def test_width_analysis_handles_noncomplete_graph_and_forced_masks() -> None:
     assert audit.interaction_edges == ((0, 1), (1, 2))
     assert audit.max_scope_groups == 2
     assert audit.max_domain_bits == 2
-    forced = audit_factor_width(certificate, forced=(0,))
+    forced = audit_factor_width(certificate, forced=(1,))
     assert forced.max_domain_bits == 1
     assert forced.max_scope_groups == 2
     with pytest.raises(ValueError, match='sorted'):

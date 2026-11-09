@@ -14,7 +14,8 @@ from reference.generalized_bench import canonical_solution
 from reference.mrv_count import count_mrv_reference
 from reference.real_sudoku_bench import puzzles
 
-pytestmark = pytest.mark.checkpoint
+# Each contract has exactly one verification tier. Expensive reference cases
+# run in integration; small exact and refusal contracts remain checkpoint.
 
 
 def _encode(diagram: _Diagram, states: dict[int, int]) -> int:
@@ -30,6 +31,7 @@ def _encode(diagram: _Diagram, states: dict[int, int]) -> int:
     return root
 
 
+@pytest.mark.checkpoint
 def test_zdd_support_sampling_is_exact_without_enumeration() -> None:
     rng = Random(370037)
     for _ in range(55):
@@ -51,6 +53,7 @@ def test_zdd_support_sampling_is_exact_without_enumeration() -> None:
     assert result.stats.final_nodes == 3648
 
 
+@pytest.mark.checkpoint
 def test_joint_ordering_preserves_small_exact_counts() -> None:
     rng = Random(3711)
     full = canonical_solution(2)
@@ -70,6 +73,7 @@ def test_joint_ordering_preserves_small_exact_counts() -> None:
                         order='reachable').count == 0
 
 
+@pytest.mark.checkpoint
 def test_joint_order_beats_row_major_nodes_on_hard_nine() -> None:
     hard = next(p for name, p, _ in puzzles() if name == '9x9-hard-unique')
     old = contract_zdd(hard)
@@ -83,6 +87,7 @@ def test_joint_order_beats_row_major_nodes_on_hard_nine() -> None:
     assert joint.stats.peak_represented_states > 0
 
 
+@pytest.mark.integration
 def test_hard_sixteen_joint_zdd_fits_default_budget() -> None:
     solved = canonical_solution(4)
     retained = set(Random(1).sample(range(256), 120))
@@ -100,6 +105,7 @@ def test_hard_sixteen_joint_zdd_fits_default_budget() -> None:
     assert result.stats.pilot_transitions < 1_000_000
 
 
+@pytest.mark.checkpoint
 def test_order_refuses_all_pilot_limits_without_fallback() -> None:
     puzzle = Puzzle(2, (0,) * 16)
     with pytest.raises(FrontierCapacityError, match='ordering pilot transition'):

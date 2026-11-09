@@ -168,6 +168,9 @@ def run_contraction(
     for eliminated in range(n):
         attached = [f for f in factors if eliminated in f.scope]
         factors = [f for f in factors if eliminated not in f.scope]
+        # Attached inputs remain live until the bucket is fully contracted.
+        # Include them when recording the peak and enforcing the budget.
+        attached_tables = tuple(f.entries for f in attached)
         scope = tuple(sorted({variable for f in attached for variable in f.scope}))
         max_scope = max(max_scope, len(scope))
         output_scope = tuple(v for v in scope if v != eliminated)
@@ -192,8 +195,7 @@ def run_contraction(
                 else:
                     key = tuple(assignment[g] for g in output_scope)
                     output[key] = add(output.get(key, Fraction(0)), weight)
-                    if len(output) > max_entries:
-                        raise CapacityRefusal('dense output factor entry budget')
+                    observe(*attached_tables, output)
         else:
             partial: dict[tuple[int, ...], Fraction] = {(): Fraction(1)}
             seen: tuple[int, ...] = ()
@@ -217,7 +219,7 @@ def run_contraction(
                         new[key] = mult(left_value, right_value)
                         if len(new) > max_entries:
                             raise CapacityRefusal('support partial factor entry budget')
-                observe(partial, new)
+                observe(*attached_tables, partial, new)
                 partial, seen = new, joined_scope
                 if not partial:
                     break
@@ -227,12 +229,11 @@ def run_contraction(
             for assignment, weight in partial.items():
                 key = tuple(assignment[seen.index(g)] for g in output_scope)
                 output[key] = add(output.get(key, Fraction(0)), weight)
-                if len(output) > max_entries:
-                    raise CapacityRefusal('support output factor entry budget')
+                observe(*attached_tables, partial, output)
             # Release partial support before checking the retained output.
             partial = {}
         output = {key: value for key, value in output.items() if value}
-        observe(output)
+        observe(*attached_tables, output)
         factors.append(Factor(output_scope, output))
         observe()
         steps.append(Step(

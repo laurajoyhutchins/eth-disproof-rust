@@ -77,7 +77,7 @@ class CoefficientRank:
     rank: int
     matrix_rows: int
     matrix_columns: int
-    exact_rational_operations: int
+    charged_oracle_operations: int
     max_coefficient_bits: int
 
 
@@ -226,7 +226,8 @@ def minimax_uniform_support_order(
 def coefficient_unfolding_rank(
     formula: CNFFormula, replacements: ReplacementSystem | None = None, *,
     center: Rational, order: int, left_variables: tuple[int, ...],
-    limits: RankLimits = RankLimits(),
+    limits: RankLimits = RankLimits(), max_order: int = 16,
+    max_clause_degree: int = 128,
 ) -> CoefficientRank:
     """Bounded *independent* Boolean-cube oracle for a Taylor coefficient.
 
@@ -237,6 +238,12 @@ def coefficient_unfolding_rank(
     point = _exact_fraction(center)
     if type(order) is not int or order < 0:
         raise ValueError("Taylor coefficient order must be nonnegative")
+    if type(max_order) is not int or max_order < 0:
+        raise ValueError("max_order must be nonnegative")
+    if type(max_clause_degree) is not int or max_clause_degree < 0:
+        raise ValueError("max_clause_degree must be nonnegative")
+    if order > max_order:
+        raise CapacityError("ETH coefficient rank Taylor order limit")
     n = formula.nvars
     if n > limits.max_variables or (1 << n) > limits.max_cells:
         raise CapacityError("ETH Taylor rank matrix cell limit")
@@ -247,6 +254,11 @@ def coefficient_unfolding_rank(
     if replacements is None:
         replacements = ReplacementSystem.identity(formula)
     replacements.validate(formula)
+    for clause_forms in replacements.clauses:
+        worst_degree = sum(max((p.degree for p in form.coefficients), default=0)
+                           for form in clause_forms)
+        if worst_degree > max_clause_degree:
+            raise CapacityError("ETH coefficient rank clause degree limit")
     budget = _ExactBudget(limits)
     budget.check(point)
     left_set = set(left_variables)
@@ -261,8 +273,12 @@ def coefficient_unfolding_rank(
             product = Polynomial.constant(1)
             for clause, forms in zip(formula.clauses, replacements.clauses):
                 factor = clause_satisfaction_polynomial(clause, forms, assignment)
+                for coefficient in factor.coefficients:
+                    budget.check(coefficient)
                 jet = factor.taylor(point, order)
-                budget.charge()
+                for coefficient in jet.coefficients:
+                    budget.check(coefficient)
+                budget.charge()  # one polynomial product, not bit operations
                 product = (product * jet).truncate(order)
                 for coefficient in product.coefficients:
                     budget.check(coefficient)
@@ -275,6 +291,6 @@ def coefficient_unfolding_rank(
     return CoefficientRank(
         center=point, order=order, rank=rank,
         matrix_rows=len(row_masks), matrix_columns=len(col_masks),
-        exact_rational_operations=budget.operations,
+        charged_oracle_operations=budget.operations,
         max_coefficient_bits=budget.max_bits,
     )

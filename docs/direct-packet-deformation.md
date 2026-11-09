@@ -52,7 +52,7 @@ coupled packets.
 
 ### Use
 
-\`\`\`python
+```python
 from non_exponential_sudoku import ContractorConfig, ModeConfig, LeafConfig
 
 config = ContractorConfig(
@@ -60,7 +60,7 @@ config = ContractorConfig(
     mode=ModeConfig(strategy="packet_eliminate"),
     leaf=LeafConfig(strategy="eliminate", max_width=8),
 )
-\`\`\`
+```
 
 The strategy is explicitly experimental and rejected under the literal
 `paper` schedule. It is appropriate as an exact, falsifiable alternative

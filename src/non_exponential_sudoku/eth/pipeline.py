@@ -45,7 +45,7 @@ class ReferencePipelineConfig:
     R: int = 2
     schedule: Literal['conditional', 'digits'] = 'conditional'
     backend: ArithmeticBackend = 'python'
-    summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples'
+    summation: Literal['tuples', 'eliminate', 'fused', 'multilinear'] = 'tuples'
     max_leaves: int = 64
     max_output_bits: int = 1_000_000
     reduction_limits: ReductionLimits = ReductionLimits()
@@ -66,7 +66,7 @@ class ReferencePipelineConfig:
             raise ValueError('unknown reference construction schedule')
         if self.backend not in ('python', 'flint'):
             raise ValueError('unknown exact arithmetic backend')
-        if self.summation not in ('tuples', 'eliminate', 'fused'):
+        if self.summation not in ('tuples', 'eliminate', 'fused', 'multilinear'):
             raise ValueError('unknown exact Taylor summation strategy')
 
 
@@ -88,7 +88,9 @@ class ReferenceLeafEvidence:
     factor_scope_peak: int
     factor_entries_peak: int
     factor_eliminations: int
-    factor_scope_basis: Literal['groups', 'variables']
+    factor_scope_basis: Literal['groups', 'variables', 'not_applicable']
+    multilinear_term_products: int
+    multilinear_support_peak: int
     hermite_operations: int
     max_coefficient_bits: int
 
@@ -104,7 +106,7 @@ class ReferencePipelineResult:
     outer_free_bits: int
     sparsification_theorem_threshold: bool
     backend: ArithmeticBackend
-    summation: Literal['tuples', 'eliminate', 'fused']
+    summation: Literal['tuples', 'eliminate', 'fused', 'multilinear']
     construction_parameters: tuple[int, int, int]
     construction_schedule: Literal['conditional', 'digits']
     leaves: tuple[ReferenceLeafEvidence, ...]
@@ -134,6 +136,7 @@ def _evaluate_leaf(
         method: Literal['two-assignment-base', 'certified-construction'] = 'two-assignment-base'
         centers = taylor_pairs = measurement_tuples = hermite_operations = max_bits = 0
         factor_assignments_tested = factor_scope_peak = factor_entries_peak = factor_eliminations = 0
+        multilinear_term_products = multilinear_support_peak = 0
     else:
         construction = construct_bounded_designs(
             reduced, r=config.r, Q=config.Q, R=config.R,
@@ -164,6 +167,8 @@ def _evaluate_leaf(
         factor_entries_peak = max((item.factor_entries_peak for item in taylor_stats),
                                   default=0)
         factor_eliminations = sum(item.factor_eliminations for item in taylor_stats)
+        multilinear_term_products = sum(item.multilinear_term_products for item in taylor_stats)
+        multilinear_support_peak = max((item.multilinear_support_peak for item in taylor_stats), default=0)
         hermite_operations = reconstructed.hermite_stats.rational_operations
         max_bits = max(
             (item.stats.max_coefficient_bits for item in reconstructed.taylor_data),
@@ -185,7 +190,10 @@ def _evaluate_leaf(
         factor_scope_peak=factor_scope_peak,
         factor_entries_peak=factor_entries_peak,
         factor_eliminations=factor_eliminations,
-        factor_scope_basis=('variables' if config.summation == 'fused' else 'groups'),
+        factor_scope_basis=('not_applicable' if config.summation == 'multilinear'
+                            else 'variables' if config.summation == 'fused' else 'groups'),
+        multilinear_term_products=multilinear_term_products,
+        multilinear_support_peak=multilinear_support_peak,
         hermite_operations=hermite_operations, max_coefficient_bits=max_bits,
     )
 

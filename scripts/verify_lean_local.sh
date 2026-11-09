@@ -4,7 +4,7 @@ set -Eeuo pipefail
 if [[ "$#" -eq 1 && "$1" == "--help" ]]; then
   cat <<'HELP'
 LEAN_UPSTREAM=/path/to/openai-math LEAN_CACHE_ROOT=/persistent/lean \
-  bash scripts/verify_lean_primitive_local.sh
+  bash scripts/verify_lean_local.sh
 Requires Lean 4.34.1, pinned upstream source and Mathlib, and matching Lake.
 LEAN_SKIP_CACHE_GET=1: use already-restored offline Mathlib cache.
 LEAN_BUILD_JOBS=2: limit concurrent compilation jobs.

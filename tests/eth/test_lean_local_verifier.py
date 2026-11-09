@@ -6,7 +6,7 @@ import subprocess
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "verify_lean_primitive_local.sh"
+SCRIPT = ROOT / "scripts" / "verify_lean_local.sh"
 
 
 @pytest.mark.checkpoint

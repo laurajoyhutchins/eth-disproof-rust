@@ -51,26 +51,33 @@ def inspect_scope(
     return EliminationScope(variable, incident, joined, output)
 
 
+
 def choose_min_width(
     remaining: Iterable[int], factor_scopes: Sequence[Sequence[int]],
 ) -> EliminationScope:
-    """Leaf min-width key, including its historical free-wire priority.
+    """Leaf min-width key, retaining free-wire priority and index ties.
 
-    This precisely preserves the original key
-    `(len(joined union)-1, incident factor count, wire index)`
-    where an isolated wire had an empty union and therefore key -1.
+    Compare candidates using only union cardinality and incidence counts.
+    Materialize and sort a complete EliminationScope only for the winner.
+    Constructing one dataclass and sorted scope per *candidate* caused
+    measurable planner overhead without changing the chosen variable.
     """
-    choices = tuple(inspect_scope(var, factor_scopes) for var in remaining)
-    if not choices:
+    chosen: int | None = None
+    best: tuple[int, int, int] | None = None
+    for variable in remaining:
+        union: set[int] = set()
+        incidents = 0
+        for scope in factor_scopes:
+            if variable in scope:
+                incidents += 1
+                union.update(scope)
+        # An isolated wire contributes two choices; its legacy key is -1.
+        key = (len(union) - 1, incidents, variable)
+        if best is None or key < best:
+            best, chosen = key, variable
+    if chosen is None:
         raise ValueError("Cannot eliminate from an empty variable set")
-    return min(
-        choices,
-        key=lambda step: (
-            len(step.output) if step.incident else -1,
-            len(step.incident),
-            step.variable,
-        ),
-    )
+    return inspect_scope(chosen, factor_scopes)
 
 
 def choose_min_domain(
@@ -78,25 +85,26 @@ def choose_min_domain(
     factor_scopes: Sequence[Sequence[int]],
     domain_sizes: Sequence[int],
 ) -> EliminationScope:
-    """ETH's dense joint-domain ordering, not a sparse-state work bound.
+    """ETH dense joint-domain ordering; no dense assignment tables built.
 
-    An isolated group has no factors, so its historical union is empty
-    and the sort key is (1, 0, group).  Domain products are arbitrary
-    precision Python integers; no factor table is allocated here.
+    Preserve the original (domain product, joined width, group index) key.
+    For a free group the mathematical factor scope is empty and its
+    product is 1, although inspect_scope records the singleton variable.
     """
     if any(type(size) is not int or size < 1 for size in domain_sizes):
         raise ValueError("Domain cardinalities must be positive integers")
-    choices = tuple(inspect_scope(var, factor_scopes) for var in remaining)
-    if not choices:
+    chosen: int | None = None
+    best: tuple[int, int, int] | None = None
+    for variable in remaining:
+        union: set[int] = set()
+        for scope in factor_scopes:
+            if variable in scope:
+                union.update(scope)
+        if any(v < 0 or v >= len(domain_sizes) for v in union):
+            raise ValueError("Factor scope references an invalid domain")
+        key = (prod(domain_sizes[v] for v in union), len(union), variable)
+        if best is None or key < best:
+            best, chosen = key, variable
+    if chosen is None:
         raise ValueError("Cannot eliminate from an empty variable set")
-    if any(var < 0 or var >= len(domain_sizes) for step in choices
-           for var in step.joined):
-        raise ValueError("Factor scope references an invalid domain")
-    return min(
-        choices,
-        key=lambda step: (
-            prod(domain_sizes[var] for var in step.joined) if step.incident else 1,
-            len(step.joined) if step.incident else 0,
-            step.variable,
-        ),
-    )
+    return inspect_scope(chosen, factor_scopes)

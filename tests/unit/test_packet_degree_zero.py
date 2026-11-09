@@ -117,8 +117,8 @@ def test_degree_certificate_precedes_child_construction(
 
 
 def test_no_false_certificate_for_source_modes_or_feasible_target() -> None:
-    _, packing, _, pair, _, group, rows = _case()
-    capacity = packet_target_row_capacity(_case()[0], packing, 0)
+    net, packing, _, pair, _, group, rows = _case()
+    capacity = packet_target_row_capacity(net, packing, 0)
     assert impossible_packet_target_degree(
         pair, (1, 0), group=group, row_capacity=capacity,
     ) is None

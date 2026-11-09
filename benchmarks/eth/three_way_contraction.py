@@ -312,21 +312,21 @@ def run_case(
             if factor_result is not None:
                 if not isinstance(factor_result, TaylorResult):
                     raise AssertionError("factor evaluator returned wrong result type")
-                stats = factor_result.stats
+                factor_stats = factor_result.stats
                 basic = _observed_rational_work(
                     basic, factor_evaluation, factor_result,
-                    stats.jet_operations, stats.max_coefficient_bits,
+                    factor_stats.jet_operations, factor_stats.max_coefficient_bits,
                 )
                 basic.update({
                     "work_counter_kind": "charged-jet-coefficient-operations",
-                    "scope_basis": stats.factor_scope_basis,
-                    "factor_scope_peak": stats.factor_scope_peak,
-                    "factor_entries_peak": stats.factor_entries_peak,
-                    "factor_assignments_tested": stats.factor_assignments_tested,
-                    "factor_eliminations": stats.factor_eliminations,
-                    "taylor_pairs": stats.taylor_pairs,
+                    "scope_basis": factor_stats.factor_scope_basis,
+                    "factor_scope_peak": factor_stats.factor_scope_peak,
+                    "factor_entries_peak": factor_stats.factor_entries_peak,
+                    "factor_assignments_tested": factor_stats.factor_assignments_tested,
+                    "factor_eliminations": factor_stats.factor_eliminations,
+                    "taylor_pairs": factor_stats.taylor_pairs,
                     "peak_algebraic_coefficient_slots": (
-                        stats.factor_entries_peak * (order + 1)),
+                        factor_stats.factor_entries_peak * (order + 1)),
                     "peak_bond_before_compression": None,
                     "peak_bond_after_compression": None,
                     "coefficients": [str(c) for c in factor_result.coefficients],

@@ -13,6 +13,9 @@ where = ["src"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<10"]
+# Only used for the pure-Python checkpoint job. Native/backend-required checks
+# remain sequential to preserve independent-oracle accounting.
+checkpoint-parallel = ["pytest-xdist>=3.8,<4"]
 typecheck = ["mypy==2.4.1"]
 native = ["Cython>=3,<4"]
 math-audit = ["sympy>=1.13,<2"]

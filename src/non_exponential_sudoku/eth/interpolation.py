@@ -9,11 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Sequence
+from typing import Any, Protocol, Sequence, TypeVar
 
 from non_exponential_sudoku.runtime.budget import CapacityError
 
-from .backends import ArithmeticBackend, check_arithmetic_backend, flint_polynomial_op
+from .backends import (
+    ArithmeticBackend, _NativePoly, _native_bits, _q, check_arithmetic_backend,
+    require_flint,
+)
 from .cnf import CNFFormula
 from .design import MeasurementDesign
 from .polynomial import ONE, ZERO, Polynomial, Rational, ReplacementSystem, _exact_fraction
@@ -76,10 +79,35 @@ class ManualCountResult:
     hermite_stats: HermiteStats
 
 
-class _Budget:
-    def __init__(self, limits: HermiteLimits, backend: ArithmeticBackend) -> None:
+_P = TypeVar('_P')
+_J = TypeVar('_J')
+
+
+class _HermiteArithmetic(Protocol[_P, _J]):
+    """The mathematical reconstruction uses one algorithm, two exact rings."""
+
+    operations: int
+    max_bits: int
+
+    def check_input(self, value: Fraction) -> None: ...
+    def constant(self, value: Any) -> _P: ...
+    def variable(self, center: Fraction) -> _P: ...
+    def add(self, left: _P, right: _P) -> _P: ...
+    def mul(self, left: _P, right: _P) -> _P: ...
+    def shift(self, poly: _P, center: Fraction, order: int) -> _J: ...
+    def datum_jet(self, datum: HermiteDatum) -> _J: ...
+    def subtract(self, left: _J, right: _J) -> _J: ...
+    def quotient(self, numerator: _J, denominator: _J, order: int) -> tuple[Any, ...]: ...
+    def matches(self, jet: _J, datum: HermiteDatum) -> bool: ...
+    def degree(self, poly: _P) -> int: ...
+    def export(self, poly: _P) -> Polynomial: ...
+
+
+class _PythonHermiteArithmetic:
+    """Independently executable Fraction/Polynomial correctness oracle."""
+
+    def __init__(self, limits: HermiteLimits) -> None:
         self.limits = limits
-        self.backend = backend
         self.operations = 0
         self.max_bits = 0
 
@@ -95,61 +123,213 @@ class _Budget:
             raise CapacityError('ETH Hermite coefficient bit limit')
         return value
 
-    def poly(self, polynomial: Polynomial) -> Polynomial:
-        if polynomial.degree > self.limits.max_conditions:
+    def check_input(self, value: Fraction) -> None:
+        self.check_fraction(value)
+
+    def poly(self, poly: Polynomial) -> Polynomial:
+        if poly.degree > self.limits.max_conditions:
             raise CapacityError('ETH Hermite intermediate degree limit')
-        for coefficient in polynomial.coefficients:
+        for coefficient in poly.coefficients:
             self.check_fraction(coefficient)
-        return polynomial
+        return poly
+
+    def constant(self, value: Fraction | int) -> Polynomial:
+        return Polynomial.constant(value)
+
+    def variable(self, center: Fraction) -> Polynomial:
+        return self.poly(Polynomial((-center, Fraction(1))))
 
     def add(self, left: Polynomial, right: Polynomial) -> Polynomial:
         self.charge(max(len(left.coefficients), len(right.coefficients)))
-        result = (Polynomial(flint_polynomial_op('add', left.coefficients, right.coefficients))
-                  if self.backend == 'flint' else left + right)
-        return self.poly(result)
+        return self.poly(left + right)
 
     def mul(self, left: Polynomial, right: Polynomial) -> Polynomial:
         self.charge(len(left.coefficients) * len(right.coefficients))
-        result = (Polynomial(flint_polynomial_op('mul', left.coefficients, right.coefficients))
-                  if self.backend == 'flint' else left * right)
-        return self.poly(result)
+        return self.poly(left * right)
 
-    def shift(self, polynomial: Polynomial, center: Fraction, order: int) -> Jet:
-        """Horner shift directly into Q[z]/(z**(order+1))."""
+    def shift(self, poly: Polynomial, center: Fraction, order: int) -> Jet:
         base = Jet((center, Fraction(1)), order) if order else Jet.constant(center, order)
         value = Jet.constant(0, order)
-        for coefficient in reversed(polynomial.coefficients):
-            self.charge((len(value.coefficients) * len(base.coefficients)) + order + 1)
-            value = (Jet(flint_polynomial_op('mul', value.coefficients, base.coefficients,
-                                             max_length=order + 1), order)
-                     if self.backend == 'flint' else value * base)
-            value = (Jet(flint_polynomial_op('add', value.coefficients, (coefficient,),
-                                           max_length=order + 1), order)
-                     if self.backend == 'flint' else value + Jet.constant(coefficient, order))
-            for v in value.coefficients:
-                self.check_fraction(v)
+        for coefficient in reversed(poly.coefficients):
+            self.charge(len(value.coefficients) * len(base.coefficients) + order + 1)
+            value = value * base + Jet.constant(coefficient, order)
+            for c in value.coefficients:
+                self.check_fraction(c)
         return value
 
-    def solve_jet_quotient(self, numerator: Jet, denominator: Jet) -> tuple[Fraction, ...]:
-        """Solve B(z)C(z)=A(z) mod z**J, B(0) != 0."""
-        if numerator.order != denominator.order:
+    def datum_jet(self, datum: HermiteDatum) -> Jet:
+        return Jet(datum.coefficients, len(datum.coefficients) - 1)
+
+    def subtract(self, left: Jet, right: Jet) -> Jet:
+        return left - right
+
+    def quotient(self, numerator: Jet, denominator: Jet, order: int) -> tuple[Fraction, ...]:
+        if numerator.order != denominator.order or numerator.order != order:
             raise ValueError('Hermite jet orders mismatch')
         b = denominator.full_coefficients()
         a = numerator.full_coefficients()
         if b[0] == 0:
             raise ValueError('Hermite centers must be distinct')
         coeffs: list[Fraction] = []
-        for j in range(numerator.order + 1):
+        for j in range(order + 1):
             self.charge(2 * j + 1)
             residual = self.check_fraction(a[j] - sum(
                 (b[i] * coeffs[j - i] for i in range(1, j + 1)), Fraction(0)))
             coeffs.append(self.check_fraction(residual / b[0]))
         return tuple(coeffs)
 
+    def matches(self, jet: Jet, datum: HermiteDatum) -> bool:
+        return jet.full_coefficients() == datum.coefficients
+
+    def degree(self, poly: Polynomial) -> int:
+        return poly.degree
+
+    def export(self, poly: Polynomial) -> Polynomial:
+        return poly
+
+
+class _FlintHermiteArithmetic:
+    """Retain native Q[T] and Q[z] through all Hermite CRT updates.
+
+    Native numerators/denominators are inspected at every reference check
+    point. There are no intermediate Fraction allocations or text conversions.
+    """
+
+    def __init__(self, limits: HermiteLimits) -> None:
+        self.limits = limits
+        self.flint = require_flint()
+        self.operations = 0
+        self.max_bits = 0
+
+    def charge(self, amount: int) -> None:
+        self.operations += amount
+        if self.operations > self.limits.max_operations:
+            raise CapacityError('ETH Hermite rational operation limit')
+
+    def check_scalar(self, value: Any) -> Any:
+        bits = max(value.numerator.bit_length(), value.denominator.bit_length())
+        self.max_bits = max(self.max_bits, bits)
+        if bits > self.limits.max_coefficient_bits:
+            raise CapacityError('ETH Hermite coefficient bit limit')
+        return value
+
+    def check_input(self, value: Fraction) -> None:
+        self.check_scalar(_q(value, self.flint))
+
+    def poly(self, poly: _NativePoly) -> _NativePoly:
+        if poly.degree > self.limits.max_conditions:
+            raise CapacityError('ETH Hermite intermediate degree limit')
+        for bits in _native_bits(poly):
+            self.max_bits = max(self.max_bits, bits)
+            if bits > self.limits.max_coefficient_bits:
+                raise CapacityError('ETH Hermite coefficient bit limit')
+        return poly
+
+    def constant(self, value: Any) -> _NativePoly:
+        if isinstance(value, Fraction):
+            scalar = _q(value, self.flint)
+        else:
+            scalar = value
+        return _NativePoly(self.flint.fmpq_poly([scalar]))
+
+    def variable(self, center: Fraction) -> _NativePoly:
+        return self.poly(_NativePoly(self.flint.fmpq_poly([_q(-center, self.flint), 1])))
+
+    def add(self, left: _NativePoly, right: _NativePoly) -> _NativePoly:
+        self.charge(max(left.length, right.length))
+        return self.poly(left + right)
+
+    def mul(self, left: _NativePoly, right: _NativePoly) -> _NativePoly:
+        self.charge(left.length * right.length)
+        return self.poly(left * right)
+
+    def shift(self, poly: _NativePoly, center: Fraction, order: int) -> _NativePoly:
+        base = self.flint.fmpq_poly([_q(center, self.flint), 1] if order else
+                                     [_q(center, self.flint)])
+        value = self.flint.fmpq_poly([])
+        # The reference zero polynomial has one coefficient; account for
+        # its Horner step even though FLINT encodes zero with length zero.
+        coefficients = poly.value.coeffs() or [self.flint.fmpq(0, 1)]
+        for coefficient in reversed(coefficients):
+            self.charge(max(1, len(value)) * max(1, len(base)) + order + 1)
+            # For the mock protocol, truncated multiplication is emulated.
+            product = (value.mul_low(base, order + 1) if hasattr(value, 'mul_low')
+                       else (value * base).truncate(order + 1))
+            value = (product + self.flint.fmpq_poly([coefficient])).truncate(order + 1)
+            for bits in _native_bits(_NativePoly(value)):
+                self.max_bits = max(self.max_bits, bits)
+                if bits > self.limits.max_coefficient_bits:
+                    raise CapacityError('ETH Hermite coefficient bit limit')
+        return _NativePoly(value)
+
+    def datum_jet(self, datum: HermiteDatum) -> _NativePoly:
+        return _NativePoly.from_coefficients(datum.coefficients, self.flint)
+
+    def subtract(self, left: _NativePoly, right: _NativePoly) -> _NativePoly:
+        # The independent reference does not charge the residual subtraction.
+        return left - right
+
+    def quotient(self, numerator: _NativePoly, denominator: _NativePoly,
+                 order: int) -> tuple[Any, ...]:
+        """Native truncated division using an explicit, local jet precision."""
+        b0 = denominator.value[0]
+        if b0 == 0:
+            raise ValueError('Hermite centers must be distinct')
+        zero = self.flint.fmpq(0, 1)
+        coeffs: list[Any] = []
+        for j in range(order + 1):
+            self.charge(2 * j + 1)
+            residual = self.check_scalar(numerator.value[j] - sum(
+                (denominator.value[i] * coeffs[j - i] for i in range(1, j + 1)), zero))
+            coeffs.append(self.check_scalar(residual / b0))
+        return tuple(coeffs)
+
+    def matches(self, jet: _NativePoly, datum: HermiteDatum) -> bool:
+        return all(jet.value[i] == _q(value, self.flint)
+                   for i, value in enumerate(datum.coefficients))
+
+    def degree(self, poly: _NativePoly) -> int:
+        return poly.degree
+
+    def export(self, poly: _NativePoly) -> Polynomial:
+        return Polynomial(poly.export())
+
+
+def _interpolate_with_arithmetic(
+    data: Sequence[HermiteDatum], degree_bound: int,
+    budget: _HermiteArithmetic[_P, _J],
+) -> HermiteResult:
+    """Incremental polynomial CRT; backend-neutral exact mathematical steps."""
+    solution = budget.constant(0)
+    modulus = budget.constant(1)
+    for datum in data:
+        order = len(datum.coefficients) - 1
+        for coefficient in datum.coefficients:
+            budget.check_input(coefficient)
+        residual = budget.subtract(budget.datum_jet(datum), budget.shift(solution, datum.center, order))
+        denominator = budget.shift(modulus, datum.center, order)
+        correction = budget.quotient(residual, denominator, order)
+        variable = budget.variable(datum.center)
+        shifted = budget.constant(0)
+        for coefficient in reversed(correction):
+            shifted = budget.add(budget.mul(shifted, variable), budget.constant(coefficient))
+        solution = budget.add(solution, budget.mul(modulus, shifted))
+        for _ in correction:
+            modulus = budget.mul(modulus, variable)
+    if budget.degree(solution) > degree_bound:
+        raise ValueError('Hermite data inconsistent with supplied degree bound')
+    for datum in data:
+        if not budget.matches(budget.shift(solution, datum.center, len(datum.coefficients) - 1), datum):
+            raise ArithmeticError('Hermite reconstruction verification failed')
+    return HermiteResult(budget.export(solution), HermiteStats(
+        centers=len(data), total_conditions=sum(len(d.coefficients) for d in data),
+        rational_operations=budget.operations, max_coefficient_bits=budget.max_bits,
+    ))
+
 
 def interpolate_hermite(
     data: Sequence[HermiteDatum], *, degree_bound: int,
-    limits: HermiteLimits = HermiteLimits(), backend: ArithmeticBackend = "python",
+    limits: HermiteLimits = HermiteLimits(), backend: ArithmeticBackend = 'python',
 ) -> HermiteResult:
     """Recover a unique rational polynomial from nonzero-center Taylor jets.
 
@@ -174,33 +354,9 @@ def interpolate_hermite(
         raise ValueError('insufficient Hermite conditions for the degree bound')
     if conditions > limits.max_conditions:
         raise CapacityError('ETH Hermite condition limit')
-    budget = _Budget(limits, backend)
-    solution = ZERO
-    modulus = ONE
-    for datum in data:
-        order = len(datum.coefficients) - 1
-        for coefficient in datum.coefficients:
-            budget.check_fraction(coefficient)
-        residual = Jet(datum.coefficients, order) - budget.shift(solution, datum.center, order)
-        denominator = budget.shift(modulus, datum.center, order)
-        correction = budget.solve_jet_quotient(residual, denominator)
-        variable = budget.poly(Polynomial((-datum.center, Fraction(1))))
-        shifted = ZERO
-        for coefficient in reversed(correction):
-            shifted = budget.add(budget.mul(shifted, variable), Polynomial.constant(coefficient))
-        solution = budget.add(solution, budget.mul(modulus, shifted))
-        for _ in correction:
-            modulus = budget.mul(modulus, variable)
-    if solution.degree > degree_bound:
-        raise ValueError('Hermite data inconsistent with supplied degree bound')
-    for datum in data:
-        check = budget.shift(solution, datum.center, len(datum.coefficients) - 1)
-        if check.full_coefficients() != datum.coefficients:
-            raise ArithmeticError('Hermite reconstruction verification failed')
-    return HermiteResult(solution, HermiteStats(
-        centers=len(data), total_conditions=conditions,
-        rational_operations=budget.operations, max_coefficient_bits=budget.max_bits,
-    ))
+    if backend == 'flint':
+        return _interpolate_with_arithmetic(data, degree_bound, _FlintHermiteArithmetic(limits))
+    return _interpolate_with_arithmetic(data, degree_bound, _PythonHermiteArithmetic(limits))
 
 
 def _degree_upper_bound(replacements: ReplacementSystem) -> int:

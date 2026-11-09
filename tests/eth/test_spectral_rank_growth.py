@@ -22,10 +22,15 @@ def test_actual_constructed_families_have_sound_upper_and_exact_evidence() -> No
     assert successful
     for case in successful:
         assert case["uniform"]["best_rank_upper"] >= 1
+        assert case["finite_construction_status"].startswith("bounded-constructive-reference")
+        assert type(case["lemma_hypotheses_met"]) is bool
         assert len(case["centers"]) == 2
         for center in case["centers"]:
             assert center["exact_best_rank"] <= case["uniform"]["best_rank_upper"]
+            assert center["exact_rank_charged_rational_operations"] > 0
+            assert center["exact_rank_max_coefficient_bits"] >= 1
             assert center["support_order_rank_peak"] <= case["uniform"]["best_rank_upper"]
+            assert center["support_order_charged_rational_operations"] > 0
             assert center["independent_deformation_check"] is True
     assert report["mathematical_claims"]["worst_case_nonexponential"] is False
     assert report["mathematical_claims"]["uniform_rank_proved"] is False

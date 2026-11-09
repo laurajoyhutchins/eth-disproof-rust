@@ -157,3 +157,80 @@ def test_original_oracle_ring_scalar_returns_exact_canonical_value() -> None:
         result = vertex.oracle(bits, spy)  # type: ignore[arg-type]
         assert spy.calls in ([0], [1])
         assert result == ring.scalar(spy.calls[0])
+
+
+@pytest.mark.parametrize("box_order", [2, 3, 4])
+def test_conditional_frame_model_can_validate_original_sudoku_oracles(
+    box_order: int,
+) -> None:
+    from non_exponential_sudoku.runtime.config import ContractorConfig, ModeConfig
+    from reference.whole_frame_recurrence import (
+        UnclosedRecurrence, assemble_paper_recurrence,
+    )
+
+    side = box_order**2
+    puzzle = Puzzle(box_order, (0,) * (side * side))
+    net = sudoku_network(puzzle)
+    certificate = certify_original_sudoku_oracles(puzzle, net)
+    precision = certificate.cells * certificate.digit_width + 1
+    cfg = ContractorConfig(
+        s=net.edges, precision=precision, schedule="paper",
+        mode=ModeConfig(native_sparse=False),
+    )
+    model = assemble_paper_recurrence(
+        cfg, edges=net.edges, vertices=certificate.vertices,
+        input_name_bits=certificate.root_name_bits,
+        original_sudoku=(puzzle, net),
+    )
+    assert model.sudoku_original_oracle_scalar_calls_per_pass == certificate.vertices
+    assert model.sudoku_original_oracle_per_pass_bit_work is not None
+    assert model.sudoku_original_oracle_per_pass_bit_work >= (
+        certificate.per_pass_boolean_bit_work_ceiling
+    )
+    assert "input_oracle_bit_contract_and_uniform_metadata" in model.open_premises
+    with pytest.raises(UnclosedRecurrence, match="unproved"):
+        model.require_complete_theorem()
+    no_certificate = assemble_paper_recurrence(
+        cfg, edges=net.edges, vertices=certificate.vertices,
+        input_name_bits=certificate.root_name_bits,
+    )
+    assert no_certificate.sudoku_original_oracle_per_pass_bit_work is None
+    with pytest.raises(UnclosedRecurrence, match="metadata mismatch"):
+        assemble_paper_recurrence(
+            cfg, edges=net.edges, vertices=certificate.vertices,
+            input_name_bits=certificate.root_name_bits - 1,
+            original_sudoku=(puzzle, net),
+        )
+    with pytest.raises(UnclosedRecurrence, match="precision insufficient"):
+        assemble_paper_recurrence(
+            ContractorConfig(
+                s=net.edges, precision=precision - 1, schedule="paper",
+                mode=ModeConfig(native_sparse=False),
+            ),
+            edges=net.edges, vertices=certificate.vertices,
+            input_name_bits=certificate.root_name_bits,
+            original_sudoku=(puzzle, net),
+        )
+
+
+def test_conditional_model_rejects_forged_original_oracle_type() -> None:
+    from non_exponential_sudoku.runtime.config import ContractorConfig, ModeConfig
+    from reference.whole_frame_recurrence import (
+        UnclosedRecurrence, assemble_paper_recurrence,
+    )
+
+    puzzle = Puzzle(2, (0,) * 16)
+    net = sudoku_network(puzzle)
+    proof = certify_original_sudoku_oracles(puzzle, net)
+    bad = Network(
+        [Vertex(v.name, v.ports, lambda bits, ring: ring.one) if j == 0 else v
+         for j, v in enumerate(net.left)],
+        list(net.right), net.edges,
+    )
+    cfg = ContractorConfig(s=net.edges, precision=proof.cells * proof.digit_width + 1,
+                           schedule="paper", mode=ModeConfig(native_sparse=False))
+    with pytest.raises(UnclosedRecurrence, match="uncertified"):
+        assemble_paper_recurrence(
+            cfg, edges=net.edges, vertices=proof.vertices,
+            input_name_bits=proof.root_name_bits, original_sudoku=(puzzle, bad),
+        )

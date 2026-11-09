@@ -103,7 +103,7 @@ def test_prepared_packet_and_packet_entry_memo_share_retention() -> None:
     from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
     from non_exponential_sudoku.core.modes import mode_catalog
     from non_exponential_sudoku.core.packing import pack
-    from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+    from reference.sudoku_network_oracle import port_graph_with_cross_mode
 
     net = port_graph_with_cross_mode()
     packing = pack(net, 2, 1, (((0,),), ((1,),)))

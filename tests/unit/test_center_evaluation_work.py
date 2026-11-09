@@ -159,7 +159,7 @@ def test_real_factor_plan_count_fits_incidence_component_envelope(
     from non_exponential_sudoku.contraction.planning import build_factorization_plan
     from non_exponential_sudoku.core.modes import mode_catalog
     from non_exponential_sudoku.core.packing import pack
-    from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+    from reference.sudoku_network_oracle import port_graph_with_cross_mode
 
     net = port_graph_with_cross_mode()
     packing = pack(net, 2, 1, (((0,),), ((1,),)))

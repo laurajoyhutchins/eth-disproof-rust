@@ -18,7 +18,8 @@ from non_exponential_sudoku.contraction.packet_degree import (
 )
 from non_exponential_sudoku.contraction.packets import EvaluationContext, PacketEntry
 from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
-from non_exponential_sudoku.core.modes import Mode, mode_catalog
+from non_exponential_sudoku.core.modes import Mode, mode_catalog, weighted_tuples
+from non_exponential_sudoku.core.network import simple_network
 from non_exponential_sudoku.core.packing import pack
 from non_exponential_sudoku.runtime.config import RecursionConfig
 from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
@@ -154,3 +155,56 @@ def test_uncertified_mode_inputs_never_produce_a_false_zero() -> None:
     assert impossible_packet_target_degree(
         (bogus, pair[1]), (rows, 1), group=group, row_capacity=capacity,
     ) is None
+
+
+def test_two_distinct_genuine_catalog_modes_cannot_overfill_two_packet_rows() -> None:
+    # Four-slot packet with both orientations present. Coordinate zero has
+    # two target rows for group zero and distinct b=0 and b=1 source modes,
+    # both produced by the real valuation-pruned mode catalog.
+    tab = {(0,): 1, (1,): 1}
+    net = simple_network(
+        4,
+        [((i,), tab) for i in range(4)],
+        [((i,), tab) for i in range(4)],
+    )
+    labels = (
+        ((0, 0), (1, 0), (0, 1), (1, 1)),
+        ((1, 1), (0, 1), (1, 0), (0, 0)),
+    )
+    packing = pack(net, 2, 2, labels)
+    assert len(packing.packets) == 1
+    ring = Padic(5, modulus_polynomial(5), 19)
+    modes = mode_catalog(net, packing, 1, ring.p)
+    pair = next(
+        ((a, d) for a in modes for d in modes
+         if a is not d and a.packet == d.packet
+         and a.target == d.target and a.b == 0 and d.b == 1),
+        None,
+    )
+    assert pair is not None, "genuine catalog must contain two target modes"
+    group = pair[0].target
+    capacity = packet_target_row_capacity(net, packing, 0)
+    assert capacity[(pair[0].packet, group)] == 2
+    # Independently admissible: total valuation < precision and each
+    # exponent <= target-row count.
+    beta = (2, 1)
+    assert sum(m.weight * b for m, b in zip(pair, beta)) < ring.p
+    assert all(b <= len(m.rows) for m, b in zip(pair, beta))
+    assert beta in set(weighted_tuples(list(pair), ring.p))
+    witness = impossible_packet_target_degree(
+        pair, beta, group=group, row_capacity=capacity,
+    )
+    assert witness is not None
+    assert witness.requested_degree == 3 and witness.available_rows == 2
+
+    child = make_child(
+        net, packing, list(pair), beta, 1, ring.one, ring, group, 0,
+        EvaluationContext(1, ring.one, ring, packing.a),
+    )
+    observed = 0
+    for v in child.right:
+        if isinstance(v.oracle, PacketEntry) and v.oracle.packet_id == pair[0].packet:
+            for bits in product((0, 1), repeat=len(v.ports)):
+                observed += 1
+                assert v.oracle(bits, ring) == ring.zero
+    assert observed > 0

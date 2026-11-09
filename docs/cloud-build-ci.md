@@ -60,7 +60,8 @@ persisted to a separately provisioned, generation-pinned GCS bucket. This is
 an explicit remaining parity gap relative to Actions artifacts. No evidence
 storage permissions or bucket creation are implicit.
 
-Parallel shards have separate output paths; a missing or failed shard prevents
+Shards run sequentially because Cloud Build steps share /workspace. They have
+separate output paths; a missing or failed shard prevents
 the aggregate step and fails the build. The 30-second *test execution* target
 does not account for Cloud Build scheduling, image downloads or dependency
 installation. Benchmark live wall time and cost before calling this faster.

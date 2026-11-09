@@ -95,15 +95,15 @@ def case(family, size):
             'scope':'one_real_deformation_not_complete_recovery',
             'mode_descriptors':len(modes)}
 
-    if family in ('grid-sparse','grid-dense','parallel-dense'):
-        edges=([(0,1)]*size if family=='parallel-dense' else lattice_edges(size))
+    if family in ('grid-sparse','grid-dense','parallel-dense','parallel-sparse'):
+        edges=([(0,1)]*size if family.startswith('parallel-') else lattice_edges(size))
         n=len(edges)
         p=n+3
         ring=Padic(5,modulus_polynomial(5),p)
         modes=[Mode(j,0,0,u,v,1,(),(0,)) for j,(u,v) in enumerate(edges)]
         groups={g for m in modes for g in (m.source,m.target)}
         stats=Counters()
-        sparse=(family=='grid-sparse')
+        sparse=family.endswith('-sparse')
         def factor(g,sc,b):
             return (ring.one if len(set(b))<=1 else ring.zero) if sparse else ring.one
         def run():
@@ -115,7 +115,7 @@ def case(family, size):
                 raise AssertionError('unexpected non-scalar grid contraction')
             return value[0]
         return stats,run,2 if sparse else 2**n,{
-            'network_edges':n,'network_vertices':2 if family=='parallel-dense' else size**2,
+            'network_edges':n,'network_vertices':2 if family.startswith('parallel-') else size**2,
             'scope':'mode_elimination_only_synthetic_local_factors',
             'precision_bits':p,'schedule':'synthetic',
             'oracle':'all-edge-equality-connected' if sparse else 'unconstrained-binary-edge-modes'}
@@ -160,7 +160,7 @@ def measure(family,size):
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('family',choices=['parity-cycle','parity-ladder','parity-depth2','sudoku','crossing','grid-sparse','grid-dense','parallel-dense'])
+    parser.add_argument('family',choices=['parity-cycle','parity-ladder','parity-depth2','sudoku','crossing','grid-sparse','grid-dense','parallel-dense','parallel-sparse'])
     parser.add_argument('size',type=int)
     parser.add_argument('--memory-mib',type=int,default=768)
     args=parser.parse_args()

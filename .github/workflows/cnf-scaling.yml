@@ -1,0 +1,38 @@
+name: CNF full-pipeline scaling
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'verify/cnf-scaling-*'
+
+jobs:
+  growing-cnf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install exact benchmark dependencies
+        run: python -m pip install -e '.[test]'
+      - name: Verify family identities and evidence contract
+        run: python -m pytest -q tests/benchmark/test_cnf_scaling.py -m checkpoint
+      - name: Verify real constructed two-variable reference and isolated worker
+        run: python -m pytest -q tests/benchmark/test_cnf_scaling.py -m integration
+      - name: Execute source-pinned growing family comparison
+        run: |
+          python -m benchmarks.eth.cnf_scaling \
+            --families path matching clique \
+            --sizes 2 4 6 \
+            --summations tuples eliminate \
+            --repeats 1 --timeout 8 \
+            --threshold 64 --r 2 --Q 2 --R 2 \
+            --output artifacts/cnf-scaling.json
+      - name: Preserve raw exact, refusal, and timeout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cnf-full-pipeline-scaling
+          path: artifacts/cnf-scaling.json
+          if-no-files-found: warn

@@ -18,7 +18,7 @@ from non_exponential_sudoku.core.packing import pack
 @pytest.mark.checkpoint
 def test_same_packet_geometry_and_precision_on_both_arms() -> None:
     for label in ("center-L4-p5-n2", "center-L8-p11-n2",
-                  "recursive-p5", "recursive-p7", "recursive-L4-p5"):
+                  "recursive-p5", "recursive-p7", "recursive-L4-sparse-p5"):
         spec = make_case(label)
         assert spec.precision >= 5
         assert spec.expected > 0

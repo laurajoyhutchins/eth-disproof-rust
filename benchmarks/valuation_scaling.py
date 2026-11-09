@@ -46,8 +46,12 @@ CASES = (
     "center-L16-p11-n4",
     "recursive-p5",
     "recursive-p7",
-    "recursive-L4-p5",
+    "recursive-L4-sparse-p5",
 )
+# Stress case: intentionally excluded from the success-only default matrix.
+# Both arms must report a capacity refusal rather than a speedup.
+STRESS_CASES = ("recursive-L4-dense-p5",)
+ALL_CASES = CASES + STRESS_CASES
 ARMS = ("original", "pruned")
 SCHEMA = "1.0"
 
@@ -65,16 +69,24 @@ class Case:
 
 
 def make_case(case_id: str) -> Case:
-    if case_id not in CASES:
+    if case_id not in ALL_CASES:
         raise ValueError(f"Unknown valuation-scaling case: {case_id}")
-    if case_id == "recursive-L4-p5":
+    if case_id in ("recursive-L4-sparse-p5", "recursive-L4-dense-p5"):
         n, p, a = 2, 5, 2
         tab = {(0,): 1, (1,): 1}
         net = simple_network(
             n, [((i,), tab) for i in range(n)],
             [((i,), tab) for i in range(n)])
-        labels = (tuple((0, 0) for _ in range(n)),
-                  tuple((1, 0) for _ in range(n)))
+        if case_id == "recursive-L4-dense-p5":
+            # Both edges occupy one pair-label class, giving high-order
+            # crossing modes at precision ~245 in the actual recursion.
+            labels = (tuple((0, 0) for _ in range(n)),
+                      tuple((1, 0) for _ in range(n)))
+        else:
+            # Each edge occupies its own pair-label class. Only b=0
+            # modes occur and the exact recursion can complete.
+            labels = (tuple((2*i, 0) for i in range(n)),
+                      tuple((2*i+1, 0) for i in range(n)))
         config = ContractorConfig(
             n, p, schedule="geometry64", micro_active_depth=1,
             root_labels=labels,
@@ -302,9 +314,9 @@ def _git_head() -> str | None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--worker", action="store_true")
-    parser.add_argument("--case", choices=CASES)
+    parser.add_argument("--case", choices=ALL_CASES)
     parser.add_argument("--arm", choices=ARMS)
-    parser.add_argument("--cases", nargs="+", choices=CASES, default=list(CASES))
+    parser.add_argument("--cases", nargs="+", choices=ALL_CASES, default=list(CASES))
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--timeout", type=float, default=40.0)
     parser.add_argument("--memory-mib", type=int, default=768)

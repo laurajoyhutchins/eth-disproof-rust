@@ -33,13 +33,16 @@ jobs:
           python -m pytest -q tests/benchmark/test_native_dlx_timing.py --benchmark-only --benchmark-save-data --benchmark-json=artifacts/native-sparse-timing.json
       - name: Benchmark packet and leaf recursion (Python vs Cython)
         env:
-          SUDOKU_RECURSIVE_PAIRS: 'parity-2wire:reference,parity-2wire:packet,parity-2wire:leaf,sudoku-4wire:reference,sudoku-4wire:packet,sudoku-4wire:leaf,sudoku-8wire:reference,sudoku-8wire:packet,sudoku-8wire:leaf,nested-2wire:reference,nested-2wire:packet,nested-2wire:leaf,crossing-4wire:reference,crossing-4wire:packet,crossing-4wire:leaf'
+          SUDOKU_RECURSIVE_PAIRS: 'parity-2wire:reference,parity-2wire:packet,parity-2wire:leaf,sudoku-4wire:reference,sudoku-4wire:packet,sudoku-4wire:leaf,sudoku-8wire:reference,sudoku-8wire:packet,sudoku-8wire:leaf,nested-2wire:reference,nested-2wire:packet,nested-2wire:leaf,crossing-4wire:reference,crossing-4wire:packet,crossing-4wire:leaf,parity-2wire:plans,parity-2wire:leaf-plans,sudoku-4wire:plans,sudoku-4wire:leaf-plans,sudoku-8wire:plans,sudoku-8wire:leaf-plans,nested-2wire:plans,nested-2wire:leaf-plans,crossing-4wire:plans,crossing-4wire:leaf-plans'
           SUDOKU_BENCHMARK_ROUNDS: '7'
         run: |
           python -m pytest -q tests/benchmark/test_recursive_timing.py --benchmark-only --benchmark-save-data --benchmark-json=artifacts/native-recursive-timing.json
+      - name: Benchmark exact coefficient multiplication
+        run: |
+          python -m pytest -q tests/benchmark/test_native_ring_timing.py --benchmark-only --benchmark-save-data --benchmark-json=artifacts/native-ring-timing.json
       - name: Evaluate paired speedups
         run: |
-          python scripts/native_cutover_report.py artifacts/native-sparse-timing.json artifacts/native-recursive-timing.json --output artifacts/native-cutover-report.json
+          python scripts/native_cutover_report.py artifacts/native-sparse-timing.json artifacts/native-recursive-timing.json artifacts/native-ring-timing.json --output artifacts/native-cutover-report.json
       - name: Preserve native cutover evidence
         if: always()
         uses: actions/upload-artifact@v4

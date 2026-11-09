@@ -508,3 +508,112 @@ schedule gives additional algebraic structure beyond the small-row
 and small-degree certificates**. Such structure must be measured or
 proved independently; it cannot be inferred merely from the
 number of measurement rows or the spectral construction's name.
+
+### Exact clause-tensor contraction, with an exposed rank obstruction
+
+The opt-in `eth/tensor_train.py` method
+`contract_certified_order_zero(formula, design, replacements, at=center)`
+evaluates the exact rational deformation value `H(center)`, using the
+same separately verified `certify_measurements` contract as Taylor
+evaluation. It is **not** a replacement for the positive-order
+Taylor/Hermite pipeline: derivatives are not implemented here.
+
+At a certified center, each signed literal's false-value is an additive
+sum of functions of individual group assignments,
+
+`f_(e,j)(x) = sum_g a_(e,j,g)(x_g)`.
+
+The terms are computed directly from owner-local coefficients and the
+certified foreign-group measurement lambdas. Thus
+
+`clause_e(x) = 1 - product_j sum_g a_(e,j,g)(x_g)`.
+
+A tensor train represents the unsatisfied-clause product by carrying a
+subset `S` of literals whose contributing group has already been
+selected. At group g, a transition `S -> T` (with S subset T)
+contributes `product_{j in T\\S} a_(e,j,g)(x_g)`. The initial and
+terminal states ensure each literal selects **exactly one** group.
+A separate constant channel supplies the leading 1. Therefore **one
+width-w clause has an exact representation with bond at most 2**w+1**
+without enumerating the cross product of all its group assignments.
+For 3-CNF this gives at most nine states, independent of r.
+
+To contract the complete formula, tensor trains are multiplied
+pointwise, then compressed using exact rational left/right rank
+factorizations. No floating-point threshold or approximation is
+permitted. The implementation tracks original and compressed bond
+sizes, clause-by-clause bond history, core size, rational arithmetic
+operations and maximum coefficient bits. `TensorLimits` bounds
+groups, individual group-mask domains, clauses, measurements, bond
+dimension, intermediate core entries, operations and coefficient bits.
+Capacity refusals are explicit; the original Taylor evaluator
+remains the independent correctness oracle. A local mask domain is
+still `2**|group|`, so compact bonds do not remove all exponentials.
+
+**Executed finite spectral evidence** (GitHub-hosted CPython 3.13,
+one-off run `42686688802`): every tensor value matched the independent
+exact separated Taylor value at the same center.
+
+| Spectral CNF | Center | Certified group graph | Final exact tensor bonds | Peak clause-product bond |
+|---|---:|---|---|---:|
+| cyclic 2-CNF, n=6,r=3,Q=2,R=2 | 1 | K3 | 3,3 | 4 |
+| cyclic 2-CNF, n=8,r=4,Q=2,R=2 | 2 | K4 | 2,4,4 | 4 |
+| cyclic 3-CNF, n=9,r=3,Q=3,R=2 | 1 | K3 | 7,8 | 8 |
+
+The K4 instance has dense group connectivity but non-maximal exact
+tensor rank. The n=9 case nearly saturates its local eight-state
+boundary, showing no universal rank reduction from the spectral
+construction at these sizes. The tensor benchmark measured 0.177 s
+on the K4 instance and 0.964 s on the n=9 center-1 instance under
+Python `tracemalloc`; these are construction plus contraction
+times, not a demonstrated speedup over variable elimination.
+None of these inputs meets the literal paper parameter admission.
+
+**Independent exact bond obstruction:** For the width-two formula
+
+`F_k = AND_{i=1..k}(x_i OR y_i)`,
+
+the central cut of the order `x_1,...,x_k,y_1,...,y_k` has truth
+matrix `[[0,1],[1,1]]**(tensor k)`. Its determinant is nonzero,
+so its exact matrix rank, and hence the minimum bond of any exact
+tensor train at that cut, is `2**k`. Merely interleaving each x_i
+with its matching y_i yields maximum bond 2 while preserving the
+exact count `3**k`. GitHub run `42687252831` verified k=1..4
+with rank progression 2,4,8,16 versus 2,2,2,2 and all correct counts.
+This is an ordering-sensitive representation lower bound, **not** a
+#SAT hardness lower bound, and not a counterexample to the paper's
+particular spectral construction.
+
+Reproduce:
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.eth.tensor_rank_probe
+PYTHONPATH=src:. python -m benchmarks.eth.tensor_bond_obstruction
+python -m pytest -q tests/eth/test_tensor_train.py tests/eth/test_tensor_bond_obstruction.py
+```
+
+The remaining question is whether an exact contraction ordering and
+the specific spectral coefficients jointly keep intermediate tensor
+ranks and local summation costs subexponential under the manuscript's
+**admitted** parameters. The finite results above establish neither
+that bound nor a practical worst-case implementation.
+
+
+A second matched, single-run benchmark (GitHub Actions
+`42688123022`, Python 3.13) measured the tensor path and the
+existing exact factorized Taylor evaluator under the **same**
+`tracemalloc` setup, after tightening rational-operation accounting.
+On cyclic 3-CNF with n=9,r=3,Q=3,R=2:
+
+| Center | Tensor seconds | Factorized Taylor seconds | Tensor traced peak | Factorized traced peak |
+|---:|---:|---:|---:|---:|
+| 1 | 0.552 | 1.277 | 426,640 B | 995,060 B |
+| 2 | 0.433 | 1.157 | 324,648 B | 896,972 B |
+| 3 | 0.281 | 0.865 | 216,936 B | 673,092 B |
+
+The n=8,K4 center-2 case measured 0.088 versus 0.095 seconds.
+These are one-run comparisons, not stable microbenchmark medians.
+They establish that the tensor representation can produce actual
+small-instance arithmetic savings, not that it is the best default
+or the paper's runtime result. Python remains the reference; no
+unproved native-kernel cutover is made.

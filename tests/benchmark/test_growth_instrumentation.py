@@ -85,3 +85,27 @@ def test_capacity_refusal_remains_capacity_refusal_with_probe():
     assert not probe.frames
     assert probe.records[0]['status']=='refused_or_failed'
     assert probe.records[0]['max_planned_scope']==7
+
+
+def test_saturated_weighted_domain_does_not_imply_sparse_factors():
+    # Identical factor scopes, positive mode weights, and precision. Only
+    # the supplied exact local oracle differs. A generic structural bound
+    # cannot assert that either factor has few nonzero rows.
+    n=10
+    dense=measure('parallel-dense',n)
+    sparse=measure('parallel-sparse',n)
+    for result,answer in ((dense,1<<n),(sparse,2)):
+        assert result['status']=='completed'
+        assert int(result['observed_exact_count'])==answer
+        growth=result['structural']
+        assert growth['max_global_weighted_mode_tuples']==(1<<n)
+        assert growth['exact_direct_child_evaluations']==2*(1<<n)
+        assert growth['planned_child_evaluations_upper_bound']==2*(1<<n)
+    # Every positive-weight admissible row can have a nonzero coefficient.
+    # Both versions evaluate every child factor *before* seeing its support.
+    assert dense['structural']['peak_factor_rows']==(1<<n)
+    assert sparse['structural']['peak_factor_rows']==2
+    assert dense['structural']['peak_simultaneous_retained_coefficients']==2*(1<<n)
+    assert sparse['structural']['peak_simultaneous_retained_coefficients']==4
+    assert (dense['ring_arithmetic']['all_ring_method_calls'] >
+            50*sparse['ring_arithmetic']['all_ring_method_calls'])

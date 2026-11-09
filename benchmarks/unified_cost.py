@@ -49,7 +49,7 @@ def sample_once(case_id: str, variant: str, mode: str) -> dict[str, Any]:
     from non_exponential_sudoku import ContractionEngine, CostLedger, WorkTrace
 
     case = get_case(case_id, variant)
-    ledger = CostLedger() if mode == "observed" else None
+    ledger = CostLedger(observe_operand_bits=True) if mode == "observed" else None
     trace = WorkTrace() if mode == "observed" else None
     engine = ContractionEngine(case.config, cost_ledger=ledger, work_trace=trace)
     if mode == "observed":

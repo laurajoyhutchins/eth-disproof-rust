@@ -13,6 +13,15 @@ from statistics import median
 from typing import Any
 
 PAIRS: tuple[tuple[str, str, str, str], ...] = (
+    ("scalar-e3-p17", "python", "cython", "ring-scalar"),
+    ("scalar-e12-p129", "python", "cython", "ring-scalar"),
+    ("scalar-e32-p521", "python", "cython", "ring-scalar"),
+    ("square-e3-p17", "python", "cython", "ring-square"),
+    ("square-e12-p129", "python", "cython", "ring-square"),
+    ("square-e32-p521", "python", "cython", "ring-square"),
+    ("dense-e3-p17", "python", "cython", "ring-dense"),
+    ("dense-e12-p129", "python", "cython", "ring-dense"),
+    ("dense-e32-p521", "python", "cython", "ring-dense"),
     ("sparse-grid3", "python", "cython", "sparse-elimination"),
     ("sparse-grid4", "python", "cython", "sparse-elimination"),
     ("dense-grid3", "python", "cython", "sparse-elimination"),
@@ -26,6 +35,11 @@ PAIRS: tuple[tuple[str, str, str, str], ...] = (
     ("sudoku-8wire", "reference", "leaf", "leaf-elimination"),
     ("nested-2wire", "reference", "leaf", "leaf-elimination"),
     ("crossing-4wire", "reference", "leaf", "leaf-elimination"),
+    ("parity-2wire", "plans", "leaf-plans", "compiled-leaf"),
+    ("sudoku-4wire", "plans", "leaf-plans", "compiled-leaf"),
+    ("sudoku-8wire", "plans", "leaf-plans", "compiled-leaf"),
+    ("nested-2wire", "plans", "leaf-plans", "compiled-leaf"),
+    ("crossing-4wire", "plans", "leaf-plans", "compiled-leaf"),
 )
 
 def results_from(files: list[Path]) -> dict[tuple[str, str], dict[str, Any]]:

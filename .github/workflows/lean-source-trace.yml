@@ -1,0 +1,82 @@
+name: Pinned upstream Lean source trace
+on:
+  push:
+    branches:
+      - 'verify/lean-native-trace-*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  direct-lean-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      UPSTREAM_COMMIT: 4eaee87548250b2682affda7d05d947c05554bae
+      MATHLIB_COMMIT: d13f23b723b8a846827a245b89c10fc7d3f11612
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned upstream source (partial tree, no edits)
+        uses: actions/checkout@v4
+        with:
+          repository: openai/math
+          ref: 4eaee87548250b2682affda7d05d947c05554bae
+          path: upstream
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            lean/OAI/Algorithms/SubexponentialSAT
+            lean/lean-toolchain
+            lean/lakefile.lean
+            lean/lake-manifest.json
+      - name: Check exact source and toolchain revisions
+        run: |
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_COMMIT"
+          grep -Fx 'leanprover/lean4:v4.34.1' upstream/lean/lean-toolchain
+          grep -F "$MATHLIB_COMMIT" upstream/lean/lake-manifest.json
+      - name: Install pinned Lean 4.34.1
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --no-modify-path --default-toolchain leanprover/lean4:v4.34.1
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Create minimal Mathlib-pinned overlay for upstream modules
+        run: |
+          mkdir -p lean-overlay
+          cp upstream/lean/lean-toolchain lean-overlay/lean-toolchain
+          ln -s "$GITHUB_WORKSPACE/upstream/lean/OAI" lean-overlay/OAI
+          cat > lean-overlay/lakefile.lean <<'EOF'
+          import Lake
+          open Lake DSL
+          package OAI where
+            leanOptions := #[⟨`autoImplicit, false⟩]
+          require mathlib from git
+            "https://github.com/leanprover-community/mathlib4.git" @ "d13f23b723b8a846827a245b89c10fc7d3f11612"
+          @[default_target] lean_lib OAI
+          EOF
+          # This overlay deliberately compiles exact upstream .lean files
+          # without pulling the unrelated 20+ dependencies of the giant OAI lakefile.
+      - name: Compile upstream finite Lean definitions and execute native traces
+        run: |
+          mkdir -p artifacts
+          cd lean-overlay
+          lake --version
+          lake update
+          lake exe cache get
+          lake build OAI.Algorithms.SubexponentialSAT.Encoding OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointSparsify OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointReuse.SparseCountProgram
+          lake env lean --run ../reference/lean_native_trace.lean > ../artifacts/lean-native-trace.txt
+          cat ../artifacts/lean-native-trace.txt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Independently compare Lean's executed bits with Python
+        run: |
+          python -m pip install -e '.[test]'
+          python -m scripts.compare_lean_trace --input artifacts/lean-native-trace.txt
+          python -m pytest -q tests/eth/test_lean_native_trace_contract.py
+      - name: Preserve direct Lean output and failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-lean-native-trace
+          path: artifacts/
+          if-no-files-found: warn

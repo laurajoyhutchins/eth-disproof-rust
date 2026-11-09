@@ -72,6 +72,7 @@ class LeafPlan:
     input_scopes: tuple[tuple[int, ...], ...]
     max_width: int
     steps: tuple[LeafStep, ...]
+    lookup_budget: int = 8192
 
 
 def compile_leaf_plan(edges: int, scopes: Sequence[Sequence[int]], max_width: int = 16,
@@ -129,10 +130,31 @@ def compile_leaf_plan(edges: int, scopes: Sequence[Sequence[int]], max_width: in
             factors[next_id] = out_scope
         next_id += 1
         remaining.remove(edge)
-    return LeafPlan(edges, normalized_scopes, max_width, tuple(steps))
+    return LeafPlan(edges, normalized_scopes, max_width, tuple(steps), lookup_budget)
 
 
-def _execute_leaf_plan(plan: LeafPlan, tables: dict[int, tuple[NestedCoords, ...]], ring: TensorRing) -> NestedCoords:
+def estimated_coefficient_bytes(ring: TensorRing) -> int:
+    """Conservative size estimate for one live (possibly nested) ring value."""
+    coordinates = ring.e
+    nested: TensorRing = ring
+    while isinstance(nested, JetRing):
+        coordinates *= nested.q
+        nested = cast(TensorRing, nested.base)
+    return max(64, coordinates * ((ring.p + 7) // 8 + 40) + 128)
+
+
+def _check_leaf_factor_budget(
+    entries: int, ring: TensorRing, max_factor_bytes: int | None,
+) -> None:
+    # Include simultaneously retained input tables and the next output table.
+    # This is an estimated storage guard, not a resident-memory measurement.
+    if (max_factor_bytes is not None and
+            entries * estimated_coefficient_bytes(ring) > max_factor_bytes):
+        raise CapacityError("Leaf factor memory budget exceeded")
+
+
+def _execute_leaf_plan(plan: LeafPlan, tables: dict[int, tuple[NestedCoords, ...]], ring: TensorRing,
+                       max_factor_bytes: int | None = None) -> NestedCoords:
     """Run exact elimination using topology compiled independently of values."""
     R = cast(NestedRing, ring)
     zero = R.zero
@@ -143,6 +165,10 @@ def _execute_leaf_plan(plan: LeafPlan, tables: dict[int, tuple[NestedCoords, ...
             scalar = R.mul(scalar, R.scalar(2))
             continue
         involved = [tables.pop(k) for k in step.incident]
+        _check_leaf_factor_budget(
+            sum(len(table) for table in tables.values()) +
+            sum(len(table) for table in involved) +
+            (1 << len(step.out_scope)), ring, max_factor_bytes)
         out: list[NestedCoords] = []
         if step.lookup is not None:
             for row in step.lookup:
@@ -198,7 +224,8 @@ def _execute_leaf_plan(plan: LeafPlan, tables: dict[int, tuple[NestedCoords, ...
 
 
 def eliminate_leaf(net: Network, R: TensorRing, max_edges: int = 20, max_width: int = 16, *,
-                   plan: LeafPlan | None = None) -> NestedCoords:
+                   plan: LeafPlan | None = None,
+                   max_factor_bytes: int | None = None) -> NestedCoords:
     """Exact factor-table elimination at a PAPER-ALLOWED exhaustive leaf.
 
     The parent call and all Cauchy/mode/Hermite transforms are unchanged.
@@ -208,6 +235,8 @@ def eliminate_leaf(net: Network, R: TensorRing, max_edges: int = 20, max_width: 
     it reverts to the paper's explicit leaf sum.
     """
     B = cast(NestedRing, R)
+    if max_factor_bytes is not None and max_factor_bytes < 1:
+        raise ValueError('Leaf factor memory budget must be positive')
     if net.edges>max_edges:
         raise CapacityError(f'Leaf has {net.edges} wires; limit is {max_edges}')
     if plan is not None:
@@ -224,6 +253,9 @@ def eliminate_leaf(net: Network, R: TensorRing, max_edges: int = 20, max_width: 
                 if scalar == B_plan.zero:
                     return scalar
                 continue
+            _check_leaf_factor_budget(
+                sum(len(table) for table in tables.values()) +
+                (1 << len(vertex.ports)), R, max_factor_bytes)
             values = tuple(_vertex_oracle(vertex,tuple((assignment >> j) & 1
                                                for j in range(len(vertex.ports))), R)
                            for assignment in range(1 << len(vertex.ports)))
@@ -231,7 +263,8 @@ def eliminate_leaf(net: Network, R: TensorRing, max_edges: int = 20, max_width: 
                 return B_plan.zero
             tables[index] = values
             index += 1
-        return B_plan.mul(scalar, _execute_leaf_plan(plan, tables, R))
+        return B_plan.mul(scalar, _execute_leaf_plan(
+            plan, tables, R, max_factor_bytes=max_factor_bytes))
 
     # Factor is (ordered edge scope, dense table indexed by bit position).
     factors: list[tuple[tuple[int, ...], tuple[NestedCoords, ...]]] = []
@@ -243,6 +276,9 @@ def eliminate_leaf(net: Network, R: TensorRing, max_edges: int = 20, max_width: 
             if scalar==B.zero:return scalar
             continue
         if len(ports)>max_width:return net.direct(R,max_edges)
+        _check_leaf_factor_budget(
+            sum(len(table) for _, table in factors) + (1 << len(ports)),
+            R, max_factor_bytes)
         values=tuple(_vertex_oracle(v,tuple((index>>i)&1 for i in range(len(ports))),R)
                      for index in range(1<<len(ports)))
         if all(t==B.zero for t in values):return B.zero
@@ -268,6 +304,9 @@ def eliminate_leaf(net: Network, R: TensorRing, max_edges: int = 20, max_width: 
         out_scope=tuple(sorted(set().union(*(factors[i][0] for i in incident)) - {edge}))
         if len(out_scope)>max_width:
             return net.direct(R,max_edges)
+        _check_leaf_factor_budget(
+            sum(len(table) for _, table in factors) + (1 << len(out_scope)),
+            R, max_factor_bytes)
         # The two complete assignments differing in the selected wire are
         # summed exactly, with no satisfiability pruning or approximation.
         compiled: list[tuple[list[int], tuple[NestedCoords, ...]]] = []

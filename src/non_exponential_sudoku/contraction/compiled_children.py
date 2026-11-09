@@ -17,6 +17,7 @@ from ..core.network import TensorRing
 from .children import ChildComponent
 from .packets import EvaluationContext
 from ..core.network import Network, Vertex
+from ..runtime.config import LeafConfig
 from .packets import PacketEntry, PacketGeometry, prepare_packet_geometry
 
 
@@ -40,7 +41,8 @@ class CompiledChildPlan:
                  component: ChildComponent | None = None,
                  edge_to_packet: dict[int, int] | None = None,
                  edge_to_slot: dict[int, int] | None = None,
-                 left_owner: dict[int, int] | None = None) -> None:
+                 left_owner: dict[int, int] | None = None,
+                 *, leaf: LeafConfig | None = None) -> None:
         self.net=net
         self.packing=packing
         self.group=group
@@ -89,7 +91,11 @@ class CompiledChildPlan:
         # Computed once per structural child plan; does not retain ring values.
         from ..core.network import compile_leaf_plan
         scopes=tuple(v.ports for v in kept) + tuple(spec.edges for spec in packet_ports)
-        self.leaf_plan=compile_leaf_plan(n,scopes) if n<=20 else None
+        policy = LeafConfig() if leaf is None else leaf
+        self.leaf_plan=(compile_leaf_plan(
+            n, scopes, max_width=policy.max_width,
+            lookup_budget=policy.lookup_entries)
+            if n <= policy.limit else None)
         # Validate once, independently of packet values. Every edge is owned
         # by precisely one kept vertex and precisely one packet tensor.
         left=[0]*n;right=[0]*n

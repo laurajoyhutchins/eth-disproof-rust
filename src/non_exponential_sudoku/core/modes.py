@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from .network import Network
 from .packing import Packing
 from math import ceil, comb
+from sys import getsizeof
 from .algebra import v2
 from ..runtime.budget import CapacityError
 
@@ -23,9 +24,22 @@ class Mode:
     rows: tuple[int,...]
 
 
-def mode_catalog(net: Network, packets: Packing, t: int, p: int, max_modes: int = 10000) -> list[Mode]:
+def mode_catalog(net: Network, packets: Packing, t: int, p: int,
+                 max_modes: int | None = None, *,
+                 max_catalog_bytes: int = 128 * 1024 * 1024) -> list[Mode]:
+    """Enumerate modes under a byte budget, without a global mode-count ceiling.
+
+    The estimate includes each owned mode, its dictionary, tile tuples, and
+    row tuple. Shared parent geometry and integer objects are not charged.
+    It is a conservative accounting guard, not a process RSS guarantee.
+    """
+    if max_modes is not None and (type(max_modes) is not int or max_modes < 1):
+        raise ValueError('Mode count limit must be positive or None')
+    if type(max_catalog_bytes) is not int or max_catalog_bytes < 1:
+        raise ValueError('Mode catalog byte budget must be positive')
     i=v2(t); a=packets.a; L=1<<a
-    modes=[]
+    modes: list[Mode] = []
+    used_bytes=0
     ol={edge:j for j,v in enumerate(net.left) for edge in v.ports}
     or_={edge:j for j,v in enumerate(net.right) for edge in v.ports}
     for k,packet in enumerate(packets.packets):
@@ -42,9 +56,17 @@ def mode_catalog(net: Network, packets: Packing, t: int, p: int, max_modes: int 
             assert all(g==target for x,_,g in rows if x in target_rows)
             for b in range(p-1):
                 if b>0 and not any(j>0 for _,j,_ in tile): break
-                modes.append(Mode(k,y0,b,source,target,b+1,
-                                  tuple((edge,j) for edge,j,_ in tile),tuple(target_rows)))
-                if len(modes)>max_modes: raise CapacityError('Mode catalog resource limit')
+                if max_modes is not None and len(modes) >= max_modes:
+                    raise CapacityError('Mode catalog resource limit')
+                mode=Mode(k,y0,b,source,target,b+1,
+                          tuple((edge,j) for edge,j,_ in tile),tuple(target_rows))
+                owned_bytes=(getsizeof(mode) + getsizeof(mode.__dict__)
+                             + getsizeof(mode.tile) + getsizeof(mode.rows)
+                             + sum(getsizeof(entry) for entry in mode.tile) + 8)
+                if used_bytes + owned_bytes > max_catalog_bytes:
+                    raise CapacityError('Mode catalog estimated-byte limit')
+                used_bytes += owned_bytes
+                modes.append(mode)
     return modes
 
 

@@ -4,6 +4,7 @@ This commit history is a constructed dependency exposition, not an
 account of implementation chronology."""
 
 from .contraction.engine import ContractionEngine
+from .runtime.cache import CachePolicy, SharedCacheBudget
 from .runtime.config import ContractorConfig, ModeConfig, ModeLimits, RecoveryConfig, PacketConfig, LeafConfig, RecursionConfig
 from .runtime.budget import CapacityError
 from .runtime.cost_ledger import CostLedger
@@ -18,4 +19,4 @@ from .sudoku.separators import count_structural, StructuralLimits, StructuralRes
 from .sudoku.weighted_zdd import contract_zdd, ZDDLimits, ZDDOrderLimits, ZDDResult, ZDDStats
 from .sudoku.hybrid import contract_hybrid, HybridLimits, HybridResult, HybridStats, HybridLayer
 
-__all__ = ['ContractionEngine', 'ContractorConfig', 'ModeConfig', 'ModeLimits', 'RecoveryConfig', 'PacketConfig', 'LeafConfig', 'RecursionConfig', 'CapacityError', 'CostLedger', 'WorkTrace', 'Padic', 'modulus_polynomial', 'Network', 'Vertex', 'simple_network', 'sudoku_network', 'count_frontier', 'FrontierCapacityError', 'FrontierLimits', 'FrontierResult', 'FrontierStats', 'count_suffix_graph', 'SuffixGraphLimits', 'SuffixGraphResult', 'SuffixGraphStats', 'count_components', 'ComponentLimits', 'ComponentResult', 'ComponentStats', 'count_structural', 'StructuralLimits', 'StructuralResult', 'StructuralStats', 'contract_zdd', 'ZDDLimits', 'ZDDOrderLimits', 'ZDDResult', 'ZDDStats', 'contract_hybrid', 'HybridLimits', 'HybridResult', 'HybridStats', 'HybridLayer']
+__all__ = ['CachePolicy', 'SharedCacheBudget', 'ContractionEngine', 'ContractorConfig', 'ModeConfig', 'ModeLimits', 'RecoveryConfig', 'PacketConfig', 'LeafConfig', 'RecursionConfig', 'CapacityError', 'CostLedger', 'WorkTrace', 'Padic', 'modulus_polynomial', 'Network', 'Vertex', 'simple_network', 'sudoku_network', 'count_frontier', 'FrontierCapacityError', 'FrontierLimits', 'FrontierResult', 'FrontierStats', 'count_suffix_graph', 'SuffixGraphLimits', 'SuffixGraphResult', 'SuffixGraphStats', 'count_components', 'ComponentLimits', 'ComponentResult', 'ComponentStats', 'count_structural', 'StructuralLimits', 'StructuralResult', 'StructuralStats', 'contract_zdd', 'ZDDLimits', 'ZDDOrderLimits', 'ZDDResult', 'ZDDStats', 'contract_hybrid', 'HybridLimits', 'HybridResult', 'HybridStats', 'HybridLayer']

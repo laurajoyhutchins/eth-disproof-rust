@@ -72,8 +72,8 @@ class Jet:
 class TaylorLimits:
     """Explicit caps for proof-of-identity research, not performance claims."""
 
-    max_variables: int = 12
-    max_taylor_order: int = 12
+    max_variables: int | None = None
+    max_taylor_order: int | None = None
     max_replacement_degree: int = 64
     max_occurrences: int = 2_000
     max_cached_corrections: int = 64
@@ -86,6 +86,8 @@ class TaylorLimits:
     def __post_init__(self) -> None:
         for field in self.__dataclass_fields__:
             value = getattr(self, field)
+            if value is None and field in ('max_variables', 'max_taylor_order'):
+                continue
             if type(value) is not int or value < (0 if field in (
                 'max_variables', 'max_taylor_order', 'max_replacement_degree') else 1):
                 raise ValueError(f'{field} must be a nonnegative/positive integer')
@@ -269,9 +271,10 @@ class _TaylorEvaluator:
         self.order = order
         self.limits = limits
         self.arithmetic = _JetArithmetic(limits, backend)
-        if type(order) is not int or order < 0 or order > limits.max_taylor_order:
+        if (type(order) is not int or order < 0 or
+                (limits.max_taylor_order is not None and order > limits.max_taylor_order)):
             raise CapacityError('ETH Taylor order limit')
-        if formula.nvars > limits.max_variables:
+        if limits.max_variables is not None and formula.nvars > limits.max_variables:
             raise CapacityError('ETH Taylor variable limit')
         if expected_pairs > limits.max_taylor_pairs:
             raise CapacityError('ETH Taylor pair limit')
@@ -407,9 +410,10 @@ def _make_evaluator(
     order: int, limits: TaylorLimits, pairs: int, backend: ArithmeticBackend,
 ) -> _TaylorEvaluator:
     check_arithmetic_backend(backend)
-    if type(order) is not int or order < 0 or order > limits.max_taylor_order:
+    if (type(order) is not int or order < 0 or
+                (limits.max_taylor_order is not None and order > limits.max_taylor_order)):
         raise CapacityError('ETH Taylor order limit')
-    if formula.nvars > limits.max_variables:
+    if limits.max_variables is not None and formula.nvars > limits.max_variables:
         raise CapacityError('ETH Taylor variable limit')
     if sum(len(clause) for clause in formula.clauses) > limits.max_occurrences:
         raise CapacityError('ETH Taylor clause occurrence limit')
@@ -459,7 +463,8 @@ def taylor_coefficients_separated(
     Sum over U subset E subset [n], |E|<=q, with alternating signs.
     The construction of valid measurement designs is *not* performed here.
     """
-    if type(order) is not int or order < 0 or order > limits.max_taylor_order:
+    if (type(order) is not int or order < 0 or
+                (limits.max_taylor_order is not None and order > limits.max_taylor_order)):
         raise CapacityError('ETH Taylor order limit')
     n = formula.nvars
     pairs = sum(comb(n, j) * (1 << j) for j in range(min(order, n) + 1))

@@ -163,7 +163,7 @@ at the program refinement level**.
 python -m pytest -q tests/eth/test_paper_admitted_witness.py
 python -m benchmarks.eth.paper_admitted_witness \
   --lambda-bits 17179869184 --finite-n 4096 \
-  --output artifacts/eth-paper-lean-admission.json
+  --output artifacts/eth-paper-admission.json
 ```
 
 The opt-in CNF scaling workflow preserves the JSON evidence,

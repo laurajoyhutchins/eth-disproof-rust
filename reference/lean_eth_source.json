@@ -1,0 +1,16 @@
+{
+  "repository": "openai/math",
+  "commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "toolchain": "leanprover/lean4:v4.34.1",
+  "files": {
+    "lean/lean-toolchain": "ba8ebf2dbaf6a668cd2a0e086186d6d569b69ff5",
+    "lean/OAI/Algorithms/SubexponentialSAT/Encoding.lean": "684229598d06d381ae27e4ca70421a46786deeca",
+    "lean/OAI/Algorithms/SubexponentialSAT/SAT.lean": "14dcfd0c910a08b005354da1fa66fbdac3ae7192",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DisjointSparsify.lean": "a27c236f92f75a54761f6990f44e762483ef85e6",
+    "lean/OAI/Algorithms/SubexponentialSAT/SubexpNormalizationCorrectness.lean": "20dc9f7a43f2e0b4d3f5b7a7133e7503b9068363",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/Final.lean": "a69635a2492e06a26f2e33d4251edd1e21ba3332",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeOuter.lean": "627c28896b614f70916d020d837defec0f42914f",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/FiniteFallback.lean": "1fc8e1817b4f24d3255ef8fc398fb2127d214284",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeLeafProgram.lean": "bdc142b5fec908abbf86355e02154444f4de8136"
+  }
+}

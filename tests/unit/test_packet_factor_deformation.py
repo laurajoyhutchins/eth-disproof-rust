@@ -18,7 +18,7 @@ from non_exponential_sudoku import (
 )
 from non_exponential_sudoku.core.network import Network, Vertex
 from non_exponential_sudoku.core.packing import pack
-from non_exponential_sudoku.sudoku.encoding import independently_evaluate_F
+from reference.sudoku_network_oracle import independently_evaluate_F
 from non_exponential_sudoku.contraction.packet_factorization import (
     compile_packet_deformation, evaluate_packet_deformation,
 )

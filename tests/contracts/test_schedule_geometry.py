@@ -3,7 +3,7 @@ from non_exponential_sudoku import ContractionEngine, ContractorConfig, ModeConf
 import unittest
 from itertools import product
 from reference.schedule import audit_power_of_two, log2_ceil, at_least_power_of_two
-from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+from reference.sudoku_network_oracle import port_graph_with_cross_mode
 from non_exponential_sudoku.core.packing import pack, audit_packing
 from non_exponential_sudoku.core.network import Network, Vertex
 from non_exponential_sudoku.contraction.children import child_edge_audit, make_child, ceil_ninth_tenths

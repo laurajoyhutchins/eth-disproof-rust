@@ -12,7 +12,7 @@ from non_exponential_sudoku.contraction.packets import EvaluationContext
 from non_exponential_sudoku.core.packing import pack
 from non_exponential_sudoku.core.modes import mode_catalog
 from non_exponential_sudoku.core.jets import JetRing
-from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+from reference.sudoku_network_oracle import port_graph_with_cross_mode
 from benchmarks.recursive_cases import get_case
 
 pytestmark=pytest.mark.checkpoint

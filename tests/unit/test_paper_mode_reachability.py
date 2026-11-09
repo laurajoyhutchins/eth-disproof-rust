@@ -13,7 +13,7 @@ import pytest
 from non_exponential_sudoku.contraction.engine import paper_schedule_parameters
 from non_exponential_sudoku.core.modes import Mode, mode_catalog, weighted_tuples
 from non_exponential_sudoku.core.packing import pack
-from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode
+from reference.sudoku_network_oracle import port_graph_with_cross_mode
 from non_exponential_sudoku.runtime.config import ContractorConfig
 from reference.packet_oracle_work import packet_evaluation_envelope
 from reference.paper_mode_reachability import (

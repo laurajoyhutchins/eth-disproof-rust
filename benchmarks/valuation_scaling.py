@@ -29,7 +29,7 @@ from non_exponential_sudoku import (
 from non_exponential_sudoku.contraction import engine as engine_module
 from non_exponential_sudoku.core.modes import Mode, mode_catalog
 from non_exponential_sudoku.core.packing import pack
-from non_exponential_sudoku.sudoku.encoding import independently_evaluate_F
+from reference.sudoku_network_oracle import independently_evaluate_F
 from non_exponential_sudoku.runtime.budget import CapacityError
 from reference.global_mode_support import exact_weighted_assignment_count
 from reference.legacy_mode_catalog import original_catalog

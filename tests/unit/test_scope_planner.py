@@ -11,14 +11,14 @@ from random import Random
 
 import pytest
 
-pytestmark = pytest.mark.checkpoint
-
 from non_exponential_sudoku.elimination.scope_plan import (
     EliminationScope,
     choose_min_domain,
     choose_min_width,
     inspect_scope,
 )
+
+pytestmark = pytest.mark.checkpoint
 
 
 def test_incident_scope_and_nonmutating_analysis() -> None:

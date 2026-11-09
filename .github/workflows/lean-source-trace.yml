@@ -1,8 +1,5 @@
 name: Pinned upstream Lean source trace
 on:
-  push:
-    branches:
-      - 'verify/lean-native-trace-*'
   workflow_dispatch:
 
 permissions:

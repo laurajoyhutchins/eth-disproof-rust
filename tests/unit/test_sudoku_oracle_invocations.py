@@ -237,3 +237,41 @@ def test_invalid_analytic_assumptions_fail_closed() -> None:
         original_oracle_invocation_envelope(
             proof, leaf_strategy="unknown",  # type: ignore[arg-type]
         )
+
+
+def test_actual_direct_and_compiled_children_retain_certified_source_identity() -> None:
+    from non_exponential_sudoku.contraction.children import compile_child, make_child
+    from non_exponential_sudoku.core.packing import pack
+
+    puzzle, root = _root(1)
+    ring = Padic(3, modulus_polynomial(3), 8)
+    packing = pack(root, 2, 1)
+    group = packing.groups_left[0][0]
+    source_oracles = {id(v.oracle) for v in root.left + root.right}
+    plan = compile_child(root, packing, group, 0)
+    for path in (None, plan):
+        child = make_child(
+            root, packing, [], (), 1, ring.one, ring,
+            group, 0, plan=path,
+        )
+        retained = audit_retained_original_oracles(puzzle, root, child)
+        assert retained == len(child.left)
+        assert all(id(v.oracle) in source_oracles for v in child.left)
+        assert all(id(v.oracle) not in source_oracles for v in child.right)
+
+
+def test_enumeration_path_never_charges_dense_table_preparation() -> None:
+    proof = certify_original_sudoku_oracles(*_root(1))
+    direct = original_oracle_invocation_envelope(
+        proof, leaf_strategy="enumerate",
+    )
+    eliminate = original_oracle_invocation_envelope(
+        proof, leaf_strategy="eliminate",
+    )
+    assert direct.per_potential_node_log2_ceiling == direct.direct_per_node_log2_ceiling
+    assert eliminate.per_potential_node_log2_ceiling >= direct.per_potential_node_log2_ceiling
+    assert direct.all_potential_nodes_bit_work_log2_ceiling is None
+    with pytest.raises(ValueError):
+        original_oracle_invocation_envelope(proof, extension_degree=3)
+    with pytest.raises(ValueError):
+        original_oracle_invocation_envelope(proof, precision=7)

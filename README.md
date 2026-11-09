@@ -22,6 +22,10 @@ The modules implement **distinct algorithms** with distinct resource models;
 there is no claim that they are interchangeable solvers or collectively imply
 a subexponential bound.
 
+See the [solver architecture and evidence map](docs/system-map.md) for the
+integrated algorithm families, reproducible experiments, PR lineage, and
+remaining proof obligations.
+
 ## Reproduce the claims
 
 ```bash
@@ -46,3 +50,21 @@ finished source tree** to make dependencies explainable, not to recreate the
 chronology of experimentation.
 
 **Licensing:** no redistribution license has been selected. See [licensing](docs/licensing.md).
+
+## Run a complete bounded CNF reference
+
+For a tiny executable path through disjoint leaves, count-preserving
+preprocessing, certified measurements, separated Taylor sums and Hermite
+recovery:
+
+```bash
+python -m scripts.eth_reference
+python -m scripts.eth_reference --dimacs example.cnf --output evidence.json
+python -m pytest -q tests/eth/test_end_to_end_pipeline.py
+```
+
+This is an **experimental finite-parameter reference**, not the manuscript's
+large-parameter theorem instantiation. It uses an explicitly recorded
+two-assignment base case only for at most one active variable, never a
+general brute-force or Ganak fallback. If any branch exceeds its budgets,
+the entire count refuses. See [ETH end-to-end semantics](docs/eth.md).

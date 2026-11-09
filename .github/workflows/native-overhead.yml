@@ -1,0 +1,32 @@
+name: Native overhead diagnostic
+
+on:
+  push:
+    branches:
+      - 'verify/native-overhead-*'
+  workflow_dispatch:
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install diagnostic dependencies
+        run: |
+          python -m pip install 'setuptools>=65'
+          python -m pip install -e '.[native,test]'
+      - name: Rebuild extensions
+        run: python build_native.py --force
+      - name: Profile native packet and leaf paths
+        run: python scripts/native_overhead_probe.py artifacts/native-overhead.json
+      - name: Retain diagnostic data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-overhead-diagnostic
+          path: artifacts/native-overhead.json
+          if-no-files-found: warn

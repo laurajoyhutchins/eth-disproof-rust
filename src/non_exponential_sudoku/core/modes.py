@@ -110,31 +110,6 @@ def mode_catalog(net: Network, packets: Packing, t: int, p: int,
 
 
 def weighted_tuples(modes: list[Mode], p: int) -> Iterator[tuple[int, ...]]:
-    """Iterative DFS of paper's weighted partitions, O(number of modes) space.
-
-    Python recursion depth must not limit the theorem's mode enumeration;
-    every partial assignment has an all-zero completion. No tuple cache.
-    """
-    n=len(modes)
-    if n==0:
-        yield ()
-        return
-    beta=[0]*n
-    remaining=[p-1]*(n+1)
-    maximum=[0]*n
-    index=0
-    maximum[0]=min(remaining[0]//modes[0].weight,len(modes[0].rows))
-    while index>=0:
-        if beta[index]>maximum[index]:
-            beta[index]=0
-            index-=1
-            if index>=0:beta[index]+=1
-            continue
-        remaining[index+1]=remaining[index]-modes[index].weight*beta[index]
-        if index==n-1:
-            yield tuple(beta)
-            beta[index]+=1
-        else:
-            index+=1
-            beta[index]=0
-            maximum[index]=min(remaining[index]//modes[index].weight,len(modes[index].rows))
+    """Exact weighted tuples; compatibility wrapper around shared feasibility."""
+    from .mode_assignments import iter_mode_assignments
+    yield from iter_mode_assignments(modes, p)

@@ -30,8 +30,10 @@ def _packet_may_be_nonzero(packet: PacketEntry, bits: tuple[int, ...]) -> bool:
     including any coefficient cancellations not proven structurally.
     """
     for mode, multiplicity, tile in packet.terms.tile_bits:
-        if multiplicity > 0 and mode.b >= 0 and not sum(
-            j ** mode.b for pos, j in tile if bits[pos]
+        # A potentially nonzero term keeps the factor possible.
+        # Never construct j**b: the exponent can be astronomically large.
+        if multiplicity > 0 and mode.b >= 0 and not any(
+            bits[pos] and (mode.b == 0 or j != 0) for pos, j in tile
         ):
             return False
     if not packet.terms.desired:

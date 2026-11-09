@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+@dataclass
+class Counters:
+    compiled_child_plans:int=0
+    child_plan_cache_hits:int=0
+    prepared_packet_hits:int=0
+    prepared_packet_misses:int=0
+    prepared_packet_evictions:int=0
+    prepared_packet_peak_entries:int=0
+    prepared_packet_peak_estimated_bytes:int=0
+    prepared_packet_oversize_skips:int=0
+    packet_entry_memo_hits:int=0
+    packet_entry_memo_misses:int=0
+    packet_entry_memo_evictions:int=0
+    packet_entry_memo_peak_estimated_bytes:int=0
+    recursive_calls:int=0
+    leaves:int=0
+    mode_tuples:int=0
+    child_networks:int=0
+    interpolation_evaluations:int=0
+    depth_counts:dict[int,int]=field(default_factory=dict)
+    active_paper_calls:int=0
+    active_depth_counts:dict[int,int]=field(default_factory=dict)
+    checked_child_edges:int=0
+    maximum_observed_child_degree:int=0
+    skipped_empty_groups:int=0
+    child_cache_hits:int=0
+    child_cache_misses:int=0
+    max_nested_jet_depth:int=0
+    max_jet_coordinates:int=0
+    adaptive_leaf_cutoffs:int=0
+    retained_jet_coefficients_peak:int=0
+    streaming_hermite_centers:int=0
+    packet_coefficient_requests:int=0
+    packet_coefficient_misses:int=0
+    packet_coefficient_mul_ops:int=0
+    packet_coefficient_peak_cached:int=0
+    packet_expression_nodes:int=0
+    packet_vectors_materialized:int=0
+    packet_checkpoint_coordinates:int=0
+    packet_checkpoint_peak_coordinates:int=0
+    packet_checkpoint_count:int=0
+    mode_dp_variables:int=0
+    mode_dp_groups:int=0
+    mode_dp_components:int=0
+    mode_dp_factors:int=0
+    mode_dp_local_child_evaluations:int=0
+    mode_dp_operations:int=0
+    mode_dp_eliminations:int=0
+    mode_dp_max_scope:int=0
+    mode_dp_peak_factor_states:int=0
+    mode_dp_peak_polynomial_terms:int=0
+    mode_dp_peak_estimated_bytes:int=0
+    mode_dp_final_polynomial_degree:int=-1
+    mode_dp_split_components:int=0
+    mode_dp_local_arity_before:int=0
+    mode_dp_local_arity_after:int=0
+    mode_dp_max_local_arity_after:int=0
+    mode_dp_order_fill_edges:int=0
+    mode_dp_order_scans:int=0
+    mode_dp_sparse_joins:int=0
+    mode_dp_sparse_join_rows:int=0
+    mode_dp_sparse_eliminations:int=0
+    mode_dp_peak_join_states:int=0

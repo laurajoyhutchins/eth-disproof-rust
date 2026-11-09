@@ -784,3 +784,132 @@ The remaining main risk is that intermediate polynomial bonds
 or rational coefficient bits grow too quickly as n and J increase.
 The tensor path does not yet improve the paper's asymptotic
 worst-case claim, even where it wins a finite instance.
+
+### Three exact contraction strategies on identical CNF families
+
+`benchmarks/eth/three_way_contraction.py` measures three exact,
+independently executable ETH Taylor evaluation strategies on the
+**same canonical CNF, same degree-one replacement polynomials, same
+variable partition, same certified integer measurement rows, same
+center t=1, and same Taylor order J**:
+
+1. `summation='eliminate'`: the complete Boolean differences
+   followed by group-mask factor elimination, with scopes counted
+   in **groups** and physical mask domain `2**|S_g|`
+2. `summation='fused'`: exact difference fusion followed by
+   elimination of factors over original Boolean **variables**
+3. `contract_certified_taylor`: exact truncated polynomial
+   tensor-train clause automata, compression by valuation-safe
+   rational jet module factorization, and summation over group masks
+
+The input families have two Boolean variables per group, and
+`P_e,l(T)=(1+T/7)*x_l` for every literal occurrence. Thus every
+deformation reduces exactly to the original CNF at T=0, including
+negative literals. Independent **exhaustive #SAT** checks each test
+case up to 12 variables and is not used inside any production
+evaluator. For n<=6 the independently evaluated full Boolean-cube
+deformation polynomial also checks each returned Taylor coefficient.
+Every other completed arm is checked coefficientwise against its
+independently implemented peers. Refusals remain explicit.
+
+Families include independent 2-clauses, a path of 2-clauses, an
+all-to-all positive clause graph among group boundary variables,
+a signed implication path, and a matching graph with both
+**separated** and **interleaved** group orderings. The matching
+variants use the **identical CNF and replacement polynomials** but
+different group orders. Both variable-elimination approaches
+remain low-width; tensor contraction can require exponentially
+different exact bonds at the bad versus good cut.
+
+**Executed GitHub-hosted reference evidence** on 2026-11-09:
+workflow `42701048824` (initial 15 cases, 24 tests and
+strict mypy across 75 source files passed), then extended workflow
+`42701715939` (24 cases, **28 tests passed**, strict mypy passed).
+Runs used CPython 3.13 and Python `tracemalloc`, with each arm
+measured separately after a garbage collection. Formula construction,
+the independent oracle and the family-generation setup are
+excluded from per-arm times, while center certification **is**
+included. Single-run timings are not robust performance medians.
+
+| Family | n | J | Group masks seconds | Fused variables seconds | Tensor jets seconds |
+|---|---:|---:|---:|---:|---:|
+| independent | 6 | 2 | 0.478 | **0.023** | 0.227 |
+| positive path | 6 | 2 | 0.799 | **0.015** | 0.159 |
+| clique | 6 | 2 | 1.255 | **0.021** | 0.276 |
+| signed path | 8 | 1 | 0.389 | **0.024** | 0.356 |
+| clique | 10 | 1 | 4.766 | **0.098** | 2.089 |
+| clique | 12 | 0 | **refused** | **0.158** | 3.524 |
+| matching, separated order | 12 | 0 | 0.046 | **0.030** | 1.094 |
+| matching, interleaved order | 12 | 0 | 0.047 | **0.030** | 0.539 |
+
+The 12-variable clique triggered `ETH Taylor factor table
+entry limit` under the fixed **256-entry** group-factor cap.
+The fused-variable evaluator retained no more than **32** factor
+entries; the tensor path completed with maximum final bond six.
+This is a genuine difference in finite representation costs under
+the chosen contracts, not a hardness separation or evidence that a
+generic variable-factor approach is polynomial time.
+
+On the matching formula, the exact count is **1,728** in both
+orders. Tensor final maximum bond was **8** with all left
+groups first, versus **2** with paired interleaving. Fused
+variable-factor work was **414 charged units** in both orderings,
+while tensor work fell from **33,396** to **16,100** charged units.
+The underlying matrix-rank obstruction is described earlier:
+an exact bond across the separated matching cut has rank 2**k;
+interleaving removes that particular width growth. This does
+not prove a lower bound for arbitrary contraction order.
+
+**Algebraic and bit-work accounting:** Every completed result records
+the strategy's scope basis; peak retained factor entries and induced
+scope, or tensor pre/post compression bonds and core entries; the
+maximum rational coefficient numerator/denominator bit size;
+a strategy-specific charged arithmetic work counter; exact Taylor
+coefficients; runtime and peak Python traced allocations.
+As a coarse diagnostic the benchmark also reports
+
+`bit_work_proxy = charged_work_units * max_coefficient_bits**2`.
+
+This is **NOT** measured machine bit operations, a proven bit-complexity
+upper bound, or a fully comparable count: the two factor evaluators
+and tensor evaluator use different counter conventions and may have
+different uncharged overhead. It is deliberately labeled as a
+proxy, not substituted for actual bit-complexity accounting.
+`tracemalloc` also does not represent full process RSS.
+
+**Fixed resource policy:** both classical factor routes use the same
+factor entry, total entry, work, jet-operation and rational-bit
+limits. Tensor contraction uses its own bond, core-entry,
+jet-coefficient-entry and rational-operation limits plus the
+same coefficient-bit ceiling. Factor entries and tensor bonds
+have different units and cannot share a meaningful numeric cap.
+All capacity refusals are recorded with exact reasons, and
+unexpected exceptions or coefficient mismatches fail the benchmark.
+The integration tests also force all three methods to refuse
+under individually tightened capacity limits. No method silently
+switches to brute force.
+
+**Claim boundary:** These are manually certified balanced designs.
+None meets the manuscript's full n-dependent schedule; the
+all-positive clique formulas have growing literal occurrences and
+are not used as bounded-occurrence theorem instances. The small
+size and changing Taylor order also prohibit extrapolating the
+table as an asymptotic rate. The observed fused-variable advantage
+is evidence for a better *current reference implementation* on
+these families, not a non-exponential worst-case #SAT result.
+The tensor result remains valuable as an independent algebraic
+representation and as an order-sensitive rank probe.
+
+Reproduce:
+
+```bash
+PYTHONPATH=src:. python -m pytest -q tests/eth/test_three_way_contraction.py
+PYTHONPATH=src:. python -m benchmarks.eth.three_way_contraction
+```
+
+The command emits machine-readable JSON for each family and
+refusal. Future serious bit-complexity conclusions require
+per-primitive operand-size instrumentation (including rational
+normalization and gcd work), peak retained *total* algebraic
+storage, and growing-order tests that preserve the same parameter
+regime. Until then, keep all three exact methods opt-in.

@@ -70,7 +70,7 @@ def probe() -> dict[str, object]:
     return {
         'status': 'measured-exact-projection-not-ETH-worst-case-bound',
         'cases': [_case(2, 2, count=True), _case(12, 2, count=True),
-                  _case(48, 8, count=False)],
+                  _case(48, 8, count=True)],
     }
 
 

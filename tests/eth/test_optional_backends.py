@@ -191,6 +191,9 @@ def test_flint_protocol_wiring_with_independent_sympy_matrix(monkeypatch: pytest
         def __mul__(self, other: MockPoly) -> MockPoly:
             return MockPoly((self.poly * other.poly).coefficients)
 
+        def __neg__(self) -> MockPoly:
+            return MockPoly((-self.poly).coefficients)
+
         def truncate(self, length: int) -> MockPoly:
             return MockPoly(self.poly.truncate(length - 1).coefficients)
 

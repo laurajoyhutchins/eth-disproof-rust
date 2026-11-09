@@ -80,7 +80,7 @@ class _NativePoly:
         return _NativePoly(self.value - other.value)
 
     def __neg__(self) -> _NativePoly:
-        return _NativePoly(self.value - (self.value + self.value))
+        return _NativePoly(-self.value)
 
     def __mul__(self, other: _NativePoly) -> _NativePoly:
         return _NativePoly(self.value * other.value)
@@ -101,6 +101,8 @@ def flint_polynomial_op(
     *, max_length: int | None = None,
 ) -> tuple[Fraction, ...]:
     """Exact FLINT polynomial operation, optionally truncated to length."""
+    if max_length is not None and (type(max_length) is not int or max_length < 1):
+        raise ValueError('max_length must be a positive integer')
     flint = require_flint()
     a = _poly(left, flint)
     b = _poly(right, flint)
@@ -114,8 +116,6 @@ def flint_polynomial_op(
     else:
         raise ValueError('unknown FLINT polynomial operation')
     if max_length is not None:
-        if type(max_length) is not int or max_length < 1:
-            raise ValueError('max_length must be a positive integer')
         result = result.truncate(max_length)
     return _coefficients(result)
 

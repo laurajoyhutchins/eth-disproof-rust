@@ -23,3 +23,25 @@ construction,parameters}.py` and their checkpoint tests. The goal is to make
 incorrect count preservation, inaccurate interpolation or unbounded
 intermediate work **falsifiable**, rather than hide it behind a single solver
 entrypoint.
+
+## Exact arithmetic representations
+
+The `Polynomial` and `Jet` classes are canonical, independent `Fraction`
+reference implementations. They never require FLINT. The optional FLINT
+backend retains `fmpq_poly` objects throughout the Boolean-cube deformation
+reference calculation and the incremental Hermite reconstruction. The
+restricted Taylor evaluator retains native truncated jets in the same way.
+
+Input coefficients cross into FLINT once per use, and full coefficients are
+exported to validated `Fraction` values only at public result boundaries.
+Export constructs fractions directly from integer numerators and denominators;
+there is no string conversion or floating-point intermediary. Native
+numerators and denominators are inspected at the same coefficient-bit
+checkpoints as the reference implementation. The operation ledger charges
+logical schoolbook work under **both** backends; its counts must not be
+interpreted as elapsed native instructions or a complexity improvement.
+
+Hermite uses a local, explicit truncation order on `fmpq_poly`, not FLINT's
+process-global series cap. Differential tests check exact results, refusal
+conditions, operation statistics, and the number of public exports. Ganak
+remains a separate, independent #SAT correctness oracle.

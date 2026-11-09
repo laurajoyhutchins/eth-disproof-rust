@@ -141,6 +141,11 @@ def test_source_pinned_evidence_serializes_without_misrepresenting_lean() -> Non
     assert report["claim_boundary"]["executed_virtual_cnf"] is False
     assert report["source"]["paper_commit"] == PAPER_COMMIT
     assert report["source"]["lean_theorem"] == LEAN_THEOREM
+    assert report["finite_copy_partition"]["copy_count"] == 256
+    assert report["finite_copy_partition"]["max_copy_variables"] == 16
+    assert report["finite_copy_partition"]["rank_upper_all_rational_centers"] == 256
+    assert report["finite_copy_partition"]["rank_upper_for_taylor_coefficient_order_2"] == 768
+    assert report["finite_copy_partition"]["full_spectral_tensor_constructed"] is False
 
 
 @pytest.mark.integration

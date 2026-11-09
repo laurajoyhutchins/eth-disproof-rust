@@ -234,3 +234,28 @@ def test_conditional_model_rejects_forged_original_oracle_type() -> None:
             cfg, edges=net.edges, vertices=proof.vertices,
             input_name_bits=proof.root_name_bits, original_sudoku=(puzzle, bad),
         )
+
+
+def test_full_tensor_product_preserves_direct_network_evaluation() -> None:
+    from reference.generalized_bench import canonical_solution
+
+    p = Puzzle(2, (0,) * 16)
+    original = DirectNetwork.from_puzzle(p)
+    net = sudoku_network(p)
+    ring = Padic(3, modulus_polynomial(3), 10)
+    rng = Random(20261109)
+    satisfying = tuple(original.witness_edges(canonical_solution(2)))
+    assignments = [satisfying]
+    assignments.extend(
+        tuple(rng.getrandbits(1) for _ in range(net.edges))
+        for _ in range(32)
+    )
+    for bits in assignments:
+        actual = ring.one
+        for vertex in net.left + net.right:
+            actual = ring.mul(
+                actual,
+                vertex.oracle(tuple(bits[e] for e in vertex.ports), ring),
+            )
+        assert actual == ring.scalar(original.evaluate(list(bits)))
+    assert original.evaluate(list(satisfying)) == 1

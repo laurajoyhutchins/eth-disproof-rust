@@ -1,4 +1,4 @@
-name: ETH operand bit accounting research gate
+name: ETH operand bit accounting complete matrix verification
 on:
   push:
     branches:
@@ -22,11 +22,21 @@ jobs:
         run: python -m mypy --strict --no-incremental
       - name: Exact operand replay and three-way differential
         run: PYTHONPATH=src:. python -m pytest -x -q tests/eth/test_rational_bit_accounting.py tests/eth/test_three_way_contraction.py
-      - name: Capture witnessed rational bit bound on a small exact case
+      - name: Reproduce complete sparse, dense and ordering-sensitive bit accounting
         run: |
-          PYTHONPATH=src:. python - <<'PY'
-          from benchmarks.eth.three_way_contraction import run_case
-          x = run_case("path", 2, 1)
-          for key, arm in x["strategies"].items():
-              print(key, arm["status"], arm.get("fraction_bit_accounting", {}))
+          PYTHONPATH=src:. python -m benchmarks.eth.three_way_contraction > /tmp/eth-three-way-bit.json
+          python - <<'PY'
+          import json
+          with open('/tmp/eth-three-way-bit.json', encoding='utf8') as handle:
+              all_cases = json.load(handle)['cases']
+          for case in all_cases:
+              print("CASE", case['family'], case['formula_variables'], case['polynomial_order'])
+              for name, arm in case['strategies'].items():
+                  trace = arm['fraction_bit_accounting']
+                  print("ARM", name, arm['status'], trace.get('reference_schoolbook_bit_steps_upper_bound'),
+                        trace.get('observed_rational_method_calls'),
+                        trace.get('euclidean_gcd_division_steps'),
+                        trace.get('maximum_reference_intermediate_integer_bits'),
+                        trace.get('uncovered_fraction_methods'),
+                        arm['elapsed_seconds'])
           PY

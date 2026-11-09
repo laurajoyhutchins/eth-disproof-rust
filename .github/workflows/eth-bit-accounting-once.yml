@@ -1,4 +1,4 @@
-name: ETH operand bit accounting complete matrix verification
+name: ETH operand-bit full strict research integration
 on:
   push:
     branches:
@@ -19,7 +19,9 @@ jobs:
       - name: Install exact reference and type checker
         run: python -m pip install -q -e '.[test,typecheck]'
       - name: Strict typing
-        run: python -m mypy --strict --no-incremental
+        run: |
+          python -m mypy --strict --no-incremental
+          python -m mypy --strict --no-incremental benchmarks/eth/rational_bit_accounting.py benchmarks/eth/three_way_contraction.py
       - name: Exact operand replay and three-way differential
         run: PYTHONPATH=src:. python -m pytest -x -q tests/eth/test_rational_bit_accounting.py tests/eth/test_three_way_contraction.py
       - name: Reproduce complete sparse, dense and ordering-sensitive bit accounting

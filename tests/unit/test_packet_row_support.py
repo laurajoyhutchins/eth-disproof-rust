@@ -12,6 +12,7 @@ from non_exponential_sudoku.contraction.children import make_child
 from non_exponential_sudoku.contraction.packets import EvaluationContext, PacketEntry
 from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
 from non_exponential_sudoku.core.modes import Mode, mode_catalog, weighted_tuples
+from non_exponential_sudoku.core.mode_assignments import iter_mode_assignments
 from non_exponential_sudoku.core.network import simple_network
 from non_exponential_sudoku.core.jets import NestedRing
 from non_exponential_sudoku.contraction.engine import ContractionEngine
@@ -77,10 +78,18 @@ def test_row_capped_generator_avoids_false_raw_domain_refusal() -> None:
                             domains=(range(2), range(2)), ring=cast(NestedRing, ring), stats=stats,
                             evaluate_child=lambda *_: ring.one, budget=budget,
                             packet_row_caps=True)
-    actual = tuple(builder.row_capped_assignments((0, 1), 'test', 0))
+    actual = tuple(iter_mode_assignments(
+        modes, ring.p, scope=(0, 1), target_groups=(0,), domains=builder.domains,
+        max_states=budget.max_states, capacity_error=CapacityError,
+        work=budget.work,
+    ))
     assert actual == ((0, 0), (0, 1), (1, 0))
     with pytest.raises(CapacityError, match='factor size limit'):
-        tuple(builder.row_capped_assignments((0, 1), 'source', 1))
+        tuple(iter_mode_assignments(
+            modes, ring.p, scope=(0, 1), target_groups=(1,), domains=builder.domains,
+            max_states=budget.max_states, capacity_error=CapacityError,
+            work=budget.work,
+        ))
 
 
 
@@ -232,8 +241,11 @@ def test_iterative_row_capped_enumerator_matches_independent_small_cases() -> No
             domains=domains, ring=cast(NestedRing, R), stats=Counters(),
             evaluate_child=lambda *_: R.one, budget=budget, packet_row_caps=True,
         )
-        actual = tuple(builder.row_capped_assignments(tuple(range(len(modes))),
-                                                      'differential', 0))
+        actual = tuple(iter_mode_assignments(
+            modes, p, target_groups=(0,), domains=builder.domains,
+            max_states=budget.max_states, capacity_error=CapacityError,
+            work=budget.work,
+        ))
         expected = tuple(beta for beta in product(*domains)
                          if sum(mode.weight * b for mode, b in zip(modes, beta)) < p
                          and passes_packet_row_caps(

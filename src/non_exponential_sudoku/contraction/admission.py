@@ -1,61 +1,66 @@
-"""Cheap, conservative preflight of mandatory first-factor child evaluations.
+"""Conservative preflight of *mandatory first-factor* child evaluations.
 
-Only the first local factor is guaranteed to be constructed: construction may
-return early when a preceding factor is identically zero. Nonzero-table sizes,
-work, peak memory, and all later recursive fanout are NOT bounded here.
-Runtime resource guards remain authoritative. This check can refuse only when
-the mandatory first factor alone provably exceeds its child-evaluation budget.
+All feasibility decisions use the same iterative assignment enumerator as
+factor construction and explicit summation. A bounded scan returning unknown
+must not reject; actual runtime resource guards remain authoritative.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal, Sequence
 
+from ..core.mode_assignments import iter_mode_assignments
 from ..core.modes import Mode
 from .planning import FactorizationPlan
 
 
 @dataclass(frozen=True)
 class AdmissionEstimate:
-    outcome: Literal["within_first_factor_limit", "refused", "unknown"]
+    outcome: Literal['within_first_factor_limit', 'refused', 'unknown']
     first_factor_assignments: int | None
     reason: str
+
+
+class _PreflightWorkCap(RuntimeError):
+    """Internal scan budget; never interpreted as mandatory excess work."""
 
 
 def estimate_first_factor(
     plan: FactorizationPlan, modes: Sequence[Mode], precision: int,
     *, max_child_evaluations: int, max_transitions: int = 20_000,
+    packet_row_caps: bool = False,
 ) -> AdmissionEstimate:
-    """Count first-factor weighted assignments, or return unknown within a work cap.
+    """Count actual mandatory scoped tuples, stopping once refusal is proved.
 
-    Each partial assignment can extend by zeros; an intermediate count over
-    budget is therefore a valid lower bound on final assignments. We never
-    pre-refuse on possible sparse-table size or on conditional later factors.
+    The initial factor is always materialized in full, even if zero. Later
+    factors may never be constructed. The row cap is justified only for a
+    genuine paper PacketEntry target, not arbitrary child oracles.
     """
-    if precision < 1 or max_child_evaluations < 1 or max_transitions < 1:
-        raise ValueError("admission limits and precision must be positive")
+    if (type(precision) is not int or precision < 1
+            or type(max_child_evaluations) is not int or max_child_evaluations < 1
+            or type(max_transitions) is not int or max_transitions < 1):
+        raise ValueError('admission limits and precision must be positive integers')
     if not plan.factors:
-        return AdmissionEstimate("within_first_factor_limit", 0, "no factors")
-    degrees = {0: 1}
+        return AdmissionEstimate('within_first_factor_limit', 0, 'no factors')
+    first = plan.factors[0]
     transitions = 0
-    for j in plan.factors[0].mode_indices:
-        m = modes[j]
-        if m.weight < 1:
-            raise ValueError("mode weights must be positive")
-        limit = min(len(m.rows), (precision - 1) // m.weight)
-        next_degrees: dict[int, int] = {}
-        for degree, count in degrees.items():
-            for beta in range(min(limit, (precision - 1 - degree) // m.weight) + 1):
-                transitions += 1
-                if transitions > max_transitions:
-                    return AdmissionEstimate("unknown", None, "preflight work cap reached")
-                target = degree + beta * m.weight
-                next_degrees[target] = min(max_child_evaluations + 1,
-                                           next_degrees.get(target, 0) + count)
-        degrees = next_degrees
-        total = sum(degrees.values())
-        if total > max_child_evaluations:
-            return AdmissionEstimate("refused", total,
-                                     "first factor exceeds child-contraction limit")
-    return AdmissionEstimate("within_first_factor_limit", sum(degrees.values()),
-                             "first factor fits child budget; remaining costs unknown")
+
+    def work() -> None:
+        nonlocal transitions
+        transitions += 1
+        if transitions > max_transitions:
+            raise _PreflightWorkCap
+
+    count = 0
+    try:
+        for _ in iter_mode_assignments(
+                modes, precision, scope=first.mode_indices,
+                target_groups=(first.group,) if packet_row_caps else (), work=work):
+            count += 1
+            if count > max_child_evaluations:
+                return AdmissionEstimate(
+                    'refused', count, 'first factor exceeds child-contraction limit')
+    except _PreflightWorkCap:
+        return AdmissionEstimate('unknown', None, 'preflight work cap reached')
+    return AdmissionEstimate(
+        'within_first_factor_limit', count, 'first factor fits child budget; remaining costs unknown')

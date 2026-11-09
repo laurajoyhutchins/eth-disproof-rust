@@ -132,7 +132,12 @@ class DeformationExecution:
             self.stats.mode_dp_local_arity_after += exc.total
             raise CapacityError(str(exc)) from exc
 
-        if self.config.limits.max_child_contractions < self.config.limits.max_factor_states:
+        # A raw weighted count includes target tuples which cannot fit rows.
+        # Only the actual paper/Python packet path has this degree guarantee.
+        packet_row_caps = (self.config.schedule == 'paper' and
+                           not self.config.recursion.native_packet)
+        if (not packet_row_caps and
+                self.config.limits.max_child_contractions < self.config.limits.max_factor_states):
             # Only refuse proven mandatory work; runtime guards stay authoritative.
             estimate = estimate_first_factor(
                 plan, modes, ring.p,
@@ -175,6 +180,7 @@ class DeformationExecution:
             order=self.config.mode.order,
             join_strategy=self.config.mode.join,
             native_sparse=self.config.mode.native_sparse,
+            packet_row_caps=packet_row_caps,
             limits=self.config.limits,
         ).run()
 

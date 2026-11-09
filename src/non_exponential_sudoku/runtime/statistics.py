@@ -29,6 +29,10 @@ class Counters:
     skipped_empty_groups:int=0
     child_cache_hits:int=0
     child_cache_misses:int=0
+    child_cache_peak_estimated_bytes:int=0
+    child_cache_evictions:int=0
+    child_plan_cache_peak_estimated_bytes:int=0
+    child_plan_cache_evictions:int=0
     max_nested_jet_depth:int=0
     max_jet_coordinates:int=0
     adaptive_leaf_cutoffs:int=0

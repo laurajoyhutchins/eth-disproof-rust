@@ -266,18 +266,23 @@ def summarize(rows: list[dict[str, Any]], repeats: int) -> dict[str, Any]:
     for mode in MODES:
         if sum(row.get("mode") == mode for row in rows) != repeats:
             raise ValueError("Missing baseline/observed arm")
+    allowed = ("verified", "capacity_refusal", "timeout")
+    arm_outcomes = {row["mode"]: row.get("status") for row in rows}
     outcomes = {row.get("status") for row in rows}
-    if len(outcomes) != 1 or next(iter(outcomes)) not in (
-        "verified", "capacity_refusal", "timeout",
-    ):
-        raise ValueError("Failed, inconsistent, or unrecognized worker outcome")
-    outcome = next(iter(outcomes))
+    if not outcomes.issubset(set(allowed)):
+        raise ValueError("Failed or unrecognized worker outcome")
     expected = rows[0]["expected_count"]
-    if outcome == "verified":
-        if any(row.get("exact_count") != expected for row in rows):
-            raise ValueError("Worker exact count disagrees with independent oracle")
-    elif any(row.get("exact_count") is not None for row in rows):
-        raise ValueError("Noncompletion was misreported as an exact count")
+    for row in rows:
+        if row["status"] == "verified":
+            if row.get("exact_count") != expected:
+                raise ValueError("Worker exact count disagrees with independent oracle")
+        elif row.get("exact_count") is not None:
+            raise ValueError("Noncompletion was misreported as an exact count")
+    # A baseline completion and traced timeout is a real, useful observation.
+    # It is NOT a valid paired speed comparison or a complete verified case.
+    # Keep both raw outcomes rather than silently deleting one or inventing
+    # a comparable duration.
+    outcome = next(iter(outcomes)) if len(outcomes) == 1 else "discordant_outcomes"
 
     def med(mode: str, field: str) -> float | None:
         values = [row.get(field) for row in rows if row["mode"] == mode]
@@ -296,12 +301,18 @@ def summarize(rows: list[dict[str, Any]], repeats: int) -> dict[str, Any]:
         "summation": rows[0]["summation"],
         "expected_count": expected,
         "outcome": outcome, "answer_verified": outcome == "verified",
+        "arm_outcomes": arm_outcomes if repeats == 1 else {
+            mode: [row["status"] for row in rows if row["mode"] == mode]
+            for mode in MODES
+        },
         "repeats_per_arm": repeats,
         "median_duration_ns_by_arm": times,
         "median_process_rss_bytes_by_arm": rss,
         "median_python_traced_peak_bytes": med("observed", "peak_python_traced_bytes"),
         "instrumentation_walltime_ratio": ratio,
-        "interpretation": "medians are per-process observations, not a worst-case bound",
+        "interpretation": ("discordant outcomes forbid a paired speed comparison"
+                           if outcome == "discordant_outcomes" else
+                           "medians are per-process observations, not a worst-case bound"),
     }
 
 

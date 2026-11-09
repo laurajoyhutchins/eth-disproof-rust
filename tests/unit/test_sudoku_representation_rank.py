@@ -153,3 +153,13 @@ def test_mode_projection_matches_real_catalog_on_small_sudoku(precision: int) ->
 def test_invalid_unit_cut_fails_closed(side: int, cut: int) -> None:
     with pytest.raises(ValueError):
         unit_subset_rank(side, cut)
+
+
+@pytest.mark.checkpoint
+def test_25x25_rank_is_large_even_after_subset_compression() -> None:
+    row = audit_sudoku_representation(5, with_packing=False)
+    assert row["side"] == 25
+    assert row["original_boolean_wires"] == 9375
+    assert row["unit_arity_bits"] == 125
+    assert row["projected_unit_cut_rank"] == 5200300
+    assert row["dense_unit_table_entries"] == (1 << 125)

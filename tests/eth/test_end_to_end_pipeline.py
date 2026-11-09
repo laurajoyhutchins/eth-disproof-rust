@@ -166,3 +166,51 @@ def test_factorized_taylor_is_equal_on_integrated_branched_input() -> None:
     assert result.count == count_bruteforce(formula) == 5
     assert result.summation == 'eliminate'
     assert any(leaf.method == 'certified-construction' for leaf in result.leaves)
+
+
+@pytest.mark.integration
+def test_leaf_factor_evidence_matches_actual_taylor_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Inspect exactly the completed per-center results used by the pipeline.
+    # A zero tuple count in elimination mode must not hide exponential factor
+    # assignment work behind an apparently empty report.
+    import non_exponential_sudoku.eth.pipeline as pipeline
+
+    original = pipeline.count_from_manual_designs
+    observed = []
+
+    def record(*args, **kwargs):
+        result = original(*args, **kwargs)
+        observed.append(result)
+        return result
+
+    monkeypatch.setattr(pipeline, 'count_from_manual_designs', record)
+    formula = CNFFormula(3, ((1, 2), (1, 3)))
+    report = count_cnf_reference(
+        formula, config=replace(ReferencePipelineConfig(), summation='eliminate'),
+    )
+    assert report.count == count_bruteforce(formula) == 5
+    constructed = [leaf for leaf in report.leaves
+                   if leaf.method == 'certified-construction']
+    base = [leaf for leaf in report.leaves
+            if leaf.method == 'two-assignment-base']
+    assert len(observed) == len(constructed) >= 1
+    assert base
+    for leaf, reconstructed in zip(constructed, observed):
+        stats = [value.stats for value in reconstructed.taylor_data]
+        assert leaf.factor_assignments_tested == sum(
+            item.factor_assignments_tested for item in stats)
+        assert leaf.factor_scope_peak == max(
+            (item.factor_scope_peak for item in stats), default=0)
+        assert leaf.factor_entries_peak == max(
+            (item.factor_entries_peak for item in stats), default=0)
+        assert leaf.factor_eliminations == sum(
+            item.factor_eliminations for item in stats)
+        assert leaf.measurement_tuples == 0
+        assert leaf.factor_assignments_tested > 0
+    for leaf in base:
+        assert leaf.factor_assignments_tested == 0
+        assert leaf.factor_scope_peak == 0
+        assert leaf.factor_entries_peak == 0
+        assert leaf.factor_eliminations == 0

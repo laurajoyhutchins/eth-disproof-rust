@@ -22,12 +22,15 @@ def selected_pairs():
 @pytest.mark.parametrize('case_id,variant',selected_pairs(),
   ids=[name+'-'+var for name,var in selected_pairs()])
 def test_exact_cover_timing(case_id,variant,benchmark):
+    rounds=int(os.environ.get('SUDOKU_BENCHMARK_ROUNDS','3'))
+    if rounds < 3:
+        raise ValueError('SUDOKU_BENCHMARK_ROUNDS must be >= 3')
     case=prepare(case_id,variant)
     case.validate()
     benchmark.group=case_id
     benchmark.extra_info.update({'benchmark.case':case_id,'benchmark.variant':variant,
        'benchmark.parameters':case.parameters,'benchmark.expected':str(case.expected)[:256],
-       'benchmark.duration.unit':'s','warmup_rounds':1,'timing_rounds':3,
+       'benchmark.duration.unit':'s','warmup_rounds':1,'timing_rounds':rounds,
        'garbage_collection':'disabled','iterations_per_round':1})
     benchmark.pedantic(lambda operation:operation(),
-          setup=lambda:((case.operation_factory(),),{}),rounds=3,warmup_rounds=1)
+          setup=lambda:((case.operation_factory(),),{}),rounds=rounds,warmup_rounds=1)

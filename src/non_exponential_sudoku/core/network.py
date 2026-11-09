@@ -231,14 +231,18 @@ def eliminate_leaf(net: Network, R: TensorRing, max_edges: int = 20, max_width: 
     The parent call and all Cauchy/mode/Hermite transforms are unchanged.
     This is only a different evaluation order of the same Boolean contraction
     at the base case. It computes all local tables and sums a variable after
-    multiplying its incident tables. If an intermediate scope is too wide,
-    it reverts to the paper's explicit leaf sum.
+    multiplying its incident tables. The edge limit caps *exhaustive fallback*,
+    not safe elimination with a supplied factor-memory budget. If a factor or
+    separator is too wide, the bounded direct fallback may explicitly refuse.
     """
     B = cast(NestedRing, R)
     if max_factor_bytes is not None and max_factor_bytes < 1:
         raise ValueError('Leaf factor memory budget must be positive')
-    if net.edges>max_edges:
-        raise CapacityError(f'Leaf has {net.edges} wires; limit is {max_edges}')
+    # The edge cap limits exhaustive enumeration, not structural elimination.
+    # For a larger network, require the existing explicit factor-memory guard
+    # before evaluating any vertex or allocating a factor table.
+    if net.edges > max_edges and max_factor_bytes is None:
+        raise CapacityError('Large elimination requires an explicit factor-memory budget')
     if plan is not None:
         scopes = tuple(v.ports for v in net.left + net.right if v.ports)
         if plan.edges != net.edges or plan.input_scopes != scopes or plan.max_width != max_width:

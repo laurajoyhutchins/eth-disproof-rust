@@ -228,9 +228,9 @@ def unfolding_rank(
         for b in right_masks:
             assignment = a | b
             value = Fraction(1)
-            for clause, forms in zip(formula.clauses, prepared):
+            for clause, prepared_occurrences in zip(formula.clauses, prepared):
                 unsatisfied = Fraction(1)
-                for literal, coefficients in zip(clause, forms):
+                for literal, coefficients in zip(clause, prepared_occurrences):
                     linear = Fraction(0)
                     for variable, coefficient in enumerate(coefficients):
                         if assignment & (1 << variable):

@@ -38,7 +38,7 @@ def mode_catalog(net: Network, packets: Packing, t: int, p: int,
     if type(max_catalog_bytes) is not int or max_catalog_bytes < 1:
         raise ValueError('Mode catalog byte budget must be positive')
     i=v2(t); a=packets.a; L=1<<a
-    modes=[]
+    modes: list[Mode] = []
     used_bytes=0
     ol={edge:j for j,v in enumerate(net.left) for edge in v.ports}
     or_={edge:j for j,v in enumerate(net.right) for edge in v.ports}

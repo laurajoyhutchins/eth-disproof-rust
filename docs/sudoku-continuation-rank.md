@@ -11,6 +11,30 @@ Executable small-instance evidence:
 The upstream structural-width result is in
 [Sudoku frontier width](sudoku-frontier-width.md).
 
+## Prior result and precise generalization
+
+The complement-set method here did **not** originate with this theorem.
+[PR #55](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/55)
+had already proved that the valid-digit **single-unit** all-different
+matricization has rank `C(n,k)` over every field, with a complement-subset
+decomposition and an identity minor. The source is
+[the unit-rank proof](sudoku-representation-rank.md), verified independently by
+`reference/sudoku_unit_rank.py` and
+`tests/unit/test_sudoku_representation_rank.py`.
+
+[PR #83](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/83)
+extends the *compatibility principle*, not the single-unit binomial
+rank formula: it combines the complement condition **consistently across
+all crossing rows, columns, and boxes**, then uses witnesses from complete
+Sudoku solutions to prove a global identity minor. The resulting
+global rank is the number of **extendable** crossing-unit signatures,
+which is generally **not** `C(n,k)`. Its own test suite independently
+checks these global witnesses rather than substituting the unit-rank
+tests for a global argument.
+
+See the [canonical claim inventory](claims.md) for the scope,
+dependencies, and unresolved complexity questions.
+
 ## 1. Finite-cut residual functions
 
 Fix a Sudoku of side `n=b**2`, a complete order of its `N=n**2`
@@ -58,7 +82,9 @@ prefixes and unextendable legal prefixes have zero rows. Hence there
 are at most `|S_k|` distinct nonzero rows and
 `rank_F(H_k) <= |S_k|`.
 
-**Lower bound.** For each `s in S_k`, choose a prefix `P_s` and
+**Lower bound (global complement witness).** The single-unit complement
+condition was established in [the unit-rank proof](sudoku-representation-rank.md).
+Here it must hold simultaneously in every crossing unit. For each `s in S_k`, choose a prefix `P_s` and
 a complete Sudoku witness whose suffix is `Y_s`. For a crossing
 unit `U`, let `p_U` be its number of prefix cells. Since a
 complete Sudoku uses every digit exactly once in `U`, the suffix

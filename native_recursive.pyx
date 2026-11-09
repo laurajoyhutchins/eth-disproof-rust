@@ -97,6 +97,21 @@ cdef class _RingArithmetic:
 
 
 
+
+cdef inline bint _can_finish(object encoded, tuple desired,
+                              list strides, list minimums,
+                              object min_total):
+    """Necessary condition for a partial monomial to reach the target."""
+    cdef Py_ssize_t k
+    cdef object digit, degree=0
+    for k in range(len(desired)):
+        digit=(encoded//strides[k])%(desired[k]+1)
+        if digit<minimums[k]:
+            return False
+        degree+=digit
+    return degree>=min_total
+
+
 def packet_evaluate(tuple bits, object ring, tuple left_positions,
                     tuple row_cauchy, object contributions, tuple desired,
                     tuple tile_slots, tuple right_positions,
@@ -118,6 +133,11 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
     cdef object pow_=ring.pow, scalar=ring.scalar
     cdef object v, local, const, coef, new, val, state, key, term, value
     cdef object row, entry, m, b, tile
+    cdef object target_degree=sum(desired), min_total, encoded
+    cdef list support=[], available=[0]*n, lower, eligible
+    cdef object allowed_mask
+    cdef set indices
+    cdef bint impossible=False, restrict
     for k in range(n):
         strides.append(cap)
         cap *= desired[k]+1   # Python's int arithmetic for products if needed.
@@ -165,11 +185,45 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
                     term=add(term,scalar(coef**m.b))
             value=mul(value,pow_(term,b))
         return value
+    # A packet row is a linear polynomial in the target modes: it can
+    # increase at most one exponent, regardless of how many terms it has.
+    # Count each mode at most once per row, even with duplicate entries.
+    # Counts are upper bounds: cancellation can only reduce true support.
+    for row in contributions:
+        indices=set()
+        for k,coef in row:
+            if desired[k] and coef!=zero:
+                indices.add(k)
+        support.append(tuple(indices))
+        for k in indices:
+            available[k]+=1
+    impossible=(target_degree>len(left_positions) or
+                any(desired[k]>available[k] for k in range(n)))
     ops=_RingArithmetic(ring)
-    if cap<=512:
+    if impossible:
+        # Still apply source tile factors below: this maintains the same
+        # caller-visible ring computation and backend contract.
+        value=zero
+    elif cap<=512:
         states=[zero]*cap
         states[0]=one
         for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):
+            for k in support[x]:
+                available[k]-=1
+            lower=[max(0,desired[k]-available[k]) for k in range(n)]
+            min_total=max(0,target_degree-(len(left_positions)-x-1))
+            # Dense states are bounded to 512. Materialize only monomials
+            # that can still reach the target, before doing ring arithmetic.
+            allowed_mask=None
+            if min_total or any(lower):
+                eligible=[0]
+                for k in range(n):
+                    eligible=[encoded+digit*strides[k] for encoded in eligible
+                              for digit in range(lower[k],desired[k]+1)]
+                allowed_mask=bytearray(cap)
+                for encoded in eligible:
+                    if _can_finish(encoded,desired,strides,lower,min_total):
+                        allowed_mask[encoded]=1
             local=zero
             for y,coef in row:
                 if bits_right[y]:
@@ -185,14 +239,19 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
                 v=states[step]
                 if v==zero:
                     continue
-                new=ops.mul(v,const)
-                if new!=zero:
-                    nxt_dense[step]=ops.add(nxt_dense[step],new)
+                if const!=zero and (allowed_mask is None or allowed_mask[step]):
+                    new=ops.mul(v,const)
+                    if new!=zero:
+                        nxt_dense[step]=ops.add(nxt_dense[step],new)
                 for k,coef in active:
+                    if coef==zero:
+                        continue
                     stride=strides[k]
                     if (step//stride)%(desired[k]+1)>=desired[k]:
                         continue
                     key=step+stride
+                    if allowed_mask is not None and not allowed_mask[key]:
+                        continue
                     new=ops.mul(v,coef)
                     if new!=zero:
                         nxt_dense[key]=ops.add(nxt_dense[key],new)
@@ -201,6 +260,11 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
     else:
         coeffs={0:one}
         for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):
+            for k in support[x]:
+                available[k]-=1
+            lower=[max(0,desired[k]-available[k]) for k in range(n)]
+            min_total=max(0,target_degree-(len(left_positions)-x-1))
+            restrict=bool(min_total or any(lower))
             local=zero
             for y,coef in row:
                 if bits_right[y]:
@@ -213,14 +277,22 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
                 active=tuple((k,ops.neg(coef)) for k,coef in contributions[x])
             nxt={}
             for state,v in coeffs.items():
-                new=ops.mul(v,const)
-                if new!=zero:
-                    nxt[state]=ops.add(nxt.get(state,zero),new)
+                if v==zero:
+                    continue
+                if (const!=zero and
+                    (not restrict or _can_finish(state,desired,strides,lower,min_total))):
+                    new=ops.mul(v,const)
+                    if new!=zero:
+                        nxt[state]=ops.add(nxt.get(state,zero),new)
                 for k,coef in active:
+                    if coef==zero:
+                        continue
                     stride=strides[k]
                     if (state//stride)%(desired[k]+1)>=desired[k]:
                         continue
                     key=state+stride
+                    if restrict and not _can_finish(key,desired,strides,lower,min_total):
+                        continue
                     new=ops.mul(v,coef)
                     if new!=zero:
                         nxt[key]=ops.add(nxt.get(key,zero),new)

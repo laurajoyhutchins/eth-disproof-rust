@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -119,3 +123,31 @@ def test_invalid_pipeline_parameters_are_rejected() -> None:
         ReferencePipelineConfig(r=1)
     with pytest.raises(ValueError, match='backend'):
         ReferencePipelineConfig(backend='float')  # type: ignore[arg-type]
+
+
+def test_cli_dimacs_count_and_fail_closed_json(tmp_path: Path) -> None:
+    source = tmp_path / 'case.cnf'
+    destination = tmp_path / 'evidence.json'
+    source.write_text(CNFFormula(2, ((1, 2),)).to_dimacs())
+    completed = subprocess.run(
+        [sys.executable, '-m', 'scripts.eth_reference', '--dimacs', str(source),
+         '--output', str(destination)],
+        capture_output=True, text=True, check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    report = json.loads(destination.read_text())
+    assert report['status'] == 'completed'
+    assert report['count'] == 3
+    assert report['leaves'][0]['method'] == 'certified-construction'
+
+    source.write_text(CNFFormula(3, ((1, 2), (1, 3))).to_dimacs())
+    refused = subprocess.run(
+        [sys.executable, '-m', 'scripts.eth_reference', '--dimacs', str(source),
+         '--max-leaves', '1', '--output', str(destination)],
+        capture_output=True, text=True, check=False,
+    )
+    assert refused.returncode == 2, refused.stderr
+    report = json.loads(destination.read_text())
+    assert report['status'] == 'capacity_refusal'
+    assert report['count'] is None
+    assert 'leaf evaluation' in report['error']

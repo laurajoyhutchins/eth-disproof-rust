@@ -18,7 +18,6 @@ remain independent mathematical oracles and the default implementation.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from fractions import Fraction
 from itertools import product
 from typing import TYPE_CHECKING
 
@@ -102,11 +101,11 @@ def contract_fused_taylor(
                 false_literal = (arithmetic.sub(evaluator.one, linear)
                                  if literal > 0 else linear)
                 unsatisfied = arithmetic.mul(unsatisfied, false_literal)
-            factor = arithmetic.sub(evaluator.one, unsatisfied)
+            clause_value = arithmetic.sub(evaluator.one, unsatisfied)
             evaluator.clause_evaluations += 1
             evaluator.tried += 1
-            if not arithmetic.is_zero(factor):
-                table[assignment] = factor
+            if not arithmetic.is_zero(clause_value):
+                table[assignment] = clause_value
                 evaluator.matching += 1
         factors.append(_Factor(scope, table))
         record(factors)

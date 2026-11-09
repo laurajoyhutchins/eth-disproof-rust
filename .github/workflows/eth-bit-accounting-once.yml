@@ -1,4 +1,4 @@
-name: ETH operand-bit full strict research integration
+name: ETH operand-bit strict type-repaired final matrix
 on:
   push:
     branches:

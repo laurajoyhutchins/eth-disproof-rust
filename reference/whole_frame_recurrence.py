@@ -140,6 +140,15 @@ class ConditionalPaperRecurrence:
         for frame in reversed(self.frames[:-1]):
             local = log2_sum_ceiling(frame.log2_named_local_work_ceiling, polynomial_log)
             tail = log2_sum_ceiling(local, frame.log2_child_calls_ceiling + tail)
+        # Even under the hypothetical polynomial bit-work per ring call,
+        # the number of generated packet-entry ring calls need not be
+        # polynomial. Charge the complete conditional potential-tree count,
+        # rather than hiding its exponent inside an assumed glue term.
+        packets = self.paper_packet_outer_ring_call_envelope
+        if packets is not None:
+            tail = log2_sum_ceiling(
+                tail, packets.log2_total_outer_ring_calls + polynomial_log,
+            )
         return tail
 
 

@@ -162,6 +162,23 @@ truncated-series inversion, and exact rational cancellation matter.
 constructing a full interpolant. These identities do not discharge
 total bit complexity or the inherited-oracle cost.
 
+**A more specific parity-lift connection [Direct algebraic identity].**
+The closed-form coefficients in `eth/parity_lift.py` make the polynomial
+`p_ell(Y)` a Chinese-remainder idempotent for the two Boolean neighborhoods.
+Put `h=Y*(Y-1)` and
+`G(h)=sum_{j=0}^{ell-1} (-1)**j * binom(2*j,j) * h**j`.
+Then `p_ell(Y)=(1+(1-2*Y)*G(h))/2` and
+`G(h) = (1+4*h)**(-1/2) mod h**ell`.
+Because `1+4*h=(1-2*Y)**2`, we have
+`p_ell(Y) = 1 mod Y**ell` and
+`p_ell(Y) = 0 mod (Y-1)**ell`, hence
+`p_ell**2=p_ell mod (Y*(Y-1))**ell`.
+The apparent division by two cancels to integral coefficients, as the
+source's central-binomial formula shows. This is a local-ring/CRT
+projector identity, not a proof that the **full** parity-lift #SAT path
+is implemented or inexpensive. It suggests testing direct
+functional readouts without globally constructing the interpolant.
+
 **15. Derandomization by conditional expectation [Direct].** Noga Alon
 and Joel H. Spencer, *The Probabilistic Method*, 3rd ed. (2008),
 [book PDF](https://math.bme.hu/~gabor/oktatas/SztoM/AlonSpencer.ProbMethod3ed.pdf).

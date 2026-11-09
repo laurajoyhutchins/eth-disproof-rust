@@ -26,7 +26,7 @@ from .admission import estimate_first_factor
 from .child_evaluator import ChildEvaluator
 from .packets import EvaluationContext
 from ..runtime.work_trace import WorkTrace
-from .planning import ComponentCapacityExceeded, build_factorization_plan
+from .planning import ComponentCapacityExceeded, FactorizationPlan, build_factorization_plan
 
 if TYPE_CHECKING:
     from .engine import ContractionEngine
@@ -43,14 +43,17 @@ class DeformationExecution:
     def evaluate_deformation(
         self, net: Network, packing: Packing, modes: list[Mode], t: int,
         z: NestedCoords, ring: TensorRing, depth: int,
+        *, factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None = None,
     ) -> NestedCoords:
         with (self.cost_ledger.phase("deformation") if self.cost_ledger is not None
               else nullcontext()):
-            return self._evaluate_deformation_impl(net, packing, modes, t, z, ring, depth)
+            return self._evaluate_deformation_impl(
+                net, packing, modes, t, z, ring, depth, factor_plan_cache)
 
     def _evaluate_deformation_impl(
         self, net: Network, packing: Packing, modes: list[Mode], t: int,
         z: NestedCoords, ring: TensorRing, depth: int,
+        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None,
     ) -> NestedCoords:
         coordinate = v2(t)
         context = EvaluationContext(
@@ -77,6 +80,7 @@ class DeformationExecution:
                 return self._eliminate_modes(
                     net, packing, modes, t, z, ring, depth,
                     coordinate, occupied, affected, context,
+                    factor_plan_cache,
                 )
             return self._sum_modes(
                 net, packing, modes, t, z, ring, depth,
@@ -90,14 +94,20 @@ class DeformationExecution:
         z: NestedCoords, ring: TensorRing, depth: int, coordinate: int,
         occupied: set[int], affected: dict[int, tuple[int, ...]],
         context: EvaluationContext,
+        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None,
     ) -> NestedCoords:
         self.stats.skipped_empty_groups += packing.r - len(occupied)
+        cache_key = (coordinate, ring.p)
+        plan = factor_plan_cache.get(cache_key) if factor_plan_cache is not None else None
         try:
-            plan = build_factorization_plan(
-                net, packing, modes, coordinate, occupied, affected,
-                strategy=self.config.mode.factorization,
-                max_components=self.config.limits.max_components,
-            )
+            if plan is None:
+                plan = build_factorization_plan(
+                    net, packing, modes, coordinate, occupied, affected,
+                    strategy=self.config.mode.factorization,
+                    max_components=self.config.limits.max_components,
+                )
+                if factor_plan_cache is not None:
+                    factor_plan_cache[cache_key] = plan
         except ComponentCapacityExceeded as exc:
             # Partial planning statistics remain observable on refusal.
             self.stats.mode_dp_local_arity_before = max(

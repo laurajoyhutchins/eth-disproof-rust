@@ -28,6 +28,17 @@ def test_inherited_packet_name_budget_is_included_in_whole_frame_cost() -> None:
     assert model.max_single_path_oracle_name_bits == bound.max_visible_name_bits
     assert model.max_single_path_oracle_name_bits > root_names
     assert all(frame.vertices <= bound.max_vertices for frame in model.frames)
+    packet = model.paper_packet_outer_ring_call_envelope
+    assert packet is not None
+    assert packet.log2_potential_nodes == model.log2_recursive_calls_ceiling
+    assert packet.log2_total_outer_ring_calls == (
+        packet.log2_potential_nodes
+        + packet.log2_outer_ring_calls_per_potential_leaf
+    )
+    assert packet.log2_ring_calls_per_packet_entry >= (
+        packet.log2_reachable_coefficient_states
+    )
+    assert packet.universal_bit_bound_proven is False
     assert 'input_oracle_bit_contract_and_uniform_metadata' in model.open_premises
     with pytest.raises(UnclosedRecurrence):
         model.require_complete_theorem()

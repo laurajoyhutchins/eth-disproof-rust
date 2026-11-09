@@ -1,0 +1,24 @@
+name: ETH restricted projector rank one-off
+
+on:
+  push:
+    branches:
+      - research/eth-spectral-origin-readout
+    paths:
+      - .github/workflows/eth-rank-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  rank:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Exact restricted-rowspace rank audit
+        run: |
+          PYTHONPATH=src:. python -c 'from benchmarks.eth.projector_probe import rank_audit; import json; print(json.dumps(rank_audit(), indent=2))'

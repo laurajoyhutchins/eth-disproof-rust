@@ -11,6 +11,10 @@
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/Final.lean": "a69635a2492e06a26f2e33d4251edd1e21ba3332",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeOuter.lean": "627c28896b614f70916d020d837defec0f42914f",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/FiniteFallback.lean": "1fc8e1817b4f24d3255ef8fc398fb2127d214284",
-    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeLeafProgram.lean": "bdc142b5fec908abbf86355e02154444f4de8136"
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeLeafProgram.lean": "bdc142b5fec908abbf86355e02154444f4de8136",
+    "lean/OAI/Algorithms/SubexponentialSAT/ExecSparsifyWorklist.lean": "2eb73009358e6583628f19c9df2a0871bce0cddc",
+    "lean/OAI/Algorithms/SubexponentialSAT/ExecQuantitativeSparsify.lean": "b20c2936800f976fea1035def1727e85070e4ee9",
+    "lean/OAI/Algorithms/SubexponentialSAT/ExecCNF.lean": "e60f4d986bbff369b486d42f02bba5227db418cc",
+    "lean/OAI/Algorithms/SubexponentialSAT/ExecSunflowerSearch.lean": "7f3985ea14724d97b1542749b5e044811336d208"
   }
 }

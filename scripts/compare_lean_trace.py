@@ -9,7 +9,7 @@ import argparse
 from pathlib import Path
 
 from non_exponential_sudoku.eth.cnf import CNFFormula
-from non_exponential_sudoku.eth.lean_wire import encode_lean_cnf
+from non_exponential_sudoku.eth.lean_wire import encode_lean_cnf, _encode_nat, _encode_list
 from non_exponential_sudoku.eth.sparsification import _children
 
 
@@ -38,12 +38,25 @@ def expected() -> dict[str, str]:
         "negativeA": na,
         "negativeB": nb,
     }
+    def state(visits: int, pending: tuple[CNFFormula, ...],
+              leaves: tuple[CNFFormula, ...]) -> str:
+        return _bits(
+            _encode_nat(visits)
+            + _encode_list(pending, encode_lean_cnf)
+            + _encode_list(leaves, encode_lean_cnf)
+        )
+
     return {
         **{name: _bits(encode_lean_cnf(formula))
            for name, formula in formulas.items()},
         "truthSource": _truth(shared),
         "truthA": _truth(a),
         "truthB": _truth(b),
+        "dfs0": state(0, (shared,), ()),
+        "dfs1": state(1, (a, b), ()),
+        "dfs2": state(2, (b,), (a,)),
+        "dfs3": state(3, (), (b, a)),
+        "dfsRun": state(3, (), (b, a)),
     }
 
 

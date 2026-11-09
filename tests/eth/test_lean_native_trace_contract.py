@@ -9,7 +9,7 @@ from scripts.compare_lean_trace import compare, expected, parse_trace
 @pytest.mark.checkpoint
 def test_source_trace_fixture_contract() -> None:
     pairs = expected()
-    assert len(pairs) == 11
+    assert len(pairs) == 16
     assert all(set(value) <= {'0', '1'} for value in pairs.values())
     fixture = '\n'.join(f"{name}|{bits}" for name, bits in pairs.items())
     compare(fixture)

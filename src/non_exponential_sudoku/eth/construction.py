@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from fractions import Fraction
 from functools import lru_cache
 from itertools import combinations, product
-from math import comb, floor, gcd, lcm
+from math import comb, floor
 from typing import Literal, Sequence
 
 from non_exponential_sudoku.runtime.budget import CapacityError
@@ -25,6 +25,7 @@ from .cnf import CNFFormula
 from .design import MeasurementDesign, certify_measurements
 from .polynomial import ONE, ZERO, Polynomial, ReplacementForm, ReplacementSystem
 from .parameters import (PaperAdmission, audit_bounded_cnf)
+from .projected_gram import projected_group_basis
 
 
 @dataclass(frozen=True, slots=True)
@@ -428,76 +429,14 @@ def _projected_group_rows(
     filled_copy: dict[AuxiliaryLabel, int],
     group: tuple[int, ...],
 ) -> tuple[tuple[int, ...], ...]:
-    """Integer basis of restricted exceptional row space, without selectors.
+    """Exact projected exceptional rowspace, with integer Gram bit bounds.
 
-    For the full orthogonal exceptional projector P=B^T B, restriction by
-    a coordinate/incidence map A gives G=A^T P A=(BA)^T (BA).  Over the
-    rationals, rowspace(G)=rowspace(BA), exactly the span of ALL original
-    exceptional measurement rows on this group.  Primitive integral
-    Gram rows preserve that rowspace.  We retain only independent rows.
+    Its source-correspondent fraction-free implementation records
+    polynomial intermediate minor, arithmetic-work and bit-storage
+    ceilings without creating the virtual auxiliary matrix.
     """
-    positions = {v: i for i, v in enumerate(group)}
-    labels_by_variable: dict[int, list[AuxiliaryLabel]] = {}
-    for label, variable in filled_copy.items():
-        if variable in positions:
-            labels_by_variable.setdefault(variable, []).append(label)
-    variables = tuple(v for v in group if v in labels_by_variable)
-    if not variables:
-        return ()
-    # Cache entries because the same label pairs recur across variables.
-    @lru_cache(maxsize=None)
-    def kernel(left: AuxiliaryLabel, right: AuxiliaryLabel) -> Fraction:
-        return auxiliary.exceptional_projector_at(left, right)
+    return projected_group_basis(auxiliary, filled_copy, group).rows
 
-    # Build the Gram matrix, then its exact reduced row-echelon basis.
-    # A primitive raw Gram row may have coefficients as large as 2**Q
-    # even if its rowspace is all of Q^k.  In the full-rank case RREF
-    # returns the unit-coordinate basis, with D=1 instead.
-    matrix: list[list[Fraction]] = []
-    for variable in variables:
-        row = [Fraction(0) for _ in group]
-        for target in variables:
-            row[positions[target]] = sum(
-                (kernel(left, right)
-                 for left in labels_by_variable[variable]
-                 for right in labels_by_variable[target]),
-                Fraction(0),
-            )
-        matrix.append(row)
-
-    rank = 0
-    for column in range(len(group)):
-        selected = next((i for i in range(rank, len(matrix))
-                         if matrix[i][column]), None)
-        if selected is None:
-            continue
-        matrix[rank], matrix[selected] = matrix[selected], matrix[rank]
-        scale = matrix[rank][column]
-        matrix[rank] = [value / scale for value in matrix[rank]]
-        for i, row in enumerate(matrix):
-            if i == rank:
-                continue
-            factor = row[column]
-            if factor:
-                matrix[i] = [a - factor * b
-                             for a, b in zip(row, matrix[rank])]
-        rank += 1
-        if rank == len(matrix):
-            break
-
-    basis: list[tuple[int, ...]] = []
-    for row in matrix[:rank]:
-        common_denominator = 1
-        for value in row:
-            common_denominator = lcm(common_denominator, value.denominator)
-        integers = [int(value * common_denominator) for value in row]
-        common_divisor = 0
-        for integer in integers:
-            common_divisor = gcd(common_divisor, abs(integer))
-        if common_divisor == 0:
-            raise ArithmeticError('zero row in projected measurement basis')
-        basis.append(tuple(value // common_divisor for value in integers))
-    return tuple(basis)
 
 def _tensor_entry(
     label: tuple[tuple[int, int], ...], selected: tuple[int, ...],

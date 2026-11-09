@@ -270,3 +270,36 @@ The current strict paper entrypoint still uses selector measurements;
 projected Gram/RREF transfer, balancing work, all recursive children,
 resource-cap non-refusal and large intermediate ranks need independent
 cost and totality proofs. The complete theorem acceptance remains RED.
+
+## Projected Gram and fraction-free basis bit bound
+
+[The exact projected Gram reference](eth-projected-gram-bit-bound.md)
+now proves a polynomial bound for the actual projected restricted
+Gram/RREF stage. The implementation scales every exceptional
+projector entry by `2**Q`, constructs an integer Gram matrix
+over the occupied labels, and uses exact fraction-free Montante
+elimination instead of `Fraction` Gaussian RREF. Each stored
+intermediate is a signed matrix minor; determinantal bounds limit
+its bit length to
+
+```
+k * (Q + 4 + 2*ceil_log2(ell+1) + ceil_log2(k+1)) + 4
+```
+
+for `k` active variables and at most `ell` occupied labels in
+a copy. Symbolic cost and storage bounds include projector oracle
+queries, exact integer pivots, Euclidean row normalization,
+the projector cache, and retained primitive rows. Under the
+paper's *conditional* balancing group-size inequality, at most
+`Q*r*ell` such stages are invoked, each with
+`k <= min(ceil(2*n/r), ell)`, so this stage has polynomial
+bit-machine work and storage in the manuscript's admissible
+numeric parameter regime.
+
+The reference has an independently checked source correspondence
+to the previous rational rowspace algorithm and preserves the
+real projected measurement certificates. **This does not validate
+the selector-mode strict paper constructor**, independent
+balancing totality, the rest of the transfer, or the recursive
+contraction's worst-case bit/memory recurrence. The complete
+non-exponential theorem gate remains RED.

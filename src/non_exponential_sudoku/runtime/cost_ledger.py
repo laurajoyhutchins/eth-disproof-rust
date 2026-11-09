@@ -9,15 +9,28 @@ aggregate counters continue to be updated.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, TypeAlias
 import json
 from pathlib import Path
 
 Status = Literal["completed", "refused", "failed", "running"]
+RingCallKey: TypeAlias = tuple[str, str, str, int | None, int | None, int, int]
+
+
+def _ring_call_label(key: RingCallKey) -> str:
+    phase, kind, operation, precision, e, q, depth = key
+    return f"{phase}/{kind}.{operation}/p={precision}/e={e}/q={q}/depth={depth}"
+
+
+def _render_ring_calls(values: Mapping[RingCallKey, int]) -> dict[str, int]:
+    """Format structured ring counters only at the human/JSON boundary."""
+    return dict(sorted((_ring_call_label(key), count) for key, count in values.items()))
+
+
 _ACTIVE: ContextVar[CostLedger | None] = ContextVar("sudoku_cost_ledger", default=None)
 
 
@@ -34,7 +47,7 @@ class CostFrame:
     exception: str | None = None
     # Exclusive counters: operations performed in this frame, NOT its descendants.
     work: dict[str, int] = field(default_factory=dict)
-    ring_calls: dict[str, int] = field(default_factory=dict)
+    ring_calls: dict[RingCallKey, int] = field(default_factory=dict)
     native_calls: dict[str, int] = field(default_factory=dict)
     peaks: dict[str, int] = field(default_factory=dict)
 
@@ -45,7 +58,7 @@ class CostFrame:
             "precision": self.precision, "ring_depth": self.ring_depth,
             "schedule": self.schedule, "status": self.status,
             "exception": self.exception, "work": dict(sorted(self.work.items())),
-            "ring_calls": dict(sorted(self.ring_calls.items())),
+            "ring_calls": _render_ring_calls(self.ring_calls),
             "native_calls": dict(sorted(self.native_calls.items())),
             "peaks": dict(sorted(self.peaks.items())),
         }
@@ -87,7 +100,7 @@ class CostLedger:
         self._stack: list[CostFrame] = []
         self._phases: list[str] = []
         self.total_work: Counter[str] = Counter()
-        self.total_ring_calls: Counter[str] = Counter()
+        self.total_ring_calls: Counter[RingCallKey] = Counter()
         self.global_peaks: dict[str, int] = {}
         self.frames_observed = 0
         self.centers_observed = 0
@@ -121,7 +134,7 @@ class CostLedger:
         # Preserve precision: a method call at p=4000 is not comparable to p=9.
         e = getattr(ring, "e", None)
         q = getattr(ring, "q", 1)
-        key = f"{phase}/{kind}.{operation}/p={precision}/e={e}/q={q}/depth={depth}"
+        key: RingCallKey = (phase, kind, operation, precision, e, q, depth)
         self.total_ring_calls[key] += 1
         if self._stack:
             frame = self._stack[-1]
@@ -256,7 +269,7 @@ class CostLedger:
             "detail_complete": reconciled and self.truncated_centers == 0,
             "counts_by_depth": dict(sorted(counts_by_depth.items())),
             "work_totals": dict(sorted(self.total_work.items())),
-            "ring_call_totals": dict(sorted(self.total_ring_calls.items())),
+            "ring_call_totals": _render_ring_calls(self.total_ring_calls),
             "global_peaks": dict(sorted(self.global_peaks.items())),
             "opaque_native_calls": dict(sorted(self.native_paths.items())),
             "refusals": dict(sorted(self.refusals.items())),

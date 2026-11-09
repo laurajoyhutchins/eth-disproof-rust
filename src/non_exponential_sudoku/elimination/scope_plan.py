@@ -43,10 +43,9 @@ def inspect_scope(
     incident = tuple(
         index for index, scope in enumerate(factor_scopes) if variable in scope
     )
-    union = (
-        set().union(*(factor_scopes[index] for index in incident))
-        if incident else {variable}
-    )
+    union: set[int] = {variable}
+    for index in incident:
+        union.update(factor_scopes[index])
     joined = tuple(sorted(union))
     output = tuple(v for v in joined if v != variable)
     return EliminationScope(variable, incident, joined, output)

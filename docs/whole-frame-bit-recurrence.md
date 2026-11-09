@@ -207,9 +207,14 @@ do not eliminate the original input-oracle cost premise. See
 
 The integrated proof checker reports these **unclosed** obligations:
 
-1. A uniform bit-cost contract for the *original* Sudoku vertex oracles,
-   and a polynomial bound on transitive inherited oracle metadata. Arbitrary
-   Python callbacks do not have uniform finite cost.
+1. A uniform bit-cost contract for *all* inherited oracle invocations.
+   The canonical direct Sudoku encoder now uses immutable, fixed-program
+   `CellEntryOracle` and `UnitEntryOracle` callbacks. The source-checked
+   `reference/sudoku_oracle_cost.py` gives a polynomial **one-pass** bound,
+   and the inherited descriptor/name bound is established along a successful
+   paper path. The outstanding obligation is to bound the *total number*
+   of original callbacks across each local frame, as well as arbitrary
+   `Network` callbacks. These may not be charged as free operations.
 2. Source-to-proof correspondence for all packing, component partitioning,
    factor planning, mode ordering and allocation/hash work. The local
    envelopes count arithmetic but do not certify all language-runtime work.

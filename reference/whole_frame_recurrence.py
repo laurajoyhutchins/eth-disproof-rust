@@ -12,6 +12,13 @@ from dataclasses import dataclass
 from math import isqrt
 from typing import Final
 
+from non_exponential_sudoku.core.network import Network
+from non_exponential_sudoku.sudoku.three_cnf import Puzzle
+from reference.sudoku_oracle_cost import (
+    UncertifiedSudokuInput, certify_original_sudoku_oracles,
+    original_oracle_bit_work_per_pass,
+)
+
 from non_exponential_sudoku.contraction.engine import paper_schedule_parameters
 from non_exponential_sudoku.runtime.config import ContractorConfig
 from reference.nested_ring_bit_cost import finite_shape_bit_envelope
@@ -86,6 +93,11 @@ class ConditionalPaperRecurrence:
     early_numeric_fallback_leaf_edge_ceiling: int
     max_single_path_oracle_descriptors: int
     max_single_path_oracle_name_bits: int
+    # Optional verified original-input ABI, a ONE-PASS entry-cost ceiling.
+    # Not a charge for the number of times a whole recursive frame invokes
+    # those entries, and not a bound on generated PacketEntry callbacks.
+    sudoku_original_oracle_per_pass_bit_work: int | None = None
+    sudoku_original_oracle_scalar_calls_per_pass: int | None = None
     open_premises: tuple[str, ...] = OPEN_PREMISES
 
     def require_complete_theorem(self) -> None:
@@ -208,6 +220,7 @@ def _active_frame(frame: PaperFrameEnvelope, config: ContractorConfig,
 def assemble_paper_recurrence(
     config: ContractorConfig, *, edges: int, vertices: int,
     input_name_bits: int,
+    original_sudoku: tuple[Puzzle, Network] | None = None,
 ) -> ConditionalPaperRecurrence:
     """Join the named paper lemmas, retaining explicit unproved obligations.
 
@@ -239,6 +252,32 @@ def assemble_paper_recurrence(
     if lineage.max_visible_name_bits is None:
         raise UnclosedRecurrence('root input-name bit contract required')
     frames = paper_frame_envelopes(config, edges, vertices)
+    original_work: int | None = None
+    original_calls: int | None = None
+    if original_sudoku is not None:
+        if type(original_sudoku) is not tuple or len(original_sudoku) != 2:
+            raise UnclosedRecurrence('original Sudoku requires puzzle and original Network')
+        try:
+            certificate = certify_original_sudoku_oracles(
+                original_sudoku[0], original_sudoku[1],
+            )
+        except (UncertifiedSudokuInput, AssertionError) as exc:
+            raise UnclosedRecurrence('uncertified original Sudoku oracle ABI') from exc
+        if (certificate.wires != edges or certificate.vertices != vertices
+                or certificate.root_name_bits > input_name_bits):
+            raise UnclosedRecurrence('original Sudoku root shape/metadata mismatch')
+        if config.precision < certificate.cells * certificate.digit_width + 1:
+            raise UnclosedRecurrence('original Sudoku exact-count precision insufficient')
+        lambda_bits = max(1, (config.s - 1).bit_length())
+        extension_degree = max(2, 4 * lambda_bits)
+        largest_precision = max(
+            max(frame.precision, frame.child_precision) for frame in frames
+        )
+        original_work = original_oracle_bit_work_per_pass(
+            certificate, extension_degree=extension_degree,
+            precision=largest_precision,
+        )
+        original_calls = certificate.per_pass_scalar_calls
     if any(frame.vertices > lineage.max_vertices for frame in frames):
         raise UnclosedRecurrence('frame vertex envelope violates inherited oracle bound')
     # paper_frame_envelopes emits only potential active frames followed by
@@ -275,4 +314,5 @@ def assemble_paper_recurrence(
     return ConditionalPaperRecurrence(
         config.s, tuple(result), count_log, fanout_log, fallback,
         lineage.max_vertices, lineage.max_visible_name_bits,
+        original_work, original_calls,
     )

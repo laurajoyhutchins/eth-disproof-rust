@@ -22,6 +22,10 @@ The modules implement **distinct algorithms** with distinct resource models;
 there is no claim that they are interchangeable solvers or collectively imply
 a subexponential bound.
 
+See the [solver architecture and evidence map](docs/system-map.md) for the
+integrated algorithm families, reproducible experiments, PR lineage, and
+remaining proof obligations.
+
 ## Reproduce the claims
 
 ```bash

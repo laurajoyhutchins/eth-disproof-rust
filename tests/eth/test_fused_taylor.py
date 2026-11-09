@@ -49,6 +49,30 @@ def test_fusing_boolean_differences_preserves_every_taylor_coefficient(
 
 
 @pytest.mark.integration
+def test_fused_taylor_matches_independent_full_polynomial_oracle() -> None:
+    # This independent oracle enumerates the Boolean cube to construct H(T)
+    # symbolically. It is never imported by the production fused evaluator.
+    from fractions import Fraction
+    from non_exponential_sudoku.eth.polynomial import deformation_polynomial
+
+    formula = CNFFormula(3, ((1, -2), (-1, 3)))
+    constructed = construct_bounded_designs(
+        formula, r=2, Q=2, R=2, measurement_basis="projector",
+    )
+    polynomial = deformation_polynomial(formula, constructed.replacements)
+    assert polynomial.at_zero == count_bruteforce(formula)
+    for center, design in constructed.centers:
+        for order in (0, 1, 2, 3):
+            expected = polynomial.taylor(center, order).coefficients
+            padded = expected + (Fraction(0),) * (order + 1 - len(expected))
+            actual = taylor_coefficients_separated(
+                formula, design, constructed.replacements,
+                at=center, order=order, summation="fused",
+            )
+            assert actual.coefficients == padded
+
+
+@pytest.mark.integration
 def test_full_pipeline_path_four_avoids_explicit_taylor_pairs() -> None:
     formula = CNFFormula(4, ((1, 2), (2, 3), (3, 4)))
     result = count_cnf_reference(

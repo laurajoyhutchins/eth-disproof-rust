@@ -28,6 +28,36 @@ by default. The existing weekly `native.yml` job independently runs full
 checkpoint, integration, extended, and independent backend-oracle checks.
 It is not conditionally skipped based on this PR selection.
 
+## Identical coverage, shorter elapsed checkpoint
+
+The pure-Python checkpoint runner may execute the **same** pytest selection
+with four independent `pytest-xdist` workers, scheduled by test file
+(`--workers 4`, `--dist=loadfile`). Each test file stays in one worker;
+no marker or file is omitted. Pytest checks that workers collect consistent
+node IDs; its single JUnit report and ordinary fail-closed evidence still
+account for every test outcome. The configured strategy and worker count are
+recorded in the verification report.
+
+The separate native, FLINT, and Ganak required-backend jobs remain sequential.
+Parallel invocation with a required backend, native attestation, or a
+non-checkpoint tier is rejected explicitly: their in-process backend-report
+accounting has not been certified for distributed execution. The optional
+`checkpoint-parallel` dependency is installed only in the fast CI workflow.
+Missing xdist is a test-run failure, not grounds for silently skipping tests.
+
+Local reproducibility:
+
+```bash
+python -m pip install -e '.[test,checkpoint-parallel]'
+python scripts/verify.py checkpoint --workers 4 --output artifacts/pure
+# Reference, identical selected pytest cases but sequential execution:
+python scripts/verify.py checkpoint --output artifacts/pure
+```
+
+The strict 30-second threshold is never reinstated as a correctness gate.
+Time, test counts, skips, failed cases, and evidence stability should be
+compared with the sequential reference after every concurrency change.
+
 ## Evidence semantics and limitations
 
 Selected tests are actually executed. Tests outside their explicit ownership

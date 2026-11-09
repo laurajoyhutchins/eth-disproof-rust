@@ -1,8 +1,5 @@
 name: Pinned Lean primitive machine traces
 on:
-  push:
-    branches:
-      - 'verify/lean-bitprogram-*'
   workflow_dispatch:
 
 permissions:

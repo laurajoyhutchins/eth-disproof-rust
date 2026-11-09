@@ -8,7 +8,7 @@ All indices in E and U are zero-based Boolean variable indices.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 from fractions import Fraction
 from itertools import combinations, product
 from math import comb
@@ -82,6 +82,9 @@ class TaylorLimits:
     max_group_assignments: int = 2_000_000
     max_jet_operations: int = 5_000_000
     max_coefficient_bits: int = 4096
+    max_factor_entries: int = 100_000
+    max_factor_total_entries: int = 200_000
+    max_factor_work: int = 2_000_000
 
     def __post_init__(self) -> None:
         for field in self.__dataclass_fields__:
@@ -102,6 +105,10 @@ class TaylorStats:
     clause_evaluations: int
     jet_operations: int
     max_coefficient_bits: int
+    factor_assignments_tested: int = 0
+    factor_scope_peak: int = 0
+    factor_entries_peak: int = 0
+    factor_eliminations: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,12 +272,20 @@ class _TaylorEvaluator:
         self, formula: CNFFormula, replacements: ReplacementSystem,
         certificate: MeasurementCertificate, order: int, limits: TaylorLimits,
         expected_pairs: int, backend: ArithmeticBackend,
+        summation: Literal['tuples', 'eliminate'] = 'tuples',
     ) -> None:
         self.formula = formula
         self.certificate = certificate
         self.order = order
         self.limits = limits
         self.arithmetic = _JetArithmetic(limits, backend)
+        if summation not in ('tuples', 'eliminate'):
+            raise ValueError('summation must be tuples or eliminate')
+        self.summation = summation
+        self.factor_assignments = 0
+        self.factor_scope_peak = 0
+        self.factor_entries_peak = 0
+        self.factor_eliminations = 0
         if (type(order) is not int or order < 0 or
                 (limits.max_taylor_order is not None and order > limits.max_taylor_order)):
             raise CapacityError('ETH Taylor order limit')
@@ -281,11 +296,12 @@ class _TaylorEvaluator:
         design = certificate.design
         tuples_per_pair = (2 * design.D + 1) ** certificate.total_measurements
         assignments_per_pair = tuples_per_pair * sum(1 << len(g) for g in design.groups)
-        if tuples_per_pair * expected_pairs > limits.max_measurement_tuples:
-            raise CapacityError('ETH Taylor measurement tuple limit')
-        if assignments_per_pair * expected_pairs > limits.max_group_assignments:
-            raise CapacityError('ETH Taylor group assignment limit')
-        self.tuples_per_pair = tuples_per_pair
+        if summation == 'tuples':
+            if tuples_per_pair * expected_pairs > limits.max_measurement_tuples:
+                raise CapacityError('ETH Taylor measurement tuple limit')
+            if assignments_per_pair * expected_pairs > limits.max_group_assignments:
+                raise CapacityError('ETH Taylor group assignment limit')
+        self.tuples_per_pair = tuples_per_pair if summation == 'tuples' else 0
         self.pairs = 0
         self.tried = 0
         self.matching = 0
@@ -346,6 +362,9 @@ class _TaylorEvaluator:
         if self.pairs > self.limits.max_taylor_pairs:
             raise CapacityError('ETH Taylor pair limit')
         corrections = self._get_corrections(U)
+        if self.summation == 'eliminate':
+            from .factorized_taylor import eliminate_restricted
+            return eliminate_restricted(self, E, corrections)
         cert = self.certificate
         design = cert.design
         group_required = tuple(tuple(j for j, index in enumerate(group) if index in E)
@@ -401,6 +420,10 @@ class _TaylorEvaluator:
             clause_evaluations=self.clause_evaluations,
             jet_operations=self.arithmetic.operations,
             max_coefficient_bits=self.arithmetic.max_bits,
+            factor_assignments_tested=self.factor_assignments,
+            factor_scope_peak=self.factor_scope_peak,
+            factor_entries_peak=self.factor_entries_peak,
+            factor_eliminations=self.factor_eliminations,
         )
 
 
@@ -408,6 +431,7 @@ def _make_evaluator(
     formula: CNFFormula, design: MeasurementDesign,
     replacements: ReplacementSystem | None, at: Rational,
     order: int, limits: TaylorLimits, pairs: int, backend: ArithmeticBackend,
+    summation: Literal['tuples', 'eliminate'] = 'tuples',
 ) -> _TaylorEvaluator:
     check_arithmetic_backend(backend)
     if (type(order) is not int or order < 0 or
@@ -431,7 +455,8 @@ def _make_evaluator(
     if max(center.numerator.bit_length(), center.denominator.bit_length()) > limits.max_coefficient_bits:
         raise CapacityError('ETH Taylor center bit limit')
     certificate = certify_measurements(formula, replacements, design, at=center, backend=backend)
-    return _TaylorEvaluator(formula, replacements, certificate, order, limits, pairs, backend)
+    return _TaylorEvaluator(formula, replacements, certificate, order, limits,
+                            pairs, backend, summation)
 
 
 def restricted_taylor_sum(
@@ -439,6 +464,7 @@ def restricted_taylor_sum(
     replacements: ReplacementSystem | None = None, *,
     at: Rational, E: tuple[int, ...], U: tuple[int, ...],
     order: int, limits: TaylorLimits = TaylorLimits(), backend: ArithmeticBackend = "python",
+    summation: Literal['tuples', 'eliminate'] = 'tuples',
 ) -> TaylorResult:
     """Z_{t,E,U}(z), with x_i=1 for i in E and formal X=1_U.
 
@@ -446,7 +472,8 @@ def restricted_taylor_sum(
     Boolean assignments. Invalid designs and exhausted budgets fail closed.
     """
     _validate_indices(E, U, formula.nvars)
-    evaluator = _make_evaluator(formula, design, replacements, at, order, limits, 1, backend)
+    evaluator = _make_evaluator(
+        formula, design, replacements, at, order, limits, 1, backend, summation)
     result = evaluator.restricted(E, U)
     return TaylorResult(evaluator.certificate.center, order, result.full_coefficients(),
                         evaluator.certificate, evaluator.stats())
@@ -457,6 +484,7 @@ def taylor_coefficients_separated(
     replacements: ReplacementSystem | None = None, *,
     at: Rational, order: int, limits: TaylorLimits = TaylorLimits(),
     backend: ArithmeticBackend = "python",
+    summation: Literal['tuples', 'eliminate'] = 'tuples',
 ) -> TaylorResult:
     """Calculate [z^0..q] H(t+z) via the paper's Boolean differences.
 
@@ -468,7 +496,8 @@ def taylor_coefficients_separated(
         raise CapacityError('ETH Taylor order limit')
     n = formula.nvars
     pairs = sum(comb(n, j) * (1 << j) for j in range(min(order, n) + 1))
-    evaluator = _make_evaluator(formula, design, replacements, at, order, limits, pairs, backend)
+    evaluator = _make_evaluator(
+        formula, design, replacements, at, order, limits, pairs, backend, summation)
     total = evaluator.zero
     for size in range(min(order, n) + 1):
         for E in combinations(range(n), size):

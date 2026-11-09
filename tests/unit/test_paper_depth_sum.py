@@ -68,13 +68,29 @@ def test_symbolic_depth_sum_majorizes_exact_ceiling_at_paper_scale(u0: int) -> N
     s = (1 << (lam - 1)) + 1
     budget = summed_paper_support_exponent(s)
     assert budget.active_depths == u0.bit_length()
-    exact_upper = 0
+    # A certified integer witness proves the *same* exact inequality without
+    # repeatedly taking isqrt of 4-million-bit integers. For q>0,
+    # ceil_sqrt(ceil(p*s*s/q)) <= K whenever q*K*K >= p*s*s.
+    # Using K=s*ceil_sqrt(ceil(p/q)) is conservative, so passing this
+    # stronger check implies the original exact-ceiling majorant.
+    certified_upper = 0
+    exact_small_upper = 0
+    s_squared = s * s
     for term in paper_depth_ratios(lam):
         ratio = term.color_precision_ratio_ceiling
-        numerator = ratio.numerator * s * s
-        integral_upper = (numerator + ratio.denominator - 1) // ratio.denominator
-        exact_upper += 4 * _ceil_sqrt(integral_upper)
-    assert exact_upper <= budget.log2_support_exponent_sum_ceiling
+        scaled_upper = (ratio.numerator + ratio.denominator - 1) // ratio.denominator
+        witness = s * _ceil_sqrt(scaled_upper)
+        assert ratio.denominator * witness * witness >= ratio.numerator * s_squared
+        certified_upper += 4 * witness
+        # Retain the independent literal integer-square-root oracle at
+        # smaller widths, where its exact evaluation is inexpensive.
+        if u0 <= 4:
+            numerator = ratio.numerator * s_squared
+            integral_upper = (numerator + ratio.denominator - 1) // ratio.denominator
+            exact_small_upper += 4 * _ceil_sqrt(integral_upper)
+    assert certified_upper <= budget.log2_support_exponent_sum_ceiling
+    if u0 <= 4:
+        assert exact_small_upper <= certified_upper
     # A valid ceiling need not be useful at the finite activation threshold.
     assert budget.log2_support_exponent_sum_ceiling > 0
 

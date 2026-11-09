@@ -1,0 +1,22 @@
+name: Original Sudoku oracle call proof audit
+on:
+  push:
+    branches:
+      - 'verify/original-oracle-call-closure-*'
+  workflow_dispatch:
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install verification and strict typing
+        run: python -m pip install -e '.[test,typecheck]'
+      - name: Targeted original source oracle contracts
+        run: python -m pytest -q tests/unit/test_sudoku_oracle_invocations.py tests/contracts/test_sudoku_original_oracle_contract.py --durations=15
+      - name: Strict reference model typing
+        run: python -m mypy --strict --follow-imports=silent reference/sudoku_oracle_invocations.py reference/whole_frame_recurrence.py reference/sudoku_oracle_cost.py

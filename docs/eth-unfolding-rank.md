@@ -84,6 +84,42 @@ conditions. The example's replacements are valid under
 `ReplacementSystem.validate`, but they are **not asserted to be**
 the specific spectral/measurement construction in the paper.
 
+## Exhaustive best-order rank, not just a convenient cut
+
+For a fixed `n`-variable tensor, define `r(S)` as the exact rank
+of the unfolding `S | complement(S)`. This depends only on the
+subset `S`, not on the order of variables within the sides.
+The minimum possible maximum tensor-train bond dimension over **all
+variable permutations** is exactly computed, for small bounded `n`,
+by subset dynamic programming:
+
+```
+B(empty) = 1
+B(S) = min_{v in S} max(B(S-{v}), r(S))   for proper nonempty S
+B(all) = min_{v in all} B(all-{v})
+```
+
+The proof is induction on the prefix subset. Every permutation of
+`S` has some last variable `v`. The previous prefixes lie entirely
+inside `S-{v}`, so the largest encountered bond rank is at least
+`max(B(S-{v}),r(S))`. Appending `v` to an optimal prefix ordering
+achieves that maximum. The final full-set boundary is not an internal
+bond. Repeatedly minimizing proves optimality over all variable orders.
+
+`minimax_unfolding_order` checks all `2**n-2` proper nonempty
+subsets with an explicit `max_cuts` budget and exact rational ranks.
+It reconstructs a certifiably optimal variable ordering. This is an
+**exponential diagnostic**, not a polynomial algorithm for finding
+such orderings in general. For the crossing-pair witness, exact
+exhaustive minimax is 2 even though the grouped order requires
+`2**k` at its middle cut. This shows that the first obstruction
+is specifically **ordering-sensitive**.
+
+The source-pinned experiment also computes exact minimax profiles
+for the repository's real n=3 and n=4 constructed path CNFs at their
+certified interpolation centers. Each independently checked rank
+profile constrains *one center's assignment tensor only*.
+
 ## A safe support-based upper bound on each cut
 
 Compute the set of Boolean variables with nonzero replacement
@@ -117,8 +153,8 @@ certificate. For the grouped crossing-pair example, the bound is
   an arbitrary fixed variable cut.
 - **Demonstrated escape:** Merely reordering variables can drop
   exponential maximum tensor-train rank to 2 for that witness.
-- **Measured, not extrapolated:** Exact rank profiles for small
-  instances of the repository's actual constructed replacement
+- **Measured, not extrapolated:** Exact rank profiles and optimal
+  variable-order profiles for small instances of the repository's actual constructed replacement
   systems at their certified interpolation centers.
 - **Not established:** Any uniform rank bound for the *actual*
   paper construction across growing input families; small

@@ -312,3 +312,76 @@ FLINT-vs-Python exact-jet equality check (one passed). The
 on both backends. This is mathematical equivalence evidence on
 the tested fixtures, not a benchmark establishing which arithmetic
 backend is faster in this new contraction regime.
+
+
+## Measurement count does not certify low group-factor width
+
+The exact certified factor scopes are a distinct property from the rank and
+number of measurement rows. `audit_factor_width(certificate)` derives one
+scope per clause, consisting of the owning group and precisely those foreign
+groups with nonzero *certified* lambda coefficients. It constructs the
+undirected primal group graph, simulates the same min-domain elimination
+ordering as `factorized_taylor.py` on those scopes, and records the maximum
+induced scope size and the base-2 exponent of the maximum possible dense
+table domain. It allocates no Boolean-mask tables.
+
+**Counterexample family:** Let r>=3 groups each contain s variables.
+For every unordered pair {g,h}, give group g a distinct boundary
+variable x_(g,h), group h another x_(h,g), and add
+`(x_(g,h) OR x_(h,g))` with owner g. Within each group, use a
+directed cyclic series of 2-literal implications among its r-1
+boundary variables; together they force those variables equal.
+Every boundary variable appears in exactly three clauses: one
+cross-group clause and two implications. Pad each group to size s
+using independent local two/three-literal disjunctions, with all
+variables active and no width/occurrence violations.
+
+Use the identity replacement polynomial (degree zero) and one unit
+coordinate measurement row for *each* boundary variable in its
+group. The total number of measurement rows is r(r-1), each of L1
+norm D=1, and the groups are perfectly balanced. With n=r*s,
+
+`tau = r(r-1)/(2*n) = (r-1)/(2*s)`.
+
+Thus for arbitrarily large r, choosing s sufficiently large can meet
+the *numerical* target
+`tau <= 1/(r*ceil(log2(n)))` while all pairwise factor scopes
+produce the complete group graph K_r. Its structural treewidth
+is exactly r-1, independent of elimination order. The small
+measurement bound by itself cannot imply a low-width factorization.
+
+**Executed evidence:** GitHub Actions run `42680799964`
+(2026-11-09), CPython 3.13, independent `certify_measurements`
+against the identity replacement, with real CNF normalization:
+
+| r | n | Clauses | Literal incidences | Measurement rows | D | tau | Illustrative target tau | Exact treewidth |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 3 | 66 | 39 | 78 | 6 | 1 | 1/22 | 1/21 | 2 |
+| 4 | 192 | 106 | 216 | 12 | 1 | 1/32 | 1/32 | 3 |
+
+The maximum literal occurrence was three and clause width was
+at most three. The largest *possible dense domain* in the min-domain
+group elimination had respectively 2**66 and 2**192 Boolean
+assignments, but these numbers are **not measured work or hardness
+lower bounds**. For the unpadded r=3 and r=4 versions, exact #SAT
+is r+1, independently checked by exhaustive enumeration and by the
+factorized Taylor evaluator. The padded instances are also
+easy by analytic reasoning (vertex covers of K_r times local
+independent disjunction counts). A better algorithm can exploit
+their equality and local factorization structure.
+
+**Claim boundary:** These are valid manually certified separated
+designs at arbitrary nonzero centers with identical degree-zero
+replacements. They do **not** come from the paper's prescribed
+n-dependent r,Q,R auxiliary construction; satisfying the numerical
+tau inequality does not satisfy the paper's full admission. This
+falsifies only the inference *measurement count => low group
+interaction width*. It neither contradicts a proof about the
+specific paper construction nor proves an exponential time lower
+bound for #SAT.
+
+Reproduce using
+`PYTHONPATH=src:. python -m benchmarks.eth.factor_width_obstruction`.
+The research generator and its small exact oracle live in
+`benchmarks/eth/factor_width_obstruction.py` and
+`tests/eth/test_factor_width_obstruction.py`.

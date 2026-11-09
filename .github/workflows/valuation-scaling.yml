@@ -1,0 +1,27 @@
+name: Exact valuation scaling
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'verify/valuation-scaling-*'
+
+jobs:
+  exact-scaling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install exact reference requirements
+        run: python -m pip install -e '.[test]'
+      - name: Paired fresh-process exact scaling
+        run: python -m benchmarks.valuation_scaling --repeats 2 --timeout 40 --memory-mib 768 --output artifacts/valuation-scaling.json
+      - name: Preserve exact raw evidence even on refusal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: valuation-scaling-evidence
+          path: artifacts/valuation-scaling.json
+          if-no-files-found: warn

@@ -216,3 +216,26 @@ def test_real_spectral_path_six_has_exact_best_order_evidence() -> None:
     optimum = minimax_unfolding_order(formula, construction.replacements, at=1)
     assert 1 <= optimum.peak_rank <= support.peak_rank_upper
     assert support.peak_rank_upper == 4
+
+
+@pytest.mark.integration
+def test_actual_spectral_taylor_coefficient_rank_respects_symbolic_bound() -> None:
+    from benchmarks.eth.cnf_scaling import scenario
+    from non_exponential_sudoku.eth.support_rank import coefficient_unfolding_rank
+
+    for family in ("path", "xor_pairs"):
+        formula = scenario(family, 4).formula
+        construction = construct_bounded_designs(
+            formula, r=2, Q=2, R=2, measurement_basis="projector",
+        )
+        supports = polynomial_clause_supports(formula, construction.replacements)
+        for center, _design in construction.centers:
+            for order in (0, 1, 2):
+                for k in (1, 2):
+                    left = tuple(range(k))
+                    coefficient = coefficient_unfolding_rank(
+                        formula, construction.replacements,
+                        center=center, order=order, left_variables=left,
+                    )
+                    upper = polynomial_cut_bound(supports, formula.nvars, left)
+                    assert coefficient.rank <= (order + 1) * upper.rank_upper

@@ -19,7 +19,7 @@ from non_exponential_sudoku.eth.cnf import CNFFormula, count_bruteforce
 from non_exponential_sudoku.eth.construction import construct_bounded_designs
 from non_exponential_sudoku.eth.polynomial import deformation_polynomial
 from non_exponential_sudoku.eth.unfolding_rank import (
-    RankLimits, crossing_pair_witness, rank_profile,
+    RankLimits, crossing_pair_witness, minimax_unfolding_order, rank_profile,
 )
 from scripts.evidence import fingerprints, git_provenance
 
@@ -84,35 +84,62 @@ def experiment(max_pairs: int = 4, *,
                 or origin["total_value"] != str(1 << k)
                 or deformed["total_value"] != str(1 << (2 * k))):
             raise ArithmeticError("crossing-pair exact-rank identity not reproduced")
+        best_order = None
+        if k <= 3:
+            optimum = minimax_unfolding_order(
+                formula, replacements, at=1, limits=limits,
+            )
+            if optimum.peak_rank != 2:
+                raise ArithmeticError("exhaustive best-order rank disagrees with witness")
+            best_order = {
+                "max_rank": optimum.peak_rank,
+                "order_1_based": [index + 1 for index in optimum.variable_order],
+                "cuts_checked": optimum.cuts_checked,
+                "charged_rational_operations": optimum.charged_rational_operations,
+            }
         report["pair_witnesses"].append({
             "pairs": k, "nvars": 2 * k, "original_cnf_count": 1 << k,
             "grouped_at_zero": origin,
             "grouped_at_one": deformed,
             "interleaved_at_one": reordered,
+            "exhaustive_best_order": best_order,
             "analytical_identity": "product_i(x_i + T*y_i)",
             "grouped_middle_rank_at_one": 1 << k,
             "interleaved_max_rank_at_one": 2,
         })
-    formula = CNFFormula(3, ((1, 2), (2, 3)))
-    construction = construct_bounded_designs(
-        formula, r=2, Q=2, R=2, measurement_basis="projector",
-    )
-    polynomial = deformation_polynomial(formula, construction.replacements)
-    if polynomial.at_zero != count_bruteforce(formula):
-        raise ArithmeticError("constructed deformation changed original exact count")
-    for center, _ in construction.centers:
-        evidence = _profile(
-            formula, construction.replacements, center,
-            tuple(range(formula.nvars)), limits,
+    for n in (3, 4):
+        formula = CNFFormula(n, tuple((i, i + 1) for i in range(1, n)))
+        construction = construct_bounded_designs(
+            formula, r=2, Q=2, R=2, measurement_basis="projector",
         )
-        if evidence["total_value"] != str(polynomial.evaluate(center)):
-            raise ArithmeticError("rank-cube sum disagrees with independent H(T)")
-        report["constructed_samples"].append({
-            "nvars": formula.nvars, "clauses": len(formula.clauses),
-            "r_Q_R": [2, 2, 2], "center": str(center),
-            "rank_profile": evidence,
-            "independent_deformation_sum": str(polynomial.evaluate(center)),
-        })
+        polynomial = deformation_polynomial(formula, construction.replacements)
+        if polynomial.at_zero != count_bruteforce(formula):
+            raise ArithmeticError("constructed deformation changed original exact count")
+        for center, _ in construction.centers:
+            evidence = _profile(
+                formula, construction.replacements, center,
+                tuple(range(formula.nvars)), limits,
+            )
+            if evidence["total_value"] != str(polynomial.evaluate(center)):
+                raise ArithmeticError("rank-cube sum disagrees with independent H(T)")
+            optimum = minimax_unfolding_order(
+                formula, construction.replacements, at=center, limits=limits,
+            )
+            if optimum.peak_rank > evidence["max_rank"]:
+                raise ArithmeticError("minimax rank exceeds observed natural-order peak")
+            report["constructed_samples"].append({
+                "nvars": formula.nvars, "clauses": len(formula.clauses),
+                "r_Q_R": [2, 2, 2], "center": str(center),
+                "rank_profile": evidence,
+                "certified_best_order": {
+                    "max_rank": optimum.peak_rank,
+                    "order_1_based": [index + 1 for index in optimum.variable_order],
+                    "cut_ranks": list(optimum.cut_ranks),
+                    "cuts_checked": optimum.cuts_checked,
+                    "charged_rational_operations": optimum.charged_rational_operations,
+                },
+                "independent_deformation_sum": str(polynomial.evaluate(center)),
+            })
     report["inputs_stable"] = before == fingerprints() and git == git_provenance()
     report["status"] = "complete" if report["inputs_stable"] else "failed_input_drift"
     return report

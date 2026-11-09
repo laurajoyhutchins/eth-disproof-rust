@@ -109,6 +109,7 @@ class TaylorStats:
     factor_scope_peak: int = 0
     factor_entries_peak: int = 0
     factor_eliminations: int = 0
+    factor_scope_basis: Literal['groups', 'variables'] = 'groups'
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,16 +273,18 @@ class _TaylorEvaluator:
         self, formula: CNFFormula, replacements: ReplacementSystem,
         certificate: MeasurementCertificate, order: int, limits: TaylorLimits,
         expected_pairs: int, backend: ArithmeticBackend,
-        summation: Literal['tuples', 'eliminate'] = 'tuples',
+        summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples',
     ) -> None:
         self.formula = formula
         self.certificate = certificate
         self.order = order
         self.limits = limits
         self.arithmetic = _JetArithmetic(limits, backend)
-        if summation not in ('tuples', 'eliminate'):
-            raise ValueError('summation must be tuples or eliminate')
+        if summation not in ('tuples', 'eliminate', 'fused'):
+            raise ValueError('summation must be tuples, eliminate or fused')
         self.summation = summation
+        self.factor_scope_basis: Literal['groups', 'variables'] = (
+            'variables' if summation == 'fused' else 'groups')
         self.factor_assignments = 0
         self.factor_scope_peak = 0
         self.factor_entries_peak = 0
@@ -424,6 +427,7 @@ class _TaylorEvaluator:
             factor_scope_peak=self.factor_scope_peak,
             factor_entries_peak=self.factor_entries_peak,
             factor_eliminations=self.factor_eliminations,
+            factor_scope_basis=self.factor_scope_basis,
         )
 
 
@@ -431,7 +435,7 @@ def _make_evaluator(
     formula: CNFFormula, design: MeasurementDesign,
     replacements: ReplacementSystem | None, at: Rational,
     order: int, limits: TaylorLimits, pairs: int, backend: ArithmeticBackend,
-    summation: Literal['tuples', 'eliminate'] = 'tuples',
+    summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples',
 ) -> _TaylorEvaluator:
     check_arithmetic_backend(backend)
     if (type(order) is not int or order < 0 or
@@ -484,7 +488,7 @@ def taylor_coefficients_separated(
     replacements: ReplacementSystem | None = None, *,
     at: Rational, order: int, limits: TaylorLimits = TaylorLimits(),
     backend: ArithmeticBackend = "python",
-    summation: Literal['tuples', 'eliminate'] = 'tuples',
+    summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples',
 ) -> TaylorResult:
     """Calculate [z^0..q] H(t+z) via the paper's Boolean differences.
 
@@ -495,6 +499,21 @@ def taylor_coefficients_separated(
                 (limits.max_taylor_order is not None and order > limits.max_taylor_order)):
         raise CapacityError('ETH Taylor order limit')
     n = formula.nvars
+    if summation == 'fused':
+        # The exact finite differences telescope before tensor contraction.
+        # No E/U pairs are executed. The resulting factor width is measured
+        # over the original Boolean variables, and can be exponential.
+        from .fused_taylor import contract_fused_taylor
+        prepared = (replacements if replacements is not None
+                    else ReplacementSystem.identity(formula))
+        evaluator = _make_evaluator(
+            formula, design, prepared, at, order, limits, 0, backend, summation,
+        )
+        result = contract_fused_taylor(evaluator, prepared)
+        return TaylorResult(
+            evaluator.certificate.center, order, result.full_coefficients(),
+            evaluator.certificate, evaluator.stats(),
+        )
     pairs = sum(comb(n, j) * (1 << j) for j in range(min(order, n) + 1))
     evaluator = _make_evaluator(
         formula, design, replacements, at, order, limits, pairs, backend, summation)

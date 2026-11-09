@@ -117,6 +117,8 @@ def virtual_unit_cnf_step5(
         ))
 
     exact("n_positive", True, "n=2**lambda > 0")
+    exact("paper_and_lean_n_at_least_20", lam >= 5,
+          "n=2**lambda >= 32 > 20 for lambda>=5")
     exact("three_occurrences_and_width_three", True,
           "one unit occurrence per variable: b=w=1")
     exact("incidence_range", True, "M=n, hence n <= M <= 3n")

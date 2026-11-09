@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 import json
 from pathlib import Path
+from time import perf_counter_ns
 
 Status = Literal["completed", "refused", "failed", "running"]
 RingCallKey: TypeAlias = tuple[str, str, str, int | None, int | None, int, int]
@@ -29,6 +30,69 @@ def _ring_call_label(key: RingCallKey) -> str:
 def _render_ring_calls(values: Mapping[RingCallKey, int]) -> dict[str, int]:
     """Format structured ring counters only at the human/JSON boundary."""
     return dict(sorted((_ring_call_label(key), count) for key, count in values.items()))
+
+
+@dataclass
+class OperandGeometry:
+    """Observed argument geometry, NOT an estimate of elementary bit operations.
+
+    A nested jet is visited once at its public call boundary. When its
+    Python implementation recursively calls the base ring, those calls
+    appear as *separate* ring-method observations and cannot be added to
+    obtain a number of unique scalar operations.
+    """
+    calls: int = 0
+    scalar_coordinates: int = 0
+    sum_operand_bit_lengths: int = 0
+    max_scalar_bits: int = 0
+    max_coordinates_per_call: int = 0
+    max_total_bits_per_call: int = 0
+
+    def observe(self, operands: tuple[object, ...]) -> None:
+        count = 0
+        total_bits = 0
+        maximum = 0
+        stack = list(operands)
+        while stack:
+            value = stack.pop()
+            if type(value) is int:
+                size = abs(value).bit_length()
+                count += 1
+                total_bits += size
+                maximum = max(maximum, size)
+            elif isinstance(value, (tuple, list)):
+                stack.extend(value)
+            else:
+                raise TypeError("Ring-operand geometry expects exact nested integers")
+        self.calls += 1
+        self.scalar_coordinates += count
+        self.sum_operand_bit_lengths += total_bits
+        self.max_scalar_bits = max(self.max_scalar_bits, maximum)
+        self.max_coordinates_per_call = max(self.max_coordinates_per_call, count)
+        self.max_total_bits_per_call = max(self.max_total_bits_per_call, total_bits)
+
+    def combine(self, other: OperandGeometry) -> None:
+        self.calls += other.calls
+        self.scalar_coordinates += other.scalar_coordinates
+        self.sum_operand_bit_lengths += other.sum_operand_bit_lengths
+        self.max_scalar_bits = max(self.max_scalar_bits, other.max_scalar_bits)
+        self.max_coordinates_per_call = max(self.max_coordinates_per_call,
+                                            other.max_coordinates_per_call)
+        self.max_total_bits_per_call = max(self.max_total_bits_per_call,
+                                           other.max_total_bits_per_call)
+
+    def as_dict(self) -> dict[str, int]:
+        return {key: getattr(self, key) for key in (
+            "calls", "scalar_coordinates", "sum_operand_bit_lengths",
+            "max_scalar_bits", "max_coordinates_per_call", "max_total_bits_per_call",
+        )}
+
+
+def _render_operand_geometry(
+    values: Mapping[RingCallKey, OperandGeometry],
+) -> dict[str, dict[str, int]]:
+    return dict(sorted((_ring_call_label(key), stats.as_dict())
+                       for key, stats in values.items()))
 
 
 _ACTIVE: ContextVar[CostLedger | None] = ContextVar("sudoku_cost_ledger", default=None)
@@ -48,6 +112,11 @@ class CostFrame:
     # Exclusive counters: operations performed in this frame, NOT its descendants.
     work: dict[str, int] = field(default_factory=dict)
     ring_calls: dict[RingCallKey, int] = field(default_factory=dict)
+    operand_geometry: dict[RingCallKey, OperandGeometry] = field(default_factory=dict)
+    exclusive_wall_ns: int = 0
+    child_wall_ns: int = 0
+    inclusive_wall_ns: int = 0
+    exclusive_phase_wall_ns: dict[str, int] = field(default_factory=dict)
     native_calls: dict[str, int] = field(default_factory=dict)
     peaks: dict[str, int] = field(default_factory=dict)
 
@@ -59,6 +128,11 @@ class CostFrame:
             "schedule": self.schedule, "status": self.status,
             "exception": self.exception, "work": dict(sorted(self.work.items())),
             "ring_calls": _render_ring_calls(self.ring_calls),
+            "operand_geometry": _render_operand_geometry(self.operand_geometry),
+            "exclusive_wall_ns": self.exclusive_wall_ns,
+            "child_wall_ns": self.child_wall_ns,
+            "inclusive_wall_ns": self.inclusive_wall_ns,
+            "exclusive_phase_wall_ns": dict(sorted(self.exclusive_phase_wall_ns.items())),
             "native_calls": dict(sorted(self.native_calls.items())),
             "peaks": dict(sorted(self.peaks.items())),
         }
@@ -90,11 +164,15 @@ class CostLedger:
     """
 
     def __init__(self, *, max_frames: int = 20_000,
-                 max_centers: int = 20_000) -> None:
+                 max_centers: int = 20_000,
+                 observe_operand_bits: bool = False) -> None:
         if max_frames < 1 or max_centers < 1:
             raise ValueError("Cost-ledger detail budgets must be positive")
         self.max_frames = max_frames
         self.max_centers = max_centers
+        self.observe_operand_bits = observe_operand_bits
+        self._last_tick_ns: int | None = None
+        self.total_operand_geometry: dict[RingCallKey, OperandGeometry] = {}
         self.frames: list[CostFrame] = []
         self.centers: list[Center] = []
         self._stack: list[CostFrame] = []
@@ -126,7 +204,8 @@ class CostLedger:
             current = self._stack[-1]
             current.peaks[metric] = max(current.peaks.get(metric, 0), value)
 
-    def ring_call(self, operation: str, ring: object) -> None:
+    def ring_call(self, operation: str, ring: object,
+                  operands: tuple[object, ...] = ()) -> None:
         phase = self._phases[-1] if self._phases else "unscoped"
         kind = type(ring).__name__
         precision = getattr(ring, "p", None)
@@ -139,10 +218,36 @@ class CostLedger:
         if self._stack:
             frame = self._stack[-1]
             frame.ring_calls[key] = frame.ring_calls.get(key, 0) + 1
+        if self.observe_operand_bits and operands:
+            observation = OperandGeometry()
+            observation.observe(operands)
+            self.total_operand_geometry.setdefault(key, OperandGeometry()).combine(observation)
+            if self._stack:
+                self._stack[-1].operand_geometry.setdefault(
+                    key, OperandGeometry()).combine(observation)
+
+    def _tick(self) -> None:
+        """Attribute one non-overlapping interval to the innermost active frame.
+
+        The clock runs only while a frame exists. Parent times exclude
+        child-frame execution. A frame's exclusive phase times partition its
+        exclusive time, including any unclassified orchestration intervals.
+        All measured durations include observer overhead.
+        """
+        now = perf_counter_ns()
+        if self._stack and self._last_tick_ns is not None:
+            delta = max(0, now - self._last_tick_ns)
+            frame = self._stack[-1]
+            frame.exclusive_wall_ns += delta
+            phase = self._phases[-1]
+            frame.exclusive_phase_wall_ns[phase] = (
+                frame.exclusive_phase_wall_ns.get(phase, 0) + delta)
+        self._last_tick_ns = now
 
     @contextmanager
     def frame(self, *, depth: int, wires: int, precision: int,
               ring_depth: int, schedule: str) -> Iterator[None]:
+        self._tick()
         self.frames_observed += 1
         parent_id = self._stack[-1].call_id if self._stack else None
         node = CostFrame(self.frames_observed, parent_id, depth, wires,
@@ -172,19 +277,27 @@ class CostLedger:
         else:
             node.status = "completed"
         finally:
+            self._tick()
+            node.inclusive_wall_ns = node.exclusive_wall_ns + node.child_wall_ns
             _ACTIVE.reset(token)
             self._phases.pop()
             self._stack.pop()
+            if self._stack:
+                self._stack[-1].child_wall_ns += node.inclusive_wall_ns
+            else:
+                self._last_tick_ns = None
 
     @contextmanager
     def phase(self, name: str) -> Iterator[None]:
         if not self._stack:
             yield
             return
+        self._tick()
         self._phases.append(name)
         try:
             yield
         finally:
+            self._tick()
             self._phases.pop()
 
     @contextmanager
@@ -244,7 +357,18 @@ class CostLedger:
                       sum(sum(f.native_calls.values()) for f in self.frames)
                           == sum(self.native_paths.values()) and
                       all(f.parent_id is None or f.parent_id < f.call_id
-                          for f in self.frames))
+                          for f in self.frames) and
+                      all(f.inclusive_wall_ns == f.exclusive_wall_ns + f.child_wall_ns
+                          and sum(f.exclusive_phase_wall_ns.values())
+                              == f.exclusive_wall_ns
+                          for f in self.frames) and
+                      all(f.child_wall_ns == sum(
+                          self.frames[ch - 1].inclusive_wall_ns
+                          for ch in children[f.call_id])
+                          for f in self.frames) and
+                      (not self.observe_operand_bits or all(
+                          sum(stats.calls for stats in f.operand_geometry.values())
+                          <= sum(f.ring_calls.values()) for f in self.frames)))
         counts_by_depth: Counter[int] = Counter()
         for f in self.frames:
             counts_by_depth[f.depth] += 1
@@ -258,7 +382,7 @@ class CostLedger:
             item["subtree_native_kernel_calls"] = subtree_native_calls[f.call_id]
             frame_reports.append(item)
         return {
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "scope": "observed execution, not a worst-case or bit-complexity certificate",
             "observed_recurrence": "C(call) = exclusive ring-method calls + sum C(direct child calls)",
             "frames_observed": self.frames_observed,
@@ -270,6 +394,11 @@ class CostLedger:
             "counts_by_depth": dict(sorted(counts_by_depth.items())),
             "work_totals": dict(sorted(self.total_work.items())),
             "ring_call_totals": _render_ring_calls(self.total_ring_calls),
+            "operand_geometry_enabled": self.observe_operand_bits,
+            "operand_geometry_totals": _render_operand_geometry(self.total_operand_geometry),
+            "time_scope": "observational wall clock ns, includes instrumentation; per-frame exclusive time excludes child frames",
+            "root_inclusive_wall_ns": sum(
+                f.inclusive_wall_ns for f in self.frames if f.parent_id is None),
             "global_peaks": dict(sorted(self.global_peaks.items())),
             "opaque_native_calls": dict(sorted(self.native_paths.items())),
             "refusals": dict(sorted(self.refusals.items())),
@@ -279,7 +408,9 @@ class CostLedger:
             "known_gaps": [
                 "Native Cython kernels expose calls, not internal primitive operations",
                 "Tensor oracle implementations have opaque internal computational costs",
-                "Python allocations and integer bit-operation counts are not instrumented",
+                "Python allocations and elementary integer bit-operation counts are not instrumented",
+                "Opt-in operand bit lengths cover only public add/sub/mul inputs, not native inner-loop temporaries",
+                "Frame/phase wall-clock measurements include instrumentation overhead",
                 "Observed finite call trees do not establish worst-case recurrence bounds",
                 "Precision-dependent ring method calls are not uniform-cost operations",
             ],
@@ -301,10 +432,10 @@ def charge(event: str, n: int = 1) -> None:
         current.charge(event, n)
 
 
-def ring_call(operation: str, ring: object) -> None:
+def ring_call(operation: str, ring: object, *operands: object) -> None:
     current = _ACTIVE.get()
     if current is not None:
-        current.ring_call(operation, ring)
+        current.ring_call(operation, ring, operands)
 
 
 def native_call(path: str) -> None:

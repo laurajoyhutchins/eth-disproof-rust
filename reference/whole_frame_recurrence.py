@@ -15,8 +15,11 @@ from typing import Final
 from non_exponential_sudoku.core.network import Network
 from non_exponential_sudoku.sudoku.three_cnf import Puzzle
 from reference.sudoku_oracle_cost import (
-    UncertifiedSudokuInput, certify_original_sudoku_oracles,
+    CertifiedSudokuInput, UncertifiedSudokuInput, certify_original_sudoku_oracles,
     original_oracle_bit_work_per_pass,
+)
+from reference.sudoku_oracle_invocations import (
+    OriginalOracleInvocationEnvelope, original_oracle_invocation_envelope,
 )
 
 from non_exponential_sudoku.contraction.engine import paper_schedule_parameters
@@ -98,6 +101,10 @@ class ConditionalPaperRecurrence:
     # those entries, and not a bound on generated PacketEntry callbacks.
     sudoku_original_oracle_per_pass_bit_work: int | None = None
     sudoku_original_oracle_scalar_calls_per_pass: int | None = None
+    # One source-certified, POTENTIAL-child-tree event ceiling. It charges
+    # fallback direct enumeration, factor-table construction and optional
+    # zero-support separately. No generic PacketEntry work is included.
+    sudoku_original_oracle_invocation_envelope: OriginalOracleInvocationEnvelope | None = None
     open_premises: tuple[str, ...] = OPEN_PREMISES
 
     def require_complete_theorem(self) -> None:
@@ -254,6 +261,8 @@ def assemble_paper_recurrence(
     frames = paper_frame_envelopes(config, edges, vertices)
     original_work: int | None = None
     original_calls: int | None = None
+    certificate: CertifiedSudokuInput | None = None
+    largest_precision: int | None = None
     if original_sudoku is not None:
         if type(original_sudoku) is not tuple or len(original_sudoku) != 2:
             raise UnclosedRecurrence('original Sudoku requires puzzle and original Network')
@@ -311,8 +320,22 @@ def assemble_paper_recurrence(
             s=config.s, lambda_bits=lam, maximum_slot_exponent=max_a,
             terminal_edges=result[-1].edges,
         )
+    invocation_envelope: OriginalOracleInvocationEnvelope | None = None
+    if certificate is not None and largest_precision is not None:
+        # The fanout model counts every potential attempted child, including
+        # optional zero-support certificates that skip contract(). A single
+        # attempt may pay for zero-support and, on a nonzero child, a leaf.
+        invocation_envelope = original_oracle_invocation_envelope(
+            certificate,
+            max_leaf_edges=max(result[-1].edges, fallback),
+            leaf_strategy=config.leaf.strategy,
+            zero_support=config.recursion.zero_support.enabled,
+            potential_nodes_log2_ceiling=count_log,
+            extension_degree=max(2, 4 * lam),
+            precision=largest_precision,
+        )
     return ConditionalPaperRecurrence(
         config.s, tuple(result), count_log, fanout_log, fallback,
         lineage.max_vertices, lineage.max_visible_name_bits,
-        original_work, original_calls,
+        original_work, original_calls, invocation_envelope,
     )

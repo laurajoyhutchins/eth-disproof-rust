@@ -1,4 +1,4 @@
-name: ETH operand-bit strict type-repaired final matrix
+name: ETH operand-bit full typed benchmark confirmation
 on:
   push:
     branches:

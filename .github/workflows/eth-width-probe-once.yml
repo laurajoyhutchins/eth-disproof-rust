@@ -1,0 +1,27 @@
+name: ETH certified factor width research probe
+
+on:
+  push:
+    branches:
+      - research/eth-factor-width-obstruction
+    paths:
+      - .github/workflows/eth-width-probe-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  certified-clique:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install exact reference
+        run: python -m pip install -e '.[test]'
+      - name: Certify bounded-occurrence clique witnesses
+        run: python -m pytest -q -m integration tests/eth/test_factor_width_obstruction.py
+      - name: Publish structural counterexample metrics to log
+        run: PYTHONPATH=src:. python -m benchmarks.eth.factor_width_obstruction

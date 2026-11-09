@@ -61,25 +61,25 @@ class ChildEvaluator:
         # target-variable contribution per retained Y-row. Certify d>rows
         # *before* allocating any child Network, prepared PacketEntry,
         # native leaf, or coefficient dictionary.
-        certificate: PacketDegreeZero | None = None
+        degree_witness: PacketDegreeZero | None = None
         if any(mode.target == group and beta > 0
                for mode, beta in zip(selected_modes, assignment)):
             if self._row_capacity is None:
                 self._row_capacity = packet_target_row_capacity(
                     self.net, self.packing, self.coordinate,
                 )
-            certificate = impossible_packet_target_degree(
+            degree_witness = impossible_packet_target_degree(
                 selected_modes, assignment, group=group,
                 row_capacity=self._row_capacity, component=component,
             )
-        if certificate is not None:
+        if degree_witness is not None:
             c.stats.packet_degree_zero_certificates += 1
             charge("packet_degree_zero_certificates")
             if trace is not None:
                 trace.observe(
                     operation="packet_degree_zero_certificate",
-                    topology=(certificate.packet_id, certificate.group,
-                              certificate.available_rows),
+                    topology=(degree_witness.packet_id, degree_witness.group,
+                              degree_witness.available_rows),
                     exact_input=(id(self.net), id(self.packing), id(self.ring),
                                  self.coordinate, group, component,
                                  tuple(selected_modes), tuple(assignment), self.t, self.z),

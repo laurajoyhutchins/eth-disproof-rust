@@ -48,9 +48,11 @@ cdef class _RingArithmetic:
         if type(ring) is Padic and core_algebra._native_ring is not None:
             self.padic=True
         elif (type(ring) is JetRing and type(ring.base) is Padic and
-              ring.depth == 1 and ring._native_add is not None and
-              ring._native_sub is not None and ring._native_neg is not None and
-              ring._native_mul is not None):
+              ring.depth == 1 and
+              ring._native_add is native_ring_module.jet_add and
+              ring._native_sub is native_ring_module.jet_sub and
+              ring._native_neg is native_ring_module.jet_neg and
+              ring._native_mul is native_ring_module.jet_mul):
             self.jet=True
         else:
             return

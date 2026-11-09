@@ -20,6 +20,7 @@ from math import prod
 from typing import TYPE_CHECKING
 
 from non_exponential_sudoku.runtime.budget import CapacityError
+from non_exponential_sudoku.elimination.scope_plan import choose_min_domain
 
 if TYPE_CHECKING:
     from .taylor import _JetValue, _TaylorEvaluator
@@ -140,16 +141,12 @@ def eliminate_restricted(
     remaining = set(range(len(groups)))
     result = evaluator.one
     while remaining:
-        def union_scope(g: int) -> tuple[int, ...]:
-            return tuple(sorted({h for factor in factors if g in factor.scope
-                                 for h in factor.scope}))
-
-        # Minimize the exact domain product of the next induced bucket.
-        group = min(remaining, key=lambda g: (
-            prod(domain_size[h] for h in union_scope(g)),
-            len(union_scope(g)), g,
-        ))
-        scope = union_scope(group)
+        # The shared planner reads only current scopes; jets stay opaque.
+        choice = choose_min_domain(
+            remaining, tuple(f.scope for f in factors), domain_size
+        )
+        group = choice.variable
+        scope = choice.joined if choice.incident else ()
         remaining.remove(group)
         evaluator.factor_eliminations += 1
         if not scope:

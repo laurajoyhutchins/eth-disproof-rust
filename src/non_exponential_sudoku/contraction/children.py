@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from .compiled_children import CompiledChildPlan
 from ..core.algebra import v2
 
-_Node: TypeAlias = tuple[str, int] | tuple[str, str, int]
+_Node: TypeAlias = int
 class _ChildPart(TypedDict):
     kept: list[tuple[str, int]]
     packets: set[int]
@@ -48,6 +48,7 @@ def child_components(net: Network, packing: Packing, group: int, coordinate: int
     We omit only packet nodes with zero incident child ports, whose entries
     are identically one for this group (no mode may target/source such a node).
     """
+    packet_count = len(packing.packets)
     packet_for_edge = {edge: k for k, packet in enumerate(packing.packets)
                        for edge in packet.slots if edge is not None}
     parent: dict[_Node, _Node] = {}
@@ -63,19 +64,20 @@ def child_components(net: Network, packing: Packing, group: int, coordinate: int
                                    ('X', net.right, packing.groups_right)):
         for j, vertex in enumerate(vertices):
             if labels[j][coordinate] != group: continue
-            node = ('V', side, j)
+            # Disjoint numeric namespaces: packets, left vertices, right vertices.
+            node = packet_count + j + (len(net.left) if side == 'X' else 0)
             find(node)
             kept.append((node, (side, j)))
             for edge in vertex.ports:
-                union(node, ('P', packet_for_edge[edge]))
+                union(node, packet_for_edge[edge])
     parts: dict[_Node, _ChildPart] = {}
     for kept_node, label in kept:
         target = parts.setdefault(find(kept_node), {'kept': [], 'packets': set()})
         target['kept'].append(label)
     for packet_node in tuple(parent):
-        if len(packet_node) == 2 and packet_node[0] == 'P':
+        if packet_node < packet_count:
             target = parts.setdefault(find(packet_node), {'kept': [], 'packets': set()})
-            target['packets'].add(packet_node[1])
+            target['packets'].add(packet_node)
     result = [ChildComponent(tuple(sorted(part['packets'])), tuple(part['kept']))
               for part in parts.values()]
     result.sort(key=lambda part: (part.packets[0] if part.packets else len(packing.packets), part.kept))
@@ -118,7 +120,9 @@ def make_child(net: Network, packing: Packing, modes: list[Mode], beta: tuple[in
                 packet_idx=packet_for_edge[edge];slot=slot_for_edge[edge]
                 port_locations[packet_idx].append((side,slot,next_edge))
                 next_edge+=1
-            left.append(Vertex(f'keep:{vert.name}',tuple(child_edges),vert.oracle))
+            # Names are diagnostic, not graph identity. Preserve the source label
+            # rather than recursively prefixing it at every contraction depth.
+            left.append(Vertex(vert.name,tuple(child_edges),vert.oracle))
     for k,pkt in enumerate(packing.packets):
         if selected_packets is not None and k not in selected_packets: continue
         mapping=port_locations[k]

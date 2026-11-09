@@ -45,6 +45,23 @@ def summarize_junit(path: Path) -> dict[str, int] | None:
         return None
 
 
+def build_pytest_command(
+    tier: str, junit: Path, selected_tests: list[str],
+    required: list[str], workers: int,
+) -> list[str]:
+    """Preserve the selected tests; parallelism changes execution only."""
+    command = [
+        sys.executable, "-m", "pytest", "-q", "-m", tier,
+        "--durations=20", "--junitxml=" + str(junit),
+    ]
+    if workers > 1:
+        command.extend(("-n", str(workers), "--dist=loadfile"))
+    command.extend(selected_tests)
+    for backend in required:
+        command.extend(("--require-backend", backend))
+    return command
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tier", choices=sorted(DEFAULT_TIMEOUTS))
@@ -58,11 +75,18 @@ def main() -> int:
                         help="Require matching native build-input and binary hashes")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts")
     parser.add_argument("--impact-plan", type=Path, help="Exact-head conservative checkpoint plan")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="Pure-Python checkpoint worker count (xdist, default 1)")
     args = parser.parse_args()
     if args.timeout is not None and args.timeout <= 0:
         parser.error("--timeout must be positive")
     if args.tier != "checkpoint" and args.require_backend:
         parser.error("--require-backend is only supported for checkpoint tests")
+    if args.workers < 1:
+        parser.error("--workers must be positive")
+    if args.workers != 1 and (args.tier != "checkpoint" or args.require_native or
+                              args.require_backend or args.require_native_attestation):
+        parser.error("parallel execution is limited to pure-Python checkpoint without required backends")
 
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -113,11 +137,7 @@ def main() -> int:
     required = sorted(set(args.require_backend))
     if args.require_native and args.tier == "checkpoint" and "native" not in required:
         required.append("native")
-    command = [sys.executable, "-m", "pytest", "-q", "-m", args.tier,
-               "--durations=20", "--junitxml=" + str(junit)]
-    command.extend(selected_tests)
-    for backend in required:
-        command.extend(("--require-backend", backend))
+    command = build_pytest_command(args.tier, junit, selected_tests, required, args.workers)
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(filter(None, (
         str(ROOT / "src"), str(ROOT), env.get("PYTHONPATH", ""))))
@@ -160,6 +180,8 @@ def main() -> int:
     record = {
         "tier": args.tier,
         "passed": passed,
+        "workers": args.workers,
+        "distribution": "loadfile" if args.workers > 1 else "sequential",
         "verification_status": "passed" if passed else "failed",
         "impact_plan": impact,
         "tests_executed": True,

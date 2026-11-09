@@ -219,6 +219,24 @@ def test_real_spectral_path_six_has_exact_best_order_evidence() -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(("family", "n", "rank_at_one"), (
+    ("path", 5, 3), ("path", 6, 3), ("xor_pairs", 6, 3),
+    ("matching", 6, 2),
+))
+def test_constructed_family_exact_best_rank_obstruction_is_reproducible(
+    family: str, n: int, rank_at_one: int,
+) -> None:
+    from benchmarks.eth.cnf_scaling import scenario
+
+    formula = scenario(family, n).formula
+    construction = construct_bounded_designs(
+        formula, r=2, Q=2, R=2, measurement_basis="projector",
+    )
+    optimum = minimax_unfolding_order(formula, construction.replacements, at=1)
+    assert optimum.peak_rank == rank_at_one
+
+
+@pytest.mark.integration
 def test_actual_spectral_taylor_coefficient_rank_respects_symbolic_bound() -> None:
     from benchmarks.eth.cnf_scaling import scenario
     from non_exponential_sudoku.eth.support_rank import coefficient_unfolding_rank

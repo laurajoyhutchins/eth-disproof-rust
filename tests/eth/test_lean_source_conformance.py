@@ -20,9 +20,6 @@ from non_exponential_sudoku.eth.sparsification import (
     _children, iter_disjoint_leaves, reference_sparsification_parameters,
 )
 
-pytestmark = pytest.mark.checkpoint
-
-
 def _source_set(raw: tuple[tuple[int, ...], ...]) -> frozenset[frozenset[int]]:
     return frozenset(frozenset(clause) for clause in raw)
 
@@ -92,12 +89,14 @@ def _clauses_as_set(formula: CNFFormula) -> frozenset[frozenset[int]]:
     ((2, -3), (-2, 3), (1, 3), (2, -3)),
     ((1,), (-1,)), ((1,), (-1,), ()),
 ])
+@pytest.mark.integration
 def test_normalize_is_lean_sat_normalize(raw: tuple[tuple[int, ...], ...]) -> None:
     formula = CNFFormula(4, raw)
     assert _clauses_as_set(formula) == _lean_normalize(_source_set(raw))
     assert formula.nvars == 4
 
 
+@pytest.mark.integration
 def test_lean_sparsifier_child_definitions_and_partition() -> None:
     raw = ((1, 2), (1, 3), (-1, 2, 3), (2, -3))
     formula = CNFFormula(4, raw)
@@ -120,6 +119,7 @@ def test_lean_sparsifier_child_definitions_and_partition() -> None:
                     assert not (ina and inb)
 
 
+@pytest.mark.integration
 def test_negative_core_overlapping_petals_and_absorption() -> None:
     formula = CNFFormula(3, ((-1, 2), (-1, 3), (2, 3)))
     a, b = _children(formula, 2, (-1,))
@@ -129,6 +129,7 @@ def test_negative_core_overlapping_petals_and_absorption() -> None:
     assert a.nvars == b.nvars == 3
 
 
+@pytest.mark.integration
 def test_complete_disjoint_leaves_retain_ambient_universe() -> None:
     formula = CNFFormula(6, ((1, 2), (1, 3)))
     leaves = tuple(iter_disjoint_leaves(
@@ -148,6 +149,7 @@ def test_complete_disjoint_leaves_retain_ambient_universe() -> None:
     (1, ((1,),), '1011111111110101000'),
     (1, ((-1,),), '101111110101000'),
 ])
+@pytest.mark.checkpoint
 def test_lean_wire_fixed_vectors(
     nvars: int, raw: tuple[tuple[int, ...], ...], expected: str,
 ) -> None:
@@ -157,6 +159,7 @@ def test_lean_wire_fixed_vectors(
     assert decode_lean_cnf(bits) == formula
 
 
+@pytest.mark.integration
 def test_lean_wire_literal_polarity_and_clause_ordering() -> None:
     # Lean encodes negative variable i with 2*(i-1), positive with +1.
     # Clause lists and clauses themselves sort by encoded numeric values.
@@ -167,6 +170,7 @@ def test_lean_wire_literal_polarity_and_clause_ordering() -> None:
     assert decode_lean_cnf(encode_lean_cnf(formula)) == formula
 
 
+@pytest.mark.integration
 def test_lean_wire_decodes_unreduced_lean_set_semantically() -> None:
     # A raw Lean SAT.CNF is a Finset, not necessarily normalized.
     # Importing into CNFFormula intentionally applies SAT.normalize.
@@ -179,11 +183,13 @@ def test_lean_wire_decodes_unreduced_lean_set_semantically() -> None:
     (), (True,), (False, True), (True, False, True),
     (False, False, True), (False, False, 1),
 ])
+@pytest.mark.integration
 def test_lean_wire_rejects_malformed_bits(bad: tuple[object, ...]) -> None:
     with pytest.raises((ValueError, TypeError)):
         decode_lean_cnf(bad)  # type: ignore[arg-type]
 
 
+@pytest.mark.checkpoint
 def test_upstream_revision_and_file_blobs_are_pinned() -> None:
     path = Path(__file__).resolve().parents[2] / 'reference/lean_eth_source.json'
     pin = json.loads(path.read_text())

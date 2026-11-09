@@ -99,6 +99,15 @@ def test_dense_four_slot_full_recovery_overcomes_mode_factor_refusal() -> None:
         **common, mode=ModeConfig(strategy="packet_eliminate"),
     ))
     assert engine.contract(net) == engine.contract_complete(net)
+    baseline = ContractionEngine(ContractorConfig(
+        **common, mode=ModeConfig(strategy="eliminate", native_sparse=False),
+    ))
+    # At the expanded Hermite precision the original mode factor
+    # construction refuses before any child contraction. This is an
+    # explicit unsuccessful baseline, not a runtime speedup.
+    with pytest.raises(CapacityError, match="factor size limit"):
+        baseline.contract(net)
+    assert baseline.stats.child_networks == 0
     assert engine.stats.direct_packet_deformations > 0
     assert engine.stats.child_networks == 0
 

@@ -69,3 +69,20 @@ published mode algorithm refuses.
 
 The source of truth is `src/non_exponential_sudoku/contraction/packet_factorization.py`.
 Tests are `tests/unit/test_packet_factor_deformation.py`.
+
+
+### TDD observations and non-equivalence boundary
+
+This exact route was added after the rowwise 2-adic pruning study
+showed a full-recursive **negative result**: small mode domains at
+expanded Hermite precision admit every assignment. A dense two-wire,
+four-slot full-recovery case then refused under the default 4,096-state
+mode budget. `test_dense_four_slot_full_recovery_overcomes_mode_factor_refusal`
+now tests the competing methods on the same exact input: the original
+mode-factor strategy refuses, while the packet-lift strategy returns
+the independently computed exact count.
+
+Because the packet factor evaluation changes the contraction order,
+the resource parameters that matter are graph width and factor-memory
+limits rather than the number of mode descriptors. A refusal by one
+route is not evidence of an asymptotic improvement by the other.

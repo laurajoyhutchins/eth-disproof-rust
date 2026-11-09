@@ -12,5 +12,6 @@ from .core.algebra import Padic, modulus_polynomial
 from .core.network import Network, Vertex, simple_network
 from .sudoku.encoding import sudoku_network
 from .sudoku.frontier import count_frontier, FrontierCapacityError, FrontierLimits, FrontierResult, FrontierStats
+from .sudoku.suffix_graph import count_suffix_graph, SuffixGraphLimits, SuffixGraphResult, SuffixGraphStats
 
-__all__ = ['ContractionEngine', 'ContractorConfig', 'ModeConfig', 'ModeLimits', 'RecoveryConfig', 'PacketConfig', 'LeafConfig', 'RecursionConfig', 'CapacityError', 'CostLedger', 'WorkTrace', 'Padic', 'modulus_polynomial', 'Network', 'Vertex', 'simple_network', 'sudoku_network', 'count_frontier', 'FrontierCapacityError', 'FrontierLimits', 'FrontierResult', 'FrontierStats']
+__all__ = ['ContractionEngine', 'ContractorConfig', 'ModeConfig', 'ModeLimits', 'RecoveryConfig', 'PacketConfig', 'LeafConfig', 'RecursionConfig', 'CapacityError', 'CostLedger', 'WorkTrace', 'Padic', 'modulus_polynomial', 'Network', 'Vertex', 'simple_network', 'sudoku_network', 'count_frontier', 'FrontierCapacityError', 'FrontierLimits', 'FrontierResult', 'FrontierStats', 'count_suffix_graph', 'SuffixGraphLimits', 'SuffixGraphResult', 'SuffixGraphStats']

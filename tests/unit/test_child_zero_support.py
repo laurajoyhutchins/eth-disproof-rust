@@ -128,3 +128,15 @@ def test_native_kernel_uses_same_certificates() -> None:
 def test_preflight_limits_validate(settings) -> None:
     with pytest.raises(ValueError):
         ZeroSupportPolicy(**settings)
+
+
+def test_huge_mode_exponents_do_not_create_large_integers() -> None:
+    from types import SimpleNamespace
+
+    huge = SimpleNamespace(b=10**12)
+    packet = SimpleNamespace(
+        terms=SimpleNamespace(tile_bits=((huge, 1, ((0, 0), (1, 2))),), desired=()),
+        geometry=SimpleNamespace(row_terms=()),
+    )
+    assert not _packet_may_be_nonzero(packet, (1, 0))
+    assert _packet_may_be_nonzero(packet, (0, 1))

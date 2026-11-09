@@ -151,3 +151,12 @@ def test_cli_dimacs_count_and_fail_closed_json(tmp_path: Path) -> None:
     assert report['status'] == 'capacity_refusal'
     assert report['count'] is None
     assert 'leaf evaluation' in report['error']
+
+
+def test_factorized_taylor_is_equal_on_integrated_branched_input() -> None:
+    formula = CNFFormula(3, ((1, 2), (1, 3)))
+    config = replace(ReferencePipelineConfig(), summation='eliminate')
+    result = count_cnf_reference(formula, config=config)
+    assert result.count == count_bruteforce(formula) == 5
+    assert result.summation == 'eliminate'
+    assert any(leaf.method == 'certified-construction' for leaf in result.leaves)

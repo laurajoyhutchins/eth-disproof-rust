@@ -145,3 +145,64 @@ and exercise the larger count as an optional integration test:
 `python -m pytest -q tests/integration/test_implicit_large_dimension.py`.
 The one-off GitHub benchmark workflow was removed after the measurements
 to avoid a permanent extra CI job.
+
+
+## Restricted exceptional projectors instead of global eigenvectors
+
+The optional `measurement_basis='projector'` mode of
+`construct_implicit_auxiliary` does not enumerate any of the
+`C = sum_{j outside interval} binom(Q,j)
+(r(r-1)/2)^j (r(r+1)/2)^(Q-j)` exceptional tensor eigenvectors.
+Its `exceptional_count` remains exact metadata, even when C is enormous.
+
+For two auxiliary labels u,v, each diagonal local coordinate contributes
+1 to the projector generating function; an identical off-diagonal pair
+contributes `(1+z)/2`, and a swapped off-diagonal pair `(1-z)/2`.
+Incompatible pairs contribute 0. Sum coefficients of z^j outside the
+spectral interval to obtain the exact entry of the **orthogonal** projector
+onto the exceptional space. This is independently compared against the
+orthogonalized *original tensor eigenvectors* in the checkpoint tests.
+
+If B is the original exceptional measurement basis and A maps occupied
+labels to a group's variables, the restricted Gram matrix
+
+`G = A^T P_exceptional A = (B_orthonormal A)^T (B_orthonormal A)`
+
+has exactly the same **rowspace** as all original measurements restricted
+to those occupied coordinates. An exact rational RREF of G supplies
+independent integral rows. This is essential: raw primitive Gram rows may
+have huge integer coefficients, increasing the Taylor range
+`(2D+1)^measurements`; full-rank RREF instead yields unit-coordinate
+rows with `D=1`. All transferred center certificates are still independently
+verified, and `max_measurement_rows` applies to the **actual retained**
+rows, not the unenumerated global eigenspace size.
+
+**Measured evidence:** GitHub-hosted CPython 3.13, 2026-11-09,
+workflow `42674871268` (one-off workflow removed after capture):
+
+| r | Q | R | Global exceptional basis size | Retained selectors | Certified rows | Maximum row L1 | Exact count | Count seconds |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| 2 | 2 | 2 | 1 | 0 | 1 | 1 | 4 | 0.012 |
+| 2 | 12 | 2 | 8,549,722 | 0 | 3 | 1 | 4 | 0.061 |
+| 2 | 48 | 8 | 14,603,500,803,275,681,828,904,645,562 | 0 | 3 | 1 | 4 | 0.216 |
+
+At Q=48,R=8, auxiliary preparation was 0.195 seconds with
+152,384 peak traced bytes and transferring/certifying all 48 centers
+took 0.376 seconds with 187,408 peak traced bytes. The virtual
+D=4**48 and virtual matrix size D**2 are never allocated. The
+complete three-variable count was independently checked against
+exhaustive enumeration and preserved as an optional integration test.
+
+These results **do not establish the paper's measurement bound**
+`tau <= 1/(r*lambda)`: the rank of a restricted exceptional
+projector can equal the entire observed variable space. For a
+large real CNF, that can leave too many measurements even though
+the global eigenvectors are never enumerated. The example has
+three Boolean variables, so increasing Q is not evidence of
+subexponential scaling in the input size.
+
+Reproduce with
+`PYTHONPATH=src:. python -m benchmarks.eth.projector_probe`.
+The original `measurement_basis='selectors'` remains the default
+for exact differential comparison; selecting a dense representation
+with projected measurements is deliberately rejected.

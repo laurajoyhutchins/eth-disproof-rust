@@ -40,7 +40,7 @@ def main() -> int:
                         help='experimental disjoint-sparsification threshold (NOT theorem M)')
     parser.add_argument('--max-leaves', type=int, default=64)
     parser.add_argument('--backend', choices=('python', 'flint'), default='python')
-    parser.add_argument('--summation', choices=('tuples', 'eliminate'), default='tuples')
+    parser.add_argument('--summation', choices=('tuples', 'eliminate', 'fused'), default='tuples')
     args = parser.parse_args()
     formula = (CNFFormula.from_dimacs(args.dimacs.read_text())
                if args.dimacs is not None else CNFFormula(2, ((1, 2),)))

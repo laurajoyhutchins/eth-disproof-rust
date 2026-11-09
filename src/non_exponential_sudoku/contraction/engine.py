@@ -226,7 +226,9 @@ class ContractionEngine(DeformationExecution):
                     Rp = precision_ring(R, pt)
                 else:
                     Rp = Padic(self.e,self.f,pt)
-                modes=mode_catalog(net,packing,t,pt,self.config.mode.max_modes)
+                modes=mode_catalog(
+                    net,packing,t,pt,self.config.mode.max_modes,
+                    max_catalog_bytes=self.config.limits.max_estimated_bytes)
                 if self.cost_ledger is not None:
                     self.cost_ledger.charge("modes_catalogued",len(modes))
                     if center_record is not None:

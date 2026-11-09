@@ -13,7 +13,8 @@ class ModeConfig:
     order: Literal['min_fill','min_states']='min_fill'
     join: Literal['adaptive','sparse','enumerate']='adaptive'
     native_sparse: bool=True
-    max_modes: int=2000
+    # Optional legacy guard. Catalog allocation is bounded by ModeLimits bytes.
+    max_modes: int | None=None
     max_tuples: int=20000
 
     def __post_init__(self) -> None:
@@ -27,7 +28,8 @@ class ModeConfig:
             raise ValueError('Invalid mode join strategy')
         if not isinstance(self.native_sparse, bool):
             raise ValueError('native_sparse must be boolean')
-        if self.max_modes <= 0 or self.max_tuples <= 0:
+        if ((self.max_modes is not None and self.max_modes <= 0)
+                or self.max_tuples <= 0):
             raise ValueError('Mode resource limits must be positive')
 
 @dataclass(frozen=True)
@@ -100,9 +102,9 @@ class RecursionConfig:
     def __post_init__(self) -> None:
         if any(not isinstance(v,bool) for v in (self.child_plans,self.native_packet,self.native_leaf)):
             raise ValueError('Recursion kernel switches must be boolean')
-        if not 0<=self.packet_memo_entries<=4096 or self.packet_memo_bytes<1:
+        if self.packet_memo_entries<0 or self.packet_memo_bytes<1:
             raise ValueError('Invalid bounded packet-entry memoization budget')
-        if not 0<=self.prepared_packet_entries<=4096 or self.prepared_packet_bytes<1:
+        if self.prepared_packet_entries<0 or self.prepared_packet_bytes<1:
             raise ValueError('Invalid prepared packet budget')
         if self.prepared_packet_entries and not self.child_plans:
             raise ValueError('Prepared packet reuse requires compiled child plans')

@@ -18,7 +18,7 @@ from .polynomial import Rational, ReplacementSystem
 
 @dataclass(frozen=True, slots=True)
 class SeparatedLimits:
-    max_variables: int = 12
+    max_variables: int | None = None
     max_measurement_tuples: int = 100_000
     max_group_assignments: int = 2_000_000
     max_operations: int = 2_000_000
@@ -28,6 +28,8 @@ class SeparatedLimits:
         for name in ('max_variables', 'max_measurement_tuples', 'max_group_assignments',
                      'max_operations', 'max_coefficient_bits'):
             value = getattr(self, name)
+            if value is None and name == 'max_variables':
+                continue
             if type(value) is not int or value < (0 if name == 'max_variables' else 1):
                 raise ValueError(f'{name} must be a nonnegative/positive integer')
 
@@ -90,7 +92,7 @@ def evaluate_separated(
     row-space witnesses before doing group sums. Up-front limits bound the
     number of measurement tuples and Boolean group assignments to be tried.
     """
-    if formula.nvars > limits.max_variables:
+    if limits.max_variables is not None and formula.nvars > limits.max_variables:
         raise CapacityError('ETH separated variable limit')
     if replacements is None:
         replacements = ReplacementSystem.identity(formula)

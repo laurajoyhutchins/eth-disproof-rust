@@ -50,7 +50,7 @@ jobs:
           python -m pytest -q tests/eth/test_spectral_rank_growth.py
           python -m benchmarks.eth.spectral_rank_growth \
             --families path matching xor_pairs clique \
-            --sizes 3 4 5 6 --max-exact-n 4 --max-profile-n 6 \
+            --sizes 3 4 5 6 --max-exact-n 6 --max-profile-n 6 \
             --output artifacts/eth-spectral-rank-growth.json
       - name: Preserve actual spectral support/rank growth evidence
         if: always()

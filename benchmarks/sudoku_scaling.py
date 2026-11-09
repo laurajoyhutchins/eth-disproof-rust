@@ -218,17 +218,30 @@ def summarize(rows: list[dict[str, Any]], repeats: int) -> dict[str, Any]:
         actual_set = {row["exact_count"] for row in rows}
         if len(expected_set) != 1 or expected_set != actual_set:
             raise ValueError("Inconsistent exact counts across samples")
-        base = median(row["elapsed_ns"] for row in rows if row["mode"] == "baseline")
-        observed = median(row["elapsed_ns"] for row in rows if row["mode"] == "observed")
-        overhead: float | None = observed / base
+    def observed_median(mode: str, field: str) -> float | None:
+        values = [row.get(field) for row in rows if row["mode"] == mode]
+        if not values or any(type(v) is not int or v < 0 for v in values):
+            return None
+        return float(median(values))
+    duration_by_arm = {mode: observed_median(mode, "elapsed_ns") for mode in MODES}
+    rss_by_arm = {mode: observed_median(mode, "peak_process_rss_bytes") for mode in MODES}
+    python_peak = observed_median("observed", "tracemalloc_peak_bytes")
+    if (outcome == "verified" and duration_by_arm["baseline"] is not None
+            and duration_by_arm["observed"] is not None
+            and duration_by_arm["baseline"] > 0):
+        overhead: float | None = (
+            duration_by_arm["observed"] / duration_by_arm["baseline"])
     else:
         overhead = None
     return {
         "case": rows[0]["case"], "algorithm": rows[0]["algorithm"],
         "outcome": outcome, "repeats_per_arm": repeats,
+        "median_duration_ns_by_arm": duration_by_arm,
+        "median_peak_process_rss_bytes_by_arm": rss_by_arm,
+        "median_python_traced_peak_bytes": python_peak,
         "instrumentation_walltime_ratio": overhead,
         "answer_verified": outcome == "verified",
-        "reporting_note": "timeout/refusal is not a Sudoku solution or measured complexity bound",
+        "reporting_note": "time measures time to outcome; refusal is not a Sudoku solution or complexity bound",
     }
 
 

@@ -19,6 +19,12 @@ jobs:
           python-version: '3.13'
       - name: Install pure-Python research dependencies
         run: python -m pip install -e '.[test]'
+      - name: Verify planner-specific properties
+        run: python -m pytest -q tests/unit/test_scope_planner.py
+      - name: Verify exact integration and full checkpoint without the 30s cap
+        run: |
+          python -m pytest -q tests/eth/test_fused_taylor.py
+          python scripts/verify.py checkpoint --timeout 90 --output artifacts/planner-checkpoint
       - name: Run source-pinned ABBA performance comparison
         run: python -m benchmarks.planner_ab
       - name: Preserve performance evidence

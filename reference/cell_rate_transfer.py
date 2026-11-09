@@ -39,8 +39,9 @@ class NetworkRate:
                 self.alpha == edge_log_growth and self.beta < 0)
 
 
-# Current conditional whole-frame paper statement, not an established
-# theorem for the production solver: lambda=ceil(log2 s).
-PAPER_CONDITIONAL_RATE = NetworkRate(Fraction(1, 4), 1)
+# Sharper CONDITIONAL depth-by-depth paper bound, proved in
+# reference/paper_depth_sum.py. This is not an established runtime theorem:
+# the source and totality obligations remain unresolved. lambda=ceil(log2 s).
+PAPER_CONDITIONAL_RATE = NetworkRate(Fraction(1, 2), 0)
 # Direct generalized-Sudoku Boolean wires: s=Theta(N log N) in N cells.
 DIRECT_SUDOKU_EDGE_LOG_GROWTH = Fraction(1)

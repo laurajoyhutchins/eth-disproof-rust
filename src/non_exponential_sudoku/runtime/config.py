@@ -119,6 +119,9 @@ class RecursionConfig:
             raise ValueError('Invalid prepared packet budget')
         if self.prepared_packet_entries and not self.child_plans:
             raise ValueError('Prepared packet reuse requires compiled child plans')
+        if (not isinstance(self.child_cache, CachePolicy)
+                or not isinstance(self.compiled_plans, CachePolicy)):
+            raise TypeError('Cache policies must be CachePolicy instances')
 
 @dataclass(frozen=True)
 class ContractorConfig:

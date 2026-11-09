@@ -11,7 +11,8 @@ from itertools import product
 import pytest
 
 from non_exponential_sudoku import (
-    CachePolicy, ContractionEngine, ContractorConfig, LeafConfig, RecursionConfig,
+    CachePolicy, ContractionEngine, ContractorConfig, LeafConfig,
+    ModeConfig, RecursionConfig,
 )
 from non_exponential_sudoku.contraction.compiled_children import CompiledChildPlan
 from non_exponential_sudoku.contraction.workspaces import FrameWorkspace
@@ -20,6 +21,7 @@ from non_exponential_sudoku.core.network import compile_leaf_plan, simple_networ
 from non_exponential_sudoku.core.packing import pack
 from non_exponential_sudoku.runtime.budget import CapacityError
 from non_exponential_sudoku.runtime.cache import BudgetedLRU
+from benchmarks.recursive_cases import get_case
 
 pytestmark = pytest.mark.checkpoint
 
@@ -137,3 +139,35 @@ def test_recursion_cache_policies_validate_at_construction() -> None:
         CachePolicy(max_bytes=0)
     with pytest.raises(ValueError, match='cache'):
         CachePolicy(max_bytes=10, max_entries=-1)
+
+
+def test_native_backend_does_not_silently_ignore_custom_leaf_policy() -> None:
+    net = _network()
+    config = ContractorConfig(2, 9, schedule='micro',
+                              leaf=LeafConfig(strategy='eliminate',
+                                              micro_threshold=2,
+                                              max_width=2),
+                              recursion=RecursionConfig(native_leaf=True))
+    with pytest.raises(ValueError, match='Native leaf'):
+        ContractionEngine(config).contract(net)
+
+
+def test_byte_budgets_do_not_change_exact_enumerated_deformation() -> None:
+    case = get_case('crossing-4wire', 'reference')
+    # Force the explicit tuple path so child-result cache retention is used.
+    reference = replace(case, config=replace(
+        case.config, mode=ModeConfig(strategy='enumerate'))).run()[0]
+    assert reference == case.expected
+    for cache_bytes, entries in ((1, 0), (1, None), (1 << 20, 128)):
+        config = replace(
+            case.config,
+            mode=ModeConfig(strategy='enumerate'),
+            recursion=RecursionConfig(
+                child_cache=CachePolicy(cache_bytes, entries),
+                compiled_plans=CachePolicy(cache_bytes, entries),
+            ),
+        )
+        got, stats = replace(case, config=config).run()
+        assert got == reference
+        assert stats.child_cache_peak_estimated_bytes <= cache_bytes
+        assert stats.child_plan_cache_peak_estimated_bytes <= cache_bytes

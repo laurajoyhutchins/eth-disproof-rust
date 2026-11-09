@@ -21,6 +21,7 @@ from ..runtime.work_trace import WorkTrace
 from ..runtime.cache import SharedCacheBudget
 from .deformation import DeformationExecution
 from .workspaces import FrameWorkspace
+from .planning import FactorizationPlan
 
 def paper_schedule_parameters(s: int, log_s: int, depth: int) -> tuple[int, int, int, int]:
     """Literal paper schedule, independent of ring allocation and recursion state.
@@ -234,6 +235,8 @@ class ContractionEngine(DeformationExecution):
         jets: dict[int, list[NestedCoords]] = {}
         stream: StreamingHermite | None = None
         retained_coefficients = 0
+        mode_cache: dict[tuple[int, int], list[Mode]] = {}
+        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] = {}
         if self.config.recovery.streaming:
             stream = StreamingHermite(M, L, u, R)
         for t in range(-L, L):
@@ -250,15 +253,19 @@ class ContractionEngine(DeformationExecution):
                     Rp = precision_ring(R, pt)
                 else:
                     Rp = Padic(self.e,self.f,pt)
-                modes=mode_catalog(
-                    net,packing,t,pt,self.config.mode.max_modes,
-                    max_catalog_bytes=self.config.limits.max_estimated_bytes)
+                key = (i, pt)
+                modes = mode_cache.get(key)
+                if modes is None:
+                    modes = mode_catalog(
+                        net, packing, t, pt, self.config.mode.max_modes,
+                        max_catalog_bytes=self.config.limits.max_estimated_bytes)
+                    mode_cache[key] = modes
                 if self.cost_ledger is not None:
                     self.cost_ledger.charge("modes_catalogued",len(modes))
                     if center_record is not None:
                         center_record.mode_count=len(modes)
                 if self.config.recovery.method == 'jet':
-                    jet = self._jet_center(net, packing, modes, t, Rp, depth, q)
+                    jet = self._jet_center(net, packing, modes, t, Rp, depth, q, factor_plan_cache)
                     if stream is not None:
                         with (self.cost_ledger.phase("recovery") if self.cost_ledger is not None
                               else nullcontext()):
@@ -274,7 +281,7 @@ class ContractionEngine(DeformationExecution):
                 else:
                     assert isinstance(Rp, Padic)
                     jets[t] = self._interpolated_center(net, packing, modes, t,
-                                                        Rp, depth, q, M * (2 * L - 1))
+                                                        Rp, depth, q, M * (2 * L - 1), factor_plan_cache)
         with (self.cost_ledger.phase("recovery") if self.cost_ledger is not None
               else nullcontext()):
             if self.config.recovery.method == 'jet':
@@ -284,6 +291,7 @@ class ContractionEngine(DeformationExecution):
     def _jet_center(
         self, net: Network, packing: Packing, modes: list[Mode],
         t: int, ring: TensorRing, depth: int, order: int,
+        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None = None,
     ) -> tuple[NestedCoords, ...]:
         """Evaluate one exact Taylor jet, refusing an oversized coefficient ring."""
         # Inherited Taylor variables remain independent through child calls.
@@ -304,7 +312,8 @@ class ContractionEngine(DeformationExecution):
 
         jet_ring = JetRing(ring, order)
         result = cast(tuple[NestedCoords, ...], self.evaluate_deformation(
-            net, packing, modes, t, jet_ring.variable, jet_ring, depth))
+            net, packing, modes, t, jet_ring.variable, jet_ring, depth,
+            factor_plan_cache=factor_plan_cache))
         self.stats.interpolation_evaluations += 1
         if self.cost_ledger is not None:
             self.cost_ledger.charge("deformation_evaluations")
@@ -313,11 +322,14 @@ class ContractionEngine(DeformationExecution):
     def _interpolated_center(
         self, net: Network, packing: Packing, modes: list[Mode],
         t: int, ring: Padic, depth: int, order: int, degree: int,
+        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None = None,
     ) -> list[NestedCoords]:
         """Evaluate point samples and retain exactly the required coefficients."""
         samples: list[tuple[RingCoords, RingCoords]] = []
         for z in interp_points(ring, degree + 1):
-            value = self.evaluate_deformation(net, packing, modes, t, z, ring, depth)
+            value = self.evaluate_deformation(
+                net, packing, modes, t, z, ring, depth,
+                factor_plan_cache=factor_plan_cache)
             samples.append((z, cast(RingCoords, value)))
             self.stats.interpolation_evaluations += 1
             if self.cost_ledger is not None:

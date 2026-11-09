@@ -18,9 +18,6 @@ from non_exponential_sudoku.contraction.packets import cross_mode_coefficient
 from non_exponential_sudoku.sudoku.encoding import port_graph_with_cross_mode, independently_evaluate_F
 from non_exponential_sudoku.core.network import simple_network
 
-pytestmark = pytest.mark.checkpoint
-
-
 def original_catalog(net, packing, t: int, p: int) -> list[Mode]:
     """Independent pre-optimization mode generator with original b+1 weight."""
     i = v2(t)
@@ -58,6 +55,7 @@ def case():
     return net, packing
 
 
+@pytest.mark.checkpoint
 @pytest.mark.parametrize("t", [-1, 1])
 @pytest.mark.parametrize("p", [3, 5, 7])
 def test_sharpened_mode_catalog_omits_only_provably_zero_modes(t: int, p: int) -> None:
@@ -77,6 +75,7 @@ def test_sharpened_mode_catalog_omits_only_provably_zero_modes(t: int, p: int) -
     assert len(got) <= len(old)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("t", [-1, 1])
 def test_cross_coefficient_is_divisible_by_certified_weight(t: int) -> None:
     net, packing = case()
@@ -91,6 +90,7 @@ def test_cross_coefficient_is_divisible_by_certified_weight(t: int) -> None:
                 assert all(c % (1 << min(w, ring.p)) == 0 for c in value)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("t", [-1, 1])
 @pytest.mark.parametrize("p", [3, 5])
 def test_actual_deformation_matches_unpruned_catalog_and_direct_oracle(
@@ -115,6 +115,7 @@ def test_actual_deformation_matches_unpruned_catalog_and_direct_oracle(
             assert got == reference == direct
 
 
+@pytest.mark.integration
 def test_reduced_catalog_not_just_stronger_formal_degree() -> None:
     # Four crossing singleton edges, independent of Sudoku-specific input.
     net = simple_network(

@@ -12,10 +12,12 @@ class Counters:
     prepared_packet_peak_entries:int=0
     prepared_packet_peak_estimated_bytes:int=0
     prepared_packet_oversize_skips:int=0
+    prepared_packet_shared_budget_skips:int=0
     packet_entry_memo_hits:int=0
     packet_entry_memo_misses:int=0
     packet_entry_memo_evictions:int=0
     packet_entry_memo_peak_estimated_bytes:int=0
+    packet_entry_memo_shared_budget_skips:int=0
     recursive_calls:int=0
     leaves:int=0
     mode_tuples:int=0
@@ -29,6 +31,11 @@ class Counters:
     skipped_empty_groups:int=0
     child_cache_hits:int=0
     child_cache_misses:int=0
+    child_cache_peak_estimated_bytes:int=0
+    child_cache_evictions:int=0
+    child_plan_cache_peak_estimated_bytes:int=0
+    child_plan_cache_evictions:int=0
+    shared_cache_peak_estimated_bytes:int=0
     max_nested_jet_depth:int=0
     max_jet_coordinates:int=0
     adaptive_leaf_cutoffs:int=0

@@ -5,7 +5,8 @@ across interpolation points: only child topology may survive a center.
 """
 from __future__ import annotations
 
-from collections import OrderedDict
+from sys import getsizeof
+from ..runtime.cache import BudgetedLRU, SharedCacheBudget
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, cast
 
@@ -13,7 +14,7 @@ from ..core.algebra import v2
 from ..core.jets import NestedRing
 from ..core.lazy_coefficients import NestedCoords
 from ..core.modes import Mode, weighted_tuples
-from ..core.network import Network, TensorRing
+from ..core.network import Network, TensorRing, estimated_coefficient_bytes
 from ..core.packing import Packing
 from ..elimination.engine import ModeEliminator
 from ..elimination.factors import FactorKey
@@ -26,6 +27,7 @@ from .child_evaluator import ChildEvaluator
 from .packets import EvaluationContext
 from ..runtime.work_trace import WorkTrace
 from .planning import ComponentCapacityExceeded, build_factorization_plan
+from .valuation_cache import ValuationCache
 
 if TYPE_CHECKING:
     from .engine import ContractionEngine
@@ -38,18 +40,22 @@ class DeformationExecution:
     cost_ledger: CostLedger | None
     work_trace: WorkTrace | None
     config: ContractorConfig
+    shared_cache: SharedCacheBudget | None
 
     def evaluate_deformation(
         self, net: Network, packing: Packing, modes: list[Mode], t: int,
         z: NestedCoords, ring: TensorRing, depth: int,
+        *, factor_plan_cache: ValuationCache | None = None,
     ) -> NestedCoords:
         with (self.cost_ledger.phase("deformation") if self.cost_ledger is not None
               else nullcontext()):
-            return self._evaluate_deformation_impl(net, packing, modes, t, z, ring, depth)
+            return self._evaluate_deformation_impl(
+                net, packing, modes, t, z, ring, depth, factor_plan_cache)
 
     def _evaluate_deformation_impl(
         self, net: Network, packing: Packing, modes: list[Mode], t: int,
         z: NestedCoords, ring: TensorRing, depth: int,
+        factor_plan_cache: ValuationCache | None,
     ) -> NestedCoords:
         coordinate = v2(t)
         context = EvaluationContext(
@@ -63,6 +69,7 @@ class DeformationExecution:
             packet_memo_bytes=self.config.recursion.packet_memo_bytes,
             prepared_packet_entries=self.config.recursion.prepared_packet_entries,
             prepared_packet_bytes=self.config.recursion.prepared_packet_bytes,
+            shared_cache=self.shared_cache,
             work_trace=self.work_trace,
         )
         occupied = {labels[coordinate] for labels in packing.groups_left + packing.groups_right}
@@ -76,6 +83,7 @@ class DeformationExecution:
                 return self._eliminate_modes(
                     net, packing, modes, t, z, ring, depth,
                     coordinate, occupied, affected, context,
+                    factor_plan_cache,
                 )
             return self._sum_modes(
                 net, packing, modes, t, z, ring, depth,
@@ -89,14 +97,21 @@ class DeformationExecution:
         z: NestedCoords, ring: TensorRing, depth: int, coordinate: int,
         occupied: set[int], affected: dict[int, tuple[int, ...]],
         context: EvaluationContext,
+        factor_plan_cache: ValuationCache | None,
     ) -> NestedCoords:
         self.stats.skipped_empty_groups += packing.r - len(occupied)
+        plan = (factor_plan_cache.get_plan(net, packing, modes, coordinate, ring.p)
+                if factor_plan_cache is not None else None)
         try:
-            plan = build_factorization_plan(
-                net, packing, modes, coordinate, occupied, affected,
-                strategy=self.config.mode.factorization,
-                max_components=self.config.limits.max_components,
-            )
+            if plan is None:
+                plan = build_factorization_plan(
+                    net, packing, modes, coordinate, occupied, affected,
+                    strategy=self.config.mode.factorization,
+                    max_components=self.config.limits.max_components,
+                )
+                if factor_plan_cache is not None:
+                    factor_plan_cache.store_plan(
+                        net, packing, modes, coordinate, ring.p, plan)
         except ComponentCapacityExceeded as exc:
             # Partial planning statistics remain observable on refusal.
             self.stats.mode_dp_local_arity_before = max(
@@ -165,32 +180,42 @@ class DeformationExecution:
             cast('ContractionEngine', self), net, packing, modes,
             t, z, ring, depth, coordinate, context,
         )
-        child_cache: OrderedDict[tuple[int, tuple[int, ...]], NestedCoords] = OrderedDict()
-        cache_limit = 128
-        groups = tuple(sorted(occupied))
-        for index, assignment in enumerate(weighted_tuples(modes, ring.p)):
-            if index >= self.config.mode.max_tuples:
-                raise CapacityError('Mode tuple resource limit')
-            self.stats.mode_tuples += 1
-            charge('mode_tuples_enumerated')
-            value = ring.one
-            self.stats.skipped_empty_groups += packing.r - len(occupied)
-            for group in groups:
-                key = (group, tuple(assignment[j] for j in affected[group]))
-                if key in child_cache:
-                    self.stats.child_cache_hits += 1
-                    child_value = child_cache[key]
-                    child_cache.move_to_end(key)
-                else:
-                    child_value = child_evaluator.evaluate(group, assignment)
-                    child_cache[key] = child_value
-                    if len(child_cache) > cache_limit:
-                        child_cache.popitem(last=False)
-                value = arithmetic.mul(value, child_value)
-                if value == ring.zero:
-                    break
-            result = arithmetic.add(result, value)
-        return result
+        child_cache: BudgetedLRU[tuple[int, tuple[int, ...]], NestedCoords] = (
+            BudgetedLRU(self.config.recursion.child_cache, shared=self.shared_cache))
+        try:
+            value_bytes = estimated_coefficient_bytes(ring)
+            groups = tuple(sorted(occupied))
+            for index, assignment in enumerate(weighted_tuples(modes, ring.p)):
+                if index >= self.config.mode.max_tuples:
+                    raise CapacityError('Mode tuple resource limit')
+                self.stats.mode_tuples += 1
+                charge('mode_tuples_enumerated')
+                value = ring.one
+                self.stats.skipped_empty_groups += packing.r - len(occupied)
+                for group in groups:
+                    key = (group, tuple(assignment[j] for j in affected[group]))
+                    child_value = child_cache.get(key)
+                    if child_value is not None:
+                        self.stats.child_cache_hits += 1
+                    else:
+                        child_value = child_evaluator.evaluate(group, assignment)
+                        estimated = (128 + getsizeof(key) + getsizeof(key[1])
+                                     + sum(getsizeof(value) for value in key[1])
+                                     + value_bytes)
+                        before_evictions = child_cache.evictions
+                        child_cache.put(key, child_value, estimated)
+                        self.stats.child_cache_evictions += (
+                            child_cache.evictions - before_evictions)
+                    self.stats.child_cache_peak_estimated_bytes = max(
+                        self.stats.child_cache_peak_estimated_bytes, child_cache.peak_bytes)
+                    value = arithmetic.mul(value, child_value)
+                    if value == ring.zero:
+                        break
+                result = arithmetic.add(result, value)
+            return result
+
+        finally:
+            child_cache.clear()
 
     def _record_packet_statistics(self, context: EvaluationContext) -> None:
         """Collect a center's metrics even if evaluation refused mid-center."""
@@ -206,6 +231,7 @@ class DeformationExecution:
                 self.stats.prepared_packet_peak_estimated_bytes, cache.peak_bytes,
             )
             self.stats.prepared_packet_oversize_skips += cache.skipped_oversize
+            self.stats.prepared_packet_shared_budget_skips += cache.skipped_shared_budget
             # A prepared packet points back to its center. Break that cycle
             # as soon as the synchronous deformation has completed, rather
             # than retaining coefficient rings until cyclic GC runs.
@@ -214,10 +240,14 @@ class DeformationExecution:
             self.stats.packet_entry_memo_hits += context.memo.hits
             self.stats.packet_entry_memo_misses += context.memo.misses
             self.stats.packet_entry_memo_evictions += context.memo.evictions
+            self.stats.packet_entry_memo_shared_budget_skips += (
+                context.memo.skipped_shared_budget
+            )
             self.stats.packet_entry_memo_peak_estimated_bytes = max(
                 self.stats.packet_entry_memo_peak_estimated_bytes,
                 context.memo.peak_bytes,
             )
+            context.memo.clear()
         if context.lazy_ring is None:
             return
         lazy = context.lazy_ring

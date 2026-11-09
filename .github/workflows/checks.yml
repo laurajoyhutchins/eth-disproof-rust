@@ -45,6 +45,8 @@ jobs:
           python-version: '3.13'
       - name: Install native and mathematical oracle dependencies
         run: python -m pip install -e '.[test,native,flint-oracle,sat-oracle,math-audit,symmetry-graph]'
+      - name: Install native build backend
+        run: python -m pip install 'setuptools>=65'
       - name: Build native extensions and record inputs
         run: python build_native.py
       - name: Required native and independent-oracle contracts

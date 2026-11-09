@@ -429,6 +429,7 @@ def count_from_constructed(
     formula: CNFFormula, construction: ConstructedDesigns, *,
     order: int | None = None,
     backend: ArithmeticBackend = 'python',
+    readout: Literal['origin', 'polynomial'] = 'origin',
 ) -> int:
     """Exact small-instance #SAT path using verified automatic center designs.
 
@@ -436,7 +437,7 @@ def count_from_constructed(
     asymptotic resource guarantee.  This does not invoke exhaustive counting.
     Errors or resource exhaustion propagate, with no alternative solver.
     """
-    from .interpolation import count_from_manual_designs
+    from .interpolation import count_from_manual_designs, count_origin_from_manual_designs
 
     construction.replacements.validate(formula)
     if not construction.centers:
@@ -447,7 +448,11 @@ def count_from_constructed(
         order = degree // len(construction.centers)
     if backend not in ('python', 'flint'):
         raise ValueError('backend must be python or flint')
-    return count_from_manual_designs(
+    if readout not in ('origin', 'polynomial'):
+        raise ValueError('readout must be origin or polynomial')
+    count_method = (count_origin_from_manual_designs if readout == 'origin'
+                    else count_from_manual_designs)
+    return count_method(
         formula, construction.centers, construction.replacements,
         order=order, backend=backend,
     ).count

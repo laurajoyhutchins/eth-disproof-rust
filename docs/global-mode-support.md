@@ -157,3 +157,18 @@ Independently, small **real** `pack()` and `mode_catalog()` results are checked 
 - **Sudoku input parameter:** for the current direct encoding `s=Theta(N log N)` in `N` cells, `2^{o(s)}` alone does not imply `2^{o(N)}`.
 
 The global acceptance test in `research_acceptance/test_complete_bit_recurrence.py` therefore **remains red**. This increment closes *global mode-factor state support*, not the whole worst-case complexity proof.
+
+
+### Finite falsification witness: four crossing wires
+
+At `a=2`, `t=1`, `p=5`, the independently generated legacy
+catalog and the valuation-pruned catalog both contain four `b=0`
+modes. Their weights change from `1` to `3`, so the admissible
+binary mode assignments fall from `16` to `5`. In
+`tests/unit/test_mode_valuation_pruning.py` the two paths agree
+exactly on concrete tensor contractions, not merely on tuple counts.
+Thus this is a verified elimination of **eleven mode products** in
+this finite example, not a proven runtime speedup or improved
+worst-case asymptotic exponent. The 16x16 forced precision-three
+catalog regression independently illustrates the stronger case in
+which all previously generated mode descriptors disappear.

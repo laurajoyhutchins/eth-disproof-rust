@@ -431,3 +431,73 @@ certified group-factor elimination backend described above. The default
 `'tuples'` retains the original explicit measurement-reference evaluator.
 The CLI accepts `--summation eliminate`, and every result records the
 selected backend, summation and construction parameters.
+
+### Finite-size width audit of the actual swap/spectral auxiliary construction
+
+The separate hand-certified clique witness above cannot establish what
+the paper's *specific* construction does. A bounded follow-on probe now
+uses `construct_bounded_designs` with the implicit spectral operator,
+its true incidence-to-coordinate transfer, projector-based measurement
+rows, and **exact conditional-expectations schedules** where feasible.
+For each center, it independently invokes `certify_measurements` and
+derives factor scopes from the verified nonzero lambda coefficients,
+rather than simply assigning a group graph from the original CNF.
+
+**Measured and certified** on GitHub Actions CPython 3.13 on
+2026-11-09 (run `42682559085`, then integration run `42683146610`):
+
+| CNF | Chosen r,Q,R | Exact schedule | Center group graph | Largest induced scope | Maximum measured rows |
+|---|---|---|---|---:|---:|
+| cyclic binary, n=6 | 2,2,2 | conditional | K2 at 1,2 | 2 | 2 |
+| cyclic binary, n=6 | 3,2,2 | conditional | K3 at 1,2 | 3 | 4 |
+| cyclic binary, n=8 | 4,2,2 | conditional | K4 at center 2 | 4 | 6 |
+| cyclic ternary, n=9 | 3,3,2 | conditional | K3 at 1,2,3 | 3 | 8 |
+| cyclic ternary, n=9 | 3,3,3 | conditional | K3 at 1,2,3 | 3 | 6 |
+| cyclic ternary, n=9 | 2,6,1 | **digits** (demo) | K2 at 1..6 | 2 | 9 |
+
+In the r=4 example, the first center had five of the six possible
+edges and induced scope three groups; center two had all six edges,
+induced scope four groups, and a largest possible dense domain of
+2**8 Boolean assignments. The generated r=3,Q=3,R=2 case had all
+three edges at **all** three centers, with the complete group scope
+covering all nine variables. All the reported edges came from exact
+nonzero cross-group polynomial values and independently verified
+measurement witnesses.
+
+A separate differential test fixes the **same conditional schedule**
+and compares `measurement_basis='selectors'` versus
+`measurement_basis='projector'`: their replacement polynomials,
+per-clause foreign-group scopes, interaction edges, and maximum
+induced-domain sizes agree. Projector compression changes the number
+and coefficients of measurement rows, **not** the actual dependence
+of a clause on a foreign group.
+
+**Strict scope of the finding:** Every case above uses finite manually
+chosen `r,Q,R`. The exact balancing implementation runs, but its
+*lemma hypotheses are false* at these sizes (even when some observed
+bounds happen to hold), and `audit_bounded_cnf` rejects the paper's
+literal `n`-derived schedule. The `Q=6R` case is explicitly a
+digit-schedule demonstration, not a paper-parameter construction.
+This experiment therefore refutes a proposed **finite-size structural
+heuristic** that spectral projector construction would automatically
+make the group graph sparse. It does NOT refute the manuscript or
+prove that an admitted asymptotic paper construction has large width.
+
+As before, a complete group graph determines the graph's structural
+treewidth, not a lower bound on the cost of every exact algebraic
+contraction. Spectral cancellations, tensor factorizations, sparse
+supports, or separable local factors may make a dense primal graph
+easier than its naive dense tables.
+
+Reproduce:
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.eth.spectral_factor_width_probe
+python -m pytest -q -m integration tests/eth/test_spectral_factor_width.py
+```
+
+The essential next question is **whether the admitted parameter
+schedule gives additional algebraic structure beyond the small-row
+and small-degree certificates**. Such structure must be measured or
+proved independently; it cannot be inferred merely from the
+number of measurement rows or the spectral construction's name.

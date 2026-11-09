@@ -163,3 +163,18 @@ def test_25x25_rank_is_large_even_after_subset_compression() -> None:
     assert row["unit_arity_bits"] == 125
     assert row["projected_unit_cut_rank"] == 5200300
     assert row["dense_unit_table_entries"] == (1 << 125)
+
+
+@pytest.mark.integration
+def test_actual_lifted_9x9_planner_refuses_dense_unit_before_oracle() -> None:
+    from non_exponential_sudoku.sudoku.encoding import sudoku_network
+    from non_exponential_sudoku.sudoku.three_cnf import Puzzle
+    from non_exponential_sudoku.core.packing import pack
+    from non_exponential_sudoku.contraction.packet_factorization import compile_packet_deformation
+    from non_exponential_sudoku.runtime.budget import CapacityError
+
+    network = sudoku_network(Puzzle(3, (0,) * 81))
+    packing = pack(network, 64, 2)
+    assert max(len(vertex.ports) for vertex in network.right) == 36
+    with pytest.raises(CapacityError, match="factor width limit"):
+        compile_packet_deformation(network, packing, max_width=16)

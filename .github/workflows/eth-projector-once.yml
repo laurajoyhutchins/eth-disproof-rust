@@ -1,4 +1,4 @@
-name: ETH projector one-off measurement
+name: ETH projector exact full-count measurement
 
 on:
   push:

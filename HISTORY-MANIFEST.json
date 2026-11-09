@@ -1,0 +1,74 @@
+{
+  "history": "synthetic-concept-dag",
+  "old_archives_in_git": false,
+  "chronological_development_record": false,
+  "source_of_truth": "integrated tested source tree",
+  "concepts": [
+    {
+      "commit": "fac6e4d",
+      "concept": "Define a generalized Sudoku and its parsimonious CNF encoding",
+      "stage_smoke": "2 passed"
+    },
+    {
+      "commit": "28c887a",
+      "concept": "Define exact rings, tensor networks, and explicit resource budgets",
+      "stage_smoke": "5 passed"
+    },
+    {
+      "commit": "3f819b4",
+      "concept": "Implement recursive tensor contraction and exact coefficient recovery",
+      "stage_smoke": "1 passed"
+    },
+    {
+      "commit": "49b8b99",
+      "concept": "Encode Sudoku as a tensor network and verify the recursive contractor",
+      "stage_smoke": "49 passed"
+    },
+    {
+      "commit": "635afc3",
+      "concept": "Specify exact CNF counts and count-preserving preprocessing",
+      "stage_smoke": "28 passed"
+    },
+    {
+      "commit": "e826c17",
+      "concept": "Construct rational measurements and recover exact Taylor data",
+      "stage_smoke": "17 passed"
+    },
+    {
+      "commit": "b6114e6",
+      "concept": "Bound ETH construction, disjoint sparsification, and admission",
+      "stage_smoke": "9 passed"
+    },
+    {
+      "commit": "97b2380",
+      "concept": "Count exact-cover obligation signatures with a bounded frontier",
+      "stage_smoke": "3 passed"
+    },
+    {
+      "commit": "b67dcdc",
+      "concept": "Quotient only certified digit and suffix-hypergraph automorphisms",
+      "stage_smoke": "8 passed"
+    },
+    {
+      "commit": "55c316d",
+      "concept": "Factor disjoint residual obligation components exactly",
+      "stage_smoke": "10 passed"
+    },
+    {
+      "commit": "b29dbd7",
+      "concept": "Condition on separators without losing exact multiplicities",
+      "stage_smoke": "5 passed"
+    },
+    {
+      "commit": "5a7665d",
+      "concept": "Represent exact weighted frontier maps as bounded ZDDs",
+      "stage_smoke": "6 passed"
+    },
+    {
+      "commit": "12ab622",
+      "concept": "Switch dictionary and ZDD representations by verified conversions",
+      "stage_smoke": "1 passed, 11 deferred to final full checkpoint"
+    }
+  ],
+  "instructions": "Run full checkpoint and integration tiers on the final tip; stage smokes cover only indicated tests."
+}

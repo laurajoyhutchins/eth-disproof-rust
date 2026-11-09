@@ -73,8 +73,6 @@ def test_complement_witness_is_identity_without_dense_matrix() -> None:
 def test_raw_unit_accepts_invalid_digit_but_cell_guards_it() -> None:
     ring = Padic(5, modulus_polynomial(5), 7)
     raw = UnitEntryOracle(9, 4)
-    digits = tuple(range(9, 18))
-    assert raw(_bitstring(digits, 4), ring) == ring.one if all(d < 16 for d in digits) else True
     invalid = (9,) + tuple(range(8))
     assert raw(_bitstring(invalid, 4), ring) == ring.one
     assert projected_all_different(9, invalid) == 0
@@ -95,7 +93,9 @@ def test_sudoku_width_floor_and_unit_rank_grow() -> None:
         assert row["projected_unit_cut_rank"] == rank
         assert row["raw_unit_rank_lower_bound"] == rank
         assert row["dense_unit_table_entries"] == (1 << unit_arity)
-        assert row["default_lifted_strategy_admitted"] is (unit_arity <= 16)
+        # This is only a NECESSARY input-table condition, not an
+        # assertion about subsequent elimination width or memory.
+        assert row["unit_input_arity_le_default_width"] is (unit_arity <= 16)
 
 
 @pytest.mark.integration

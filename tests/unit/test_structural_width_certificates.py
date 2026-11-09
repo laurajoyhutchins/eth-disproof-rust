@@ -97,7 +97,9 @@ def test_forest_constructor_handles_branching_and_rejects_cycles() -> None:
     cert = certify_dense_order(factors, (2,) * 17, order)
     assert cert.max_joined_variables == 2
     assert cert.max_joined_entries == 4
-    assert order[-1] == 0
+    assert set(order) == set(range(17))
+    # The center may be chosen before the final remaining leaf when both
+    # have degree one; either order retains width two.
     for bad in ([(0, 1), (1, 2), (2, 0)], [(0, 1, 2)]):
         with pytest.raises(ValueError):
             forest_leaf_order(bad, (2, 2, 2))

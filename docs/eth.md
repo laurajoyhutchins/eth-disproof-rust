@@ -276,8 +276,9 @@ nonzero *truncated polynomial coefficients*. It retains the original
 independent measurement certificate and checks exact bit and resource
 limits. `taylor_pairs=0` now means the explicit pair loop did not run.
 Factor assignments, maximum table entries, and induced factor scope
-still record the real work. The scope basis is **original Boolean
-variables**, unlike the `summation='eliminate'` group-mask evaluator.
+still record the real work. The scope basis is **Boolean variables of
+the prepared CNF leaf**, including any count-preserving reduction auxiliary
+variables, unlike the `summation='eliminate'` group-mask evaluator.
 The two kinds of scope counts are **not** comparable without translation.
 
 This is classical factor elimination applied to a polynomial deformation.

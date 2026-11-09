@@ -449,8 +449,11 @@ def _projected_group_rows(
     def kernel(left: AuxiliaryLabel, right: AuxiliaryLabel) -> Fraction:
         return auxiliary.exceptional_projector_at(left, right)
 
-    pivots: dict[int, tuple[Fraction, ...]] = {}
-    basis: list[tuple[int, ...]] = []
+    # Build the Gram matrix, then its exact reduced row-echelon basis.
+    # A primitive raw Gram row may have coefficients as large as 2**Q
+    # even if its rowspace is all of Q^k.  In the full-rank case RREF
+    # returns the unit-coordinate basis, with D=1 instead.
+    matrix: list[list[Fraction]] = []
     for variable in variables:
         row = [Fraction(0) for _ in group]
         for target in variables:
@@ -460,6 +463,30 @@ def _projected_group_rows(
                  for right in labels_by_variable[target]),
                 Fraction(0),
             )
+        matrix.append(row)
+
+    rank = 0
+    for column in range(len(group)):
+        selected = next((i for i in range(rank, len(matrix))
+                         if matrix[i][column]), None)
+        if selected is None:
+            continue
+        matrix[rank], matrix[selected] = matrix[selected], matrix[rank]
+        scale = matrix[rank][column]
+        matrix[rank] = [value / scale for value in matrix[rank]]
+        for i, row in enumerate(matrix):
+            if i == rank:
+                continue
+            factor = row[column]
+            if factor:
+                matrix[i] = [a - factor * b
+                             for a, b in zip(row, matrix[rank])]
+        rank += 1
+        if rank == len(matrix):
+            break
+
+    basis: list[tuple[int, ...]] = []
+    for row in matrix[:rank]:
         common_denominator = 1
         for value in row:
             common_denominator = lcm(common_denominator, value.denominator)
@@ -468,17 +495,8 @@ def _projected_group_rows(
         for integer in integers:
             common_divisor = gcd(common_divisor, abs(integer))
         if common_divisor == 0:
-            continue
-        candidate = tuple(value // common_divisor for value in integers)
-        reduced = [Fraction(value) for value in candidate]
-        for pivot, vector in sorted(pivots.items()):
-            factor = reduced[pivot]
-            if factor:
-                reduced = [a - factor * b for a, b in zip(reduced, vector)]
-        new_pivot = next((j for j, value in enumerate(reduced) if value), None)
-        if new_pivot is not None:
-            pivots[new_pivot] = tuple(value / reduced[new_pivot] for value in reduced)
-            basis.append(candidate)
+            raise ArithmeticError('zero row in projected measurement basis')
+        basis.append(tuple(value // common_divisor for value in integers))
     return tuple(basis)
 
 def _tensor_entry(

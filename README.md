@@ -23,8 +23,9 @@ there is no claim that they are interchangeable solvers or collectively imply
 a subexponential bound.
 
 See the [solver architecture and evidence map](docs/system-map.md) for the
-integrated algorithm families, reproducible experiments, PR lineage, and
-remaining proof obligations.
+integrated algorithm families, reproducible experiments, and proof obligations.
+The [curated history](docs/curated-history.md) explains the post-bootstrap
+conceptual commits, original PR lineage, and excluded unfinished work.
 
 ## Reproduce the claims
 
@@ -45,9 +46,10 @@ python scripts/verify.py checkpoint --require-backend flint --require-backend ga
 For the mathematical arguments see [Sudoku state algebra](docs/sudoku.md),
 [CNF and interpolation](docs/eth.md), [recursive contraction](docs/mathematics.md),
 and [open proof obligations](docs/claims.md). Run `git log --reverse --format='%h %s'`
-to read the repository in conceptual order. Commits were **constructed from the
-finished source tree** to make dependencies explainable, not to recreate the
-chronology of experimentation.
+to read the repository in conceptual order. The pre-PR concept commits and nine curated
+post-PR snapshots were **constructed from original, real Git trees** to explain
+progress, not to reproduce experimentation chronology; see
+[history and provenance](docs/curated-history.md).
 
 **Licensing:** no redistribution license has been selected. See [licensing](docs/licensing.md).
 

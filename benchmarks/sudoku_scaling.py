@@ -87,7 +87,7 @@ def sample(case: str, algorithm: str, mode: str, max_oracle_nodes: int) -> dict[
             FrontierLimits, FrontierCapacityError)
     from reference.local_support import pin_band_wires, LocalContradiction
 
-    ledger = CostLedger(max_frames=5_000, max_centers=5_000) if mode == "observed" and algorithm == "paper" else None
+    ledger = CostLedger(max_frames=5_000, max_centers=5_000, observe_operand_bits=True) if mode == "observed" and algorithm == "paper" else None
     trace = WorkTrace() if ledger is not None else None
     stats: dict[str, Any] | None = None
     reduction: dict[str, Any] | None = None

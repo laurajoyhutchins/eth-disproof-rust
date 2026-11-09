@@ -90,7 +90,7 @@ class Padic:
         ring_call("lift", self)
         return tuple(c & self.mask for c in x)
     def add(self,a: RingCoords,b: RingCoords) -> RingCoords:
-        ring_call("add", self)
+        ring_call("add", self, a, b)
         if _native_ring is not None:
             native_call("native_padic_add")
             return _native_ring.add(a,b,self.mask)
@@ -99,13 +99,13 @@ class Padic:
         ring_call("neg", self)
         return tuple((-x)&self.mask for x in a)
     def sub(self,a: RingCoords,b: RingCoords) -> RingCoords:
-        ring_call("sub", self)
+        ring_call("sub", self, a, b)
         if _native_ring is not None:
             native_call("native_padic_sub")
             return _native_ring.sub(a,b,self.mask)
         return tuple((x-y)&self.mask for x,y in zip(a,b))
     def mul(self,a: RingCoords,b: RingCoords) -> RingCoords:
-        ring_call("mul", self)
+        ring_call("mul", self, a, b)
         if flint_enabled():
             native_call("flint_padic_mul")
             return flint_mul(self, a, b)

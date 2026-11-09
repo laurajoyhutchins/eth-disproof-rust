@@ -39,6 +39,12 @@ def test_inherited_packet_name_budget_is_included_in_whole_frame_cost() -> None:
         packet.log2_reachable_coefficient_states
     )
     assert packet.universal_bit_bound_proven is False
+    # The hypothetical bit model MUST charge every generated packet ring
+    # call, even though its assumed per-call bit cost is unproved.
+    hypothetical = model.hypothetical_polynomial_glue_log2_bound(degree=3)
+    assert hypothetical >= (
+        packet.log2_total_outer_ring_calls + 3 * (model.input_scale).bit_length()
+    )
     assert 'input_oracle_bit_contract_and_uniform_metadata' in model.open_premises
     with pytest.raises(UnclosedRecurrence):
         model.require_complete_theorem()

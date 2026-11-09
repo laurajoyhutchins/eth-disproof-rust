@@ -24,7 +24,7 @@ from typing import Any
 from benchmarks.recursive_cases import get_case
 from non_exponential_sudoku import (
     ContractionEngine, ContractorConfig, LeafConfig, ModeConfig, ModeLimits,
-    Padic, Network, simple_network,
+    Padic, Network, RecoveryConfig, simple_network,
 )
 from non_exponential_sudoku.contraction import engine as engine_module
 from non_exponential_sudoku.core.modes import Mode, mode_catalog
@@ -46,6 +46,7 @@ CASES = (
     "center-L16-p11-n4",
     "recursive-p5",
     "recursive-p7",
+    "recursive-L4-p5",
 )
 ARMS = ("original", "pruned")
 SCHEMA = "1.0"
@@ -66,6 +67,23 @@ class Case:
 def make_case(case_id: str) -> Case:
     if case_id not in CASES:
         raise ValueError(f"Unknown valuation-scaling case: {case_id}")
+    if case_id == "recursive-L4-p5":
+        n, p, a = 2, 5, 2
+        tab = {(0,): 1, (1,): 1}
+        net = simple_network(
+            n, [((i,), tab) for i in range(n)],
+            [((i,), tab) for i in range(n)])
+        labels = (tuple((0, 0) for _ in range(n)),
+                  tuple((1, 0) for _ in range(n)))
+        config = ContractorConfig(
+            n, p, schedule="geometry64", micro_active_depth=1,
+            root_labels=labels,
+            mode=ModeConfig(strategy="eliminate", factorization="components",
+                            join="sparse", native_sparse=False),
+            recovery=RecoveryConfig(method="jet", streaming=True),
+            leaf=LeafConfig(strategy="eliminate"),
+        )
+        return Case(case_id, p, a, 1 << n, net, config, labels, True)
     if case_id.startswith("recursive-p"):
         p = int(case_id.partition("-p")[2])
         base = get_case("nested-2wire", "plans")

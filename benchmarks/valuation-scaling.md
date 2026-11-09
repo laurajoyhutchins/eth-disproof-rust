@@ -18,8 +18,10 @@ Some slots are deliberately empty, so this does not imply growth in
 occupied packet width. Both arms use exactly the same independently verified
 deformation value and factorization strategy. The two `recursive-p5` and
 `recursive-p7` cases run **the complete two-active-level micro-schedule
-contraction**, including recovery and children; they also verify the root
-result against direct two-wire contraction.
+contraction**, including recovery and children. The
+`recursive-L4-p5` case runs the **complete 64-group four-slot,
+one-active-level experimental contraction**. All three verify the root
+result against independent direct two-wire contraction.
 
 Data distinguish (1) catalog descriptors, (2) mathematically admissible
 weighted tuples from an independent polynomial-DP counter, and

@@ -10,7 +10,10 @@ from fractions import Fraction
 
 from non_exponential_sudoku.runtime.budget import CapacityError
 from .cnf import CNFFormula
-from .backends import ArithmeticBackend, check_arithmetic_backend, flint_polynomial_op, flint_taylor
+from .backends import (
+    ArithmeticBackend, _NativePoly, _native_bits, check_arithmetic_backend,
+    flint_taylor, require_flint,
+)
 
 Rational = int | Fraction
 
@@ -165,38 +168,80 @@ class ReferenceLimits:
                 raise ValueError(f'{name} must be a valid nonnegative/positive integer')
 
 
+_PolyValue = Polynomial | _NativePoly
+
+
 class _WorkBudget:
+    """One cost model for independent Python and persistent native arithmetic.
+
+    The FLINT branch converts a public Polynomial only on its first use. Its
+    subsequent intermediate values never leave FLINT until final export.
+    """
+
     def __init__(self, limits: ReferenceLimits, backend: ArithmeticBackend) -> None:
         self.limits = limits
-        self.backend = backend
         self.operations = 0
+        self.flint = require_flint() if backend == 'flint' else None
+        # Identity cache prevents repeated conversion per Boolean assignment;
+        # a strong reference also prevents object-id reuse within this budget.
+        self._inputs: dict[int, tuple[Polynomial, _NativePoly]] = {}
 
     def charge(self, cost: int) -> None:
         self.operations += cost
         if self.operations > self.limits.max_operations:
             raise CapacityError('ETH reference arithmetic operation limit')
 
-    def check(self, result: Polynomial) -> Polynomial:
+    def _native(self, value: _PolyValue) -> _NativePoly:
+        if isinstance(value, _NativePoly):
+            return value
+        if self.flint is None:
+            raise TypeError('native polynomial requested with Python backend')
+        cached = self._inputs.get(id(value))
+        if cached is not None and cached[0] is value:
+            return cached[1]
+        result = _NativePoly.from_coefficients(value.coefficients, self.flint)
+        self._inputs[id(value)] = (value, result)
+        return result
+
+    @staticmethod
+    def _length(value: _PolyValue) -> int:
+        return value.length if isinstance(value, _NativePoly) else len(value.coefficients)
+
+    def check(self, result: _PolyValue) -> _PolyValue:
         if result.degree > self.limits.max_degree:
             raise CapacityError('ETH reference polynomial degree limit')
-        if any(max(abs(value.numerator).bit_length(), value.denominator.bit_length()) > self.limits.max_coefficient_bits
-               for value in result.coefficients):
+        bits = (_native_bits(result) if isinstance(result, _NativePoly)
+                else (max(abs(c.numerator).bit_length(), c.denominator.bit_length())
+                      for c in result.coefficients))
+        if any(size > self.limits.max_coefficient_bits for size in bits):
             raise CapacityError('ETH reference coefficient bit limit')
         return result
 
-    def add(self, left: Polynomial, right: Polynomial) -> Polynomial:
-        self.charge(max(len(left.coefficients), len(right.coefficients)))
-        result = (Polynomial(flint_polynomial_op('add', left.coefficients, right.coefficients))
-                  if self.backend == 'flint' else left + right)
+    def add(self, left: _PolyValue, right: _PolyValue) -> _PolyValue:
+        self.charge(max(self._length(left), self._length(right)))
+        if self.flint is not None:
+            result: _PolyValue = self._native(left) + self._native(right)
+        else:
+            if not isinstance(left, Polynomial) or not isinstance(right, Polynomial):
+                raise TypeError('Python arithmetic requires reference polynomials')
+            result = left + right
         return self.check(result)
 
-    def multiply(self, left: Polynomial, right: Polynomial) -> Polynomial:
+    def multiply(self, left: _PolyValue, right: _PolyValue) -> _PolyValue:
         if left.degree + right.degree > self.limits.max_degree:
             raise CapacityError('ETH reference polynomial degree limit')
-        self.charge(len(left.coefficients) * len(right.coefficients))
-        result = (Polynomial(flint_polynomial_op('mul', left.coefficients, right.coefficients))
-                  if self.backend == 'flint' else left * right)
+        self.charge(self._length(left) * self._length(right))
+        if self.flint is not None:
+            result: _PolyValue = self._native(left) * self._native(right)
+        else:
+            if not isinstance(left, Polynomial) or not isinstance(right, Polynomial):
+                raise TypeError('Python arithmetic requires reference polynomials')
+            result = left * right
         return self.check(result)
+
+    def export(self, value: _PolyValue) -> Polynomial:
+        return (Polynomial(value.export()) if isinstance(value, _NativePoly)
+                else value)
 
 
 def clause_satisfaction_polynomial(
@@ -237,13 +282,13 @@ def deformation_polynomial(
         for form in rows:
             for coefficient in form.coefficients:
                 budget.check(coefficient)
-    total = ZERO
+    total: _PolyValue = ZERO
     for assignment in range(assignments):
-        product = ONE
+        product: _PolyValue = ONE
         for clause, forms in zip(formula.clauses, replacements.clauses):
-            unsatisfied = ONE
+            unsatisfied: _PolyValue = ONE
             for literal, form in zip(clause, forms):
-                linear = ZERO
+                linear: _PolyValue = ZERO
                 for index, coefficient in enumerate(form.coefficients):
                     if assignment & (1 << index):
                         linear = budget.add(linear, coefficient)
@@ -251,4 +296,4 @@ def deformation_polynomial(
                 unsatisfied = budget.multiply(unsatisfied, factor)
             product = budget.multiply(product, budget.add(ONE, -unsatisfied))
         total = budget.add(total, product)
-    return total
+    return budget.export(total)

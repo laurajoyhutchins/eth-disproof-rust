@@ -80,7 +80,7 @@ class _NativePoly:
         return _NativePoly(self.value - other.value)
 
     def __neg__(self) -> _NativePoly:
-        return _NativePoly(-self.value)
+        return _NativePoly(self.value - (self.value + self.value))
 
     def __mul__(self, other: _NativePoly) -> _NativePoly:
         return _NativePoly(self.value * other.value)

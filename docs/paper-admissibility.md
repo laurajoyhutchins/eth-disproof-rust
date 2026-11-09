@@ -97,9 +97,9 @@ these multiplicities; its exact coefficient values are not.
 
 | Board | Edges | Packets | Packet slots | Max child edges | Child vertices | Modes |
 |---|---:|---:|---:|---:|---:|---:|
-| 4x4 | 96 | 84 | 336 | 14 | 86 | 138 |
-| 9x9 | 972 | 903 | 3,612 | 60 | 906 | 1,568 |
-| 16x16 | 3,072 | 2,880 | 11,520 | 112 | 2,885 | 4,536 |
+| 4x4 | 96 | 84 | 336 | 14 | 86 | 0 |
+| 9x9 | 972 | 903 | 3,612 | 60 | 906 | 0 |
+| 16x16 | 3,072 | 2,880 | 11,520 | 112 | 2,885 | 0 |
 
 Every inspected network satisfies exact port conservation and packet
 orientation; each materialized child validates its bipartite incidence.
@@ -118,10 +118,16 @@ Thus these measurements do **not** contradict the packing lemma. They
 instead show which invariants cannot be invoked outside its hypotheses.
 A finite case also cannot certify the lemma for all large inputs.
 
-The 16x16 forced packing produces 4,536 modes even at precision 3,
-exceeding the implementation's default `ModeConfig.max_modes=2000`.
-This is a concrete budget mismatch for the **probe**, not a claim that the
-inactive literal paper schedule actually executed mode construction.
+Earlier code generated 138, 1,568 and 4,536 **unpruned** cross modes
+respectively, and the former 16x16 regression treated the last count as
+a catalog-capacity refusal. The actual Cauchy mode coefficients carry
+at least `2^(a+1-i)` even at exponent `b=0`. For this deliberately forced
+`a=2, i=0, p=3` probe, all crossing coefficients vanish modulo `2**3`,
+so **zero modes are needed** for any of these networks. This removes that
+specific artificial capacity mismatch without asserting that the inactive
+paper schedule executes at practical sizes. For larger precisions the
+number of surviving modes depends on exact rowwise valuations and must be
+measured separately.
 
 ## 4. Conditional structural preservation is not the missing proof
 

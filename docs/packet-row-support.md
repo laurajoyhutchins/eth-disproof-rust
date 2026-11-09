@@ -147,7 +147,13 @@ degree is
 
 The executable witness verifies this integer inequality and every other
 schedule prerequisite without allocating a network, mode catalog, or factor
-table of astronomical size. Consequently **all `2**J` subsets pass the
+table of astronomical size. A separate finite `r=2`, `a=2` geometry-only
+analogue runs the real `pack()` and `mode_catalog()` code and confirms the
+crossed-packet fraction, complete packet rows, full residue mode family,
+`j=1` tile entry, and source weight formula. This small analogue does not
+satisfy the asymptotic paper admission threshold; it tests the source
+correspondence, not the large-size theorem. Consequently **all `2**J`
+subsets pass the
 weighted test and the full packet-row Hall test**. Since
 
 \[

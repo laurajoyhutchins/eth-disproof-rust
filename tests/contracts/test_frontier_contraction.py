@@ -16,7 +16,8 @@ from reference.generalized_bench import canonical_solution
 from reference.local_support import pin_band_wires, projected_domains
 from reference.real_sudoku_bench import independent_count_sparse, puzzles
 
-pytestmark = pytest.mark.checkpoint
+# Each contract has exactly one verification tier. Expensive reference cases
+# run in integration; small exact and refusal contracts remain checkpoint.
 
 
 def _all_solutions_four_by_four() -> tuple[tuple[int, ...], ...]:
@@ -45,6 +46,7 @@ def _all_solutions_four_by_four() -> tuple[tuple[int, ...], ...]:
     '9x9-contradictory-clues',
     '16x16-252-givens-two-solutions',
 ))
+@pytest.mark.checkpoint
 def test_canonical_counts_without_fallback(name: str) -> None:
     _, puzzle, expected = next(c for c in puzzles() if c[0] == name)
     result = count_frontier(puzzle)
@@ -55,6 +57,7 @@ def test_canonical_counts_without_fallback(name: str) -> None:
         assert result.stats.peak_live_states >= result.stats.peak_states
 
 
+@pytest.mark.checkpoint
 def test_hard_177_wire_failure_is_bounded_exact_contraction() -> None:
     _, puzzle, _ = next(c for c in puzzles() if c[0] == '9x9-hard-unique')
     _, residual = pin_band_wires(puzzle)
@@ -76,6 +79,7 @@ def test_hard_177_wire_failure_is_bounded_exact_contraction() -> None:
     assert projected_result.stats.free_cells == 57
 
 
+@pytest.mark.checkpoint
 def test_empty_four_by_four_and_random_clues() -> None:
     solutions = _all_solutions_four_by_four()
     assert len(solutions) == 288
@@ -94,6 +98,7 @@ def test_empty_four_by_four_and_random_clues() -> None:
         assert count_frontier(puzzle, order='minimum-domain').count == expected
 
 
+@pytest.mark.checkpoint
 def test_small_independent_digit_enumerator() -> None:
     for name, puzzle, expected in puzzles():
         independent = independent_count_sparse(puzzle, 8)
@@ -103,6 +108,7 @@ def test_small_independent_digit_enumerator() -> None:
         assert count_frontier(puzzle).count == independent, name
 
 
+@pytest.mark.checkpoint
 def test_projection_restrictions_are_explicit() -> None:
     puzzle = Puzzle(2, (0,) * 16)
     domains = [15] * 16
@@ -122,6 +128,7 @@ def test_projection_restrictions_are_explicit() -> None:
         count_frontier(puzzle, order='random')  # type: ignore[arg-type]
 
 
+@pytest.mark.checkpoint
 def test_all_resource_limits_refuse_without_fallback() -> None:
     _, puzzle, _ = next(c for c in puzzles() if c[0] == '9x9-hard-unique')
     with pytest.raises(FrontierCapacityError, match='state limit'):
@@ -137,6 +144,7 @@ def test_all_resource_limits_refuse_without_fallback() -> None:
         FrontierLimits(max_states=0)
 
 
+@pytest.mark.integration
 def test_pure_function_determinism_and_traversal_order() -> None:
     _, puzzle, _ = next(c for c in puzzles() if c[0] == '9x9-hard-unique')
     a = count_frontier(puzzle)

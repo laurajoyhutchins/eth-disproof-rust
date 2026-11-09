@@ -1,0 +1,30 @@
+name: Unified cost evidence
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'verify/unified-cost-*'
+
+jobs:
+  cost-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install exact solver and test dependencies
+        run: python -m pip install -e '.[test]'
+      - name: Verify evidence contract and exact solver
+        run: python -m pytest -q tests/benchmark/test_unified_cost.py
+      - name: Run isolated reference experiment
+        run: |
+          python -m benchmarks.unified_cost --cases parity-2wire sudoku-4wire nested-2wire --variants reference plans --repeats 3 --timeout 60 --output artifacts/unified-cost.json
+      - name: Retain raw samples and explicit unknowns
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unified-cost-evidence
+          path: artifacts/unified-cost.json
+          if-no-files-found: warn

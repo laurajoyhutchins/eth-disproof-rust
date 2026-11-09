@@ -1,0 +1,76 @@
+# Native Cloud Build checkpoint. Configure a GitHub pull-request trigger against
+# the exact source ref, using a low-privilege build service account.
+# Do not replace the existing required GitHub check until GitHub status parity
+# and source checkout provenance have been demonstrated on a real PR.
+steps:
+  - id: admit-source
+    name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        expected='$COMMIT_SHA'
+        revision='$REVISION_ID'
+        [[ "$$expected" =~ ^[0-9a-f]{40}$$ ]]
+        test "$$expected" = "$$revision"
+        # Cloud Build can supply a source snapshot without Git metadata. Such
+        # builds refuse rather than fabricating the revision the verifier needs.
+        test -d .git
+        actual="$$(git rev-parse --verify HEAD)"
+        test "$$actual" = "$$expected"
+        test -z "$$(git status --porcelain --untracked-files=no)"
+        printf 'checkpoint_exact_head=%s\n' "$$actual"
+        printf 'checkpoint_build_id=%s\n' '$BUILD_ID'
+  - id: plan
+    name: python:3.13-bookworm
+    entrypoint: bash
+    waitFor: ['admit-source']
+    args:
+      - -ceu
+      - |
+        # No base SHA is guaranteed for a Cloud Build PR trigger. Unknown
+        # diff boundary conservatively selects every checkpoint test.
+        python scripts/change_impact.py --output artifacts/pure/impact.json
+  - id: shard-0
+    name: python:3.13-bookworm
+    entrypoint: bash
+    waitFor: ['plan']
+    args:
+      - -ceu
+      - |
+        python -m pip install --disable-pip-version-check 'pytest>=8,<10' 'mypy==2.4.1'
+        python -m mypy --strict --no-incremental
+        python -m mypy --strict --follow-imports=silent scripts/evidence.py scripts/verify.py scripts/change_impact.py scripts/shard_contract.py scripts/aggregate_checkpoint.py scripts/cost_ledger.py build_native.py
+        python scripts/verify.py checkpoint --shard-count 2 --shard-index 0 --impact-plan artifacts/pure/impact.json --output artifacts/shards/checkpoint-shard-0
+  - id: shard-1
+    name: python:3.13-bookworm
+    entrypoint: bash
+    waitFor: ['plan']
+    args:
+      - -ceu
+      - |
+        python -m pip install --disable-pip-version-check 'pytest>=8,<10'
+        python scripts/verify.py checkpoint --shard-count 2 --shard-index 1 --impact-plan artifacts/pure/impact.json --output artifacts/shards/checkpoint-shard-1
+  - id: checkpoint
+    name: python:3.13-bookworm
+    entrypoint: bash
+    waitFor: ['shard-0', 'shard-1']
+    args:
+      - -ceu
+      - |
+        expected='$COMMIT_SHA'
+        test "$$(git rev-parse HEAD)" = "$$expected"
+        python -m scripts.aggregate_checkpoint --root artifacts/shards --head "$$expected" --count 2
+        python - <<'PY'
+        import hashlib, json
+        from pathlib import Path
+        root = Path('artifacts/shards')
+        for path in sorted(root.rglob('*')):
+            if path.is_file():
+                print('checkpoint_evidence_sha256', hashlib.sha256(path.read_bytes()).hexdigest(), path)
+        PY
+# No implicit new buckets, unaudited artifact uploads, or arbitrary network
+# credentials. Cloud Build logs contain the source-bound receipt digests.
+timeout: 900s
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -24,6 +24,7 @@ from reference.sudoku_oracle_invocations import (
 
 from non_exponential_sudoku.contraction.engine import paper_schedule_parameters
 from reference.catalog_planning_work import catalog_planning_work
+from reference.packing_ordering_work import packing_source_work, mode_ordering_work
 from non_exponential_sudoku.runtime.config import ContractorConfig
 from reference.nested_ring_bit_cost import finite_shape_bit_envelope
 from reference.oracle_lineage import paper_single_path_descriptor_bound
@@ -88,6 +89,8 @@ class FrameBudgetSkeleton:
     # Bounded source-level catalog and component-plan overhead, for all centers
     # and every interpolation sample (no assumption of cache hits).
     log2_catalog_planning_bit_work_ceiling: int = 0
+    # Source-level balanced labels, packet materialization and mode order.
+    log2_packing_ordering_bit_work_ceiling: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,12 +231,26 @@ def _active_frame(frame: PaperFrameEnvelope, config: ContractorConfig,
         precision=precision, input_name_bits=input_name_bits,
     )
     catalog_log = ceil_log2(centers * E * catalog.schoolbook_bit_work_majorant)
+    # Packing runs once per active frame. Ordering may run on every point
+    # sample of every center. Do not assume topology or plan cache hits.
+    packing = packing_source_work(
+        edges=M, vertices=V, groups=64, coordinates=a,
+    )
+    ordering = mode_ordering_work(
+        variables=k_max, factors=F, precision=precision,
+    )
+    packing_order_log = ceil_log2(
+        packing.abstract_schoolbook_bit_work
+        + centers * E * ordering.abstract_schoolbook_bit_work
+    )
     local_log = log2_sum_ceiling(factor_ring_log, prep_log,
-                                  newton_log, recovery_log, catalog_log)
+                                  newton_log, recovery_log, catalog_log,
+                                  packing_order_log)
     return FrameBudgetSkeleton(
         frame.depth, M, V, False, centers, E, alpha,
         child_log, factor_ring_log, prep_log, newton_log, recovery_log,
         local_log, 0, log2_catalog_planning_bit_work_ceiling=catalog_log,
+        log2_packing_ordering_bit_work_ceiling=packing_order_log,
     )
 
 

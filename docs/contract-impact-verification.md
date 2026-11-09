@@ -28,6 +28,44 @@ by default. The existing weekly `native.yml` job independently runs full
 checkpoint, integration, extended, and independent backend-oracle checks.
 It is not conditionally skipped based on this PR selection.
 
+## Fast complete checkpoint without losing cases
+
+The full checkpoint runs in **two independent GitHub runner VMs**, not
+competing CPU-bound workers on one throttled runner. Each runs the unchanged `-m checkpoint` marker selection on an owned
+subset of test files. The deterministic SHA-256 file partition ensures
+collection-time optional-dependency skips belong to exactly one runner.
+Test names and parameters are never changed, skipped deliberately, or
+downgraded to integration to improve time.
+
+The terminal required `checkpoint` job consumes both exact-head artifacts,
+requires both jobs to have succeeded, compares their source fingerprints and
+change-impact plans, independently validates both JUnit files, and checks
+the disjoint union of selected test files against the **entire** test-file
+inventory, including modules skipped during collection. Missing, duplicate,
+stale, or misassigned files
+fail closed. The original single-process verifier and optional native/backend
+workflow remain unsharded.
+
+Documentation-only changes still produce a `not_applicable` record from both
+shards. Conservatively owned research changes execute their targeted tests
+on shard zero, with an explicit `no_assignment` receipt for shard one.
+Unknown modifications execute the complete distributed checkpoint.
+
+The checkpoint's 30-second goal measures **slowest shard test execution**.
+The total GitHub Actions completion time includes runner scheduling, pip
+installation, strict typing, evidence transport, and aggregation, and should
+be reported separately. Sharding increases runner concurrency and cost: it is
+justified only if an exact full-suite comparison demonstrates a useful speedup.
+
+## Fast exact mathematical certificates
+
+The paper depth-sum contract now supplies an independently checked integer
+upper witness `K=s*ceil_sqrt(ceil(p/q))` for each rational ratio `p/q`,
+verifies `q*K*K >= p*s*s`, and sums the certified ceilings. This is a
+**stronger sufficient inequality** for the original bound. For smaller
+parameter instances, the literal enormous-integer square-root oracle is
+also retained. No tested paper activation size is removed.
+
 ## Evidence semantics and limitations
 
 Selected tests are actually executed. Tests outside their explicit ownership

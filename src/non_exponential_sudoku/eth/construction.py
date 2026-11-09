@@ -734,7 +734,7 @@ def count_from_constructed(
     order: int | None = None,
     backend: ArithmeticBackend = 'python',
     readout: Literal['origin', 'polynomial'] = 'origin',
-    summation: Literal['tuples', 'eliminate'] = 'tuples',
+    summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples',
 ) -> int:
     """Exact small-instance #SAT path using verified automatic center designs.
 

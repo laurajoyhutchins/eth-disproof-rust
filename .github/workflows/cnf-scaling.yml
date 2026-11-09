@@ -25,7 +25,7 @@ jobs:
           python -m benchmarks.eth.cnf_scaling \
             --families path matching clique \
             --sizes 2 4 6 \
-            --summations tuples eliminate \
+            --summations tuples eliminate fused \
             --repeats 1 --timeout 8 \
             --threshold 64 --r 2 --Q 2 --R 2 \
             --output artifacts/cnf-scaling.json

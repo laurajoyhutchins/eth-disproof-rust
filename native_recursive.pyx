@@ -10,6 +10,93 @@ from non_exponential_sudoku.runtime.cost_ledger import charge as ledger_charge
 from non_exponential_sudoku.core.network import _check_leaf_factor_budget
 
 
+from native_ring cimport mul_coords, add_coords
+import native_ring as native_ring_module
+from non_exponential_sudoku.core.algebra import Padic
+from non_exponential_sudoku.core.jets import JetRing
+from non_exponential_sudoku.core import algebra as core_algebra
+from non_exponential_sudoku.core.flint_backend import flint_enabled
+from non_exponential_sudoku.runtime.cost_ledger import active_ledger
+
+
+cdef class _RingArithmetic:
+    """Kernel-local dispatch that retains observable public ring semantics.
+
+    Only built-in Padic and one-level JetRing are fused. Opt-in FLINT,
+    observed ledger frames, non-native ring settings and custom ring
+    implementations stay on their existing Python ring methods.
+    """
+    cdef object py_add, py_sub, py_neg, py_mul, mask, modulus
+    cdef object jet_add_fn, jet_sub_fn, jet_neg_fn, jet_mul_fn
+    cdef int degree
+    cdef bint padic, jet
+
+    def __cinit__(self, object ring):
+        self.py_add=ring.add
+        self.py_sub=ring.sub
+        self.py_neg=ring.neg
+        self.py_mul=ring.mul
+        self.padic=False
+        self.jet=False
+        if active_ledger() is not None or flint_enabled():
+            return
+        # Measured crossover: tiny extension rings spend more time entering
+        # this adapter than they save in direct native arithmetic. This is
+        # performance dispatch, not an algorithmic size/capacity limit.
+        if ring.e < 8:
+            return
+        if type(ring) is Padic and core_algebra._native_ring is not None:
+            self.padic=True
+        elif (type(ring) is JetRing and type(ring.base) is Padic and
+              ring.depth == 1 and
+              ring._native_add is native_ring_module.jet_add and
+              ring._native_sub is native_ring_module.jet_sub and
+              ring._native_neg is native_ring_module.jet_neg and
+              ring._native_mul is native_ring_module.jet_mul):
+            self.jet=True
+        else:
+            return
+        self.degree=ring.e
+        self.modulus=ring.f
+        self.mask=ring.mask if self.padic else ring.base.mask
+        if self.jet:
+            self.jet_add_fn=native_ring_module.jet_add
+            self.jet_sub_fn=native_ring_module.jet_sub
+            self.jet_neg_fn=native_ring_module.jet_neg
+            self.jet_mul_fn=native_ring_module.jet_mul
+
+    cdef inline object add(self, object a, object b):
+        if self.padic:
+            return add_coords(<tuple>a, <tuple>b, self.mask)
+        if self.jet:
+            return self.jet_add_fn(<tuple>a, <tuple>b, self.mask)
+        return self.py_add(a,b)
+
+    cdef inline object sub(self, object a, object b):
+        if self.padic:
+            return tuple((a[i]-b[i])&self.mask for i in range(self.degree))
+        if self.jet:
+            return self.jet_sub_fn(<tuple>a, <tuple>b, self.mask)
+        return self.py_sub(a,b)
+
+    cdef inline object neg(self, object a):
+        if self.padic:
+            return tuple((-a[i])&self.mask for i in range(self.degree))
+        if self.jet:
+            return self.jet_neg_fn(<tuple>a, self.mask)
+        return self.py_neg(a)
+
+    cdef inline object mul(self, object a, object b):
+        if self.padic:
+            return mul_coords(<tuple>a, <tuple>b,
+                              self.degree, self.modulus, self.mask)
+        if self.jet:
+            return self.jet_mul_fn(<tuple>a, <tuple>b,
+                           self.degree, self.modulus, self.mask)
+        return self.py_mul(a,b)
+
+
+
 def packet_evaluate(tuple bits, object ring, tuple left_positions,
                     tuple row_cauchy, object contributions, tuple desired,
                     tuple tile_slots, tuple right_positions,
@@ -25,8 +112,10 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
     cdef list strides=[], states, nxt_dense
     cdef object bits_right
     cdef dict coeffs, nxt, target_map={}
-    cdef object zero=ring.zero, one=ring.one, add=ring.add, mul=ring.mul
-    cdef object sub=ring.sub, neg=ring.neg, pow_=ring.pow, scalar=ring.scalar
+    cdef _RingArithmetic ops
+    cdef object add, mul, sub
+    cdef object zero=ring.zero, one=ring.one
+    cdef object pow_=ring.pow, scalar=ring.scalar
     cdef object v, local, const, coef, new, val, state, key, term, value
     cdef object row, entry, m, b, tile
     for k in range(n):
@@ -54,9 +143,11 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
         for y,idx in right_positions:
             bits_right[y]=bits[idx]
     if n==0:
-        # Most packet oracles have no target modes. Preserve the direct
-        # Cauchy product instead of building a one-state coefficient DP.
-        # Source tile factors are applied below, even after a zero product.
+        # Direct Cauchy products are already specialized. Their tiny ring
+        # operations do not amortize the additional native dispatch adapter.
+        add=ring.add
+        mul=ring.mul
+        sub=ring.sub
         value=one
         for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):
             local=zero
@@ -67,36 +158,44 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
             value=mul(value,const)
             if value==zero:
                 break
-    elif cap<=512:
+        for m,b,tile in tile_slots:
+            term=zero
+            for y,coef in tile:
+                if y<size and bits_right[y]:
+                    term=add(term,scalar(coef**m.b))
+            value=mul(value,pow_(term,b))
+        return value
+    ops=_RingArithmetic(ring)
+    if cap<=512:
         states=[zero]*cap
         states[0]=one
         for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):
             local=zero
             for y,coef in row:
                 if bits_right[y]:
-                    local=add(local,coef)
+                    local=ops.add(local,coef)
             if bits[idx]:
                 const=local
                 active=contributions[x]
             else:
-                const=sub(one,local)
-                active=tuple((k,neg(coef)) for k,coef in contributions[x])
+                const=ops.sub(one,local)
+                active=tuple((k,ops.neg(coef)) for k,coef in contributions[x])
             nxt_dense=[zero]*cap
             for step in range(cap):
                 v=states[step]
                 if v==zero:
                     continue
-                new=mul(v,const)
+                new=ops.mul(v,const)
                 if new!=zero:
-                    nxt_dense[step]=add(nxt_dense[step],new)
+                    nxt_dense[step]=ops.add(nxt_dense[step],new)
                 for k,coef in active:
                     stride=strides[k]
                     if (step//stride)%(desired[k]+1)>=desired[k]:
                         continue
                     key=step+stride
-                    new=mul(v,coef)
+                    new=ops.mul(v,coef)
                     if new!=zero:
-                        nxt_dense[key]=add(nxt_dense[key],new)
+                        nxt_dense[key]=ops.add(nxt_dense[key],new)
             states=nxt_dense
         value=states[cap-1]
     else:
@@ -105,42 +204,42 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
             local=zero
             for y,coef in row:
                 if bits_right[y]:
-                    local=add(local,coef)
+                    local=ops.add(local,coef)
             if bits[idx]:
                 const=local
                 active=contributions[x]
             else:
-                const=sub(one,local)
-                active=tuple((k,neg(coef)) for k,coef in contributions[x])
+                const=ops.sub(one,local)
+                active=tuple((k,ops.neg(coef)) for k,coef in contributions[x])
             nxt={}
             for state,v in coeffs.items():
-                new=mul(v,const)
+                new=ops.mul(v,const)
                 if new!=zero:
-                    nxt[state]=add(nxt.get(state,zero),new)
+                    nxt[state]=ops.add(nxt.get(state,zero),new)
                 for k,coef in active:
                     stride=strides[k]
                     if (state//stride)%(desired[k]+1)>=desired[k]:
                         continue
                     key=state+stride
-                    new=mul(v,coef)
+                    new=ops.mul(v,coef)
                     if new!=zero:
-                        nxt[key]=add(nxt.get(key,zero),new)
+                        nxt[key]=ops.add(nxt.get(key,zero),new)
             coeffs=nxt
         value=coeffs.get(cap-1,zero)
     for m,b,tile in tile_slots:
         term=zero
         for y,coef in tile:
             if y<size and bits_right[y]:
-                term=add(term,scalar(coef**m.b))
-        value=mul(value,pow_(term,b))
+                term=ops.add(term,scalar(coef**m.b))
+        value=ops.mul(value,pow_(term,b))
     return value
 
 
 
 cdef object _execute_compiled_leaf(object plan, dict tables, object R,
-                                   object max_factor_bytes):
+                                   object max_factor_bytes, _RingArithmetic ops):
     """Use the reference LeafPlan without re-planning or reindexing factors."""
-    cdef object zero=R.zero, one=R.one, mul=R.mul, add=R.add
+    cdef object zero=R.zero, one=R.one
     cdef object scalar=one, step, involved, table, indices, value
     cdef object acc, term, row, positions, out_scope
     cdef list out
@@ -151,7 +250,7 @@ cdef object _execute_compiled_leaf(object plan, dict tables, object R,
     cdef Py_ssize_t live_entries=sum(len(table) for table in tables.values())
     for step in plan.steps:
         if not step.incident:
-            scalar=mul(scalar,R.scalar(2))
+            scalar=ops.mul(scalar,R.scalar(2))
             continue
         involved=[tables.pop(index) for index in step.incident]
         involved_entries=sum(len(table) for table in involved)
@@ -174,10 +273,10 @@ cdef object _execute_compiled_leaf(object plan, dict tables, object R,
                         if term is one:
                             term=value
                         elif value is not one:
-                            term=mul(term,value)
+                            term=ops.mul(term,value)
                         if term==zero:
                             break
-                    acc=add(acc,term)
+                    acc=ops.add(acc,term)
                 out.append(acc)
         else:
             for mask in range(1 << len(step.out_scope)):
@@ -196,16 +295,16 @@ cdef object _execute_compiled_leaf(object plan, dict tables, object R,
                         if term is one:
                             term=value
                         elif value is not one:
-                            term=mul(term,value)
+                            term=ops.mul(term,value)
                         if term==zero:
                             break
-                    acc=add(acc,term)
+                    acc=ops.add(acc,term)
                 out.append(acc)
         if step.out_scope:
             tables[step.output_id]=tuple(out)
             live_entries+=len(out)
         else:
-            scalar=mul(scalar,out[0])
+            scalar=ops.mul(scalar,out[0])
             if scalar==zero:
                 return zero
     if tables:
@@ -221,7 +320,8 @@ def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16,
     """
     cdef list factors=[], values, out, compiled, positions, ins
     cdef object scope, table
-    cdef object zero=R.zero, one=R.one, add=R.add, mul=R.mul, scalar_fn=R.scalar
+    cdef _RingArithmetic ops=_RingArithmetic(R)
+    cdef object zero=R.zero, one=R.one, scalar_fn=R.scalar
     cdef object scalar=one, v, entry, ans, term, val, target, key, edge
     cdef set remaining, incident, scope_union
     cdef tuple ports, out_scope, tmp
@@ -245,7 +345,7 @@ def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16,
             ports=tuple(v.ports)
             if not ports:
                 ledger_charge("vertex_oracle_calls")
-                scalar=mul(scalar,v.oracle((),R))
+                scalar=ops.mul(scalar,v.oracle((),R))
                 if scalar==zero:
                     return scalar
                 continue
@@ -260,12 +360,12 @@ def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16,
                 return zero
             tables[table_index]=tuple(values)
             table_index+=1
-        return mul(scalar,_execute_compiled_leaf(plan,tables,R,max_factor_bytes))
+        return ops.mul(scalar,_execute_compiled_leaf(plan,tables,R,max_factor_bytes,ops))
     for v in net.left+net.right:
         ports=tuple(v.ports)
         if not ports:
             ledger_charge("vertex_oracle_calls")
-            scalar=mul(scalar,v.oracle((),R))
+            scalar=ops.mul(scalar,v.oracle((),R))
             if scalar==zero:
                 return scalar
             continue
@@ -292,7 +392,7 @@ def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16,
         edge=min(remaining,key=cost)
         incident=set(by_var[edge])
         if not incident:
-            scalar=mul(scalar,scalar_fn(2))
+            scalar=ops.mul(scalar,scalar_fn(2))
             remaining.remove(edge)
             continue
         scope_union=set()
@@ -320,15 +420,15 @@ def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16,
                     ix=0
                     for offset,pos in enumerate(positions):
                         ix |= ((bit if pos<0 else (mask>>pos)&1)<<offset)
-                    term=mul(term,table[ix])
+                    term=ops.mul(term,table[ix])
                     if term==zero: break
-                ans=add(ans,term)
+                ans=ops.add(ans,term)
             out.append(ans)
         factors=[f for i,f in enumerate(factors) if i not in incident]
         if out_scope:
             factors.append((out_scope,tuple(out)))
         else:
-            scalar=mul(scalar,out[0])
+            scalar=ops.mul(scalar,out[0])
             if scalar==zero:
                 return scalar
         remaining.remove(edge)

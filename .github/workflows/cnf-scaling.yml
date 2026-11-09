@@ -7,7 +7,7 @@ on:
 
 jobs:
   growing-cnf:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, "overcenter-gcp-${{ github.run_id }}-sudoku-cnf-${{ github.run_attempt }}"]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

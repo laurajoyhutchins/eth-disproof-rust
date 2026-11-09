@@ -14,7 +14,7 @@ from non_exponential_sudoku.core.network import (
 )
 from non_exponential_sudoku.runtime.budget import CapacityError
 
-pytestmark = (pytest.mark.checkpoint, pytest.mark.requires_native)
+pytestmark = [pytest.mark.checkpoint, pytest.mark.requires_native]
 
 
 @pytest.mark.parametrize("extension_degree", [2, 5, 12, 32])

@@ -494,7 +494,7 @@ def count_from_manual_designs(
     taylor_limits: TaylorLimits = TaylorLimits(),
     hermite_limits: HermiteLimits = HermiteLimits(),
     backend: ArithmeticBackend = "python",
-    summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples',
+    summation: Literal['tuples', 'eliminate', 'fused', 'multilinear'] = 'tuples',
 ) -> ManualCountResult:
     """ETH-004 end-to-end reference: certified designs -> Taylor -> #F.
 
@@ -541,7 +541,7 @@ def count_origin_from_manual_designs(
     taylor_limits: TaylorLimits = TaylorLimits(),
     hermite_limits: HermiteLimits = HermiteLimits(),
     backend: ArithmeticBackend = "python",
-    summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples',
+    summation: Literal['tuples', 'eliminate', 'fused', 'multilinear'] = 'tuples',
 ) -> OriginManualCountResult:
     """Exact count-only readout from separately certified Taylor jets.
 

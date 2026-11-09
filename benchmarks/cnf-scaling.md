@@ -42,8 +42,9 @@ theorem. The report stores them explicitly.
 The same formula and reference parameters are evaluated with `tuples`,
 `eliminate`, and opt-in `fused`. `eliminate` uses certified group-mask
 factors for each finite-difference pair. `fused` first telescopes the
-Boolean differences exactly, then contracts factors over original Boolean
-variables and truncated polynomial coefficients. Its pair count is zero,
+Boolean differences exactly, then contracts factors over the prepared leaf's Boolean
+variables (including any parsimonious reduction auxiliaries) and truncated
+polynomial coefficients. Its pair count is zero,
 but this says nothing about induced factor width or arithmetic work. All
 three must match the independent exact count; neither factorization
 establishes the manuscript's non-exponential worst-case algorithm.

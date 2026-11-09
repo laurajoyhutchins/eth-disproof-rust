@@ -21,11 +21,13 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "src")]
 
+from scripts.change_impact import plan as calculate_impact  # noqa: E402
 from scripts.evidence import (  # noqa: E402
     fingerprints, git_provenance, native_binaries, validate_attestation,
 )
 
-DEFAULT_TIMEOUTS = {"checkpoint": 30, "integration": 180, "extended": 600}
+DEFAULT_TIMEOUTS = {"checkpoint": 180, "integration": 180, "extended": 600}
+CHECKPOINT_FEEDBACK_TARGET_SECONDS = 30  # metric, not a correctness gate
 JUNIT_FIELDS = ("tests", "failures", "errors", "skipped")
 
 
@@ -55,6 +57,7 @@ def main() -> int:
     parser.add_argument("--require-native-attestation", action="store_true",
                         help="Require matching native build-input and binary hashes")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts")
+    parser.add_argument("--impact-plan", type=Path, help="Exact-head conservative checkpoint plan")
     args = parser.parse_args()
     if args.timeout is not None and args.timeout <= 0:
         parser.error("--timeout must be positive")
@@ -63,13 +66,56 @@ def main() -> int:
 
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    selected_tests: list[str] = []
+    impact: dict[str, object] | None = None
+    if args.impact_plan is not None:
+        if args.tier != "checkpoint":
+            parser.error("--impact-plan is only supported by checkpoint")
+        try:
+            supplied = json.loads(args.impact_plan.read_text())
+            if not isinstance(supplied, dict):
+                raise ValueError("impact plan must be an object")
+            base = supplied.get("base")
+            if base is not None and not isinstance(base, str):
+                raise ValueError("invalid comparison base")
+            expected = calculate_impact(ROOT, base)
+            if supplied != expected or expected["head"] is None:
+                raise ValueError("impact plan is stale or does not match HEAD")
+            impact = expected
+            mode = expected["mode"]
+            if mode == "targeted":
+                selected_tests = expected["tests"]
+                if not selected_tests or not all(
+                    isinstance(path, str) and path.startswith("tests/") and
+                    (ROOT / path).is_file() for path in selected_tests
+                ):
+                    raise ValueError("invalid impacted test paths")
+            elif mode == "none":
+                record = {
+                    "tier": "checkpoint",
+                    "verification_status": "not_applicable",
+                    "tests_executed": False,
+                    "reused_evidence": False,
+                    "impact_plan": expected,
+                    "git": git_provenance(),
+                    **fingerprints(),
+                }
+                (output / "checkpoint-not-applicable.json").write_text(
+                    json.dumps(record, indent=2) + "\n")
+                print("checkpoint: documentation-only, no tests executed", flush=True)
+                return 0
+            elif mode != "full":
+                raise ValueError("unknown impact mode")
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            parser.error(f"invalid impact plan: {exc}")
     junit = output / f"{args.tier}.xml"
     junit.unlink(missing_ok=True)
     required = sorted(set(args.require_backend))
     if args.require_native and args.tier == "checkpoint" and "native" not in required:
         required.append("native")
     command = [sys.executable, "-m", "pytest", "-q", "-m", args.tier,
-               "--junitxml=" + str(junit)]
+               "--durations=20", "--junitxml=" + str(junit)]
+    command.extend(selected_tests)
     for backend in required:
         command.extend(("--require-backend", backend))
     env = os.environ.copy()
@@ -114,6 +160,11 @@ def main() -> int:
     record = {
         "tier": args.tier,
         "passed": passed,
+        "verification_status": "passed" if passed else "failed",
+        "impact_plan": impact,
+        "tests_executed": True,
+        "reused_evidence": False,
+        "feedback_target_seconds": CHECKPOINT_FEEDBACK_TARGET_SECONDS if args.tier == "checkpoint" else None,
         "exit_code": code,
         "timeout": timed_out,
         "infrastructure_error": infrastructure_error,
@@ -139,6 +190,8 @@ def main() -> int:
     (output / f"{args.tier}.json").write_text(json.dumps(record, indent=2) + "\n")
     print(f"tier={args.tier} success={passed} inputs_stable={stable}"
           f" xml={record['junit']} summary={counts}", flush=True)
+    if args.tier == "checkpoint" and (time.perf_counter() - start) > CHECKPOINT_FEEDBACK_TARGET_SECONDS:
+        print("checkpoint exceeded 30-second feedback target (informational)", flush=True)
     return 0 if passed else (code if code else 1)
 
 

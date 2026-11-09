@@ -108,3 +108,16 @@ def test_actual_certified_taylor_paths_have_same_or_clique_width(n: int) -> None
         assert result.coefficients == (Fraction(n + 1),)
         assert result.stats.factor_scope_peak == n
         assert result.stats.factor_assignments_tested >= (1 << n)
+
+
+@pytest.mark.checkpoint
+def test_peak_budget_counts_live_bucket_inputs_and_output_together():
+    factors = make_family('or-clique', 4)
+    initial_entries = sum(len(f.entries) for f in factors)
+    # The first bucket's attached input factors are still live while the
+    # induced output table is being constructed. Neither can be omitted.
+    for strategy in ('dense', 'support'):
+        with pytest.raises(CapacityRefusal):
+            run_contraction(4, factors, strategy=strategy,
+                            max_entries=initial_entries + 1)
+

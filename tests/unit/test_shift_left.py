@@ -8,6 +8,7 @@ import pytest
 
 from benchmarks.recursive_cases import get_case
 from non_exponential_sudoku.contraction import engine as contraction_engine
+from non_exponential_sudoku.contraction import deformation as contraction_deformation
 from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
 from non_exponential_sudoku.sudoku.direct_network import DirectNetwork
 from non_exponential_sudoku.sudoku.encoding import sudoku_network
@@ -62,6 +63,22 @@ def test_mode_catalog_compiled_once_per_valuation(monkeypatch: pytest.MonkeyPatc
     solver = contraction_engine.ContractionEngine(case.config)
     assert solver.contract(case.network)[0] == case.expected
     # a=1 means two nonzero centers t=-1,+1, both v2(t)=0.
+    assert len(calls) == 1, calls
+
+
+
+def test_factor_structure_compiled_once_per_valuation(monkeypatch: pytest.MonkeyPatch) -> None:
+    case = get_case("parity-2wire", "plans")
+    original = contraction_deformation.build_factorization_plan
+    calls: list[int] = []
+
+    def count_plan(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(contraction_deformation, "build_factorization_plan", count_plan)
+    solver = contraction_engine.ContractionEngine(case.config)
+    assert solver.contract(case.network)[0] == case.expected
     assert len(calls) == 1, calls
 
 

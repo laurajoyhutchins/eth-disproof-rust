@@ -63,6 +63,18 @@ class UnfoldingRank:
     max_coefficient_bits: int
 
 
+@dataclass(frozen=True, slots=True)
+class MinimaxOrdering:
+    """Best maximum exact cut rank among all orderings of a small tensor."""
+
+    variable_order: tuple[int, ...]
+    peak_rank: int
+    cut_ranks: tuple[int, ...]
+    cuts_checked: int
+    charged_rational_operations: int
+    max_coefficient_bits: int
+
+
 class _ExactBudget:
     def __init__(self, limits: RankLimits) -> None:
         self.limits = limits
@@ -286,4 +298,66 @@ def rank_profile(
             formula, replacements, at=at, left_variables=order[:i], limits=limits,
         )
         for i in range(1, formula.nvars)
+    )
+
+
+def minimax_unfolding_order(
+    formula: CNFFormula, replacements: ReplacementSystem | None = None, *,
+    at: Rational, limits: RankLimits = RankLimits(), max_cuts: int = 64,
+) -> MinimaxOrdering:
+    """Exhaustively certify the smallest possible maximum TT bond rank.
+
+    A cut rank depends on a subset of variables, not on the order inside
+    either side. Enumerate all 2**n-2 proper nonempty subsets once, then
+    apply subset minimax dynamic programming:
+
+      best[S] = min_{v in S} max(best[S-v], rank(S)).
+
+    The full-set rank is ignored because it is not a TT internal bond.
+    This is exponential *diagnostic* work, never a production shortcut.
+    """
+    if type(max_cuts) is not int or max_cuts < 0:
+        raise ValueError("max_cuts must be a nonnegative integer")
+    n = formula.nvars
+    if n > limits.max_variables:
+        raise CapacityError("ETH unfolding rank variable limit")
+    number_of_cuts = (1 << n) - 2 if n > 0 else 0
+    if number_of_cuts > max_cuts:
+        raise CapacityError("ETH unfolding rank cut search limit")
+    full = (1 << n) - 1
+    ranks: dict[int, int] = {}
+    operations = 0
+    max_bits = 0
+    for subset in range(1, full):
+        left = tuple(i for i in range(n) if subset & (1 << i))
+        result = unfolding_rank(
+            formula, replacements, at=at, left_variables=left, limits=limits,
+        )
+        ranks[subset] = result.rank
+        operations += result.rational_operations
+        max_bits = max(max_bits, result.max_coefficient_bits)
+
+    # Sort candidates by (maximum bond rank, lexicographic order) for
+    # deterministic, auditable tie-breaking.
+    best: dict[int, tuple[int, tuple[int, ...]]] = {0: (1, ())}
+    for subset in range(1, full + 1):
+        possible: list[tuple[int, tuple[int, ...]]] = []
+        for variable in range(n):
+            bit = 1 << variable
+            if not subset & bit:
+                continue
+            prior_max, prior_order = best[subset ^ bit]
+            peak = max(prior_max, ranks.get(subset, 1))
+            possible.append((peak, prior_order + (variable,)))
+        best[subset] = min(possible)
+    optimum, order = best[full]
+    prefix = 0
+    cut_ranks: list[int] = []
+    for variable in order[:-1]:
+        prefix |= 1 << variable
+        cut_ranks.append(ranks[prefix])
+    return MinimaxOrdering(
+        variable_order=order, peak_rank=optimum, cut_ranks=tuple(cut_ranks),
+        cuts_checked=number_of_cuts, charged_rational_operations=operations,
+        max_coefficient_bits=max_bits,
     )

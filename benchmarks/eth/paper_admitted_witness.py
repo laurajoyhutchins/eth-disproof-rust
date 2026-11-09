@@ -17,6 +17,7 @@ from typing import Any
 from non_exponential_sudoku.eth.paper_admitted_witness import (
     LEAN_PATH, LEAN_SCOPE_PATH, LEAN_THEOREM, PAPER_COMMIT, PAPER_PATH,
     concrete_unit_balance_witness, virtual_unit_cnf_step5,
+    unit_copy_partition,
 )
 from scripts.evidence import fingerprints, git_provenance
 
@@ -31,6 +32,7 @@ def experiment(
     source_before, git_before = fingerprints(), git_provenance()
     virtual = virtual_unit_cnf_step5(lambda_bits)
     finite = concrete_unit_balance_witness(finite_n)
+    block = unit_copy_partition(finite)
     if not virtual.admitted_by_sufficient_conditions:
         raise ArithmeticError("symbolic Step-5 candidate is not admitted")
     if not finite.balancing_lemma_hypotheses or not finite.balancing_lemma_conclusions:
@@ -71,6 +73,22 @@ def experiment(
             "incidence_labels_checked": finite.n,
             "physical_schedules_materialized": True,
             "full_spectral_replacements_materialized": False,
+        },
+        "finite_copy_partition": {
+            "copy_count": block.copy_count,
+            "max_copy_variables": block.max_copy_variables,
+            "rank_upper_all_rational_centers": block.rank_upper_all_centers,
+            "rank_upper_for_taylor_coefficient_order_2":
+                block.taylor_coefficient_rank_upper(2),
+            "block_boundary_rank_upper": block.block_boundary_rank_upper,
+            "source_step4_explanation": (
+                "Each unit-clause occurrence reads only the variables "
+                "in its assigned auxiliary copy; grouping copies "
+                "factorizes the deformed assignment tensor."
+            ),
+            "applies_to_virtual_unit_family_symbolically": True,
+            "full_spectral_tensor_constructed": False,
+            "claim": "source-derived upper bound, not measured global rank",
         },
         "claim_boundary": {
             "executed_lean_machine": False,

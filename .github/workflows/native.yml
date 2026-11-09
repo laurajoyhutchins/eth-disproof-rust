@@ -11,7 +11,7 @@ on:
 
 jobs:
   native-integration:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, "overcenter-gcp-${{ github.run_id }}-sudoku-native-${{ github.run_attempt }}"]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.0.0",
+  "namespace": "local-sudoku-benchmark",
+  "authority": "harness-specific names following OpenTelemetry unit conventions; not official semantic conventions",
+  "metrics": {
+    "benchmark.duration": {
+      "unit": "s",
+      "type": "histogram",
+      "source": "native pytest-benchmark samples"
+    },
+    "benchmark.memory.peak": {
+      "unit": "By",
+      "type": "gauge",
+      "source": "Linux RUSAGE_SELF.ru_maxrss multiplied by 1024"
+    },
+    "benchmark.operations": {
+      "unit": "{operation}",
+      "type": "counter",
+      "source": "one contraction per sample, reported as sample count and explicit per-worker invocation"
+    },
+    "propagation.candidates.remaining": {
+      "unit": "{candidate}",
+      "type": "gauge",
+      "source": "incremental exact-cover active row count"
+    },
+    "propagation.candidates.removed": {
+      "unit": "{candidate}",
+      "type": "counter",
+      "source": "incremental exact-cover row deactivations"
+    },
+    "propagation.tensor.wires.remaining": {
+      "unit": "{wire}",
+      "type": "gauge",
+      "source": "independent bit-domain projection after support reduction"
+    },
+    "contraction.mode.dp.work": {
+      "unit": "{charge}",
+      "type": "counter",
+      "source": "exact ModeBudget.work calls including native kernels"
+    },
+    "contraction.child.networks": {
+      "unit": "{network}",
+      "type": "counter",
+      "source": "complete recursive contractor statistics"
+    }
+  },
+  "memory_semantics": "Peak whole benchmark-process RSS including Python interpreter, imports, and native extension. Not allocations or descendant-process RSS.",
+  "timing_semantics": "Wall-clock per operation with setup/verification excluded; warmup separate; native pytest-benchmark distribution."
+}

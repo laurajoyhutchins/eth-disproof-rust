@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "cases": {
+    "PARITY_CASES": [
+      {
+        "id": "cycle2-1",
+        "kind": "cycle2",
+        "expected": 2,
+        "parameter": 1,
+        "oracle": "GF2-rank"
+      },
+      {
+        "id": "cycle2-3",
+        "kind": "cycle2",
+        "expected": 2,
+        "parameter": 3,
+        "oracle": "GF2-rank"
+      },
+      {
+        "id": "pair2-1",
+        "kind": "pair2",
+        "expected": 2,
+        "parameter": 1,
+        "oracle": "GF2-rank"
+      },
+      {
+        "id": "pair2-3",
+        "kind": "pair2",
+        "expected": 8,
+        "parameter": 3,
+        "oracle": "GF2-rank"
+      },
+      {
+        "id": "ladder3-1",
+        "kind": "ladder3",
+        "expected": 4,
+        "parameter": 1,
+        "oracle": "GF2-rank"
+      },
+      {
+        "id": "ladder3-2",
+        "kind": "ladder3",
+        "expected": 8,
+        "parameter": 2,
+        "oracle": "GF2-rank"
+      }
+    ],
+    "SUDOKU_CASES": [
+      {
+        "id": "9x9-77-givens-two-solutions",
+        "kind": "sudoku",
+        "expected": 2,
+        "parameter": 4,
+        "oracle": "independent-sudoku"
+      },
+      {
+        "id": "9x9-73-givens-four-solutions",
+        "kind": "sudoku",
+        "expected": 4,
+        "parameter": 8,
+        "oracle": "independent-sudoku"
+      }
+    ]
+  }
+}

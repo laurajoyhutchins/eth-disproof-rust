@@ -6,11 +6,12 @@ semantics independently of coefficient arithmetic.
 """
 from __future__ import annotations
 
-from itertools import combinations, product
 from math import prod
 from random import Random
 
 import pytest
+
+pytestmark = pytest.mark.checkpoint
 
 from non_exponential_sudoku.elimination.scope_plan import (
     EliminationScope,
@@ -82,9 +83,10 @@ def test_leaf_and_taylor_keys_match_independent_legacy_formulas(seed: int) -> No
     width = choose_min_width(remaining, scopes)
     assert width.variable == min(remaining, key=legacy_width)
     assert width.incident == tuple(incident(width.variable))
-    assert width.output == tuple(sorted(
+    expected_output = tuple(sorted(
         set().union(*(scopes[j] for j in width.incident)) - {width.variable}
-    )) if width.incident else width.output == ()
+    )) if width.incident else ()
+    assert width.output == expected_output
 
     domain = choose_min_domain(remaining, scopes, domains)
     assert domain.variable == min(remaining, key=legacy_domain)

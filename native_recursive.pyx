@@ -7,6 +7,7 @@ convolution, and elimination loops stay within a single Cython invocation.
 """
 
 from non_exponential_sudoku.runtime.cost_ledger import charge as ledger_charge
+from non_exponential_sudoku.core.network import _check_leaf_factor_budget
 
 
 def packet_evaluate(tuple bits, object ring, tuple left_positions,
@@ -42,7 +43,21 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
     bits_right=[0]*size
     for y,idx in right_positions:
         bits_right[y]=bits[idx]
-    if cap<=512:
+    if n==0:
+        # Most packet oracles have no target modes. Preserve the direct
+        # Cauchy product instead of building a one-state coefficient DP.
+        # Source tile factors are applied below, even after a zero product.
+        value=one
+        for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):
+            local=zero
+            for y,coef in row:
+                if bits_right[y]:
+                    local=add(local,coef)
+            const=local if bits[idx] else sub(one,local)
+            value=mul(value,const)
+            if value==zero:
+                break
+    elif cap<=512:
         states=[zero]*cap
         states[0]=one
         for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):
@@ -111,7 +126,78 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
     return value
 
 
-def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16):
+
+cdef object _execute_compiled_leaf(object plan, dict tables, object R,
+                                   object max_factor_bytes):
+    """Use the reference LeafPlan without re-planning or reindexing factors."""
+    cdef object zero=R.zero, one=R.one, mul=R.mul, add=R.add
+    cdef object scalar=one, step, involved, table, indices, value
+    cdef object acc, term, row, positions, out_scope
+    cdef list out
+    cdef Py_ssize_t mask, bit, ix, offset, pos
+    for step in plan.steps:
+        if not step.incident:
+            scalar=mul(scalar,R.scalar(2))
+            continue
+        involved=[tables.pop(index) for index in step.incident]
+        _check_leaf_factor_budget(
+            sum(len(table) for table in tables.values()) +
+            sum(len(table) for table in involved) +
+            (1 << len(step.out_scope)), R, max_factor_bytes)
+        out=[]
+        if step.lookup is not None:
+            for row in step.lookup:
+                ledger_charge("leaf_elimination_rows")
+                acc=zero
+                for bit in range(2):
+                    term=one
+                    for table,indices in zip(involved,row):
+                        value=table[indices[bit]]
+                        if value is zero:
+                            term=zero
+                            break
+                        if term is one:
+                            term=value
+                        elif value is not one:
+                            term=mul(term,value)
+                        if term==zero:
+                            break
+                    acc=add(acc,term)
+                out.append(acc)
+        else:
+            for mask in range(1 << len(step.out_scope)):
+                ledger_charge("leaf_elimination_rows")
+                acc=zero
+                for bit in range(2):
+                    term=one
+                    for positions,table in zip(step.positions,involved):
+                        ix=0
+                        for offset,pos in enumerate(positions):
+                            ix |= ((bit if pos<0 else (mask>>pos)&1)<<offset)
+                        value=table[ix]
+                        if value is zero:
+                            term=zero
+                            break
+                        if term is one:
+                            term=value
+                        elif value is not one:
+                            term=mul(term,value)
+                        if term==zero:
+                            break
+                    acc=add(acc,term)
+                out.append(acc)
+        if step.out_scope:
+            tables[step.output_id]=tuple(out)
+        else:
+            scalar=mul(scalar,out[0])
+            if scalar==zero:
+                return zero
+    if tables:
+        raise AssertionError('Native compiled leaf left unresolved factors')
+    return scalar
+
+def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16,
+                   *, object plan=None, object max_factor_bytes=None):
     """One native call for complete exact factor-table leaf elimination.
 
     External tensor-entry oracles remain arbitrary Python callables. Fallback
@@ -123,11 +209,42 @@ def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16):
     cdef object scalar=one, v, entry, ans, term, val, target, key, edge
     cdef set remaining, incident, scope_union
     cdef tuple ports, out_scope, tmp
-    cdef dict by_var
+    cdef dict by_var, tables
+    cdef object scopes
+    cdef Py_ssize_t table_index=0
     cdef Py_ssize_t i,j,k,mask,bit,ix,pos,offset,lim
+    if max_factor_bytes is not None and max_factor_bytes < 1:
+        raise ValueError('Leaf factor memory budget must be positive')
     if net.edges>max_edges:
         from non_exponential_sudoku.runtime.budget import CapacityError
         raise CapacityError(f'Leaf has {net.edges} wires; limit is {max_edges}')
+    if plan is not None:
+        scopes=tuple(v.ports for v in net.left+net.right if v.ports)
+        if (plan.edges != net.edges or plan.input_scopes != scopes or
+                plan.max_width != max_width):
+            raise ValueError('Leaf plan does not match this network topology')
+        tables={}
+        scalar=one
+        for v in net.left+net.right:
+            ports=tuple(v.ports)
+            if not ports:
+                ledger_charge("vertex_oracle_calls")
+                scalar=mul(scalar,v.oracle((),R))
+                if scalar==zero:
+                    return scalar
+                continue
+            _check_leaf_factor_budget(
+                sum(len(table) for table in tables.values()) +
+                (1 << len(ports)), R, max_factor_bytes)
+            values=[]
+            for ix in range(1<<len(ports)):
+                ledger_charge("vertex_oracle_calls")
+                values.append(v.oracle(tuple((ix>>i)&1 for i in range(len(ports))),R))
+            if all(t==zero for t in values):
+                return zero
+            tables[table_index]=tuple(values)
+            table_index+=1
+        return mul(scalar,_execute_compiled_leaf(plan,tables,R,max_factor_bytes))
     for v in net.left+net.right:
         ports=tuple(v.ports)
         if not ports:
@@ -138,6 +255,9 @@ def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16):
             continue
         if len(ports)>max_width:
             return net.direct(R,max_edges)
+        _check_leaf_factor_budget(
+            sum(len(table) for _,table in factors) +
+            (1 << len(ports)), R, max_factor_bytes)
         values=[]
         for ix in range(1<<len(ports)):
             ledger_charge("vertex_oracle_calls")
@@ -166,6 +286,9 @@ def eliminate_leaf(object net, object R, int max_edges=20, int max_width=16):
         out_scope=tuple(sorted(scope_union))
         if len(out_scope)>max_width:
             return net.direct(R,max_edges)
+        _check_leaf_factor_budget(
+            sum(len(table) for _,table in factors) +
+            (1 << len(out_scope)), R, max_factor_bytes)
         compiled=[]
         for i in sorted(incident):
             ports,table=factors[i]

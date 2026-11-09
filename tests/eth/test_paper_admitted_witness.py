@@ -18,6 +18,7 @@ from non_exponential_sudoku.eth.parameters import (
 from non_exponential_sudoku.eth.paper_admitted_witness import (
     PAPER_COMMIT, LEAN_THEOREM,
     virtual_unit_cnf_step5, concrete_unit_balance_witness,
+    unit_copy_partition,
 )
 
 
@@ -140,3 +141,74 @@ def test_source_pinned_evidence_serializes_without_misrepresenting_lean() -> Non
     assert report["claim_boundary"]["executed_virtual_cnf"] is False
     assert report["source"]["paper_commit"] == PAPER_COMMIT
     assert report["source"]["lean_theorem"] == LEAN_THEOREM
+
+
+@pytest.mark.integration
+def test_unit_clause_copy_partition_proves_small_uniform_tensor_rank() -> None:
+    balance = concrete_unit_balance_witness(4096)
+    copies = unit_copy_partition(balance)
+    assert copies.copy_count == 256
+    assert copies.max_copy_variables == 16
+    assert copies.max_copy_variables <= balance.D
+    assert copies.rank_upper_all_centers == 256
+    assert copies.taylor_coefficient_rank_upper(2) == 768
+    assert len(copies.variable_to_copy) == balance.n
+    assert len(copies.copy_blocks) == copies.copy_count
+    assert sorted(v for block in copies.copy_blocks for v in block) == list(range(balance.n))
+    for block in copies.copy_blocks:
+        assert len(block) == 16
+        labels = {
+            tuple((balance.variable_schedules[v][t],
+                   balance.clause_schedules[v][t]) for t in range(balance.Q))
+            for v in block
+        }
+        assert len(labels) == len(block)
+
+
+@pytest.mark.integration
+def test_actual_spectral_step4_rows_are_local_to_auxiliary_copy() -> None:
+    # Small structural witness: invoke the real spectral projector and
+    # transfer path, then independently inspect *every* nonzero row
+    # coefficient. No truth-table enumeration or paper admission claim.
+    from non_exponential_sudoku.eth.construction import (
+        construct_from_schedules, construct_implicit_auxiliary,
+    )
+    from non_exponential_sudoku.eth.support_rank import (
+        uniform_support_profile,
+    )
+
+    n = 32
+    formula = CNFFormula(n, tuple((v + 1,) for v in range(n)))
+    variable = tuple(((v & 1), ((v >> 1) & 1)) for v in range(n))
+    clause = tuple((((v >> 2) & 1), ((v >> 3) & 1)) for v in range(n))
+    aux = construct_implicit_auxiliary(
+        r=2, Q=2, R=2, measurement_basis="projector",
+    )
+    constructed = construct_from_schedules(formula, aux, variable, clause)
+    # Copy index is the count of preceding occurrences of the same label.
+    label_counts: dict[tuple[tuple[int, int], ...], int] = {}
+    blocks: list[list[int]] = []
+    for v in range(n):
+        label = tuple((variable[v][t], clause[v][t]) for t in range(2))
+        copy = label_counts.get(label, 0)
+        label_counts[label] = copy + 1
+        if len(blocks) <= copy:
+            blocks.append([])
+        blocks[copy].append(v)
+    assert len(blocks) == 2
+    for v, forms in enumerate(constructed.replacements.clauses):
+        label = tuple((variable[v][t], clause[v][t]) for t in range(2))
+        # Among occurrences of this label, variable v is assigned the
+        # same copy number by construct_from_schedules.
+        copy = blocks.index(next(block for block in blocks if v in block))
+        allowed = set(blocks[copy])
+        assert len(forms) == 1
+        support = {i for i, p in enumerate(forms[0].coefficients)
+                   if any(p.coefficients)}
+        assert support <= allowed
+    order = tuple(v for block in blocks for v in block)
+    profile = uniform_support_profile(
+        formula, constructed.replacements, variable_order=order,
+    )
+    assert max(cut.rank_upper for cut in profile) <= 256
+    assert profile[15].rank_upper == 1  # exact boundary between copies

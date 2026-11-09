@@ -18,7 +18,7 @@ from non_exponential_sudoku.core.packing import pack
 @pytest.mark.checkpoint
 def test_same_packet_geometry_and_precision_on_both_arms() -> None:
     for label in ("center-L4-p5-n2", "center-L8-p11-n2",
-                  "recursive-p5", "recursive-p7"):
+                  "recursive-p5", "recursive-p7", "recursive-L4-p5"):
         spec = make_case(label)
         assert spec.precision >= 5
         assert spec.expected > 0
@@ -53,6 +53,14 @@ def test_real_recurrence_uses_original_and_pruned_weights_with_exact_result() ->
     assert summary["status"] == "verified"
     assert summary["comparisons"][0]["exact_equal"]
     assert summary["comparisons"][0]["old_total_modes"] >= summary["comparisons"][0]["new_total_modes"]
+    # In this actual two-level contraction the precision is so large
+    # relative to the tiny mode domains that the stronger valuation
+    # excludes no tuples. This is a negative scaling result.
+    reduction = summary["comparisons"][0]["work_reduction"]
+    assert reduction is not None
+    assert reduction["admissible_domain_states_avoided"] == 0
+    assert reduction["child_evaluations_avoided"] == 0
+    assert max(event["precision"] for event in old["catalogs"]) > 100
 
 
 @pytest.mark.integration
@@ -65,3 +73,17 @@ def test_refusal_is_not_misreported_as_equivalent_or_faster() -> None:
     assert summary["status"] == "incomplete"
     assert not summary["comparisons"][0]["exact_equal"]
     assert summary["comparisons"][0]["work_reduction"] is None
+
+
+@pytest.mark.integration
+def test_real_child_evaluations_fall_on_four_slot_deformation() -> None:
+    old = run_sample("center-L4-p9-n2", "original")
+    improved = run_sample("center-L4-p9-n2", "pruned")
+    assert old["status"] == improved["status"] == "verified"
+    result = compare_rows([old, improved],
+                          required_cases=("center-L4-p9-n2",))
+    assert result["status"] == "verified"
+    reduction = result["comparisons"][0]["work_reduction"]
+    assert reduction is not None
+    assert reduction["admissible_domain_states_avoided"] > 0
+    assert reduction["child_evaluations_avoided"] > 0

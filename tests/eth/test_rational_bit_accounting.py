@@ -89,8 +89,7 @@ def test_ordered_benchmark_bit_trace_is_independent_and_exact() -> None:
         assert trace["euclidean_gcd_calls"] > 0
         assert trace["integer_divisions"] >= trace["euclidean_gcd_division_steps"]
         assert trace["exact_result_replays_verified"] > 0
-        assert trace["max_reference_integer_intermediate_bits"] if (
-            "max_reference_integer_intermediate_bits" in trace) else True
+        assert trace["maximum_reference_intermediate_integer_bits"] > 0
         assert "bit_work_proxy" not in arm
 
 

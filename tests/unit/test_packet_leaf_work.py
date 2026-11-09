@@ -25,6 +25,9 @@ from reference.packet_leaf_work import (
     UncertifiedPacketLeaf, certify_packet_leaf_work,
 )
 from reference.packet_oracle_work import packet_evaluation_envelope
+from reference.paper_packet_calls import (
+    paper_packet_entry_ring_calls_log2, uniform_paper_packet_calls,
+)
 
 pytestmark = pytest.mark.checkpoint
 
@@ -275,3 +278,75 @@ def test_second_generation_inherited_packet_is_charged_once_per_vertex(
     assert depth[2] <= 1 << certificate.direct_packet_calls_log2
     assert certificate.universal_bit_bound_proven is False
 
+
+
+@pytest.mark.parametrize("slots", [2, 4, 8, 16])
+@pytest.mark.parametrize("precision", [1, 3, 9, 20])
+def test_local_symbolic_packet_call_bound_is_well_formed(
+    slots: int, precision: int,
+) -> None:
+    k = slots * (precision - 1)
+    bound = paper_packet_entry_ring_calls_log2(
+        slots=slots, precision=precision,
+    )
+    assert bound >= 6 + 2 * (slots).bit_length()
+    assert bound >= slots * (k + 1).bit_length()
+    if precision > 1:
+        assert bound > paper_packet_entry_ring_calls_log2(
+            slots=slots, precision=1,
+        )
+    for invalid in (0, 1, 3, True, 2.0):
+        with pytest.raises(ValueError):
+            paper_packet_entry_ring_calls_log2(
+                slots=invalid, precision=precision,  # type: ignore[arg-type]
+            )
+
+
+def test_real_prepared_packet_evaluator_calls_fit_uniform_row_formula() -> None:
+    child, ring = _child()
+    slots = 4
+    bound_log = paper_packet_entry_ring_calls_log2(
+        slots=slots, precision=ring.p,
+    )
+    for vertex in child.right:
+        entry = vertex.oracle
+        assert isinstance(entry, PacketEntry)
+        assert len(entry.geometry.row_terms) <= slots
+        assert packet_evaluation_envelope(entry).ring_calls <= 1 << bound_log
+
+
+def test_symbolic_uniform_paper_packet_bound_does_not_construct_states() -> None:
+    s = (1 << (131072 - 1)) + 1
+    result = uniform_paper_packet_calls(
+        s=s, initial_edges=s, initial_vertices=12,
+        initial_precision=9, max_terminal_edges=24,
+        potential_nodes_log2=123,
+    )
+    assert result is not None
+    assert result.max_slots >= 2
+    assert result.log2_reachable_coefficient_states >= 0
+    assert result.log2_ring_calls_per_packet_entry >= (
+        result.log2_reachable_coefficient_states
+    )
+    assert result.log2_total_outer_ring_calls == (
+        result.log2_potential_nodes
+        + result.log2_outer_ring_calls_per_potential_leaf
+    )
+    assert not result.universal_bit_bound_proven
+    assert uniform_paper_packet_calls(
+        s=128, initial_edges=128, initial_vertices=8,
+        initial_precision=3, max_terminal_edges=10,
+        potential_nodes_log2=4,
+    ) is None
+    with pytest.raises(ValueError):
+        uniform_paper_packet_calls(
+            s=128, initial_edges=129, initial_vertices=8,
+            initial_precision=3, max_terminal_edges=10,
+            potential_nodes_log2=4,
+        )
+    with pytest.raises(ValueError):
+        uniform_paper_packet_calls(
+            s=128, initial_edges=128, initial_vertices=8,
+            initial_precision=3, max_terminal_edges=10,
+            potential_nodes_log2=True,  # type: ignore[arg-type]
+        )

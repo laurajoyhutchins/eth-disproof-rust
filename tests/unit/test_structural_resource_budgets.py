@@ -39,7 +39,8 @@ def test_mode_catalog_capacity_depends_on_bytes_not_global_mode_count() -> None:
     assert ModeConfig().max_modes is None
     modes = mode_catalog(net, packing, 1, 3, ModeConfig().max_modes)
     assert len(modes) == 2 * packets
-    assert len({(mode.source, mode.target) for mode in modes}) == packets
+    # Slot orientation yields both directed group pairs per packet.
+    assert len({(mode.source, mode.target) for mode in modes}) == 2 * packets
     with pytest.raises(CapacityError, match='Mode catalog resource limit'):
         mode_catalog(net, packing, 1, 3, max_modes=100)
     with pytest.raises(CapacityError, match='estimated-byte limit'):

@@ -59,11 +59,16 @@ def validate(root: Path, *, head: str, count: int = 2) -> dict[str, object]:
                 or report.get("shard_count") != count
                 or report.get("reused_evidence") is not False):
             raise ValueError(f"stale, partial, or misidentified shard {index}")
-        fingerprint = (report.get("source_sha256"), report.get("verification_sources_sha256"))
-        if any(not isinstance(v, str) or len(v) != 64 for v in fingerprint):
+        source = report.get("source_sha256")
+        verification = report.get("verification_sources_sha256")
+        mode_value = impact.get("mode")
+        if (not isinstance(source, str) or len(source) != 64
+                or not isinstance(verification, str) or len(verification) != 64):
             raise ValueError("missing fingerprint")
-        fingerprints.append(fingerprint)
-        modes.append(impact.get("mode"))
+        if not isinstance(mode_value, str):
+            raise ValueError("missing impact mode")
+        fingerprints.append((source, verification))
+        modes.append(mode_value)
         reports.append(report)
     if len(set(fingerprints)) != 1 or len(set(modes)) != 1:
         raise ValueError("shards disagree on source or impact mode")
@@ -75,6 +80,7 @@ def validate(root: Path, *, head: str, count: int = 2) -> dict[str, object]:
                r.get("tests_executed") is not False for r in reports):
             raise ValueError("documentation-only shard has an incorrect outcome")
         return {"mode": mode, "tests": 0, "skipped": 0, "shards": count}
+    active: tuple[int, ...]
     if mode == "targeted":
         if any(r.get("verification_status") != "no_assignment" or
                r.get("tests_executed") is not False for r in reports[1:]):

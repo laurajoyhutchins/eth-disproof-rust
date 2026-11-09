@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from math import prod
 from typing import TYPE_CHECKING
 
+from reference.paper_mode_reachability import reachable_transition_ceiling
+
 if TYPE_CHECKING:
     from non_exponential_sudoku.contraction.packets import PacketEntry
 
@@ -71,6 +73,8 @@ def packet_evaluation_envelope(entry: PacketEntry) -> PacketEvaluationEnvelope:
     The eager Python implementation keeps a dictionary keyed by a bounded
     exponent tuple. At every row it processes at most S states, and each
     state has one constant transition plus at most c_row contributions.
+    Reachable keys after j rows have total exponent <= j, so per-row
+    bounds use that invariant rather than the full Cartesian box.
     Without target modes the algorithm follows a separate linear path.
     Every source tile contributes one final scalar-power/multiplication.
     """
@@ -98,8 +102,9 @@ def packet_evaluation_envelope(entry: PacketEntry) -> PacketEvaluationEnvelope:
     transitions = 0
     multiplications = rows if not target else 0
     if target:
-        transitions = sum(states * (1 + len(entry.terms.contributions[row]))
-                          for row, _, _ in shape)
+        transitions = reachable_transition_ceiling(
+            desired, tuple(len(entry.terms.contributions[row]) for row, _, _ in shape),
+        )
         additions += transitions
         multiplications += transitions
     # Python tests 'bits[pos]' before making each term; use full tile size.

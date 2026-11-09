@@ -112,7 +112,8 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
     cdef list strides=[], states, nxt_dense
     cdef object bits_right
     cdef dict coeffs, nxt, target_map={}
-    cdef _RingArithmetic ops=_RingArithmetic(ring)
+    cdef _RingArithmetic ops
+    cdef object add, mul, sub
     cdef object zero=ring.zero, one=ring.one
     cdef object pow_=ring.pow, scalar=ring.scalar
     cdef object v, local, const, coef, new, val, state, key, term, value
@@ -142,20 +143,30 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
         for y,idx in right_positions:
             bits_right[y]=bits[idx]
     if n==0:
-        # Most packet oracles have no target modes. Preserve the direct
-        # Cauchy product instead of building a one-state coefficient DP.
-        # Source tile factors are applied below, even after a zero product.
+        # Direct Cauchy products are already specialized. Their tiny ring
+        # operations do not amortize the additional native dispatch adapter.
+        add=ring.add
+        mul=ring.mul
+        sub=ring.sub
         value=one
         for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):
             local=zero
             for y,coef in row:
                 if bits_right[y]:
-                    local=ops.add(local,coef)
-            const=local if bits[idx] else ops.sub(one,local)
-            value=ops.mul(value,const)
+                    local=add(local,coef)
+            const=local if bits[idx] else sub(one,local)
+            value=mul(value,const)
             if value==zero:
                 break
-    elif cap<=512:
+        for m,b,tile in tile_slots:
+            term=zero
+            for y,coef in tile:
+                if y<size and bits_right[y]:
+                    term=add(term,scalar(coef**m.b))
+            value=mul(value,pow_(term,b))
+        return value
+    ops=_RingArithmetic(ring)
+    if cap<=512:
         states=[zero]*cap
         states[0]=one
         for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):

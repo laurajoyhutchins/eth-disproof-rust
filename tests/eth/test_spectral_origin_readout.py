@@ -92,3 +92,32 @@ def test_origin_only_rejects_bad_centers_and_respects_bit_budget() -> None:
             [HermiteDatum(Fraction(2), (1 << 120,))],
             limits=HermiteLimits(max_coefficient_bits=40),
         )
+
+
+def test_single_center_origin_uses_only_its_taylor_jet() -> None:
+    polynomial = Polynomial((Fraction(7, 3), Fraction(-5, 2), Fraction(3, 7)))
+    jet = polynomial.taylor(Fraction(5, 2), 2).coefficients
+    result = interpolate_origin_hermite([HermiteDatum(Fraction(5, 2), jet)])
+    assert result.value == polynomial.at_zero
+
+
+def test_constructed_counter_matches_original_full_readout() -> None:
+    from non_exponential_sudoku.eth import (
+        CNFFormula, construct_bounded_designs, count_bruteforce,
+        count_from_constructed,
+    )
+
+    formulas = (
+        CNFFormula(3, ((1, -2), (-1, 3), (2, 3))),
+        CNFFormula(3, ((1, 2),)),
+        CNFFormula(3, ()),
+        CNFFormula(3, ((),)),
+    )
+    for formula in formulas:
+        designs = construct_bounded_designs(formula, r=2, Q=2, R=2)
+        assert count_from_constructed(formula, designs) == count_from_constructed(
+            formula, designs, readout='polynomial',
+        ) == count_bruteforce(formula)
+    with pytest.raises(ValueError, match='readout'):
+        count_from_constructed(formulas[0], construct_bounded_designs(
+            formulas[0], r=2, Q=2, R=2), readout='unknown')  # type: ignore[arg-type]

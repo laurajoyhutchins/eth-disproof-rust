@@ -45,3 +45,270 @@ Hermite uses a local, explicit truncation order on `fmpq_poly`, not FLINT's
 process-global series cap. Differential tests check exact results, refusal
 conditions, operation statistics, and the number of public exports. Ganak
 remains a separate, independent #SAT correctness oracle.
+
+
+## Exact coefficient-compression experiments
+
+The auxiliary spectral polynomial for alternating values on consecutive
+integers uses the integer-valued Newton basis
+
+`f(W) = (-1)^a sum_{j=0}^{R-1} (-2)^j * binom(W-a,j)`.
+
+Its Walsh/Fourier coefficient depends only on the cardinality of its
+subset, and vanishes above degree `R-1`. The cardinality transform in
+`eth/construction.py` replaces the original `4**Q` coefficient
+enumeration. **It does not remove the dense `D = r**(2*Q)` auxiliary
+rows**: that remains a separate practical obstacle.
+
+For a general rational Hermite polynomial of degree less than the number
+of Taylor conditions, `interpolate_origin_hermite` reads the value at zero
+using a local CRT functional, without constructing the full polynomial.
+The routine does not certify an independent tighter degree claim for
+inconsistent overdetermined data. The constructed #SAT path uses it only
+after validating its replacement system and certifying the Taylor
+measurements. `count_from_constructed(..., readout='polynomial')`
+retains the full original rational reference for differential comparison.
+
+`eth/modular_readout.py` provides a separate exact finite-ring origin
+functional. Rational inputs are accepted only if their denominators and
+Hermite center differences are invertible modulo the selected moduli.
+The bounded CRT readout requires a **proved bound on the true integer
+origin** before reconstruction. This applies to count-valued deformations,
+not automatically to the revised paper's parity-lift scalar whose value
+is only congruent to the count modulo a power of two. The modular
+prototype receives *precomputed rational Taylor jets*, so it does not
+yet prevent upstream rational coefficient growth.
+
+The paper's parity-lift linear coefficients have the closed form
+`e_0(Y)=1-Y` and `e_j(Y)=(-1)^j binom(2*j,j)/2 * (1-2Y)` for `j>=1`.
+They have linear bit height in `ell`; the helper and independent
+polynomial-identity tests are in `eth/parity_lift.py`. The general
+parity-lift counting path itself is not yet implemented.
+
+Reproduce isolated algebraic experiments and a tiny end-to-end
+constructed-count comparison (not a worst-case scaling claim):
+
+```bash
+PYTHONPATH=src:. python -m benchmarks.eth.algebraic_readout --repeats 3 --output readout.json
+```
+
+## Implicit auxiliary operator and measured evidence
+
+`construct_implicit_auxiliary(r,Q,R)` is the default for
+`construct_bounded_designs(...)`. The original `construct_auxiliary`
+remains a separately executable dense correctness oracle, and
+`construct_bounded_designs(..., representation='dense')` selects it
+explicitly. Both use identical spectral interpolation and measurements.
+
+The new `ImplicitAuxiliaryDesign` represents `f(W)` by an exact
+`(Q+1) x (Q+1)` kernel indexed by the number of diagonal coordinates
+and unswapped off-diagonal coordinates. Individual `P[u,w](T)`
+coefficients are calculated when needed. Exceptional product
+eigenvectors are stored as selector tuples, never vectors of length
+`D=r**(2*Q)`. Transfer now iterates only over occupied incidence
+labels, rather than constructing all `D` labels or all `D**2` row
+entries. The implementation counts exceptional selectors
+combinatorially before allocation and refuses if the bound is exceeded.
+It also has an explicit maximum for `Q` in this research backend.
+
+**Observed on GitHub-hosted Python 3.13, 2026-11-09, workflow run
+`42669627090`:**
+
+| r | Q | R | dense seconds | implicit seconds | dense peak traced bytes | implicit peak traced bytes |
+|---|---|---|---|---|---|---|
+| 2 | 2 | 2 | 0.00872 | 0.000603 | 27,312 | 4,222 |
+| 2 | 3 | 2 | 0.04497 | 0.000847 | 168,352 | 3,936 |
+
+The Q=12,R=12 implicit constructor completed in 0.00656 seconds with
+20,312 peak traced Python allocation bytes. Its virtual `D` was
+16,777,216, corresponding to 281,474,976,710,656 potential dense
+matrix entries, but only 169 kernel coefficients and one exceptional
+selector were retained. No dense Q=12 timing was attempted.
+
+**End-to-end witness on the same GitHub-hosted setup, workflow run
+`42669890039`:** for a *three-variable* CNF and implicit
+`r=2,R=Q`, `Q=5` and `Q=12` each produced exact count 4,
+matching independent exhaustive enumeration. Counting took about
+0.51 seconds and 1.29 seconds respectively (under Python
+`tracemalloc`; timings include its overhead). The completed operator
+preparation took about 0.002 and 0.013 seconds. This establishes that
+a huge *virtual* dimension does not require allocating the dense
+matrix; it is not evidence for improved worst-case scaling in the
+number of Boolean variables. Only the `R=Q` spectral regime was
+exercised at the huge dimension, where the exceptional-direction count
+is one. General regimes can retain exponentially many exceptional
+directions and are explicitly resource-limited.
+
+Reproduce these measurements with
+`PYTHONPATH=src:. python -m benchmarks.eth.implicit_auxiliary_probe`;
+and exercise the larger count as an optional integration test:
+`python -m pytest -q tests/integration/test_implicit_large_dimension.py`.
+The one-off GitHub benchmark workflow was removed after the measurements
+to avoid a permanent extra CI job.
+
+
+## Restricted exceptional projectors instead of global eigenvectors
+
+The optional `measurement_basis='projector'` mode of
+`construct_implicit_auxiliary` does not enumerate any of the
+`C = sum_{j outside interval} binom(Q,j)
+(r(r-1)/2)^j (r(r+1)/2)^(Q-j)` exceptional tensor eigenvectors.
+Its `exceptional_count` remains exact metadata, even when C is enormous.
+
+For two auxiliary labels u,v, each diagonal local coordinate contributes
+1 to the projector generating function; an identical off-diagonal pair
+contributes `(1+z)/2`, and a swapped off-diagonal pair `(1-z)/2`.
+Incompatible pairs contribute 0. Sum coefficients of z^j outside the
+spectral interval to obtain the exact entry of the **orthogonal** projector
+onto the exceptional space. This is independently compared against the
+orthogonalized *original tensor eigenvectors* in the checkpoint tests.
+
+If B is the original exceptional measurement basis and A maps occupied
+labels to a group's variables, the restricted Gram matrix
+
+`G = A^T P_exceptional A = (B_orthonormal A)^T (B_orthonormal A)`
+
+has exactly the same **rowspace** as all original measurements restricted
+to those occupied coordinates. An exact rational RREF of G supplies
+independent integral rows. This is essential: raw primitive Gram rows may
+have huge integer coefficients, increasing the Taylor range
+`(2D+1)^measurements`; full-rank RREF instead yields unit-coordinate
+rows with `D=1`. All transferred center certificates are still independently
+verified, and `max_measurement_rows` applies to the **actual retained**
+rows, not the unenumerated global eigenspace size.
+
+**Measured evidence:** GitHub-hosted CPython 3.13, 2026-11-09,
+workflow `42674871268` (one-off workflow removed after capture):
+
+| r | Q | R | Global exceptional basis size | Retained selectors | Certified rows | Maximum row L1 | Exact count | Count seconds |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| 2 | 2 | 2 | 1 | 0 | 1 | 1 | 4 | 0.012 |
+| 2 | 12 | 2 | 8,549,722 | 0 | 3 | 1 | 4 | 0.061 |
+| 2 | 48 | 8 | 14,603,500,803,275,681,828,904,645,562 | 0 | 3 | 1 | 4 | 0.216 |
+
+At Q=48,R=8, auxiliary preparation was 0.195 seconds with
+152,384 peak traced bytes and transferring/certifying all 48 centers
+took 0.376 seconds with 187,408 peak traced bytes. The virtual
+D=4**48 and virtual matrix size D**2 are never allocated. The
+complete three-variable count was independently checked against
+exhaustive enumeration and preserved as an optional integration test.
+
+These results **do not establish the paper's measurement bound**
+`tau <= 1/(r*lambda)`: the rank of a restricted exceptional
+projector can equal the entire observed variable space. For a
+large real CNF, that can leave too many measurements even though
+the global eigenvectors are never enumerated. The example has
+three Boolean variables, so increasing Q is not evidence of
+subexponential scaling in the input size.
+
+Reproduce with
+`PYTHONPATH=src:. python -m benchmarks.eth.projector_probe`.
+The original `measurement_basis='selectors'` remains the default
+for exact differential comparison; selecting a dense representation
+with projected measurements is deliberately rejected.
+
+
+### Finite-size measurement rank obstruction
+
+An independent one-off GitHub run `42675396786` computed the **exact
+restricted projector rank**, without performing a full CNF count, for
+disjoint two-literal clauses and deterministic incidence schedules at
+fixed `r=2,Q=12,R=2`:
+
+| Declared variables | Minimum / maximum center rank | Maximum row L1 | Observed tau | Illustrative 1/(r*ceil(log2(n))) |
+|---:|---:|---:|---:|---:|
+| 4 | 4 / 4 | 1 | 1/2 | 1/4 |
+| 8 | 8 / 8 | 1 | 1/2 | 1/6 |
+| 16 | 16 / 16 | 1 | 1/2 | 1/8 |
+| 24 | 24 / 24 | 1 | 1/2 | 1/10 |
+
+The rowspace has full observed rank. **No exact change of measurement
+basis can lower its row count for these instances.** RREF reaches the
+minimum and unit vectors reach the minimum L1 norm, but the Taylor
+measurement-value loop retains `(2*D+1)^rank=3^n` work in this
+configuration. The paper's literal `n`-derived parameters are NOT
+admitted for these tiny formulas; the target column illustrates the
+shape of its `tau` bound, not an applicable theorem instance.
+
+The next mathematical bottleneck is therefore either a different
+low-rank construction with independently certified separation and
+the paper's quantitative rank limit, or an exact method to evaluate
+measurement-value sums without enumerating every value tuple.
+Merely encoding the projector more succinctly cannot reduce rank.
+The rank sweep is reproducible via
+`PYTHONPATH=src:. python -c "from benchmarks.eth.projector_probe import rank_audit; print(rank_audit())"`.
+
+
+## Exact Taylor group-factor elimination (opt-in)
+
+`taylor_coefficients_separated(..., summation='eliminate')` and
+`restricted_taylor_sum(..., summation='eliminate')` use the exact
+`eth/factorized_taylor.py` bucket-elimination implementation. The same
+switch is available on both certified Hermite count functions and
+`count_from_constructed`. `summation='tuples'` remains the original
+reference and the default until a general performance cutover is proven.
+
+Mathematically, every local Boolean mask `x_g` determines exactly one
+measurement signature `y_g=M_g x_g`. Therefore
+
+`sum_y prod_g sum_{x_g:M_g x_g=y_g} F_g(x_g,y)`
+
+equals a direct sum over group assignments, with each clause represented
+by a factor on its owner group and only those foreign groups for which
+the **independently certified** measurement coefficient is nonzero.
+Exact bucket elimination contracts these factors using truncated rational
+or FLINT jets, without visiting all measurement-value tuples. It does
+NOT weaken the certificate or invoke brute-force counting as a fallback.
+
+The relevant complexity is induced factor scope: its Boolean mask
+domain product, factor table size, and total exact arithmetic work.
+These are explicitly bounded by `TaylorLimits.max_factor_entries`,
+`max_factor_total_entries`, `max_factor_work`, and the existing
+`max_jet_operations` / `max_coefficient_bits`. Statistics record
+`factor_scope_peak`, `factor_entries_peak`,
+`factor_assignments_tested` and `factor_eliminations`. The
+`measurement_tuples` statistic is zero in this mode; it is a **work
+counter**, not a claim that the mathematical measurement space is empty.
+
+**Measured** on GitHub-hosted Python 3.13, November 9, 2026,
+workflow `42677326298`. Each formula is a path of binary positive
+clauses connecting the first variable of adjacent two-variable
+groups. Its independent count oracle is `F_(n/2+2) * 2^(n/2)`.
+
+| n | Old measurement tuple space | Factor assignments tested | Max factor entries | Count-only seconds |
+|---:|---:|---:|---:|---:|
+| 4 | 81 | 36 | 12 | 0.020 |
+| 8 | 6,561 | 100 | 12 | 0.038 |
+| 12 | 531,441 | 164 | 12 | 0.072 |
+| 20 | 3,486,784,401 | 292 | 12 | 0.171 |
+| 32 | 1,853,020,188,851,841 | 484 | 12 | 0.378 |
+| 64 | 3,433,683,820,292,512,484,657,849,089,281 | 996 | 12 | 1.338 |
+
+The original tuple evaluator was **measured** at n=4 (0.038 s)
+and n=8 (4.272 s, versus 0.038 s for elimination). Larger old-column
+values are exact theoretical iteration counts, not runtime
+measurements. Under `tracemalloc`, peak traced allocations in the
+64-variable calculation were 1,083,664 bytes. The exact count was
+24,493,713,157,783,552. The maximum induced scope was 2 groups,
+and all counts are reproduced by the benchmark.
+
+Run `PYTHONPATH=src:. python -m benchmarks.eth.factorized_taylor_probe`.
+
+**No general ETH claim:** This is ordinary exact variable elimination
+on the certified *group interaction graph*. A group clique or a family
+whose induced width grows with n retains exponential tables or fails
+closed on the explicit budget. The chain example demonstrates an
+implementable structural regime rather than a solution for arbitrary
+worst-case CNF, and does not satisfy the manuscript's huge literal
+n-derived parameter schedule.
+
+
+**Independent integration verification:** one-off GitHub run
+`42677879381` installed `python-flint` and passed all five
+`tests/integration/test_implicit_large_dimension.py` cases,
+including the 64-variable factorized chain, plus the explicit
+FLINT-vs-Python exact-jet equality check (one passed). The
+`factorized_taylor.py` engine uses the same checked jet arithmetic
+on both backends. This is mathematical equivalence evidence on
+the tested fixtures, not a benchmark establishing which arithmetic
+backend is faster in this new contraction regime.

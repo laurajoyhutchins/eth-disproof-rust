@@ -52,3 +52,39 @@ The study is **evidence gathering**, not a new global memory allocator,
 asymptotic claim, or non-exponential worst-case proof. Compare RSS and traced
 peaks across repeated runs and confirm a material memory hotspot before
 changing a production resource policy.
+
+
+## First observed Linux evidence (2026-11-09)
+
+The [opt-in run](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42677022111)
+measured source commit `08149aba0adcf2cc9ca9407a0bc72fe328d7b1b1`
+under CPython 3.13.18 on Linux 7.0.0-1017-azure x86-64 with no
+`native_ring` extension installed. All 18 samples completed and matched
+their exact independent/closed-form expected result. Values below are medians
+of three separately launched processes per workload; see the uploaded JSON
+artifact for all raw samples and environment identity.
+
+| Case | Median reported RSS max (MiB) | Median peak Python trace (KiB) | Median elapsed (ms) |
+| --- | ---: | ---: | ---: |
+| `leaf.lookup` | 20.223 | 25.6 | 4.38 |
+| `leaf.indexed` | 20.223 | 25.6 | 5.57 |
+| `mode.grid3` | 20.223 | 35.8 | 6.61 |
+| `nested.jet` | 20.223 | 398.3 | 314.43 |
+| `recursive.nested` | 24.527 | 612.4 | 2003.67 |
+| `recursive.nested.cap64k` | 24.449 | 613.4 | 1970.72 |
+
+The 64 KiB shared cache configuration recorded an estimated **14.77 KiB**
+peak retained cache, well below its budget. The mode-DP case recorded an
+estimated 5.1 KiB peak in its specific factor-table accounting. The process
+RSS values are dominated by interpreter, imports and fixture costs, and the
+two recursive variants' RSS differences are not evidence of a performance
+improvement with three samples on hosted runners. `tracemalloc` observations
+are Python-tracked peaks only, and the instrumented runtimes are **not**
+benchmark speed comparisons with tracing disabled.
+
+**Decision:** no new production memory cap or allocator cutover is supported
+by these observations. Next measure larger structural problem sizes,
+including nested-jet precision and depth, and compare measured allocations
+against the existing mode-DP and cache estimates. Keep correctness and
+resource refusal separate: an oversized experiment must report refusal,
+never a successful sample.

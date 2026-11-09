@@ -21,13 +21,13 @@ jobs:
       - name: Measure 4x4 9x9 16x16 and difficult 9x9
         run: |
           python -m benchmarks.sudoku_scaling \
-            --cases 4x4-empty 9x9-73-givens-four-solutions 9x9-hard-unique 16x16-248-givens-eight-holes \
-            --algorithms frontier paper --repeats 1 --timeout 30 \
+            --cases 4x4-empty 4x4-8-givens-four-solutions 9x9-73-givens-four-solutions 9x9-hard-unique 16x16-252-givens-two-solutions 16x16-248-givens-eight-holes \
+            --algorithms frontier paper --repeats 3 --timeout 30 \
             --output artifacts/sudoku-scaling.json
       - name: Print bounded outcome counts
         if: success()
         run: |
-          python -c 'import json; r=json.load(open("artifacts/sudoku-scaling.json")); print(r["status"], r["outcome_counts"], "all_solved=", r["all_cases_solved"])'
+          python -c 'import json; r=json.load(open("artifacts/sudoku-scaling.json")); print(r["status"], r["outcome_counts"], "all_solved=", r["all_cases_solved"]); [print(x["summary"]["case"], x["summary"]["algorithm"], x["summary"]["outcome"], x["summary"]["median_duration_ns_by_arm"], x["summary"]["instrumentation_walltime_ratio"]) for x in r["measurements"]]'
       - name: Preserve full raw measurements
         if: always()
         uses: actions/upload-artifact@v4

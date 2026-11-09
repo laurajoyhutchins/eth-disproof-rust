@@ -82,14 +82,15 @@ python -m benchmarks.unified_cost --cases parity-2wire sudoku-4wire nested-2wire
 
 These commands specify *reproduction procedures*, not a claim that each was rerun on this integration commit.
 
-## How the existing pull requests fit together
+## Integrated progress and provenance
 
-| Concern | Integrated PRs | What was retained |
-| --- | --- | --- |
-| Structural correctness / lightweight checkpoint | [#1](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/1), [#2](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/2), [#3](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/3) | Structured identities, native ring representation, exact CI contracts |
-| Honest proof obligations | [#4](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/4), [#6](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/6), [#9](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/9), [#12](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/12), [#13](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/13), [#15](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/15) | Fail-closed theorem test, packet/mode/factor/oracle and nested-ring partial bounds |
-| Resource and execution policy | [#5](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/5), [#8](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/8), [#10](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/10), [#11](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/11), [#16](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/16) | Configurable budgets, compiled structures, coordinated caches, adversarial correctness repairs |
-| Measurement and cutover evidence | [#14](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/14), [#17](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/17), [#18](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/18) | Paired native performance, isolated memory study, unified cost evidence, full-input Sudoku measurement |
-| CNF research / sparse Taylor | [#7](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/7) | Implicit auxiliary/projector, factorized exact Taylor contraction, modular/origin readout experiments |
+The [curated mathematical history](curated-history.md) now indexes all integrated
+post-bootstrap work through the pinned source snapshot. It groups changes into
+structured semantics, resource accounting, runnable CNF references, native and
+formal-source verification, exact alternatives, support/rank experiments,
+conditional theorem boundaries and explicit obstruction results.
 
-The PRs listed in this table are integrated history, not a backlog. The missing item is a *mathematical composition and demonstrated total algorithm*, not another layer of CI or orchestration.
+Do not treat unmerged PRs as integrated implementation, a passed finite test as a
+growing-family theorem, or a required Lean/Mathlib job as part of the routine
+checkpoint. The intentionally unresolved [complete theorem acceptance](complete-theorem-acceptance.md)
+remains the actual scientific gate.

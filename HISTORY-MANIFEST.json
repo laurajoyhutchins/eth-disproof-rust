@@ -70,5 +70,90 @@
       "stage_smoke": "1 passed, 11 deferred to final full checkpoint"
     }
   ],
-  "instructions": "Run full checkpoint and integration tiers on the final tip; stage smokes cover only indicated tests."
+  "instructions": "Original 13 stage-smoke records describe pre-PR conceptual history only. The nine new commits are exact original merged snapshots; verify the final curated head with strict typing, checkpoints, integration, optional native/oracle parity and source-head reconciliation before replacing main.",
+  "pinned_source_head": "d53190383fbf7a4f97e576c8b3a8db75c4f30155",
+  "post_pr_history": [
+    {
+      "commit": "f711cc3c9c921ae96b8e13ef1308a0f3bb0425ac",
+      "concept": "Structured identities, FLINT boundary, fast checkpoint",
+      "source_sha": "916bd8e52fba917bf39e12fd3f88c1db9d2c7128",
+      "merged_prs_in_interval": "1–3",
+      "source_tree_exact": true,
+      "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    },
+    {
+      "commit": "8089d8b9c45c7f8841025bc6af9c5529058440a6",
+      "concept": "Explicit resource budgets, local cost controls, paired evidence",
+      "source_sha": "ad31d75081804abb75fb7486a626f8928a7739e0",
+      "merged_prs_in_interval": "4–6, 8–18",
+      "source_tree_exact": true,
+      "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    },
+    {
+      "commit": "4816f0449c2a63e765590400d0919a07cd850c80",
+      "concept": "Bounded end-to-end CNF counting and early structural obstructions",
+      "source_sha": "b89cbeef9683ff1bdfeb664dd1610ca16fa252c2",
+      "merged_prs_in_interval": "7, 19–27",
+      "source_tree_exact": true,
+      "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    },
+    {
+      "commit": "822eefc91ae7f8359574e670aa59dcb6bc18aca3",
+      "concept": "Native verification, factor saturation, source-pinned Lean traces",
+      "source_sha": "6c9024b435b19ace0ff9c3a4d5b26d108f3867f4",
+      "merged_prs_in_interval": "28–38",
+      "source_tree_exact": true,
+      "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    },
+    {
+      "commit": "6d1901980ac879619425b8f80dc5de1436c7d3a6",
+      "concept": "Certified Sudoku oracles and multiple exact Taylor evaluators",
+      "source_sha": "ce3e036e1f7d1ecceb93c3481cd2280a377e8347",
+      "merged_prs_in_interval": "39–47",
+      "source_tree_exact": true,
+      "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    },
+    {
+      "commit": "24d2c4ef4213a10262677c236514680937f45b71",
+      "concept": "Packet support, rank and sparse-multilinear comparisons",
+      "source_sha": "b82c5d0a2bbada23320c936e58b6b551388209f2",
+      "merged_prs_in_interval": "50, 53–57",
+      "source_tree_exact": true,
+      "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    },
+    {
+      "commit": "2fd502adab75d3d2cf359586b8859a2bd26370a8",
+      "concept": "Pure elimination planner, conditional whole-frame work and RED theorem gate",
+      "source_sha": "7a599d0c7b96b7f5fc41455eca69cdee8921e103",
+      "merged_prs_in_interval": "58–63",
+      "source_tree_exact": true,
+      "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    },
+    {
+      "commit": "07abea94ace2f0f7b354e1002ba5b3572c6788da",
+      "concept": "Total exponential #SAT baseline, transfer obstruction, all-center rank",
+      "source_sha": "de3fc95b986ab5f1a20d0c5cc25a22847993e021",
+      "merged_prs_in_interval": "51, 65, 67–70",
+      "source_tree_exact": true,
+      "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    },
+    {
+      "commit": "411ca927a0b09eff82a9a962c510535af6567319",
+      "concept": "Local formal verification, conservative contract impact and target-coefficient obstruction research",
+      "source_sha": "d53190383fbf7a4f97e576c8b3a8db75c4f30155",
+      "merged_prs_in_interval": "71, 73, 75",
+      "source_tree_exact": true,
+      "stage_smoke": "Original source snapshot; not rerun on curated commit"
+    }
+  ],
+  "excluded_from_snapshot": [
+    "PR #48",
+    "PR #49",
+    "PR #52",
+    "PR #64 (closed unmerged)",
+    "PR #66",
+    "PR #72",
+    "PR #74"
+  ],
+  "docs": "docs/curated-history.md"
 }

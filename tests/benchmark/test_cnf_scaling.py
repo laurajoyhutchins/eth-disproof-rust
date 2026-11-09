@@ -149,6 +149,15 @@ def test_real_complete_two_variable_cnf_is_exact_with_both_summations() -> None:
                     <= evidence["leaf_evidence"]["max_prepared_variables"])
             assert evidence["leaf_evidence"]["taylor_pairs"] == 0
             assert evidence["leaf_evidence"]["factor_assignments_tested"] > 0
+        elif summation == "multilinear":
+            assert evidence["leaf_evidence"]["factor_scope_basis"] == "not_applicable"
+            assert evidence["leaf_evidence"]["taylor_pairs"] == 0
+            assert evidence["leaf_evidence"]["factor_assignments_tested"] == 0
+            assert evidence["leaf_evidence"]["multilinear_term_products"] > 0
+            assert evidence["leaf_evidence"]["multilinear_support_peak"] > 0
+            assert evidence["leaf_evidence"]["multilinear_support_peak"] <= (
+                1 << evidence["leaf_evidence"]["max_prepared_variables"]
+            )
         else:
             assert evidence["leaf_evidence"]["factor_scope_basis"] == "groups"
 

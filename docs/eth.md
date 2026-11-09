@@ -239,6 +239,65 @@ The rank sweep is reproducible via
 `PYTHONPATH=src:. python -c "from benchmarks.eth.projector_probe import rank_audit; print(rank_audit())"`.
 
 
+## Sparse multilinear Boolean-polynomial contraction (opt-in)
+
+A dense *variable-scoped* factor table need not imply a dense Boolean
+polynomial. The exact deformed clause expression
+`1 - product_l false_l(sum_v P[e,l,v](T) x_v)` has multilinear degree no
+greater than the number of literals in its clause, regardless of the
+number of nonzero `P[e,l,v]` coefficients. In the Boolean quotient
+ring, `x_v**2=x_v`, so products of monomials are keyed by the **union
+of their variable sets**, not by polynomial exponent tuples.
+
+The optional `summation='multilinear'` mode stores an exact sparse
+dictionary from Boolean variable-subset bitmasks to rational truncated
+Taylor jets. It multiplies clause polynomials in this quotient ring, and
+evaluates the sum over all Boolean assignments by the linear identity
+
+```
+sum_{x in {0,1}^n} x^S = 2**(n - |S|)
+```
+
+for every monomial `S`. This is *not* exhaustive assignment iteration.
+The Taylor pair counter and factor-table assignment counter remain zero.
+Separate counters record the exact number of **attempted multilinear
+term products** and maximum retained **nonzero Boolean monomials**.
+
+A *single* width-two clause with replacement coefficients involving
+all `n` variables has at most `1+n+binom(n,2)` distinct Boolean
+monomials, compared with `2**n` possible rows in its full variable
+factor table. The TDD witness constructs this case at n=16 and verifies
+the exact count. For multiple clauses, however, multiplication can
+produce all `2**n` monomials, and the test suite deliberately requires
+a capacity refusal on such a family. Neither small clause width nor a
+small jet truncation order alone bounds the total retained support.
+
+The `max_factor_entries` budget limits sparse monomials,
+`max_factor_total_entries` bounds simultaneously retained input/output
+dictionary entries during multiplication, and `max_factor_work` bounds
+attempted **term products**. These are entry-count limits, **not**
+byte-accurate process RSS bounds. The existing exact-jet operation,
+coefficient-bit and degree limits still apply.
+A refusal is never interpreted as a zero count. The representation
+does not prove any subexponential bound: the cost of manipulating
+n-bit monomial masks and exact rational coefficient operands must be
+accounted for, and the polynomial product may have exponential support.
+
+This is a fourth, independent finite-instance evaluator alongside
+`tuples`, group-factor `eliminate`, and Boolean-table `fused`.
+The original methods remain unchanged and the default is still
+`tuples`. Because the monomial method does not build factor tables,
+its `factor_scope_basis` is `not_applicable`; compare its
+`multilinear_support_peak`, not the unrelated group/variable
+scope-width fields. Full-pipeline use still goes through the certified
+construction, Hermite reconstruction, and count-preserving reductions,
+allowing direct comparison with the ETH reference algorithm.
+
+```bash
+python -m pytest -q -m integration tests/eth/test_sparse_multilinear.py
+python -m scripts.eth_reference --summation multilinear
+```
+
 ## Boolean-difference fusion into exact polynomial factor elimination (opt-in)
 
 The original separated Taylor evaluator explicitly sums all pairs

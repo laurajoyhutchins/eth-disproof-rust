@@ -21,7 +21,7 @@ from ..runtime.work_trace import WorkTrace
 from ..runtime.cache import SharedCacheBudget
 from .deformation import DeformationExecution
 from .workspaces import FrameWorkspace
-from .planning import FactorizationPlan
+from .valuation_cache import ValuationCache
 
 def paper_schedule_parameters(s: int, log_s: int, depth: int) -> tuple[int, int, int, int]:
     """Literal paper schedule, independent of ring allocation and recursion state.
@@ -235,63 +235,66 @@ class ContractionEngine(DeformationExecution):
         jets: dict[int, list[NestedCoords]] = {}
         stream: StreamingHermite | None = None
         retained_coefficients = 0
-        mode_cache: dict[tuple[int, int], list[Mode]] = {}
-        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] = {}
-        if self.config.recovery.streaming:
-            stream = StreamingHermite(M, L, u, R)
-        for t in range(-L, L):
-            if t == 0:
-                continue
-            i = v2(t)
-            q = h * max(0, u - i)
-            if q == 0:
-                continue
-            pt = p + 8 * h * (L // (1 << i)) + 8 * M * (a + 1)
-            with (self.cost_ledger.center(t=t, valuation=i, coefficients=q, precision=pt)
-                  if self.cost_ledger is not None else nullcontext()) as center_record:
-                if self.config.recovery.method == 'jet':
-                    Rp = precision_ring(R, pt)
-                else:
-                    Rp = Padic(self.e,self.f,pt)
-                key = (i, pt)
-                modes = mode_cache.get(key)
-                if modes is None:
-                    modes = mode_catalog(
-                        net, packing, t, pt, self.config.mode.max_modes,
-                        max_catalog_bytes=self.config.limits.max_estimated_bytes)
-                    mode_cache[key] = modes
-                if self.cost_ledger is not None:
-                    self.cost_ledger.charge("modes_catalogued",len(modes))
-                    if center_record is not None:
-                        center_record.mode_count=len(modes)
-                if self.config.recovery.method == 'jet':
-                    jet = self._jet_center(net, packing, modes, t, Rp, depth, q, factor_plan_cache)
-                    if stream is not None:
-                        with (self.cost_ledger.phase("recovery") if self.cost_ledger is not None
-                              else nullcontext()):
-                            stream.add_center(t, jet)
-                        self.stats.streaming_hermite_centers += 1
-                        self.stats.retained_jet_coefficients_peak = max(
-                            self.stats.retained_jet_coefficients_peak, q)
+        factor_plan_cache = ValuationCache(
+            self.config.recursion.valuation_structures, shared=self.shared_cache)
+        try:
+            if self.config.recovery.streaming:
+                stream = StreamingHermite(M, L, u, R)
+            for t in range(-L, L):
+                if t == 0:
+                    continue
+                i = v2(t)
+                q = h * max(0, u - i)
+                if q == 0:
+                    continue
+                pt = p + 8 * h * (L // (1 << i)) + 8 * M * (a + 1)
+                with (self.cost_ledger.center(t=t, valuation=i, coefficients=q, precision=pt)
+                      if self.cost_ledger is not None else nullcontext()) as center_record:
+                    if self.config.recovery.method == 'jet':
+                        Rp = precision_ring(R, pt)
                     else:
-                        jets[t] = list(jet)
-                        retained_coefficients += q
-                        self.stats.retained_jet_coefficients_peak = max(
-                            self.stats.retained_jet_coefficients_peak, retained_coefficients)
-                else:
-                    assert isinstance(Rp, Padic)
-                    jets[t] = self._interpolated_center(net, packing, modes, t,
-                                                        Rp, depth, q, M * (2 * L - 1), factor_plan_cache)
-        with (self.cost_ledger.phase("recovery") if self.cost_ledger is not None
-              else nullcontext()):
-            if self.config.recovery.method == 'jet':
-                return stream.finish() if stream is not None else tapered_recover_over_ring(jets, M, L, u, R)
-            return tapered_recover(cast(Mapping[int, Sequence[RingCoords]], jets), M, L, u, p, self.e, self.f)
+                        Rp = Padic(self.e,self.f,pt)
+                    key = (i, pt)
+                    modes = factor_plan_cache.get_modes(net, packing, i, pt)
+                    if modes is None:
+                        modes = mode_catalog(
+                            net, packing, t, pt, self.config.mode.max_modes,
+                            max_catalog_bytes=self.config.limits.max_estimated_bytes)
+                        factor_plan_cache.store_modes(net, packing, modes, i, pt)
+                        if self.cost_ledger is not None:
+                            self.cost_ledger.charge("modes_catalogued", len(modes))
+                    if self.cost_ledger is not None and center_record is not None:
+                        center_record.mode_count = len(modes)
+                    if self.config.recovery.method == 'jet':
+                        jet = self._jet_center(net, packing, modes, t, Rp, depth, q, factor_plan_cache)
+                        if stream is not None:
+                            with (self.cost_ledger.phase("recovery") if self.cost_ledger is not None
+                                  else nullcontext()):
+                                stream.add_center(t, jet)
+                            self.stats.streaming_hermite_centers += 1
+                            self.stats.retained_jet_coefficients_peak = max(
+                                self.stats.retained_jet_coefficients_peak, q)
+                        else:
+                            jets[t] = list(jet)
+                            retained_coefficients += q
+                            self.stats.retained_jet_coefficients_peak = max(
+                                self.stats.retained_jet_coefficients_peak, retained_coefficients)
+                    else:
+                        assert isinstance(Rp, Padic)
+                        jets[t] = self._interpolated_center(net, packing, modes, t,
+                                                            Rp, depth, q, M * (2 * L - 1), factor_plan_cache)
+            with (self.cost_ledger.phase("recovery") if self.cost_ledger is not None
+                  else nullcontext()):
+                if self.config.recovery.method == 'jet':
+                    return stream.finish() if stream is not None else tapered_recover_over_ring(jets, M, L, u, R)
+                return tapered_recover(cast(Mapping[int, Sequence[RingCoords]], jets), M, L, u, p, self.e, self.f)
+        finally:
+            factor_plan_cache.clear()
 
     def _jet_center(
         self, net: Network, packing: Packing, modes: list[Mode],
         t: int, ring: TensorRing, depth: int, order: int,
-        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None = None,
+        factor_plan_cache: ValuationCache | None = None,
     ) -> tuple[NestedCoords, ...]:
         """Evaluate one exact Taylor jet, refusing an oversized coefficient ring."""
         # Inherited Taylor variables remain independent through child calls.
@@ -322,7 +325,7 @@ class ContractionEngine(DeformationExecution):
     def _interpolated_center(
         self, net: Network, packing: Packing, modes: list[Mode],
         t: int, ring: Padic, depth: int, order: int, degree: int,
-        factor_plan_cache: dict[tuple[int, int], FactorizationPlan] | None = None,
+        factor_plan_cache: ValuationCache | None = None,
     ) -> list[NestedCoords]:
         """Evaluate point samples and retain exactly the required coefficients."""
         samples: list[tuple[RingCoords, RingCoords]] = []

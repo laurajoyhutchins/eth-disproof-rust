@@ -37,18 +37,20 @@ def checkpoint(head: str) -> None:
     impact.parent.mkdir(parents=True, exist_ok=True)
     _run("scripts/change_impact.py", "--output", str(impact))
     root = ROOT / "artifacts" / "shards"
-    workers: list[subprocess.Popen[bytes]] = []
+    # Separate processes, but sequential execution: shards share /workspace
+    # in Cloud Build and must not race while creating temporary files.
+    failures: list[int] = []
     for index in range(2):
         folder = root / f"checkpoint-shard-{index}"
         folder.mkdir(parents=True, exist_ok=True)
-        workers.append(subprocess.Popen(
+        result = subprocess.run(
             [sys.executable, "scripts/verify.py", "checkpoint",
              "--shard-count", "2", "--shard-index", str(index),
              "--impact-plan", str(impact), "--output", str(folder)],
-            cwd=ROOT,
-        ))
-    failures = [index for index, worker in enumerate(workers)
-                if worker.wait() != 0]
+            cwd=ROOT, check=False,
+        )
+        if result.returncode != 0:
+            failures.append(index)
     if failures:
         raise RuntimeError(f"checkpoint shards failed: {failures}")
     _run("-m", "scripts.aggregate_checkpoint", "--root", str(root),

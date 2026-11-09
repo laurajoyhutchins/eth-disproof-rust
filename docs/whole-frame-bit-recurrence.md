@@ -203,6 +203,49 @@ object memory, or the cost of invoking inherited arbitrary callbacks. They
 do not eliminate the original input-oracle cost premise. See
 [oracle-lineage-proof.md](oracle-lineage-proof.md).
 
+## Generated packet-entry invocation accounting (conditional)
+
+The existing packet-oracle work lemma bounds *one* eager Python
+`PacketEntry._evaluate_python` call. The follow-on
+[packet-leaf-call-closure.md](packet-leaf-call-closure.md) relates it to
+the actual direct leaf, dense factor-table construction, a possible
+later exhaustive fallback, and the optional zero-support precheck.
+Zero-support inspects packet structure without calling its ring evaluator.
+
+For the literal active paper schedule, at most `K=L(p-1)` modes
+belong to a packet of `L` slots and local precision `p`. The
+reachable-state invariant `sum(alpha_i)<=rows_processed<=L` bounds
+the dictionary state count by `(K+1)^L`. Source-correspondence with
+the evaluator therefore gives a deliberately loose per-evaluation
+bound of
+
+\[
+B(L,p)=64(L+1)^2(K+1)^{L+1}
+\]
+
+**outer coefficient-ring calls**, not elementary bit operations.
+The symbolic reference avoids allocating the state table or the
+astronomically large count itself.
+
+Using the successful-path descriptor bound,
+`V_0+floor(32M_0/29)`, the explicit
+ordinary/numeric-fallback terminal-edge ceiling `M_*`, and the
+potential-tree node bound `C`, the conditional total is
+
+\[
+C\,2^{M_*+1}\bigl(V_0+\lfloor32M_0/29\rfloor\bigr)
+B(L_{\max},p_{\max}).
+\]
+
+`ConditionalPaperRecurrence.paper_packet_outer_ring_call_envelope`
+exposes this symbolic result when paper recursion is active. Its
+hypothetical polynomial-per-ring-operation bit model now **includes**
+the generated packet-ring call count, rather than assuming it away
+as polynomial glue. This is still a counterfactual bit bound; Cython
+and lazy paths, large intermediate integer powers, allocations,
+hashing, canonical lifting and total capacity acceptance require
+separate proofs.
+
 ## 5. Missing certificates and concrete negative evidence
 
 The integrated proof checker reports these **unclosed** obligations:

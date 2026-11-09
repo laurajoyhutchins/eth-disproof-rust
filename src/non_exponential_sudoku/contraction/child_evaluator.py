@@ -79,7 +79,7 @@ class ChildEvaluator:
                     tuple(v.ports for v in child.right))
         exact_input = (id(self.net), id(self.packing), id(self.ring),
                        self.coordinate, group, component,
-                       tuple(selected_modes), tuple(assignment), self.t, repr(self.z))
+                       tuple(selected_modes), tuple(assignment), self.t, self.z)
         try:
             result = c.contract(child,precision=self.ring.p,depth=self.depth+1,
                                 ring=self.ring if c.config.recovery.method=='jet' else None,

@@ -157,3 +157,19 @@ def test_native_kernel_calls_are_owned_by_the_active_frame() -> None:
     assert parent["exclusive_native_kernel_calls"] == 1
     assert parent["subtree_native_kernel_calls"] == 3
     assert child["subtree_native_kernel_calls"] == 2
+
+def test_ring_call_counters_store_tuples_and_preserve_json_labels() -> None:
+    from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
+
+    ring = Padic(3, modulus_polynomial(3), 9)
+    ledger = CostLedger()
+    with ledger.frame(depth=0, wires=1, precision=9,
+                      ring_depth=0, schedule="micro"):
+        assert ring.mul(ring.one, ring.one) == ring.one
+        assert ring.mul(ring.one, ring.one) == ring.one
+    assert all(isinstance(key, tuple) for key in ledger.total_ring_calls)
+    expected = {"orchestration/Padic.mul/p=9/e=3/q=1/depth=0": 2}
+    report = ledger.report()
+    assert report["ring_call_totals"] == expected
+    assert report["frames"][0]["ring_calls"] == expected
+    assert json.loads(json.dumps(report))["ring_call_totals"] == expected

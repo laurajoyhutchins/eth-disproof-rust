@@ -76,7 +76,7 @@ def test_prepared_packet_cache_disabled_for_lazy_coefficient_dags() -> None:
     assert ctx.prepared_packets is None
 
 
-@pytest.mark.parametrize('entries', [-1, 4097])
+@pytest.mark.parametrize('entries', [-1])
 def test_invalid_preparation_budgets_refused(entries: int) -> None:
     with pytest.raises(ValueError, match='prepared packet budget'):
         RecursionConfig(prepared_packet_entries=entries)

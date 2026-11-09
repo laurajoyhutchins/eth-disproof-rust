@@ -89,6 +89,19 @@ def test_minimax_order_is_no_worse_than_natural_path_order() -> None:
     assert optimum.cuts_checked == 14
 
 
+@pytest.mark.integration
+def test_subset_minimax_agrees_with_independent_all_permutations_oracle() -> None:
+    from itertools import permutations
+
+    formula = CNFFormula(4, ((1, 2), (2, 3), (3, 4)))
+    objective = min(
+        max(cut.rank for cut in rank_profile(formula, at=0, variable_order=order))
+        for order in permutations(range(formula.nvars))
+    )
+    optimum = minimax_unfolding_order(formula, at=0)
+    assert optimum.peak_rank == objective
+
+
 @pytest.mark.checkpoint
 def test_minimax_exhaustive_cut_limit_refuses_before_enumeration() -> None:
     formula, replacement = crossing_pair_witness(3)

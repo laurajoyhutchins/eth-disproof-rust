@@ -62,3 +62,30 @@ def test_restricted_projector_rank_obstruction() -> None:
         assert item['min_rank'] == item['max_rank'] == n
         assert item['max_row_l1'] == 1
         assert item['observed_tau'] == '1/2'
+
+
+def test_factorized_taylor_scales_to_sixty_four_variable_chain() -> None:
+    """Finite-size exact factorized count, not arbitrary-CNF #SAT scaling."""
+    from non_exponential_sudoku.eth.interpolation import count_origin_from_manual_designs
+    from non_exponential_sudoku.eth.taylor import TaylorLimits
+
+    n = 64
+    formula = CNFFormula(n, tuple((2 * i + 1, 2 * i + 3)
+                                  for i in range(n // 2 - 1)))
+    groups = tuple((i, i + 1) for i in range(0, n, 2))
+    design = MeasurementDesign(
+        groups=groups, clause_groups=tuple(range(len(formula.clauses))),
+        matrices=tuple(((1, 0), (0, 1)) for _ in groups),
+        tau=Fraction(1, 2), D=1,
+    )
+    counted = count_origin_from_manual_designs(
+        formula, ((Fraction(1), design),), order=0,
+        summation='eliminate',
+        taylor_limits=TaylorLimits(max_measurement_tuples=1, max_factor_entries=128),
+    )
+    assert counted.count == 24_493_713_157_783_552
+    stats = counted.taylor_data[0].stats
+    assert stats.factor_scope_peak == 2
+    assert stats.factor_entries_peak <= 12
+    assert stats.factor_assignments_tested == 996
+    assert stats.measurement_tuples == 0

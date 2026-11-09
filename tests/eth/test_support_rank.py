@@ -177,3 +177,13 @@ def test_large_identity_path_has_linear_cost_support_certificate() -> None:
     assert sum(cut.crossing_factors for cut in rank_profile) == n - 1
     with pytest.raises(ValueError, match="permutation"):
         uniform_support_profile(formula, variable_order=(0, 0))
+
+
+@pytest.mark.checkpoint
+def test_zero_tensor_exact_minimax_rank_is_zero_not_one() -> None:
+    # Regression: an initialization of best[empty] to 1 causes the
+    # optimizer to report rank 1 for an identically-zero assignment tensor.
+    false = CNFFormula(3, ((),))
+    best = minimax_unfolding_order(false, at=0)
+    assert best.peak_rank == 0
+    assert best.cut_ranks == (0, 0)

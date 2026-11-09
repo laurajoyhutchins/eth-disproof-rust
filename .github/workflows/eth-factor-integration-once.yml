@@ -1,0 +1,30 @@
+name: ETH factorized Taylor exact integration one-off
+
+on:
+  push:
+    branches:
+      - research/eth-spectral-origin-readout
+    paths:
+      - .github/workflows/eth-factor-integration-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install exact verification dependencies
+        run: |
+          python -m pip install -e '.[test,flint-oracle]'
+      - name: Exact integration regression
+        run: |
+          python -m pytest -q tests/integration/test_implicit_large_dimension.py
+      - name: FLINT and Python factorized Taylor equality
+        run: |
+          python -m pytest -q tests/eth/test_factorized_taylor.py::test_factorized_optional_native_matches_python

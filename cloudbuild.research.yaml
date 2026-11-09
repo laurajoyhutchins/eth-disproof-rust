@@ -1,0 +1,28 @@
+# Explicit research/benchmark Cloud Build lane, never a required PR check.
+# Set _SUITE only to one of the named, bounded suites in the allowlist script.
+substitutions:
+  _SUITE: cnf-scaling
+steps:
+  - id: admit-source
+    name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        expected='$COMMIT_SHA'
+        [[ "$$expected" =~ ^[0-9a-f]{40}$$ ]]
+        test "$$expected" = '$REVISION_ID'
+        test -d .git
+        test "$$(git rev-parse HEAD)" = "$$expected"
+        test -z "$$(git status --porcelain --untracked-files=no)"
+  - id: research
+    name: python:3.13-bookworm
+    entrypoint: bash
+    waitFor: ['admit-source']
+    args:
+      - -ceu
+      - |
+        bash scripts/cloudbuild_research.sh '$_SUITE'
+timeout: 2400s
+options:
+  logging: CLOUD_LOGGING_ONLY

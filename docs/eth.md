@@ -91,3 +91,57 @@ constructed-count comparison (not a worst-case scaling claim):
 ```bash
 PYTHONPATH=src:. python -m benchmarks.eth.algebraic_readout --repeats 3 --output readout.json
 ```
+
+## Implicit auxiliary operator and measured evidence
+
+`construct_implicit_auxiliary(r,Q,R)` is the default for
+`construct_bounded_designs(...)`. The original `construct_auxiliary`
+remains a separately executable dense correctness oracle, and
+`construct_bounded_designs(..., representation='dense')` selects it
+explicitly. Both use identical spectral interpolation and measurements.
+
+The new `ImplicitAuxiliaryDesign` represents `f(W)` by an exact
+`(Q+1) x (Q+1)` kernel indexed by the number of diagonal coordinates
+and unswapped off-diagonal coordinates. Individual `P[u,w](T)`
+coefficients are calculated when needed. Exceptional product
+eigenvectors are stored as selector tuples, never vectors of length
+`D=r**(2*Q)`. Transfer now iterates only over occupied incidence
+labels, rather than constructing all `D` labels or all `D**2` row
+entries. The implementation counts exceptional selectors
+combinatorially before allocation and refuses if the bound is exceeded.
+It also has an explicit maximum for `Q` in this research backend.
+
+**Observed on GitHub-hosted Python 3.13, 2026-11-09, workflow run
+`42669627090`:**
+
+| r | Q | R | dense seconds | implicit seconds | dense peak traced bytes | implicit peak traced bytes |
+|---|---|---|---|---|---|---|
+| 2 | 2 | 2 | 0.00872 | 0.000603 | 27,312 | 4,222 |
+| 2 | 3 | 2 | 0.04497 | 0.000847 | 168,352 | 3,936 |
+
+The Q=12,R=12 implicit constructor completed in 0.00656 seconds with
+20,312 peak traced Python allocation bytes. Its virtual `D` was
+16,777,216, corresponding to 281,474,976,710,656 potential dense
+matrix entries, but only 169 kernel coefficients and one exceptional
+selector were retained. No dense Q=12 timing was attempted.
+
+**End-to-end witness on the same GitHub-hosted setup, workflow run
+`42669890039`:** for a *three-variable* CNF and implicit
+`r=2,R=Q`, `Q=5` and `Q=12` each produced exact count 4,
+matching independent exhaustive enumeration. Counting took about
+0.51 seconds and 1.29 seconds respectively (under Python
+`tracemalloc`; timings include its overhead). The completed operator
+preparation took about 0.002 and 0.013 seconds. This establishes that
+a huge *virtual* dimension does not require allocating the dense
+matrix; it is not evidence for improved worst-case scaling in the
+number of Boolean variables. Only the `R=Q` spectral regime was
+exercised at the huge dimension, where the exceptional-direction count
+is one. General regimes can retain exponentially many exceptional
+directions and are explicitly resource-limited.
+
+Reproduce these measurements with
+`PYTHONPATH=src:. python -m benchmarks.eth.implicit_auxiliary_probe`;
+and exercise the larger count as an optional integration test:
+`python -m pytest -q tests/integration/test_implicit_large_dimension.py`.
+The one-off GitHub benchmark workflow was removed after the measurements
+to avoid a permanent extra CI job.

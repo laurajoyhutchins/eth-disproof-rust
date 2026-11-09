@@ -61,6 +61,8 @@ def test_real_recurrence_uses_original_and_pruned_weights_with_exact_result() ->
     assert reduction["admissible_domain_states_avoided"] == 0
     assert reduction["child_evaluations_avoided"] == 0
     assert max(event["precision"] for event in old["catalogs"]) > 100
+    assert all(event["all_assignments_admissible"] for event in old["catalogs"])
+    assert all(event["all_assignments_admissible"] for event in new["catalogs"])
 
 
 @pytest.mark.integration
@@ -87,3 +89,17 @@ def test_real_child_evaluations_fall_on_four_slot_deformation() -> None:
     assert reduction is not None
     assert reduction["admissible_domain_states_avoided"] > 0
     assert reduction["child_evaluations_avoided"] > 0
+
+
+@pytest.mark.checkpoint
+def test_precision_saturation_is_a_strict_combinatorial_condition() -> None:
+    from benchmarks.valuation_scaling import _catalog_record
+    from non_exponential_sudoku.core.modes import Mode
+
+    modes = [Mode(0, 0, 0, 0, 1, 3, (), (0,)),
+             Mode(1, 0, 0, 0, 1, 4, (), (0, 1))]
+    row = _catalog_record(modes, t=1, p=12, L=4)
+    assert row["max_possible_weighted_degree"] == 11
+    assert row["all_assignments_admissible"]
+    boundary = _catalog_record(modes, t=1, p=11, L=4)
+    assert not boundary["all_assignments_admissible"]

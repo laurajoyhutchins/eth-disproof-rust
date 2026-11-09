@@ -10,9 +10,8 @@ from non_exponential_sudoku.runtime.cost_ledger import charge as ledger_charge
 from non_exponential_sudoku.core.network import _check_leaf_factor_budget
 
 
-from native_ring cimport (
-    mul_coords, add_coords, jet_add, jet_sub, jet_neg, jet_mul,
-)
+from native_ring cimport mul_coords, add_coords
+import native_ring as native_ring_module
 from non_exponential_sudoku.core.algebra import Padic
 from non_exponential_sudoku.core.jets import JetRing
 from non_exponential_sudoku.core import algebra as core_algebra
@@ -28,6 +27,7 @@ cdef class _RingArithmetic:
     implementations stay on their existing Python ring methods.
     """
     cdef object py_add, py_sub, py_neg, py_mul, mask, modulus
+    cdef object jet_add_fn, jet_sub_fn, jet_neg_fn, jet_mul_fn
     cdef int degree
     cdef bint padic, jet
 
@@ -52,26 +52,31 @@ cdef class _RingArithmetic:
         self.degree=ring.e
         self.modulus=ring.f
         self.mask=ring.mask if self.padic else ring.base.mask
+        if self.jet:
+            self.jet_add_fn=native_ring_module.jet_add
+            self.jet_sub_fn=native_ring_module.jet_sub
+            self.jet_neg_fn=native_ring_module.jet_neg
+            self.jet_mul_fn=native_ring_module.jet_mul
 
     cdef inline object add(self, object a, object b):
         if self.padic:
             return add_coords(<tuple>a, <tuple>b, self.mask)
         if self.jet:
-            return jet_add(<tuple>a, <tuple>b, self.mask)
+            return self.jet_add_fn(<tuple>a, <tuple>b, self.mask)
         return self.py_add(a,b)
 
     cdef inline object sub(self, object a, object b):
         if self.padic:
             return tuple((a[i]-b[i])&self.mask for i in range(self.degree))
         if self.jet:
-            return jet_sub(<tuple>a, <tuple>b, self.mask)
+            return self.jet_sub_fn(<tuple>a, <tuple>b, self.mask)
         return self.py_sub(a,b)
 
     cdef inline object neg(self, object a):
         if self.padic:
             return tuple((-a[i])&self.mask for i in range(self.degree))
         if self.jet:
-            return jet_neg(<tuple>a, self.mask)
+            return self.jet_neg_fn(<tuple>a, self.mask)
         return self.py_neg(a)
 
     cdef inline object mul(self, object a, object b):
@@ -79,7 +84,7 @@ cdef class _RingArithmetic:
             return mul_coords(<tuple>a, <tuple>b,
                               self.degree, self.modulus, self.mask)
         if self.jet:
-            return jet_mul(<tuple>a, <tuple>b,
+            return self.jet_mul_fn(<tuple>a, <tuple>b,
                            self.degree, self.modulus, self.mask)
         return self.py_mul(a,b)
 

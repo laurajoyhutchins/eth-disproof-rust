@@ -73,7 +73,7 @@ def sub(tuple a, tuple b, object mask):
 
 # Exact truncated polynomial operations in A_p[z]/(z**q).
 # All loops compile to C, while the large integer arithmetic remains Python-exact.
-cpdef jet_add(tuple a, tuple b, object mask):
+def jet_add(tuple a, tuple b, object mask):
     """Coordinatewise exact sum; preserve sparse coefficients unchanged."""
     cdef Py_ssize_t i, j, q=len(a), e=len(a[0])
     cdef tuple zero=(0,)*e
@@ -92,7 +92,7 @@ cpdef jet_add(tuple a, tuple b, object mask):
             out.append(tuple([(ai[j]+bi[j])&mask for j in range(e)]))
     return tuple(out)
 
-cpdef jet_sub(tuple a, tuple b, object mask):
+def jet_sub(tuple a, tuple b, object mask):
     """Coordinatewise exact difference with sparse coefficient bypass."""
     cdef Py_ssize_t i, j, q=len(a), e=len(a[0])
     cdef tuple zero=(0,)*e
@@ -111,7 +111,7 @@ cpdef jet_sub(tuple a, tuple b, object mask):
             out.append(tuple([(ai[j]-bi[j])&mask for j in range(e)]))
     return tuple(out)
 
-cpdef jet_neg(tuple a, object mask):
+def jet_neg(tuple a, object mask):
     cdef Py_ssize_t i, j, q=len(a), e=len(a[0])
     cdef list out=[]
     for i in range(q):
@@ -134,7 +134,7 @@ def jet_mul_pairwise(tuple a, tuple b, int e, object f, object mask):
     return tuple(out)
 
 
-cpdef jet_mul(tuple a, tuple b, int e, object f, object mask):
+def jet_mul(tuple a, tuple b, int e, object f, object mask):
     """Exact sparse, truncated Taylor convolution over Z/(2**p)[U]/f.
 
     Classify nonzero Taylor coefficients once instead of testing every (i,j)

@@ -6,10 +6,12 @@ dense D**2 matrix; it is NOT a worst-case subexponential speed claim.
 """
 from __future__ import annotations
 
+from fractions import Fraction
+
 import pytest
 
 from non_exponential_sudoku.eth import (
-    CNFFormula, construct_implicit_auxiliary, construct_from_schedules,
+    CNFFormula, MeasurementDesign, construct_implicit_auxiliary, construct_from_schedules,
     count_bruteforce, count_from_constructed, deterministic_schedules,
 )
 

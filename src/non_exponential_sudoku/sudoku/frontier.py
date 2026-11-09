@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Literal, Sequence
 
 from .three_cnf import Puzzle
-from .state import initial_domains
+from .state import initial_domains, support_projected_domains
 
 
 class FrontierCapacityError(RuntimeError):
@@ -71,6 +71,7 @@ def count_frontier(
     limits: FrontierLimits = FrontierLimits(),
     order: Literal['row-major', 'minimum-domain'] = 'row-major',
     domains: Sequence[int] | None = None,
+    projection: Literal['singletons', 'matching'] = 'singletons',
 ) -> FrontierResult:
     """Count Sudoku completions by exact, signature-sharing frontier contraction.
 
@@ -82,6 +83,10 @@ def count_frontier(
     """
     if order not in ('row-major', 'minimum-domain'):
         raise ValueError('Unknown frontier ordering')
+    if projection not in ('singletons', 'matching'):
+        raise ValueError('Unknown Sudoku support projection')
+    if domains is not None and projection != 'singletons':
+        raise ValueError('Matching projection requires puzzle-derived domains')
     n = puzzle.side
     if puzzle.b < 1 or len(puzzle.entries) != n * n or any(
         v < 0 or v > n for v in puzzle.entries
@@ -96,7 +101,8 @@ def count_frontier(
         raise ValueError('Expected each Sudoku cell in exactly three units')
 
     if domains is None:
-        initial = initial_domains(puzzle)
+        initial = (support_projected_domains(puzzle) if projection == 'matching'
+                   else initial_domains(puzzle))
         if initial is None:
             return FrontierResult(0, _empty_stats())
     else:

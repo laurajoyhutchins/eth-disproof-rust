@@ -22,7 +22,7 @@ jobs:
       - name: Rebuild extensions
         run: python build_native.py --force
       - name: Profile native packet and leaf paths
-        run: python scripts/native_overhead_probe.py artifacts/native-overhead.json
+        run: python -m scripts.native_overhead_probe artifacts/native-overhead.json
       - name: Retain diagnostic data
         if: always()
         uses: actions/upload-artifact@v4

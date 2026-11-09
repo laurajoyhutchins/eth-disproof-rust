@@ -40,6 +40,11 @@ cdef class _RingArithmetic:
         self.jet=False
         if active_ledger() is not None or flint_enabled():
             return
+        # Measured crossover: tiny extension rings spend more time entering
+        # this adapter than they save in direct native arithmetic. This is
+        # performance dispatch, not an algorithmic size/capacity limit.
+        if ring.e < 8:
+            return
         if type(ring) is Padic and core_algebra._native_ring is not None:
             self.padic=True
         elif (type(ring) is JetRing and type(ring.base) is Padic and

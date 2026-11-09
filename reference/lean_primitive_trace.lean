@@ -74,7 +74,7 @@ private def terminal (name : String) (n : Nat)
   let program := SqrtLogSpace.NativeTerminal.program
   let input := Encoding.encodeList id records
   let seed := BitProgram.initial program input
-  let start := { seed with stacks := Function.update seed.stacks
+  let start := { seed with «stacks» := Function.update seed.stacks
     (258 : Fin 1220) (Encoding.encodeNat n) }
   let (steps, peak, firstPC, done) ← execute program start 263 250000
   let output := done.stacks 263

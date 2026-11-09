@@ -180,9 +180,12 @@ class ActualContractions(unittest.TestCase):
         R=Padic(calc.e,calc.f,8)
         modes=mode_catalog(net,packing,1,R.p)
         self.assertGreater(len(modes),20)
-        with self.assertRaisesRegex(CapacityError,'factor size limit'):
+        # Stronger 2-adic valuations remove the earlier factor-size
+        # preflight refusal. This fixture still has a separate 18-edge
+        # direct-leaf guard; reaching it is not successful completion.
+        with self.assertRaisesRegex(CapacityError,'Direct leaf has 20 edges'):
             calc.evaluate_deformation(net,packing,modes,1,R.basis(3),R,0)
-        self.assertEqual(calc.stats.mode_dp_local_child_evaluations,0)
+        self.assertGreater(calc.stats.mode_dp_local_child_evaluations,0)
 
     def test_multilevel_nested_recursion(self):
         net=parity_network('cycle2',1)

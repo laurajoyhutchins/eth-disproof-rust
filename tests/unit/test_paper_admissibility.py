@@ -54,7 +54,7 @@ def test_actual_small_sudoku_root_stops_before_packing(box_order: int) -> None:
 
 
 @pytest.mark.parametrize("box_order,expected_packets,expected_modes", (
-    (2, 84, 138), (3, 903, 1568), (4, 2880, 4536),
+    (2, 84, 0), (3, 903, 0), (4, 2880, 0),
 ))
 def test_counterfactual_packings_distinguish_assumptions_and_implementation(
     box_order: int, expected_packets: int, expected_modes: int,
@@ -71,7 +71,9 @@ def test_counterfactual_packings_distinguish_assumptions_and_implementation(
     assert audit.maximum_child_degree > 0
     assert audit.child_vertices > 0
     assert audit.maximum_child_edges <= 2 * audit.edges
-    assert audit.default_mode_budget_exceeded == (box_order == 4)
+    assert not audit.default_mode_budget_exceeded
+    # At a=2, i=0, every valid cross coefficient has valuation >=3:
+    # no crossing mode survives modulo 2**3 in this forced probe.
 
 
 def test_counterfactual_9x9_shrinks_children_but_fails_packet_bound() -> None:
@@ -83,12 +85,11 @@ def test_counterfactual_9x9_shrinks_children_but_fails_packet_bound() -> None:
     assert audit.child_vertices == 906
 
 
-def test_actual_default_mode_budget_refuses_forced_16x16_geometry() -> None:
+def test_forced_16x16_probe_has_no_nonzero_cross_modes_at_precision_three() -> None:
     # This is a counterfactual geometry probe, not the literal paper path.
     net = sudoku_network(Puzzle(4, (0,) * 256))
     packing = pack(net, 64, 2)
-    with pytest.raises(CapacityError, match="Mode catalog resource limit"):
-        mode_catalog(net, packing, 1, 3, max_modes=2000)
+    assert mode_catalog(net, packing, 1, 3, max_modes=2000) == []
 
 
 def test_input_parameter_and_asymptotic_claim_are_separate() -> None:

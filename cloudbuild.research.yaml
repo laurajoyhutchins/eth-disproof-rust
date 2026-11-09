@@ -22,6 +22,8 @@ steps:
     args:
       - -ceu
       - |
+        # Preserve the explicit native direct-build backend requirement.
+        python -m pip install --disable-pip-version-check 'setuptools>=65'
         bash scripts/cloudbuild_research.sh '$_SUITE'
 timeout: 2400s
 options:

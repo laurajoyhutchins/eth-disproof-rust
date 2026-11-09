@@ -70,4 +70,4 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           test "$SHARD_JOBS" = "success"
-          python scripts/aggregate_checkpoint.py --root artifacts/shards --head "$HEAD_SHA" --count 2
+          python -m scripts.aggregate_checkpoint --root artifacts/shards --head "$HEAD_SHA" --count 2

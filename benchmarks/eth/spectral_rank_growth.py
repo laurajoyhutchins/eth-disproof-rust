@@ -113,6 +113,15 @@ def experiment(
             report["samples"].append(row)
             continue
 
+        row["finite_construction_status"] = construction.algorithm_status
+        row["lemma_hypotheses_met"] = (
+            construction.balancing.lemma_hypotheses_met
+            if construction.balancing is not None else None
+        )
+        row["lemma_bounds_met"] = (
+            construction.balancing.lemma_bounds_met
+            if construction.balancing is not None else None
+        )
         uniform = minimax_uniform_support_order(
             case.formula, construction.replacements,
             limits=SupportRankLimits(
@@ -160,6 +169,8 @@ def experiment(
                         raise ArithmeticError("tensor sum disagreed with independent H(T)")
                 optimum_rank: int | None = None
                 exact_order: list[int] | None = None
+                exact_operations: int | None = None
+                exact_bits: int | None = None
                 if case.nvars <= max_exact_n:
                     optimum = minimax_unfolding_order(
                         case.formula, construction.replacements,
@@ -168,14 +179,24 @@ def experiment(
                     )
                     optimum_rank = optimum.peak_rank
                     exact_order = [v + 1 for v in optimum.variable_order]
+                    exact_operations = optimum.charged_rational_operations
+                    exact_bits = optimum.max_coefficient_bits
                     if optimum_rank > peak:
                         raise ArithmeticError("global best rank exceeds observed order")
                 row["centers"].append({
                     "center": str(center),
                     "support_order_rank_peak": peak,
                     "support_order_ranks": [x.rank for x in profile],
+                    "support_order_charged_rational_operations": sum(
+                        x.rational_operations for x in profile
+                    ),
+                    "support_order_max_coefficient_bits": max(
+                        (x.max_coefficient_bits for x in profile), default=0
+                    ),
                     "exact_best_rank": optimum_rank,
                     "exact_best_order_1_based": exact_order,
+                    "exact_rank_charged_rational_operations": exact_operations,
+                    "exact_rank_max_coefficient_bits": exact_bits,
                     "independent_deformation_check": check,
                     "uniform_upper_to_exact_ratio": (
                         str(uniform.peak_rank_upper) + "/" + str(optimum_rank)

@@ -378,7 +378,8 @@ def interpolate_hermite(
 
 
 def interpolate_origin_hermite(
-    data: Sequence[HermiteDatum], *, limits: HermiteLimits = HermiteLimits(),
+    data: Sequence[HermiteDatum], *, degree_bound: int | None = None,
+    limits: HermiteLimits = HermiteLimits(),
 ) -> HermiteOriginResult:
     """Evaluate the Hermite interpolant at zero without constructing it.
 
@@ -404,7 +405,13 @@ def interpolate_origin_hermite(
     conditions = sum(len(datum.coefficients) for datum in data)
     if conditions > limits.max_conditions:
         raise CapacityError('ETH Hermite condition limit')
-    if conditions - 1 > limits.max_degree:
+    if degree_bound is None:
+        degree_bound = conditions - 1
+    if type(degree_bound) is not int or degree_bound < 0:
+        raise ValueError('degree_bound must be a nonnegative integer')
+    if conditions <= degree_bound:
+        raise ValueError('insufficient Hermite conditions for the degree bound')
+    if degree_bound > limits.max_degree:
         raise CapacityError('ETH Hermite degree limit')
 
     budget = _PythonHermiteArithmetic(limits)
@@ -563,7 +570,7 @@ def count_origin_from_manual_designs(
         ))
     result = interpolate_origin_hermite(
         tuple(HermiteDatum(entry.center, entry.coefficients) for entry in collected),
-        limits=hermite_limits,
+        degree_bound=degree, limits=hermite_limits,
     )
     value = result.value
     if value.denominator != 1 or not 0 <= value <= (1 << formula.nvars):

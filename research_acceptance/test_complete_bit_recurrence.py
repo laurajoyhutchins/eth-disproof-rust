@@ -14,6 +14,7 @@ import pytest
 from non_exponential_sudoku.runtime.config import ContractorConfig
 from reference.precision_envelope import PaperFrameEnvelope, paper_frame_envelopes
 from reference.recurrence_calls import recursive_call_bound
+from reference.complete_theorem_gate import current_theorem_status, IncompleteTheorem
 
 
 # A complete bit recurrence must bound *each* local operation, including the
@@ -167,11 +168,28 @@ def test_observed_call_ledger_cannot_bound_opaque_oracle_work() -> None:
     assert records[0][2] != records[1][2]
 
 
-def test_complete_bit_recurrence_for_current_paper_solver() -> None:
-    """RED: leave this failing until every universally proved U_d is supplied.
+def test_fabricated_local_costs_cannot_satisfy_complete_theorem() -> None:
+    """GREEN negative control: a numerical ledger cannot bypass totality/cell claims."""
+    frames = _active_symbolic_frames()
+    ones = {name: 1 for name in LOCAL_BIT_WORK_TERMS}
+    assert unfold_conditional_bit_recurrence(
+        frames, lambda _: LocalBitBound(ones),
+    ) > 0
+    with pytest.raises(IncompleteTheorem, match="source_or_totality"):
+        current_theorem_status(local_bit_work_gap=None).require_complete()
 
-    In particular, a correctly counted recursive call is not a bounded-cost
-    recursive call. A capacity refusal also cannot certify totality.
+
+def test_complete_bit_recurrence_for_current_paper_solver() -> None:
+    """RED: all independent theorem obligations must be discharged.
+
+    Numeric local terms, source/totality proofs and the Sudoku-cell
+    exponent transfer are independently required. A partially filled
+    ledger may not conceal non-refusal or the wrong input-size parameter.
     """
     frames = _active_symbolic_frames()
-    unfold_conditional_bit_recurrence(frames, current_local_bit_evidence)
+    local_gap: str | None = None
+    try:
+        unfold_conditional_bit_recurrence(frames, current_local_bit_evidence)
+    except IncompleteBitBound as exc:
+        local_gap = str(exc)
+    current_theorem_status(local_bit_work_gap=local_gap).require_complete()

@@ -24,9 +24,13 @@ from reference.sudoku_oracle_invocations import (
 
 from non_exponential_sudoku.contraction.engine import paper_schedule_parameters
 from reference.catalog_planning_work import catalog_planning_work
+from reference.packing_ordering_work import packing_source_work, mode_ordering_work
 from non_exponential_sudoku.runtime.config import ContractorConfig
 from reference.nested_ring_bit_cost import finite_shape_bit_envelope
 from reference.oracle_lineage import paper_single_path_descriptor_bound
+from reference.paper_packet_calls import (
+    PaperPacketCallEnvelope, uniform_paper_packet_calls,
+)
 from reference.packet_preparation_work import cauchy_context_calls, prepared_child_work
 from reference.precision_envelope import PaperFrameEnvelope, paper_frame_envelopes
 from reference.recovery_bit_work import recovery_work
@@ -88,6 +92,8 @@ class FrameBudgetSkeleton:
     # Bounded source-level catalog and component-plan overhead, for all centers
     # and every interpolation sample (no assumption of cache hits).
     log2_catalog_planning_bit_work_ceiling: int = 0
+    # Source-level balanced labels, packet materialization and mode order.
+    log2_packing_ordering_bit_work_ceiling: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +115,9 @@ class ConditionalPaperRecurrence:
     # fallback direct enumeration, factor-table construction and optional
     # zero-support separately. No generic PacketEntry work is included.
     sudoku_original_oracle_invocation_envelope: OriginalOracleInvocationEnvelope | None = None
+    # Conditional full potential-tree OUTER calls to generated eager Python
+    # packet ring operations. Not elementary integer-bit work or native costs.
+    paper_packet_outer_ring_call_envelope: PaperPacketCallEnvelope | None = None
     open_premises: tuple[str, ...] = OPEN_PREMISES
 
     def require_complete_theorem(self) -> None:
@@ -134,6 +143,15 @@ class ConditionalPaperRecurrence:
         for frame in reversed(self.frames[:-1]):
             local = log2_sum_ceiling(frame.log2_named_local_work_ceiling, polynomial_log)
             tail = log2_sum_ceiling(local, frame.log2_child_calls_ceiling + tail)
+        # Even under the hypothetical polynomial bit-work per ring call,
+        # the number of generated packet-entry ring calls need not be
+        # polynomial. Charge the complete conditional potential-tree count,
+        # rather than hiding its exponent inside an assumed glue term.
+        packets = self.paper_packet_outer_ring_call_envelope
+        if packets is not None:
+            tail = log2_sum_ceiling(
+                tail, packets.log2_total_outer_ring_calls + polynomial_log,
+            )
         return tail
 
 
@@ -228,12 +246,26 @@ def _active_frame(frame: PaperFrameEnvelope, config: ContractorConfig,
         precision=precision, input_name_bits=input_name_bits,
     )
     catalog_log = ceil_log2(centers * E * catalog.schoolbook_bit_work_majorant)
+    # Packing runs once per active frame. Ordering may run on every point
+    # sample of every center. Do not assume topology or plan cache hits.
+    packing = packing_source_work(
+        edges=M, vertices=V, groups=64, coordinates=a,
+    )
+    ordering = mode_ordering_work(
+        variables=k_max, factors=F, precision=precision,
+    )
+    packing_order_log = ceil_log2(
+        packing.abstract_schoolbook_bit_work
+        + centers * E * ordering.abstract_schoolbook_bit_work
+    )
     local_log = log2_sum_ceiling(factor_ring_log, prep_log,
-                                  newton_log, recovery_log, catalog_log)
+                                  newton_log, recovery_log, catalog_log,
+                                  packing_order_log)
     return FrameBudgetSkeleton(
         frame.depth, M, V, False, centers, E, alpha,
         child_log, factor_ring_log, prep_log, newton_log, recovery_log,
         local_log, 0, log2_catalog_planning_bit_work_ceiling=catalog_log,
+        log2_packing_ordering_bit_work_ceiling=packing_order_log,
     )
 
 
@@ -347,8 +379,16 @@ def assemble_paper_recurrence(
             extension_degree=max(2, 4 * lam),
             precision=largest_precision,
         )
+    packet_calls = (
+        uniform_paper_packet_calls(
+            s=config.s, initial_edges=edges, initial_vertices=vertices,
+            initial_precision=config.precision,
+            max_terminal_edges=max(result[-1].edges, fallback),
+            potential_nodes_log2=count_log,
+        ) if len(result) > 1 else None
+    )
     return ConditionalPaperRecurrence(
         config.s, tuple(result), count_log, fanout_log, fallback,
         lineage.max_vertices, lineage.max_visible_name_bits,
-        original_work, original_calls, invocation_envelope,
+        original_work, original_calls, invocation_envelope, packet_calls,
     )

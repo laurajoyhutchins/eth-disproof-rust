@@ -6,6 +6,7 @@ from typing import Literal
 from ..runtime.statistics import Counters
 from ..runtime.budget import ModeBudget
 from .factors import Factor
+from .scope_plan import inspect_scope
 
 def select_variable(remaining: set[int], *, factors: Sequence[Factor],
                     domains: Sequence[range], order: Literal['min_fill', 'min_states'],
@@ -26,10 +27,11 @@ def select_variable(remaining: set[int], *, factors: Sequence[Factor],
     # Bound the total number of pair inspections for all candidates.
     if order=='min_fill':
         budget.order_work(sum(len(adjacent[v])**2 for v in remaining))
+    scopes=tuple(f.scope for f in factors)
     def cost(v: int) -> tuple[int, ...]:
-        incident=[f for f in factors if v in f.scope]
-        union=set().union(*(f.scope for f in incident)) if incident else {v}
-        out=union-{v}
+        step=inspect_scope(v, scopes)
+        union=set(step.joined)
+        out=set(step.output)
         output_states=prod(len(domains[j]) for j in out)
         joined_states=prod(len(domains[j]) for j in union)
         fill=sum(len(domains[a])*len(domains[b])

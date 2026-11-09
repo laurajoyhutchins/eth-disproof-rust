@@ -237,3 +237,67 @@ measurement-value sums without enumerating every value tuple.
 Merely encoding the projector more succinctly cannot reduce rank.
 The rank sweep is reproducible via
 `PYTHONPATH=src:. python -c "from benchmarks.eth.projector_probe import rank_audit; print(rank_audit())"`.
+
+
+## Exact Taylor group-factor elimination (opt-in)
+
+`taylor_coefficients_separated(..., summation='eliminate')` and
+`restricted_taylor_sum(..., summation='eliminate')` use the exact
+`eth/factorized_taylor.py` bucket-elimination implementation. The same
+switch is available on both certified Hermite count functions and
+`count_from_constructed`. `summation='tuples'` remains the original
+reference and the default until a general performance cutover is proven.
+
+Mathematically, every local Boolean mask `x_g` determines exactly one
+measurement signature `y_g=M_g x_g`. Therefore
+
+`sum_y prod_g sum_{x_g:M_g x_g=y_g} F_g(x_g,y)`
+
+equals a direct sum over group assignments, with each clause represented
+by a factor on its owner group and only those foreign groups for which
+the **independently certified** measurement coefficient is nonzero.
+Exact bucket elimination contracts these factors using truncated rational
+or FLINT jets, without visiting all measurement-value tuples. It does
+NOT weaken the certificate or invoke brute-force counting as a fallback.
+
+The relevant complexity is induced factor scope: its Boolean mask
+domain product, factor table size, and total exact arithmetic work.
+These are explicitly bounded by `TaylorLimits.max_factor_entries`,
+`max_factor_total_entries`, `max_factor_work`, and the existing
+`max_jet_operations` / `max_coefficient_bits`. Statistics record
+`factor_scope_peak`, `factor_entries_peak`,
+`factor_assignments_tested` and `factor_eliminations`. The
+`measurement_tuples` statistic is zero in this mode; it is a **work
+counter**, not a claim that the mathematical measurement space is empty.
+
+**Measured** on GitHub-hosted Python 3.13, November 9, 2026,
+workflow `42677326298`. Each formula is a path of binary positive
+clauses connecting the first variable of adjacent two-variable
+groups. Its independent count oracle is `F_(n/2+2) * 2^(n/2)`.
+
+| n | Old measurement tuple space | Factor assignments tested | Max factor entries | Count-only seconds |
+|---:|---:|---:|---:|---:|
+| 4 | 81 | 36 | 12 | 0.020 |
+| 8 | 6,561 | 100 | 12 | 0.038 |
+| 12 | 531,441 | 164 | 12 | 0.072 |
+| 20 | 3,486,784,401 | 292 | 12 | 0.171 |
+| 32 | 1,853,020,188,851,841 | 484 | 12 | 0.378 |
+| 64 | 3,433,683,820,292,512,484,657,849,089,281 | 996 | 12 | 1.338 |
+
+The original tuple evaluator was **measured** at n=4 (0.038 s)
+and n=8 (4.272 s, versus 0.038 s for elimination). Larger old-column
+values are exact theoretical iteration counts, not runtime
+measurements. Under `tracemalloc`, peak traced allocations in the
+64-variable calculation were 1,083,664 bytes. The exact count was
+24,493,713,157,783,552. The maximum induced scope was 2 groups,
+and all counts are reproduced by the benchmark.
+
+Run `PYTHONPATH=src:. python -m benchmarks.eth.factorized_taylor_probe`.
+
+**No general ETH claim:** This is ordinary exact variable elimination
+on the certified *group interaction graph*. A group clique or a family
+whose induced width grows with n retains exponential tables or fails
+closed on the explicit budget. The chain example demonstrates an
+implementable structural regime rather than a solution for arbitrary
+worst-case CNF, and does not satisfy the manuscript's huge literal
+n-derived parameter schedule.

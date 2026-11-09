@@ -18,7 +18,9 @@ from non_exponential_sudoku.eth import (
     CNFFormula, ConstructionLimits, construct_from_schedules,
     count_bruteforce, count_from_constructed, deterministic_schedules,
 )
-from non_exponential_sudoku.eth.construction import (\n    _projected_group_rows, construct_implicit_auxiliary,\n)
+from non_exponential_sudoku.eth.construction import (
+    _projected_group_rows, construct_implicit_auxiliary,
+)
 
 
 def _case(Q: int, R: int, *, count: bool) -> dict[str, object]:

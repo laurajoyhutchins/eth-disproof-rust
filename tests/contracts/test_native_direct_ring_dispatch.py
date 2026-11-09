@@ -13,14 +13,17 @@ from non_exponential_sudoku.runtime.cost_ledger import CostLedger
 pytestmark = [pytest.mark.checkpoint, pytest.mark.requires_native]
 
 
-def _packet(ring, *, positions_are_bits=True):
-    """Minimal Cauchy oracle with both add, sub and mul operations."""
+def _packet(ring, *, target=True):
+    """Minimal Cauchy oracle with optional target coefficient."""
     value = ring.scalar(3)
-    return (ring, (0,), (((1, value),),), ((),), (), (), ((1, 1),))
+    contributions = (((0, ring.scalar(2)),),) if target else ((),)
+    desired = (1,) if target else ()
+    return (ring, (0,), (((1, value),),), contributions,
+            desired, (), ((1, 1),))
 
 
-def _run_packet(native, ring, bits=(0, 1)):
-    args = _packet(ring)
+def _run_packet(native, ring, bits=(0, 1), *, target=True):
+    args = _packet(ring, target=target)
     return native.packet_evaluate(bits, *args, positions_are_bits=True)
 
 
@@ -144,3 +147,25 @@ def test_custom_jet_arithmetic_hook_is_not_bypassed() -> None:
     ring._native_mul = custom_mul
     with pytest.raises(CustomArithmetic, match="custom JetRing"):
         _run_packet(native, ring)
+
+
+def test_zero_target_packet_preserves_direct_product_ring_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native = pytest.importorskip("native_recursive")
+    ring = Padic(8, modulus_polynomial(8), 19)
+    expected = _run_packet(native, ring, target=False)
+    original = Padic.mul
+    calls = 0
+
+    def counted(self, a, b):
+        nonlocal calls
+        calls += 1
+        return original(self, a, b)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Padic, "mul", counted)
+        assert _run_packet(native, ring, target=False) == expected
+    # A one-state packet is already evaluated by the specialized direct
+    # Cauchy product. It must not pay the new dispatch-adapter overhead.
+    assert calls > 0

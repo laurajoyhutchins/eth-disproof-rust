@@ -1,4 +1,4 @@
-name: ETH factorized Taylor exact integration one-off
+name: ETH factorized Taylor exact integration verification
 
 on:
   push:

@@ -46,3 +46,19 @@ def test_trace_preserves_recursive_exact_result_and_exposes_packet_work():
     assert report["tracked_unique_topologies"] > 0
     assert all(e["elapsed_ns"] >= 0 for e in report["events"])
     assert report["truncation"]["events"] >= 0
+
+def test_trace_never_calls_repr_on_structured_exact_inputs() -> None:
+    class NoRepr:
+        def __repr__(self) -> str:
+            raise AssertionError("exact inputs must not be rendered as text")
+
+    value = NoRepr()
+    trace = WorkTrace(max_events=3, max_keys=2)
+    for index in (0, 0, 1):
+        trace.observe(operation="packet", topology=("ports", (0, 1)),
+                      exact_input=(value, index),
+                      started_ns=perf_counter_ns(), output=(42,))
+    assert trace.report()["repeated_exact_input_candidates"] == {"packet": 1}
+    assert trace.events[0].topology_id == trace.events[1].topology_id
+    assert trace.events[0].input_id == trace.events[1].input_id
+    assert trace.events[0].input_id != trace.events[2].input_id

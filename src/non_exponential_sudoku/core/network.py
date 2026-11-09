@@ -11,6 +11,7 @@ from .lazy_coefficients import NestedCoords
 TensorRing = Padic | JetRing
 from ..runtime.budget import CapacityError
 from ..runtime.cost_ledger import charge
+from ..elimination.scope_plan import choose_min_width
 
 @dataclass(frozen=True)
 class Vertex:
@@ -92,15 +93,11 @@ def compile_leaf_plan(edges: int, scopes: Sequence[Sequence[int]], max_width: in
     steps: list[LeafStep] = []
     remaining_lookups = lookup_budget
     while remaining:
-        def incident(e: int) -> tuple[int, ...]:
-            return tuple(k for k, scope in factors.items() if e in scope)
-        def key(e: int) -> tuple[int, int, int]:
-            inc = incident(e)
-            union = set().union(*(factors[k] for k in inc)) if inc else set()
-            return (len(union) - 1, len(inc), e)
-        edge = min(remaining, key=key)
-        inc = incident(edge)
-        out_scope = tuple(sorted(set().union(*(factors[k] for k in inc)) - {edge}))
+        factor_ids = tuple(factors)
+        choice = choose_min_width(remaining, tuple(factors.values()))
+        edge = choice.variable
+        inc = tuple(factor_ids[i] for i in choice.incident)
+        out_scope = choice.output
         if len(out_scope) > max_width:
             return None
         positions = tuple(tuple(out_scope.index(x) if x != edge else -1
@@ -290,22 +287,16 @@ def eliminate_leaf(net: Network, R: TensorRing, max_edges: int = 20, max_width: 
 
     remaining=set(range(net.edges))
     while remaining:
-        # Greedily eliminate the variable with smallest resulting union scope.
-        # Ties use index order, so verification is reproducible.
-        incident_by_var={e:[k for k,(scope,table) in enumerate(factors) if e in scope]
-                         for e in remaining}
-        def key(e: int) -> tuple[int, int, int]:
-            inc=incident_by_var[e]
-            scope=set().union(*(factors[i][0] for i in inc)) if inc else set()
-            return len(scope)-1,len(inc),e
-        edge=min(remaining,key=key)
-        incident=set(incident_by_var[edge])
+        # Replan after each elimination: scopes change as factors are joined.
+        choice=choose_min_width(remaining,[scope for scope,_ in factors])
+        edge=choice.variable
+        incident=set(choice.incident)
         if not incident:
             # An unconstrained wire has two values; this is 2 x scalar.
             scalar=B.mul(scalar,B.scalar(2))
             remaining.remove(edge)
             continue
-        out_scope=tuple(sorted(set().union(*(factors[i][0] for i in incident)) - {edge}))
+        out_scope=choice.output
         if len(out_scope)>max_width:
             return net.direct(R,max_edges)
         _check_leaf_factor_budget(

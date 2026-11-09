@@ -75,13 +75,19 @@ can attach this verified one-pass work and scalar-call count. It checks
 matching root edges, vertices and input name bits, and requires precision
 of at least `N*t+1` to represent any exact Sudoku completion count.
 
-**A one-pass cost is not a whole-frame cost.** The current theorem still
-needs a source-correspondence bound on every invocation of an inherited
-original oracle across deformation centers, factor projections, terminals,
-and recursive child evaluations. New `PacketEntry` callbacks and native
-kernels require their own closure lemmas. As a result, no open theorem
-premise is removed, and the deliberately failing research acceptance
-test remains failing. Nothing here establishes non-refusal or
+**A one-pass cost is not a whole-frame cost.** The follow-on
+[original-sudoku-oracle-invocations.md](original-sudoku-oracle-invocations.md)
+now charges the potential number of original oracle invocations: dense
+factor materialization, direct fallback, and optional zero-support calls,
+including attempts pruned before a recursive frame is entered. It composes
+those counts with the *conditional* paper fanout envelope, rather than
+asserting every child executes or ignoring zero-support attempts.
+
+The new event-count closure can be exponentially large, particularly
+for direct terminal enumeration. New `PacketEntry` callbacks, native
+inner loops, and non-refusal still require separate work certificates.
+No complete theorem premise is removed, and the deliberately failing
+research acceptance test remains failing. Nothing here establishes
 `2^{o(N)}` for Sudoku cells.
 
 Run:

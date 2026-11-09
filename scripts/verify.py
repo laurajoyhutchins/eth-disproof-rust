@@ -66,6 +66,48 @@ def main() -> int:
 
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
+    selected_tests: list[str] = []
+    impact: dict[str, object] | None = None
+    if args.impact_plan is not None:
+        if args.tier != "checkpoint":
+            parser.error("--impact-plan is only supported by checkpoint")
+        try:
+            supplied = json.loads(args.impact_plan.read_text())
+            if not isinstance(supplied, dict):
+                raise ValueError("impact plan must be an object")
+            base = supplied.get("base")
+            if base is not None and not isinstance(base, str):
+                raise ValueError("invalid comparison base")
+            expected = calculate_impact(ROOT, base)
+            if supplied != expected or expected["head"] is None:
+                raise ValueError("impact plan is stale or does not match HEAD")
+            impact = expected
+            mode = expected["mode"]
+            if mode == "targeted":
+                selected_tests = expected["tests"]
+                if not selected_tests or not all(
+                    isinstance(path, str) and path.startswith("tests/") and
+                    (ROOT / path).is_file() for path in selected_tests
+                ):
+                    raise ValueError("invalid impacted test paths")
+            elif mode == "none":
+                record = {
+                    "tier": "checkpoint",
+                    "verification_status": "not_applicable",
+                    "tests_executed": False,
+                    "reused_evidence": False,
+                    "impact_plan": expected,
+                    "git": git_provenance(),
+                    **fingerprints(),
+                }
+                (output / "checkpoint-not-applicable.json").write_text(
+                    json.dumps(record, indent=2) + "\n")
+                print("checkpoint: documentation-only, no tests executed", flush=True)
+                return 0
+            elif mode != "full":
+                raise ValueError("unknown impact mode")
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            parser.error(f"invalid impact plan: {exc}")
     junit = output / f"{args.tier}.xml"
     junit.unlink(missing_ok=True)
     required = sorted(set(args.require_backend))

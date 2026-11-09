@@ -14,10 +14,12 @@ import time
 import tracemalloc
 from typing import Callable, TypeVar
 
+from non_exponential_sudoku.runtime.budget import CapacityError
+
 from non_exponential_sudoku.eth import (
     CNFFormula, ConstructionLimits, construct_auxiliary,
     construct_implicit_auxiliary, construct_from_schedules,
-    deterministic_schedules,
+    count_bruteforce, count_from_constructed, deterministic_schedules,
 )
 
 _T = TypeVar('_T')
@@ -78,6 +80,32 @@ def probe() -> dict[str, object]:
     constructed, transfer_seconds, transfer_peak = _measure(
         lambda: construct_from_schedules(formula, aux, a, d), repeats=1)
     assert len(constructed.centers) == 5
+    full_counts: list[dict[str, object]] = []
+    expected_count = count_bruteforce(formula)
+    for Q in (5, 12):
+        r = Q
+        started = time.perf_counter()
+        virtual = construct_implicit_auxiliary(r=2, Q=Q, R=r)
+        variables, clauses = deterministic_schedules(formula, r=2, Q=Q)
+        design = construct_from_schedules(formula, virtual, variables, clauses)
+        preparation_seconds = time.perf_counter() - started
+        try:
+            answer, count_seconds, count_peak = _measure(
+                lambda: count_from_constructed(formula, design), repeats=1)
+            if answer != expected_count:
+                raise ArithmeticError('implicit large-D count differs from independent #SAT')
+            full_counts.append({
+                'Q': Q, 'R': r, 'D': virtual.dimension, 'count': answer,
+                'preparation_seconds': preparation_seconds,
+                'count_seconds': count_seconds, 'count_peak_traced_bytes': count_peak,
+                'status': 'exact_count',
+            })
+        except CapacityError as exc:
+            full_counts.append({
+                'Q': Q, 'R': r, 'D': virtual.dimension,
+                'preparation_seconds': preparation_seconds,
+                'status': 'capacity_refusal', 'reason': str(exc),
+            })
     return {
         'status': 'exact-auxiliary-component-benchmark-not-ETH-runtime-bound',
         'cases': cases,
@@ -86,6 +114,7 @@ def probe() -> dict[str, object]:
             'seconds': transfer_seconds, 'peak_traced_bytes': transfer_peak,
             'centers_certified': len(constructed.centers),
         },
+        'full_counts': full_counts,
     }
 
 

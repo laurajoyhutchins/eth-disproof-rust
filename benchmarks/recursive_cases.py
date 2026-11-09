@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass,replace
 from non_exponential_sudoku import (
     ContractionEngine,ContractorConfig,ModeConfig,LeafConfig,RecoveryConfig,
-    RecursionConfig,Padic,Network,simple_network
+    RecursionConfig,ZeroSupportPolicy,Padic,Network,simple_network
 )
 from non_exponential_sudoku.core.packing import pack
 from non_exponential_sudoku.core.modes import mode_catalog
@@ -18,6 +18,8 @@ from reference.real_sudoku_bench import puzzles
 VARIANTS={
     'reference':RecursionConfig(child_plans=False),
     'plans':RecursionConfig(child_plans=True),
+    'certified-zero':RecursionConfig(child_plans=True,
+        zero_support=ZeroSupportPolicy(enabled=True)),
     'packet':RecursionConfig(child_plans=False,native_packet=True),
     'leaf':RecursionConfig(child_plans=False,native_leaf=True),
     'combined':RecursionConfig(child_plans=True,native_packet=True,native_leaf=True),

@@ -45,12 +45,12 @@ def packet_target_row_capacity(
         raise ValueError("parent edge is missing a left endpoint")
     row_counts: dict[tuple[int, int], int] = {}
     for packet_id, packet in enumerate(packing.packets):
-        for edge in packet.slots:
-            if edge is None:
+        for slot_edge in packet.slots:
+            if slot_edge is None:
                 continue
-            if not 0 <= edge < net.edges:
+            if not 0 <= slot_edge < net.edges:
                 raise ValueError("packet contains an invalid parent edge")
-            group = packing.groups_left[owner[edge]][coordinate]
+            group = packing.groups_left[owner[slot_edge]][coordinate]
             key = (packet_id, group)
             row_counts[key] = row_counts.get(key, 0) + 1
     return row_counts

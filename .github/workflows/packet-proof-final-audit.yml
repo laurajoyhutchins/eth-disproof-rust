@@ -1,0 +1,22 @@
+name: Final packet and paper-recurrence proof audit
+on:
+  push:
+    branches:
+      - 'verify/packet-proof-final-*'
+  workflow_dispatch:
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install verification and mypy
+        run: python -m pip install -e '.[test,typecheck]'
+      - name: Complete packet and paper model test set
+        run: python -m pytest -q tests/unit/test_packet_leaf_work.py tests/unit/test_packet_oracle_work_envelope.py tests/unit/test_oracle_frontier.py tests/unit/test_whole_frame_recurrence.py tests/unit/test_paper_mode_reachability.py tests/integration/test_oracle_lineage_recurrence.py --durations=20
+      - name: Strict reference source typing
+        run: python -m mypy --strict --follow-imports=silent reference/packet_leaf_work.py reference/paper_packet_calls.py reference/whole_frame_recurrence.py

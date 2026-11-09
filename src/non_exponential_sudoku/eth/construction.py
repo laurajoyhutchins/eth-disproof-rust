@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from fractions import Fraction
+from functools import lru_cache
 from itertools import combinations, product
 from math import comb, floor
 from typing import Literal, Sequence
@@ -37,6 +38,7 @@ class ConstructionLimits:
     max_measurement_rows: int = 128
     max_occurrences: int = 64
     max_coeff_bits: int = 4096
+    max_implicit_points: int = 64
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
@@ -67,13 +69,84 @@ class AuxiliaryDesign:
         return len(self.labels)
 
 
+AuxiliaryLabel = tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ImplicitAuxiliaryDesign:
+    """Exact auxiliary operator without materializing its D coordinates.
+
+    The operator is f(W), a polynomial in Q commuting local swaps.
+    Matrix entries depend only on equal, swapped and diagonal coordinates.
+    Exceptional spectral measurement vectors are retained as product-basis
+    SELECTORS, never as D-length vectors. Only needed coordinates are read.
+    """
+
+    r: int
+    Q: int
+    R: int
+    interval: tuple[int, ...]
+    measurement_selectors: tuple[tuple[int, ...], ...]
+    kernel: tuple[tuple[Fraction, ...], ...]
+    max_polynomial_degree: int
+
+    @property
+    def dimension(self) -> int:
+        return self.r ** (2 * self.Q)
+
+    def label_index(self, label: AuxiliaryLabel) -> int:
+        """Index compatible with lexicographic dense auxiliary labels."""
+        if len(label) != self.Q:
+            raise ValueError('auxiliary label length mismatch')
+        index = 0
+        for pair in label:
+            if (len(pair) != 2 or any(type(x) is not int or not 0 <= x < self.r
+                                      for x in pair)):
+                raise ValueError('auxiliary label index out of range')
+            index = (index * self.r + pair[0]) * self.r + pair[1]
+        return index
+
+    def row_at(self, source: AuxiliaryLabel, target: AuxiliaryLabel) -> Polynomial:
+        """P_source,target(T) exactly, allocating only its short polynomial."""
+        self.label_index(source)
+        self.label_index(target)
+        diagonals = 0
+        unchanged = 0
+        exceptions: list[int] = []
+        for t, ((a, d), (b, e)) in enumerate(zip(source, target), 1):
+            if (b, e) == (a, d):
+                if a == d:
+                    diagonals += 1
+                else:
+                    unchanged += 1
+                    exceptions.append(t)
+            elif (b, e) != (d, a):
+                return ZERO
+        m = self.kernel[diagonals][unchanged]
+        identity = int(source == target)
+        if not m:
+            return Polynomial.constant(identity)
+        if len(exceptions) > self.R - 1:
+            raise ArithmeticError('implicit auxiliary support violates degree')
+        phi = ONE
+        for point in exceptions:
+            phi = phi * Polynomial((Fraction(1), Fraction(-1, point)))
+        return Polynomial.constant(identity) + (phi - ONE).scale(m)
+
+    def measurement_at(self, index: int, label: AuxiliaryLabel) -> int:
+        """One entry of an exceptional tensor eigenvector, never a dense row."""
+        self.label_index(label)
+        return _tensor_entry(label, self.measurement_selectors[index],
+                             _local_eigenvectors(self.r), self.r)
+
+
 @dataclass(frozen=True, slots=True)
 class ConstructedDesigns:
     """Verified construction with separately recorded paper admission."""
 
     replacements: ReplacementSystem
     centers: tuple[tuple[int, MeasurementDesign], ...]
-    auxiliary: AuxiliaryDesign
+    auxiliary: AuxiliaryDesign | ImplicitAuxiliaryDesign
     variable_schedules: tuple[tuple[int, ...], ...]
     clause_schedules: tuple[tuple[int, ...], ...]
     label_multiplicity: int
@@ -102,6 +175,26 @@ def _interpolation_polynomial(points: tuple[int, ...]) -> Polynomial:
     return result
 
 
+def _walsh_by_weight(polynomial: Polynomial, Q: int) -> tuple[Fraction, ...]:
+    """Q+1 exact Fourier weights, without materializing any subset indices."""
+    if type(Q) is not int or Q < 0:
+        raise ValueError('Q must be a nonnegative integer')
+    differences = [polynomial.evaluate(j) for j in range(Q + 1)]
+    result: list[Fraction] = []
+    for cardinality in range(Q + 1):
+        if cardinality <= polynomial.degree:
+            value = sum(
+                (comb(Q - cardinality, j) * term
+                 for j, term in enumerate(differences)), Fraction(0),
+            ) / (1 << Q)
+            result.append(-value if cardinality % 2 else value)
+            differences = [right - left for left, right in
+                           zip(differences, differences[1:])]
+        else:
+            result.append(Fraction(0))
+    return tuple(result)
+
+
 def _walsh_coefficients(polynomial: Polynomial, Q: int) -> dict[int, Fraction]:
     """Sparse Walsh coefficients of f(popcount(mask)), grouped by Hamming weight.
 
@@ -110,25 +203,15 @@ def _walsh_coefficients(polynomial: Polynomial, Q: int) -> dict[int, Fraction]:
     the s-th forward differences of f on 0..Q.  It vanishes for
     s > degree(f).  No 2**Q x 2**Q Fourier transform is constructed.
     """
-    if type(Q) is not int or Q < 0:
-        raise ValueError('Q must be a nonnegative integer')
-    differences = [polynomial.evaluate(j) for j in range(Q + 1)]
+    by_weight = _walsh_by_weight(polynomial, Q)
     coefficients: dict[int, Fraction] = {}
-    for cardinality in range(min(Q, polynomial.degree) + 1):
-        value = sum(
-            (comb(Q - cardinality, j) * term
-             for j, term in enumerate(differences)), Fraction(0),
-        ) / (1 << Q)
-        if cardinality % 2:
-            value = -value
+    for cardinality, value in enumerate(by_weight):
         if value:
             for positions in combinations(range(Q), cardinality):
                 coefficients[sum(1 << position for position in positions)] = value
-        differences = [right - left for left, right in
-                       zip(differences, differences[1:])]
     return coefficients
 
-
+@lru_cache(maxsize=8)
 def _local_eigenvectors(r: int) -> tuple[tuple[tuple[int, ...], bool], ...]:
     """Integral orthogonal eigenbasis of a swap on [r] x [r]."""
     basis: list[tuple[tuple[int, ...], bool]] = []
@@ -230,6 +313,64 @@ def construct_auxiliary(
     return AuxiliaryDesign(r, Q, R, interval, labels, tuple(measured), tuple(rows), max_degree)
 
 
+
+def construct_implicit_auxiliary(
+    *, r: int, Q: int, R: int, limits: ConstructionLimits = ConstructionLimits(),
+) -> ImplicitAuxiliaryDesign:
+    """Construct the exact same auxiliary design using an implicit operator.
+
+    O(Q**2) spectral kernel coefficients replace a dense D**2 table and
+    D-length measurements. Enumeration is bounded by the ACTUAL number of
+    exceptional product eigenvectors, checked before generating any of them.
+    In particular, a huge virtual D does not imply huge retained memory.
+    """
+    if (any(type(x) is not int for x in (r, Q, R)) or r < 2 or Q < 1
+            or not 1 <= R <= Q + 1):
+        raise ValueError('require r>=2, Q>=1, and 1<=R<=Q+1')
+    if Q > limits.max_implicit_points:
+        raise CapacityError('ETH implicit auxiliary point limit')
+    p = Fraction(r - 1, 2 * r)
+    a0 = floor(Q * p - Fraction(R - 1, 2))
+    a0 = max(0, min(Q - R + 1, a0))
+    interval = tuple(range(a0, a0 + R))
+    f = _interpolation_polynomial(interval)
+    if f.degree > R - 1:
+        raise ArithmeticError('spectral interpolation exceeds degree bound')
+    spectral = _walsh_by_weight(f, Q)
+    kernel = tuple(
+        tuple(
+            sum((comb(diagonals, j) * spectral[unchanged + j]
+                 for j in range(diagonals + 1)), Fraction(0))
+            if unchanged <= Q - diagonals else Fraction(0)
+            for unchanged in range(Q + 1))
+        for diagonals in range(Q + 1)
+    )
+
+    basis = _local_eigenvectors(r)
+    positive = tuple(i for i, (_, odd) in enumerate(basis) if not odd)
+    negative = tuple(i for i, (_, odd) in enumerate(basis) if odd)
+    excluded = tuple(j for j in range(Q + 1) if j not in interval)
+    count = sum(
+        comb(Q, j) * len(negative) ** j * len(positive) ** (Q - j)
+        for j in excluded
+    )
+    if count > limits.max_measurement_rows:
+        raise CapacityError('ETH auxiliary exceptional direction limit')
+    selectors: list[tuple[int, ...]] = []
+    for j in excluded:
+        for negatives in combinations(range(Q), j):
+            negative_set = set(negatives)
+            alphabets = tuple(negative if t in negative_set else positive for t in range(Q))
+            selectors.extend(product(*alphabets))
+    selectors.sort()
+    if len(selectors) != count:
+        raise ArithmeticError('exceptional spectral selector count mismatch')
+    return ImplicitAuxiliaryDesign(
+        r=r, Q=Q, R=R, interval=interval,
+        measurement_selectors=tuple(selectors), kernel=kernel,
+        max_polynomial_degree=R - 1,
+    )
+
 def _tensor_entry(
     label: tuple[tuple[int, int], ...], selected: tuple[int, ...],
     basis: tuple[tuple[tuple[int, ...], bool], ...], r: int,
@@ -258,7 +399,7 @@ def deterministic_schedules(
 
 
 def construct_from_schedules(
-    formula: CNFFormula, auxiliary: AuxiliaryDesign,
+    formula: CNFFormula, auxiliary: AuxiliaryDesign | ImplicitAuxiliaryDesign,
     variable_schedules: Sequence[Sequence[int]],
     clause_schedules: Sequence[Sequence[int]],
     *, limits: ConstructionLimits = ConstructionLimits(),
@@ -287,26 +428,39 @@ def construct_from_schedules(
     for s in range(Q):
         if any(sum(1 for seq in a if seq[s] == g) * r > 2 * n for g in range(r)):
             raise ValueError('schedule violates small-group bound')
-    lookup = {label: i for i, label in enumerate(auxiliary.labels)}
-    # Allocate each occurrence in the first unused copy of its auxiliary label.
-    buckets: dict[int, list[int]] = {}
-    placements: list[list[tuple[int, int]]] = []
+    dense = isinstance(auxiliary, AuxiliaryDesign)
+    lookup = {label: i for i, label in enumerate(auxiliary.labels)} if dense else {}
+
+    def row_at(source: AuxiliaryLabel, target: AuxiliaryLabel) -> Polynomial:
+        if isinstance(auxiliary, AuxiliaryDesign):
+            return auxiliary.rows[lookup[source]][lookup[target]]
+        return auxiliary.row_at(source, target)
+
+    def measurement_at(index: int, label: AuxiliaryLabel) -> int:
+        if isinstance(auxiliary, AuxiliaryDesign):
+            return auxiliary.measurements[index][lookup[label]]
+        return auxiliary.measurement_at(index, label)
+
+    # Allocate only occupied incidence labels, never all D coordinates.
+    buckets: dict[AuxiliaryLabel, list[int]] = {}
+    placements: list[list[tuple[AuxiliaryLabel, int]]] = []
     for e, clause in enumerate(formula.clauses):
-        e_places: list[tuple[int, int]] = []
+        e_places: list[tuple[AuxiliaryLabel, int]] = []
         for lit in clause:
             v = abs(lit) - 1
             label = tuple((a[v][s], d[e][s]) for s in range(Q))
-            u = lookup[label]
+            u = label
             copies = buckets.setdefault(u, [])
             copy_number = len(copies)
             copies.append(v)
             e_places.append((u, copy_number))
         placements.append(e_places)
     h = max((len(copies) for copies in buckets.values()), default=0)
-    c = len(auxiliary.measurements)
+    c = (len(auxiliary.measurements) if isinstance(auxiliary, AuxiliaryDesign)
+         else len(auxiliary.measurement_selectors))
     if r * h * c > limits.max_measurement_rows:
         raise CapacityError('ETH transferred measurement row limit')
-    filled: list[dict[int, int]] = [dict() for _ in range(h)]
+    filled: list[dict[AuxiliaryLabel, int]] = [dict() for _ in range(h)]
     for u, copies in buckets.items():
         for j, v in enumerate(copies):
             filled[j][u] = v
@@ -316,7 +470,7 @@ def construct_from_schedules(
         for u, j in e_places:
             coeffs = [ZERO for _ in range(n)]
             for w, v in filled[j].items():
-                coeffs[v] = coeffs[v] + auxiliary.rows[u][w]
+                coeffs[v] = coeffs[v] + row_at(u, w)
             if any(_bit_size(coeff) > limits.max_coeff_bits for coeff in coeffs):
                 raise CapacityError('ETH transferred rational coefficient limit')
             forms.append(ReplacementForm(tuple(coeffs)))
@@ -332,10 +486,11 @@ def construct_from_schedules(
         for g, group in enumerate(groups):
             rows: list[tuple[int, ...]] = []
             for filled_copy in filled:
-                for C in auxiliary.measurements:
+                for index in range(c):
                     row = [0] * len(group)
                     for k, v in enumerate(group):
-                        row[k] = sum(C[w] for w, mapped_v in filled_copy.items() if mapped_v == v)
+                        row[k] = sum(measurement_at(index, w)
+                                     for w, mapped_v in filled_copy.items() if mapped_v == v)
                     rows.append(tuple(row))
             matrices.append(tuple(rows))
         actual_max_rows = max(actual_max_rows, sum(map(len, matrices)))
@@ -360,6 +515,7 @@ def construct_bounded_designs(
     limits: ConstructionLimits = ConstructionLimits(),
     schedule: Literal['conditional', 'digits'] = 'conditional',
     balance_limits: BalanceLimits = BalanceLimits(),
+    representation: Literal['implicit', 'dense'] = 'implicit',
 ) -> ConstructedDesigns:
     """Build automatically; the schedule method is explicit, never fallback.
 
@@ -369,7 +525,13 @@ def construct_bounded_designs(
     """
     if formula.nvars > limits.max_variables or len(formula.clauses) > limits.max_clauses:
         raise CapacityError('ETH transferred CNF dimensions limit')
-    auxiliary = construct_auxiliary(r=r, Q=Q, R=R, limits=limits)
+    if representation == 'implicit':
+        auxiliary: AuxiliaryDesign | ImplicitAuxiliaryDesign = construct_implicit_auxiliary(
+            r=r, Q=Q, R=R, limits=limits)
+    elif representation == 'dense':
+        auxiliary = construct_auxiliary(r=r, Q=Q, R=R, limits=limits)
+    else:
+        raise ValueError('unknown ETH auxiliary representation')
     if schedule == 'conditional':
         balanced = choose_balanced_schedules(formula, r=r, Q=Q, limits=balance_limits)
         construction = construct_from_schedules(formula, auxiliary,

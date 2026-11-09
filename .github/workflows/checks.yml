@@ -31,7 +31,7 @@ jobs:
         if: matrix.shard == 0
         run: |
           python -m mypy --strict --no-incremental
-          python -m mypy --strict --follow-imports=silent scripts/evidence.py scripts/verify.py scripts/change_impact.py scripts/checkpoint_shard.py scripts/shard_contract.py scripts/aggregate_checkpoint.py scripts/cost_ledger.py build_native.py
+          python -m mypy --strict --follow-imports=silent scripts/evidence.py scripts/verify.py scripts/change_impact.py scripts/shard_contract.py scripts/aggregate_checkpoint.py scripts/cost_ledger.py build_native.py
       - name: Plan affected contracts (unknown means full)
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

@@ -22,7 +22,7 @@ The first nine synthetic milestones **point to exact Git trees of real merged ma
 
 | 10. reconciliation | [`577214c7`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/577214c7a8eb02f33c1173ff45be8456d08d53d8) | [`e5b4c376`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/e5b4c376a6a59bc0d524549d7cd354eb669fbdd9) | PRs 72, 76, 79, 82 | Import original mathematical work without undoing the reference-only Sudoku oracle cleanup |
 
-| 11. continuation rank | [`PENDING`](https://github.com/laurajoyhutchins/nonexp-sudoku/tree/history/clean-slate-20261109) | [`c98b4a56`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/c98b4a56dc91d4b5b1f8a6d7066c9cc07bea954c) | PR 83 | Continue the exact Sudoku continuation-rank and tensor-bond obstruction research |
+| 11. continuation rank | [`3b9d092f`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/3b9d092fd0041a597cc888e342504f47b9da7bd1) | [`c98b4a56`](https://github.com/laurajoyhutchins/nonexp-sudoku/commit/c98b4a56dc91d4b5b1f8a6d7066c9cc07bea954c) | PR 83 | Continue the exact Sudoku continuation-rank and tensor-bond obstruction research |
 
 The PR-number descriptions indicate the major merged work completed in each *chronological interval*. They are not exhaustive patch ownership or a guarantee that all those PRs can be cherry-picked independently. The nine source-identical milestone trees and two independently reconciled trees are intentional. Phases 10 and 11 preserve the cleaned runtime/ref boundary, while importing source blobs from the pinned merged-main snapshot. No unknown mathematical patch was reconstructed from inference.
 

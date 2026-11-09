@@ -155,7 +155,7 @@
       "stage_smoke": "Source overlay and structural import move; exact-head tests required"
     },
     {
-      "commit": "(authored in following history commit)",
+      "commit": "3b9d092fd0041a597cc888e342504f47b9da7bd1",
       "concept": "Sudoku continuation-rank and tensor-bond obstruction witnesses",
       "source_sha": "c98b4a56dc91d4b5b1f8a6d7066c9cc07bea954c",
       "merged_prs_in_interval": "83",

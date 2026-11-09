@@ -1,0 +1,2 @@
+"""Exact recursive tensor contraction.
+"""

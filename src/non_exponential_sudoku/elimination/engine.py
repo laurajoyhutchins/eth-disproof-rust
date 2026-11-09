@@ -9,6 +9,7 @@ from ..core.algebra import Padic
 from ..core.jets import JetRing, NestedRing
 from ..core.lazy_coefficients import NestedCoords
 from ..core.modes import Mode
+from ..core.mode_assignments import iter_mode_assignments, mode_domains
 from ..runtime.statistics import Counters
 from ..runtime.config import ModeLimits
 
@@ -48,8 +49,7 @@ class ModeEliminator:
         self.evaluate_child=evaluate_child
         self.stats=stats
         self.CapacityError=capacity_error
-        self.domains=tuple(range(min(len(m.rows),(R.p-1)//m.weight)+1)
-                           for m in modes)
+        self.domains=mode_domains(modes, R.p)
         self.p=R.p
         limits = ModeLimits() if limits is None else limits
         self.factors: list[Factor] = []
@@ -232,7 +232,11 @@ class ModeEliminator:
         out_terms=0
         # Every mode is eliminated exactly once; multiply the generating
         # polynomial by z^(weight*beta) at that elimination step.
-        for out_assignment in self.factor_builder.admissible_scoped_assignments(out_scope, f'eliminating mode {var}'):
+        for out_assignment in iter_mode_assignments(
+                self.modes, self.p, scope=out_scope, domains=self.domains,
+                max_states=self.budget.max_states, capacity_error=self.CapacityError,
+                label=f'eliminating mode {var}', work=self.budget.work,
+        ):
             assigned=dict(zip(out_scope,out_assignment))
             result: dict[int, NestedCoords] = {}
             for b in self.domains[var]:

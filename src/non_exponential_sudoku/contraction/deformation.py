@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, cast
 from ..core.algebra import v2
 from ..core.jets import NestedRing
 from ..core.lazy_coefficients import NestedCoords
-from ..core.modes import Mode, weighted_tuples
+from ..core.modes import Mode
+from ..core.mode_assignments import iter_mode_assignments
 from ..core.network import Network, TensorRing, estimated_coefficient_bytes
 from ..core.packing import Packing
 from ..elimination.engine import ModeEliminator
@@ -136,12 +137,12 @@ class DeformationExecution:
         # Only the actual paper/Python packet path has this degree guarantee.
         packet_row_caps = (self.config.schedule == 'paper' and
                            not self.config.recursion.native_packet)
-        if (not packet_row_caps and
-                self.config.limits.max_child_contractions < self.config.limits.max_factor_states):
+        if self.config.limits.max_child_contractions < self.config.limits.max_factor_states:
             # Only refuse proven mandatory work; runtime guards stay authoritative.
             estimate = estimate_first_factor(
                 plan, modes, ring.p,
                 max_child_evaluations=self.config.limits.max_child_contractions,
+                packet_row_caps=packet_row_caps,
             )
             if estimate.outcome == 'refused':
                 raise CapacityError('Mode DP first-factor preflight: ' + estimate.reason)
@@ -202,7 +203,11 @@ class DeformationExecution:
         try:
             value_bytes = estimated_coefficient_bytes(ring)
             groups = tuple(sorted(occupied))
-            for index, assignment in enumerate(weighted_tuples(modes, ring.p)):
+            for index, assignment in enumerate(iter_mode_assignments(
+                    modes, ring.p,
+                    target_groups=groups if (self.config.schedule == 'paper'
+                                             and not self.config.recursion.native_packet) else (),
+            )):
                 if index >= self.config.mode.max_tuples:
                     raise CapacityError('Mode tuple resource limit')
                 self.stats.mode_tuples += 1

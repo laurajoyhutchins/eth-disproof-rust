@@ -233,3 +233,45 @@ def test_refuse_opaque_original_only_and_invalid_aggregate_assumptions() -> None
     expected = sum(packet_evaluation_envelope(v.oracle).ring_calls
                    for v in child.right if isinstance(v.oracle, PacketEntry))
     assert expected > 0
+
+def test_second_generation_inherited_packet_is_charged_once_per_vertex(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _root()
+    ring = Padic(3, modulus_polynomial(3), 9)
+    first_packing = pack(source, 2, 1)
+    first = make_child(
+        source, first_packing, [], (), 1, ring.one, ring,
+        first_packing.groups_left[0][0], 0,
+    )
+    assert first.right
+    second_packing = pack(first, 2, 1)
+    second = make_child(
+        first, second_packing, [], (), 1, ring.one, ring,
+        second_packing.groups_right[0][0], 0,
+    )
+    assert any(isinstance(v.oracle, PacketEntry) for v in second.left)
+    certificate = certify_packet_leaf_work(second, ring)
+    assert certificate.packet_vertices == sum(
+        isinstance(v.oracle, PacketEntry)
+        for v in second.left + second.right
+    )
+    original_call = PacketEntry.__call__
+    depth = [0, 0, 0]
+
+    def traced(self: PacketEntry, bits: tuple[int, ...], target: object) -> object:
+        depth[0] += 1
+        depth[1] = max(depth[1], depth[0])
+        depth[2] += 1
+        try:
+            return original_call(self, bits, target)  # type: ignore[arg-type]
+        finally:
+            depth[0] -= 1
+
+    monkeypatch.setattr(PacketEntry, "__call__", traced)
+    assert isinstance(second.direct(ring, second.edges), tuple)
+    assert depth[1] == 1
+    assert depth[2] > 0
+    assert depth[2] <= 1 << certificate.direct_packet_calls_log2
+    assert certificate.universal_bit_bound_proven is False
+

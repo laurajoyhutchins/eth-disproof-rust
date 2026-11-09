@@ -1,0 +1,24 @@
+name: ETH implicit-auxiliary one-off benchmark
+
+on:
+  push:
+    branches:
+      - research/eth-spectral-origin-readout
+    paths:
+      - .github/workflows/eth-implicit-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Run exact implicit auxiliary comparison
+        run: |
+          PYTHONPATH=src:. python -m benchmarks.eth.implicit_auxiliary_probe

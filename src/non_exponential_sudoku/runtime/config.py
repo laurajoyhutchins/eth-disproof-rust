@@ -109,6 +109,8 @@ class RecursionConfig:
         max_bytes=8*1024*1024, max_entries=128))
     compiled_plans: CachePolicy=field(default_factory=lambda: CachePolicy(
         max_bytes=8*1024*1024, max_entries=64))
+    valuation_structures: CachePolicy=field(default_factory=lambda: CachePolicy(
+        max_bytes=8*1024*1024, max_entries=8))
     # Optional contraction-wide cache retention; does not cap arithmetic RSS.
     shared_cache_bytes: int | None=None
 
@@ -122,7 +124,8 @@ class RecursionConfig:
         if self.prepared_packet_entries and not self.child_plans:
             raise ValueError('Prepared packet reuse requires compiled child plans')
         if (not isinstance(self.child_cache, CachePolicy)
-                or not isinstance(self.compiled_plans, CachePolicy)):
+                or not isinstance(self.compiled_plans, CachePolicy)
+                or not isinstance(self.valuation_structures, CachePolicy)):
             raise TypeError('Cache policies must be CachePolicy instances')
         if self.shared_cache_bytes is not None and (
             type(self.shared_cache_bytes) is not int or self.shared_cache_bytes < 1

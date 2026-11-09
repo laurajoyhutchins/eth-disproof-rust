@@ -39,3 +39,54 @@ A capacity refusal, timeout or incorrect result is recorded as
 computed. All raw samples, statuses and counters are in the JSON artifact.
 No asymptotic performance claim follows from these finite micro-schedules.
 The literal paper schedule does not activate at these sizes.
+
+
+## Verified finite results (2026-11-09)
+
+[Fresh-process source-pinned run](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42690362967)
+at `b99a8dbd3b27597e626098d1a00c275165b3fa5d`, Linux x86-64,
+CPython 3.13.18, 768 MiB virtual-memory cap and two repetitions per arm.
+Every row below completed and agreed with its independent exact oracle.
+Counts are **per run**, rather than summing the repeated samples.
+
+| Case | Modes old→pruned | Weighted assignments old→pruned | Actual child evaluations old→pruned |
+| --- | ---: | ---: | ---: |
+| center L2, p5, 2 wires | 2→2 | 4→4 | 8→8 |
+| center L4, p5, 2 wires | 4→2 | 10→3 | 20→6 |
+| center L4, p9, 2 wires | 8→6 | 44→11 | 88→22 |
+| center L8, p7, 2 wires | 6→3 | 22→4 | 44→8 |
+| center L8, p11, 2 wires | 10→7 | 82→12 | 164→24 |
+| center L8, p11, 4 wires | 10→7 | 119→12 | 238→24 |
+| center L16, p11, 4 wires | 10→6 | 119→8 | 238→16 |
+| two-level micro recursion, p5 | 18→18 | 36→36 | 144→144 |
+| two-level micro recursion, p7 | 18→18 | 36→36 | 144→144 |
+| complete L4 sparse geometry64 recursion, p5 | 2→2 | 4→4 | 32→32 |
+
+The center-only cases can save **actual recursive child evaluations**
+even when no dense tensor is materialized. They are not end-to-end
+interpolation/recovery benchmarks, and their wall-clock timings are
+too short and few to establish a meaningful performance ratio.
+
+The completed full recursion cases show **zero saved child evaluations**.
+Their center precision is inflated to 133/261 (or 135/263) for the
+two-level micro examples, and 245 for the L4 geometry64 case.
+Every recorded catalog there has such a small exponent domain that its
+**maximum possible** weighted degree is strictly below the precision.
+Consequently every assignment fits in both arms and a stronger valuation
+cannot remove any. The report now directly records this necessary
+combinatorial saturation condition.
+
+The independent dense L4 experiment at the prior implementation head
+[run 42689796012](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42689796012)
+is a **capacity refusal, not a solver success**: 244 old versus 242
+improved descriptors were constructed before both arms exceeded the
+4,096-admissible-state limit on the first factor, with zero children
+evaluated. It is retained as a separate opt-in stress case, rather
+than silently folded into the completed matrix.
+
+**Falsified for these test families:** that local valuation sharpening
+alone materially reduces work in the first executable complete
+recursions. In addition to mode sparsity, effective recursive
+precision and factor-domain structure are decisive. This neither
+disproves the published subexponential theorem nor extrapolates a
+finite benchmark to an asymptotic claim.

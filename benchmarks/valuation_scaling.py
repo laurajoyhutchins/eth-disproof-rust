@@ -135,9 +135,15 @@ def make_case(case_id: str) -> Case:
 
 def _catalog_record(
     modes: list[Mode], *, t: int, p: int, L: int,
-) -> dict[str, int]:
+) -> dict[str, int | bool]:
+    # If the largest possible weighted multiplicity sum fits below p,
+    # the precision bound prunes *no* assignments in this catalog.
+    # This criterion is independent of factorization and enumeration.
+    max_degree = sum(m.weight * len(m.rows) for m in modes)
     return {
         "center": t, "precision": p, "slots": L,
+        "max_possible_weighted_degree": max_degree,
+        "all_assignments_admissible": max_degree < p,
         "mode_descriptors": len(modes),
         "higher_order_modes": sum(m.b > 0 for m in modes),
         "admissible_assignments": exact_weighted_assignment_count(
@@ -166,7 +172,7 @@ def run_sample(case_id: str, arm: str) -> dict[str, Any]:
             raise AssertionError("Independent deformed Boolean sum mismatch")
 
     catalogue = original_catalog if arm == "original" else mode_catalog
-    records: list[dict[str, int]] = []
+    records: list[dict[str, int | bool]] = []
 
     def record_catalog(net: Network, packing_arg: Any, t: int, p: int,
                        max_modes: int | None = None, *,

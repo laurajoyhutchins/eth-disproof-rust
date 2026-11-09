@@ -1,0 +1,29 @@
+name: Pinned shift-left performance comparison
+on:
+  push:
+    branches:
+      - bench/shift-left-comparison-20261109
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compare pinned revisions in fresh processes
+        run: |
+          python benchmarks/shift_left_comparison.py --output artifacts/shift-left.json
+      - name: Preserve raw measurements and provenance
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shift-left-comparison
+          path: artifacts/shift-left.json
+          if-no-files-found: warn

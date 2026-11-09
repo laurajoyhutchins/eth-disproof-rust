@@ -32,6 +32,9 @@ def test_measurements_preserve_exact_result_and_observe_peak(case_id: str) -> No
     assert sample.status == "verified"
     assert sample.actual == sample.expected
     assert sample.memory["python_tracemalloc_peak_bytes"] >= 0
+    assert sample.memory["rss_high_water_bytes"] == max(
+        sample.memory["rss_before_bytes"], sample.memory["rss_after_bytes"],
+        sample.memory["rss_rusage_peak_bytes"])
     assert sample.memory["rss_high_water_bytes"] >= sample.memory["rss_before_bytes"]
     assert sample.memory["rss_high_water_bytes"] >= sample.memory["rss_after_bytes"]
     assert sample.memory["python_tracemalloc_peak_bytes"] >= sample.memory["python_tracemalloc_end_bytes"]
@@ -66,3 +69,19 @@ def test_json_worker_is_fresh_and_machine_readable() -> None:
     record = MemorySample.from_dict(json.loads(lines[0]))
     validate_sample(record, case_id="leaf.indexed")
     assert record.memory["rss_high_water_bytes"] > 0
+
+
+@pytest.mark.checkpoint
+def test_rusage_disagreement_is_recorded_without_false_refusal() -> None:
+    sample = sample_once("leaf.lookup")
+    raw = sample.to_dict()
+    memory = dict(sample.memory)
+    # Simulate the observed Linux behavior: raw ru_maxrss below VmRSS.
+    memory["rss_rusage_peak_bytes"] = min(
+        memory["rss_before_bytes"], memory["rss_after_bytes"])
+    memory["rss_high_water_bytes"] = max(
+        memory["rss_before_bytes"], memory["rss_after_bytes"])
+    memory["rss_high_water_growth_bytes"] = max(
+        0, memory["rss_high_water_bytes"] - memory["rss_before_bytes"])
+    validate_sample(MemorySample.from_dict({**raw, "memory": memory}),
+                    case_id="leaf.lookup")

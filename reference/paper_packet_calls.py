@@ -106,13 +106,13 @@ def uniform_paper_packet_calls(
         s=s, initial_edges=initial_edges,
         initial_precision=initial_precision,
     )
-    if paper.max_slots == 0:
+    if paper.maximum_slots == 0:
         return None  # paper schedule never activates a new packet
     max_descriptors = initial_vertices + 32 * initial_edges // 29
     if max_descriptors == 0:
         raise ValueError("active paper frame requires an existing vertex")
     per_entry = paper_packet_entry_ring_calls_log2(
-        slots=paper.max_slots, precision=paper.max_precision,
+        slots=paper.maximum_slots, precision=paper.maximum_precision,
     )
     descriptor_log = ceil_log2_positive(max_descriptors)
     # direct full assignment + possible prior factor table: <=2^(M+1)
@@ -120,8 +120,8 @@ def uniform_paper_packet_calls(
     per_leaf_ring = per_leaf_calls + per_entry
     return PaperPacketCallEnvelope(
         input_scale=s,
-        max_slots=paper.max_slots,
-        max_precision=paper.max_precision,
+        max_slots=paper.maximum_slots,
+        max_precision=paper.maximum_precision,
         max_modes_per_packet=paper.maximum_target_modes,
         log2_reachable_coefficient_states=paper.log2_local_state_ceiling,
         log2_ring_calls_per_packet_entry=per_entry,

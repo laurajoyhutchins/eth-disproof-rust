@@ -19,7 +19,7 @@ from non_exponential_sudoku.eth.sparsification import (
 from non_exponential_sudoku.eth.construction import ConstructionLimits
 from non_exponential_sudoku.runtime.budget import CapacityError
 
-@pytest.mark.checkpoint
+@pytest.mark.integration
 def test_constructed_path_is_reached_without_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -126,3 +126,21 @@ def test_native_leaf_direct_ring_method_bypass_is_exact(
             net, ring, 3, max_width=3, plan=plan,
             max_factor_bytes=1 << 20,
         ) == expected
+
+
+def test_custom_jet_arithmetic_hook_is_not_bypassed() -> None:
+    native = pytest.importorskip("native_recursive")
+    base = Padic(8, modulus_polynomial(8), 19)
+    ring = JetRing(base, 3)
+
+    class CustomArithmetic(RuntimeError):
+        pass
+
+    def custom_mul(*_args):
+        raise CustomArithmetic("custom JetRing native multiplication invoked")
+
+    # The public ring explicitly uses its current hook. A native packet
+    # must never substitute another backend just because it is Cython.
+    ring._native_mul = custom_mul
+    with pytest.raises(CustomArithmetic, match="custom JetRing"):
+        _run_packet(native, ring)

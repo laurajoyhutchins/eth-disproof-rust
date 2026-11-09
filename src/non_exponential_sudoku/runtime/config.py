@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ModeConfig:
-    strategy: Literal['eliminate','enumerate']='eliminate'
+    strategy: Literal['eliminate','enumerate','packet_eliminate']='eliminate'
     factorization: Literal['components','whole']='components'
     order: Literal['min_fill','min_states']='min_fill'
     join: Literal['adaptive','sparse','enumerate']='adaptive'
@@ -19,7 +19,7 @@ class ModeConfig:
     max_tuples: int=20000
 
     def __post_init__(self) -> None:
-        if self.strategy not in ('eliminate', 'enumerate'):
+        if self.strategy not in ('eliminate', 'enumerate', 'packet_eliminate'):
             raise ValueError('Invalid mode strategy')
         if self.factorization not in ('components', 'whole'):
             raise ValueError('Invalid factorization')
@@ -172,6 +172,8 @@ class ContractorConfig:
             raise ValueError('Invalid schedule')
         if self.s<1 or self.precision<1:
             raise ValueError('s and precision must be positive')
+        if self.mode.strategy=='packet_eliminate' and self.schedule=='paper':
+            raise ValueError('Direct packet elimination is not the paper recurrence')
         if self.recovery.method=='jet' and self.schedule not in ('micro','geometry64'):
             raise ValueError('Jet recovery is experimentally supported only in micro/geometry64 schedules')
         if self.recovery.method=='jet' and self.micro_active_depth<1:

@@ -143,6 +143,14 @@ def test_real_complete_two_variable_cnf_is_exact_with_both_summations() -> None:
         assert evidence["expected_count"] == 3
         assert evidence["leaf_evidence"]["leaves_completed"] >= 1
         assert evidence["leaf_evidence"]["max_coefficient_bits"] >= 0
+        if summation == "fused":
+            assert evidence["leaf_evidence"]["factor_scope_basis"] == "variables"
+            assert (0 <= evidence["leaf_evidence"]["factor_scope_peak"]
+                    <= evidence["leaf_evidence"]["max_prepared_variables"])
+            assert evidence["leaf_evidence"]["taylor_pairs"] == 0
+            assert evidence["leaf_evidence"]["factor_assignments_tested"] > 0
+        else:
+            assert evidence["leaf_evidence"]["factor_scope_basis"] == "groups"
 
 
 @pytest.mark.integration

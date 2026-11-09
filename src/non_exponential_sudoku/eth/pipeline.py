@@ -45,7 +45,7 @@ class ReferencePipelineConfig:
     R: int = 2
     schedule: Literal['conditional', 'digits'] = 'conditional'
     backend: ArithmeticBackend = 'python'
-    summation: Literal['tuples', 'eliminate'] = 'tuples'
+    summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples'
     max_leaves: int = 64
     max_output_bits: int = 1_000_000
     reduction_limits: ReductionLimits = ReductionLimits()
@@ -66,7 +66,7 @@ class ReferencePipelineConfig:
             raise ValueError('unknown reference construction schedule')
         if self.backend not in ('python', 'flint'):
             raise ValueError('unknown exact arithmetic backend')
-        if self.summation not in ('tuples', 'eliminate'):
+        if self.summation not in ('tuples', 'eliminate', 'fused'):
             raise ValueError('unknown exact Taylor summation strategy')
 
 
@@ -88,6 +88,7 @@ class ReferenceLeafEvidence:
     factor_scope_peak: int
     factor_entries_peak: int
     factor_eliminations: int
+    factor_scope_basis: Literal['groups', 'variables']
     hermite_operations: int
     max_coefficient_bits: int
 
@@ -103,7 +104,7 @@ class ReferencePipelineResult:
     outer_free_bits: int
     sparsification_theorem_threshold: bool
     backend: ArithmeticBackend
-    summation: Literal['tuples', 'eliminate']
+    summation: Literal['tuples', 'eliminate', 'fused']
     construction_parameters: tuple[int, int, int]
     construction_schedule: Literal['conditional', 'digits']
     leaves: tuple[ReferenceLeafEvidence, ...]
@@ -184,6 +185,7 @@ def _evaluate_leaf(
         factor_scope_peak=factor_scope_peak,
         factor_entries_peak=factor_entries_peak,
         factor_eliminations=factor_eliminations,
+        factor_scope_basis=('variables' if config.summation == 'fused' else 'groups'),
         hermite_operations=hermite_operations, max_coefficient_bits=max_bits,
     )
 

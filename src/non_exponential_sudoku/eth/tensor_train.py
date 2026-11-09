@@ -39,12 +39,17 @@ class TensorLimits:
     max_core_entries: int = 100_000
     max_rational_operations: int = 4_000_000
     max_coefficient_bits: int = 4096
+    max_taylor_order: int = 6
+    max_replacement_degree: int = 64
+    max_jet_coefficient_entries: int = 400_000
 
     def __post_init__(self) -> None:
         for name in self.__dataclass_fields__:
             value = getattr(self, name)
-            if type(value) is not int or value < 1:
-                raise ValueError(f'{name} must be a positive integer')
+            if type(value) is not int or value < (
+                0 if name in ('max_taylor_order', 'max_replacement_degree') else 1
+            ):
+                raise ValueError(f'{name} must be a nonnegative/positive integer')
 
 
 @dataclass(frozen=True, slots=True)

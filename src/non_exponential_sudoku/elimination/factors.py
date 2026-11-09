@@ -23,7 +23,8 @@ class FactorBuilder:
     def __init__(self, *, modes: Sequence[Mode],
                  factor_scopes: Mapping[FactorKey, tuple[int, ...]],
                  domains: Sequence[range], ring: NestedRing, stats: Counters,
-                 evaluate_child: ChildFactor, budget: ModeBudget) -> None:
+                 evaluate_child: ChildFactor, budget: ModeBudget,
+                 packet_row_caps: bool = False) -> None:
         self.modes=modes
         self.factor_scopes=factor_scopes
         self.domains=domains
@@ -35,6 +36,7 @@ class FactorBuilder:
         self.max_states=budget.max_states
         self.CapacityError=budget.CapacityError
         self.factors=budget.factors
+        self.packet_row_caps=packet_row_caps
 
     def active_components(self) -> Mapping[FactorKey, tuple[int, ...]]:
         # Connectivity is determined by the actual local factors, not just
@@ -96,13 +98,79 @@ class FactorBuilder:
             else:
                 k+=1;assignment[k]=0
 
+    def row_capped_assignments(
+        self, scope: tuple[int, ...], label: str, group: int,
+    ) -> Iterator[tuple[int, ...]]:
+        """Enumerate weighted tuples satisfying necessary target-packet row caps.
+
+        The targeted packet coefficient is extracted from a product of
+        linear-in-mode polynomials, one per row. Thus each packet/group has
+        at most one mode occurrence per available target row. The test is
+        monotone on prefixes, so each visited prefix extends by zeroes and
+        the work is proportional to the number of surviving prefixes, not
+        to the raw Cartesian product. Source-tile factors are unrestricted.
+        """
+        if not scope:
+            yield ()
+            return
+        available: dict[int, set[int]] = {}
+        for j in scope:
+            mode = self.modes[j]
+            if mode.target == group:
+                available.setdefault(mode.packet, set()).update(mode.rows)
+        caps = {packet: len(rows) for packet, rows in available.items()}
+        if not caps:
+            yield from self.admissible_scoped_assignments(scope, label)
+            return
+        assignment = [0] * len(scope)
+        remaining = [self.p - 1] * (len(scope) + 1)
+        used = {packet: 0 for packet in caps}
+        yielded = 0
+        last = len(scope) - 1
+        depth = 0
+        while depth >= 0:
+            self.budget.work()
+            index = scope[depth]
+            mode = self.modes[index]
+            count = assignment[depth]
+            packet = mode.packet if mode.target == group else None
+            if (count >= len(self.domains[index]) or
+                    mode.weight * count > remaining[depth] or
+                    (packet is not None and used[packet] + count > caps[packet])):
+                assignment[depth] = 0
+                depth -= 1
+                if depth >= 0:
+                    previous = self.modes[scope[depth]]
+                    if previous.target == group:
+                        used[previous.packet] -= assignment[depth]
+                    assignment[depth] += 1
+                continue
+            remaining[depth + 1] = remaining[depth] - mode.weight * count
+            if depth == last:
+                yielded += 1
+                if yielded > self.max_states:
+                    raise self.CapacityError(
+                        f'Mode DP factor size limit ({label}: more than '
+                        f'{self.max_states} row-admissible states)')
+                yield tuple(assignment)
+                assignment[depth] += 1
+            else:
+                if packet is not None:
+                    used[packet] += count
+                depth += 1
+                assignment[depth] = 0
+
     def build(self, group_to_modes: Mapping[FactorKey, tuple[int, ...]]) -> bool:
         self.stats.mode_dp_factors+=len(group_to_modes)
         for group, scope in group_to_modes.items():
             scope=tuple(scope)
             tab: dict[tuple[int, ...], dict[int, NestedCoords]] = {}
             table_terms=0
-            for assignment in self.admissible_scoped_assignments(scope, f'group {group}'):
+            group_id = group if isinstance(group, int) else group[0]
+            assignments = (self.row_capped_assignments(scope, f'group {group}', group_id)
+                           if self.packet_row_caps else
+                           self.admissible_scoped_assignments(scope, f'group {group}'))
+            for assignment in assignments:
                 self.budget.charge_child()
                 value=self.evaluate_child(group,scope,assignment)
                 if value!=self.R.zero:

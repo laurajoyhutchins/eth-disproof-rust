@@ -97,6 +97,7 @@ def _leaf_evidence(leaves: tuple[Any, ...]) -> dict[str, int]:
     return {
         "leaves_completed": len(leaves),
         "factor_scope_basis": next(iter(bases)),
+        "max_prepared_variables": max(v.prepared_variables for v in leaves),
         "constructed_leaves": sum(v.method == "certified-construction" for v in leaves),
         "tiny_base_leaves": sum(v.method == "two-assignment-base" for v in leaves),
         "centers": sum(v.centers for v in leaves),

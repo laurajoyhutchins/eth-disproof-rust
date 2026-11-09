@@ -966,6 +966,34 @@ reports primitive call counts, integer adds/multiplications/divisions,
 gcd calls, gcd quotient/remainder steps, peak intermediate integer
 bits, and the summed reference bit-step bound.
 
+**Executed witness trace:** The full 24-case matrix ran successfully
+in GitHub Actions run `42710246380` on CPython 3.13.
+Strict production typing across 76 source files and 36 targeted
+tests passed. All 71 exact completed arms reproduced their native
+Fraction outputs from integer-only reference arithmetic, with
+**zero unmodeled Fraction methods**. The remaining arm refused
+before completion under the explicit factor-table cap, and no
+bit-bound value was invented.
+
+Representative **reference-schoolbook bit-step bounds** (these are
+whole rational traces, not merely the final Taylor arithmetic):
+
+| Family | Variables, J | Group-mask route | Fused-variable route | Tensor-jet route |
+|---|---|---:|---:|---:|
+| positive path | 6, 2 | 87,895,372 | 1,338,428 | 10,354,492 |
+| clique | 6, 2 | 260,114,928 | 3,122,828 | 25,897,072 |
+| clique | 12, 0 | refused | 39,459,476 | 294,354,460 |
+| separated matching | 12, 0 | 1,839,784 | 930,492 | 31,650,568 |
+| paired matching | 12, 0 | 1,839,784 | 930,492 | 15,051,800 |
+
+The order-sensitive tensor contraction changes the *actual observed
+reference arithmetic* substantially: separated matching requires
+151,246 Fraction method calls and 70,863 Euclidean division steps;
+interleaved matching requires 74,008 Fraction method calls and
+34,880 Euclidean divisions. The fused-variable route is unchanged
+by group ordering. These counts are reproducible trace evidence,
+not an asymptotic theorem.
+
 **Do not expand the claim:** This is NOT measured machine bit
 instructions for CPython, a hardware-independent upper bound on
 CPython's bigint implementation, nor a rigorous whole-program

@@ -57,6 +57,9 @@ cancellations because the support is an over-approximation.
 
 For a *specified* order, evaluating U at all n-1 prefix cuts requires
 O(n*m) support-mask scans, after reading the polynomial coefficients.
+For an identically-zero deformation, all nontrivial exact unfolding
+ranks (and the n>=2 exact minimax bond rank) are zero; a symbolic
+support upper bound can remain positive.
 `uniform_support_profile` provides this cheap, exact certificate.
 
 The research-only `minimax_uniform_support_order` computes
@@ -121,7 +124,7 @@ python -m pytest -q tests/eth/test_support_rank.py -m integration
 python -m pytest -q tests/eth/test_spectral_rank_growth.py
 python -m benchmarks.eth.spectral_rank_growth \
   --families path matching xor_pairs clique --sizes 3 4 5 6 \
-  --max-exact-n 4 --max-profile-n 6 \
+  --max-exact-n 6 --max-profile-n 6 \
   --output artifacts/eth-spectral-rank-growth.json
 ```
 

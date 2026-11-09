@@ -448,6 +448,7 @@ def interpolate_origin_hermite(
                 for k in range(min(multiplicity, order - 1) + 1))
             local_modulus = truncated_product(local_modulus, factor, order)
 
+        local_modulus += (Fraction(0),) * (order - len(local_modulus))
         if local_modulus[0] == 0:
             raise ArithmeticError('Hermite local modulus is not invertible')
         inverse = [budget.check_fraction(1 / local_modulus[0])]

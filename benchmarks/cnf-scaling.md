@@ -40,7 +40,7 @@ examples. The default `max_leaves=64` is a resource budget, not a
 theorem. The report stores them explicitly.
 
 The same formula and reference parameters are evaluated with `tuples`,
-`eliminate`, and opt-in `fused`. `eliminate` uses certified group-mask
+`eliminate`, opt-in `fused`, and opt-in `multilinear`. `eliminate` uses certified group-mask
 factors for each finite-difference pair. `fused` first telescopes the
 Boolean differences exactly, then contracts factors over the prepared leaf's Boolean
 variables (including any parsimonious reduction auxiliaries) and truncated
@@ -48,6 +48,12 @@ polynomial coefficients. Its pair count is zero,
 but this says nothing about induced factor width or arithmetic work. All
 three must match the independent exact count; neither factorization
 establishes the manuscript's non-exponential worst-case algorithm.
+
+`multilinear` stores Boolean subset monomials with exact Taylor-jet
+coefficients rather than materializing a variable-scoped factor table.
+Compare `multilinear_support_peak` and `multilinear_term_products`; its
+`factor_scope_basis` is `not_applicable`. A small sparse support is not
+a theorem about many-clause or worst-case behavior.
 
 **Important:** `factor_scope_peak` counts *groups* for `eliminate`, but
 *Boolean variables* for `fused`. The JSON reports `factor_scope_basis` so
@@ -84,7 +90,7 @@ python -m pytest -q tests/benchmark/test_cnf_scaling.py -m integration
 python -m benchmarks.eth.cnf_scaling \
   --families path matching clique \
   --sizes 2 4 6 \
-  --summations tuples eliminate fused \
+  --summations tuples eliminate fused multilinear \
   --repeats 1 --timeout 8 \
   --threshold 64 --r 2 --Q 2 --R 2 \
   --output artifacts/cnf-scaling.json

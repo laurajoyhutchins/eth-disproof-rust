@@ -1,0 +1,22 @@
+name: Oracle lineage debug verification
+on:
+  push:
+    branches:
+      - 'verify/oracle-lineage-debug-*'
+  workflow_dispatch:
+
+jobs:
+  targeted:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install pinned typing and verification
+        run: python -m pip install -e '.[test,typecheck]'
+      - name: Strict source reference type checking
+        run: python -m mypy --strict --follow-imports=silent reference/oracle_lineage.py reference/whole_frame_recurrence.py
+      - name: Isolated oracle-lineage and recurrence tests
+        run: python -m pytest -q tests/unit/test_oracle_lineage.py tests/unit/test_whole_frame_recurrence.py tests/integration/test_oracle_lineage_recurrence.py --durations=15

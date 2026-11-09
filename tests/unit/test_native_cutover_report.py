@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from scripts.native_cutover_report import PAIRS, results_from, paired_report
 
+pytestmark = pytest.mark.checkpoint
+
 def _input(tmp_path: Path, *, missing: bool = False, invalid: bool = False) -> Path:
     cases = {(case, ref) for case, ref, _, _ in PAIRS} | {(case, native) for case, _, native, _ in PAIRS}
     if missing:

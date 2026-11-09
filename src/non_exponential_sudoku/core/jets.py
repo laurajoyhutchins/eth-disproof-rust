@@ -91,7 +91,7 @@ class JetRing:
         raise ValueError('Cannot lift value into Taylor jet ring')
 
     def add(self,a: JetValue,b: JetValue) -> JetValue:
-        ring_call("add", self)
+        ring_call("add", self, a, b)
         if len(a)!=self.q or len(b)!=self.q:
             raise ValueError('jet degree mismatch')
         # Do not return a raw operand on zero/one shortcuts: public Padic
@@ -103,7 +103,7 @@ class JetRing:
         return tuple(B.add(x,y) for x,y in zip(a,b))
 
     def sub(self,a: JetValue,b: JetValue) -> JetValue:
-        ring_call("sub", self)
+        ring_call("sub", self, a, b)
         if len(a)!=self.q or len(b)!=self.q:
             raise ValueError('jet degree mismatch')
         if self._native_sub is not None:
@@ -121,7 +121,7 @@ class JetRing:
         return tuple(B.neg(x) for x in a)
 
     def mul(self,a: JetValue,b: JetValue) -> JetValue:
-        ring_call("mul", self)
+        ring_call("mul", self, a, b)
         if len(a)!=self.q or len(b)!=self.q:
             raise ValueError('jet degree mismatch')
         # Multiplication by the ring's canonical zero remains exact even

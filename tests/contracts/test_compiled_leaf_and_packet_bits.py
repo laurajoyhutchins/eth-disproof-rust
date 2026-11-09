@@ -83,7 +83,9 @@ def test_leaf_plan_bounded_lookup_fallback_and_capacity():
     assert eliminate_leaf(net, ring, 4, max_width=2) == net.direct(ring, 4)
     with pytest.raises(ValueError, match='does not match'):
         eliminate_leaf(net, ring, 4, max_width=2, plan=plan)
-    with pytest.raises(CapacityError, match='limit'):
+    # The large-leaf path now refuses without a declared factor byte budget;
+    # the old edge-count refusal remains valid when the plan is unavailable.
+    with pytest.raises(CapacityError, match='(?:limit|explicit factor-memory budget)'):
         eliminate_leaf(net, ring, 3, plan=plan)
 
 

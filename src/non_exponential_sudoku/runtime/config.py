@@ -96,6 +96,24 @@ class LeafConfig:
             raise ValueError('Invalid Leaf resource limits')
 
 @dataclass(frozen=True)
+class ZeroSupportPolicy:
+    """Bounded opt-in proof of zero before an exact child contraction."""
+
+    enabled: bool=False
+    max_child_edges: int=16
+    max_vertex_arity: int=8
+    max_support_rows: int=2048
+
+    def __post_init__(self) -> None:
+        if type(self.enabled) is not bool:
+            raise ValueError('Zero-support enabled must be Boolean')
+        if any(type(x) is not int or x < 1 for x in (
+            self.max_child_edges, self.max_vertex_arity, self.max_support_rows,
+        )):
+            raise ValueError('Zero-support limits must be positive integers')
+
+
+@dataclass(frozen=True)
 class RecursionConfig:
     """Optional recursion paths for differential testing and bounded acceleration."""
     child_plans: bool=True
@@ -111,6 +129,7 @@ class RecursionConfig:
         max_bytes=8*1024*1024, max_entries=64))
     valuation_structures: CachePolicy=field(default_factory=lambda: CachePolicy(
         max_bytes=8*1024*1024, max_entries=8))
+    zero_support: ZeroSupportPolicy=field(default_factory=ZeroSupportPolicy)
     # Optional contraction-wide cache retention; does not cap arithmetic RSS.
     shared_cache_bytes: int | None=None
 
@@ -127,6 +146,8 @@ class RecursionConfig:
                 or not isinstance(self.compiled_plans, CachePolicy)
                 or not isinstance(self.valuation_structures, CachePolicy)):
             raise TypeError('Cache policies must be CachePolicy instances')
+        if not isinstance(self.zero_support, ZeroSupportPolicy):
+            raise TypeError('Zero-support policy must be ZeroSupportPolicy')
         if self.shared_cache_bytes is not None and (
             type(self.shared_cache_bytes) is not int or self.shared_cache_bytes < 1
         ):

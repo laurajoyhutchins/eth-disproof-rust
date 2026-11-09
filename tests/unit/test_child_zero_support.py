@@ -17,9 +17,6 @@ from non_exponential_sudoku.contraction.zero_support import (
 from non_exponential_sudoku.contraction.compiled_children import CompiledChildPlan
 from non_exponential_sudoku.contraction.packets import PacketEntry
 
-pytestmark = pytest.mark.checkpoint
-
-
 def run_case(name: str, *, enabled: bool,
              policy: ZeroSupportPolicy | None = None):
     case = get_case(name, 'plans')
@@ -31,8 +28,12 @@ def run_case(name: str, *, enabled: bool,
 
 
 @pytest.mark.parametrize('name,certified', (
-    ('sudoku-4wire', 4), ('sudoku-8wire', 120),
-    ('nested-2wire', 8), ('parity-2wire', 0),
+    pytest.param('sudoku-4wire', 4, marks=pytest.mark.checkpoint),
+    # The full eight-wire contract remains checked in integration; its
+    # 3.8s isolated call dominates the sub-30s checkpoint variance.
+    pytest.param('sudoku-8wire', 120, marks=pytest.mark.integration),
+    pytest.param('nested-2wire', 8, marks=pytest.mark.checkpoint),
+    pytest.param('parity-2wire', 0, marks=pytest.mark.checkpoint),
 ))
 def test_proven_zeros_reduce_recursion_without_count_change(
     name: str, certified: int,
@@ -47,6 +48,7 @@ def test_proven_zeros_reduce_recursion_without_count_change(
     assert after.zero_support_evaluated_rows > 0
 
 
+@pytest.mark.checkpoint
 def test_budgets_decline_preflight_not_exact_contraction() -> None:
     net = simple_network(2,
         [((0, 1), {(0, 0): 1, (1, 1): 1})],
@@ -67,6 +69,7 @@ def test_budgets_decline_preflight_not_exact_contraction() -> None:
     assert counters.zero_support_unsupported == counters.zero_support_attempts
 
 
+@pytest.mark.checkpoint
 def test_random_tensors_never_receive_false_zero_certificate() -> None:
     rng = Random(734183)
     ring = Padic(5, modulus_polynomial(5), 6)
@@ -82,6 +85,7 @@ def test_random_tensors_never_receive_false_zero_certificate() -> None:
             assert certificate.verdict in ('zero', 'possible')
 
 
+@pytest.mark.checkpoint
 def test_packet_symbolic_zeros_match_full_padic_jet_oracle(monkeypatch) -> None:
     checks = [0]
     certified = [0]
@@ -110,6 +114,7 @@ def test_packet_symbolic_zeros_match_full_padic_jet_oracle(monkeypatch) -> None:
 
 
 @pytest.mark.requires_native
+@pytest.mark.checkpoint
 def test_native_kernel_uses_same_certificates() -> None:
     pytest.importorskip('native_recursive')
     for name in ('sudoku-4wire', 'sudoku-8wire'):
@@ -125,11 +130,13 @@ def test_native_kernel_uses_same_certificates() -> None:
     {'enabled': 1}, {'max_child_edges': 0},
     {'max_vertex_arity': 0}, {'max_support_rows': 0},
 ))
+@pytest.mark.checkpoint
 def test_preflight_limits_validate(settings) -> None:
     with pytest.raises(ValueError):
         ZeroSupportPolicy(**settings)
 
 
+@pytest.mark.checkpoint
 def test_huge_mode_exponents_do_not_create_large_integers() -> None:
     from types import SimpleNamespace
 

@@ -1,4 +1,4 @@
-name: Exact total CNF bit model one-off
+name: Exact total CNF bit model edge-case verification
 on:
   push:
     branches:

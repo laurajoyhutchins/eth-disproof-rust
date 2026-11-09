@@ -130,3 +130,53 @@ def test_factor_work_and_size_cap_fail_closed() -> None:
     with pytest.raises(ValueError, match='summation'):
         taylor_coefficients_separated(
             formula, design, at=1, order=0, summation='unknown')  # type: ignore[arg-type]
+
+
+def test_factorization_flows_through_certified_hermite_count() -> None:
+    from non_exponential_sudoku.eth.interpolation import (
+        count_from_manual_designs, count_origin_from_manual_designs,
+    )
+
+    formula = CNFFormula(20, tuple((2 * i + 1, 2 * i + 3)
+                                   for i in range(9)))
+    design = paired_groups(formula)
+    limits = TaylorLimits(max_measurement_tuples=1, max_factor_entries=128)
+    full = count_from_manual_designs(
+        formula, ((Fraction(1), design),), order=0,
+        summation='eliminate', taylor_limits=limits)
+    origin = count_origin_from_manual_designs(
+        formula, ((Fraction(1), design),), order=0,
+        summation='eliminate', taylor_limits=limits)
+    assert full.count == origin.count == 144 * (1 << 10)
+    assert full.taylor_data[0].stats.measurement_tuples == 0
+    assert origin.taylor_data[0].stats.factor_scope_peak == 2
+
+
+def test_factorized_constructed_count_matches_original_oracle() -> None:
+    from non_exponential_sudoku.eth import (
+        construct_bounded_designs, count_from_constructed,
+    )
+
+    formula = CNFFormula(3, ((1, -2), (-1, 3)))
+    design = construct_bounded_designs(formula, r=2, Q=2, R=2)
+    expected = count_bruteforce(formula)
+    assert count_from_constructed(formula, design, summation='eliminate') == expected
+    assert count_from_constructed(
+        formula, design, summation='eliminate', readout='polynomial',
+    ) == expected
+    assert count_from_constructed(formula, design) == expected
+
+
+def test_factorized_optional_native_matches_python() -> None:
+    pytest.importorskip('flint')
+    formula = CNFFormula(4, ((1, -3), (2, 4)))
+    design = paired_groups(formula)
+    polynomial = deformed(formula)
+    for center in (Fraction(1), Fraction(-2, 3)):
+        python = taylor_coefficients_separated(
+            formula, design, polynomial, at=center, order=1,
+            summation='eliminate', backend='python')
+        native = taylor_coefficients_separated(
+            formula, design, polynomial, at=center, order=1,
+            summation='eliminate', backend='flint')
+        assert native.coefficients == python.coefficients

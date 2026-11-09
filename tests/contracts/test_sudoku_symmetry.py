@@ -18,9 +18,11 @@ from non_exponential_sudoku.sudoku.three_cnf import Puzzle
 from reference.generalized_bench import canonical_solution
 from reference.real_sudoku_bench import puzzles
 
-pytestmark = pytest.mark.checkpoint
+# Each contract has exactly one verification tier. Expensive reference cases
+# run in integration; small exact and refusal contracts remain checkpoint.
 
 
+@pytest.mark.checkpoint
 def test_projective_action_is_sharply_three_transitive() -> None:
     group = pgl2_f8_permutations()
     assert len(group) == 9 * 8 * 7 == 504
@@ -30,6 +32,7 @@ def test_projective_action_is_sharply_three_transitive() -> None:
     assert tuple(range(9)) in group
 
 
+@pytest.mark.checkpoint
 def test_empty_four_by_four_exact_orbit_count() -> None:
     empty = Puzzle(2, (0,) * 16)
     quotient = contract_digit_orbits(empty)
@@ -44,6 +47,7 @@ def test_empty_four_by_four_exact_orbit_count() -> None:
     assert q.stats.group_order == 6
 
 
+@pytest.mark.checkpoint
 def test_random_four_by_four_clues_and_domains_match_unquotiented() -> None:
     rng = Random(20261108)
     answer = canonical_solution(2)
@@ -71,6 +75,7 @@ def test_random_four_by_four_clues_and_domains_match_unquotiented() -> None:
                 == count_frontier(puzzle, domains=domains).count)
 
 
+@pytest.mark.integration
 def test_pgl_vs_full_digit_group_on_first_row_of_empty_9x9() -> None:
     puzzle = Puzzle(3, (0,) * 81)
     full = contract_digit_orbits(puzzle, max_cells=9)
@@ -87,6 +92,7 @@ def test_pgl_vs_full_digit_group_on_first_row_of_empty_9x9() -> None:
     assert full.partial_assignments == projective.partial_assignments == 362880
 
 
+@pytest.mark.checkpoint
 def test_two_empty_9x9_rows_have_independent_count_oracle() -> None:
     puzzle = Puzzle(3, (0,) * 81)
     quotient = contract_digit_orbits(puzzle, max_cells=18)
@@ -103,6 +109,7 @@ def test_two_empty_9x9_rows_have_independent_count_oracle() -> None:
     assert quotient.stats.final_orbits == 4860
 
 
+@pytest.mark.checkpoint
 def test_hard_puzzle_has_no_digit_stabilizer_to_exploit() -> None:
     _, puzzle, expected = next(x for x in puzzles()
                                if x[0] == '9x9-hard-unique')
@@ -119,6 +126,7 @@ def test_hard_puzzle_has_no_digit_stabilizer_to_exploit() -> None:
     assert adaptive.stats.final_group_order == 362880
 
 
+@pytest.mark.checkpoint
 def test_no_unsafe_group_or_undisclosed_partial_count() -> None:
     empty = Puzzle(2, (0,) * 16)
     with pytest.raises(ValueError, match='precisely nine'):
@@ -138,6 +146,7 @@ def test_no_unsafe_group_or_undisclosed_partial_count() -> None:
         contract_digit_orbits(empty, limits=FrontierLimits(max_estimated_bytes=1))
 
 
+@pytest.mark.checkpoint
 def test_projective_point_stabilizers_and_suffix_advantage() -> None:
     # Fixing three labeled points forces the identity in sharply
     # three-transitive PGL2(F8), even though S9 still has 6! elements.

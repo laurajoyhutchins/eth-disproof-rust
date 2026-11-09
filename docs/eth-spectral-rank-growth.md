@@ -162,6 +162,37 @@ admission. Exact-rank Gaussian arithmetic call counts and
 maximum observed rational coefficient bit lengths are evidence
 fields, **not measured bit operations or a proved bit-cost bound**.
 
+## Construction admission audit and measured oracle cost
+
+The [final source-pinned rank-growth workflow](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42715913787)
+on `8d0a759b29e954e929bf7f00cffe64c5357f830c`
+returned 12 verified finite constructions, zero construction refusals,
+and **zero cases satisfying the balancing lemma's hypotheses**.
+Its [raw evidence artifact](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42715913787/artifacts/13717438958)
+includes `lemma_hypotheses_met` and `lemma_bounds_met` separately.
+Although some instances satisfy the output numerical bounds, every
+instance has `lemma_hypotheses_met = false`. Thus **none of the
+rank measurements is a witnessed admitted instance of the
+manuscript's strict balancing lemma**.
+
+The six-variable path at T=1 has exact best TT rank 3, independently
+verified against the uniformly valid support bound 4. The exhaustive
+cut-by-cut exact rational Gaussian oracle charged **251,017
+rational operations**, observing a maximum numerator/denominator
+coefficient bit length of **4**. The corresponding six-variable
+XOR-pair exact-rank certificate charged 276,366 rational operations,
+with maximum coefficient bit length 5. These are *partial counted
+rational operations in a deliberately exponential oracle*;
+they do not measure real bit operations or imply a bit-complexity
+bound for the original counting algorithm.
+
+The strongest warranted conclusion is narrower than a paper result:
+the **small fixed-parameter** spectral implementation does not
+possess a universal rank-two TT ordering across these growing
+finite path instances. The genuine paper-admitted regime requires
+new constructions and rank evidence, including simultaneous
+control of exact Taylor jets, bit sizes, and non-refusal.
+
 ## Reproduction
 
 ```bash

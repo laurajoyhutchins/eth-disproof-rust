@@ -111,3 +111,86 @@ def test_complete_small_contraction_matches_default() -> None:
         actual = ContractionEngine(config).contract(network)
     assert actual == expected
     assert actual[0] == 4
+
+@pytest.mark.requires_flint
+@pytest.mark.parametrize("degree,precision", [(3, 8), (5, 13), (8, 64), (16, 256), (32, 1024)])
+def test_opt_in_flint_power_remains_in_native_polynomials(
+    degree: int, precision: int, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("flint")
+    ring = algebra.Padic(degree, algebra.modulus_polynomial(degree), precision)
+    rng = random.Random(degree * 1009 + precision)
+    modulus = 1 << precision
+    values = [
+        ring.zero, ring.one, ring.scalar(2), ring.basis(3),
+        tuple(rng.randrange(-modulus, modulus * 2) for _ in range(degree)),
+    ]
+    # Keep the independent Python calculator as the exact reference.
+    monkeypatch.setattr(algebra, "_native_ring", None)
+    for value in values:
+        for exponent in (0, 1, 2, 3, 9, 33):
+            expected = ring.pow(value, exponent)
+            with flint_arithmetic():
+                actual = ring.pow(value, exponent)
+            assert actual == expected
+
+
+@pytest.mark.requires_flint
+def test_opt_in_flint_power_accounts_native_boundary() -> None:
+    pytest.importorskip("flint")
+    ring = algebra.Padic(5, algebra.modulus_polynomial(5), 13)
+    ledger = CostLedger()
+    with ledger.frame(depth=0, wires=1, precision=13, ring_depth=0, schedule="micro"):
+        with flint_arithmetic():
+            assert ring.pow(ring.one, 33) == ring.one
+            assert ring.pow(ring.one, 0) == ring.one
+    report = ledger.report()
+    assert report["opaque_native_calls"] == {"flint_padic_pow": 1}
+    assert report["frame_tree_reconciled"] is True
+
+
+@pytest.mark.requires_flint
+@pytest.mark.parametrize("degree,precision", [(3, 8), (5, 13), (8, 64), (16, 256), (32, 1024)])
+def test_flint_newton_inverse_matches_independent_python(
+    degree: int, precision: int, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("flint")
+    ring = algebra.Padic(degree, algebra.modulus_polynomial(degree), precision)
+    rng = random.Random(degree * 3001 + precision)
+    modulus = 1 << precision
+    units = [ring.one, ring.basis(2), ring.basis(3)] + [
+        tuple([rng.randrange(-modulus, 2 * modulus) | 1] + [
+            rng.randrange(-modulus, 2 * modulus) for _ in range(degree - 1)
+        ]) for _ in range(4)
+    ]
+    monkeypatch.setattr(algebra, "_native_ring", None)
+    for value in units:
+        reference = ring.inv(value)
+        with flint_arithmetic():
+            assert ring.inv(value) == reference
+            assert ring.mul(value, reference) == ring.one
+            assert ring.pow(value, -1) == reference
+    with flint_arithmetic():
+        with pytest.raises(ZeroDivisionError, match="not a 2-adic unit"):
+            ring.inv(ring.scalar(2))
+
+
+@pytest.mark.requires_flint
+def test_flint_iterative_ops_export_only_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("flint")
+    import non_exponential_sudoku.core.flint_backend as backend
+
+    ring = algebra.Padic(5, algebra.modulus_polynomial(5), 32)
+    original = backend.FlintRingArithmetic._coords
+    conversions: list[object] = []
+
+    def recording_coords(self: backend.FlintRingArithmetic, poly: object) -> tuple[int, ...]:
+        conversions.append(poly)
+        return original(self, poly)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(backend.FlintRingArithmetic, "_coords", recording_coords)
+    with flint_arithmetic():
+        ring.pow(ring.basis(3), 33)
+        assert len(conversions) == 1
+        ring.inv(ring.basis(3))
+        assert len(conversions) == 2

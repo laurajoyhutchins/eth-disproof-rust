@@ -190,7 +190,7 @@ def main() -> int:
     (output / f"{args.tier}.json").write_text(json.dumps(record, indent=2) + "\n")
     print(f"tier={args.tier} success={passed} inputs_stable={stable}"
           f" xml={record['junit']} summary={counts}", flush=True)
-    if args.tier == "checkpoint" and record["duration_seconds"] > CHECKPOINT_FEEDBACK_TARGET_SECONDS:
+    if args.tier == "checkpoint" and (time.perf_counter() - start) > CHECKPOINT_FEEDBACK_TARGET_SECONDS:
         print("checkpoint exceeded 30-second feedback target (informational)", flush=True)
     return 0 if passed else (code if code else 1)
 

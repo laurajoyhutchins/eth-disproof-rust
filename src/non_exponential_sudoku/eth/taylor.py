@@ -109,7 +109,9 @@ class TaylorStats:
     factor_scope_peak: int = 0
     factor_entries_peak: int = 0
     factor_eliminations: int = 0
-    factor_scope_basis: Literal['groups', 'variables'] = 'groups'
+    factor_scope_basis: Literal['groups', 'variables', 'not_applicable'] = 'groups'
+    multilinear_term_products: int = 0
+    multilinear_support_peak: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,18 +275,21 @@ class _TaylorEvaluator:
         self, formula: CNFFormula, replacements: ReplacementSystem,
         certificate: MeasurementCertificate, order: int, limits: TaylorLimits,
         expected_pairs: int, backend: ArithmeticBackend,
-        summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples',
+        summation: Literal['tuples', 'eliminate', 'fused', 'multilinear'] = 'tuples',
     ) -> None:
         self.formula = formula
         self.certificate = certificate
         self.order = order
         self.limits = limits
         self.arithmetic = _JetArithmetic(limits, backend)
-        if summation not in ('tuples', 'eliminate', 'fused'):
-            raise ValueError('summation must be tuples, eliminate or fused')
+        if summation not in ('tuples', 'eliminate', 'fused', 'multilinear'):
+            raise ValueError('unknown exact Taylor summation')
         self.summation = summation
-        self.factor_scope_basis: Literal['groups', 'variables'] = (
+        self.factor_scope_basis: Literal['groups', 'variables', 'not_applicable'] = (
+            'not_applicable' if summation == 'multilinear' else
             'variables' if summation == 'fused' else 'groups')
+        self.multilinear_term_products = 0
+        self.multilinear_support_peak = 0
         self.factor_assignments = 0
         self.factor_scope_peak = 0
         self.factor_entries_peak = 0
@@ -433,6 +438,8 @@ class _TaylorEvaluator:
             factor_entries_peak=self.factor_entries_peak,
             factor_eliminations=self.factor_eliminations,
             factor_scope_basis=self.factor_scope_basis,
+            multilinear_term_products=self.multilinear_term_products,
+            multilinear_support_peak=self.multilinear_support_peak,
         )
 
 
@@ -440,7 +447,7 @@ def _make_evaluator(
     formula: CNFFormula, design: MeasurementDesign,
     replacements: ReplacementSystem | None, at: Rational,
     order: int, limits: TaylorLimits, pairs: int, backend: ArithmeticBackend,
-    summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples',
+    summation: Literal['tuples', 'eliminate', 'fused', 'multilinear'] = 'tuples',
 ) -> _TaylorEvaluator:
     check_arithmetic_backend(backend)
     if (type(order) is not int or order < 0 or
@@ -493,7 +500,7 @@ def taylor_coefficients_separated(
     replacements: ReplacementSystem | None = None, *,
     at: Rational, order: int, limits: TaylorLimits = TaylorLimits(),
     backend: ArithmeticBackend = "python",
-    summation: Literal['tuples', 'eliminate', 'fused'] = 'tuples',
+    summation: Literal['tuples', 'eliminate', 'fused', 'multilinear'] = 'tuples',
 ) -> TaylorResult:
     """Calculate [z^0..q] H(t+z) via the paper's Boolean differences.
 
@@ -504,17 +511,23 @@ def taylor_coefficients_separated(
                 (limits.max_taylor_order is not None and order > limits.max_taylor_order)):
         raise CapacityError('ETH Taylor order limit')
     n = formula.nvars
-    if summation == 'fused':
-        # The exact finite differences telescope before tensor contraction.
-        # No E/U pairs are executed. The resulting factor width is measured
-        # over the original Boolean variables, and can be exponential.
-        from .fused_taylor import contract_fused_taylor
+    if summation in ('fused', 'multilinear'):
+        # Both alternatives fuse Boolean differences *before* contraction.
+        # Their representations and cost units are different:
+        # - fused: explicit variable-scoped tables of jets
+        # - multilinear: sparse Boolean monomials with truncated-jet values
+        if summation == 'fused':
+            from .fused_taylor import contract_fused_taylor
+        else:
+            from .sparse_multilinear import contract_multilinear
         prepared = (replacements if replacements is not None
                     else ReplacementSystem.identity(formula))
         evaluator = _make_evaluator(
             formula, design, prepared, at, order, limits, 0, backend, summation,
         )
-        result = contract_fused_taylor(evaluator, prepared)
+        result = (contract_fused_taylor(evaluator, prepared)
+                  if summation == 'fused'
+                  else contract_multilinear(evaluator, prepared))
         return TaylorResult(
             evaluator.certificate.center, order, result.full_coefficients(),
             evaluator.certificate, evaluator.stats(),

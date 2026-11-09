@@ -40,7 +40,7 @@ examples. The default `max_leaves=64` is a resource budget, not a
 theorem. The report stores them explicitly.
 
 The same formula and reference parameters are evaluated with `tuples`,
-`eliminate`, and opt-in `fused`. `eliminate` uses certified group-mask
+`eliminate`, opt-in `fused`, and opt-in `multilinear`. `eliminate` uses certified group-mask
 factors for each finite-difference pair. `fused` first telescopes the
 Boolean differences exactly, then contracts factors over the prepared leaf's Boolean
 variables (including any parsimonious reduction auxiliaries) and truncated
@@ -48,6 +48,12 @@ polynomial coefficients. Its pair count is zero,
 but this says nothing about induced factor width or arithmetic work. All
 three must match the independent exact count; neither factorization
 establishes the manuscript's non-exponential worst-case algorithm.
+
+`multilinear` stores Boolean subset monomials with exact Taylor-jet
+coefficients rather than materializing a variable-scoped factor table.
+Compare `multilinear_support_peak` and `multilinear_term_products`; its
+`factor_scope_basis` is `not_applicable`. A small sparse support is not
+a theorem about many-clause or worst-case behavior.
 
 **Important:** `factor_scope_peak` counts *groups* for `eliminate`, but
 *Boolean variables* for `fused`. The JSON reports `factor_scope_basis` so
@@ -75,6 +81,40 @@ are fabricated**. An instrumented allocator trace does not observe native
 FLINT allocations. RSS includes Python startup and imports. Neither
 operations counted nor timings prove a worst-case asymptotic bound.
 
+## First structural experiment: compact clause, expensive whole product
+
+The opt-in source-pinned run
+[42702565056](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42702565056)
+on commit `a6ae3ddd155d0a76cbc8d82c4e6e20e0f96d6732` recorded
+36 paired full-pipeline cases: **25 verified, 9 capacity refusals, 2
+noncomparable baseline/traced pairs**. Every completed answer matched
+its independently checked exact count. Baseline observations on the
+GitHub-hosted runner, one sample per method:
+
+| CNF | Fused variable-table | Sparse multilinear | Sparse peak / term products |
+| --- | ---: | ---: | ---: |
+| path, n=4 | 84 ms | 111 ms | 42 / 1,674 |
+| path, n=6 | 335 ms | 934 ms | 321 / 11,492 |
+| matching, n=6 | 20.3 ms | 19.8 ms | 27 / 114 |
+| clique, n=4 | 754 ms | 6,433 ms baseline; traced arm timed out | 1,308 / 74,900 |
+
+The full end-to-end family results **do not justify a default
+performance cutover**. In particular, the clique's parsimonious
+reduction creates additional prepared-leaf variables, and the
+multilinear product becomes substantially denser than the original
+four-variable input might suggest. This is precisely the hidden
+representation growth the experiment is meant to expose.
+
+The independent, synthetic dense two-literal clause regression gives
+the *opposite* result for a narrower claim. At n=16 and Taylor order 2,
+the single clause has at most `1+16+binom(16,2)=137`
+multilinear monomials, while a dense variable-table factor needs
+`2**16=65,536` rows. The test verifies that sparse multilinear
+contraction completes with a 256-entry cap while the identical
+Boolean-table evaluation refuses. This is an exact structural
+advantage **for this family**, not evidence about dense products of
+many clauses, worst-case bit complexity, or the actual paper schedule.
+
 ## Reproduce
 
 ```bash
@@ -84,7 +124,7 @@ python -m pytest -q tests/benchmark/test_cnf_scaling.py -m integration
 python -m benchmarks.eth.cnf_scaling \
   --families path matching clique \
   --sizes 2 4 6 \
-  --summations tuples eliminate fused \
+  --summations tuples eliminate fused multilinear \
   --repeats 1 --timeout 8 \
   --threshold 64 --r 2 --Q 2 --R 2 \
   --output artifacts/cnf-scaling.json

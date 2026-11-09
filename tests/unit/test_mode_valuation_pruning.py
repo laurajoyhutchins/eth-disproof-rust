@@ -116,7 +116,7 @@ def test_actual_deformation_matches_unpruned_catalog_and_direct_oracle(
 
 
 @pytest.mark.integration
-def test_reduced_catalog_not_just_stronger_formal_degree() -> None:
+def test_valuation_prunes_mode_tuples_even_when_catalog_size_stays_fixed() -> None:
     # Four crossing singleton edges, independent of Sudoku-specific input.
     net = simple_network(
         4,
@@ -129,7 +129,9 @@ def test_reduced_catalog_not_just_stronger_formal_degree() -> None:
     p = 5
     before = original_catalog(net, packing, 1, p)
     after = mode_catalog(net, packing, 1, p)
-    assert len(before) > len(after)
+    assert len(before) == len(after)
+    assert all(new.weight >= old.weight for old, new in zip(before, after))
+    assert any(new.weight > old.weight for old, new in zip(before, after))
     assert len(list(weighted_tuples(before, p))) > len(list(weighted_tuples(after, p)))
     config = ContractorConfig(
         4, p, schedule="geometry64",

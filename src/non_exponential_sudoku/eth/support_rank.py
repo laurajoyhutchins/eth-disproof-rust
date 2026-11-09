@@ -138,6 +138,28 @@ def polynomial_cut_bound(
     )
 
 
+def uniform_support_profile(
+    formula: CNFFormula, replacements: ReplacementSystem | None = None, *,
+    variable_order: Sequence[int],
+) -> tuple[CutSupportBound, ...]:
+    """Certify an existing variable order without Boolean/subset enumeration.
+
+    The computation scans each clause support at each of n-1 cuts.
+    This is O(n*m) set/bitmask operations after reading polynomial
+    coefficient supports, *not* an efficient best-order search.
+    """
+    order = tuple(variable_order)
+    if (len(order) != formula.nvars
+            or any(type(i) is not int for i in order)
+            or set(order) != set(range(formula.nvars))):
+        raise ValueError("variable_order must be a permutation of all variables")
+    supports = polynomial_clause_supports(formula, replacements)
+    return tuple(
+        polynomial_cut_bound(supports, formula.nvars, order[:i])
+        for i in range(1, formula.nvars)
+    )
+
+
 def minimax_uniform_support_order(
     formula: CNFFormula, replacements: ReplacementSystem | None = None, *,
     limits: SupportRankLimits = SupportRankLimits(),

@@ -2,11 +2,12 @@
 
 The in-package Fraction implementation remains the independently executable
 reference. FLINT is selected explicitly and is never emulated when missing.
-All externally produced values are converted back into validated Fractions,
-so the existing public models and capacity checks stay authoritative.
+Only public results are converted back to canonical Fractions. Intermediate
+FLINT objects remain native, while Python reference models stay independent.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from fractions import Fraction
 from importlib import import_module
 from typing import Any, Literal
@@ -33,8 +34,8 @@ def _q(value: Fraction, flint: Any) -> Any:
 
 
 def _from_flint(value: Any) -> Fraction:
-    # fmpq stringifies to a reduced decimal-free integer or a/b rational.
-    return Fraction(str(value))
+    """Exact numeric export, without a decimal or textual round trip."""
+    return Fraction(int(value.numerator), int(value.denominator))
 
 
 def _poly(coefficients: tuple[Fraction, ...], flint: Any) -> Any:
@@ -44,6 +45,54 @@ def _poly(coefficients: tuple[Fraction, ...], flint: Any) -> Any:
 def _coefficients(poly: Any) -> tuple[Fraction, ...]:
     values = tuple(_from_flint(value) for value in poly.coeffs())
     return values if values else (Fraction(0),)
+
+
+@dataclass(frozen=True, slots=True)
+class _NativePoly:
+    """Private FLINT rational polynomial, exported only at an API boundary.
+
+    Keeping this wrapper small lets algorithms share their native operations
+    while their independent Python reference representations stay unchanged.
+    No FLINT import occurs merely from importing this module.
+    """
+
+    value: Any
+
+    @classmethod
+    def from_coefficients(cls, coefficients: tuple[Fraction, ...], flint: Any) -> _NativePoly:
+        return cls(_poly(coefficients, flint))
+
+    @property
+    def degree(self) -> int:
+        return max(0, len(self.value) - 1)
+
+    @property
+    def length(self) -> int:
+        return max(1, len(self.value))
+
+    def export(self) -> tuple[Fraction, ...]:
+        return _coefficients(self.value)
+
+    def __add__(self, other: _NativePoly) -> _NativePoly:
+        return _NativePoly(self.value + other.value)
+
+    def __sub__(self, other: _NativePoly) -> _NativePoly:
+        return _NativePoly(self.value - other.value)
+
+    def __neg__(self) -> _NativePoly:
+        return _NativePoly(-self.value)
+
+    def __mul__(self, other: _NativePoly) -> _NativePoly:
+        return _NativePoly(self.value * other.value)
+
+    def truncate(self, length: int) -> _NativePoly:
+        return _NativePoly(self.value.truncate(length))
+
+
+def _native_bits(poly: _NativePoly) -> tuple[int, ...]:
+    """Inspect native numerators and denominators without Fraction exports."""
+    return tuple(max(c.numerator.bit_length(), c.denominator.bit_length())
+                 for c in poly.value.coeffs())
 
 
 def flint_polynomial_op(
@@ -60,7 +109,8 @@ def flint_polynomial_op(
     elif op == 'sub':
         result = a - b
     elif op == 'mul':
-        result = a * b
+        result = (a.mul_low(b, max_length) if max_length is not None and hasattr(a, 'mul_low')
+                  else a * b)
     else:
         raise ValueError('unknown FLINT polynomial operation')
     if max_length is not None:

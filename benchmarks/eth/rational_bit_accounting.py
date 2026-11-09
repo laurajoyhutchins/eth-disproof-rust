@@ -224,8 +224,16 @@ class FractionBitTrace:
             a, b = local.get("a"), local.get("b")
             if isinstance(a, Fraction):
                 self.integers.observe(a.numerator, a.denominator)
+                values = [a.numerator, a.denominator]
                 if isinstance(b, Fraction):
                     self.integers.observe(b.numerator, b.denominator)
+                    values.extend((b.numerator, b.denominator))
+                elif isinstance(b, int):
+                    values.append(b)
+                # Two equality comparisons of signed integers, each
+                # bounded by linear work in their actual operand widths.
+                self.integers.steps += 8 * (
+                    max(_bits(value) for value in values) + 1)
         elif method in ("__neg__", "__abs__", "__pos__"):
             self._count(method)
             a = local.get("a")
@@ -251,9 +259,18 @@ class FractionBitTrace:
             else:
                 self._uncovered(method)
         elif method in ("forward", "reverse", "_from_coprime_ints",
-                        "__bool__", "__int__", "__index__"):
-            # Dispatch or integer field copy, no additional big-int ALU.
+                        "__bool__", "numerator", "denominator",
+                        "__lt__", "__le__", "__gt__", "__ge__"):
+            # Wrapper / property read: arithmetic is accounted inside
+            # _richcmp, _add, _mul, _sub or _div, never double-charged.
             return
+        elif method == "__int__":
+            self._count("rational-integer-conversion")
+            value = local.get("a")
+            if isinstance(value, Fraction):
+                self.integers.divmod(value.numerator, value.denominator)
+        elif method == "__index__":
+            self._count("integer-index-conversion")
         elif method.startswith("_operator_fallbacks"):
             return
         else:

@@ -122,3 +122,56 @@ def test_total_exponential_reference_does_not_discharge_sudoku_theorem() -> None
     assert envelope.log2_work_upper >= 6
     with pytest.raises(IncompleteTheorem, match="source_or_totality"):
         current_theorem_status(local_bit_work_gap=None).require_complete()
+
+
+@pytest.mark.integration
+def test_current_fused_kernel_and_total_reference_agree_on_exact_identity() -> None:
+    """Link the new total baseline to the actual current ETH fused path."""
+    from benchmarks.eth.three_way_contraction import build_family, shared_limits
+    from non_exponential_sudoku.eth import (
+        ReplacementSystem, taylor_coefficients_separated,
+    )
+    from non_exponential_sudoku.runtime.budget import CapacityError
+
+    formula, design, _ = build_family("clique", 4)
+    identity = ReplacementSystem.identity(formula)
+    exact = count_total_reference(formula)
+    assert exact.count == 80
+    limits, _ = shared_limits(max_factor_entries=1)
+    with pytest.raises(CapacityError):
+        taylor_coefficients_separated(
+            formula, design, identity, at=1, order=0,
+            summation="fused", limits=limits,
+        )
+    # The same exact current fused implementation succeeds with a
+    # sufficiently high cap. This confirms correspondence at order zero,
+    # not the paper's literal parameter schedule or any nonrefusal proof.
+    relaxed, _ = shared_limits(max_factor_entries=1024)
+    observed = taylor_coefficients_separated(
+        formula, design, identity, at=1, order=0,
+        summation="fused", limits=relaxed,
+    )
+    assert observed.coefficients == (exact.count,)
+
+
+@pytest.mark.integration
+def test_real_sudoku_reduction_is_admitted_symbolically_not_enumerated() -> None:
+    """Show this total method covers the actual 3-CNF ABI, exponentially."""
+    from non_exponential_sudoku.sudoku.three_cnf import Puzzle
+
+    trivial = Puzzle(1, (0,)).encode()
+    assert count_total_reference(
+        CNFFormula(trivial.nvars, tuple(trivial.clauses))
+    ).count == 1
+
+    board = Puzzle(2, (0,) * 16).encode()
+    # Do NOT execute its exponential 3-CNF count in this test. The
+    # symbolic envelope is valid without constructing 2**n tables.
+    maximum_width = max(map(len, board.clauses))
+    ceiling = total_reference_envelope(
+        board.nvars, len(board.clauses), maximum_width,
+    )
+    assert maximum_width <= 3
+    assert ceiling.log2_work_upper > board.nvars
+    assert ceiling.log2_storage_upper > board.nvars
+    assert board.nvars > 16

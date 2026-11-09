@@ -53,7 +53,7 @@ occurs; this **does not** measure conversion overhead in the actual solver.
 
 ## Measured baseline and change
 
-Local CPython 3.13.5, Linux x86-64; each benchmark arm in a fresh process,
+Initial baseline (before the live-bucket accounting correction), CPython 3.13.5, Linux x86-64; each benchmark arm in a fresh process,
 with tracemalloc enabled. Durations are one execution each, not confidence
 intervals. "Dense assignments" and "support candidate pairs" count different
 loops and should not be directly compared as identical operations.
@@ -67,17 +67,23 @@ loops and should not be directly compared as identical operations.
 | OR clique | 8 | 510 | 11,978 | 128 | 0.0283 s | 0.1765 s | 167,048 B | 105,576 B |
 | OR clique | 10 | 2,046 | 178,929 | 512 | 0.1351 s | 2.3191 s | 329,164 B | 351,612 B |
 
-The equality-clique support contraction at n=12 retains only 132 peak
-nonzero entries (counting the original factors), performs 155 recorded
+The original equality-clique support contraction at n=12 recorded 132 peak
+nonzero entries, performs 155 recorded
 Fraction multiplications instead of 8,189, and reaches 2-bit coefficients.
-The OR clique at n=10 reaches 878 peak retained entries and only **4-bit
+The original OR clique at n=10 recorded 878 peak retained entries and only **4-bit
 maximum coefficients** while spending 178,929 support pair checks. The
 structural representation and join cost dominate before big-integer
 coefficient growth appears in these **order-zero** inputs.
 
-Peak RSS is about 98 to 99 MB across all isolated processes, mostly
+The initial peak RSS was about 98 to 99 MB across isolated processes, mostly
 Python interpreter overhead; the traced Python-allocation difference is
-the more informative metric at these sizes. The benchmark also records
+the more informative metric at these sizes. **Review correction:** the original
+entry peak calculation excluded attached factors while constructing a bucket.
+The reviewed implementation counts those live inputs and temporary joins;
+therefore the historical peak-entry and traced-memory values above are
+baseline observations, not corrected exact-head measurements. Regenerate
+`support-join.json` on the final head before comparing revised peak figures.
+The benchmark also records
 retained coefficient-bit totals, exact add/multiply counts, a labeled
 schoolbook bit-geometry proxy, induced scope, isolated RSS, and elapsed
 time for every row. The proxy is **not** a measurement of actual native
@@ -116,8 +122,9 @@ is not proved to be necessary mathematical information.
 Tests first failed to import the nonexistent experiment (red); after adding
 the implementation, the eight standalone test functions/parameterizations
 passed locally. Additional integration cases exercise the *repository's*
-certified 'eliminate' and merged 'fused' paths on small OR cliques: those
-still require exact-head repository CI confirmation.
+certified 'eliminate' and merged 'fused' paths on small OR cliques.
+The initial exact-head native/integration/extended verification passed on
+`d64545f`; the review corrections require a fresh exact-head check.
 
 All resource failures are explicit. The benchmark is deliberately kept
 outside production dispatch, and makes no claim about the native backend,

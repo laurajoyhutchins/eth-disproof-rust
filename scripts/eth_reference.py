@@ -40,6 +40,7 @@ def main() -> int:
                         help='experimental disjoint-sparsification threshold (NOT theorem M)')
     parser.add_argument('--max-leaves', type=int, default=64)
     parser.add_argument('--backend', choices=('python', 'flint'), default='python')
+    parser.add_argument('--summation', choices=('tuples', 'eliminate'), default='tuples')
     args = parser.parse_args()
     formula = (CNFFormula.from_dimacs(args.dimacs.read_text())
                if args.dimacs is not None else CNFFormula(2, ((1, 2),)))
@@ -48,6 +49,7 @@ def main() -> int:
         sparsification=reference_sparsification_parameters(3, args.threshold),
         max_leaves=args.max_leaves,
         backend=args.backend,
+        summation=args.summation,
     )
     try:
         result = count_cnf_reference(formula, config=config)
@@ -58,6 +60,8 @@ def main() -> int:
             'source_variables': formula.nvars,
             'source_clauses': len(formula.clauses),
             'reference_threshold': args.threshold,
+            'summation': args.summation,
+            'backend': args.backend,
             'count': None,
         }, args.output)
         return 2

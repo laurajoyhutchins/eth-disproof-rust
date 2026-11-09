@@ -85,3 +85,9 @@ parameter. These are finite certified *reference* constructions, with
 potentially exponential work, strict resource limits, and no general
 non-refusal or subexponential running-time claim. The literal theorem
 admission remains a separate, fail-closed entrypoint.
+
+The optional `summation='eliminate'` path uses the independently
+certified group-factor elimination backend described above. The default
+`'tuples'` retains the original explicit measurement-reference evaluator.
+The CLI accepts `--summation eliminate`, and every result records the
+selected backend, summation and construction parameters.

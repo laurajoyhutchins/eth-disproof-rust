@@ -45,6 +45,7 @@ class ReferencePipelineConfig:
     R: int = 2
     schedule: Literal['conditional', 'digits'] = 'conditional'
     backend: ArithmeticBackend = 'python'
+    summation: Literal['tuples', 'eliminate'] = 'tuples'
     max_leaves: int = 64
     max_output_bits: int = 1_000_000
     reduction_limits: ReductionLimits = ReductionLimits()
@@ -65,6 +66,8 @@ class ReferencePipelineConfig:
             raise ValueError('unknown reference construction schedule')
         if self.backend not in ('python', 'flint'):
             raise ValueError('unknown exact arithmetic backend')
+        if self.summation not in ('tuples', 'eliminate'):
+            raise ValueError('unknown exact Taylor summation strategy')
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +98,10 @@ class ReferencePipelineResult:
     source_width_reduced: bool
     outer_free_bits: int
     sparsification_theorem_threshold: bool
+    backend: ArithmeticBackend
+    summation: Literal['tuples', 'eliminate']
+    construction_parameters: tuple[int, int, int]
+    construction_schedule: Literal['conditional', 'digits']
     leaves: tuple[ReferenceLeafEvidence, ...]
     algorithm_status: str = 'bounded-constructive-reference; no asymptotic guarantee'
 
@@ -134,7 +141,7 @@ def _evaluate_leaf(
         order = degree // len(construction.centers)
         reconstructed = count_from_manual_designs(
             reduced, construction.centers, construction.replacements,
-            order=order, backend=config.backend,
+            order=order, backend=config.backend, summation=config.summation,
             taylor_limits=config.taylor_limits,
             hermite_limits=config.hermite_limits,
         )
@@ -215,5 +222,8 @@ def count_cnf_reference(
         source_clauses=len(formula.clauses),
         source_width_reduced=width_reduced, outer_free_bits=outer_free_bits,
         sparsification_theorem_threshold=params.theorem_threshold,
+        backend=config.backend, summation=config.summation,
+        construction_parameters=(config.r, config.Q, config.R),
+        construction_schedule=config.schedule,
         leaves=tuple(evidence),
     )

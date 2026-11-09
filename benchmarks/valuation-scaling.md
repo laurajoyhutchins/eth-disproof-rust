@@ -19,9 +19,14 @@ occupied packet width. Both arms use exactly the same independently verified
 deformation value and factorization strategy. The two `recursive-p5` and
 `recursive-p7` cases run **the complete two-active-level micro-schedule
 contraction**, including recovery and children. The
-`recursive-L4-p5` case runs the **complete 64-group four-slot,
-one-active-level experimental contraction**. All three verify the root
-result against independent direct two-wire contraction.
+`recursive-L4-sparse-p5` case runs the **complete 64-group four-slot,
+one-active-level experimental contraction** with separate pair-label classes.
+All three verify the root result against independent direct two-wire
+contraction. A distinct `recursive-L4-dense-p5` stress case places two
+edges in one class, creates high-order modes and is **not** in the
+default success matrix because both arms refuse the 4,096-state factor
+limit. It can be reproduced explicitly with `--cases recursive-L4-dense-p5`;
+that command must exit nonzero and retain `status=incomplete`.
 
 Data distinguish (1) catalog descriptors, (2) mathematically admissible
 weighted tuples from an independent polynomial-DP counter, and

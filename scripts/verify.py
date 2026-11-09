@@ -22,7 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "src")]
 
 from scripts.change_impact import plan as calculate_impact  # noqa: E402
-from scripts.shard_contract import owned_nodeids  # noqa: E402
+from scripts.shard_contract import (  # noqa: E402
+    SCHEMA_VERSION, checkpoint_files, owned_files,
+)
 from scripts.evidence import (  # noqa: E402
     fingerprints, git_provenance, native_binaries, validate_attestation,
 )
@@ -141,13 +143,19 @@ def main() -> int:
     manifest_path: Path | None = None
     if args.shard_count > 1 and (impact is None or impact["mode"] == "full"):
         manifest_path = output / f"checkpoint-shard-{args.shard_index}.json"
-        command.extend((
-            "-p", "scripts.checkpoint_shard",
-            "--checkpoint-shard-count", str(args.shard_count),
-            "--checkpoint-shard-index", str(args.shard_index),
-            "--checkpoint-shard-manifest", str(manifest_path),
-        ))
-    command.extend(selected_tests)
+        all_files = checkpoint_files(ROOT)
+        assigned = owned_files(all_files, args.shard_index, args.shard_count)
+        if not assigned or any(not (ROOT / path).is_file() for path in assigned):
+            parser.error("empty or missing owned test files")
+        manifest = {
+            "schema_version": SCHEMA_VERSION, "shard_index": args.shard_index,
+            "shard_count": args.shard_count, "all_test_files": all_files,
+            "selected_test_files": assigned,
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+        command.extend(assigned)
+    else:
+        command.extend(selected_tests)
     for backend in required:
         command.extend(("--require-backend", backend))
     env = os.environ.copy()
@@ -176,16 +184,15 @@ def main() -> int:
     if manifest_path is not None:
         try:
             data = json.loads(manifest_path.read_text())
-            full = data["all_nodeids"]
-            selected = data["selected_nodeids"]
+            full = data["all_test_files"]
+            selected = data["selected_test_files"]
             shard_valid = (
-                data["schema_version"] == 1
+                data["schema_version"] == SCHEMA_VERSION
                 and data["shard_count"] == args.shard_count
                 and data["shard_index"] == args.shard_index
-                and isinstance(full, list) and full == sorted(set(full))
-                and len(full) > 0
-                and selected == owned_nodeids(full, args.shard_index, args.shard_count)
-                and counts is not None and counts["tests"] == len(selected)
+                and full == checkpoint_files(ROOT)
+                and selected == owned_files(full, args.shard_index, args.shard_count)
+                and counts is not None and counts["tests"] >= len(selected)
             )
         except (OSError, ValueError, TypeError, KeyError):
             shard_valid = False

@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "src")]
 
 from scripts.change_impact import plan as calculate_impact  # noqa: E402
+from scripts.checkpoint_shard import owned_nodeids  # noqa: E402
 from scripts.evidence import (  # noqa: E402
     fingerprints, git_provenance, native_binaries, validate_attestation,
 )
@@ -58,11 +59,20 @@ def main() -> int:
                         help="Require matching native build-input and binary hashes")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts")
     parser.add_argument("--impact-plan", type=Path, help="Exact-head conservative checkpoint plan")
+    parser.add_argument("--shard-count", type=int, default=1,
+                        help="Whole-checkpoint CI shard count; default 1")
+    parser.add_argument("--shard-index", type=int, default=0,
+                        help="Zero-based whole-checkpoint shard index")
     args = parser.parse_args()
     if args.timeout is not None and args.timeout <= 0:
         parser.error("--timeout must be positive")
     if args.tier != "checkpoint" and args.require_backend:
         parser.error("--require-backend is only supported for checkpoint tests")
+    if args.shard_count < 1 or args.shard_index < 0 or args.shard_index >= args.shard_count:
+        parser.error("invalid shard count/index")
+    if args.shard_count > 1 and (args.tier != "checkpoint" or args.require_native or
+                                args.require_backend or args.require_native_attestation):
+        parser.error("sharding requires pure-Python checkpoint without backend obligations")
 
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -95,6 +105,8 @@ def main() -> int:
                     "tier": "checkpoint",
                     "verification_status": "not_applicable",
                     "tests_executed": False,
+                    "shard_index": args.shard_index,
+                    "shard_count": args.shard_count,
                     "reused_evidence": False,
                     "impact_plan": expected,
                     "git": git_provenance(),
@@ -108,6 +120,17 @@ def main() -> int:
                 raise ValueError("unknown impact mode")
         except (OSError, ValueError, TypeError, KeyError) as exc:
             parser.error(f"invalid impact plan: {exc}")
+    if impact is not None and impact["mode"] == "targeted" and args.shard_index > 0:
+        record = {
+            "tier": "checkpoint", "verification_status": "no_assignment",
+            "tests_executed": False, "reused_evidence": False,
+            "shard_index": args.shard_index, "shard_count": args.shard_count,
+            "impact_plan": impact, "git": git_provenance(), **fingerprints(),
+        }
+        (output / "checkpoint-no-assignment.json").write_text(
+            json.dumps(record, indent=2) + "\n")
+        print("checkpoint: all targeted tests assigned to shard zero", flush=True)
+        return 0
     junit = output / f"{args.tier}.xml"
     junit.unlink(missing_ok=True)
     required = sorted(set(args.require_backend))
@@ -115,6 +138,15 @@ def main() -> int:
         required.append("native")
     command = [sys.executable, "-m", "pytest", "-q", "-m", args.tier,
                "--durations=20", "--junitxml=" + str(junit)]
+    manifest_path: Path | None = None
+    if args.shard_count > 1 and (impact is None or impact["mode"] == "full"):
+        manifest_path = output / f"checkpoint-shard-{args.shard_index}.json"
+        command.extend((
+            "-p", "scripts.checkpoint_shard",
+            "--checkpoint-shard-count", str(args.shard_count),
+            "--checkpoint-shard-index", str(args.shard_index),
+            "--checkpoint-shard-manifest", str(manifest_path),
+        ))
     command.extend(selected_tests)
     for backend in required:
         command.extend(("--require-backend", backend))
@@ -140,6 +172,23 @@ def main() -> int:
         infrastructure_error = f"{type(exc).__name__}: {exc}"
 
     counts = summarize_junit(junit)
+    shard_valid = manifest_path is None
+    if manifest_path is not None:
+        try:
+            data = json.loads(manifest_path.read_text())
+            full = data["all_nodeids"]
+            selected = data["selected_nodeids"]
+            shard_valid = (
+                data["schema_version"] == 1
+                and data["shard_count"] == args.shard_count
+                and data["shard_index"] == args.shard_index
+                and isinstance(full, list) and full == sorted(set(full))
+                and len(full) > 0
+                and selected == owned_nodeids(full, args.shard_index, args.shard_count)
+                and counts is not None and counts["tests"] == len(selected)
+            )
+        except (OSError, ValueError, TypeError, KeyError):
+            shard_valid = False
     after = fingerprints()
     after_git = git_provenance()
     after_native = native_binaries()
@@ -151,7 +200,7 @@ def main() -> int:
                        importlib.util.find_spec(dependencies[name]) is not None)
                          for name in required}
     attestation = validate_attestation(ROOT, before, before_native)
-    passed = (code == 0 and not timed_out and infrastructure_error is None and
+    passed = (code == 0 and shard_valid and not timed_out and infrastructure_error is None and
               counts is not None and counts["tests"] > 0 and
               counts["failures"] == counts["errors"] == 0 and stable and
               (native_available or not args.require_native) and
@@ -160,6 +209,10 @@ def main() -> int:
     record = {
         "tier": args.tier,
         "passed": passed,
+        "shard_index": args.shard_index,
+        "shard_count": args.shard_count,
+        "shard_manifest": manifest_path.name if manifest_path is not None and manifest_path.exists() else None,
+        "shard_manifest_valid": shard_valid,
         "verification_status": "passed" if passed else "failed",
         "impact_plan": impact,
         "tests_executed": True,

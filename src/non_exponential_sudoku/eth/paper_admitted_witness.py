@@ -237,3 +237,74 @@ def concrete_unit_balance_witness(n: int = 4096) -> FiniteUnitBalanceWitness:
         stronger_overview_balance_hypotheses=stronger,
         paper_step5_admitted=audit_paper_bounds(n, n, b=1, w=1).admitted,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class UnitCopyPartition:
+    """Source-Step-4 copy decomposition, valid for unit clauses only.
+
+    All deformed unit clause factors in a given copy read only variables
+    from that copy. Concatenating copies as the Boolean variable ordering
+    therefore gives a uniform exact TT rank upper bound 2**floor(D/2).
+    This certifies an EXISTS representation, not its bit-time complexity.
+    """
+
+    copy_count: int
+    max_copy_variables: int
+    copy_blocks: tuple[tuple[int, ...], ...]
+    variable_to_copy: tuple[int, ...]
+    rank_upper_all_centers: int
+    block_boundary_rank_upper: int = 1
+
+    def taylor_coefficient_rank_upper(self, order: int) -> int:
+        """Coefficient [z**j] has Q-matrix rank <= (j+1)*U."""
+        if type(order) is not int or order < 0 or order > 1_000_000:
+            raise ValueError("Taylor order outside bounded certificate range")
+        return (order + 1) * self.rank_upper_all_centers
+
+
+def unit_copy_partition(witness: FiniteUnitBalanceWitness) -> UnitCopyPartition:
+    """Independently reproduce the paper's per-label copy allocation.
+
+    The actual transfer in construction.construct_from_schedules assigns
+    occurrence (e,v) to copy j equal to the number of *preceding*
+    incidences with identical source label. With one occurrence for
+    each variable, every variable has exactly one copy and labels
+    cannot collide within a copy. Spectral coefficients only mix
+    coordinates *inside* that copy.
+    """
+    if not isinstance(witness, FiniteUnitBalanceWitness):
+        raise TypeError("expected a finite independent-unit-clause witness")
+    if len(witness.variable_schedules) != witness.n or len(witness.clause_schedules) != witness.n:
+        raise ValueError("unit schedule length mismatch")
+    by_label: dict[tuple[tuple[int, int], ...], int] = {}
+    groups: list[list[int]] = []
+    labels_in_copy: list[set[tuple[tuple[int, int], ...]]] = []
+    var_copies: list[int] = []
+    for v in range(witness.n):
+        label = tuple((
+            witness.variable_schedules[v][t],
+            witness.clause_schedules[v][t],
+        ) for t in range(witness.Q))
+        copy = by_label.get(label, 0)
+        by_label[label] = copy + 1
+        if copy == len(groups):
+            groups.append([])
+            labels_in_copy.append(set())
+        if copy > len(groups) - 1 or label in labels_in_copy[copy]:
+            raise ArithmeticError("non-unique variable/label assignment within auxiliary copy")
+        labels_in_copy[copy].add(label)
+        groups[copy].append(v)
+        var_copies.append(copy)
+    maximum = max(map(len, groups), default=0)
+    if maximum > witness.D or max(by_label.values(), default=0) != len(groups):
+        raise ArithmeticError("source-label copy capacity invariant failed")
+    if sum(map(len, groups)) != witness.n:
+        raise ArithmeticError("not every variable assigned to exactly one copy")
+    return UnitCopyPartition(
+        copy_count=len(groups),
+        max_copy_variables=maximum,
+        copy_blocks=tuple(tuple(group) for group in groups),
+        variable_to_copy=tuple(var_copies),
+        rank_upper_all_centers=1 << (maximum // 2),
+    )

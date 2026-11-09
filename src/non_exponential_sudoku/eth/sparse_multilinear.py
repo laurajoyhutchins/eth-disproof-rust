@@ -46,6 +46,12 @@ def contract_multilinear(
     def multiply(
         left: dict[int, _JetValue], right: dict[int, _JetValue],
     ) -> dict[int, _JetValue]:
+        # Bound the simultaneous input and output dictionaries, not just
+        # the size of the final result. These counts are retained entries,
+        # not an assertion about native allocation or resident bytes.
+        input_entries = len(left) + len(right)
+        if input_entries > limit.max_factor_total_entries:
+            raise CapacityError("ETH multilinear total factor entry limit")
         operations = len(left) * len(right)
         # Check before constructing the Cartesian product. An explicit cap
         # is not an asymptotic result, and a refusal is not a zero count.
@@ -70,6 +76,8 @@ def contract_multilinear(
                     answer[key] = combined
                     if len(answer) > limit.max_factor_entries:
                         raise CapacityError("ETH multilinear support entry limit")
+                    if input_entries + len(answer) > limit.max_factor_total_entries:
+                        raise CapacityError("ETH multilinear total factor entry limit")
         return check_support(answer)
 
     def one_minus(
@@ -98,11 +106,11 @@ def contract_multilinear(
             for index, (polynomial, delta) in enumerate(
                 zip(form.coefficients, shifted)
             ):
-                if arithmetic.is_zero(delta) and polynomial.evaluate(center) == 0:
+                constant = polynomial.evaluate(center)
+                if arithmetic.is_zero(delta) and constant == 0:
                     continue
                 full = arithmetic.add(
-                    arithmetic.constant(polynomial.evaluate(center), evaluator.order),
-                    delta,
+                    arithmetic.constant(constant, evaluator.order), delta,
                 )
                 if not arithmetic.is_zero(full):
                     linear[1 << index] = full

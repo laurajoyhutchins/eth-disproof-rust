@@ -26,3 +26,26 @@ def test_count_without_materializing_virtual_auxiliary_space(Q: int) -> None:
     constructed = construct_from_schedules(formula, auxiliary, variables, clauses)
     assert len(constructed.centers) == Q
     assert count_from_constructed(formula, constructed) == count_bruteforce(formula) == 4
+
+
+def test_count_with_huge_global_exceptional_subspace() -> None:
+    """Q=6R, no retained eigenvectors: exact 3-CNF readout still works.
+
+    This is a full computation at virtual auxiliary dimension 4**48,
+    but the Boolean input has only three variables. It establishes
+    representational feasibility, not the paper's worst-case bound.
+    """
+    formula = CNFFormula(3, ((1, 2), (-1, 3)))
+    auxiliary = construct_implicit_auxiliary(
+        r=2, Q=48, R=8, measurement_basis='projector')
+    assert auxiliary.dimension == 4 ** 48
+    assert auxiliary.exceptional_count > 10 ** 28
+    assert auxiliary.measurement_selectors == ()
+    a, d = deterministic_schedules(formula, r=2, Q=48)
+    design = construct_from_schedules(formula, auxiliary, a, d)
+    assert len(design.centers) == 48
+    assert design.max_measurement_rows == 3
+    assert all(sum(abs(value) for value in row) <= 1
+               for _, center in design.centers for matrix in center.matrices
+               for row in matrix)
+    assert count_from_constructed(formula, design) == count_bruteforce(formula) == 4

@@ -187,3 +187,32 @@ def test_zero_tensor_exact_minimax_rank_is_zero_not_one() -> None:
     best = minimax_unfolding_order(false, at=0)
     assert best.peak_rank == 0
     assert best.cut_ranks == (0, 0)
+
+
+@pytest.mark.integration
+def test_real_spectral_six_variable_clique_vanishes_at_center_one() -> None:
+    from benchmarks.eth.cnf_scaling import scenario
+
+    formula = scenario("clique", 6).formula
+    construction = construct_bounded_designs(
+        formula, r=2, Q=2, R=2, measurement_basis="projector",
+    )
+    optimum = minimax_unfolding_order(
+        formula, construction.replacements, at=1,
+    )
+    assert optimum.peak_rank == 0
+    assert all(rank == 0 for rank in optimum.cut_ranks)
+
+
+@pytest.mark.integration
+def test_real_spectral_path_six_has_exact_best_order_evidence() -> None:
+    from benchmarks.eth.cnf_scaling import scenario
+
+    formula = scenario("path", 6).formula
+    construction = construct_bounded_designs(
+        formula, r=2, Q=2, R=2, measurement_basis="projector",
+    )
+    support = minimax_uniform_support_order(formula, construction.replacements)
+    optimum = minimax_unfolding_order(formula, construction.replacements, at=1)
+    assert 1 <= optimum.peak_rank <= support.peak_rank_upper
+    assert support.peak_rank_upper == 4

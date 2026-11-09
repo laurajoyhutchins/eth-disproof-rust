@@ -39,10 +39,18 @@ sparsification threshold is `64`, which commonly avoids branching on small
 examples. The default `max_leaves=64` is a resource budget, not a
 theorem. The report stores them explicitly.
 
-The same formula and reference parameters are evaluated using `tuples` and
-`eliminate`; the latter is bucket elimination on exact certified group
-factors, not the manuscript's full non-exponential algorithm. Both must match
-the independent exact count. A zero `measurement_tuples` value under
+The same formula and reference parameters are evaluated with `tuples`,
+`eliminate`, and opt-in `fused`. `eliminate` uses certified group-mask
+factors for each finite-difference pair. `fused` first telescopes the
+Boolean differences exactly, then contracts factors over original Boolean
+variables and truncated polynomial coefficients. Its pair count is zero,
+but this says nothing about induced factor width or arithmetic work. All
+three must match the independent exact count; neither factorization
+establishes the manuscript's non-exponential worst-case algorithm.
+
+**Important:** `factor_scope_peak` counts *groups* for `eliminate`, but
+*Boolean variables* for `fused`. The JSON reports `factor_scope_basis` so
+width measurements are not compared across incompatible units. A zero `measurement_tuples` value under
 elimination does not imply negligible work.
 
 Outcomes:
@@ -75,7 +83,7 @@ python -m pytest -q tests/benchmark/test_cnf_scaling.py -m integration
 python -m benchmarks.eth.cnf_scaling \
   --families path matching clique \
   --sizes 2 4 6 \
-  --summations tuples eliminate \
+  --summations tuples eliminate fused \
   --repeats 1 --timeout 8 \
   --threshold 64 --r 2 --Q 2 --R 2 \
   --output artifacts/cnf-scaling.json

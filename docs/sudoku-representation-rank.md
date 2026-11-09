@@ -104,3 +104,40 @@ audit alone cannot distinguish an empty puzzle from a hard one.
 Any future reduction that uses clues must explicitly record the
 new reduced network, prove exact equivalence and audit *that*
 network separately.
+
+## Source-pinned packing observations (2026-11-09)
+
+The opt-in [GitHub Actions run 42701260030](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42701260030)
+built actual `r=64,a=2` Cauchy packets on unreduced
+canonical direct Sudoku networks. Packet orientation checks passed.
+
+| Sudoku | Packets | Max occupied wires per packet | Projected t=1 mode descriptors | Log2 lower bound on independent admissible assignments |
+|---|---:|---:|---:|---:|
+| 4×4 | 84 | 2 | 5,106 | 32 |
+| 9×9 | 903 | 4 | 648,192 | 324 |
+| 16×16 | 2,880 | 4 | 5,434,896 | 1,024 |
+
+The mode quantities are derived **arithmetically** at the nominal
+precision `p=M+1`, not built as a Python catalog, and not measured at
+the inner Hermite working precision. The final column certifies that
+the positive-weight domain contains at least `2^k` distinct
+assignments; this is **not a runtime lower bound for symbolic
+elimination**. The separate small-precision test compares this
+projection with actual generated descriptors on real packed Sudoku
+input, preventing a self-consistent but ungrounded combinatorial
+formula.
+
+The measured unit arities and the exact restricted unit cut ranks
+expose **two different exponential representations**. The lifted
+Boolean strategy forms too many table entries within a single unit,
+while a high-precision mode expansion admits many combinations.
+A valid-digit subset decomposition is therefore a promising *local*
+reorganization, but its states are not constant: the exact balanced
+rank at 25×25 is already `C(25,12)=5,200,300`.
+
+There is no demonstration here of a low-width global Sudoku
+contraction, a reduction in total arithmetic bit complexity, or an
+improvement in the worst-case exponent. The next test would need
+to compose these subset states across intersecting row, column, and
+box constraints, tracking peak separator rank and the cost of
+combining states.

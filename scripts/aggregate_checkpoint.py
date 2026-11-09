@@ -7,8 +7,22 @@ import json
 from pathlib import Path
 from typing import Any
 
-from scripts.checkpoint_shard import verify_partition
-from scripts.verify import summarize_junit
+from scripts.shard_contract import verify_partition
+from xml.etree import ElementTree as ET
+
+
+def summarize_junit(path: Path) -> dict[str, int] | None:
+    if not path.is_file():
+        return None
+    try:
+        root = ET.parse(path).getroot()
+        suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
+        if not suites:
+            return None
+        return {name: sum(int(s.attrib.get(name, 0)) for s in suites)
+                for name in ("tests", "failures", "errors", "skipped")}
+    except (ET.ParseError, ValueError):
+        return None
 
 
 def _json(path: Path) -> dict[str, Any]:

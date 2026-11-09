@@ -53,15 +53,30 @@ jobs:
             "https://github.com/leanprover-community/mathlib4.git" @ "d13f23b723b8a846827a245b89c10fc7d3f11612"
           @[default_target] lean_lib OAI
           EOF
+      - name: Restore revision-pinned partial Lean build
+        uses: actions/cache/restore@v4
+        with:
+          path: lean-overlay/.lake/build
+          key: lean-bitprogram-v1-${{ env.UPSTREAM_COMMIT }}-${{ env.MATHLIB_COMMIT }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            lean-bitprogram-v1-${{ env.UPSTREAM_COMMIT }}-${{ env.MATHLIB_COMMIT }}-
       - name: Compile actual normalization and terminal leaf BitPrograms
         run: |
           mkdir -p artifacts
           cd lean-overlay
           lake update
           lake exe cache get
-          lake build OAI.Algorithms.SubexponentialSAT.SubexpNormalizationProgram OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.NativeTerminal
-          lake env lean --run ../reference/lean_primitive_trace.lean > ../artifacts/lean-primitive-trace.txt
-          cat ../artifacts/lean-primitive-trace.txt
+          # Stop *before* the job limit, leaving time to save partial OAI build
+          # products. An incomplete build fails closed; rerun from the cache.
+          timeout --kill-after=15s 780s lake build OAI.Algorithms.SubexponentialSAT.SubexpNormalizationProgram OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.NativeTerminal
+          set -o pipefail
+          timeout --kill-after=10s 120s lake env lean --run ../reference/lean_primitive_trace.lean | tee ../artifacts/lean-primitive-trace.txt
+      - name: Save partial pinned Lean build even when compile fails or stops
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: lean-overlay/.lake/build
+          key: lean-bitprogram-v1-${{ env.UPSTREAM_COMMIT }}-${{ env.MATHLIB_COMMIT }}-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'

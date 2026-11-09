@@ -15,11 +15,15 @@ from typing import Final
 from non_exponential_sudoku.core.network import Network
 from non_exponential_sudoku.sudoku.three_cnf import Puzzle
 from reference.sudoku_oracle_cost import (
-    UncertifiedSudokuInput, certify_original_sudoku_oracles,
+    CertifiedSudokuInput, UncertifiedSudokuInput, certify_original_sudoku_oracles,
     original_oracle_bit_work_per_pass,
+)
+from reference.sudoku_oracle_invocations import (
+    OriginalOracleInvocationEnvelope, original_oracle_invocation_envelope,
 )
 
 from non_exponential_sudoku.contraction.engine import paper_schedule_parameters
+from reference.catalog_planning_work import catalog_planning_work
 from non_exponential_sudoku.runtime.config import ContractorConfig
 from reference.nested_ring_bit_cost import finite_shape_bit_envelope
 from reference.oracle_lineage import paper_single_path_descriptor_bound
@@ -81,6 +85,9 @@ class FrameBudgetSkeleton:
     # This is an abstract upper bound on number of binary assignments in a
     # fully-exhaustive leaf. It is not the cost of an uncapped implemented leaf.
     log2_exhaustive_leaf_assignments: int
+    # Bounded source-level catalog and component-plan overhead, for all centers
+    # and every interpolation sample (no assumption of cache hits).
+    log2_catalog_planning_bit_work_ceiling: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +105,10 @@ class ConditionalPaperRecurrence:
     # those entries, and not a bound on generated PacketEntry callbacks.
     sudoku_original_oracle_per_pass_bit_work: int | None = None
     sudoku_original_oracle_scalar_calls_per_pass: int | None = None
+    # One source-certified, POTENTIAL-child-tree event ceiling. It charges
+    # fallback direct enumeration, factor-table construction and optional
+    # zero-support separately. No generic PacketEntry work is included.
+    sudoku_original_oracle_invocation_envelope: OriginalOracleInvocationEnvelope | None = None
     open_premises: tuple[str, ...] = OPEN_PREMISES
 
     def require_complete_theorem(self) -> None:
@@ -208,12 +219,21 @@ def _active_frame(frame: PaperFrameEnvelope, config: ContractorConfig,
     recovery = recovery_work(M, L, u, p, extension_degree=e)
     recovery_bits = recovery.schoolbook_bit_work_majorant(e)
     recovery_log = ceil_log2(max(1, recovery_bits))
+    # A center can rebuild its valuation catalog and factor plan when bounded
+    # caches evict them. Charge a fresh copy per interpolation sample, even
+    # though a reused plan normally needs much less work.
+    catalog = catalog_planning_work(
+        edges=M, vertices=V, packets=P, slots=L, groups=64,
+        active_coordinates=u, center_valuation=u - 1,
+        precision=precision, input_name_bits=input_name_bits,
+    )
+    catalog_log = ceil_log2(centers * E * catalog.schoolbook_bit_work_majorant)
     local_log = log2_sum_ceiling(factor_ring_log, prep_log,
-                                  newton_log, recovery_log)
+                                  newton_log, recovery_log, catalog_log)
     return FrameBudgetSkeleton(
         frame.depth, M, V, False, centers, E, alpha,
         child_log, factor_ring_log, prep_log, newton_log, recovery_log,
-        local_log, 0,
+        local_log, 0, log2_catalog_planning_bit_work_ceiling=catalog_log,
     )
 
 
@@ -254,6 +274,8 @@ def assemble_paper_recurrence(
     frames = paper_frame_envelopes(config, edges, vertices)
     original_work: int | None = None
     original_calls: int | None = None
+    certificate: CertifiedSudokuInput | None = None
+    largest_precision: int | None = None
     if original_sudoku is not None:
         if type(original_sudoku) is not tuple or len(original_sudoku) != 2:
             raise UnclosedRecurrence('original Sudoku requires puzzle and original Network')
@@ -311,8 +333,22 @@ def assemble_paper_recurrence(
             s=config.s, lambda_bits=lam, maximum_slot_exponent=max_a,
             terminal_edges=result[-1].edges,
         )
+    invocation_envelope: OriginalOracleInvocationEnvelope | None = None
+    if certificate is not None and largest_precision is not None:
+        # The fanout model counts every potential attempted child, including
+        # optional zero-support certificates that skip contract(). A single
+        # attempt may pay for zero-support and, on a nonzero child, a leaf.
+        invocation_envelope = original_oracle_invocation_envelope(
+            certificate,
+            max_leaf_edges=max(result[-1].edges, fallback),
+            leaf_strategy=config.leaf.strategy,
+            zero_support=config.recursion.zero_support.enabled,
+            potential_nodes_log2_ceiling=count_log,
+            extension_degree=max(2, 4 * lam),
+            precision=largest_precision,
+        )
     return ConditionalPaperRecurrence(
         config.s, tuple(result), count_log, fanout_log, fallback,
         lineage.max_vertices, lineage.max_visible_name_bits,
-        original_work, original_calls,
+        original_work, original_calls, invocation_envelope,
     )

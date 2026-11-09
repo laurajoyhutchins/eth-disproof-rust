@@ -35,7 +35,7 @@ from scripts.evidence import fingerprints, git_provenance, native_binaries
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = "1.0.0"
 FAMILIES = ("path", "matching", "xor_pairs", "clique")
-SUMMATIONS = ("tuples", "eliminate", "fused")
+SUMMATIONS = ("tuples", "eliminate", "fused", "multilinear")
 MODES = ("baseline", "observed")
 DEFAULT_FAMILIES = ("path", "matching", "clique")
 DEFAULT_SIZES = (2, 4, 6)
@@ -107,6 +107,8 @@ def _leaf_evidence(leaves: tuple[Any, ...]) -> dict[str, int]:
         "factor_scope_peak": max((v.factor_scope_peak for v in leaves), default=0),
         "factor_entries_peak": max((v.factor_entries_peak for v in leaves), default=0),
         "factor_eliminations": sum(v.factor_eliminations for v in leaves),
+        "multilinear_term_products": sum(v.multilinear_term_products for v in leaves),
+        "multilinear_support_peak": max((v.multilinear_support_peak for v in leaves), default=0),
         "hermite_operations": sum(v.hermite_operations for v in leaves),
         "max_coefficient_bits": max((v.max_coefficient_bits for v in leaves), default=0),
     }

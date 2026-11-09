@@ -30,7 +30,9 @@ class ChildEvaluator:
         self.depth=depth
         self.coordinate=coordinate
         self.context=context
-        self._workspace=contractor._frames.setdefault(depth,FrameWorkspace())
+        self._workspace=contractor._frames.setdefault(
+            depth, FrameWorkspace(cache_policy=contractor.config.recursion.compiled_plans,
+                                  leaf=contractor.config.leaf))
 
     def evaluate(self, group: int, assignment: Sequence[int], *,
                  mode_indices: Sequence[int] | None = None,

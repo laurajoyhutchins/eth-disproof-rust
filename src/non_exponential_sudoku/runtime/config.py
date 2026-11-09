@@ -2,6 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
+from .cache import CachePolicy
 
 if TYPE_CHECKING:
     from ..core.packing import LabelPair
@@ -81,12 +82,18 @@ class LeafConfig:
     limit: int=18
     micro_threshold: int=0
     adaptive_limit: int=0
+    # Width and lookup are planning controls; bytes bound live factor tables.
+    max_width: int=16
+    lookup_entries: int=8192
+    max_factor_bytes: int=128*1024*1024
 
     def __post_init__(self) -> None:
         if self.strategy not in ('enumerate', 'eliminate'):
             raise ValueError('Invalid leaf settings')
-        if self.limit <= 0 or self.micro_threshold < 0 or self.adaptive_limit < 0:
-            raise ValueError('Invalid leaf resource limits')
+        if (self.limit <= 0 or self.micro_threshold < 0 or self.adaptive_limit < 0
+                or self.max_width <= 0 or self.lookup_entries < 0
+                or self.max_factor_bytes <= 0):
+            raise ValueError('Invalid Leaf resource limits')
 
 @dataclass(frozen=True)
 class RecursionConfig:
@@ -98,6 +105,10 @@ class RecursionConfig:
     packet_memo_bytes: int=1024*1024
     prepared_packet_entries: int=0
     prepared_packet_bytes: int=8*1024*1024
+    child_cache: CachePolicy=field(default_factory=lambda: CachePolicy(
+        max_bytes=8*1024*1024, max_entries=128))
+    compiled_plans: CachePolicy=field(default_factory=lambda: CachePolicy(
+        max_bytes=8*1024*1024, max_entries=64))
 
     def __post_init__(self) -> None:
         if any(not isinstance(v,bool) for v in (self.child_plans,self.native_packet,self.native_leaf)):

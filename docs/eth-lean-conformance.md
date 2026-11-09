@@ -42,11 +42,30 @@ Run with:
 
     python -m pytest -q tests/eth/test_lean_source_conformance.py
 
-The tests are **Python interpretations of explicit Lean definitions**, not
-executions of Lean and not a cross-language proof. The byte vectors were
-manually derived from Encoding.lean and checked with an independent encoder.
-We have *not yet* compiled the upstream machine under the pinned Mathlib
-environment or obtained actual Lean execution traces of these inputs.
+The original 28 tests are **Python interpretations of explicit Lean
+definitions**, not execution of Lean. They are now complemented by an opt-in
+**real Lean 4.34.1 execution run**: a minimal pinned-Mathlib Lake overlay
+imports the **unchanged upstream source files** at the exact revision. The
+Lean source calls SAT.normalize, Encoding.encodeCNF, DisjointBranch.childA/B
+and the **counting** SparseCountProgram.step/run; a separate Python process
+compares every emitted encoded state and pointwise Boolean value.
+
+Run the pinned GitHub workflow `.github/workflows/lean-source-trace.yml`
+using workflow_dispatch or a branch `verify/lean-native-trace-*`. It builds
+the actual imported ETH modules, **not** the complete upstream Lake project
+and **not** the Final.lean primitive program. Its artifact retains the raw
+Lean traces; a test failure refuses rather than silently substituting a
+Python oracle.
+
+**Important algorithm distinction exposed by execution:** The upstream
+`ExecSparsifyWorklist` is a **satisfiability** worklist, which maintains
+the union of satisfying assignments but not their disjointness. For
+`(x1 OR x2) AND (x1 OR x3)`, its B-child is `x2 AND x3`, which overlaps
+A's `x1` assignments (4 + 2 > 5). The counting branch in
+`SqrtLogSpace/DisjointReuse/SparseCountProgram` instead constructs
+`NOT x1 AND x2 AND x3`; its A/B counts are 4+1=5. The counting
+program is the reference for all subsequent counting-DFS comparisons.
+This difference is preserved as a fast negative regression.
 
 ## Important differences still unresolved
 

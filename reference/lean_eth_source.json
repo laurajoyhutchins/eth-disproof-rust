@@ -11,6 +11,11 @@
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/Final.lean": "a69635a2492e06a26f2e33d4251edd1e21ba3332",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeOuter.lean": "627c28896b614f70916d020d837defec0f42914f",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/FiniteFallback.lean": "1fc8e1817b4f24d3255ef8fc398fb2127d214284",
-    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeLeafProgram.lean": "bdc142b5fec908abbf86355e02154444f4de8136"
-  }
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeLeafProgram.lean": "bdc142b5fec908abbf86355e02154444f4de8136",
+    "lean/OAI/Algorithms/SubexponentialSAT/ExecSparsifyWorklist.lean": "2eb73009358e6583628f19c9df2a0871bce0cddc",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DisjointReuse/SparseCountProgram.lean": "f53823cc760fc6241faffb6f7800d76696d5b7e0",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DisjointReuse/SparsePriority.lean": "2df6b343db6706134e409cf9e0035ed7391757af",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DisjointReuse/CNFNormalize.lean": "ef06070f3066e2c76aa5bbbcc6ad8f2f7e415a97"
+  },
+  "mathlib_commit": "d13f23b723b8a846827a245b89c10fc7d3f11612"
 }

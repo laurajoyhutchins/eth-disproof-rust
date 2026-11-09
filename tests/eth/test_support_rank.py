@@ -14,7 +14,7 @@ from non_exponential_sudoku.eth.construction import construct_bounded_designs
 from non_exponential_sudoku.eth.polynomial import ReplacementSystem
 from non_exponential_sudoku.eth.support_rank import (
     SupportRankLimits, minimax_uniform_support_order,
-    polynomial_cut_bound, polynomial_clause_supports,
+    polynomial_cut_bound, polynomial_clause_supports, uniform_support_profile,
 )
 from non_exponential_sudoku.eth.unfolding_rank import (
     RankLimits, crossing_pair_witness, minimax_unfolding_order,
@@ -152,3 +152,16 @@ def test_identity_path_has_uniform_rank_two_in_natural_order() -> None:
         for i in range(1, n)
     )
     assert minimax_uniform_support_order(formula).peak_rank_upper == 2
+
+
+@pytest.mark.checkpoint
+def test_large_identity_path_has_linear_cost_support_certificate() -> None:
+    # This is a symbolic factor-support fact, not a Boolean cube oracle.
+    n = 64
+    formula = CNFFormula(n, tuple((i, i + 1) for i in range(1, n)))
+    rank_profile = uniform_support_profile(formula, variable_order=tuple(range(n)))
+    assert len(rank_profile) == n - 1
+    assert max(cut.rank_upper for cut in rank_profile) == 2
+    assert sum(cut.crossing_factors for cut in rank_profile) == n - 1
+    with pytest.raises(ValueError, match="permutation"):
+        uniform_support_profile(formula, variable_order=(0, 0))

@@ -5,7 +5,8 @@ across interpolation points: only child topology may survive a center.
 """
 from __future__ import annotations
 
-from collections import OrderedDict
+from sys import getsizeof
+from ..runtime.cache import BudgetedLRU
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, cast
 
@@ -13,7 +14,7 @@ from ..core.algebra import v2
 from ..core.jets import NestedRing
 from ..core.lazy_coefficients import NestedCoords
 from ..core.modes import Mode, weighted_tuples
-from ..core.network import Network, TensorRing
+from ..core.network import Network, TensorRing, estimated_coefficient_bytes
 from ..core.packing import Packing
 from ..elimination.engine import ModeEliminator
 from ..elimination.factors import FactorKey
@@ -165,8 +166,9 @@ class DeformationExecution:
             cast('ContractionEngine', self), net, packing, modes,
             t, z, ring, depth, coordinate, context,
         )
-        child_cache: OrderedDict[tuple[int, tuple[int, ...]], NestedCoords] = OrderedDict()
-        cache_limit = 128
+        child_cache: BudgetedLRU[tuple[int, tuple[int, ...]], NestedCoords] = (
+            BudgetedLRU(self.config.recursion.child_cache))
+        value_bytes = estimated_coefficient_bytes(ring)
         groups = tuple(sorted(occupied))
         for index, assignment in enumerate(weighted_tuples(modes, ring.p)):
             if index >= self.config.mode.max_tuples:
@@ -177,19 +179,23 @@ class DeformationExecution:
             self.stats.skipped_empty_groups += packing.r - len(occupied)
             for group in groups:
                 key = (group, tuple(assignment[j] for j in affected[group]))
-                if key in child_cache:
+                child_value = child_cache.get(key)
+                if child_value is not None:
                     self.stats.child_cache_hits += 1
-                    child_value = child_cache[key]
-                    child_cache.move_to_end(key)
                 else:
                     child_value = child_evaluator.evaluate(group, assignment)
-                    child_cache[key] = child_value
-                    if len(child_cache) > cache_limit:
-                        child_cache.popitem(last=False)
+                    estimated = (128 + getsizeof(key) + getsizeof(key[1])
+                                 + sum(getsizeof(value) for value in key[1])
+                                 + value_bytes)
+                    child_cache.put(key, child_value, estimated)
+                self.stats.child_cache_peak_estimated_bytes = max(
+                    self.stats.child_cache_peak_estimated_bytes, child_cache.peak_bytes)
+                # Center-local counters are collected after the sum completes.
                 value = arithmetic.mul(value, child_value)
                 if value == ring.zero:
                     break
             result = arithmetic.add(result, value)
+        self.stats.child_cache_evictions += child_cache.evictions
         return result
 
     def _record_packet_statistics(self, context: EvaluationContext) -> None:

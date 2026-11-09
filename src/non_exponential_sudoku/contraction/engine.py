@@ -79,7 +79,14 @@ class ContractionEngine(DeformationExecution):
                 if self.cost_ledger is not None:
                     self.cost_ledger.native("native_leaf_elimination")
                 return native_recursive.eliminate_leaf(net,ring,self.config.leaf.limit)
-            return eliminate_leaf(net,ring,self.config.leaf.limit,plan=net.leaf_plan)
+            policy = self.config.leaf
+            plan = net.leaf_plan
+            if (plan is not None and (plan.max_width != policy.max_width
+                    or plan.lookup_budget != policy.lookup_entries)):
+                plan = None
+            return eliminate_leaf(
+                net, ring, policy.limit, max_width=policy.max_width,
+                plan=plan, max_factor_bytes=policy.max_factor_bytes)
         return net.direct(ring,self.config.leaf.limit)
 
     def params(self, depth: int, M: int) -> tuple[int, int, int, int]:

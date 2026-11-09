@@ -20,7 +20,7 @@ def sudoku_network(puzzle: Puzzle) -> Network:
     side = puzzle.side
 
     def decode(bits: tuple[int, ...], start: int) -> int:
-        return sum(bit << offset for offset, bit in enumerate(bits[start:start + width]))
+        return sum(int(bit) << offset for offset, bit in enumerate(bits[start:start + width]))
 
     def compile_oracle(vertex: DirectVertex) -> Vertex:
         # Compile a local Boolean tensor, not a full network assignment.

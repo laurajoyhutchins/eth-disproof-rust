@@ -248,3 +248,25 @@ without pretending it meets the literal manuscript schedule.
 This closes the **final-output coefficient-height** sublemma
 without closing any intermediate representation or source-totality
 premise. The full paper theorem acceptance remains **RED**.
+
+## Implicit spectral auxiliary coefficient heights
+
+The source-specific extension in [eth-implicit-spectral-height.md](eth-implicit-spectral-height.md)
+proves an independent, uniform rational-height bound for the **actual**
+implicit Walsh kernel, every `row_at` polynomial and every restricted
+exceptional projector entry. For parameters `r,Q,R` satisfying the
+source input domain, queried row numerator/denominator bit lengths are
+`O(Q log(Q+1) + R log(Q+1))`, independent of the virtual
+matrix dimension `D=r**(2Q)`. The occurrence transfer adds only
+`O(log(ell+1))` bits; its degree is at most `R-1`, and the
+expanded replacement has at most `n*ell*R` rational coefficients.
+The composed final-output bound can therefore be computed from the
+original CNF dimensions and spectral parameters **without generating
+that expanded replacement**.
+
+This settles a separate bit-height obligation for the source's
+implicit coefficient **values**, not its global construction cost.
+The current strict paper entrypoint still uses selector measurements;
+projected Gram/RREF transfer, balancing work, all recursive children,
+resource-cap non-refusal and large intermediate ranks need independent
+cost and totality proofs. The complete theorem acceptance remains RED.

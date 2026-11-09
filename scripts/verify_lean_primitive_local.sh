@@ -8,6 +8,7 @@ LEAN_UPSTREAM=/path/to/openai-math LEAN_CACHE_ROOT=/persistent/lean \
 Requires Lean 4.34.1, pinned upstream source and Mathlib, and matching Lake.
 LEAN_SKIP_CACHE_GET=1: use already-restored offline Mathlib cache.
 LEAN_BUILD_JOBS=2: limit concurrent compilation jobs.
+LEAN_TRACE_KIND=semantic (default) or primitive (when driver is present).
 No GitHub Actions runner is needed.
 HELP
   exit 0
@@ -98,18 +99,46 @@ if [[ ! "$JOBS" =~ ^[1-9][0-9]*$ ]]; then
   echo "LEAN_BUILD_JOBS must be a positive integer." >&2
   exit 2
 fi
-"$LAKE" build -j "$JOBS" OAI.Algorithms.SubexponentialSAT.SubexpNormalizationProgram \
-  2>&1 | tee "$OUT/normalizer-build.log"
-"$LAKE" build -j "$JOBS" OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.NativeTerminal \
-  2>&1 | tee "$OUT/terminal-build.log"
-"$LAKE" env "$LEAN" --run "$ROOT/reference/lean_primitive_trace.lean" \
+# Semantic counting DFS is already source-executed and verified upstream.
+# Primitive-mode execution is a separate, still-unverified contract.
+MODE="$(printenv LEAN_TRACE_KIND || echo semantic)"
+OUT="$OUT/$MODE"
+mkdir -p "$OUT"
+case "$MODE" in
+  semantic)
+    DRIVER="$ROOT/reference/lean_native_trace.lean"
+    COMPARATOR=scripts.compare_lean_trace
+    "$LAKE" build -j "$JOBS" \
+      OAI.Algorithms.SubexponentialSAT.Encoding \
+      OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointSparsify \
+      OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointReuse.SparseCountProgram \
+      2>&1 | tee "$OUT/build.log"
+    ;;
+  primitive)
+    DRIVER="$ROOT/reference/lean_primitive_trace.lean"
+    COMPARATOR=scripts.compare_lean_primitive
+    if [[ ! -f "$DRIVER" ]]; then
+      echo "Primitive trace driver not checked out; refusing fallback." >&2
+      exit 2
+    fi
+    "$LAKE" build -j "$JOBS" \
+      OAI.Algorithms.SubexponentialSAT.SubexpNormalizationProgram \
+      OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.NativeTerminal \
+      2>&1 | tee "$OUT/build.log"
+    ;;
+  *)
+    echo "Unsupported LEAN_TRACE_KIND: $MODE" >&2
+    exit 2
+    ;;
+esac
+"$LAKE" env "$LEAN" --run "$DRIVER" \
   > "$OUT/native-trace.txt" 2> "$OUT/native-stderr.txt"
 cd "$ROOT"
-PYTHONPATH="$ROOT/src:$ROOT" "$PY" -m scripts.compare_lean_primitive \
+PYTHONPATH="$ROOT/src:$ROOT" "$PY" -m "$COMPARATOR" \
   --input "$OUT/native-trace.txt" | tee "$OUT/comparison.txt"
 {
   echo "$VERSION"
-  echo "source=$SOURCE_SHA mathlib=$MATHLIB_HEAD"
+  echo "mode=$MODE source=$SOURCE_SHA mathlib=$MATHLIB_HEAD"
   sha256sum "$OUT/native-trace.txt"
 } > "$OUT/evidence.txt"
-echo "PASS: evidence at $OUT"
+echo "PASS: $MODE evidence at $OUT"

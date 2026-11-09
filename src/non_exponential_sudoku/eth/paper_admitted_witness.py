@@ -135,9 +135,18 @@ def virtual_unit_cnf_step5(
     sufficient("stronger_overview_12_D_squared_le_M",
                valid and 2 * bit_upper + (12).bit_length() <= lam,
                "the overview's stronger 12D**2 <= M condition")
-    exact("balancing_groups_inequality",
-          valid and (2 * Q * r * r).bit_length() <= lam,
-          "2Qr**2 <= 2**lambda, verified without constructing n")
+    group_value = 2 * Q * r * r
+    # x <= 2**lambda iff bit_length(x) <= lambda, or equality at
+    # x==2**lambda. Recognize equality by its one-set-bit property,
+    # never by materializing 2**lambda.
+    group_pass = (
+        group_value.bit_length() <= lam
+        or (group_value.bit_length() == lam + 1
+            and group_value > 0
+            and group_value & (group_value - 1) == 0)
+    )
+    exact("balancing_groups_inequality", valid and group_pass,
+          "2Qr**2 <= 2**lambda, exact comparison without constructing n")
     exact("spectral_tail_sufficient_inequality",
           valid and R * R >= 2048 * Q * nu,
           "integer sufficient binomial tail bound in paper Step 5")
@@ -147,8 +156,8 @@ def virtual_unit_cnf_step5(
     sufficient("taylor_order_at_most_half_n",
                valid and Q >= 6 * R,
                "q=floor(3nR/Q); 6R<=Q implies 2q<=n")
-    exact("hermite_unique_degree_3nR", Q >= 1,
-          "Q*(floor(3nR/Q)+1)>3nR for integer n and Q>=1")
+    exact("hermite_unique_degree_3nR", valid,
+          "Q*(floor(3nR/Q)+1)>3nR for defined paper parameters")
 
     return VirtualUnitStep5Witness(
         lambda_bits=lam, nu_bits=nu, r=r, Q=Q, R=R,

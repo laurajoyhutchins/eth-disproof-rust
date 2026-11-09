@@ -32,7 +32,8 @@ class ModeEliminator:
                  order: Literal['min_fill', 'min_states'] = 'min_states',
                  join_strategy: Literal['adaptive', 'sparse', 'enumerate'] = 'adaptive',
                  limits: ModeLimits | None = None,
-                 native_sparse: bool = True) -> None:
+                 native_sparse: bool = True,
+                 packet_row_caps: bool = False) -> None:
         if join_strategy not in ('adaptive','enumerate','sparse'):
             raise ValueError('Unknown mode factor join strategy')
         self.join_strategy=join_strategy
@@ -87,7 +88,8 @@ class ModeEliminator:
         self.polynomials=PolynomialOps(self.R,self.p,self.budget)
         self.factor_builder=FactorBuilder(modes=self.modes,factor_scopes=self.factor_scopes,
                 domains=self.domains,ring=self.R,stats=self.stats,
-                evaluate_child=self.evaluate_child,budget=self.budget)
+                evaluate_child=self.evaluate_child,budget=self.budget,
+                packet_row_caps=packet_row_caps)
         self.factors=self.factor_builder.factors
 
     def _guard_live(self) -> None:

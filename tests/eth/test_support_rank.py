@@ -141,6 +141,18 @@ def test_uniform_support_budget_refuses_without_fallback() -> None:
 
 
 @pytest.mark.checkpoint
+def test_coefficient_rank_oracle_refuses_unbounded_taylor_order() -> None:
+    from non_exponential_sudoku.eth.support_rank import coefficient_unfolding_rank
+
+    formula, replacements = crossing_pair_witness(1)
+    with pytest.raises(CapacityError, match="Taylor order"):
+        coefficient_unfolding_rank(
+            formula, replacements, center=0, order=20,
+            left_variables=(0,), max_order=4,
+        )
+
+
+@pytest.mark.checkpoint
 def test_identity_path_has_uniform_rank_two_in_natural_order() -> None:
     n = 6
     formula = CNFFormula(n, tuple((i, i + 1) for i in range(1, n)))

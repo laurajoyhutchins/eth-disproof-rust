@@ -20,7 +20,8 @@ from non_exponential_sudoku.sudoku.three_cnf import Puzzle
 from reference.generalized_bench import canonical_solution
 from reference.real_sudoku_bench import puzzles
 
-pytestmark = pytest.mark.checkpoint
+# Each test has one primary tier. Graph-isomorphism discovery is integration;
+# lightweight certificates remain in the per-commit checkpoint.
 
 
 def _all_four_by_four() -> tuple[tuple[int, ...], ...]:
@@ -38,6 +39,7 @@ def _all_four_by_four() -> tuple[tuple[int, ...], ...]:
     return tuple(answer)
 
 
+@pytest.mark.integration
 def test_empty_four_by_four_and_exact_reference() -> None:
     empty = Puzzle(2, (0,) * 16)
     assert len(_all_four_by_four()) == 288
@@ -52,6 +54,7 @@ def test_empty_four_by_four_and_exact_reference() -> None:
     assert geometry.stats.nontrivial_canonicalizations > 0
 
 
+@pytest.mark.integration
 def test_all_digits_fixed_but_suffix_graph_still_has_symmetry() -> None:
     solved = canonical_solution(2)
     # One clue for each digit. No nonidentity global digit permutation remains.
@@ -75,6 +78,7 @@ def test_all_digits_fixed_but_suffix_graph_still_has_symmetry() -> None:
     assert incidence.stats.peak_states_at_depth < baseline.stats.peak_states_at_depth
 
 
+@pytest.mark.checkpoint
 def test_automorphism_can_move_first_cell_because_we_cache_continuations() -> None:
     empty = Puzzle(2, (0,) * 16)
     initial = initial_domains(empty)
@@ -87,6 +91,7 @@ def test_automorphism_can_move_first_cell_because_we_cache_continuations() -> No
     assert count_suffix_graph(empty, mode='geometry').count == 288
 
 
+@pytest.mark.integration
 def test_randomized_counts_against_independent_four_by_four_enumeration() -> None:
     solutions = _all_four_by_four()
     rng = Random(20261108)
@@ -116,6 +121,7 @@ def test_randomized_counts_against_independent_four_by_four_enumeration() -> Non
         assert count_suffix_graph(puzzle, mode='incidence').count == count_frontier(puzzle).count
 
 
+@pytest.mark.integration
 def test_real_hard_9x9_no_false_positive_compression() -> None:
     _, puzzle, expected = next(item for item in puzzles()
                                if item[0] == '9x9-hard-unique')
@@ -127,6 +133,7 @@ def test_real_hard_9x9_no_false_positive_compression() -> None:
     assert geometric.stats.nontrivial_canonicalizations == 0
 
 
+@pytest.mark.checkpoint
 def test_invalid_automorphism_rejected_by_independent_certificate() -> None:
     # Two options with distinct triple-bit signatures. Swapping only one bit
     # cannot preserve the candidate hypergraph.
@@ -140,6 +147,7 @@ def test_invalid_automorphism_rejected_by_independent_certificate() -> None:
         _certify_suffix_action((0,), options, {0: 1}, tuple(range(48)))
 
 
+@pytest.mark.checkpoint
 def test_fail_closed_limits_and_input_validation() -> None:
     empty = Puzzle(2, (0,) * 16)
     with pytest.raises(FrontierCapacityError, match='memo state limit'):
@@ -166,6 +174,7 @@ def test_fail_closed_limits_and_input_validation() -> None:
         SuffixGraphLimits(max_generators=0)
 
 
+@pytest.mark.checkpoint
 def test_single_cell_and_contradictory_clue_inputs() -> None:
     assert count_suffix_graph(Puzzle(1, (0,)), mode='geometry').count == 1
     assert count_suffix_graph(Puzzle(1, (1,)), mode='incidence').count == 1
@@ -175,6 +184,7 @@ def test_single_cell_and_contradictory_clue_inputs() -> None:
         count_suffix_graph(Puzzle(2, (5,) + (0,) * 15))
 
 
+@pytest.mark.checkpoint
 def test_nearly_complete_generalized_sudoku() -> None:
     name, puzzle, expected = next(item for item in puzzles()
                                   if item[0] == '16x16-252-givens-two-solutions')
@@ -183,6 +193,7 @@ def test_nearly_complete_generalized_sudoku() -> None:
     assert count_suffix_graph(puzzle, mode='geometry').count == expected
 
 
+@pytest.mark.checkpoint
 def test_graph_mode_respects_explicit_search_limits() -> None:
     empty = Puzzle(2, (0,) * 16)
     bounded = count_suffix_graph(empty, mode='incidence', limits=SuffixGraphLimits(

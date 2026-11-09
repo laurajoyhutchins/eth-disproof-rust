@@ -127,3 +127,16 @@ def test_rank_oracle_rejects_implicit_exponential_work_and_invalid_inputs() -> N
         unfolding_rank(formula, replacements, at=1, left_variables=(0, 0))
     with pytest.raises(TypeError):
         unfolding_rank(formula, replacements, at=0.5, left_variables=(0,))
+
+
+@pytest.mark.integration
+def test_rank_experiment_is_source_stable_and_does_not_claim_a_solver_bound() -> None:
+    from benchmarks.eth.unfolding_rank import experiment
+
+    report = experiment(max_pairs=2)
+    assert report["status"] == "complete"
+    assert report["inputs_stable"] is True
+    assert len(report["constructed_samples"]) >= 1
+    assert report["pair_witnesses"][-1]["grouped_at_one"]["max_rank"] == 4
+    assert report["pair_witnesses"][-1]["interleaved_at_one"]["max_rank"] == 2
+    assert report["interpretation"]["worst_case"].startswith("no non-exponential")

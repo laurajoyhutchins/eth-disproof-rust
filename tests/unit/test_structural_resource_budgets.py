@@ -21,26 +21,30 @@ pytestmark = pytest.mark.checkpoint
 
 
 def test_mode_catalog_capacity_depends_on_bytes_not_global_mode_count() -> None:
-    # Each independent packet contributes two modes. There is no large factor
-    # here, despite the catalog having more than 2,000 modes.
+    # Valid packet orientation gives two nonzero b=0 modes at p=3.
+    # The synthetic geometry must agree with the paper's slot-bit convention;
+    # arbitrary opposite left/right labels can create invalid cross terms.
     packets = 1001
     edges = 2 * packets
     factors = [((edge,), {(0,): 1, (1,): 1}) for edge in range(edges)]
     net = simple_network(edges, factors, factors)
     packing = Packing(
-        groups_left=tuple((2 * (edge // 2) + 1,) for edge in range(edges)),
-        groups_right=tuple((2 * (edge // 2),) for edge in range(edges)),
+        groups_left=tuple((2 * (edge // 2) + (edge % 2),)
+                          for edge in range(edges)),
+        groups_right=tuple((2 * (edge // 2) + (1 - edge % 2),)
+                           for edge in range(edges)),
         packets=[Packet((2 * k, 2 * k + 1), ()) for k in range(packets)],
         r=2 * packets, a=1, max_load=2,
     )
     assert ModeConfig().max_modes is None
-    modes = mode_catalog(net, packing, 1, 2, ModeConfig().max_modes)
+    modes = mode_catalog(net, packing, 1, 3, ModeConfig().max_modes)
     assert len(modes) == 2 * packets
-    assert len({(mode.source, mode.target) for mode in modes}) == packets
+    # Slot orientation yields both directed group pairs per packet.
+    assert len({(mode.source, mode.target) for mode in modes}) == 2 * packets
     with pytest.raises(CapacityError, match='Mode catalog resource limit'):
-        mode_catalog(net, packing, 1, 2, max_modes=100)
+        mode_catalog(net, packing, 1, 3, max_modes=100)
     with pytest.raises(CapacityError, match='estimated-byte limit'):
-        mode_catalog(net, packing, 1, 2, max_catalog_bytes=1024)
+        mode_catalog(net, packing, 1, 3, max_catalog_bytes=1024)
 
 
 def _many_groups(n: int) -> tuple[CNFFormula, MeasurementDesign]:

@@ -141,15 +141,19 @@ def test_recursion_cache_policies_validate_at_construction() -> None:
         CachePolicy(max_bytes=10, max_entries=-1)
 
 
-def test_native_backend_does_not_silently_ignore_custom_leaf_policy() -> None:
+def test_native_backend_honors_custom_leaf_policy() -> None:
+    pytest.importorskip("native_recursive")
     net = _network()
     config = ContractorConfig(2, 9, schedule='micro',
                               leaf=LeafConfig(strategy='eliminate',
                                               micro_threshold=2,
-                                              max_width=2),
+                                              max_width=2, lookup_entries=0,
+                                              max_factor_bytes=128 * 1024),
                               recursion=RecursionConfig(native_leaf=True))
-    with pytest.raises(ValueError, match='Native leaf'):
-        ContractionEngine(config).contract(net)
+    assert ContractionEngine(config).contract(net)[0] == 4
+    tiny = replace(config, leaf=replace(config.leaf, max_factor_bytes=1))
+    with pytest.raises(CapacityError, match='Leaf factor memory'):
+        ContractionEngine(tiny).contract(net)
 
 
 def test_byte_budgets_do_not_change_exact_enumerated_deformation() -> None:

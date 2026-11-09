@@ -148,7 +148,7 @@ def test_native_kernel_calls_are_owned_by_the_active_frame() -> None:
             ledger.native("inner_kernel")
             ledger.native("inner_kernel")
     report = ledger.report()
-    assert report["schema_version"] == "1.1"
+    assert report["schema_version"] == "1.2"
     assert report["frame_tree_reconciled"] is True
     assert report["opaque_native_calls"] == {"inner_kernel": 2, "outer_kernel": 1}
     parent, child = report["frames"]
@@ -173,3 +173,116 @@ def test_ring_call_counters_store_tuples_and_preserve_json_labels() -> None:
     assert report["ring_call_totals"] == expected
     assert report["frames"][0]["ring_calls"] == expected
     assert json.loads(json.dumps(report))["ring_call_totals"] == expected
+
+
+def test_frame_timing_is_exclusive_and_partitions_by_phase() -> None:
+    ledger = CostLedger()
+    with ledger.frame(depth=0, wires=4, precision=7, ring_depth=0,
+                      schedule="micro"):
+        with ledger.phase("outer"):
+            with ledger.frame(depth=1, wires=1, precision=7, ring_depth=0,
+                              schedule="micro"):
+                with ledger.phase("inner"):
+                    sum(i * i for i in range(2_000))
+        with ledger.phase("after_child"):
+            sum(i * i for i in range(2_000))
+    report = ledger.report()
+    assert report["frame_tree_reconciled"]
+    outer, inner = report["frames"]
+    assert inner["inclusive_wall_ns"] == inner["exclusive_wall_ns"]
+    assert outer["child_wall_ns"] == inner["inclusive_wall_ns"]
+    assert outer["inclusive_wall_ns"] == (
+        outer["exclusive_wall_ns"] + inner["inclusive_wall_ns"])
+    for frame in (outer, inner):
+        assert frame["exclusive_wall_ns"] > 0
+        assert frame["inclusive_wall_ns"] >= frame["exclusive_wall_ns"]
+        assert sum(frame["exclusive_phase_wall_ns"].values()) == (
+            frame["exclusive_wall_ns"])
+    assert outer["exclusive_phase_wall_ns"]["outer"] > 0
+    assert outer["exclusive_phase_wall_ns"]["after_child"] > 0
+    assert inner["exclusive_phase_wall_ns"]["inner"] > 0
+    assert report["root_inclusive_wall_ns"] == outer["inclusive_wall_ns"]
+
+
+def test_frame_timing_reconciles_after_exception() -> None:
+    ledger = CostLedger()
+    with pytest.raises(ValueError, match="forced"):
+        with ledger.frame(depth=0, wires=3, precision=7, ring_depth=0,
+                          schedule="micro"):
+            with ledger.phase("failure"):
+                raise ValueError("forced")
+    report = ledger.report()
+    assert report["frame_tree_reconciled"] is True
+    assert report["frames"][0]["status"] == "failed"
+    assert report["frames"][0]["exclusive_phase_wall_ns"]["failure"] > 0
+
+
+def test_operand_geometry_counts_exact_bit_lengths_without_claiming_bit_cost() -> None:
+    from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
+    ring = Padic(3, modulus_polynomial(3), 9)
+    a = (1024, -3, 0)
+    b = (1, 7, 0)
+    ledger = CostLedger(observe_operand_bits=True)
+    with ledger.frame(depth=0, wires=1, precision=9,
+                      ring_depth=0, schedule="micro"):
+        result = ring.mul(a, b)
+        assert result == ring.mul(a, b)
+    report = ledger.report()
+    key = "orchestration/Padic.mul/p=9/e=3/q=1/depth=0"
+    observed = report["operand_geometry_totals"][key]
+    assert observed["calls"] == 2
+    assert observed["scalar_coordinates"] == 12
+    assert observed["max_scalar_bits"] == 11
+    assert observed["max_coordinates_per_call"] == 6
+    assert observed["sum_operand_bit_lengths"] == 2 * (11 + 2 + 1 + 3)
+    assert report["frames"][0]["operand_geometry"][key] == observed
+    assert report["frame_tree_reconciled"] is True
+    assert "bit-complexity" in report["scope"]
+
+
+def test_nested_jet_operand_geometry_does_not_pretend_to_count_native_ops() -> None:
+    from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
+    from non_exponential_sudoku.core.jets import JetRing
+    base = Padic(2, modulus_polynomial(2), 7)
+    jet = JetRing(base, 3)
+    a = (base.one, base.scalar(5), base.zero)
+    b = (base.one, base.zero, base.one)
+    ledger = CostLedger(observe_operand_bits=True)
+    with ledger.frame(depth=0, wires=1, precision=7,
+                      ring_depth=1, schedule="micro"):
+        output = jet.mul(a, b)
+    assert output == JetRing(base, 3).mul(a, b)
+    report = ledger.report()
+    key = "orchestration/JetRing.mul/p=7/e=2/q=3/depth=1"
+    assert report["operand_geometry_totals"][key]["calls"] == 1
+    assert report["operand_geometry_totals"][key]["scalar_coordinates"] == 12
+    assert report["frame_tree_reconciled"] is True
+    assert report["worst_case_subexponential_bound_proven"] is False
+
+
+def test_default_ledger_skips_operand_scans() -> None:
+    from non_exponential_sudoku.core.algebra import Padic, modulus_polynomial
+    ring = Padic(2, modulus_polynomial(2), 7)
+    ledger = CostLedger()
+    with ledger.frame(depth=0, wires=1, precision=7,
+                      ring_depth=0, schedule="micro"):
+        ring.add(ring.one, ring.one)
+    report = ledger.report()
+    assert report["operand_geometry_enabled"] is False
+    assert report["operand_geometry_totals"] == {}
+
+
+def test_timed_recursive_execution_matches_baseline() -> None:
+    # Small active fixture keeps the per-commit checkpoint bounded.
+    # Deep nested work is exercised by the separate opt-in cost study.
+    case = get_case("parity-2wire", "reference")
+    reference = ContractionEngine(case.config).contract(case.network)
+    ledger = CostLedger(observe_operand_bits=True)
+    observed = ContractionEngine(case.config, cost_ledger=ledger).contract(case.network)
+    report = ledger.report()
+    assert observed == reference
+    assert report["frame_tree_reconciled"]
+    assert report["root_inclusive_wall_ns"] > 0
+    assert sum(f["exclusive_wall_ns"] for f in report["frames"]) == (
+        report["root_inclusive_wall_ns"])
+    assert report["operand_geometry_totals"]

@@ -579,7 +579,8 @@ class PacketEntry:
             self.native = NativePacketTerms(
                 left_positions=tuple(geometry.port_map['Y', row] for row in self.rows),
                 row_cauchy=tuple(
-                    tuple((slot, self.cauchy[slot-row]) for slot, _ in right)
+                    tuple((position, self.cauchy[slot-row])
+                          for slot, position in right)
                     for row in self.rows
                 ),
                 contributions=tuple(self.terms.contributions[row] for row in self.rows),
@@ -641,7 +642,8 @@ class PacketEntry:
         return native_recursive.packet_evaluate(
             bits, cast(TensorRing, self.work_ring),
             native.left_positions, native.row_cauchy, native.contributions,
-            self.terms.desired, self.terms.tile_slots, native.right_positions,
+            self.terms.desired, self.terms.tile_bits, native.right_positions,
+            positions_are_bits=True,
         )
 
     def _evaluate_python(self, bits: tuple[int, ...]) -> Any:

@@ -107,7 +107,10 @@ class ComponentFactorization(unittest.TestCase):
         self.assertGreater(len(modes),size)
         c=ContractionEngine(ContractorConfig(size, p, schedule='geometry64', mode=ModeConfig(factorization='whole')))
         R=Padic(c.e,c.f,p)
-        with self.assertRaisesRegex(CapacityError,'factor size limit'):
+        # Sharpened valuations remove the previous artificial factor
+        # explosion. The whole route now reaches an independent leaf
+        # limit, while component factoring still completes exactly.
+        with self.assertRaisesRegex(CapacityError,'Direct leaf has 20 edges'):
             c.evaluate_deformation(net,packing,modes,1,R.basis(3),R,0)
         c=ContractionEngine(ContractorConfig(size, p, schedule='geometry64', mode=ModeConfig(factorization='components')))
         self.assertEqual(c.evaluate_deformation(net,packing,modes,1,R.basis(3),R,0),R.scalar(1<<size))

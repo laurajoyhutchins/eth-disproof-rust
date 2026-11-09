@@ -6,7 +6,26 @@ The executable companion is `reference/global_mode_support.py`; independent test
 
 ## 1. One positive-weight budget applies to the entire factor graph
 
-`mode_catalog` creates at most one mode of each weight `w=b+1` for each pair `(packet, y0)` (it may create fewer, or none). At an evaluated center `t`, write `i=v2(t)`, `P` for the number of packets, `L=2^a` slots, and `p(t)` for the 2-adic precision. There are exactly `2^(i+1)` possible values of `y0`, so for each weight there are **at most**
+`mode_catalog` creates at most one mode of each positive weight for each pair
+`(packet, y0)`. The original conservative bound was `w=b+1`.
+Production now uses the stronger **rowwise crossing-coefficient bound**.
+Let `a` be the packet slot exponent, `i=v2(t)`, and for a target
+row slot `x` and tile `y0` let `v=v2(t-y0+x)<=i`. The cross coefficient
+has an explicit factor `2^(a+1-v+b*(i+1-v))`. Thus a mode may use
+
+\[
+w_m=\min_{x\in\mathrm{target\ rows}}
+\bigl((a+1-v_x)+b(i+1-v_x)\bigr)
+=(a+1-v_{\max})+b(i+1-v_{\max}).
+\]
+
+The normalized Cauchy numerator and all remaining inverse-unit factors
+are 2-adically integral. A mode with `w_m>=p(t)` is identically zero
+and need not be generated. For each fixed packet and tile, this weight
+is strictly increasing in `b`, so there is still at most **one mode
+per positive weight**. The published colored-partition upper bound
+therefore remains valid, but actual admissible support can be much smaller.
+The original count `b+1` remains a safe but weaker lower bound. At an evaluated center `t`, write `i=v2(t)`, `P` for the number of packets, `L=2^a` slots, and `p(t)` for the 2-adic precision. There are exactly `2^(i+1)` possible values of `y0`, so for each weight there are **at most**
 
 \[
 K_i=P\,2^{i+1}
@@ -138,3 +157,18 @@ Independently, small **real** `pack()` and `mode_catalog()` results are checked 
 - **Sudoku input parameter:** for the current direct encoding `s=Theta(N log N)` in `N` cells, `2^{o(s)}` alone does not imply `2^{o(N)}`.
 
 The global acceptance test in `research_acceptance/test_complete_bit_recurrence.py` therefore **remains red**. This increment closes *global mode-factor state support*, not the whole worst-case complexity proof.
+
+
+### Finite falsification witness: four crossing wires
+
+At `a=2`, `t=1`, `p=5`, the independently generated legacy
+catalog and the valuation-pruned catalog both contain four `b=0`
+modes. Their weights change from `1` to `3`, so the admissible
+binary mode assignments fall from `16` to `5`. In
+`tests/unit/test_mode_valuation_pruning.py` the two paths agree
+exactly on concrete tensor contractions, not merely on tuple counts.
+Thus this is a verified elimination of **eleven mode products** in
+this finite example, not a proven runtime speedup or improved
+worst-case asymptotic exponent. The 16x16 forced precision-three
+catalog regression independently illustrates the stronger case in
+which all previously generated mode descriptors disappear.

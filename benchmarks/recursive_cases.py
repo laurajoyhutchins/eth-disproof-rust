@@ -22,6 +22,7 @@ VARIANTS={
         zero_support=ZeroSupportPolicy(enabled=True)),
     'packet':RecursionConfig(child_plans=False,native_packet=True),
     'leaf':RecursionConfig(child_plans=False,native_leaf=True),
+    'leaf-plans':RecursionConfig(child_plans=True,native_leaf=True),
     'combined':RecursionConfig(child_plans=True,native_packet=True,native_leaf=True),
     'memo':RecursionConfig(child_plans=False,packet_memo_entries=128),
     'memo-all':RecursionConfig(child_plans=True,native_packet=True,native_leaf=True,packet_memo_entries=128),

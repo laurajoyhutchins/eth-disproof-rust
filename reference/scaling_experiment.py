@@ -152,17 +152,20 @@ def check_topology_against_real_child(net: Network, coordinate: int = 0):
 
 
 def mode_catalog_projection(net: Network, packed, precision: int):
-    """Count the *exact* t=1 mode descriptors without constructing them.
+    """Independent exact count of t=1 modes, without constructing descriptors.
 
-    For i=v2(t)=0, y0 is 0 or 1. One mode exists for the constant
-    tile contribution, then p-2 additional modes iff the tile has a
-    nonzero j=(y-y0)//2 term. This mirrors mode_catalog exactly.
+    At i=v2(1)=0, every admissible crossing slot has v2(1-y0+x)=0.
+    Each nonzero b-mode therefore has certified weight (a+1)+b,
+    rather than the old b+1. The count is an arithmetic formula for
+    each tile; no coefficient arrays or p-sized mode list are needed.
     """
     owner_left={edge:j for j,v in enumerate(net.left) for edge in v.ports}
     owner_right={edge:j for j,v in enumerate(net.right) for edge in v.ports}
     total=0
     first_weight=0
-    explosive_tiles=0
+    high_tiles=0
+    base_weights=[]
+    a=packed.a
     for pkt in packed.packets:
         rows=[(x,edge,packed.groups_left[owner_left[edge]][0])
               for x,edge in enumerate(pkt.slots) if edge is not None]
@@ -173,19 +176,37 @@ def mode_catalog_projection(net: Network, packed, precision: int):
             if not tile: continue
             source=tile[0][2]
             assert all(g==source for _,_,g in tile)
-            targets=[g for _,_,g in rows if g!=source]
-            if not targets: continue
-            assert all(g==targets[0] for g in targets)
-            first_weight+=1
+            target_slots=[x for x,_,g in rows if g!=source]
+            if not target_slots: continue
+            assert all(g==next(g0 for x0,_,g0 in rows if x0==target_slots[0])
+                       for x,_,g in rows if x in target_slots)
+            # A valid crossing at i=0 has odd displacement, so v=0.
+            assert all((1-y0+x)%2 for x in target_slots)
+            base=a+1
             high=any(y>=2 for y,_,_ in tile)
-            explosive_tiles+=int(high)
-            total+=(precision-1 if high else 1)
+            high_tiles+=int(high)
+            if base>=precision: continue
+            # b=0,...,(p-1-base) when high; only b=0 otherwise.
+            count=precision-base if high else 1
+            total+=count
+            first_weight+=int(base==1)
+            base_weights.append(base)
+
+    # Select a small prefix of b=0 modes whose *joint* weight fits.
+    # Every subset of these modes is admissible (each has row cap >=1),
+    # so there are at least 2**prefix independent binary tuples.
+    weight_sum=0
+    binary_modes=0
+    for weight in sorted(base_weights):
+        if weight_sum+weight>=precision:break
+        weight_sum+=weight
+        binary_modes+=1
     return {'t':1,'precision_bits':precision,
             'exact_descriptor_count':total,
             'weight_one_modes':first_weight,
-            'high_order_tiles':explosive_tiles,
-            'at_least_binary_mode_tuple_log2': first_weight if first_weight<=precision-1 else None,
-            'reason':'When weight-one modes fit the budget, all 2^m binary assignments are legal; this is a lower bound, not a complete tuple enumeration'}
+            'high_order_tiles':high_tiles,
+            'at_least_binary_mode_tuple_log2':binary_modes,
+            'reason':'A prefix of independent b=0 modes has total certified weight below precision; its subsets yield a lower bound.'}
 
 def summarize_level(level: int, networks: list[Network], *, expand: bool=False,
                     full_packing: bool=True):

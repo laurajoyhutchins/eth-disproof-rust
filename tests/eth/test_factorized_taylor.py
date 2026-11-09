@@ -180,3 +180,16 @@ def test_factorized_optional_native_matches_python() -> None:
             formula, design, polynomial, at=center, order=1,
             summation='eliminate', backend='flint')
         assert native.coefficients == python.coefficients
+
+
+def test_dense_group_interactions_refuse_induced_width() -> None:
+    """A clique of interacting groups must not silently claim linear cost."""
+    formula = CNFFormula(12, tuple(
+        (2 * i + 1, 2 * j + 1) for i in range(6) for j in range(i + 1, 6)
+    ))
+    design = paired_groups(formula)
+    with pytest.raises(CapacityError, match='factor work'):
+        taylor_coefficients_separated(
+            formula, design, at=1, order=0, summation='eliminate',
+            limits=TaylorLimits(max_factor_work=1000, max_factor_entries=128),
+        )

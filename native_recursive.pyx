@@ -42,7 +42,21 @@ def packet_evaluate(tuple bits, object ring, tuple left_positions,
     bits_right=[0]*size
     for y,idx in right_positions:
         bits_right[y]=bits[idx]
-    if cap<=512:
+    if n==0:
+        # Common case: no target coefficients. Avoid constructing a dense
+        # one-state DP table, its per-row zero test, and a redundant ring.add.
+        # All source tile factors below still execute unchanged.
+        value=one
+        for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):
+            local=zero
+            for y,coef in row:
+                if bits_right[y]:
+                    local=add(local,coef)
+            const=local if bits[idx] else sub(one,local)
+            value=mul(value,const)
+            if value==zero:
+                break
+    elif cap<=512:
         states=[zero]*cap
         states[0]=one
         for x,(idx,row) in enumerate(zip(left_positions,row_cauchy)):

@@ -22,7 +22,7 @@ from non_exponential_sudoku.eth.tensor_jet import contract_certified_taylor
 from non_exponential_sudoku.runtime.budget import CapacityError
 
 
-@pytest.mark.checkpoint
+@pytest.mark.integration
 @pytest.mark.parametrize("family", ("independent", "path", "clique"))
 def test_family_count_is_independent_exact_oracle(family: str) -> None:
     formula, _, replacements = build_family(family, 2)

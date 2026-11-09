@@ -33,7 +33,7 @@ import json
 import time
 import tracemalloc
 from fractions import Fraction
-from typing import Any, Callable, Literal, TypeVar
+from typing import Any, Callable, Literal, TypeVar, cast
 
 from non_exponential_sudoku.eth import (
     CNFFormula, MeasurementDesign, Polynomial, ReplacementForm,
@@ -66,7 +66,7 @@ def theoretical_count(family: str, groups: int) -> int:
     if type(groups) is not int or groups < 2:
         raise ValueError("at least two two-variable groups required")
     if family == "independent":
-        return 3 ** groups
+        return cast(int, 3 ** groups)
     if family == "path":
         return _fibonacci(groups + 2) * (1 << groups)
     if family in ("clique", "alternating-path"):
@@ -74,7 +74,7 @@ def theoretical_count(family: str, groups: int) -> int:
     if family in ("matching-separated", "matching-paired"):
         if groups % 2 or groups < 4:
             raise ValueError("matching needs an even number of groups >= 4")
-        return 3 ** (groups // 2) * (1 << groups)
+        return cast(int, 3 ** (groups // 2)) * (1 << groups)
     raise ValueError("unknown CNF interaction family")
 
 
@@ -126,7 +126,7 @@ def build_family(
     identity = ReplacementSystem.identity(formula)
     replacement = ReplacementSystem(tuple(
         tuple(ReplacementForm(tuple(
-            Polynomial((1, Fraction(1, 7)))
+            Polynomial((Fraction(1), Fraction(1, 7)))
             if i == abs(literal) - 1 else poly
             for i, poly in enumerate(form.coefficients)
         )) for literal, form in zip(clause, forms))
@@ -308,13 +308,13 @@ def run_case(
                     formula, design, replacement, at=_CENTER,
                     order=order, summation=strategy, limits=taylor_limits,
                 )
-            result, basic = _measured(factor_evaluation)
-            if result is not None:
-                if not isinstance(result, TaylorResult):
+            factor_result, basic = _measured(factor_evaluation)
+            if factor_result is not None:
+                if not isinstance(factor_result, TaylorResult):
                     raise AssertionError("factor evaluator returned wrong result type")
-                stats = result.stats
+                stats = factor_result.stats
                 basic = _observed_rational_work(
-                    basic, factor_evaluation, result,
+                    basic, factor_evaluation, factor_result,
                     stats.jet_operations, stats.max_coefficient_bits,
                 )
                 basic.update({
@@ -329,9 +329,9 @@ def run_case(
                         stats.factor_entries_peak * (order + 1)),
                     "peak_bond_before_compression": None,
                     "peak_bond_after_compression": None,
-                    "coefficients": [str(c) for c in result.coefficients],
+                    "coefficients": [str(c) for c in factor_result.coefficients],
                 })
-                complete.append((method, result.coefficients))
+                complete.append((method, factor_result.coefficients))
         cases[method] = basic
 
     for method, coefficients in complete:

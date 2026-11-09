@@ -16,7 +16,7 @@ try:
     import native_sparse as _native_sparse
 except ImportError:
     _native_sparse = None  # type: ignore[assignment]
-from .factors import Factor, FactorBuilder, FactorKey, ChildFactor
+from .factors import Factor, FactorBuilder, FactorKey, ChildFactor, ZeroProver
 from .polynomial import PolynomialOps
 from .ordering import select_variable
 from ..runtime.budget import ModeBudget
@@ -31,7 +31,8 @@ class ModeEliminator:
                  order: Literal['min_fill', 'min_states'] = 'min_states',
                  join_strategy: Literal['adaptive', 'sparse', 'enumerate'] = 'adaptive',
                  limits: ModeLimits | None = None,
-                 native_sparse: bool = True) -> None:
+                 native_sparse: bool = True,
+                 prove_zero: ZeroProver | None = None) -> None:
         if join_strategy not in ('adaptive','enumerate','sparse'):
             raise ValueError('Unknown mode factor join strategy')
         self.join_strategy=join_strategy
@@ -86,7 +87,8 @@ class ModeEliminator:
         self.polynomials=PolynomialOps(self.R,self.p,self.budget)
         self.factor_builder=FactorBuilder(modes=self.modes,factor_scopes=self.factor_scopes,
                 domains=self.domains,ring=self.R,stats=self.stats,
-                evaluate_child=self.evaluate_child,budget=self.budget)
+                evaluate_child=self.evaluate_child,budget=self.budget,
+                prove_zero=prove_zero)
         self.factors=self.factor_builder.factors
 
     def _guard_live(self) -> None:

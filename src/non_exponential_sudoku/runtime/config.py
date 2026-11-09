@@ -100,15 +100,20 @@ class ZeroSupportPolicy:
     """Bounded opt-in proof of zero before an exact child contraction."""
 
     enabled: bool=False
+    pre_factor: bool=False
     max_child_edges: int=16
     max_vertex_arity: int=8
     max_support_rows: int=2048
+    max_mode_terms: int=2048
 
     def __post_init__(self) -> None:
         if type(self.enabled) is not bool:
             raise ValueError('Zero-support enabled must be Boolean')
+        if type(self.pre_factor) is not bool or (self.pre_factor and not self.enabled):
+            raise ValueError('Pre-factor support requires enabled Boolean policy')
         if any(type(x) is not int or x < 1 for x in (
             self.max_child_edges, self.max_vertex_arity, self.max_support_rows,
+            self.max_mode_terms,
         )):
             raise ValueError('Zero-support limits must be positive integers')
 
@@ -130,6 +135,8 @@ class RecursionConfig:
     valuation_structures: CachePolicy=field(default_factory=lambda: CachePolicy(
         max_bytes=8*1024*1024, max_entries=8))
     zero_support: ZeroSupportPolicy=field(default_factory=ZeroSupportPolicy)
+    pre_factor_support_cache: CachePolicy=field(default_factory=lambda: CachePolicy(
+        max_bytes=1024*1024, max_entries=16))
     # Optional contraction-wide cache retention; does not cap arithmetic RSS.
     shared_cache_bytes: int | None=None
 
@@ -148,6 +155,8 @@ class RecursionConfig:
             raise TypeError('Cache policies must be CachePolicy instances')
         if not isinstance(self.zero_support, ZeroSupportPolicy):
             raise TypeError('Zero-support policy must be ZeroSupportPolicy')
+        if not isinstance(self.pre_factor_support_cache, CachePolicy):
+            raise TypeError('Pre-factor support cache policy must be CachePolicy')
         if self.shared_cache_bytes is not None and (
             type(self.shared_cache_bytes) is not int or self.shared_cache_bytes < 1
         ):

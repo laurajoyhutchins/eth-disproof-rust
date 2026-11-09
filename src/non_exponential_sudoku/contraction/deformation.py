@@ -121,7 +121,8 @@ class DeformationExecution:
             self.stats.mode_dp_local_arity_after += exc.total
             raise CapacityError(str(exc)) from exc
 
-        if self.config.limits.max_child_contractions < self.config.limits.max_factor_states:
+        if (not self.config.recursion.zero_support.pre_factor
+                and self.config.limits.max_child_contractions < self.config.limits.max_factor_states):
             # Only refuse proven mandatory work; runtime guards stay authoritative.
             estimate = estimate_first_factor(
                 plan, modes, ring.p,
@@ -158,14 +159,31 @@ class DeformationExecution:
                 group, assignment, mode_indices=scope, component=component,
             )
 
-        return ModeEliminator(
-            modes, occupied, ring, child_for_local_modes, self.stats, CapacityError,
-            factor_scopes=plan.factor_scopes,
-            order=self.config.mode.order,
-            join_strategy=self.config.mode.join,
-            native_sparse=self.config.mode.native_sparse,
-            limits=self.config.limits,
-        ).run()
+        def prove_child_zero(factor_key: FactorKey, scope: tuple[int, ...],
+                             assignment: tuple[int, ...]) -> bool:
+            if plan.factor_scopes is None:
+                if not isinstance(factor_key, int):
+                    raise AssertionError('Whole-group factor key must be an integer')
+                group, component = factor_key, None
+            else:
+                if not isinstance(factor_key, tuple):
+                    raise AssertionError('Component factor key must be a pair')
+                group, component = factor_key[0], plan.components[factor_key]
+            return child_evaluator.prove_zero(
+                group, assignment, mode_indices=scope, component=component)
+
+        try:
+            return ModeEliminator(
+                modes, occupied, ring, child_for_local_modes, self.stats, CapacityError,
+                factor_scopes=plan.factor_scopes,
+                order=self.config.mode.order,
+                join_strategy=self.config.mode.join,
+                native_sparse=self.config.mode.native_sparse,
+                limits=self.config.limits,
+                prove_zero=(prove_child_zero if self.config.recursion.zero_support.pre_factor else None),
+            ).run()
+        finally:
+            child_evaluator.close_pre_factor()
 
     def _sum_modes(
         self, net: Network, packing: Packing, modes: list[Mode], t: int,

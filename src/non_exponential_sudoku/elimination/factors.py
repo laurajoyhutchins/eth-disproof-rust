@@ -12,6 +12,7 @@ from ..runtime.statistics import Counters
 
 FactorKey = int | tuple[int, int]
 ChildFactor = Callable[[FactorKey, tuple[int, ...], tuple[int, ...]], NestedCoords]
+ZeroProver = Callable[[FactorKey, tuple[int, ...], tuple[int, ...]], bool]
 
 @dataclass
 class Factor:
@@ -23,7 +24,8 @@ class FactorBuilder:
     def __init__(self, *, modes: Sequence[Mode],
                  factor_scopes: Mapping[FactorKey, tuple[int, ...]],
                  domains: Sequence[range], ring: NestedRing, stats: Counters,
-                 evaluate_child: ChildFactor, budget: ModeBudget) -> None:
+                 evaluate_child: ChildFactor, budget: ModeBudget,
+                 prove_zero: ZeroProver | None = None) -> None:
         self.modes=modes
         self.factor_scopes=factor_scopes
         self.domains=domains
@@ -31,6 +33,7 @@ class FactorBuilder:
         self.p=ring.p
         self.stats=stats
         self.evaluate_child=evaluate_child
+        self.prove_zero=prove_zero
         self.budget=budget
         self.max_states=budget.max_states
         self.CapacityError=budget.CapacityError
@@ -103,6 +106,8 @@ class FactorBuilder:
             tab: dict[tuple[int, ...], dict[int, NestedCoords]] = {}
             table_terms=0
             for assignment in self.admissible_scoped_assignments(scope, f'group {group}'):
+                if self.prove_zero is not None and self.prove_zero(group, scope, assignment):
+                    continue
                 self.budget.charge_child()
                 value=self.evaluate_child(group,scope,assignment)
                 if value!=self.R.zero:

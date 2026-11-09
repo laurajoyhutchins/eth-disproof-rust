@@ -204,7 +204,11 @@ def count_cnf_reference(
              if initial is not None else subtotal)
     if count.bit_length() > config.max_output_bits:
         raise CapacityError('ETH end-to-end count output bit limit')
-    if count > (1 << formula.nvars):
+    # Compare bit lengths first; avoid building a huge bound for inputs with
+    # many declared-but-unused variables.
+    bits = count.bit_length()
+    if (bits > formula.nvars + 1 or
+            (bits == formula.nvars + 1 and count != (1 << formula.nvars))):
         raise ArithmeticError('end-to-end count exceeds the declared Boolean cube')
     return ReferencePipelineResult(
         count=count, source_variables=formula.nvars,

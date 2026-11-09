@@ -178,3 +178,31 @@ def test_single_path_paper_bound_sums_all_future_packet_descriptors() -> None:
         paper_single_path_descriptor_bound(root_edges=3, root_vertices=-1)
     with pytest.raises(ValueError):
         paper_single_path_descriptor_bound(root_edges=3.0, root_vertices=1)  # type: ignore[arg-type]
+
+
+def test_generated_packet_name_bits_are_bounded_by_root_metadata_and_shrinkage() -> None:
+    root = _source()
+    source_names = sum(
+        8 * len(v.name.encode("utf-8")) for v in root.left + root.right
+    )
+    bound = paper_single_path_descriptor_bound(
+        root_edges=root.edges,
+        root_vertices=len(root.left) + len(root.right),
+        root_input_name_bits=source_names,
+    )
+    assert bound.max_visible_name_bits is not None
+    assert bound.max_visible_name_bits >= source_names
+    ring = Padic(3, modulus_polynomial(3), 9)
+    packing = pack(root, 2, 1)
+    child = make_child(root, packing, [], (), 1, ring.one, ring,
+                       packing.groups_left[0][0], 0)
+    child_name_bits = sum(
+        8 * len(v.name.encode("utf-8")) for v in child.left + child.right
+    )
+    assert child_name_bits <= bound.max_visible_name_bits
+    for wrong in (-1, 2.5, True):
+        with pytest.raises(ValueError):
+            paper_single_path_descriptor_bound(
+                root_edges=4, root_vertices=4,
+                root_input_name_bits=wrong,  # type: ignore[arg-type]
+            )

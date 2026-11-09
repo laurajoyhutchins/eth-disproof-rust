@@ -1,0 +1,26 @@
+name: Total exact bit model final adversarial gate
+on:
+  push:
+    branches:
+      - research/total-exact-bit-model
+    paths:
+      - .github/workflows/total-exact-bit-final-once.yml
+permissions:
+  contents: read
+jobs:
+  total:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install exact oracle and typing dependencies
+        run: python -m pip install -q -e '.[test,typecheck]'
+      - name: Strict typing
+        run: |
+          python -m mypy --strict --no-incremental reference/total_exact_cnf.py
+          python -m mypy --strict --no-incremental
+      - name: Exhaustive, randomized, fused-correspondence and dense obstruction tests
+        run: PYTHONPATH=src:. python -m pytest -x -q tests/unit/test_total_exact_cnf.py

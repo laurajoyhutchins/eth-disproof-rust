@@ -121,7 +121,6 @@ def evaluate_packet_deformation(
     net: Network, packing: Packing, t: int, z: NestedCoords,
     ring: TensorRing, *, max_width: int = 16,
     max_factor_bytes: int = 128*1024*1024,
-    plan: PacketFactorPlan | None = None,
 ) -> NestedCoords:
     """Evaluate the same F(t+2L*z) without summing mode assignments.
 
@@ -131,10 +130,11 @@ def evaluate_packet_deformation(
     """
     if max_factor_bytes < 1:
         raise ValueError("Packet factor memory budget must be positive")
-    if plan is None:
-        plan = compile_packet_deformation(net, packing, max_width=max_width)
-    elif plan.max_width != max_width:
-        raise ValueError("Incompatible packet factor plan width")
+    # Rebuild the structural plan for these exact inputs. Reusing a plan
+    # from a different packet partition would silently change the answer;
+    # a validated exact-plan cache may be introduced only with proof of
+    # full network and packing identity.
+    plan = compile_packet_deformation(net, packing, max_width=max_width)
     # Packet factors share one Cauchy kernel and differ only by slot labels.
     weights = cast(dict[int, NestedCoords], cauchy_values(
         t, z, cast(PacketRing, ring), 1 << packing.a,

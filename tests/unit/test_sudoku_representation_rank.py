@@ -62,10 +62,14 @@ def test_full_small_unit_boolean_matrix_has_predicted_gf2_rank() -> None:
 @pytest.mark.checkpoint
 def test_complement_witness_is_identity_without_dense_matrix() -> None:
     for n, k in ((4, 2), (9, 4), (16, 8)):
-        for prefix, suffix in subset_identity_witness(n, k, limit=12):
-            assert subset_factor_entry(n, k, prefix + suffix) == 1
+        witnesses = tuple(subset_identity_witness(n, k, limit=12))
+        for row, (prefix, _) in enumerate(witnesses):
+            for col, (_, suffix) in enumerate(witnesses):
+                # All off-diagonal entries vanish as well: this is
+                # an actual identity minor, not merely diagonal witnesses.
+                assert subset_factor_entry(n, k, prefix + suffix) == int(row == col)
             if len(prefix) >= 2:
-                broken = prefix[:-1] + (prefix[0],) + suffix
+                broken = prefix[:-1] + (prefix[0],) + witnesses[row][1]
                 assert subset_factor_entry(n, k, broken) == 0
 
 
@@ -119,3 +123,33 @@ def test_clues_change_oracles_not_raw_tensor_topology() -> None:
     for key in ("original_boolean_wires", "unit_arity_bits",
                 "projected_unit_cut_rank", "min_input_factor_width"):
         assert empty[key] == hard[key]
+
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("precision", (3, 5, 7))
+def test_mode_projection_matches_real_catalog_on_small_sudoku(precision: int) -> None:
+    # An independent *actual* catalog checks the arithmetic projection
+    # used by the large no-materialization audit.
+    from non_exponential_sudoku.sudoku.encoding import sudoku_network
+    from non_exponential_sudoku.sudoku.three_cnf import Puzzle
+    from non_exponential_sudoku.core.packing import pack
+    from non_exponential_sudoku.core.modes import mode_catalog
+    from reference.scaling_experiment import mode_catalog_projection
+
+    puzzle = Puzzle(2, (0,) * 16)
+    net = sudoku_network(puzzle)
+    geometry = pack(net, 64, 2)
+    counted = mode_catalog_projection(net, geometry, precision)
+    materialized = mode_catalog(net, geometry, 1, precision)
+    assert counted["exact_descriptor_count"] == len(materialized)
+    # Each selected b=0 mode supports an independent on/off choice,
+    # even if we never actually enumerate every combination.
+    assert counted["at_least_binary_mode_tuple_log2"] <= len(materialized)
+
+
+@pytest.mark.checkpoint
+@pytest.mark.parametrize("side,cut", ((0, 0), (4, -1), (4, 5)))
+def test_invalid_unit_cut_fails_closed(side: int, cut: int) -> None:
+    with pytest.raises(ValueError):
+        unit_subset_rank(side, cut)

@@ -52,7 +52,10 @@ def test_equality_clique_support_growth_is_not_dense_cartesian_growth():
         assert dense.steps[0].joined_scope == tuple(range(n))
         assert dense.steps[0].dense_domain == 1 << n
         assert support.steps[0].joined_scope == dense.steps[0].joined_scope
-        assert support.peak_nonzero_entries < (1 << n)
+        # The peak includes all still-live original factors and temporary
+        # joins, so only the induced *output support* is compared to 2**n.
+        assert support.steps[0].output_entries == 2
+        assert support.steps[0].output_entries < (1 << n)
         assert support.candidate_pairs < dense.candidate_assignments * n * n
 
 

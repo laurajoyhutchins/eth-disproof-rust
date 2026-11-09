@@ -206,3 +206,34 @@ Reproduce with
 The original `measurement_basis='selectors'` remains the default
 for exact differential comparison; selecting a dense representation
 with projected measurements is deliberately rejected.
+
+
+### Finite-size measurement rank obstruction
+
+An independent one-off GitHub run `42675396786` computed the **exact
+restricted projector rank**, without performing a full CNF count, for
+disjoint two-literal clauses and deterministic incidence schedules at
+fixed `r=2,Q=12,R=2`:
+
+| Declared variables | Minimum / maximum center rank | Maximum row L1 | Observed tau | Illustrative 1/(r*ceil(log2(n))) |
+|---:|---:|---:|---:|---:|
+| 4 | 4 / 4 | 1 | 1/2 | 1/4 |
+| 8 | 8 / 8 | 1 | 1/2 | 1/6 |
+| 16 | 16 / 16 | 1 | 1/2 | 1/8 |
+| 24 | 24 / 24 | 1 | 1/2 | 1/10 |
+
+The rowspace has full observed rank. **No exact change of measurement
+basis can lower its row count for these instances.** RREF reaches the
+minimum and unit vectors reach the minimum L1 norm, but the Taylor
+measurement-value loop retains `(2*D+1)^rank=3^n` work in this
+configuration. The paper's literal `n`-derived parameters are NOT
+admitted for these tiny formulas; the target column illustrates the
+shape of its `tau` bound, not an applicable theorem instance.
+
+The next mathematical bottleneck is therefore either a different
+low-rank construction with independently certified separation and
+the paper's quantitative rank limit, or an exact method to evaluate
+measurement-value sums without enumerating every value tuple.
+Merely encoding the projector more succinctly cannot reduce rank.
+The rank sweep is reproducible via
+`PYTHONPATH=src:. python -c "from benchmarks.eth.projector_probe import rank_audit; print(rank_audit())"`.

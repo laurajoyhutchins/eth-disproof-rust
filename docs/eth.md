@@ -408,8 +408,15 @@ connects the previously isolated exact operations:
 
 The return type contains a complete count and per-leaf evidence: branch path,
 preprocessed dimensions, restored contribution, execution method, center
-count, Taylor pair count, measurement tuples and coefficient-size observations.
-No partial count is returned if any leaf refuses.
+count, Taylor pair count, measurement tuples, peak factor scope and entries,
+total factor assignments and eliminations, and coefficient-size observations.
+Factor work is reported for each constructed leaf and is zero for the explicit
+0/1-variable base case. Peaks are per-center maxima; work is summed over
+centers. In particular, `measurement_tuples=0` with `summation='eliminate'`
+means the tuple evaluator was bypassed, **not** that exact counting was free.
+The factor counters measure algorithmic structure, not arbitrary-precision
+bit operations or process memory. No partial count is returned if any leaf
+refuses.
 
 To reproduce with a DIMACS file:
 

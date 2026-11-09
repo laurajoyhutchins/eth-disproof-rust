@@ -84,6 +84,10 @@ class ReferenceLeafEvidence:
     centers: int
     taylor_pairs: int
     measurement_tuples: int
+    factor_assignments_tested: int
+    factor_scope_peak: int
+    factor_entries_peak: int
+    factor_eliminations: int
     hermite_operations: int
     max_coefficient_bits: int
 
@@ -128,6 +132,7 @@ def _evaluate_leaf(
                             for mask in range(1 << reduced.nvars))
         method: Literal['two-assignment-base', 'certified-construction'] = 'two-assignment-base'
         centers = taylor_pairs = measurement_tuples = hermite_operations = max_bits = 0
+        factor_assignments_tested = factor_scope_peak = factor_entries_peak = factor_eliminations = 0
     else:
         construction = construct_bounded_designs(
             reduced, r=config.r, Q=config.Q, R=config.R,
@@ -149,8 +154,15 @@ def _evaluate_leaf(
         method = 'certified-construction'
         centers = len(reconstructed.taylor_data)
         taylor_pairs = sum(item.stats.taylor_pairs for item in reconstructed.taylor_data)
-        measurement_tuples = sum(item.stats.measurement_tuples
-                                 for item in reconstructed.taylor_data)
+        taylor_stats = tuple(item.stats for item in reconstructed.taylor_data)
+        measurement_tuples = sum(item.measurement_tuples for item in taylor_stats)
+        factor_assignments_tested = sum(item.factor_assignments_tested
+                                        for item in taylor_stats)
+        factor_scope_peak = max((item.factor_scope_peak for item in taylor_stats),
+                                default=0)
+        factor_entries_peak = max((item.factor_entries_peak for item in taylor_stats),
+                                  default=0)
+        factor_eliminations = sum(item.factor_eliminations for item in taylor_stats)
         hermite_operations = reconstructed.hermite_stats.rational_operations
         max_bits = max(
             (item.stats.max_coefficient_bits for item in reconstructed.taylor_data),
@@ -168,6 +180,10 @@ def _evaluate_leaf(
         reduced_count=reduced_count, contribution=contribution, method=method,
         centers=centers, taylor_pairs=taylor_pairs,
         measurement_tuples=measurement_tuples,
+        factor_assignments_tested=factor_assignments_tested,
+        factor_scope_peak=factor_scope_peak,
+        factor_entries_peak=factor_entries_peak,
+        factor_eliminations=factor_eliminations,
         hermite_operations=hermite_operations, max_coefficient_bits=max_bits,
     )
 

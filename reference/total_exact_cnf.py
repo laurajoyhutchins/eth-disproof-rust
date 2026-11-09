@@ -98,6 +98,7 @@ class TotalReferenceStats:
     operand_aware_bit_steps: int
     maximum_integer_bits: int
     peak_live_table_entries: int
+    peak_single_factor_entries: int
     peak_modelled_bit_cells: int
     log2_work_upper: int
     log2_storage_upper: int
@@ -127,6 +128,7 @@ class _Count:
         self.bit_steps = 0
         self.max_bits = 1
         self.peak_entries = 0
+        self.peak_single_factor_entries = 0
         self.peak_memory = 0
         self.clause_masks = 0
         self.bucket_masks = 0
@@ -165,6 +167,11 @@ class _Count:
     def storage(self, factors: list[_Dense], scratch: int = 0) -> None:
         entries = sum(len(f.values) for f in factors) + scratch
         self.peak_entries = max(self.peak_entries, entries)
+        self.peak_single_factor_entries = max(
+            self.peak_single_factor_entries,
+            scratch,
+            *(len(f.values) for f in factors),
+        )
         # Bit cells of values, address keys, factor metadata, input
         # clause literals, and temporary index/position arrays. This is
         # the abstract bit-string implementation, not Python object RSS.
@@ -194,6 +201,7 @@ class _Count:
             operand_aware_bit_steps=self.bit_steps,
             maximum_integer_bits=self.max_bits,
             peak_live_table_entries=self.peak_entries,
+            peak_single_factor_entries=self.peak_single_factor_entries,
             peak_modelled_bit_cells=self.peak_memory,
             log2_work_upper=self.bound.log2_work_upper,
             log2_storage_upper=self.bound.log2_storage_upper,

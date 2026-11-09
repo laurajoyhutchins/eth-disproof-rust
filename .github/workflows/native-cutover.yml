@@ -37,9 +37,12 @@ jobs:
           SUDOKU_BENCHMARK_ROUNDS: '7'
         run: |
           python -m pytest -q tests/benchmark/test_recursive_timing.py --benchmark-only --benchmark-save-data --benchmark-json=artifacts/native-recursive-timing.json
+      - name: Benchmark exact coefficient multiplication
+        run: |
+          python -m pytest -q tests/benchmark/test_native_ring_timing.py --benchmark-only --benchmark-save-data --benchmark-json=artifacts/native-ring-timing.json
       - name: Evaluate paired speedups
         run: |
-          python scripts/native_cutover_report.py artifacts/native-sparse-timing.json artifacts/native-recursive-timing.json --output artifacts/native-cutover-report.json
+          python scripts/native_cutover_report.py artifacts/native-sparse-timing.json artifacts/native-recursive-timing.json artifacts/native-ring-timing.json --output artifacts/native-cutover-report.json
       - name: Preserve native cutover evidence
         if: always()
         uses: actions/upload-artifact@v4

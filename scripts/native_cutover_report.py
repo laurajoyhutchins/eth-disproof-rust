@@ -13,6 +13,15 @@ from statistics import median
 from typing import Any
 
 PAIRS: tuple[tuple[str, str, str, str], ...] = (
+    ("scalar-e3-p17", "python", "cython", "ring-scalar"),
+    ("scalar-e12-p129", "python", "cython", "ring-scalar"),
+    ("scalar-e32-p521", "python", "cython", "ring-scalar"),
+    ("square-e3-p17", "python", "cython", "ring-square"),
+    ("square-e12-p129", "python", "cython", "ring-square"),
+    ("square-e32-p521", "python", "cython", "ring-square"),
+    ("dense-e3-p17", "python", "cython", "ring-dense"),
+    ("dense-e12-p129", "python", "cython", "ring-dense"),
+    ("dense-e32-p521", "python", "cython", "ring-dense"),
     ("sparse-grid3", "python", "cython", "sparse-elimination"),
     ("sparse-grid4", "python", "cython", "sparse-elimination"),
     ("dense-grid3", "python", "cython", "sparse-elimination"),

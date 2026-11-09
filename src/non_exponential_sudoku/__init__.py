@@ -11,5 +11,6 @@ from .runtime.work_trace import WorkTrace
 from .core.algebra import Padic, modulus_polynomial
 from .core.network import Network, Vertex, simple_network
 from .sudoku.encoding import sudoku_network
+from .sudoku.frontier import count_frontier, FrontierCapacityError, FrontierLimits, FrontierResult, FrontierStats
 
-__all__ = ['ContractionEngine', 'ContractorConfig', 'ModeConfig', 'ModeLimits', 'RecoveryConfig', 'PacketConfig', 'LeafConfig', 'RecursionConfig', 'CapacityError', 'CostLedger', 'WorkTrace', 'Padic', 'modulus_polynomial', 'Network', 'Vertex', 'simple_network', 'sudoku_network']
+__all__ = ['ContractionEngine', 'ContractorConfig', 'ModeConfig', 'ModeLimits', 'RecoveryConfig', 'PacketConfig', 'LeafConfig', 'RecursionConfig', 'CapacityError', 'CostLedger', 'WorkTrace', 'Padic', 'modulus_polynomial', 'Network', 'Vertex', 'simple_network', 'sudoku_network', 'count_frontier', 'FrontierCapacityError', 'FrontierLimits', 'FrontierResult', 'FrontierStats']

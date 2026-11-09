@@ -5,6 +5,7 @@ from .polynomial import Polynomial, ReferenceLimits, ReplacementForm, Replacemen
 from .design import CertifiedOccurrence, MeasurementCertificate, MeasurementDesign, certify_measurements
 from .evaluation import SeparatedLimits, SeparatedResult, SeparatedStats, evaluate_separated
 from .factor_width import FactorWidthAudit, audit_factor_width
+from .tensor_train import TensorLimits, TensorStats, TensorContractionResult, contract_certified_order_zero
 from .taylor import Jet, TaylorLimits, TaylorResult, TaylorStats, restricted_taylor_sum, taylor_coefficients_separated
 from .interpolation import HermiteDatum, HermiteLimits, HermiteResult, HermiteStats, ManualCountResult, HermiteOriginResult, OriginManualCountResult, interpolate_hermite, interpolate_origin_hermite, count_from_manual_designs, count_origin_from_manual_designs
 from .parameters import PaperParameters, PaperAdmission, PaperParametersUnavailable, derive_paper_parameters, audit_paper_bounds, audit_bounded_cnf
@@ -36,6 +37,10 @@ __all__ = [
     'evaluate_separated',
     'FactorWidthAudit',
     'audit_factor_width',
+    'TensorLimits',
+    'TensorStats',
+    'TensorContractionResult',
+    'contract_certified_order_zero',
     'Jet',
     'TaylorLimits',
     'TaylorResult',

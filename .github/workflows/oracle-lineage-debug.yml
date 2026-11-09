@@ -20,3 +20,5 @@ jobs:
         run: python -m mypy --strict --follow-imports=silent reference/oracle_lineage.py reference/whole_frame_recurrence.py
       - name: Isolated oracle-lineage and recurrence tests
         run: python -m pytest -q tests/unit/test_oracle_lineage.py tests/unit/test_whole_frame_recurrence.py tests/integration/test_oracle_lineage_recurrence.py --durations=15
+      - name: Attribute full checkpoint wall time
+        run: python -m pytest -q -m checkpoint --durations=40

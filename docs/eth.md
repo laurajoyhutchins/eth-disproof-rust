@@ -385,3 +385,49 @@ Reproduce using
 The research generator and its small exact oracle live in
 `benchmarks/eth/factor_width_obstruction.py` and
 `tests/eth/test_factor_width_obstruction.py`.
+
+## Bounded end-to-end executable path
+
+`count_cnf_reference(formula, config=ReferencePipelineConfig(...))` now
+connects the previously isolated exact operations:
+
+1. If the input exceeds the sparsifier's clause-width `k`, first apply
+   count-preserving width/occurrence reduction while recording the
+   removed-free-variable multiplier.
+2. Enumerate the **disjoint** sparsification leaves, stopping with an explicit
+   capacity refusal if the complete tree exceeds its configured budget.
+3. For **every** leaf, re-project free variables and apply parsimonious
+   width/occurrence reduction, since branching can add occurrences.
+4. With at least two active variables, construct and certify auxiliary
+   measurement designs, evaluate separated Taylor coefficients, and
+   reconstruct the exact count by Hermite interpolation. Never substitute
+   brute-force or Ganak on a failure.
+5. For zero or one active variables, use the explicitly reported 1- or
+   2-assignment base case. Restore all leaf multipliers, sum only after
+   successful leaf evaluation, then restore the initial multiplier.
+
+The return type contains a complete count and per-leaf evidence: branch path,
+preprocessed dimensions, restored contribution, execution method, center
+count, Taylor pair count, measurement tuples and coefficient-size observations.
+No partial count is returned if any leaf refuses.
+
+To reproduce with a DIMACS file:
+
+```bash
+python -m scripts.eth_reference
+python -m scripts.eth_reference --dimacs small.cnf --output evidence.json
+```
+
+A successful run writes `"status": "completed"`; capacity refusal emits
+`"status": "capacity_refusal"`, `count: null` and exits 2. The default
+threshold `M=2` is **experimental**, not the theorem's sparsification
+parameter. These are finite certified *reference* constructions, with
+potentially exponential work, strict resource limits, and no general
+non-refusal or subexponential running-time claim. The literal theorem
+admission remains a separate, fail-closed entrypoint.
+
+The optional `summation='eliminate'` path uses the independently
+certified group-factor elimination backend described above. The default
+`'tuples'` retains the original explicit measurement-reference evaluator.
+The CLI accepts `--summation eliminate`, and every result records the
+selected backend, summation and construction parameters.

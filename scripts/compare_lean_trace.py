@@ -1,4 +1,4 @@
-"""Compare direct Lean 4.34.1 execution with independently implemented Python.
+"""Compare source-defined Lean 4.34.1 counting-DFS states and CNF bits with Python.
 
 Accepts output from reference/lean_native_trace.lean, importing pinned
 openai/math source. Does not claim primitive machine or asymptotic refinement.
@@ -38,13 +38,11 @@ def expected() -> dict[str, str]:
         "negativeA": na,
         "negativeB": nb,
     }
-    def state(visits: int, pending: tuple[CNFFormula, ...],
-              leaves: tuple[CNFFormula, ...]) -> str:
-        return _bits(
-            _encode_nat(visits)
-            + _encode_list(pending, encode_lean_cnf)
-            + _encode_list(leaves, encode_lean_cnf)
-        )
+    def state(total: int, pending: tuple[tuple[CNFFormula, int], ...]) -> str:
+        def entry(item: tuple[CNFFormula, int]) -> tuple[bool, ...]:
+            formula, depth = item
+            return _encode_nat(depth) + encode_lean_cnf(formula)
+        return _bits(_encode_nat(total) + _encode_list(pending, entry))
 
     return {
         **{name: _bits(encode_lean_cnf(formula))
@@ -52,11 +50,11 @@ def expected() -> dict[str, str]:
         "truthSource": _truth(shared),
         "truthA": _truth(a),
         "truthB": _truth(b),
-        "dfs0": state(0, (shared,), ()),
-        "dfs1": state(1, (a, b), ()),
-        "dfs2": state(2, (b,), (a,)),
-        "dfs3": state(3, (), (b, a)),
-        "dfsRun": state(3, (), (b, a)),
+        "countDFS0": state(0, ((shared, 0),)),
+        "countDFS1": state(0, ((a, 1), (b, 1))),
+        "countDFS2": state(4, ((b, 1),)),
+        "countDFS3": state(5, ()),
+        "countDFSRun": state(5, ()),
     }
 
 

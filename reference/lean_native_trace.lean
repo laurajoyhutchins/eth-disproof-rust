@@ -1,7 +1,6 @@
 import OAI.Algorithms.SubexponentialSAT.Encoding
 import OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointSparsify
-import OAI.Algorithms.SubexponentialSAT.ExecSparsifyWorklist
-import OAI.Algorithms.SubexponentialSAT.ExecQuantitativeSparsify
+import OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointReuse.SparseCountProgram
 
 /-! Direct evaluation of upstream source definitions. The CI job checks out
 openai/math at the pinned revision. This file imports and calls that source;
@@ -42,46 +41,37 @@ private def truthString (F : SAT.CNF (Fin 3)) : String :=
 private def printCNF (name : String) {n : Nat} (F : SAT.CNF (Fin n)) : IO Unit :=
   IO.println (name ++ "|" ++ bitString (Encoding.encodeCNF F))
 
-/-- These are actual executable finite-list DFS transitions from upstream
-ExecSparsifyWorklist.step, not a reimplementation and not primitive
-BitProgram instruction traces. The explicit visit counter makes the finite
-three-step trace observable. -/
-private abbrev WorkFormula := ExecSparsifyWorklist.Formula 3
 
-private def workInput : WorkFormula :=
-  ExecQuantitativeSparsify.formulaList shared
+/-- Exact-count DFS transitions from the actual upstream SparseCountProgram.
+Unlike the satisfiability-only ExecSparsifyWorklist, this program's childB
+contains negated core units and its branch partition is pairwise disjoint.
+The semantic leaf step invokes the finite SAT.count specification: it is not
+the primitive counting-machine execution. -/
+private abbrev CountState := SparseCountProgram.State 3
 
-private def threshold : Nat → Nat := fun _ => 2
-private theorem threshold_ok : ∀ d, 2 ≤ d → 2 ≤ threshold d := by
-  intro _ _
-  exact Nat.le_refl 2
+private def countStart : CountState :=
+  SparseCountProgram.initial shared
 
-private def splitting : ExecSparsifyWorklist.Branching WorkFormula :=
-  ExecSparsifyWorklist.executableBranching threshold 3 threshold_ok
+private def countStep1 : CountState :=
+  SparseCountProgram.step 2 countStart
 
-private def beginning : ExecSparsifyWorklist.State WorkFormula :=
-  ExecSparsifyWorklist.initial
-    (ExecSparsifyWorklist.normalizedInput workInput)
+private def countStep2 : CountState :=
+  SparseCountProgram.step 2 countStep1
 
-private def workStep1 : ExecSparsifyWorklist.State WorkFormula :=
-  ExecSparsifyWorklist.step splitting.split beginning
+private def countStep3 : CountState :=
+  SparseCountProgram.step 2 countStep2
 
-private def workStep2 : ExecSparsifyWorklist.State WorkFormula :=
-  ExecSparsifyWorklist.step splitting.split workStep1
+private def countRun : CountState :=
+  SparseCountProgram.run 2 3 countStart
 
-private def workStep3 : ExecSparsifyWorklist.State WorkFormula :=
-  ExecSparsifyWorklist.step splitting.split workStep2
+private def countStateBits (s : CountState) : List Bool :=
+  Encoding.encodeNat s.total ++
+    Encoding.encodeList
+      (fun e => Encoding.encodeNat e.depth ++ Encoding.encodeCNF e.formula)
+      s.pending
 
-private def workRun : ExecSparsifyWorklist.State WorkFormula :=
-  ExecSparsifyWorklist.execute threshold 3 threshold_ok workInput
-
-private def stateBits (s : ExecSparsifyWorklist.State WorkFormula) : List Bool :=
-  Encoding.encodeNat s.visits ++
-    Encoding.encodeList (fun f => Encoding.encodeCNF (ExecCNF.formulaSet f)) s.pending ++
-    Encoding.encodeList (fun f => Encoding.encodeCNF (ExecCNF.formulaSet f)) s.leaves
-
-private def printState (name : String) (s : ExecSparsifyWorklist.State WorkFormula) : IO Unit :=
-  IO.println (name ++ "|" ++ bitString (stateBits s))
+private def printCountState (name : String) (s : CountState) : IO Unit :=
+  IO.println (name ++ "|" ++ bitString (countStateBits s))
 
 
 def main : IO Unit := do
@@ -96,11 +86,11 @@ def main : IO Unit := do
   IO.println ("truthSource|" ++ truthString shared)
   IO.println ("truthA|" ++ truthString (DisjointBranch.childA shared 2 ({pos 0} : SAT.Clause (Fin 3))))
   IO.println ("truthB|" ++ truthString (DisjointBranch.childB shared 2 ({pos 0} : SAT.Clause (Fin 3))))
-  printState "dfs0" beginning
-  printState "dfs1" workStep1
-  printState "dfs2" workStep2
-  printState "dfs3" workStep3
-  printState "dfsRun" workRun
+  printCountState "countDFS0" countStart
+  printCountState "countDFS1" countStep1
+  printCountState "countDFS2" countStep2
+  printCountState "countDFS3" countStep3
+  printCountState "countDFSRun" countRun
 
 end SourcePinnedTrace
 

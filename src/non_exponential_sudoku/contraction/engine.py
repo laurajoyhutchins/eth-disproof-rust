@@ -252,14 +252,18 @@ class ContractionEngine(DeformationExecution):
                     else:
                         Rp = Padic(self.e,self.f,pt)
                     key = (i, pt)
-                    modes = factor_plan_cache.get_modes(net, packing, i, pt)
-                    if modes is None:
-                        modes = mode_catalog(
-                            net, packing, t, pt, self.config.mode.max_modes,
-                            max_catalog_bytes=self.config.limits.max_estimated_bytes)
-                        factor_plan_cache.store_modes(net, packing, modes, i, pt)
-                        if self.cost_ledger is not None:
-                            self.cost_ledger.charge("modes_catalogued", len(modes))
+                    if self.config.mode.strategy == 'packet_eliminate':
+                        modes: list[Mode] = []
+                    else:
+                        cached_modes = factor_plan_cache.get_modes(net, packing, i, pt)
+                        if cached_modes is None:
+                            cached_modes = mode_catalog(
+                                net, packing, t, pt, self.config.mode.max_modes,
+                                max_catalog_bytes=self.config.limits.max_estimated_bytes)
+                            factor_plan_cache.store_modes(net, packing, cached_modes, i, pt)
+                            if self.cost_ledger is not None:
+                                self.cost_ledger.charge("modes_catalogued", len(cached_modes))
+                        modes = cached_modes
                     if self.cost_ledger is not None and center_record is not None:
                         center_record.mode_count = len(modes)
                     if self.config.recovery.method == 'jet':

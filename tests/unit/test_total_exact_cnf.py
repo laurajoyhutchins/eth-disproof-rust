@@ -175,3 +175,28 @@ def test_real_sudoku_reduction_is_admitted_symbolically_not_enumerated() -> None
     assert ceiling.log2_work_upper > board.nvars
     assert ceiling.log2_storage_upper > board.nvars
     assert board.nvars > 16
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("half", (2, 3, 4, 5))
+def test_complete_bipartite_formula_forces_exponential_dense_table(
+    half: int,
+) -> None:
+    """A low-information, easy formula still forces 2**(n/2) materialization.
+
+    All (x_i OR y_j) clauses together mean: all X true, or all Y
+    true. Counting is elementary (2**(k+1)-1), but the first x-variable
+    elimination forms a dense table indexed by *all* k y-variables.
+    This is a lower bound for THIS fixed-order dense representation,
+    not a #SAT hardness claim.
+    """
+    clauses = tuple((i + 1, half + j + 1)
+                    for i in range(half) for j in range(half))
+    formula = CNFFormula(2 * half, clauses)
+    actual = count_total_reference(formula)
+    assert actual.count == (1 << (half + 1)) - 1
+    assert actual.count == count_bruteforce(formula)
+    assert actual.stats.peak_single_factor_entries >= (1 << half)
+    assert actual.stats.peak_modelled_bit_cells.bit_length() <= (
+        actual.stats.log2_storage_upper
+    )

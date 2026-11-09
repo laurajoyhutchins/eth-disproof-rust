@@ -187,15 +187,16 @@ class DeformationExecution:
                     estimated = (128 + getsizeof(key) + getsizeof(key[1])
                                  + sum(getsizeof(value) for value in key[1])
                                  + value_bytes)
+                    before_evictions = child_cache.evictions
                     child_cache.put(key, child_value, estimated)
+                    self.stats.child_cache_evictions += (
+                        child_cache.evictions - before_evictions)
                 self.stats.child_cache_peak_estimated_bytes = max(
                     self.stats.child_cache_peak_estimated_bytes, child_cache.peak_bytes)
-                # Center-local counters are collected after the sum completes.
                 value = arithmetic.mul(value, child_value)
                 if value == ring.zero:
                     break
             result = arithmetic.add(result, value)
-        self.stats.child_cache_evictions += child_cache.evictions
         return result
 
     def _record_packet_statistics(self, context: EvaluationContext) -> None:

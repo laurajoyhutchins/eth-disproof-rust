@@ -10,7 +10,7 @@ steps:
         python -m scripts.cloudbuild_ci validate --expected-sha '${COMMIT_SHA}'
         python -m pip install --disable-pip-version-check -e '.[test,typecheck]'
         python -m mypy --strict --no-incremental
-        python -m mypy --strict --follow-imports=silent scripts/evidence.py scripts/verify.py scripts/change_impact.py scripts/shard_contract.py scripts/aggregate_checkpoint.py scripts/cost_ledger.py build_native.py
+        python -m mypy --strict --follow-imports=silent scripts/evidence.py scripts/verify.py scripts/change_impact.py scripts/shard_contract.py scripts/aggregate_checkpoint.py scripts/cost_ledger.py scripts/cloudbuild_ci.py build_native.py
         python -m scripts.cloudbuild_ci checkpoint --expected-sha '${COMMIT_SHA}'
 artifacts:
   objects:

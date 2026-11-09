@@ -168,6 +168,41 @@ implementation. Especially at the first paper-active
 The tests never assert finite-parameter `log2(T)<s` as a substitute for the
 asymptotic proof.
 
+## Oracle descriptor and inherited-name accounting (new local closure)
+
+`reference/oracle_lineage.py` now checks the source-level invariant for
+both direct and compiled child construction: retained vertex oracles are
+identical callable references, not recursive wrappers, and new packet
+oracles are locally prepared `PacketEntry` objects. For one successful
+paper path, nonempty packet ownership and the live `3M/32` child shrinkage
+give
+
+\[
+V_d\le V_0+\lfloor 32M_0/29\rfloor.
+\]
+
+New source-generated names are precisely `packet:{k}:g{group}`, where
+`k<M_0` and `group<64`. With `D_0` bits of input vertex names, their
+aggregate visible UTF-8 name payload is at most
+
+\[
+D_d\le D_0+
+ 8\lfloor32M_0/29\rfloor
+ (15+\max(1,\operatorname{bitlength}(M_0))).
+\]
+
+`assemble_paper_recurrence` now passes this path-wide name bound into
+**every** child preparation cost envelope. Previously it reused only
+`D_0` at subsequent depths, which could undercount generated packet
+names. The model exposes both descriptor and name-bit ceilings, and
+refuses to derive a valid theorem from them alone.
+
+These bounds concern **one execution path's visible references and name
+strings**, not the total number of sibling child constructions, transitive
+object memory, or the cost of invoking inherited arbitrary callbacks. They
+do not eliminate the original input-oracle cost premise. See
+[oracle-lineage-proof.md](oracle-lineage-proof.md).
+
 ## 5. Missing certificates and concrete negative evidence
 
 The integrated proof checker reports these **unclosed** obligations:

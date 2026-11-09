@@ -8,7 +8,6 @@ import pytest
 
 from non_exponential_sudoku.runtime.config import ContractorConfig, ModeConfig
 from reference.precision_envelope import paper_frame_envelopes
-from reference.oracle_lineage import paper_single_path_descriptor_bound
 from reference.whole_frame_recurrence import (
     OPEN_PREMISES,
     UnclosedRecurrence,

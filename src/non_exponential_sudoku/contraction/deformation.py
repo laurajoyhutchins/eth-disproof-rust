@@ -6,7 +6,7 @@ across interpolation points: only child topology may survive a center.
 from __future__ import annotations
 
 from sys import getsizeof
-from ..runtime.cache import BudgetedLRU
+from ..runtime.cache import BudgetedLRU, SharedCacheBudget
 from contextlib import nullcontext
 from typing import TYPE_CHECKING, cast
 
@@ -39,6 +39,7 @@ class DeformationExecution:
     cost_ledger: CostLedger | None
     work_trace: WorkTrace | None
     config: ContractorConfig
+    shared_cache: SharedCacheBudget | None
 
     def evaluate_deformation(
         self, net: Network, packing: Packing, modes: list[Mode], t: int,
@@ -64,6 +65,7 @@ class DeformationExecution:
             packet_memo_bytes=self.config.recursion.packet_memo_bytes,
             prepared_packet_entries=self.config.recursion.prepared_packet_entries,
             prepared_packet_bytes=self.config.recursion.prepared_packet_bytes,
+            shared_cache=self.shared_cache,
             work_trace=self.work_trace,
         )
         occupied = {labels[coordinate] for labels in packing.groups_left + packing.groups_right}
@@ -167,37 +169,41 @@ class DeformationExecution:
             t, z, ring, depth, coordinate, context,
         )
         child_cache: BudgetedLRU[tuple[int, tuple[int, ...]], NestedCoords] = (
-            BudgetedLRU(self.config.recursion.child_cache))
-        value_bytes = estimated_coefficient_bytes(ring)
-        groups = tuple(sorted(occupied))
-        for index, assignment in enumerate(weighted_tuples(modes, ring.p)):
-            if index >= self.config.mode.max_tuples:
-                raise CapacityError('Mode tuple resource limit')
-            self.stats.mode_tuples += 1
-            charge('mode_tuples_enumerated')
-            value = ring.one
-            self.stats.skipped_empty_groups += packing.r - len(occupied)
-            for group in groups:
-                key = (group, tuple(assignment[j] for j in affected[group]))
-                child_value = child_cache.get(key)
-                if child_value is not None:
-                    self.stats.child_cache_hits += 1
-                else:
-                    child_value = child_evaluator.evaluate(group, assignment)
-                    estimated = (128 + getsizeof(key) + getsizeof(key[1])
-                                 + sum(getsizeof(value) for value in key[1])
-                                 + value_bytes)
-                    before_evictions = child_cache.evictions
-                    child_cache.put(key, child_value, estimated)
-                    self.stats.child_cache_evictions += (
-                        child_cache.evictions - before_evictions)
-                self.stats.child_cache_peak_estimated_bytes = max(
-                    self.stats.child_cache_peak_estimated_bytes, child_cache.peak_bytes)
-                value = arithmetic.mul(value, child_value)
-                if value == ring.zero:
-                    break
-            result = arithmetic.add(result, value)
-        return result
+            BudgetedLRU(self.config.recursion.child_cache, shared=self.shared_cache))
+        try:
+            value_bytes = estimated_coefficient_bytes(ring)
+            groups = tuple(sorted(occupied))
+            for index, assignment in enumerate(weighted_tuples(modes, ring.p)):
+                if index >= self.config.mode.max_tuples:
+                    raise CapacityError('Mode tuple resource limit')
+                self.stats.mode_tuples += 1
+                charge('mode_tuples_enumerated')
+                value = ring.one
+                self.stats.skipped_empty_groups += packing.r - len(occupied)
+                for group in groups:
+                    key = (group, tuple(assignment[j] for j in affected[group]))
+                    child_value = child_cache.get(key)
+                    if child_value is not None:
+                        self.stats.child_cache_hits += 1
+                    else:
+                        child_value = child_evaluator.evaluate(group, assignment)
+                        estimated = (128 + getsizeof(key) + getsizeof(key[1])
+                                     + sum(getsizeof(value) for value in key[1])
+                                     + value_bytes)
+                        before_evictions = child_cache.evictions
+                        child_cache.put(key, child_value, estimated)
+                        self.stats.child_cache_evictions += (
+                            child_cache.evictions - before_evictions)
+                    self.stats.child_cache_peak_estimated_bytes = max(
+                        self.stats.child_cache_peak_estimated_bytes, child_cache.peak_bytes)
+                    value = arithmetic.mul(value, child_value)
+                    if value == ring.zero:
+                        break
+                result = arithmetic.add(result, value)
+            return result
+
+        finally:
+            child_cache.clear()
 
     def _record_packet_statistics(self, context: EvaluationContext) -> None:
         """Collect a center's metrics even if evaluation refused mid-center."""
@@ -213,6 +219,7 @@ class DeformationExecution:
                 self.stats.prepared_packet_peak_estimated_bytes, cache.peak_bytes,
             )
             self.stats.prepared_packet_oversize_skips += cache.skipped_oversize
+            self.stats.prepared_packet_shared_budget_skips += cache.skipped_shared_budget
             # A prepared packet points back to its center. Break that cycle
             # as soon as the synchronous deformation has completed, rather
             # than retaining coefficient rings until cyclic GC runs.
@@ -221,10 +228,14 @@ class DeformationExecution:
             self.stats.packet_entry_memo_hits += context.memo.hits
             self.stats.packet_entry_memo_misses += context.memo.misses
             self.stats.packet_entry_memo_evictions += context.memo.evictions
+            self.stats.packet_entry_memo_shared_budget_skips += (
+                context.memo.skipped_shared_budget
+            )
             self.stats.packet_entry_memo_peak_estimated_bytes = max(
                 self.stats.packet_entry_memo_peak_estimated_bytes,
                 context.memo.peak_bytes,
             )
+            context.memo.clear()
         if context.lazy_ring is None:
             return
         lazy = context.lazy_ring

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
+from ..runtime.cache import SharedCacheBudget, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from types import MappingProxyType
@@ -164,7 +165,10 @@ class BoundedPacketMemo:
     values from another interpolation center or coefficient precision.
     """
 
-    def __init__(self, ring: TensorRing, entries: int, max_bytes: int) -> None:
+    def __init__(
+        self, ring: TensorRing, entries: int, max_bytes: int,
+        *, shared: SharedCacheBudget | None = None,
+    ) -> None:
         coordinates = ring.e
         nested: TensorRing = ring
         while isinstance(nested, JetRing):
@@ -173,6 +177,9 @@ class BoundedPacketMemo:
         self.entry_bytes = max(1, coordinates) * ((ring.p + 7) // 8 + 40) + 128
         self.max_bytes = max_bytes
         self.max_entries = entries if self.entry_bytes <= max_bytes else 0
+        self.shared = shared
+        self._owner = object()
+        self.skipped_shared_budget = 0
         self._values: OrderedDict[tuple[object, ...], NestedCoords] = OrderedDict()
         self.live_bytes = 0
         self.peak_bytes = 0
@@ -199,9 +206,21 @@ class BoundedPacketMemo:
             self._values.popitem(last=False)
             self.live_bytes -= self.entry_bytes
             self.evictions += 1
+        if self.shared is not None and not self.shared.try_set(
+            self._owner, self.live_bytes + self.entry_bytes
+        ):
+            self.shared.try_set(self._owner, self.live_bytes)
+            self.skipped_shared_budget += 1
+            return
         self._values[key] = value
         self.live_bytes += self.entry_bytes
         self.peak_bytes = max(self.peak_bytes, self.live_bytes)
+
+    def clear(self) -> None:
+        self._values.clear()
+        self.live_bytes = 0
+        if self.shared is not None:
+            self.shared.release(self._owner)
 
 
 def _prepared_owned_bytes(key: tuple[object, ...], entry: PacketEntry) -> int:
@@ -242,11 +261,17 @@ class PreparedPacketCache:
     owned by the LRU. Every retained entry is accounted before insertion.
     """
 
-    def __init__(self, limit: int, max_bytes: int = 8*1024*1024) -> None:
+    def __init__(
+        self, limit: int, max_bytes: int = 8*1024*1024, *,
+        shared: SharedCacheBudget | None = None,
+    ) -> None:
         if limit < 0 or max_bytes < 1:
             raise ValueError('Prepared packet cache limits must be positive')
         self.limit = limit
         self.max_bytes = max_bytes
+        self.shared = shared
+        self._owner = object()
+        self.skipped_shared_budget = 0
         self.values: OrderedDict[tuple[object, ...], PacketEntry] = OrderedDict()
         self.sizes: dict[tuple[object, ...], int] = {}
         self.live_bytes = 0
@@ -281,6 +306,12 @@ class PreparedPacketCache:
             expired, _ = self.values.popitem(last=False)
             self.live_bytes -= self.sizes.pop(expired)
             self.evictions += 1
+        if self.shared is not None and not self.shared.try_set(
+            self._owner, self.live_bytes + estimated
+        ):
+            self.shared.try_set(self._owner, self.live_bytes)
+            self.skipped_shared_budget += 1
+            return
         self.values[key] = value
         self.sizes[key] = estimated
         self.live_bytes += estimated
@@ -291,6 +322,8 @@ class PreparedPacketCache:
         self.values.clear()
         self.sizes.clear()
         self.live_bytes = 0
+        if self.shared is not None:
+            self.shared.release(self._owner)
 
 
 class EvaluationContext:
@@ -304,6 +337,7 @@ class EvaluationContext:
                  packet_memo_entries: int = 0, packet_memo_bytes: int = 1024*1024,
                  prepared_packet_entries: int = 0,
                  prepared_packet_bytes: int = 8*1024*1024,
+                 shared_cache: SharedCacheBudget | None = None,
                  work_trace: WorkTrace | None = None) -> None:
         self.lazy_ring: LazyPacketJet | None = None
         working_ring = cast(PacketRing, R)
@@ -325,7 +359,8 @@ class EvaluationContext:
         # No caching of expression-DAG oracles: their representation may be
         # affected by materialization, even within a deformation center.
         self.prepared_packets = (
-            PreparedPacketCache(prepared_packet_entries, prepared_packet_bytes)
+            PreparedPacketCache(prepared_packet_entries, prepared_packet_bytes,
+                                shared=shared_cache)
             if prepared_packet_entries and self.lazy_ring is None else None
         )
         self.t = t
@@ -335,7 +370,8 @@ class EvaluationContext:
         self.native_packet = native_packet
         # No cache is created in a lazy-expression context. Results must not
         # outlive the coefficient representation that produced them.
-        memo = (BoundedPacketMemo(R, packet_memo_entries, packet_memo_bytes)
+        memo = (BoundedPacketMemo(R, packet_memo_entries, packet_memo_bytes,
+                                  shared=shared_cache)
                 if packet_memo_entries and not hasattr(R, 'materialize') else None)
         self.memo = memo if memo is not None and memo.max_entries else None
         self.cauchy = cauchy_values(t, work_z, working_ring, self.L)

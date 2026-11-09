@@ -323,4 +323,9 @@ def trace_fraction_bit_work(evaluate: Callable[[], _Result]
         raise RuntimeError("Fraction arithmetic internals unavailable to profiler")
     if trace.nonexact_constructors:
         raise RuntimeError("Fraction constructor outside exact integer domain")
+    if trace.uncovered_fraction_methods:
+        raise RuntimeError(
+            "unmodeled Fraction methods prevent complete rational trace: "
+            + repr(trace.uncovered_fraction_methods)
+        )
     return result, trace

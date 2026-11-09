@@ -9,7 +9,7 @@ from __future__ import annotations
 from sys import getsizeof
 from ..core.network import Network
 from ..core.packing import Packing
-from ..runtime.cache import BudgetedLRU, CachePolicy
+from ..runtime.cache import BudgetedLRU, CachePolicy, SharedCacheBudget
 from ..runtime.config import LeafConfig
 from .children import ChildComponent
 from .compiled_children import CompiledChildPlan
@@ -46,6 +46,7 @@ class FrameWorkspace:
         self, max_plans: int = 64, *,
         cache_policy: CachePolicy | None = None,
         leaf: LeafConfig | None = None,
+        shared_cache: SharedCacheBudget | None = None,
     ) -> None:
         if max_plans < 0:
             raise ValueError('Plan entry limit must be nonnegative')
@@ -55,7 +56,7 @@ class FrameWorkspace:
                                              max_entries=max_plans)
         self.plans: BudgetedLRU[
             tuple[int, int, ChildComponent | None], CompiledChildPlan
-        ] = BudgetedLRU(policy)
+        ] = BudgetedLRU(policy, shared=shared_cache)
         self.edge_to_packet: dict[int, int] = {}
         self.edge_to_slot: dict[int, int] = {}
         self.left_owner: dict[int, int] = {}

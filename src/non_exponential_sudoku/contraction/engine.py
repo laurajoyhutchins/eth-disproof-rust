@@ -18,6 +18,7 @@ from ..runtime.config import ContractorConfig
 from ..runtime.budget import CapacityError
 from ..runtime.cost_ledger import CostLedger
 from ..runtime.work_trace import WorkTrace
+from ..runtime.cache import SharedCacheBudget
 from .deformation import DeformationExecution
 from .workspaces import FrameWorkspace
 from .planning import FactorizationPlan
@@ -60,6 +61,10 @@ class ContractionEngine(DeformationExecution):
         self.stats = Counters()
         self._frames: dict[int, FrameWorkspace] = {}
         self._active_contract_calls = 0
+        self.shared_cache: SharedCacheBudget | None = (
+            SharedCacheBudget(config.recursion.shared_cache_bytes)
+            if config.recursion.shared_cache_bytes is not None else None
+        )
 
     def _leaf(self, net: Network, ring: TensorRing) -> NestedCoords:
         ledger = self.cost_ledger
@@ -143,7 +148,14 @@ class ContractionEngine(DeformationExecution):
         finally:
             self._active_contract_calls -= 1
             if self._active_contract_calls == 0:
+                for frame in self._frames.values():
+                    frame.plans.clear()
                 self._frames.clear()
+                if self.shared_cache is not None:
+                    self.stats.shared_cache_peak_estimated_bytes = max(
+                        self.stats.shared_cache_peak_estimated_bytes,
+                        self.shared_cache.peak_bytes,
+                    )
 
     def _contract_impl(self, net: Network, precision: int | None = None, depth: int = 0,
                  ring: TensorRing | None = None, *, _validated: bool = False) -> NestedCoords:

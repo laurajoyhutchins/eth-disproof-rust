@@ -69,7 +69,10 @@ def main() -> int:
     if args.require_native and args.tier == "checkpoint" and "native" not in required:
         required.append("native")
     command = [sys.executable, "-m", "pytest", "-q", "-m", args.tier,
-               "--junitxml=" + str(junit)]
+               "--durations=20", "--junitxml=" + str(junit)]
+    if args.tier == "checkpoint":
+        # Report the active test before a hard timeout truncates JUnit output.
+        command.append("-vv")
     for backend in required:
         command.extend(("--require-backend", backend))
     env = os.environ.copy()

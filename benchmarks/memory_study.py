@@ -100,7 +100,7 @@ def validate_sample(sample: MemorySample, *, case_id: str) -> None:
             or rss["python_tracemalloc_peak_growth_bytes"] != max(
                 0, rss["python_tracemalloc_peak_bytes"]
                 - rss["python_tracemalloc_baseline_bytes"])):
-        raise ValueError("Inconsistent peak-memory measurements")
+        raise ValueError(f"Inconsistent peak-memory measurements: {rss}")
     if any(not isinstance(name, str) or type(value) is not int or value < 0
            for name, value in sample.solver_estimates.items()):
         raise ValueError("Invalid solver accounting")

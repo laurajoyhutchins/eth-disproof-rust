@@ -12,9 +12,7 @@ from benchmarks.memory_study import (
     validate_sample,
 )
 
-pytestmark = pytest.mark.checkpoint
-
-
+@pytest.mark.checkpoint
 def test_cases_have_stable_labels_and_independent_expected_results() -> None:
     assert len(CASES) == len(set(CASES))
     for case_id in CASES:
@@ -25,6 +23,7 @@ def test_cases_have_stable_labels_and_independent_expected_results() -> None:
         assert callable(estimates)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("case_id", ["leaf.lookup", "leaf.indexed", "mode.grid3",
                                       "nested.jet", "recursive.nested"])
 def test_measurements_preserve_exact_result_and_observe_peak(case_id: str) -> None:
@@ -38,6 +37,7 @@ def test_measurements_preserve_exact_result_and_observe_peak(case_id: str) -> No
     assert sample.memory["python_tracemalloc_peak_bytes"] >= sample.memory["python_tracemalloc_end_bytes"]
 
 
+@pytest.mark.checkpoint
 def test_invalid_or_incomplete_samples_are_never_comparable() -> None:
     valid = sample_once("leaf.lookup")
     raw = valid.to_dict()
@@ -53,6 +53,7 @@ def test_invalid_or_incomplete_samples_are_never_comparable() -> None:
         aggregate_samples({"leaf.lookup": [valid]}, required=CASES)
 
 
+@pytest.mark.checkpoint
 def test_json_worker_is_fresh_and_machine_readable() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "benchmarks.memory_study", "--worker",

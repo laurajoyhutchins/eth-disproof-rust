@@ -1,0 +1,20 @@
+name: Shift-left correctness audit snapshot
+on:
+  push:
+    branches:
+      - audit/shift-left-correctness-20261109
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package immutable source snapshot
+        run: git archive --format=tar.gz --output source-snapshot.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shift-left-audit-source
+          path: source-snapshot.tar.gz

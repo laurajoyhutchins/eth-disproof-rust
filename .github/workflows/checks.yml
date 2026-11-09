@@ -35,7 +35,8 @@ jobs:
   native-integration:
     # Explicit verification branches are opt-in; ordinary commits remain checkpoints.
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/verify/native-')))
-    needs: checkpoint
+    # Deep verification is independently selected; a checkpoint scheduling
+    # failure must not silently suppress an explicitly requested native run.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

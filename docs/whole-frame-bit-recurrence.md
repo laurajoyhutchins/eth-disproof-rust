@@ -212,9 +212,14 @@ The integrated proof checker reports these **unclosed** obligations:
    `CellEntryOracle` and `UnitEntryOracle` callbacks. The source-checked
    `reference/sudoku_oracle_cost.py` gives a polynomial **one-pass** bound,
    and the inherited descriptor/name bound is established along a successful
-   paper path. The outstanding obligation is to bound the *total number*
-   of original callbacks across each local frame, as well as arbitrary
-   `Network` callbacks. These may not be charged as free operations.
+   paper path. The follow-on
+   `reference/sudoku_oracle_invocations.py` now gives a conservative
+   source-derived count of original callback invocations, including
+   exhaustive fallback, input-table materialization, and optional
+   zero-support attempts before `contract()`. That ceiling is composed
+   with the potential paper child tree under the existing fanout hypothesis.
+   It does not cover arbitrary `Network` callbacks or the `PacketEntry`
+   bit-operation cost, and its exhaustive-leaf term can be exponential.
 2. Source-to-proof correspondence for all packing, component partitioning,
    factor planning, mode ordering and allocation/hash work. The local
    envelopes count arithmetic but do not certify all language-runtime work.

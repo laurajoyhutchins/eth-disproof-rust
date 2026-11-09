@@ -228,6 +228,10 @@ def _observed_rational_work(
         replay.coefficients != expected.coefficients
     ):
         raise ArithmeticError("bit-accounting replay changed exact result")
+    if replay.stats != expected.stats:
+        raise ArithmeticError(
+            "bit-accounting replay changed evaluator work or rank history"
+        )
     return {
         **outcome,
         "arithmetic_work_units": operations,

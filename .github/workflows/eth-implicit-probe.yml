@@ -1,4 +1,5 @@
 name: ETH implicit-auxiliary one-off benchmark
+# Rerun once after adding full-count comparison; remove this workflow after evidence.
 
 on:
   push:

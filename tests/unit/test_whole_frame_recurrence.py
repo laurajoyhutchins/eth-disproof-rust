@@ -188,3 +188,15 @@ def test_hypothetical_closure_is_not_a_theorem_and_no_silent_green() -> None:
     with pytest.raises(UnclosedRecurrence):
         result.require_complete_theorem()
 
+def test_packing_and_ordering_source_cost_is_charged_but_not_theorem_proved() -> None:
+    cfg, s = _paper()
+    recurrence = assemble_paper_recurrence(
+        cfg, edges=s, vertices=s, input_name_bits=128,
+    )
+    for f in recurrence.frames[:-1]:
+        assert f.log2_packing_ordering_bit_work_ceiling > 0
+        assert f.log2_named_local_work_ceiling >= f.log2_packing_ordering_bit_work_ceiling
+    # A well-formed partial cost receipt cannot certify packing lemma
+    # correctness, callback totality, memory, or cell-based asymptotics.
+    with pytest.raises(UnclosedRecurrence, match='packing_planning'):
+        recurrence.require_complete_theorem()

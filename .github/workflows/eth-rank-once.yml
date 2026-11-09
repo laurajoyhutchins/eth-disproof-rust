@@ -1,4 +1,4 @@
-name: ETH restricted projector rank one-off
+name: ETH restricted projector rank measurement
 
 on:
   push:

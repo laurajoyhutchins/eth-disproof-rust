@@ -297,14 +297,19 @@ class _TaylorEvaluator:
         if expected_pairs > limits.max_taylor_pairs:
             raise CapacityError('ETH Taylor pair limit')
         design = certificate.design
-        tuples_per_pair = (2 * design.D + 1) ** certificate.total_measurements
-        assignments_per_pair = tuples_per_pair * sum(1 << len(g) for g in design.groups)
         if summation == 'tuples':
+            # Other strategies never traverse this virtual tuple domain.
+            # Avoid forming astronomical integers just to discard them.
+            tuples_per_pair = (2 * design.D + 1) ** certificate.total_measurements
+            assignments_per_pair = tuples_per_pair * sum(
+                1 << len(g) for g in design.groups)
             if tuples_per_pair * expected_pairs > limits.max_measurement_tuples:
                 raise CapacityError('ETH Taylor measurement tuple limit')
             if assignments_per_pair * expected_pairs > limits.max_group_assignments:
                 raise CapacityError('ETH Taylor group assignment limit')
-        self.tuples_per_pair = tuples_per_pair if summation == 'tuples' else 0
+        else:
+            tuples_per_pair = 0
+        self.tuples_per_pair = tuples_per_pair
         self.pairs = 0
         self.tried = 0
         self.matching = 0

@@ -14,7 +14,7 @@ from dataclasses import dataclass, replace
 from fractions import Fraction
 from functools import lru_cache
 from itertools import combinations, product
-from math import comb, floor
+from math import comb, floor, gcd, lcm
 from typing import Literal, Sequence
 
 from non_exponential_sudoku.runtime.budget import CapacityError
@@ -89,6 +89,8 @@ class ImplicitAuxiliaryDesign:
     measurement_selectors: tuple[tuple[int, ...], ...]
     kernel: tuple[tuple[Fraction, ...], ...]
     max_polynomial_degree: int
+    exceptional_count: int = 0
+    measurement_basis: Literal['selectors', 'projector'] = 'selectors'
 
     @property
     def dimension(self) -> int:
@@ -133,8 +135,47 @@ class ImplicitAuxiliaryDesign:
             phi = phi * Polynomial((Fraction(1), Fraction(-1, point)))
         return Polynomial.constant(identity) + (phi - ONE).scale(m)
 
+    def exceptional_projector_at(
+        self, source: AuxiliaryLabel, target: AuxiliaryLabel,
+    ) -> Fraction:
+        """Exact orthogonal projector onto omitted local-swap eigenspaces.
+
+        The local symmetric/antisymmetric projectors are (I+swap)/2 and
+        (I-swap)/2.  For the labels (source, target), each diagonal
+        coordinate contributes 1; each equal off-diagonal coordinate
+        contributes (1+z)/2; and each swapped off-diagonal coordinate
+        contributes (1-z)/2.  The excluded-degree sum is the desired
+        projector entry.  No eigenvectors or D-length arrays are needed.
+        """
+        self.label_index(source)
+        self.label_index(target)
+        same = 0
+        swapped = 0
+        for left, right in zip(source, target):
+            if left[0] == left[1]:
+                if right != left:
+                    return Fraction(0)
+            elif right == left:
+                same += 1
+            elif right == (left[1], left[0]):
+                swapped += 1
+            else:
+                return Fraction(0)
+        # The full sum of all coefficients is 2**same if no minus factor,
+        # and zero otherwise.  Subtract only the included spectral levels.
+        included = 0
+        for j in self.interval:
+            included += sum(
+                comb(same, k) * comb(swapped, j - k) * (-1) ** (j - k)
+                for k in range(max(0, j - swapped), min(same, j) + 1)
+            )
+        total = (1 << same) if swapped == 0 else 0
+        return Fraction(total - included, 1 << (same + swapped))
+
     def measurement_at(self, index: int, label: AuxiliaryLabel) -> int:
         """One entry of an exceptional tensor eigenvector, never a dense row."""
+        if self.measurement_basis != 'selectors':
+            raise ValueError('projector measurement mode has no enumerated selectors')
         self.label_index(label)
         return _tensor_entry(label, self.measurement_selectors[index],
                              _local_eigenvectors(self.r), self.r)
@@ -316,6 +357,7 @@ def construct_auxiliary(
 
 def construct_implicit_auxiliary(
     *, r: int, Q: int, R: int, limits: ConstructionLimits = ConstructionLimits(),
+    measurement_basis: Literal['selectors', 'projector'] = 'selectors',
 ) -> ImplicitAuxiliaryDesign:
     """Construct the exact same auxiliary design using an implicit operator.
 
@@ -346,30 +388,98 @@ def construct_implicit_auxiliary(
         for diagonals in range(Q + 1)
     )
 
-    basis = _local_eigenvectors(r)
-    positive = tuple(i for i, (_, odd) in enumerate(basis) if not odd)
-    negative = tuple(i for i, (_, odd) in enumerate(basis) if odd)
+    if measurement_basis not in ('selectors', 'projector'):
+        raise ValueError('unknown ETH measurement basis')
+    positive_count = r * (r + 1) // 2
+    negative_count = r * (r - 1) // 2
     excluded = tuple(j for j in range(Q + 1) if j not in interval)
     count = sum(
-        comb(Q, j) * len(negative) ** j * len(positive) ** (Q - j)
+        comb(Q, j) * negative_count ** j * positive_count ** (Q - j)
         for j in excluded
     )
-    if count > limits.max_measurement_rows:
-        raise CapacityError('ETH auxiliary exceptional direction limit')
     selectors: list[tuple[int, ...]] = []
-    for j in excluded:
-        for negatives in combinations(range(Q), j):
-            negative_set = set(negatives)
-            alphabets = tuple(negative if t in negative_set else positive for t in range(Q))
-            selectors.extend(product(*alphabets))
-    selectors.sort()
-    if len(selectors) != count:
-        raise ArithmeticError('exceptional spectral selector count mismatch')
+    if measurement_basis == 'selectors':
+        if count > limits.max_measurement_rows:
+            raise CapacityError('ETH auxiliary exceptional direction limit')
+        basis = _local_eigenvectors(r)
+        positive = tuple(i for i, (_, odd) in enumerate(basis) if not odd)
+        negative = tuple(i for i, (_, odd) in enumerate(basis) if odd)
+        for j in excluded:
+            for negatives in combinations(range(Q), j):
+                negative_set = set(negatives)
+                alphabets = tuple(negative if t in negative_set else positive for t in range(Q))
+                selectors.extend(product(*alphabets))
+        selectors.sort()
+        if len(selectors) != count:
+            raise ArithmeticError('exceptional spectral selector count mismatch')
+    # Projected mode intentionally does not enumerate even one selector.
+    # Its resource limit is applied to actual transferred rows, not the
+    # astronomically large global exceptional subspace dimension.
     return ImplicitAuxiliaryDesign(
         r=r, Q=Q, R=R, interval=interval,
         measurement_selectors=tuple(selectors), kernel=kernel,
-        max_polynomial_degree=R - 1,
+        max_polynomial_degree=R - 1, exceptional_count=count,
+        measurement_basis=measurement_basis,
     )
+
+
+def _projected_group_rows(
+    auxiliary: ImplicitAuxiliaryDesign,
+    filled_copy: dict[AuxiliaryLabel, int],
+    group: tuple[int, ...],
+) -> tuple[tuple[int, ...], ...]:
+    """Integer basis of restricted exceptional row space, without selectors.
+
+    For the full orthogonal exceptional projector P=B^T B, restriction by
+    a coordinate/incidence map A gives G=A^T P A=(BA)^T (BA).  Over the
+    rationals, rowspace(G)=rowspace(BA), exactly the span of ALL original
+    exceptional measurement rows on this group.  Primitive integral
+    Gram rows preserve that rowspace.  We retain only independent rows.
+    """
+    positions = {v: i for i, v in enumerate(group)}
+    labels_by_variable: dict[int, list[AuxiliaryLabel]] = {}
+    for label, variable in filled_copy.items():
+        if variable in positions:
+            labels_by_variable.setdefault(variable, []).append(label)
+    variables = tuple(v for v in group if v in labels_by_variable)
+    if not variables:
+        return ()
+    # Cache entries because the same label pairs recur across variables.
+    @lru_cache(maxsize=None)
+    def kernel(left: AuxiliaryLabel, right: AuxiliaryLabel) -> Fraction:
+        return auxiliary.exceptional_projector_at(left, right)
+
+    pivots: dict[int, tuple[Fraction, ...]] = {}
+    basis: list[tuple[int, ...]] = []
+    for variable in variables:
+        row = [Fraction(0) for _ in group]
+        for target in variables:
+            row[positions[target]] = sum(
+                (kernel(left, right)
+                 for left in labels_by_variable[variable]
+                 for right in labels_by_variable[target]),
+                Fraction(0),
+            )
+        common_denominator = 1
+        for value in row:
+            common_denominator = lcm(common_denominator, value.denominator)
+        integers = [int(value * common_denominator) for value in row]
+        common_divisor = 0
+        for value in integers:
+            common_divisor = gcd(common_divisor, abs(value))
+        if common_divisor == 0:
+            continue
+        candidate = tuple(value // common_divisor for value in integers)
+        reduced = [Fraction(value) for value in candidate]
+        for pivot, vector in sorted(pivots.items()):
+            factor = reduced[pivot]
+            if factor:
+                reduced = [a - factor * b for a, b in zip(reduced, vector)]
+        pivot = next((j for j, value in enumerate(reduced) if value), None)
+        if pivot is not None:
+            pivots[pivot] = tuple(value / reduced[pivot] for value in reduced)
+            basis.append(candidate)
+    return tuple(basis)
 
 def _tensor_entry(
     label: tuple[tuple[int, int], ...], selected: tuple[int, ...],
@@ -458,9 +568,11 @@ def construct_from_schedules(
             e_places.append((u, copy_number))
         placements.append(e_places)
     h = max((len(copies) for copies in buckets.values()), default=0)
+    projected = (isinstance(auxiliary, ImplicitAuxiliaryDesign)
+                 and auxiliary.measurement_basis == 'projector')
     c = (len(auxiliary.measurements) if isinstance(auxiliary, AuxiliaryDesign)
          else len(auxiliary.measurement_selectors))
-    if r * h * c > limits.max_measurement_rows:
+    if not projected and r * h * c > limits.max_measurement_rows:
         raise CapacityError('ETH transferred measurement row limit')
     filled: list[dict[AuxiliaryLabel, int]] = [dict() for _ in range(h)]
     for u, copies in buckets.items():
@@ -488,17 +600,24 @@ def construct_from_schedules(
         for g, group in enumerate(groups):
             rows: list[tuple[int, ...]] = []
             for filled_copy in filled:
-                for index in range(c):
-                    row = [0] * len(group)
-                    for k, v in enumerate(group):
-                        row[k] = sum(measurement_at(index, w)
-                                     for w, mapped_v in filled_copy.items() if mapped_v == v)
-                    rows.append(tuple(row))
+                if projected:
+                    if not isinstance(auxiliary, ImplicitAuxiliaryDesign):
+                        raise AssertionError('projected auxiliary type lost')
+                    rows.extend(_projected_group_rows(auxiliary, filled_copy, group))
+                else:
+                    for index in range(c):
+                        row = [0] * len(group)
+                        for k, v in enumerate(group):
+                            row[k] = sum(measurement_at(index, w)
+                                         for w, mapped_v in filled_copy.items() if mapped_v == v)
+                        rows.append(tuple(row))
             matrices.append(tuple(rows))
         actual_max_rows = max(actual_max_rows, sum(map(len, matrices)))
         bound_D = max((sum(abs(value) for value in row)
                        for matrix in matrices for row in matrix), default=0)
         row_count = sum(map(len, matrices))
+        if row_count > limits.max_measurement_rows:
+            raise CapacityError('ETH transferred measurement row limit')
         if bound_D > auxiliary.dimension:
             raise ArithmeticError('transferred row L1 exceeds auxiliary dimension')
         design = MeasurementDesign(
@@ -518,6 +637,7 @@ def construct_bounded_designs(
     schedule: Literal['conditional', 'digits'] = 'conditional',
     balance_limits: BalanceLimits = BalanceLimits(),
     representation: Literal['implicit', 'dense'] = 'implicit',
+    measurement_basis: Literal['selectors', 'projector'] = 'selectors',
 ) -> ConstructedDesigns:
     """Build automatically; the schedule method is explicit, never fallback.
 
@@ -529,8 +649,10 @@ def construct_bounded_designs(
         raise CapacityError('ETH transferred CNF dimensions limit')
     if representation == 'implicit':
         auxiliary: AuxiliaryDesign | ImplicitAuxiliaryDesign = construct_implicit_auxiliary(
-            r=r, Q=Q, R=R, limits=limits)
+            r=r, Q=Q, R=R, limits=limits, measurement_basis=measurement_basis)
     elif representation == 'dense':
+        if measurement_basis != 'selectors':
+            raise ValueError('dense auxiliary does not accept projector basis')
         auxiliary = construct_auxiliary(r=r, Q=Q, R=R, limits=limits)
     else:
         raise ValueError('unknown ETH auxiliary representation')

@@ -14,7 +14,7 @@ from benchmarks.eth.support_join_probe import (
 )
 
 
-@pytest.mark.checkpoint
+@pytest.mark.integration
 @pytest.mark.parametrize('family, sizes', [
     ('chain', (2, 3, 4, 6, 8)),
     ('equality-clique', (2, 3, 4, 6, 8)),
@@ -30,7 +30,7 @@ def test_dense_and_support_join_match_independent_enumeration(family, sizes):
         assert dense.steps[-1].output_entries == support.steps[-1].output_entries == 1
 
 
-@pytest.mark.checkpoint
+@pytest.mark.integration
 def test_family_counts_have_independent_closed_forms():
     for n in range(2, 9):
         chain = brute_count(n, make_family('chain', n))
@@ -42,7 +42,7 @@ def test_family_counts_have_independent_closed_forms():
         assert brute_count(n, make_family('or-clique', n)) == n + 1
 
 
-@pytest.mark.checkpoint
+@pytest.mark.integration
 def test_equality_clique_support_growth_is_not_dense_cartesian_growth():
     for n in (4, 6, 8, 10):
         factors = make_family('equality-clique', n)
@@ -59,7 +59,7 @@ def test_equality_clique_support_growth_is_not_dense_cartesian_growth():
         assert support.candidate_pairs < dense.candidate_assignments * n * n
 
 
-@pytest.mark.checkpoint
+@pytest.mark.integration
 def test_or_clique_retains_exponential_intermediate_support():
     for n in (4, 6, 8):
         support = run_contraction(n, make_family('or-clique', n), strategy='support')

@@ -15,7 +15,7 @@ from non_exponential_sudoku.eth.cnf import CNFFormula, count_bruteforce
 from non_exponential_sudoku.eth.construction import construct_bounded_designs
 from non_exponential_sudoku.eth.polynomial import deformation_polynomial
 from non_exponential_sudoku.eth.unfolding_rank import (
-    RankLimits, crossing_pair_witness, rank_profile, unfolding_rank,
+    RankLimits, crossing_pair_witness, minimax_unfolding_order, rank_profile, unfolding_rank,
 )
 from non_exponential_sudoku.runtime.budget import CapacityError
 
@@ -65,6 +65,35 @@ def test_crossing_witness_is_easy_after_interleaving(pairs: int) -> None:
     assert max(item.rank for item in interleaved_profile) == 2
     assert all(item.rank <= item.boundary_rank_upper
                for item in grouped_profile + interleaved_profile)
+
+
+@pytest.mark.integration
+def test_exhaustive_minimax_order_is_exactly_two_for_crossing_pairs() -> None:
+    # Proves that the apparently exponential *grouped* rank in the same
+    # 6-variable tensor is wholly avoidable by a variable permutation.
+    formula, replacements = crossing_pair_witness(3)
+    optimum = minimax_unfolding_order(formula, replacements, at=1)
+    assert optimum.peak_rank == 2
+    assert optimum.cuts_checked == (1 << formula.nvars) - 2
+    assert max(optimum.cut_ranks) == 2
+    assert tuple(sorted(optimum.variable_order)) == tuple(range(formula.nvars))
+    assert optimum.charged_rational_operations > 0
+
+
+@pytest.mark.integration
+def test_minimax_order_is_no_worse_than_natural_path_order() -> None:
+    path = CNFFormula(4, ((1, 2), (2, 3), (3, 4)))
+    optimum = minimax_unfolding_order(path, at=0)
+    natural = rank_profile(path, at=0, variable_order=(0, 1, 2, 3))
+    assert optimum.peak_rank <= max(cut.rank for cut in natural)
+    assert optimum.cuts_checked == 14
+
+
+@pytest.mark.checkpoint
+def test_minimax_exhaustive_cut_limit_refuses_before_enumeration() -> None:
+    formula, replacement = crossing_pair_witness(3)
+    with pytest.raises(CapacityError, match="cut search"):
+        minimax_unfolding_order(formula, replacement, at=1, max_cuts=10)
 
 
 @pytest.mark.integration

@@ -11,5 +11,11 @@ from .runtime.work_trace import WorkTrace
 from .core.algebra import Padic, modulus_polynomial
 from .core.network import Network, Vertex, simple_network
 from .sudoku.encoding import sudoku_network
+from .sudoku.frontier import count_frontier, FrontierCapacityError, FrontierLimits, FrontierResult, FrontierStats
+from .sudoku.suffix_graph import count_suffix_graph, SuffixGraphLimits, SuffixGraphResult, SuffixGraphStats
+from .sudoku.components import count_components, ComponentLimits, ComponentResult, ComponentStats
+from .sudoku.separators import count_structural, StructuralLimits, StructuralResult, StructuralStats
+from .sudoku.weighted_zdd import contract_zdd, ZDDLimits, ZDDOrderLimits, ZDDResult, ZDDStats
+from .sudoku.hybrid import contract_hybrid, HybridLimits, HybridResult, HybridStats, HybridLayer
 
-__all__ = ['ContractionEngine', 'ContractorConfig', 'ModeConfig', 'ModeLimits', 'RecoveryConfig', 'PacketConfig', 'LeafConfig', 'RecursionConfig', 'CapacityError', 'CostLedger', 'WorkTrace', 'Padic', 'modulus_polynomial', 'Network', 'Vertex', 'simple_network', 'sudoku_network']
+__all__ = ['ContractionEngine', 'ContractorConfig', 'ModeConfig', 'ModeLimits', 'RecoveryConfig', 'PacketConfig', 'LeafConfig', 'RecursionConfig', 'CapacityError', 'CostLedger', 'WorkTrace', 'Padic', 'modulus_polynomial', 'Network', 'Vertex', 'simple_network', 'sudoku_network', 'count_frontier', 'FrontierCapacityError', 'FrontierLimits', 'FrontierResult', 'FrontierStats', 'count_suffix_graph', 'SuffixGraphLimits', 'SuffixGraphResult', 'SuffixGraphStats', 'count_components', 'ComponentLimits', 'ComponentResult', 'ComponentStats', 'count_structural', 'StructuralLimits', 'StructuralResult', 'StructuralStats', 'contract_zdd', 'ZDDLimits', 'ZDDOrderLimits', 'ZDDResult', 'ZDDStats', 'contract_hybrid', 'HybridLimits', 'HybridResult', 'HybridStats', 'HybridLayer']

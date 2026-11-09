@@ -75,6 +75,23 @@ But the necessary midpoint rank still grows combinatorially in
 global row/column/box network contraction *nor* a worst-case
 Sudoku hardness theorem.
 
+### Relation to the later global continuation theorem
+
+This unit theorem is the earlier result from
+[PR #55](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/55).
+[PR #83](https://github.com/laurajoyhutchins/nonexp-sudoku/pull/83)
+subsequently reused its **complement-of-used-digits** principle for
+**every crossing row, column and box simultaneously**.
+See [the global continuation theorem](sudoku-continuation-rank.md)
+and the [canonical claim inventory](claims.md).
+
+The generalization is **not** an assertion that a global Sudoku tensor
+has rank `C(n,k)`: the global rank depends on the number of jointly
+extendable crossing-unit signatures. The global proof additionally
+requires the full-grid witness argument and the equality of suffix
+acceptance for prefixes with the same signature. The existing unit
+and global reference tests independently check their respective scopes.
+
 ## Mode-vs-packet comparison
 
 `benchmarks.sudoku_representation_audit` also constructs the

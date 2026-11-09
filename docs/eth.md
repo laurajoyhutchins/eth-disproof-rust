@@ -272,9 +272,12 @@ produce all `2**n` monomials, and the test suite deliberately requires
 a capacity refusal on such a family. Neither small clause width nor a
 small jet truncation order alone bounds the total retained support.
 
-The `max_factor_entries` budget limits sparse monomials, while
-`max_factor_work` bounds attempted **term products**. The existing
-exact-jet operation, coefficient-bit and degree limits still apply.
+The `max_factor_entries` budget limits sparse monomials,
+`max_factor_total_entries` bounds simultaneously retained input/output
+dictionary entries during multiplication, and `max_factor_work` bounds
+attempted **term products**. These are entry-count limits, **not**
+byte-accurate process RSS bounds. The existing exact-jet operation,
+coefficient-bit and degree limits still apply.
 A refusal is never interpreted as a zero count. The representation
 does not prove any subexponential bound: the cost of manipulating
 n-bit monomial masks and exact rational coefficient operands must be

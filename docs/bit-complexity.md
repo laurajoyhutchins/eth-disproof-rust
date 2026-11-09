@@ -1,4 +1,4 @@
-# Bit-complexity boundary and partial recurrence (v0.23.7)
+# Bit-complexity boundary and partial recurrence
 
 **Status: partial bounds proved; complete worst-case bit complexity and
 non-refusal on generalized Sudoku are not proved.** The result is more

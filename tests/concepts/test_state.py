@@ -32,3 +32,17 @@ def test_domains_are_an_explicit_restriction() -> None:
     choices, possible = prepare_residual(p, narrowed)
     assert isinstance(choices, dict)
     assert isinstance(possible, bool)
+
+
+def test_candidate_restrictions_change_the_problem_not_the_counter() -> None:
+    from non_exponential_sudoku.sudoku.frontier import count_frontier
+
+    puzzle = Puzzle(2, (0,) * 16)
+    unrestricted = count_frontier(puzzle)
+    domains = (1,) + ((1 << 4) - 1,) * 15
+    restricted = count_frontier(puzzle, domains=domains)
+    assert unrestricted.count == 288
+    assert restricted.count == 72
+    choices, admissible = prepare_residual(puzzle, domains)
+    assert admissible
+    assert len(choices) == 15

@@ -87,4 +87,4 @@ Cython, and FLINT implementations remain distinguishable at the evaluation
 boundary. The cost ledger is observational rather than an asymptotic proof.
 
 See [research-agenda.md](research-agenda.md) for the proof obligations and
-[validation.md](validation.md) for the tests and experimental cost accounting.
+[validation.md](claims.md) for the tests and experimental cost accounting.

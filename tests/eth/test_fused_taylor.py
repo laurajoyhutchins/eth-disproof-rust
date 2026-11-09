@@ -80,3 +80,25 @@ def test_fused_strategy_is_validated() -> None:
     assert ReferencePipelineConfig(summation="fused").summation == "fused"
     with pytest.raises(ValueError, match="unknown exact Taylor"):
         ReferencePipelineConfig(summation="invented")  # type: ignore[arg-type]
+
+
+@pytest.mark.integration
+@pytest.mark.requires_flint
+def test_fused_exact_native_arithmetic_matches_python_reference() -> None:
+    pytest.importorskip("flint")
+    formula = CNFFormula(3, ((1, -2), (-1, 3)))
+    constructed = construct_bounded_designs(
+        formula, r=2, Q=2, R=2, measurement_basis="projector",
+    )
+    for center, design in constructed.centers:
+        python = taylor_coefficients_separated(
+            formula, design, constructed.replacements,
+            at=center, order=2, summation="fused", backend="python",
+        )
+        flint = taylor_coefficients_separated(
+            formula, design, constructed.replacements,
+            at=center, order=2, summation="fused", backend="flint",
+        )
+        assert flint.coefficients == python.coefficients
+        assert flint.stats.factor_assignments_tested == python.stats.factor_assignments_tested
+        assert flint.stats.factor_scope_peak == python.stats.factor_scope_peak

@@ -1,0 +1,61 @@
+name: Validate
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly, plus any pushed version tag. Push/PR checks remain lightweight.
+    - cron: '17 6 * * 0'
+
+jobs:
+  checkpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install verification dependencies
+        run: python -m pip install -e '.[test,typecheck]'
+      - name: Strict production typing
+        run: python -m mypy --strict --no-incremental
+      - name: Strict verification typing
+        run: python -m mypy --strict --follow-imports=silent scripts/evidence.py scripts/verify.py scripts/cost_ledger.py build_native.py
+      - name: Pure-Python checkpoint
+        run: python scripts/verify.py checkpoint --output artifacts/pure
+      - name: Preserve checkpoint evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pure-checkpoint-evidence
+          path: artifacts/pure/
+          if-no-files-found: warn
+
+  native-integration:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    needs: checkpoint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install native and mathematical oracle dependencies
+        run: python -m pip install -e '.[test,native,flint-oracle,sat-oracle,math-audit]'
+      - name: Build native extensions and record inputs
+        run: python build_native.py
+      - name: Required native and independent-oracle contracts
+        run: python scripts/verify.py checkpoint --timeout 120 --require-native --require-native-attestation --require-backend flint --require-backend ganak --output artifacts/native
+      - name: Integration verification
+        run: python scripts/verify.py integration --timeout 600 --require-native --output artifacts/native
+      - name: Extended verification
+        run: python scripts/verify.py extended --timeout 600 --require-native --require-native-attestation --output artifacts/native
+      - name: Preserve native verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-integration-evidence
+          path: artifacts/native/
+          if-no-files-found: warn

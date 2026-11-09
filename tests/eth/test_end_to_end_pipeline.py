@@ -19,9 +19,7 @@ from non_exponential_sudoku.eth.sparsification import (
 from non_exponential_sudoku.eth.construction import ConstructionLimits
 from non_exponential_sudoku.runtime.budget import CapacityError
 
-pytestmark = pytest.mark.checkpoint
-
-
+@pytest.mark.checkpoint
 def test_constructed_path_is_reached_without_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -53,6 +51,7 @@ def test_constructed_path_is_reached_without_fallback(
     assert leaf.contribution == 3
 
 
+@pytest.mark.integration
 def test_disjoint_leaves_and_explicit_base_case() -> None:
     # A: x1 is true (4 assignments), B: x1 is false and x2=x3=true.
     formula = CNFFormula(3, ((1, 2), (1, 3)))
@@ -74,6 +73,7 @@ def test_disjoint_leaves_and_explicit_base_case() -> None:
     (CNFFormula(5, ((1, 2),)), 24),
     (CNFFormula(3, ((1,),)), 4),
 ])
+@pytest.mark.integration
 def test_empty_unsat_and_free_variable_multiplicity(
     formula: CNFFormula, expected: int,
 ) -> None:
@@ -84,6 +84,7 @@ def test_empty_unsat_and_free_variable_multiplicity(
                for leaf in report.leaves)
 
 
+@pytest.mark.integration
 def test_no_partial_result_after_a_leaf_capacity_refusal() -> None:
     formula = CNFFormula(3, ((1, 2), (1, 3)))
     config = replace(ReferencePipelineConfig(), max_leaves=1)
@@ -91,6 +92,7 @@ def test_no_partial_result_after_a_leaf_capacity_refusal() -> None:
         count_cnf_reference(formula, config=config)
 
 
+@pytest.mark.integration
 def test_general_width_is_reduced_before_sparsification() -> None:
     # The width-four input is legal even though the partitioner needs k=3.
     # A deliberately tiny construction budget proves that the path refuses,
@@ -105,6 +107,7 @@ def test_general_width_is_reduced_before_sparsification() -> None:
         count_cnf_reference(formula, config=config)
 
 
+@pytest.mark.integration
 def test_explicit_reference_threshold_is_not_paper_admission() -> None:
     config = replace(
         ReferencePipelineConfig(),
@@ -116,6 +119,7 @@ def test_explicit_reference_threshold_is_not_paper_admission() -> None:
     assert not report.sparsification_theorem_threshold
 
 
+@pytest.mark.checkpoint
 def test_invalid_pipeline_parameters_are_rejected() -> None:
     with pytest.raises(ValueError, match='positive integers'):
         ReferencePipelineConfig(max_leaves=0)
@@ -125,6 +129,7 @@ def test_invalid_pipeline_parameters_are_rejected() -> None:
         ReferencePipelineConfig(backend='float')  # type: ignore[arg-type]
 
 
+@pytest.mark.integration
 def test_cli_dimacs_count_and_fail_closed_json(tmp_path: Path) -> None:
     source = tmp_path / 'case.cnf'
     destination = tmp_path / 'evidence.json'
@@ -153,6 +158,7 @@ def test_cli_dimacs_count_and_fail_closed_json(tmp_path: Path) -> None:
     assert 'leaf evaluation' in report['error']
 
 
+@pytest.mark.integration
 def test_factorized_taylor_is_equal_on_integrated_branched_input() -> None:
     formula = CNFFormula(3, ((1, 2), (1, 3)))
     config = replace(ReferencePipelineConfig(), summation='eliminate')

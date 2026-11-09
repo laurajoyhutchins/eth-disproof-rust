@@ -24,6 +24,28 @@ class Mode:
     rows: tuple[int,...]
 
 
+def cross_mode_valuation(t: int, a: int, x: int, y0: int, b: int) -> int:
+    """Certified 2-adic divisibility of one packet cross-mode coefficient.
+
+    At T=t+2^(a+1)*z, the normalized Cauchy product and the inverse
+    of the unit (t-y0+x)/2^v + 2^(a+1-v)*z are integral units.
+    The coefficient has the *explicit* powers
+    2^(a+1-v) * (2^(i+1-v))^b, i=v2(t), v=v2(t-y0+x).
+    This is a lower bound for every z, including nested Taylor rings.
+    Do not apply to arbitrary synthetic modes without packet geometry.
+    """
+    if type(b) is not int or b < 0 or type(a) is not int or a < 1 or t == 0:
+        raise ValueError('Cross-mode valuation requires a valid center and exponent')
+    i = v2(t)
+    displacement = t - y0 + x
+    if displacement == 0:
+        raise ValueError('Cross-group mode cannot have zero displacement')
+    v = v2(displacement)
+    if i >= a or v > i:
+        raise ValueError('Cross-group mode does not satisfy packet valuation geometry')
+    return (a + 1 - v) + b * (i + 1 - v)
+
+
 def mode_catalog(net: Network, packets: Packing, t: int, p: int,
                  max_modes: int | None = None, *,
                  max_catalog_bytes: int = 128 * 1024 * 1024) -> list[Mode]:
@@ -54,11 +76,28 @@ def mode_catalog(net: Network, packets: Packing, t: int, p: int,
             if not target_rows: continue
             target=next(g for x,_,g in rows if x in target_rows)
             assert all(g==target for x,_,g in rows if x in target_rows)
+            # A mode's coefficient occurs in several target rows.
+            # All must be divisible by at least the *minimum* row bound.
+            # Unlike b+1, this includes the unused 2-adic divisibility
+            # from the normalized Cauchy numerator and tile displacement.
+            valuations = tuple(v2(t - y0 + x) for x in target_rows)
+            if any(v > i for v in valuations):
+                raise ValueError('Invalid crossing mode geometry')
+            # For b>=0, w(x,b) decreases with v. The worst target row
+            # is therefore the one with the largest displacement valuation.
+            v_max = max(valuations)
+            base_weight = a + 1 - v_max
+            increment = i + 1 - v_max
             for b in range(p-1):
                 if b>0 and not any(j>0 for _,j,_ in tile): break
+                weight = base_weight + b * increment
+                if weight >= p:
+                    # Monotone in b; all following geometric powers vanish
+                    # modulo 2**p and need no Mode or child tensor.
+                    break
                 if max_modes is not None and len(modes) >= max_modes:
                     raise CapacityError('Mode catalog resource limit')
-                mode=Mode(k,y0,b,source,target,b+1,
+                mode=Mode(k,y0,b,source,target,weight,
                           tuple((edge,j) for edge,j,_ in tile),tuple(target_rows))
                 owned_bytes=(getsizeof(mode) + getsizeof(mode.__dict__)
                              + getsizeof(mode.tile) + getsizeof(mode.rows)

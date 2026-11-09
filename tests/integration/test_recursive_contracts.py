@@ -50,7 +50,8 @@ class RecursiveIdentityTests(unittest.TestCase):
         pk=pack(net,2,1,self.labels)
         modes=mode_catalog(net,pk,1,18)
         self.assertEqual(len(modes),1)
-        self.assertEqual(modes[0].weight,1)
+        # Normalized Cauchy cross coefficient carries 2^(a+1-i)=2^2.
+        self.assertEqual(modes[0].weight,2)
         self.assertEqual(sorted(set(beta[0] for beta in weighted_tuples(modes,18))),[0,1])
         c=ContractionEngine(ContractorConfig(1, 4, schedule='micro', root_labels=self.labels))
         self.assertEqual(c.contract(net)[0],1)

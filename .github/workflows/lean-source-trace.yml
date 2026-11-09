@@ -62,7 +62,7 @@ jobs:
           lake --version
           lake update
           lake exe cache get
-          lake build OAI.Algorithms.SubexponentialSAT.Encoding OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointSparsify
+          lake build OAI.Algorithms.SubexponentialSAT.Encoding OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointSparsify OAI.Algorithms.SubexponentialSAT.ExecSparsifyWorklist OAI.Algorithms.SubexponentialSAT.ExecQuantitativeSparsify
           lake env lean --run ../reference/lean_native_trace.lean > ../artifacts/lean-native-trace.txt
           cat ../artifacts/lean-native-trace.txt
       - uses: actions/setup-python@v5

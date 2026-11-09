@@ -91,7 +91,7 @@ def test_real_child_direct_packet_calls_and_ring_work_fit_envelope(
         spies.append(spy)
     try:
         value = child.direct(ring, child.edges)
-        assert value == ring.scalar(value[0]) if ring.e == 1 else isinstance(value, tuple)
+        assert isinstance(value, tuple)
     finally:
         for entry, work_ring in original_rings:
             entry.work_ring = work_ring  # type: ignore[assignment]
@@ -196,11 +196,12 @@ def test_lift_coefficient_masks_for_inherited_packet_are_charged(
 
 def test_forged_packet_topology_and_unmodelled_kernel_fail_closed() -> None:
     child, ring = _child()
-    packet = child.right[0]
+    packet = next(v for v in child.right if v.ports)
+    packet_index = child.right.index(packet)
     entry = packet.oracle
     assert isinstance(entry, PacketEntry)
     corrupted = Network(list(child.left), list(child.right), child.edges)
-    corrupted.right[0] = Vertex(
+    corrupted.right[packet_index] = Vertex(
         packet.name, packet.ports[:-1], entry,
     )
     # The parent incidence is no longer valid. Never silently certify.

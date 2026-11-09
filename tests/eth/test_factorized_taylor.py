@@ -20,9 +20,6 @@ from non_exponential_sudoku.eth.taylor import (
 )
 from non_exponential_sudoku.runtime.budget import CapacityError
 
-pytestmark = pytest.mark.checkpoint
-
-
 def paired_groups(formula: CNFFormula) -> MeasurementDesign:
     assert formula.nvars % 2 == 0
     groups = tuple((i, i + 1) for i in range(0, formula.nvars, 2))
@@ -47,6 +44,7 @@ def deformed(formula: CNFFormula) -> ReplacementSystem:
         for e, forms in enumerate(base.clauses)))
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize('seed', range(5))
 def test_factorized_jets_equal_tuple_oracle_and_independent_count(seed: int) -> None:
     rng = Random(7262 + seed)
@@ -72,6 +70,7 @@ def test_factorized_jets_equal_tuple_oracle_and_independent_count(seed: int) -> 
         summation='eliminate').coefficients[0] == count_bruteforce(formula)
 
 
+@pytest.mark.integration
 def test_factorized_taylor_matches_original_multijet() -> None:
     formula = CNFFormula(4, ((1, -3), (2, 4), (-1, -2, 4)))
     design = paired_groups(formula)
@@ -86,6 +85,7 @@ def test_factorized_taylor_matches_original_multijet() -> None:
         assert factorized.stats.factor_eliminations > 0
 
 
+@pytest.mark.checkpoint
 def test_twenty_variable_chain_avoids_3_power_20_measurement_tuples() -> None:
     # Ten path variables with independent free partners. Number of legal
     # path assignments is F_12=144, times 2**10 unconstrained partners.
@@ -106,6 +106,7 @@ def test_twenty_variable_chain_avoids_3_power_20_measurement_tuples() -> None:
     assert result.stats.factor_eliminations == 10
 
 
+@pytest.mark.checkpoint
 def test_independent_groups_contribute_without_boolean_enumeration() -> None:
     formula = CNFFormula(30, ())
     design = paired_groups(formula)
@@ -116,6 +117,7 @@ def test_independent_groups_contribute_without_boolean_enumeration() -> None:
     assert result.stats.factor_assignments_tested == 0
 
 
+@pytest.mark.checkpoint
 def test_factor_work_and_size_cap_fail_closed() -> None:
     formula = CNFFormula(8, ((1, 3), (3, 5), (5, 7)))
     design = paired_groups(formula)
@@ -132,6 +134,7 @@ def test_factor_work_and_size_cap_fail_closed() -> None:
             formula, design, at=1, order=0, summation='unknown')  # type: ignore[arg-type]
 
 
+@pytest.mark.checkpoint
 def test_factorization_flows_through_certified_hermite_count() -> None:
     from non_exponential_sudoku.eth.interpolation import (
         count_from_manual_designs, count_origin_from_manual_designs,
@@ -152,6 +155,7 @@ def test_factorization_flows_through_certified_hermite_count() -> None:
     assert origin.taylor_data[0].stats.factor_scope_peak == 2
 
 
+@pytest.mark.integration
 def test_factorized_constructed_count_matches_original_oracle() -> None:
     from non_exponential_sudoku.eth import (
         construct_bounded_designs, count_from_constructed,
@@ -167,6 +171,7 @@ def test_factorized_constructed_count_matches_original_oracle() -> None:
     assert count_from_constructed(formula, design) == expected
 
 
+@pytest.mark.integration
 def test_factorized_optional_native_matches_python() -> None:
     pytest.importorskip('flint')
     formula = CNFFormula(4, ((1, -3), (2, 4)))
@@ -182,6 +187,7 @@ def test_factorized_optional_native_matches_python() -> None:
         assert native.coefficients == python.coefficients
 
 
+@pytest.mark.checkpoint
 def test_dense_group_interactions_refuse_induced_width() -> None:
     """A clique of interacting groups must not silently claim linear cost."""
     formula = CNFFormula(12, tuple(
@@ -193,3 +199,20 @@ def test_dense_group_interactions_refuse_induced_width() -> None:
             formula, design, at=1, order=0, summation='eliminate',
             limits=TaylorLimits(max_factor_work=1000, max_factor_entries=128),
         )
+
+
+@pytest.mark.checkpoint
+def test_factorized_tiny_exact_reference() -> None:
+    """Tiny direct regression remains in the fast per-commit checkpoint."""
+    formula = CNFFormula(4, ((1, -3), (2, 4)))
+    design = paired_groups(formula)
+    system = deformed(formula)
+    old = restricted_taylor_sum(
+        formula, design, system, at=Fraction(1), order=1,
+        E=(0,), U=(0,), summation='tuples',
+    )
+    new = restricted_taylor_sum(
+        formula, design, system, at=Fraction(1), order=1,
+        E=(0,), U=(0,), summation='eliminate',
+    )
+    assert new.coefficients == old.coefficients

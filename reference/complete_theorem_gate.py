@@ -62,6 +62,6 @@ def current_theorem_status(
             not PAPER_CONDITIONAL_RATE.suffices_for_cell_subexponential(
                 edge_log_growth=DIRECT_SUDOKU_EDGE_LOG_GROWTH,
             )):
-        gap = ('current O(s loglog(s) / log(s)^(1/4)) edge-time ceiling '
+        gap = ('current conditional O(s / sqrt(log(s))) edge-time ceiling '
                'does not imply o(N) exponent through s=Theta(N log N)')
     return CompleteTheoremStatus(target, local_bit_work_gap, OPEN_PREMISES, gap)

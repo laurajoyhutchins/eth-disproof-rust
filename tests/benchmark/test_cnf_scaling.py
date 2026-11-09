@@ -68,12 +68,30 @@ def test_mismatched_or_incomplete_evidence_fails_closed() -> None:
     for rows in (
         [_row("baseline")],
         [_row("baseline"), _row("baseline")],
-        [_row("baseline", "capacity_refusal"), _row("observed")],
         [_row("baseline"), _row("observed", actual=2)],
         [_row("baseline"), {**_row("observed"), "status": "failed"}],
     ):
         with pytest.raises(ValueError):
             summarize(rows, 1)
+
+
+@pytest.mark.checkpoint
+def test_instrumentation_sensitive_completion_is_preserved_not_compared() -> None:
+    rows = [_row("baseline"), _row("observed", "timeout")]
+    outcome = summarize(rows, 1)
+    assert outcome["outcome"] == "discordant_outcomes"
+    assert outcome["arm_outcomes"] == {
+        "baseline": "verified", "observed": "timeout",
+    }
+    assert outcome["answer_verified"] is False
+    assert outcome["instrumentation_walltime_ratio"] is None
+    # Disagreement is real evidence, not an excuse to erase the completed arm.
+    assert rows[0]["exact_count"] == 3
+    assert rows[1]["exact_count"] is None
+    with pytest.raises(ValueError):
+        summarize([
+            _row("baseline", actual=2), _row("observed", "timeout"),
+        ], 1)
 
 
 @pytest.mark.checkpoint

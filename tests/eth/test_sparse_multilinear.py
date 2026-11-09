@@ -110,6 +110,19 @@ def test_exponential_monomial_growth_refuses_without_fallback() -> None:
 
 
 @pytest.mark.integration
+def test_sparse_intermediate_live_tables_obey_shared_entry_budget() -> None:
+    formula = CNFFormula(2, ((1, 2),))
+    # The algorithm may have a small output but must not silently ignore
+    # the intermediate-table retention cap, even for a tiny construction.
+    with pytest.raises(CapacityError, match="multilinear total"):
+        taylor_coefficients_separated(
+            formula, _single_group(formula), at=Fraction(1), order=0,
+            summation="multilinear",
+            limits=TaylorLimits(max_factor_total_entries=2),
+        )
+
+
+@pytest.mark.integration
 def test_full_cnf_pipeline_multilinear_path_four_is_exact() -> None:
     formula = CNFFormula(4, ((1, 2), (2, 3), (3, 4)))
     report = count_cnf_reference(

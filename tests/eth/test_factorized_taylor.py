@@ -68,7 +68,7 @@ def test_factorized_jets_equal_tuple_oracle_and_independent_count(seed: int) -> 
             assert factorized.stats.measurement_tuples == 0
             assert factorized.stats.factor_scope_peak <= len(design.groups)
     assert taylor_coefficients_separated(
-        formula, design, replacements, at=Fraction(1), order=0,
+        formula, design, replacements, at=Fraction(0), order=0,
         summation='eliminate').coefficients[0] == count_bruteforce(formula)
 
 

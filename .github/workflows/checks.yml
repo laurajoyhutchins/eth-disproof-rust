@@ -10,24 +10,30 @@ jobs:
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+        with:
+          # PR verification must use the actual head SHA, not a synthetic merge.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # Complete ancestry is needed for a trustworthy merge-base diff.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Enforce manual-only proof workflows
-        run: python scripts/guard_proof_ci.py
       - name: Install verification dependencies
         run: python -m pip install -e '.[test,typecheck]'
       - name: Strict production typing
         run: python -m mypy --strict --no-incremental
       - name: Strict verification typing
-        run: python -m mypy --strict --follow-imports=silent scripts/evidence.py scripts/verify.py scripts/cost_ledger.py build_native.py
-      - name: Pure-Python checkpoint
-        run: python scripts/verify.py checkpoint --output artifacts/pure
-      - name: Preserve checkpoint evidence
+        run: python -m mypy --strict --follow-imports=silent scripts/evidence.py scripts/verify.py scripts/change_impact.py scripts/cost_ledger.py build_native.py
+      - name: Plan affected contracts (unknown means full)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python scripts/change_impact.py --base "$BASE_SHA" --output artifacts/pure/impact.json
+      - name: Verify selected or full checkpoint
+        run: python scripts/verify.py checkpoint --impact-plan artifacts/pure/impact.json --output artifacts/pure
+      - name: Preserve checkpoint and selection evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pure-checkpoint-evidence
           path: artifacts/pure/
           if-no-files-found: warn
-

@@ -50,6 +50,10 @@ class Counters:
     packet_checkpoint_coordinates:int=0
     packet_checkpoint_peak_coordinates:int=0
     packet_checkpoint_count:int=0
+    zero_support_attempts:int=0
+    zero_support_certificates:int=0
+    zero_support_unsupported:int=0
+    zero_support_evaluated_rows:int=0
     mode_dp_variables:int=0
     mode_dp_groups:int=0
     mode_dp_components:int=0

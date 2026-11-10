@@ -1,0 +1,16 @@
+{
+  "name": "nonexp-sudoku-pr-checkpoint",
+  "description": "Automatic source-attested pure-Python checkpoint on main-targeting Sudoku pull requests; outside contributors require /gcbrun",
+  "filename": "cloudbuild.yaml",
+  "serviceAccount": "projects/project-6b810532-a302-48dc-b56/serviceAccounts/engineering-infra-native-ci@project-6b810532-a302-48dc-b56.iam.gserviceaccount.com",
+  "approvalConfig": {
+    "approvalRequired": false
+  },
+  "repositoryEventConfig": {
+    "repository": "projects/project-6b810532-a302-48dc-b56/locations/us-west1/connections/engineering-infra-native-ci/repositories/nonexp-sudoku",
+    "pullRequest": {
+      "branch": "^main$",
+      "commentControl": "COMMENTS_ENABLED_FOR_EXTERNAL_CONTRIBUTORS_ONLY"
+    }
+  }
+}

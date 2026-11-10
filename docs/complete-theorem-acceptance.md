@@ -728,9 +728,10 @@ L2(T) = x2 + (T/2)*x1.
 ```
 
 These equal their original literals at `T=0`. Put
-`x1,x2` in one group and two unused declared variables
-in another, both with empty measurement matrices. All
-cross-group coefficients vanish, so the source's *actual*
+`x1,x2` in one group and include two further independent
+unit clauses `(x3)`, `(x4)` owned by a second group.
+Both groups have active factors, but all cross-group
+coefficients vanish. The source's *actual*
 `certify_measurements` accepts this design at `T=1`
 with `tau=D=0`. The first group's exact factor table is
 

@@ -319,12 +319,20 @@ pub const STAGES: &[Stage] = &[
         requires: &["bit_machine"],
     },
     Stage {
+        id: "cutoff_scan",
+        source_file: "SqrtLogSpace/FiniteFallback.lean",
+        lean_symbol: "FiniteFallback.cutoffCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["bit_machine"],
+    },
+    Stage {
         id: "finite_fallback",
         source_file: "SqrtLogSpace/FiniteFallback.lean",
         lean_symbol: "FiniteFallback.dispatchCommand",
         status: Status::Noncomputable,
         machine: Machine::Outer,
-        requires: &["frontend"],
+        requires: &["frontend", "cutoff_scan"],
     },
     Stage {
         id: "outer_setup",
@@ -490,6 +498,11 @@ pub mod leaf {
 /// FiniteFallback's source-chosen lookup table has no constructive Rust data.
 pub mod outer {
     use super::*;
+    /// Executable Lean FiniteFallback.cutoffCommand before dispatch.
+    /// The bounded counting table and the outer entry remain unsupported.
+    pub fn cutoff_scan(cutoff: usize) -> Result<Program<80, 1220>, Error> {
+        crate::finite_fallback::cutoff_program(cutoff)
+    }
     outer_stub!(frontend, "Native.frontendCommand");
     pub fn finite_fallback(_cutoff: usize, _large: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("FiniteFallback.dispatchCommand (noncomputable lookup)")

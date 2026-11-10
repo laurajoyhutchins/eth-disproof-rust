@@ -34,6 +34,102 @@ A proof of `2**o(s)` measured in Boolean network edges does not by itself discha
 The single complete-theorem test remains **unskipped and un-xfailed**, outside ordinary checkpoint CI. It cannot be marked green merely by filling local cost fields. A non-refusing worst-case theorem, its bit-operation recurrence, and its claimed input-size parameter must be established independently.
 
 
+## Paper-to-Lean-to-Python audit: first decisive unclosed cost
+
+**Source pin:** original [October 25 manuscript](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/The-Exponential-Time-Hypothesis-is-False-October-25-2026/build/main_full_version.tex), [Lean endpoint](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/Final.lean), [Lean scope note](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/docs/378.md). The pinned Lean file constructs a primitive `BitProgram.Program 80 1220` via `NativeLargeEntry.run` and proves its exact result, time, and all-prefix visited space. The formal scope note gives a `(log log n)^2` numerator in the exponent; the October 25 manuscript advertises the sharper `log log n` numerator and a separate sparse-instance improvement. **Neither source identifies that primitive machine with the Python `ContractionEngine` or `eth/` implementation.** This is the *first source-correspondence gap*, not evidence that the upstream Lean theorem is false.
+
+| Stage | Source route | Verified here | Still missing from this implementation |
+| --- | --- | --- | --- |
+| Input and parameters | `eth/parameters.py` and the manuscript Step 5 | Symbolic sufficient inequalities and one physical balancing-lemma example ([admission witness](eth-paper-lean-admission.md)); explicit canonical CNF semantics | A complete, source-equivalent, **total** input-to-count path using the literal schedule; no huge instance is physically materialized |
+| Spectral construction | `eth/construction.py`, `ImplicitAuxiliaryDesign.row_at` | Requested spectral coefficient heights, restricted projector entries, and final output coefficient height ([implicit-height proof](eth-implicit-spectral-height.md)); these need not materialize dimension `D` | Whole-construction and strict selector-route costs; the independently certified projected Gram/RREF bit bound covers the **projector** representation, not a strict-selector cutover |
+| **Exact center / Taylor data** | `eth/factorized_taylor.py`, `eth/interpolation.py`, `eth/tensor_jet.py`, and `count_from_constructed` | Exact small-case differential oracles, some source-derived support/width **upper certificates**, output coefficient bit bounds | **A universal source-correlated bound on every intermediate representation, work and retained memory for all coupled inputs under paper-admitted parameters.** This is the first *algorithmically decisive* missing bound after the algebraic setup. |
+| Appendix D alternative | `contraction/engine.py`, `PacketEntry`, `reference/whole_frame_recurrence.py` | Conditional calls, support, individual arithmetic and several source-loop envelopes | Closure and bit cost of **all generated entry oracles**, including numerical-exception leaves, as well as total non-refusal. The Appendix D path must not be conflated with the main-body spectral code. |
+| Readout / theorem | `recovery/`, exact counters, `research_acceptance/test_complete_bit_recurrence.py` | Conditional Hermite arithmetic, finite exact counts, a total **exponential** reference, intentionally red theorem gate | A complete bit-operation recurrence and worst-case space proof; for generalized Sudoku, transfer from network edges `s=Theta(N log N)` to cells `N` |
+
+The first row's source-correspondence problem is categorical: a
+validated Python result does **not** certify a Lean primitive step.
+The center-evaluation row is the first substantial *intermediate
+representation* problem on the Python main-body research route.
+Earlier local obligations in balancing, strict-selector construction,
+and source correspondence remain. The projected Gram/RREF bit bound
+is now certified for the projector representation (see below);
+calling center evaluation 'first decisive' does not erase those other gaps.
+
+### A nontrivially coupled family meeting the same paper assumptions
+
+The former complete symbolic Step-5 witness was
+`AND_i x_i`, whose factors are independent and whose count is 1.
+That family can make contraction look easy for the wrong reason.
+
+The executable `virtual_coupled_3cnf_step5` now certifies, without
+forming an enormous integer `n` or constructing its clauses, the
+**connected** family for `n=2**lambda`:
+
+```
+F_n = AND_{i in Z/nZ} (x_i OR x_(i+1) OR x_(i+2))
+```
+
+For `n>=8`, the `n` clauses are distinct, every clause has
+three literals and every variable occurs in precisely three
+clauses. Thus `M=3n,b=w=3`. The paper's balancing inequality
+`2(b+w)D**2<=M` becomes `12D**2<=3n`, **equivalent to**
+`4D**2<=n`, the sufficient inequality already checked by the
+independent-unit certificate. All other Step-5 inequalities are
+unchanged. Hence at `lambda=2**34` the coupled family also
+satisfies *every source-pinned sufficient admission inequality*,
+with exactly `r=113, Q=3,947,580, R=524,288`. This is not a
+finite-time evaluation, a proof of small rank or a bound on a
+center's work. The corresponding small cyclic `CNFFormula`
+objects are independently checked for normalization and incidence.
+
+The same numeric admission argument applies to **any** family of
+three-permutation clauses `(x_i OR x_pi(i) OR x_sigma(i))`
+where every clause has distinct literals and no clauses are
+duplicate or subsumed: bijective incidence gives `b=w=3,M=3n`.
+This permits strongly coupled interaction patterns. The cyclic
+example is an explicit, easy-to-describe witness, **not** a
+worst-case hardness instance or evidence of a uniform rank bound.
+
+### One smallest falsifiable next mathematical experiment
+
+Do **not** tune Sudoku frontier orbits for this purpose. Take the
+source's exact center evaluator and **one** fixed deformation
+center and Taylor coefficient order for the three-permutation
+3-CNF family. State a candidate compressed intermediate
+representation and prove an operation-by-operation invariant:
+
+1. The representation is exact and closed under every factor
+   multiplication, summation and derivative/coefficient update
+   the chosen source evaluator actually performs, for **arbitrary
+   permitted permutations**, not just the cyclic example.
+2. Its **total creation/work count** and all intermediate
+   coefficient bit lengths fit a source-backed
+   `2**o(n)` bit-work envelope. If targeting the published
+   endpoint, explicitly account for the intended
+   `2**O(n (loglog n)**2/sqrt(log n))` Lean-scale exponent
+   or the sharper manuscript bound, without substituting a
+   microbenchmark fit.
+3. Its *simultaneously retained* memory meets the claimed
+   polynomial-space requirement. Polynomial-height **final**
+   coefficients alone do not establish either claim.
+4. Run the same operations on small normalized, coupled formulas
+   and compare all outputs with an independent exact oracle.
+   These finite examples detect incorrect algebra; they do **not**
+   certify the universal bounds.
+
+**Success** means a proven source-correlated closure and cost
+invariant for the *entire chosen center evaluation*; then the
+remaining center count, Hermite readout and whole-input totality
+can be composed. **Failure** means an explicit source input
+whose intermediate representation exceeds the **proposed**
+bound, or a missing bound at one precise operation. Either is a
+useful mathematical outcome. An observed low-rank center,
+a virtual admitted parameter tuple, a numerical `LocalBitBound`
+dictionary, and a red capacity check are **not** substitutes.
+
+Existing acceptance remains intentionally **RED**. No independent
+theorem registry, scheduler or additional CI workflow is needed.
+
 ## A total exact baseline that does not prove the target theorem
 
 `reference/total_exact_cnf.py` provides a separate, **total mathematical
@@ -267,9 +363,10 @@ that expanded replacement**.
 This settles a separate bit-height obligation for the source's
 implicit coefficient **values**, not its global construction cost.
 The current strict paper entrypoint still uses selector measurements;
-projected Gram/RREF transfer, balancing work, all recursive children,
-resource-cap non-refusal and large intermediate ranks need independent
-cost and totality proofs. The complete theorem acceptance remains RED.
+balancing work, selector/projector cutover, all recursive children,
+resource-cap non-refusal and large intermediate ranks still need independent
+cost and totality proofs. The projected Gram/RREF work is separately bounded
+for the *projector* route below. The complete theorem acceptance remains RED.
 
 ## Projected Gram and fraction-free basis bit bound
 

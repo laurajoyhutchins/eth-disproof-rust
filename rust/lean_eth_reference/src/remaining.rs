@@ -151,8 +151,8 @@ pub const STAGES: &[Stage] = &[
     },
     Stage {
         id: "pair_dfs",
-        source_file: "SqrtLogSpace/DifferencePairsProgram.lean",
-        lean_symbol: "DifferencePairsProgram.command",
+        source_file: "SqrtLogSpace/QueryStreamProgram.lean",
+        lean_symbol: "QueryStreamProgram.pairs",
         status: Status::Stub,
         machine: Machine::Local,
         requires: &["pair_start", "signature_tuple"],
@@ -187,7 +187,14 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "QueryStreamProgram.nodeLoop",
         status: Status::Stub,
         machine: Machine::Local,
-        requires: &["node_cursor", "layout_load", "signature_bootstrap", "pair_setup", "pair_dfs", "node_finish"],
+        requires: &[
+            "node_cursor",
+            "layout_load",
+            "signature_bootstrap",
+            "pair_setup",
+            "pair_dfs",
+            "node_finish",
+        ],
     },
     Stage {
         id: "reconstruction",
@@ -390,13 +397,17 @@ macro_rules! outer_stub {
 /// pair-setup components already execute elsewhere in this crate.
 pub mod query {
     use super::*;
-    local_stub!(signature_bootstrap, "SignatureHeadLoader.bootstrapProgram");
+    /// Source bootstrapProgram compiles in the 40x768 LOW bank; its caller
+    /// separately lifts the program into the 40x896 query bank.
+    pub fn signature_bootstrap() -> Result<Program<40, 768>, Error> {
+        unavailable("SignatureHeadLoader.bootstrapProgram")
+    }
     local_stub!(pair_expand, "PairNativeSetup.expandCaller");
     local_stub!(signature_loader, "SignatureTupleLoader.loadHead");
     local_stub!(query_visitor, "QueryVisitorProgram.visitor");
     local_stub!(signature_tuple, "SignatureTupleComplete.command");
     local_stub!(pair_start, "QueryExecution.PairStart.command");
-    local_stub!(pair_dfs, "DifferencePairsProgram.command");
+    local_stub!(pair_dfs, "QueryStreamProgram.pairs");
     local_stub!(pair_commit, "QueryAssembler.commitPair");
     local_stub!(node_append, "NodeAppendSpace.command");
     local_stub!(node_finish, "QueryNodeFinish.command");
@@ -426,16 +437,24 @@ pub mod high_query {
 pub mod leaf {
     use super::*;
     local_stub!(preparation, "NativeLeafPreparation.command");
-    local_stub!(rounds, "NativeLeafRun.roundsCommand");
-    local_stub!(accepted_stage, "AcceptedQueryStage.command");
+    pub fn rounds(_marked_query: Cmd<40, 896>) -> Result<Cmd<40, 896>, Error> {
+        unavailable("NativeLeafRun.roundsCommand")
+    }
+    pub fn accepted_stage(_query: Cmd<40, 896>) -> Result<Cmd<40, 896>, Error> {
+        unavailable("AcceptedQueryStage.command")
+    }
     pub fn local_command(_k: usize) -> Result<Cmd<40, 896>, Error> {
         unavailable("NativeLeafProgram.localCommand")
     }
     pub fn local_program(_k: usize) -> Result<Program<40, 896>, Error> {
         unavailable("NativeLeafProgram.localProgram")
     }
-    outer_stub!(execution, "NativeLeafExecution.command");
-    outer_stub!(terminal_dispatch, "NativeLeafDispatch.command");
+    pub fn execution(_local_command: Cmd<40, 896>) -> Result<Cmd<80, 1220>, Error> {
+        unavailable("NativeLeafExecution.command")
+    }
+    pub fn terminal_dispatch(_nonterminal: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
+        unavailable("NativeLeafDispatch.command")
+    }
     pub fn command(_k: usize) -> Result<Cmd<80, 1220>, Error> {
         unavailable("NativeLeafProgram.command")
     }
@@ -449,21 +468,27 @@ pub mod leaf {
 pub mod outer {
     use super::*;
     outer_stub!(frontend, "Native.frontendCommand");
-    pub fn finite_fallback(_cutoff: usize) -> Result<Cmd<80, 1220>, Error> {
+    pub fn finite_fallback(_cutoff: usize, _large: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("FiniteFallback.dispatchCommand (noncomputable lookup)")
     }
-    outer_stub!(setup, "Native.setupAfterFrontend");
-    pub fn dfs(_k: usize) -> Result<Cmd<80, 1220>, Error> {
+    pub fn setup(_k: usize) -> Result<Cmd<80, 1220>, Error> {
+        unavailable("Native.setupAfterFrontend")
+    }
+    pub fn dfs(_k: usize, _leaf: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("DFSCountProgram.command")
     }
     outer_stub!(answer_suffix, "Native.answerCommand");
-    pub fn outer_command(_k: usize) -> Result<Cmd<80, 1220>, Error> {
+    pub fn outer_command(_k: usize, _leaf: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("Native.outerCommand")
     }
-    pub fn entry(_cutoff: usize, _k: usize) -> Result<Cmd<80, 1220>, Error> {
+    pub fn entry(_cutoff: usize, _large: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("Native.entryCommand")
     }
-    pub fn counting_program(_cutoff: usize, _k: usize) -> Result<Program<80, 1220>, Error> {
+    pub fn counting_program(
+        _cutoff: usize,
+        _k: usize,
+        _leaf: Cmd<80, 1220>,
+    ) -> Result<Program<80, 1220>, Error> {
         unavailable("Native.countingProgram")
     }
 }

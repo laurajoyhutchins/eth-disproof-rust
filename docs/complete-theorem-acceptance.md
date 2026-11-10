@@ -344,6 +344,68 @@ but `n=2**lambda` is even less physically representable.
 These are exact symbolic **upper-rate** computations, not
 runs of the paper algorithm and not runtime lower bounds.
 
+### Exact measurement witness solving: close the intermediate-height premise
+
+The independent [measurement-witness bit budget](../reference/eth_measurement_witness_budget.py)
+matches the exact *rectangular* `eth/design.py::_row_combination`
+Gauss-Jordan procedure. This is the stage that turns verified
+cross-group replacement vectors into rational `lambda` witnesses.
+Bounding the eventual `lambda` output alone would not suffice:
+we must also bound the fractions **while** the source eliminates.
+
+For a foreign variable group of size `g`, `s` integer measurement
+rows and a rational target `b in Q^g`, let `H` be the product of
+the `g` target denominators. Scaling the entire augmented
+`g x (s+1)` matrix by `H` yields an integer matrix with maximum
+entry bit length `B`. Put `k=min(g,s)`. By Leibniz's
+determinant formula, every minor used in exact Gauss-Jordan has
+at most
+
+```
+Mbits = (k+1)*(B+ceil(log2(k+2))+2)
+```
+
+bits. The normalized entries are ratios of such minors,
+including zero/rank-deficient cases. The source's intermediate
+multiply/subtract/normalize steps and its final reconstruction
+over at most `s` terms are consequently bounded by the explicit,
+slack bit ceiling
+
+```
+16*(s+1)*(Mbits+B+ceil(log2(s+2))+8).
+```
+
+The source uses at most
+`32*(g+1)*(s+1)*(k+1)` exact field operations and retains
+at most `4*(g+1)*(s+1)+4*(g+s+2)` rational slots within this
+one solve. A witness inconsistency can still raise; it cannot
+produce an unbounded elimination trace on finite input.
+
+The reference trace records **every reduced Fraction**, not just
+the final witness. A 2,100-seed local differential experiment
+compared exact rank-deficient/rectangular solutions, including
+empty cases, and checked both ceilings. The committed
+`tests/eth/test_measurement_witness_budget.py` additionally calls
+the **production** `_row_combination`, exercises a genuine
+conditional-schedule implicit spectral projector construction,
+and compares every foreign-group target to the independently
+certified `lambda` rows. GitHub runner admission failure means
+that full-repository differential has not yet executed.
+
+Because the source needs at most `ell*(r-1)` such solves
+per center, this gives a polynomial conditional *witness-solving*
+work/space/bit-height bound from polynomial-height transfer
+coefficients, row count, `g`, and `D`. Combined with the
+intermediate Taylor bit bound above, it avoids assuming that
+measurement witnesses are free or infinitely precise.
+
+**This does not prove row-count/row-norm admissibility.** The
+independent selector-subbasis analysis in draft PR #95 addresses
+that distinct existence obligation under the paper's balancing
+premise. The present bound also does not construct the balancing
+schedules, compute the selector subbasis, bypass resource limits,
+or establish the full input-to-count source refinement.
+
 ### What is still unproved
 
 This result **does not** certify a full input-to-count algorithm.

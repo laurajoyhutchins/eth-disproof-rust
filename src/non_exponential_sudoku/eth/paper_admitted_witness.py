@@ -173,6 +173,99 @@ def virtual_unit_cnf_step5(
 
 
 @dataclass(frozen=True, slots=True)
+class VirtualCoupledStep5Witness:
+    """Symbolic, genuinely coupled three-occurrence/three-literal CNF family.
+
+    For n=2**lambda, F_n=AND_i(x_i OR x_(i+1) OR x_(i+2)), indices
+    cyclic modulo n. Every variable occurs in three distinct clauses and
+    each clause has three distinct variables for n>=8, hence M=3n,
+    b=w=3. No CNF, assignment, spectral tensor or huge integer n is
+    allocated. No model count or intermediate rank is asserted.
+    """
+
+    lambda_bits: int
+    n_description: str
+    M_description: str
+    r: int
+    Q: int
+    R: int
+    checks: tuple[PaperProofCheck, ...]
+    materialized_formula: bool = False
+    executed_paper_algorithm: bool = False
+    executed_lean_machine: bool = False
+
+    @property
+    def admitted_by_sufficient_conditions(self) -> bool:
+        return all(check.status == "proved" for check in self.checks)
+
+    def check_status(self, name: str) -> Status:
+        for check in self.checks:
+            if check.name == name:
+                return check.status
+        raise KeyError(name)
+
+
+def virtual_coupled_3cnf_step5(
+    lambda_bits: int, *, max_descriptor_bits: int = 256,
+) -> VirtualCoupledStep5Witness:
+    """Transfer the paper's *sufficient* checks to a coupled growing family.
+
+    Reuses the already certified numeric Step-5 schedule without claiming
+    the easy unit-clause family establishes an algorithm for a coupled CNF.
+
+    For the cyclic triple-clause family, M=3n and b=w=3. Thus the
+    incidence lemma's 2(b+w)D**2 <= M is exactly 4D**2 <= n,
+    the original unit-clause certificate's condition. The overview's
+    12D**2 <= M is the same condition too. All other source Step-5
+    inequalities depend only on n,r,Q,R,D, not clause connectivity.
+    This proof is also valid for any three-permutation incidence family
+    with distinct literals and clauses, but does not certify its rank.
+    """
+    unit = virtual_unit_cnf_step5(
+        lambda_bits, max_descriptor_bits=max_descriptor_bits,
+    )
+    base = {item.name: item for item in unit.checks}
+    transferred: list[PaperProofCheck] = []
+    for item in unit.checks:
+        if item.name == "three_occurrences_and_width_three":
+            transferred.append(PaperProofCheck(
+                item.name, "proved" if lambda_bits >= 3 else "refuted",
+                "n>=8: every cyclic 3-clause has three distinct literals; "
+                "each variable occurs in exactly three clauses",
+            ))
+        elif item.name == "incidence_range":
+            transferred.append(PaperProofCheck(
+                item.name, "proved" if lambda_bits >= 3 else "refuted",
+                "n>=8: normalized cyclic clauses are all distinct; M=3n",
+            ))
+        elif item.name == "nonempty_factors":
+            transferred.append(PaperProofCheck(
+                item.name, "proved" if lambda_bits >= 3 else "refuted",
+                "n>=8: M=3n>0 and b=w=3",
+            ))
+        elif item.name == "balancing_incidence_inequality":
+            transferred.append(PaperProofCheck(
+                item.name, item.status,
+                "for M=3n, b=w=3: 2(b+w)D**2<=M iff 4D**2<=n; "
+                "same conservative upper bound as source-pinned unit witness",
+            ))
+        elif item.name == "stronger_overview_12_D_squared_le_M":
+            transferred.append(PaperProofCheck(
+                item.name, base["balancing_incidence_inequality"].status,
+                "12D**2<=3n iff 4D**2<=n; same conservative proof",
+            ))
+        else:
+            transferred.append(item)
+    return VirtualCoupledStep5Witness(
+        lambda_bits=unit.lambda_bits,
+        n_description=unit.n_description,
+        M_description=f"3*({unit.n_description})",
+        r=unit.r, Q=unit.Q, R=unit.R,
+        checks=tuple(transferred),
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class FiniteUnitBalanceWitness:
     """Fully enumerated incidence schedule satisfying Lemma incidence-labels.
 

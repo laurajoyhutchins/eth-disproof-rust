@@ -1,0 +1,44 @@
+name: Rust ETH port
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'rust/lean_eth_reference/**'
+      - '.github/workflows/rust.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'rust/lean_eth_reference/**'
+      - '.github/workflows/rust.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-eth-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: rust
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: rust/lean_eth_reference
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.99.1
+      - name: Formatting
+        run: cargo fmt --all -- --check
+      - name: Exact Rust tests
+        run: cargo test --locked --offline --all-targets
+      - name: Strict Clippy
+        run: cargo clippy --locked --offline --all-targets -- -D warnings

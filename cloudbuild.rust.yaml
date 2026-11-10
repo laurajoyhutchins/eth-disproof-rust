@@ -1,0 +1,31 @@
+# Independent, source-attested Rust port checkpoint.
+# Never installs Python, Cython, Lean, Mathlib, or unrelated solver packages.
+steps:
+  - id: admit-source
+    name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        expected='$COMMIT_SHA'
+        revision='$REVISION_ID'
+        [[ "$$expected" =~ ^[0-9a-f]{40}$$ ]]
+        test "$$expected" = "$$revision"
+        test -d .git
+        test "$$(git rev-parse --verify HEAD)" = "$$expected"
+        test -z "$$(git status --porcelain --untracked-files=no)"
+  - id: rust-port
+    name: rust:1.99.1-bookworm
+    dir: rust/lean_eth_reference
+    entrypoint: bash
+    waitFor: ['admit-source']
+    args:
+      - -ceu
+      - |
+        test -f Cargo.lock
+        cargo fmt --all -- --check
+        cargo test --locked --offline --all-targets
+        cargo clippy --locked --offline --all-targets -- -D warnings
+timeout: 900s
+options:
+  logging: CLOUD_LOGGING_ONLY

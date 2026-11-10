@@ -62,3 +62,53 @@ def test_research_suite_script_refuses_unknown_names() -> None:
         )
         assert result.returncode == 2
         assert 'unknown research suite' in result.stderr
+
+@pytest.mark.checkpoint
+def test_rust_ci_has_no_python_or_lean_dependency() -> None:
+    """The standalone Rust lane must not silently fan out to solver CI."""
+    rust = _config(".github/workflows/rust.yml")
+    managed = _config("cloudbuild.rust.yaml")
+    for command in (
+        "cargo fmt --all -- --check",
+        "cargo test --locked --offline --all-targets",
+        "cargo clippy --locked --offline --all-targets -- -D warnings",
+    ):
+        assert command in rust
+        assert command in managed
+    assert "rust/lean_eth_reference" in rust
+    assert "rust/lean_eth_reference" in managed
+    assert "1.99.1" in rust and "rust:1.99.1-bookworm" in managed
+    assert "  workflow_dispatch:" in rust
+    assert "  pull_request:" in rust and "    paths:" in rust
+    for unwanted in ("setup-python", "pip install", "mypy", "lake build", "scripts/verify.py"):
+        assert unwanted not in rust
+        assert unwanted not in managed
+
+
+@pytest.mark.checkpoint
+def test_cloudbuild_trigger_files_isolate_rust_only_changes() -> None:
+    import json
+
+    rust = json.loads(_config("config/cloudbuild-rust-pr-trigger.json"))
+    pr = json.loads(_config("config/cloudbuild-pr-checkpoint-trigger.json"))
+    main = json.loads(_config("config/cloudbuild-main-checkpoint-trigger.json"))
+    assert rust["filename"] == "cloudbuild.rust.yaml"
+    assert rust["includedFiles"] == [
+        "rust/lean_eth_reference/**",
+        "cloudbuild.rust.yaml",
+        "config/cloudbuild-rust-pr-trigger.json",
+    ]
+    ignored = [
+        "rust/lean_eth_reference/**",
+        ".github/workflows/rust.yml",
+        "cloudbuild.rust.yaml",
+        "config/cloudbuild-rust-pr-trigger.json",
+    ]
+    assert pr["ignoredFiles"] == ignored
+    assert main["ignoredFiles"] == ignored
+    assert pr["filename"] == main["filename"] == "cloudbuild.yaml"
+    assert pr["repositoryEventConfig"]["pullRequest"]["branch"] == "^main$"
+    assert main["repositoryEventConfig"]["push"]["branch"] == "^main$"
+    for item in (rust, pr, main):
+        assert item["approvalConfig"] == {"approvalRequired": False}
+        assert "nonexp-sudoku-pr-ci@" in item["serviceAccount"]

@@ -694,13 +694,52 @@ As `M=(3-1/k)*n >= (5/2)*n`, both required
 margin exactly. No virtual CNF, balancing schedule or
 Lean execution is fabricated.
 
-**Acceptance interpretation:** We now have an actual
-unbounded *mathematical family* with source-compatible
-Step-5 numerical parameters and provably growing primal
-treewidth. But it is not a theorem about the claimed
-algorithm's complexity. The uncapped construction,
-all-source cost composition, general-CNF reduction and
-pinned Lean refinement are still unverified.
+**Mathematical audit correction (2026-11-10): this is not
+a hardness witness.** Every clause in all three of the
+cyclic, affine and grid-port families contains positive
+literals only, so the all-ones assignment satisfies every
+formula. The SAT *decision* instances are trivial. For the
+grid-port family, exact counting is also inherently
+subexponential by a standard row-by-row transfer DP:
+retain the assignments to the 4k variables in the
+current row of k four-port cells, then transition to
+the next row. Only adjacent rows interact, so there
+are at most 2^(4k) row states and at most 2^(8k)
+state-pair comparisons per row. The total cost is
+O(poly(k)*2^(8k))=2^O(sqrt(n)) for n=4k^2.
+The proven treewidth lower bound Omega(sqrt(n))
+is therefore entirely consistent with efficient
+subexponential exact counting on this family.
+The affine experiment reports the width of one
+order, which is *not* a treewidth lower bound.
+The cyclic witness's width is constant.
+
+**Another important obstruction to unsupported shortcuts:**
+the groups obtained after spectral transfer do *not*
+factor along components of the original clause-incidence
+hypergraph. Source replacement rows have coefficients
+on additional variables within their assigned group.
+An independently reviewed, exact measurement-zero
+example has group-weight matrix
+`[[1,1/2],[1/2,3/8]]` with determinant 1/8.
+If the two original components separated into products,
+that matrix would have rank one and determinant zero.
+See [the reviewed finite counterexample](https://github.com/mathcommunity/oai-math-revised/pull/60)
+and its full [PR #60 review discussion](https://github.com/mathcommunity/oai-math-revised/pull/60).
+Do not infer a within-group factorization from the
+original clause graph, or use its component sizes as
+a bound on intermediate tensor scopes. The *published*
+measurement-separation lemma only factors at whole-group
+boundaries and is not contradicted by this example.
+
+**Acceptance interpretation:** These families demonstrate
+numeric input admission, certified source identities,
+or a growing structural parameter. None is an obstruction
+to a 2^o(n) #SAT algorithm, none supports an ETH lower
+bound, and none proves the OpenAI algorithm false.
+The uncapped construction, complete source-level bit
+cost composition, general-CNF reduction and pinned
+Lean refinement are separate verification tasks.
 
 The finite cyclic/affine probe remains capped at 512
 variables; the checked finite grid-minor constructor

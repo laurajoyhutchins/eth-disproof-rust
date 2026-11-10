@@ -24,27 +24,7 @@ revision and branch protection is updated.
 [`config/cloudbuild-pr-checkpoint-trigger.json`](../config/cloudbuild-pr-checkpoint-trigger.json)
 is a **second-generation GitHub pull-request event trigger** with:
 
-- target base branch `^main# Cloud Build CI transition
-
-These Cloud Build recipes cover the complete pure-Python checkpoint, native
-oracles, and seven explicit research and benchmark suites. **Configuration
-does not prove that a GitHub trigger exists or has passed.** Keep existing
-GitHub Actions checks until the cloud replacement passes on an exact PR
-revision and branch protection is updated.
-
-## Build surfaces
-
-- cloudbuild.yaml: main-targeting pull requests and main pushes; strict mypy,
-  conservative full impact plan, two independent checkpoint shard processes,
-  and exact-source, complete-union aggregation.
-- cloudbuild.native.yaml: manual, release, or scheduled native integration;
-  Cython, FLINT, Ganak, integration, extended correctness and attestations.
-- cloudbuild.research.yaml: explicit _SUITE (cnf-scaling, sudoku-scaling,
-  sudoku-representation, unified-cost, valuation-scaling, memory,
-  native-cutover); nonrequired benchmarking and research evidence.
-- Upstream Lean/Mathlib source-trace stays manual-only in GitHub Actions.
-
- and build definition `cloudbuild.yaml`;
+- target base branch `^main$` and build definition `cloudbuild.yaml`;
 - `approvalRequired=false` (no Google approval per invocation);
 - `COMMENTS_ENABLED_FOR_EXTERNAL_CONTRIBUTORS_ONLY` (automatic for
   repository owners/collaborators, `/gcbrun` only for outside contributors);

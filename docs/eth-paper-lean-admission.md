@@ -87,6 +87,42 @@ The original `parameters.derive_paper_parameters` implementation
 is tested against the symbolic derivation at a smaller, representable
 `L=2**20` to prevent a parallel formula from silently drifting.
 
+## A coupled Step-5-admitted family, without executing it
+
+The unit-clause family above was an easy independent case. It could
+not test how coupling affects the intermediate Taylor representation.
+
+`virtual_coupled_3cnf_step5` now checks a genuinely connected,
+symbolically specified width-three and occurrence-three family,
+
+```
+F_n = AND_{i in Z/nZ} (x_i OR x_(i+1) OR x_(i+2)),
+n = 2**lambda, M = 3n, b = w = 3.
+```
+
+For `n>=8`, the clauses are distinct, and every variable appears
+in precisely three clauses. Consequently the paper's incidence
+inequality `2(b+w)D**2 <= M` is exactly `4D**2<=n`,
+the same condition certified above for the unit family. The stronger
+overview condition `12D**2<=M` is also equivalent to this one.
+All remaining conditions depend only on `n,r,Q,R,D` and are
+unchanged. Thus the **same** enormous `lambda=2**34` parameters
+pass every sufficient Step-5 condition for this interacting family.
+
+More generally, the same numeric calculation applies to three
+bijections `i,pi(i),sigma(i)` whose clauses have distinct literals
+and do not normalize away. The family can therefore include much
+more strongly coupled interaction graphs; **no global rank or
+bit-work bound follows from this admission**.
+
+This certificate constructs **neither** a full CNF of astronomical
+size nor its spectral auxiliary, exact count, Taylor factors or Lean
+primitive trace. It solves only the input-hypothesis question.
+The next operation worth attacking is a complete **intermediate
+representation and bit-cost closure** for one exact coupled
+center evaluation. See
+[the proof-to-execution audit](complete-theorem-acceptance.md#paper-to-lean-to-python-audit-first-decisive-unclosed-cost).
+
 ## A *physically realized* incidence-balancing lemma witness
 
 The paper's Lemma `incidence-labels` makes the hypotheses

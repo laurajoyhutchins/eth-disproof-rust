@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from fractions import Fraction
-from itertools import combinations
 from random import Random
 
 import pytest
@@ -42,9 +41,13 @@ def test_projected_rref_can_exceed_original_selector_l1() -> None:
     assert basis.rows == source
     assert basis.stats.selected_rows == 2
     assert basis.stats.maximum_selected_l1 == 3
-    from tests.eth.test_projected_gram import _old_fraction_rref
-    rref = _old_fraction_rref([[Fraction(x) for x in row] for row in source])
-    assert rref == ((1, 0, -1, 1), (0, 1, 2, -1))
+    # These primitive RREF rows are exact rational combinations of
+    # the two source rows, but the second has larger L1.
+    rref = ((1, 0, -1, 1), (0, 1, 2, -1))
+    for row in rref:
+        _row_combination(source, tuple(map(Fraction, row)))
+    for row in source:
+        _row_combination(rref, tuple(map(Fraction, row)))
     assert max(sum(map(abs, row)) for row in rref) == 4
 
 
@@ -61,7 +64,7 @@ def test_integer_selector_subbasis_preserves_exact_rowspace(
 ) -> None:
     result = independent_selector_rows(source, width=3)
     for row in source:
-        assert _row_combination(result.rows, tuple(map(Fraction, row)))
+        _row_combination(result.rows, tuple(map(Fraction, row)))
     assert result.stats.selected_rows <= len(source)
     assert result.stats.maximum_selected_l1 <= result.stats.maximum_input_l1
     assert (result.stats.maximum_fraction_component_bits <=
@@ -82,9 +85,9 @@ def test_seeded_selector_subbasis_exact_span_and_numerical_norm() -> None:
             result = independent_selector_rows(rows, width=width)
             assert result.stats.rank <= width
             for row in rows:
-                assert _row_combination(
-                    result.rows, tuple(Fraction(x) for x in row)
-                ) or not any(row)
+                _row_combination(
+                result.rows, tuple(Fraction(x) for x in row)
+            )
             assert result.stats.maximum_selected_l1 <= result.stats.maximum_input_l1
             checked += 1
     assert checked == 7 * 24
@@ -169,7 +172,6 @@ def test_conditional_source_balancing_preserves_subbasis_certificates() -> None:
 def test_symbolic_full_step5_quantitative_selector_bound_without_n_allocation() -> None:
     lam = 2 ** 34
     nu = (lam - 1).bit_length()
-    r = (lam**0 if False else 1)  # exact value assigned below
     from math import isqrt
     r = isqrt(lam) // (nu * nu)
     Q = lam // (128 * nu)

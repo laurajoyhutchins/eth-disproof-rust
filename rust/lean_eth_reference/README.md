@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.9.0)
+# OpenAI ETH formalization: executable Rust port (v0.10.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -32,7 +32,11 @@ It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
 | **`LeafHeadSetupProgram.Address.command`, `initializeAddress`** | `src/native_bootstrap.rs` | **Unary multiplication and finite 16×768 staged address initialization** |
 | **`SubexpSunflowerProgram.CountRecords`, `countRows`** | `src/native_bootstrap.rs` | **Exact 13-label framed-record counter and staged record count** |
 | **`LeafHeadSetupProgram.retainCache`** | `src/native_bootstrap.rs` | **Preserving 640–642→710–712 copies; exact instruction counts** |
-| `LayoutProgram.IntegerCache.program`, complete `SignatureHeadLoader.bootstrapProgram` | Not implemented | Native cache construction remains essential |
+| `BinaryPrograms.Add.program`, `Add.littleEndianProgram` | `src/native_integer_cache.rs` | **13 / 17 source-defined instructions; exact carries and bit order** |
+| `LayoutProgramScalar.cacheCellLocal`, `cacheCell` | `src/native_integer_cache.rs` | **Executable H recurrence cell** |
+| `LayoutProgramScalar.initialCommand`, `initialBuild` | `src/native_integer_cache.rs` | **Framed initial H row with runtime width** |
+| `LayoutProgram.IntegerCache.copies`, `makePower` | `src/native_integer_cache.rs` | **Executable prefix / denominator suffix; no H-flat substitution** |
+| `LayoutProgram.IntegerCache.program`, complete `SignatureHeadLoader.bootstrapProgram` | Not implemented | H-table iteration and width normalization remain |
 | `BitProgramCompile.primitive` and TM2 microsteps | Not implemented | Do not infer primitive time/tape costs |
 | `NativeLeafProgram.command k`, `NativeOuter`, `Native.countingProgram` | Not implemented | Primary next execution milestones |
 | `FiniteFallback` bounded lookup | `remaining::outer::finite_fallback` | Explicit fail-closed stub: noncomputable Lean table |
@@ -54,7 +58,7 @@ printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
 # count=5 nodes=3 leaves=2 peak_frontier=2
 ```
 
-There are 58 Rust tests, including 960 independent structured-program cases
+There are 71 Rust tests, including 960 independent structured-program cases
 (120 command shapes × 8 input/register states), all short-stack loop cases,
 source-derived CNF/golden encoding vectors, strict finite-index checks, exact
 branch partitioning, refusal behavior, and subroutine relocation, executable marked-query initialization, its exact instruction counts, mapped subroutines, and dirty-scratch regression cases. They are
@@ -309,3 +313,10 @@ All remaining **runtime** stages from the native query through the proof-facing 
 `src/native_bootstrap.rs` ports the actual unary address computation, 13-label framed-record count, their isolated stage copies and cleanup, and the final preserving cache-retention suffix. Six source-derived tests exercise values, exact source instruction counts, register and stack frames, dirty scratch and the `40×896` node lift. The new six tests passed locally together with all 58 pre-existing executable tests, using Rust 1.99.1 offline; the separate three-test v0.8.0 scaffold has not been rerun in that local snapshot.
 
 **This is deliberately not the complete `SignatureHeadLoader.bootstrapProgram`:** `LayoutProgram.IntegerCache.program` has not been ported. Cache retention is an independent suffix and is not called by the prefix. No source-executed Lean/Rust differential, full node callback, TM2 bound or complexity theorem has been established by this increment.
+
+
+## v0.10.0: integer-cache finite arithmetic and initial H row
+
+Source-pinned physical Rust programs now execute the original 13-label binary adder, its 17-label linked little-endian variant, the H recurrence cache cell, framed initial H row, fixed integer-cache copy prefix, and the unary denominator constructor. Seven new local tests pass in debug and release; the native package's full 71-test suite passes, as do formatting and strict Clippy. See [`docs/integer-cache-port-v0.10.md`](docs/integer-cache-port-v0.10.md).
+
+The complete `LayoutProgramScalar.hFlatProgram` remains unported. **Neither the complete integer cache nor `SignatureHeadLoader.bootstrapProgram` is executable**, and no imported-source Lean differential is claimed.

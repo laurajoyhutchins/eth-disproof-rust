@@ -671,3 +671,4 @@ pub mod native_query_prefix;
 pub mod remaining;
 
 pub mod native_bootstrap;
+pub mod native_integer_cache;

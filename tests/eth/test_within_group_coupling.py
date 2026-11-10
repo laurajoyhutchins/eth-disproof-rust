@@ -20,18 +20,20 @@ from non_exponential_sudoku.eth.polynomial import ONE, ZERO, Polynomial
 def _certified_disconnected_units() -> tuple[
     CNFFormula, ReplacementSystem, MeasurementDesign,
 ]:
-    # Two independent original unit clauses. Variables 3 and 4 are
-    # declared but unused, providing a second (free) group.
-    formula = CNFFormula(4, ((1,), (2,)))
+    # Four independent original unit clauses. Both variable groups
+    # have real owned factors, so whole-group separation is nonvacuous.
+    formula = CNFFormula(4, ((1,), (2,), (3,), (4,)))
     t_over_two = Polynomial((Fraction(0), Fraction(1, 2)))
     replacements = ReplacementSystem((
         (ReplacementForm((ONE, t_over_two, ZERO, ZERO)),),
         (ReplacementForm((t_over_two, ONE, ZERO, ZERO)),),
+        (ReplacementForm((ZERO, ZERO, ONE, ZERO)),),
+        (ReplacementForm((ZERO, ZERO, ZERO, ONE)),),
     ))
     replacements.validate(formula)
     design = MeasurementDesign(
         groups=((0, 1), (2, 3)),
-        clause_groups=(0, 0),
+        clause_groups=(0, 0, 1, 1),
         matrices=((), ()), tau=Fraction(0), D=0,
     )
     # No cross-group coefficients, so all design conditions hold with
@@ -47,7 +49,7 @@ def _local_weight(
 ) -> Fraction:
     bits = (x1, x2, 0, 0)
     factors = []
-    for forms in replacements.clauses:
+    for forms in replacements.clauses[:2]:
         occurrence = forms[0]
         factors.append(sum(
             (poly.evaluate(center) * bit for poly, bit in zip(
@@ -60,7 +62,7 @@ def _local_weight(
 @pytest.mark.checkpoint
 def test_valid_certificate_does_not_imply_original_component_factorization() -> None:
     formula, replacements, design = _certified_disconnected_units()
-    assert formula.clauses == ((1,), (2,))
+    assert formula.clauses == ((1,), (2,), (3,), (4,))
     assert all(not rows for rows in design.matrices)
     certificate = certify_measurements(
         formula, replacements, design, at=1,
@@ -84,6 +86,21 @@ def test_valid_certificate_does_not_imply_original_component_factorization() -> 
 def test_whole_group_measurement_separation_remains_exact_despite_coupling() -> None:
     formula, replacements, design = _certified_disconnected_units()
     oracle = deformation_polynomial(formula, replacements)
+    # At any center the two groups may be multiplied independently;
+    # within the first group x1 and x2 may NOT be split.
+    for x1 in (0, 1):
+        for x2 in (0, 1):
+            first = _local_weight(replacements, x1, x2, center=1)
+            for x3 in (0, 1):
+                for x4 in (0, 1):
+                    bits = (x1, x2, x3, x4)
+                    full = Fraction(1)
+                    for row in replacements.clauses:
+                        full *= sum((
+                            poly.evaluate(1) * bit
+                            for poly, bit in zip(row[0].coefficients, bits)
+                        ), Fraction(0))
+                    assert full == first * x3 * x4
     for center in (0, 1, 2):
         for order in (0, 1, 2):
             observed = taylor_coefficients_separated(

@@ -9,6 +9,7 @@ from non_exponential_sudoku.eth.paper_admitted_witness import (
 )
 from reference.eth_structural_adversary import (
     affine_three_cnf, cyclic_three_cnf, natural_order_induced_width,
+    subcubic_grid_cnf, certify_subcubic_grid_minor,
 )
 
 
@@ -77,3 +78,45 @@ def test_structural_probe_rejects_invalid_materialization(n: int) -> None:
         cyclic_three_cnf(n)
     with pytest.raises(ValueError):
         affine_three_cnf(n)
+
+
+@pytest.mark.checkpoint
+@pytest.mark.parametrize("side", (2, 4, 8))
+def test_subcubic_wall_has_independently_checked_grid_minor(side: int) -> None:
+    formula = subcubic_grid_cnf(side)
+    certificate = certify_subcubic_grid_minor(formula, side=side)
+    assert certificate.variables == 4 * side * side
+    assert certificate.clauses == 6 * side * side - 2 * side
+    assert certificate.literal_occurrences == 12 * side * side - 4 * side
+    assert certificate.maximum_occurrences == 3
+    assert certificate.maximum_clause_width == 2
+    assert certificate.contracted_grid_edges == 2 * side * (side - 1)
+    # Every grid row/column cross meets every other one. Any <side
+    # vertices miss an entire row and an entire column, so the cross
+    # bramble has order >=side; the grid's treewidth is >=side-1.
+    assert certificate.treewidth_lower_bound == side - 1
+    assert certificate.variables <= certificate.literal_occurrences <= (
+        3 * certificate.variables
+    )
+
+
+@pytest.mark.integration
+def test_larger_subcubic_wall_retains_growing_grid_minor() -> None:
+    side = 16
+    certificate = certify_subcubic_grid_minor(
+        subcubic_grid_cnf(side), side=side,
+    )
+    assert certificate.variables == 1024
+    assert certificate.treewidth_lower_bound == 15
+
+
+@pytest.mark.checkpoint
+def test_grid_minor_verifier_rejects_missing_edge_and_invalid_side() -> None:
+    from non_exponential_sudoku.eth.cnf import CNFFormula
+    original = subcubic_grid_cnf(2)
+    truncated = CNFFormula(original.nvars, original.clauses[:-1])
+    with pytest.raises(ValueError, match="clauses differ"):
+        certify_subcubic_grid_minor(truncated, side=2)
+    for side in (0, 1, 3, 32, True):
+        with pytest.raises(ValueError):
+            subcubic_grid_cnf(side)

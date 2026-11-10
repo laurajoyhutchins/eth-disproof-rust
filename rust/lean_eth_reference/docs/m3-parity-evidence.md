@@ -9,6 +9,7 @@ new runner instead launches imported-source Lean and the Rust port separately,
 then invokes each existing strict comparator. It checks the exact
 [OpenAI source commit](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae),
 all declared original Lean Git blobs, the declared Lean 4.34.1 compiler,
+the matching Mathlib Git checkout (d13f23b723b8a846827a245b89c10fc7d3f11612),
 and clean tracked worktrees. A receipt records the actual two commands, Rust
 commit, source blob list, wrapper/comparator digests and output digests. It is
 only written **after** each selected suite passes. A stale prior receipt is
@@ -23,7 +24,7 @@ From rust/lean_eth_reference:
 
 These tests run in scripts/verify-local.sh before fmt, offline Cargo tests,
 and strict Clippy. They cover correct and wrong source hashes, missing files,
-incorrect source/toolchain pins, traversal/empty manifests, and stage uniqueness.
+incorrect source/toolchain pins, traversal/empty manifests, Mathlib lock mismatch, and stage uniqueness.
 
 ## Real source-executed verification (blocked pending complete Mathlib restore)
 
@@ -49,7 +50,7 @@ It reports no Lean/Rust equivalence result until actual execution succeeds.
 | Requirement | Current status |
 |---|---|
 | Rust finite stage executables | Present in PR #96; combined-branch runtime tests not re-run here |
-| Evidence-gate source pin, provenance and refusal behavior | Implemented; six offline Python unit tests passed locally |
+| Evidence-gate source pin, provenance and refusal behavior | Implemented; seven offline Python unit tests passed locally |
 | Original imported Lean/Rust fixture snapshot parity | **Blocked** by incomplete Mathlib 4.34.1 restoration |
 | Full instruction table, PC, register, stack, protected frame and halting refinement | **Not established** by fixture snapshots |
 | Complete query, native counter, independent CNF counting | Requires M1/M2 #104/#107/#108 |

@@ -10,6 +10,7 @@ from non_exponential_sudoku.eth.paper_admitted_witness import (
 from reference.eth_structural_adversary import (
     affine_three_cnf, cyclic_three_cnf, natural_order_induced_width,
     subcubic_grid_cnf, certify_subcubic_grid_minor,
+    virtual_subcubic_grid_step5,
 )
 
 
@@ -120,3 +121,28 @@ def test_grid_minor_verifier_rejects_missing_edge_and_invalid_side() -> None:
     for side in (0, 1, 3, 32, True):
         with pytest.raises(ValueError):
             subcubic_grid_cnf(side)
+
+
+@pytest.mark.checkpoint
+def test_virtual_grid_minor_numeric_admission_and_proven_tw_growth() -> None:
+    lam = 1 << 34
+    witness = virtual_subcubic_grid_step5(lam)
+    assert (witness.r, witness.Q, witness.R) == (113, 3947580, 524288)
+    assert witness.numeric_step5_admitted
+    assert witness.spectral_overview_margin_proved
+    assert witness.spectral_dimension_squared_log2_upper == 4 * 3947580 * 7
+    assert witness.spectral_dimension_squared_log2_upper < lam - 3
+    assert witness.grid_side_expression == f"2**{(lam - 2) // 2}"
+    assert witness.treewidth_lower_bound_expression == (
+        f"(2**{(lam - 2) // 2})-1"
+    )
+    assert not witness.materialized_cnf
+    assert not witness.executed_paper_algorithm
+    assert not witness.executed_lean_machine
+
+
+@pytest.mark.checkpoint
+def test_virtual_grid_minor_admission_refuses_absent_source_premises() -> None:
+    for lam in (0, 1, 3, 10, 1 << 20, (1 << 34) - 1, True):
+        with pytest.raises(ValueError):
+            virtual_subcubic_grid_step5(lam)

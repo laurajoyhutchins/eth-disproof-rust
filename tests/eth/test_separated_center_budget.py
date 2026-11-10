@@ -6,6 +6,7 @@ manuscript's giant input admission, full CNF construction, or Lean machine.
 from __future__ import annotations
 
 from fractions import Fraction
+from itertools import islice, product
 
 import pytest
 
@@ -16,13 +17,40 @@ from non_exponential_sudoku.eth.polynomial import (
     ReferenceLimits, deformation_polynomial,
 )
 from non_exponential_sudoku.eth.taylor import (
-    TaylorLimits, taylor_coefficients_separated,
+    TaylorLimits, _measurement_vectors, taylor_coefficients_separated,
 )
 from non_exponential_sudoku.runtime.budget import CapacityError
 from reference.eth_separated_center_budget import (
     ceil_log2_ratio, certified_separated_center_envelope,
     paper_separated_rate,
 )
+
+
+@pytest.mark.checkpoint
+def test_lazy_measurement_iterator_matches_full_cartesian_order_exactly() -> None:
+    for D in range(4):
+        for rows in range(5):
+            assert list(_measurement_vectors(D, rows)) == list(
+                product(range(-D, D + 1), repeat=rows)
+            )
+    for D, rows in ((-1, 1), (1, -1), (True, 1), (1, True)):
+        with pytest.raises(ValueError):
+            list(_measurement_vectors(D, rows))
+
+
+@pytest.mark.checkpoint
+def test_very_large_measurement_value_yields_without_allocating_the_pool() -> None:
+    # itertools.product(range(-D,D+1),repeat=3) would first materialize
+    # 2*D+1 enormous Python integer objects. The source generator must
+    # instead yield three tuples with O(rows) live state.
+    D = 10**100
+    first = list(islice(_measurement_vectors(D, 3), 3))
+    assert first == [
+        (-D, -D, -D),
+        (-D, -D, -D + 1),
+        (-D, -D, -D + 2),
+    ]
+    assert list(_measurement_vectors(D, 0)) == [()]
 
 
 @pytest.mark.checkpoint

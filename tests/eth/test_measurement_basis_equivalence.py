@@ -172,7 +172,7 @@ def test_strict_entrypoint_opt_in_retains_literal_admission_and_invalid_mode_pol
             construct_paper_bounded_designs(formula, measurement_basis=mode)
     # Admission is checked before auxiliary construction on this tiny
     # nonadmitted input: no alternative toy schedule is substituted.
-    with pytest.raises(PaperParametersUnavailable):
+    with pytest.raises(ValueError, match="unknown ETH measurement basis"):
         construct_paper_bounded_designs(
             formula, measurement_basis="invalid",  # type: ignore[arg-type]
         )

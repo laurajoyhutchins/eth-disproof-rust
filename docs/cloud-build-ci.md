@@ -31,7 +31,8 @@ locked offline tests, and strict Clippy.
 
 Both Python checkpoint triggers ignore changes consisting entirely of the
 Rust crate and its CI files. Mixed Rust and Python changes run both checks.
-The GitHub-hosted Rust workflow is disabled and retains manual dispatch only.
+The GitHub-hosted Rust workflow is disabled. Its manual-dispatch configuration
+is retained, but the workflow must be re-enabled before it can be dispatched.
 
 The Rust triggers currently contain an inline copy of `cloudbuild.rust.yaml`
 so they can test existing PR branches that predate that file. The checked-in

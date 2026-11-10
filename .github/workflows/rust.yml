@@ -5,12 +5,10 @@ on:
     branches: [main]
     paths:
       - 'rust/lean_eth_reference/**'
-      - '.github/workflows/rust.yml'
   push:
     branches: [main]
     paths:
       - 'rust/lean_eth_reference/**'
-      - '.github/workflows/rust.yml'
   workflow_dispatch:
 
 permissions:

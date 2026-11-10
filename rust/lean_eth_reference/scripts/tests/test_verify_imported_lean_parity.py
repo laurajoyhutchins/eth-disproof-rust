@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "verify-imported-lean-parity.py"
@@ -71,6 +73,20 @@ class EvidenceGateTests(unittest.TestCase):
             module.verify_mathlib_lock(lock)
         with self.assertRaisesRegex(ValueError, "Mathlib lock"):
             module.verify_mathlib_lock({"packages": []})
+
+    def test_every_comparator_rejects_self_comparison(self) -> None:
+        trace = self.root / "self.trace"
+        trace.write_text("not independently generated\\n")
+        for _, _, comparator in module.STAGES.values():
+            with self.subTest(comparator=comparator):
+                outcome = subprocess.run(
+                    [sys.executable, str(SCRIPT.parent / comparator),
+                     "--lean", str(trace), "--rust", str(trace)],
+                    text=True, capture_output=True, check=False,
+                )
+                self.assertNotEqual(outcome.returncode, 0)
+                self.assertTrue(any(word in outcome.stderr for word in
+                                    ("distinct", "separate", "differ")), outcome.stderr)
 
     def test_has_five_distinct_source_exec_stages(self) -> None:
         self.assertEqual(len(module.STAGES), 5)

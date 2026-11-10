@@ -667,6 +667,9 @@ pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;
 
+/// Constructive finite cutoff scanner; finite counting table remains noncomputable.
+pub mod finite_fallback;
+
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;
 

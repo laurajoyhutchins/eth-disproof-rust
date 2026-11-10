@@ -1,4 +1,4 @@
-name: ETH selector projector equivalence research verification
+name: ETH selector projector fused-exact differential verification
 on:
   push:
     branches:

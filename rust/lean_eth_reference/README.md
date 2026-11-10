@@ -350,3 +350,27 @@ composed**, and no imported-source Lean/Rust differential, outer query
 execution, TM2 resource refinement, or ETH theorem is claimed. Historical
 status descriptions in prior version sections describe their respective
 versions, not the current implementation.
+
+## Fixed-width H-cache flattening (follow-on to v0.11.0)
+
+`src/native_cache_normalize.rs` ports the **actual** 12-label
+`ModularRingPrograms.normalizeProgram` and
+`LayoutBinomialProgram.normalizeComponent`, including clearing excess
+little-endian input beyond a runtime-specified width. It also compiles the
+actual `flatParse`, `flatPositive`, `flatNegative`, `flatRow`,
+`flatFinish`, and complete 8×19 `LayoutBinomialProgram.flatProgram`.
+The source's framed signed-pair parser, nested calls, and stack ports are
+executed, not replaced with a Rust bulk-vector calculation.
+
+`tests/native_cache_normalize.rs` includes exhaustive input words and widths
+up to eight bits, exact finite instruction-count checks for the normalization
+component, long-word truncation, preservation of the opaque modulus,
+incomplete-execution refusal, and hundreds of real framed-row flattening cases.
+These four tests and the baseline v0.8 suite were executed locally with
+Rust 1.99.1 in debug and release, formatting and strict Clippy clean.
+**The current v0.11 tree was not fully rebuilt in that VM.**
+
+This exposes a reusable, executable `flatProgram`. It is **not yet wired**
+to `LayoutProgramScalar.hFlatProgram` or
+`LayoutProgram.IntegerCache.program`. The full bootstrap, Lean differential
+execution, and ETH running-time/space claims remain unverified.

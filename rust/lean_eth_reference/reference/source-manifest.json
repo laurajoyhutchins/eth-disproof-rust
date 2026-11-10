@@ -70,6 +70,11 @@
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryReconstruction.lean": "969d2a7ad7254214ffd83a6ed95979449388fbea",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryVisitorProgram.lean": "4827a65152f21120caadf15bcb1be55bead11284",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/SignatureTupleCommand.lean": "814a4649eae9129af8af272c1178dcf75a5ffa9d",
-    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/SignatureTupleLoader.lean": "e08f6c408cb5da57c17b53efb032327ea8c2ac52"
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/SignatureTupleLoader.lean": "e08f6c408cb5da57c17b53efb032327ea8c2ac52",
+    "lean/OAI/Algorithms/SubexponentialSAT/ModularPrograms.lean": "44ca7c01017e106affae6227a288d4797a339eb7",
+    "lean/OAI/Algorithms/SubexponentialSAT/ModularRingPrograms.lean": "4a5baf6e76e0bafd90c384e0b528fdf3799a59ac",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LayoutProgramNormalize.lean": "9d88a3cdb7a155367a02ea2c97b9ca08571aac00",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LayoutBinomialProgramCell.lean": "fef2b98a4386da1d3eac284b81e64206d57cba1c",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/RowSelectionProgramParser.lean": "43b6d38b390e61adc038fdd57af3509365519688"
   }
 }

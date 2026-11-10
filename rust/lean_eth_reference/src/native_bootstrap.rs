@@ -9,13 +9,14 @@
 //! - `SubexpSetupStorage.lean` (`prepare`, `finish`)
 //! - `SqrtLog/LeafHeadSetupProgramRetain.lean` (`retainCache`)
 //!
-//! The third stage, `LayoutProgram.IntegerCache.program`, has NOT been ported.
-//! Consequently this module intentionally does *not* expose an executable
-//! `bootstrapProgram` or silently substitute an integer-cache oracle.
+//! The full SignatureHeadLoader bootstrap is now assembled from the actual
+//! source-defined isolated stages and preserving retention suffix.
+//! No runtime mathematical coefficients are injected as an oracle.
 
 use crate::Error;
 use crate::bit_program::{Atom, Cmd, Instr, Program};
 use crate::native_high::{clear_program, copy_program};
+use crate::native_flatten::integer_cache_program;
 
 const TEMPORARY: usize = 659;
 const WORK_BASE: usize = 340;
@@ -256,9 +257,48 @@ pub fn retain_cache_program() -> Result<Program<16, 768>, Error> {
 
 /// The real node callback lifts the lower 16×768 machine into registers
 /// 24..39, stacks 128..895. This is a *prefix only* until integer-cache
-/// construction is implemented. No complete `bootstrapNode` is exposed.
+/// construction was implemented. The full callback is provided below.
 pub fn bootstrap_prefix_node_command() -> Result<Cmd<40, 896>, Error> {
     Ok(Cmd::Call(bootstrap_prefix_program()?.lift::<40, 896>(
+        std::array::from_fn(|i| 24 + i),
+        std::array::from_fn(|i| 128 + i),
+    )?))
+}
+
+/// LeafHeadSetupProgram.initializeCache: an isolated source-defined 8×24
+/// integer-cache program, with paid copies in both directions.
+/// Its theorem assumes width >= 1 + 2 * height * interpolation_order.
+/// The underlying machine does not enforce this precondition.
+pub fn initialize_cache_command() -> Result<Cmd<16, 768>, Error> {
+    stage(
+        integer_cache_program()?,
+        std::array::from_fn(|i| 8 + i),
+        &[(139, 20), (138, 21), (140, 22)],
+        &[(0, 640), (1, 641), (2, 642), (19, 643)],
+    )
+}
+
+/// Exact LeafHeadSetupProgram.boot sequence.
+pub fn boot_command() -> Result<Cmd<16, 768>, Error> {
+    Ok(Cmd::seq(
+        initialize_address_command()?,
+        Cmd::seq(count_rows_command()?, initialize_cache_command()?),
+    ))
+}
+
+/// The source's SignatureHeadLoader.bootstrapProgram compiles
+/// (boot ;; retainCache) with input 307 and output 647.
+pub fn bootstrap_command() -> Result<Cmd<16, 768>, Error> {
+    Ok(Cmd::seq(boot_command()?, retain_cache_command()?))
+}
+
+pub fn bootstrap_program() -> Result<Program<16, 768>, Error> {
+    bootstrap_command()?.compiled(307, 647)
+}
+
+/// QueryStreamProgram.bootstrapNode lifts registers by 24 and stacks by 128.
+pub fn bootstrap_node_command() -> Result<Cmd<40, 896>, Error> {
+    Ok(Cmd::Call(bootstrap_program()?.lift::<40, 896>(
         std::array::from_fn(|i| 24 + i),
         std::array::from_fn(|i| 128 + i),
     )?))

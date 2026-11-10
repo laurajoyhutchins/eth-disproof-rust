@@ -1,71 +1,21 @@
-# Cloud Build CI transition
+# Cloud Build CI
 
-These Cloud Build recipes cover the complete pure-Python checkpoint, native
-oracles, and seven explicit research and benchmark suites. **Configuration
-does not prove that a GitHub trigger exists or has passed.** Keep existing
-GitHub Actions checks until the cloud replacement passes on an exact PR
-revision and branch protection is updated.
+Routine checkpoint verification runs in Google Cloud Build in project `project-6b810532-a302-48dc-b56`, region `us-west1`. The repository is linked through the `engineering-infra-native-ci` connection.
 
-## Build surfaces
+- `nonexp-sudoku-pr-checkpoint` runs `cloudbuild.yaml` on pull requests targeting `main`. Owner and collaborator updates run automatically; outside contributors require an authorized `/gcbrun` comment.
+- `nonexp-sudoku-main-checkpoint` runs the same recipe on pushes to `main`.
+- Both triggers use the dedicated `nonexp-sudoku-pr-ci` service account, with Cloud Logging write permission. They do not use a shared CI bucket identity.
 
-- cloudbuild.yaml: main-targeting pull requests and main pushes; strict mypy,
-  conservative full impact plan, two independent checkpoint shard processes,
-  and exact-source, complete-union aggregation.
-- cloudbuild.native.yaml: manual, release, or scheduled native integration;
-  Cython, FLINT, Ganak, integration, extended correctness and attestations.
-- cloudbuild.research.yaml: explicit _SUITE (cnf-scaling, sudoku-scaling,
-  sudoku-representation, unified-cost, valuation-scaling, memory,
-  native-cutover); nonrequired benchmarking and research evidence.
-- Upstream Lean/Mathlib source-trace stays manual-only in GitHub Actions.
+The recipe verifies the exact Git commit, runs strict mypy and two checkpoint shards, then verifies the complete test-file union. The PR check appears as `nonexp-sudoku-pr-checkpoint (project-6b810532-a302-48dc-b56)` on GitHub. The GitHub-hosted checkpoint workflow was retired after an exact-head Cloud Build PR succeeded.
 
-## Activate without weakening merge protection
+At cutover, `main` had no branch protection and GitHub's rules API reported that rulesets were unavailable for the current private-repository plan. The Cloud Build check is visible but is not a required merge gate. If branch protection becomes available, configure this observed check as required and verify the rule on a separate PR.
 
-The known GCP project is project-6b810532-a302-48dc-b56 in us-west1.
-These coordinates do **not** imply that Sudoku is already connected to Cloud
-Build. Use an existing, narrowly scoped GitHub connection for the private
-repository laurajoyhutchins/nonexp-sudoku (repository ID 1451517911) or set up
-one with explicit owner approval. Do not conflate this with the separate GCE
-GitHub-runner approach in engineering-infra#246 and nonexp-sudoku#84.
+## Other verification
 
-1. Verify the Cloud Build API, private GitHub repo connection, and a minimal
-   Cloud Build worker identity. No broad GitHub App installation, deploy rights,
-   credentials, staging bucket or additional service accounts are assumed.
-2. Create a second-generation GitHub PR trigger for target branch ^main$ using
-   cloudbuild.yaml. Require /gcbrun approval for untrusted outside contributors.
-   Configure direct GitHub status reporting, not a long-lived Actions relay.
-   Optionally create a separate push-to-main trigger for the same config.
-3. Create explicit/manual release and research triggers, with _SUITE chosen from
-   the research script allowlist. Do not mark them required for routine PRs.
-4. On a real validation PR, compare the PR head SHA against Cloud Build
-   COMMIT_SHA, REVISION_ID and git rev-parse HEAD, require both shard reports,
-   and verify that aggregate_checkpoint proves the entire test-file union.
-   Check the actual GitHub status context; it is not necessarily named
-   checkpoint merely because a Cloud Build step uses that ID.
-5. Only after an exact-head successful PR, switch GitHub branch protection
-   to the observed Cloud Build check and prove it on another PR. Then disable
-   the redundant GitHub-hosted checkpoint and migrate remaining schedules or
-   tags. Do not leave a window with no required test gate.
+`cloudbuild.native.yaml` supplies native and independent-oracle integration verification; `cloudbuild.research.yaml` supplies explicitly selected research and benchmark suites. These recipes have not been activated as scheduled or release triggers in this cutover. Existing specialized GitHub workflows remain available, including the manual upstream Lean source trace. Avoid assuming they ran merely because the routine checkpoint passed.
 
-Google Cloud Build commonly checks out shallow source. On integrations that
-provide an archive without .git, the recipes **fail closed**. They do not
-invent Git commits or silently substitute provider metadata for git provenance.
-For private sources, any supplementary Git history fetch must use restricted
-credentials. As there is no trusted base SHA in the default trigger variables,
-the checkpoint selects full tests instead of taking a potentially unsound
-documentation-only or targeted shortcut.
+Cloud Build source admission fails closed if the provider supplies no `.git` directory or if the provider revision and checked-out commit disagree. Without a trusted base SHA, the checkpoint selects all tests. Shards run sequentially because build steps share `/workspace`.
 
-The build logs include SHA-256 digests for the generated JUnit/JSON evidence,
-the build ID, and the exact source revision. The raw evidence is **not** yet
-persisted to a separately provisioned, generation-pinned GCS bucket. This is
-an explicit remaining parity gap relative to Actions artifacts. No evidence
-storage permissions or bucket creation are implicit.
+Build logs contain the exact source revision and SHA-256 digests of JUnit/JSON evidence. Raw evidence is not yet persisted to a separately provisioned, generation-pinned GCS bucket. The 30-second test-execution target excludes scheduling, image downloads and dependency installation.
 
-Shards run sequentially because Cloud Build steps share /workspace. They have
-separate output paths; a missing or failed shard prevents
-the aggregate step and fails the build. The 30-second *test execution* target
-does not account for Cloud Build scheduling, image downloads or dependency
-installation. Benchmark live wall time and cost before calling this faster.
-
-Official documentation:
-https://docs.cloud.google.com/build/docs/automating-builds/github/build-repos-from-github
-https://docs.cloud.google.com/build/docs/automating-builds/create-manage-triggers
+See [Google's Cloud Build GitHub documentation](https://docs.cloud.google.com/build/docs/automating-builds/github/build-repos-from-github) for trigger configuration.

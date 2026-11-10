@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.12.0)
+# OpenAI ETH formalization: executable Rust port (v0.13.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:

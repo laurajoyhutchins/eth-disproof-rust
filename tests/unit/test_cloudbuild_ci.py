@@ -107,3 +107,10 @@ def test_cloud_build_setup_requires_proven_parity_before_retiring_github_gate() 
     assert "A second normal PR update should" in doc
     assert "Only after an exact-head successful PR" in doc
     assert "Then disable the redundant GitHub-hosted checkpoint" in " ".join(doc.split())
+
+
+@pytest.mark.checkpoint
+def test_cloud_build_activation_guide_is_well_formed() -> None:
+    doc = _config("docs/cloud-build-ci.md")
+    assert doc.count("# Cloud Build CI transition") == 1
+    assert "- target base branch `^main$` and build definition `cloudbuild.yaml`;" in doc

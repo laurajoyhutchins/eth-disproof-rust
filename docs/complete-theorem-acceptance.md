@@ -382,9 +382,12 @@ one solve. A witness inconsistency can still raise; it cannot
 produce an unbounded elimination trace on finite input.
 
 The reference trace records **every reduced Fraction**, not just
-the final witness. A 2,100-seed local differential experiment
-compared exact rank-deficient/rectangular solutions, including
-empty cases, and checked both ceilings. The committed
+the final witness. A local 2,100-case seeded rational experiment
+verified the constructed exact solutions, including rank-deficient,
+rectangular and empty cases, and checked both ceilings.
+The standalone reference also passed **mypy 2.4.1 --strict** in the
+local CPython 3.13 VM. This is not a production-source differential
+receipt. The committed
 `tests/eth/test_measurement_witness_budget.py` additionally calls
 the **production** `_row_combination`, exercises a genuine
 conditional-schedule implicit spectral projector construction,

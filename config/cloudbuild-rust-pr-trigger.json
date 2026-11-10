@@ -14,8 +14,6 @@
     }
   },
   "includedFiles": [
-    "rust/lean_eth_reference/**",
-    "cloudbuild.rust.yaml",
-    "config/cloudbuild-rust-pr-trigger.json"
+    "rust/lean_eth_reference/**"
   ]
 }

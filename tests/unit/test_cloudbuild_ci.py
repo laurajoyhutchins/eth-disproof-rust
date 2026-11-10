@@ -1,4 +1,5 @@
 """Fail closed on accidental dilution of the staged Cloud Build verification."""
+import json
 from pathlib import Path
 import subprocess
 
@@ -62,3 +63,47 @@ def test_research_suite_script_refuses_unknown_names() -> None:
         )
         assert result.returncode == 2
         assert 'unknown research suite' in result.stderr
+
+
+@pytest.mark.checkpoint
+def test_automatic_cloud_build_trigger_admits_owners_without_per_run_approval() -> None:
+    trigger = json.loads(_config("config/cloudbuild-pr-checkpoint-trigger.json"))
+    expected_repo = (
+        "projects/project-6b810532-a302-48dc-b56/locations/us-west1/"
+        "connections/engineering-infra-native-ci/repositories/nonexp-sudoku"
+    )
+    assert trigger["name"] == "nonexp-sudoku-pr-checkpoint"
+    assert trigger["filename"] == "cloudbuild.yaml"
+    assert trigger["repositoryEventConfig"] == {
+        "repository": expected_repo,
+        "pullRequest": {
+            "branch": "^main$",
+            "commentControl": "COMMENTS_ENABLED_FOR_EXTERNAL_CONTRIBUTORS_ONLY",
+        },
+    }
+    assert trigger["approvalConfig"] == {"approvalRequired": False}
+    assert trigger["serviceAccount"] == (
+        "projects/project-6b810532-a302-48dc-b56/serviceAccounts/"
+        "engineering-infra-native-ci@project-6b810532-a302-48dc-b56.iam.gserviceaccount.com"
+    )
+    # No arbitrary build, push, webhook, deployment, custom worker or
+    # implicit opt-out from the tested checkpoint command is permitted.
+    assert set(trigger) == {
+        "name", "description", "filename", "serviceAccount",
+        "approvalConfig", "repositoryEventConfig",
+    }
+    assert "jobs:" not in _config("cloudbuild.yaml")
+    assert "python scripts/verify.py checkpoint" in _config("cloudbuild.yaml")
+    assert "--shard-count 2 --shard-index 0" in _config("cloudbuild.yaml")
+    assert "--shard-count 2 --shard-index 1" in _config("cloudbuild.yaml")
+    assert "scripts.aggregate_checkpoint" in _config("cloudbuild.yaml")
+
+
+@pytest.mark.checkpoint
+def test_cloud_build_setup_requires_proven_parity_before_retiring_github_gate() -> None:
+    doc = _config("docs/cloud-build-ci.md")
+    assert "No per-build owner approvals" in doc
+    assert "--trigger-config=config/cloudbuild-pr-checkpoint-trigger.json" in doc
+    assert "A second normal PR update should" in doc
+    assert "Only after an exact-head successful PR" in doc
+    assert "Then disable the redundant GitHub-hosted checkpoint" in doc

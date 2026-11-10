@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.3.0)
+# OpenAI ETH formalization: executable Rust port (v0.4.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -20,6 +20,9 @@ It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
 | **`ProgramLinking.liftProgram`** | `src/bit_program.rs` | **Static injective register and stack maps, no runtime port dispatch** |
 | **`HighIncidenceProgram.Branches.command`** | `src/native_high.rs` | **Actual 2×2 source-instruction Boolean high-odometer** |
 | **`HighCountSeed.command` / `HighCountInit.command` / `initializeCmd`** | `src/native_high.rs` | **Full 40×896 initialization, nested compiled subroutine halts and physical scratch cleanup** |
+| **`ExecCNFTupleOdometer.program`** | `src/native_tuple.rs` | **Exact 18-label bit-stack program, complete carry/overflow** |
+| **`ExecCNFTupleEnumeration.enumerate`** | `src/native_tuple.rs` | **Compiled start/while/callback/advance loop, including final overflow** |
+| **`HighQueryAdapter.highPorts.counter`** | `src/native_tuple.rs` | **Real 40×896 machine mapping: registers 19–21, stacks 789–790** |
 | `BitProgramCompile.primitive` and TM2 microsteps | Not implemented | Do not infer primitive time/tape costs |
 | `NativeLeafProgram.command k`, `NativeOuter`, `Native.countingProgram` | Not implemented | Primary next execution milestones |
 | `FiniteFallback` bounded lookup | Not implemented | Source table is noncomputably chosen |
@@ -41,7 +44,7 @@ printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
 # count=5 nodes=3 leaves=2 peak_frontier=2
 ```
 
-There are 32 Rust tests, including 960 independent structured-program cases
+There are 37 Rust tests, including 960 independent structured-program cases
 (120 command shapes × 8 input/register states), all short-stack loop cases,
 source-derived CNF/golden encoding vectors, strict finite-index checks, exact
 branch partitioning, refusal behavior, and subroutine relocation, executable marked-query initialization, its exact instruction counts, mapped subroutines, and dirty-scratch regression cases. They are
@@ -64,7 +67,7 @@ Avoid introducing an unrelated fast #SAT backend at the semantic leaf seam.
 Treat **Lean code table identity, exact output, halt/cleanup invariants,
 primitive time, and visited space** as independent acceptance criteria.
 
-## First real native marked-query execution boundary (v0.3.0)
+## First real native marked-query execution boundary (v0.4.0)
 
 `HighCountSeed.initializeProgram` is the **actual compiled source program**
 composed of `HighCountSeed.command` and `HighCountInit.command` from the pinned
@@ -109,3 +112,39 @@ Lean execution.
 **Next:** extend `HighQueryProgram.marked` from this initialization seam through
 the first real `QueryStreamProgram` callback and compare the intermediate
 physical stack states, then the full native leaf and outer runner.
+
+## v0.4.0: Physical tuple increment and source-defined callback loop
+
+`ExecCNFTupleOdometer.program` is an actual source-defined **18-label**
+finite bit program. This Rust port executes the same instruction table, including
+its reversed-prefix scratch operations, carry propagation across framed
+little-endian records, cleanup, and complete final overflow. The source
+`ExecCNFTupleEnumeration.enumerate` is compiled as a fixed instruction table
+consisting of one start instruction, one loop guard, a fixed callback, the
+18-instruction increment, and one guard complement. This source control loop
+corresponds exactly to `HighQueryProgram.highLoop`, though the substantial
+`QueryStreamProgram.command` callback remains **unported**. A two-instruction
+diagnostic callback is used in tests; it is not an alternative #SAT oracle.
+
+The independent tests observe every physical counter at the compiled
+callback-entry address and check the complete expected visitation order,
+including mixed/zero-width tuple components and the final overflow increment.
+They also test the actual high-query port map (19,20,21; 789,790), no clobbering
+of other stacks, invalid port maps, and capacity refusals.
+
+**Genuine Lean-source differential comparison is still pending** because the
+restored pinned Mathlib cache is incomplete (6,056/8,548 compiled modules;
+Mathlib A binaries are missing). The repository includes a *directly importing*
+Lean trace producer, a Rust trace producer and a strict comparator for **14
+cases**, including callback-entry counter snapshots. Run with the pinned
+`openai/math` checkout at the recorded blob SHAs and Lean 4.34.1:
+
+```sh
+cargo run --offline --quiet --bin native-tuple-trace > rust-tuple.txt
+# lake env lean --run reference/lean_native_tuple_trace.lean > lean-tuple.txt
+python scripts/compare-native-tuple-trace.py --lean lean-tuple.txt --rust rust-tuple.txt
+```
+
+Do not substitute the Rust output into the Lean input: such a self-comparison
+validates the parser only, not cross-language conformance. The production
+`HighQueryProgram.marked` cannot yet be called or counted from Rust.

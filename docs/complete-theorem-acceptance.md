@@ -584,6 +584,19 @@ input coefficients. The Hermite stage therefore cannot,
 by itself, insert another exponential intermediate-height
 factor into the stated **conditional** composition.
 
+### One composed source regression instead of four unrelated receipts
+
+`tests/eth/test_composed_bit_budget.py` follows a single genuine,
+small non-admitted CNF through the source's **conditional balancing,
+implicit spectral transfer, exact measurement certificate, original
+separated Taylor tuples and origin Hermite CRT**. At each boundary
+it compares the actual generated scalars/operation counts with the
+corresponding preceding certificates, then compares the reconstructed
+origin value to an **independent Boolean exhaustive-count oracle**.
+No brute-force result enters the source pipeline. This is a
+finite source-correspondence/regression test, **not** an asymptotic
+test. It is committed but remains unexecuted pending a functioning
+
 ### What is still unproved
 
 This result **does not** certify a full input-to-count algorithm.

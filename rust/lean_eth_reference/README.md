@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.8.0)
+# OpenAI ETH formalization: executable Rust port (v0.9.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -29,6 +29,10 @@ It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
 | `HighIncidenceProgram.Restriction.program` | `src/native_query_prefix.rs` | Exact high/low coordinate merge |
 | **`NativeLayoutLoad.command`** | `src/native_layout.rs` | **17 port clears and 14 parked master copies; exact nested finite source tables** |
 | **`PairNativeSetup.CountFalse.command`, `setupCaller`** | `src/native_pair_setup.rs` | **Actual free-coordinate tally, isolated scratch, metadata staging** |
+| **`LeafHeadSetupProgram.Address.command`, `initializeAddress`** | `src/native_bootstrap.rs` | **Unary multiplication and finite 16×768 staged address initialization** |
+| **`SubexpSunflowerProgram.CountRecords`, `countRows`** | `src/native_bootstrap.rs` | **Exact 13-label framed-record counter and staged record count** |
+| **`LeafHeadSetupProgram.retainCache`** | `src/native_bootstrap.rs` | **Preserving 640–642→710–712 copies; exact instruction counts** |
+| `LayoutProgram.IntegerCache.program`, complete `SignatureHeadLoader.bootstrapProgram` | Not implemented | Native cache construction remains essential |
 | `BitProgramCompile.primitive` and TM2 microsteps | Not implemented | Do not infer primitive time/tape costs |
 | `NativeLeafProgram.command k`, `NativeOuter`, `Native.countingProgram` | Not implemented | Primary next execution milestones |
 | `FiniteFallback` bounded lookup | `remaining::outer::finite_fallback` | Explicit fail-closed stub: noncomputable Lean table |
@@ -299,3 +303,9 @@ complexity guarantee is claimed.
 ## v0.8.0: Entire remaining executable path stubbed, no false successes
 
 All remaining **runtime** stages from the native query through the proof-facing TM2 compiler are now represented by typed fail-closed entry points in `src/remaining.rs`. This includes signature bootstrapping, pair DFS, tuple visitor, ring reconstruction, marked/accepted high queries, greedy leaf rounds, native leaf lifting and terminal dispatch, outer DFS, frontend/fallback, final counting program and primitive compiler. `STAGES` provides the pinned Lean source symbols, machine dimensions, and prerequisites. Every unported function returns `Error::NotImplemented` rather than an accepting halt or an enumerating oracle. See [`docs/remaining-lean-port.md`](docs/remaining-lean-port.md). **No additional stage becomes executable in v0.8.0.** The original 58 tests are unchanged; the three new scaffold tests require a local toolchain run.
+
+## v0.9.0: concrete signature-head bootstrap prefix
+
+`src/native_bootstrap.rs` ports the actual unary address computation, 13-label framed-record count, their isolated stage copies and cleanup, and the final preserving cache-retention suffix. Six source-derived tests exercise values, exact source instruction counts, register and stack frames, dirty scratch and the `40×896` node lift. The new six tests passed locally together with all 58 pre-existing executable tests, using Rust 1.99.1 offline; the separate three-test v0.8.0 scaffold has not been rerun in that local snapshot.
+
+**This is deliberately not the complete `SignatureHeadLoader.bootstrapProgram`:** `LayoutProgram.IntegerCache.program` has not been ported. Cache retention is an independent suffix and is not called by the prefix. No source-executed Lean/Rust differential, full node callback, TM2 bound or complexity theorem has been established by this increment.

@@ -669,3 +669,5 @@ pub mod native_query_prefix;
 
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;
+
+pub mod native_bootstrap;

@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.13.0)
+# OpenAI ETH formalization: executable Rust port (v0.14.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -394,3 +394,22 @@ traces. Correct coefficient values require the Lean width precondition
 `width.length >= 1 + 2 * height.length * R.length`. The program does
 not verify that precondition. Query-node pair expansion and query finish
 are not yet closed, nor is the ETH theorem proved by this Rust code.
+
+
+## v0.14.0: source-defined signature-head import/export frame
+
+`native_loader_frames` now executes the exact paid `importAddressFrom` and
+`exportMatrix` stack programs from the pinned Lean `SignatureHeadLoaderCore`.
+The 16×896 source register bank lifts into global registers 24..39 while
+preserving the control-frame registers. The five new tests check alternate
+address ports, exact instruction counts, preserving-copy tails, dirty-stack
+cleanup, physical port frames, alias refusal, and fail-closed resource limits.
+
+The **98-test** Rust suite passes in debug and release with formatting and
+strict Clippy clean on Rust 1.99.1. See
+`docs/native-signature-loader-frames-v0.14.0.md`.
+
+The actual `SignatureHeadLoader.localProgram`, which computes the matrix,
+is **not** ported. Tests involving prepopulated matrix data are diagnostic;
+they do not claim a complete head loader or query count. Imported-source Lean
+differential execution and ETH complexity verification remain pending.

@@ -7,6 +7,7 @@ variable groups at a fixed measurement signature. It remains correct here.
 from __future__ import annotations
 
 from fractions import Fraction
+from typing import Literal
 
 import pytest
 
@@ -83,7 +84,10 @@ def test_valid_certificate_does_not_imply_original_component_factorization() -> 
 
 
 @pytest.mark.integration
-def test_whole_group_measurement_separation_remains_exact_despite_coupling() -> None:
+@pytest.mark.parametrize("summation", ("tuples", "eliminate", "fused", "multilinear"))
+def test_whole_group_measurement_separation_remains_exact_despite_coupling(
+    summation: Literal["tuples", "eliminate", "fused", "multilinear"],
+) -> None:
     formula, replacements, design = _certified_disconnected_units()
     oracle = deformation_polynomial(formula, replacements)
     # At any center the two groups may be multiplied independently;
@@ -105,7 +109,7 @@ def test_whole_group_measurement_separation_remains_exact_despite_coupling() -> 
         for order in (0, 1, 2):
             observed = taylor_coefficients_separated(
                 formula, design, replacements, at=center, order=order,
-                summation="tuples",
+                summation=summation,
             )
             expected = oracle.taylor(center, order).coefficients
             expected += (Fraction(0),) * (order + 1 - len(expected))

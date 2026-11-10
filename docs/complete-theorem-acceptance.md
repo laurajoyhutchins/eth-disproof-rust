@@ -127,6 +127,80 @@ useful mathematical outcome. An observed low-rank center,
 a virtual admitted parameter tuple, a numerical `LocalBitBound`
 dictionary, and a red capacity check are **not** substitutes.
 
+### Bounded fused-center falsification: what the source actually charges
+
+[The source-correlated coupled probe](../benchmarks/eth/coupled_fused_probe.py)
+and [its independent tests](../tests/eth/test_coupled_fused_probe.py)
+resolve **one restricted question**, not the whole center closure theorem.
+Both families have `n` distinct three-positive-literal clauses, with
+every variable appearing in exactly three clauses. They use the exact,
+nonconstant occurrence substitution
+`P_e,v(T)=(1+T/7)*x_v`, center `t=1`, Taylor order `1`.
+
+The finite experiment uses a **manually certified single-group,
+zero-measurement design**, not a full paper-admitted `r,Q,R` spectral
+construction. The full Step-5 symbolic admission proved above still
+applies to suitable three-permutation families at astronomical `n`;
+it does **not** license treating these finite runs as paper executions.
+
+The probe derives factor support from the *truncated polynomial
+coefficients* and follows the very same smallest-union-scope variable
+choice used by `eth/fused_taylor.py`. It calls the existing
+`certify_dense_order` proof reference to compute every input table
+and every joined Boolean assignment domain **without** creating any
+large tables. Whenever the concrete evaluator completes, the tests
+check that its *actual* `factor_scope_peak` and
+`factor_assignments_tested` equal the independently computed
+source-geometry certificate.
+
+| Variables | Cyclic max joined width | Shuffled max joined width | Shuffled maximum dense joined assignment domain |
+| ---: | ---: | ---: | ---: |
+| 8 | 5 | 5 | 32 |
+| 12 | 5 | 7 | 128 |
+| 16 | 5 | 7 | 128 |
+| 32 | 5 | 14 | 16,384 |
+| 64 | 5 | 27 | 134,217,728 |
+| 128 | 5 | 54 | 18,014,398,509,481,984 |
+
+The shuffled third permutation is produced deterministically from
+seed `20261109+n` with independently checked distinct-literal and
+three-occurrence conditions. The numbers are **finite reproducible
+samples**, not a proved `Omega(n)` treewidth or rank lower bound
+on all choices of three permutations.
+
+At `n=32`, the *actual* fused center evaluator under a
+1,024-entry factor cap **completed** on the cyclic input and
+**refused** on the shuffled input with a factor-entry limit. The
+uncapped *structural* audit of the latter reports a maximum joined
+Boolean domain of 16,384, but does **not** claim it was allocated.
+For `n=64,128`, the audit is **structural only**. On completed small
+runs, the full exact jet agrees with an independent full-cube
+calculation. For the cyclic family it also agrees with an
+independent **four-state transfer matrix**, showing that the
+correct answer does not intrinsically require the dense tables
+of an unfortunate representation.
+
+[Opt-in exact integration and JSON evidence, GitHub run 42730858967](https://github.com/laurajoyhutchins/nonexp-sudoku/actions/runs/42730858967)
+passed all three research integration cases and emitted all twelve
+cases; source-matched checkpoint contracts also passed. The
+ephemeral verification workflow is **not** retained in the repo.
+
+**Consequence:** The current fused dense-table representation does
+not establish uniformly compact exact-center intermediates for
+bounded-occurrence coupled inputs. Even at fixed width three, its
+greedy joins can grow sharply. This does **not** contradict the
+OpenAI paper's different algebraic construction, the Lean theorem,
+a potential symbolic quotient, or polynomial-space counting
+for another algorithm.
+
+The *remaining* open obligation is not to tune this greedy
+elimination order. It is to find and prove a source-faithful,
+**closed** intermediate algebraic representation for the admitted
+coupled main-body construction, with bounded *total* bit work
+and polynomial **simultaneous** retained space. Once that exists,
+audit center count, Hermite readout, source refinement and
+all-input totality separately.
+
 Existing acceptance remains intentionally **RED**. No independent
 theorem registry, scheduler or additional CI workflow is needed.
 
@@ -362,8 +436,9 @@ that expanded replacement**.
 
 This settles a separate bit-height obligation for the source's
 implicit coefficient **values**, not its global construction cost.
-The current strict paper entrypoint still uses selector measurements;
-balancing work, selector/projector cutover, all recursive children,
+The strict paper entrypoint still **defaults** to selector measurements,
+with an explicit projected-basis opt-in established separately below.
+Balancing work, projector numerical admission, all recursive children,
 resource-cap non-refusal and large intermediate ranks still need independent
 cost and totality proofs. The projected Gram/RREF work is separately bounded
 for the *projector* route below. The complete theorem acceptance remains RED.

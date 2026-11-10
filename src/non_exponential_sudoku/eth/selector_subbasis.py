@@ -82,6 +82,11 @@ def independent_selector_rows(
                 residual = [a - factor * b
                             for a, b in zip(residual, normalized)]
                 reduction_ops += width
+        for value in residual:
+            max_fraction_bits = max(
+                max_fraction_bits,
+                _bits(value.numerator), _bits(value.denominator),
+            )
         pivot = next((j for j, value in enumerate(residual) if value), None)
         if pivot is not None:
             leading = residual[pivot]

@@ -70,6 +70,7 @@ def _count_grid_rows(formula: CNFFormula, side: int) -> int:
 
     signatures = 1 << side
     previous = [0] * signatures
+    compatible = [0] * signatures
     for row in range(side):
         if row:
             # Sum[mask] = number of assignments with bad boundary subset

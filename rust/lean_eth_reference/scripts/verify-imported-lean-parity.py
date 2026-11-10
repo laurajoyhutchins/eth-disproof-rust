@@ -22,6 +22,7 @@ CRATE = Path(__file__).resolve().parent.parent
 REPO = CRATE.parent.parent
 SOURCE_COMMIT = "4eaee87548250b2682affda7d05d947c05554bae"
 LEAN_VERSION = "4.34.1"
+MATHLIB_COMMIT = "d13f23b723b8a846827a245b89c10fc7d3f11612"
 SOURCE_PREFIX = "lean/OAI/Algorithms/SubexponentialSAT/"
 # The Lean entrypoints import original openai/math modules and execute
 # BitProgram.step. The Rust binaries execute the independently ported tables.
@@ -69,6 +70,15 @@ def validate_manifest(manifest: dict, source_root: Path) -> dict[str, str]:
             raise ValueError(f"original Lean source does not match pinned Git blob: {name}")
         checked[name] = actual
     return checked
+
+
+def verify_mathlib_lock(lock: dict) -> None:
+    packages = lock.get("packages") if isinstance(lock, dict) else None
+    found = [p for p in packages if isinstance(p, dict) and p.get("name") == "mathlib"] if isinstance(packages, list) else []
+    if (len(found) != 1 or found[0].get("type") != "git"
+            or found[0].get("url") != "https://github.com/leanprover-community/mathlib4.git"
+            or found[0].get("rev") != MATHLIB_COMMIT):
+        raise ValueError("source's Mathlib lock does not match pinned dependency revision")
 
 
 def run(command: list[str], cwd: Path, timeout: int) -> str:
@@ -123,6 +133,9 @@ def main() -> int:
     lean_cwd = source_root / "lean"
     if not lean_cwd.is_dir():
         raise ValueError("pinned source has no lean project directory")
+    verify_mathlib_lock(json.loads((lean_cwd / "lake-manifest.json").read_text()))
+    mathlib_head = verify_git_checkout(lean_cwd / ".lake" / "packages" / "mathlib",
+                                       MATHLIB_COMMIT, args.timeout)
     version = run(["lake", "env", "lean", "--version"], lean_cwd, args.timeout).strip()
     if f"version {LEAN_VERSION}" not in version:
         raise ValueError(f"Lean compiler must be {LEAN_VERSION}, got {version!r}")
@@ -133,7 +146,7 @@ def main() -> int:
         "excluded_claims": ["complete machine refinement", "TM2 microsteps",
                             "bit complexity", "tape space", "ETH disproof"],
         "source_repository": "openai/math", "source_commit": source_head,
-        "rust_commit": rust_head, "lean_version": version,
+        "rust_commit": rust_head, "lean_version": version, "mathlib_commit": mathlib_head,
         "source_manifest_sha256": sha256(manifest_bytes),
         "pinned_original_source_blobs": validated, "stages": {},
     }

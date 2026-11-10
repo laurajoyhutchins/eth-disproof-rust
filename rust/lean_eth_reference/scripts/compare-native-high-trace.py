@@ -44,6 +44,8 @@ def main() -> None:
     parser.add_argument("--lean", type=Path, required=True)
     parser.add_argument("--rust", type=Path, required=True)
     args = parser.parse_args()
+    if args.lean.resolve() == args.rust.resolve():
+        raise ValueError("Lean and Rust inputs must be distinct files")
     left, right = parse(args.lean), parse(args.rust)
     for key, value in left.items():
         if right[key] != value:

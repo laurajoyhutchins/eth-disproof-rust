@@ -1,14 +1,6 @@
 name: Rust ETH port
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - 'rust/lean_eth_reference/**'
-  push:
-    branches: [main]
-    paths:
-      - 'rust/lean_eth_reference/**'
   workflow_dispatch:
 
 permissions:

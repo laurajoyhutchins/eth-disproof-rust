@@ -79,7 +79,7 @@ def test_rust_ci_has_no_python_or_lean_dependency() -> None:
     assert "rust/lean_eth_reference" in managed
     assert "1.99.1" in rust and "rust:1.99.1-bookworm" in managed
     assert "  workflow_dispatch:" in rust
-    assert "  pull_request:" in rust and "    paths:" in rust
+    assert "  pull_request:" not in rust and "  push:" not in rust
     for unwanted in ("setup-python", "pip install", "mypy", "lake build", "scripts/verify.py"):
         assert unwanted not in rust
         assert unwanted not in managed
@@ -92,7 +92,7 @@ def test_cloudbuild_trigger_files_isolate_rust_only_changes() -> None:
     rust = json.loads(_config("config/cloudbuild-rust-pr-trigger.json"))
     pr = json.loads(_config("config/cloudbuild-pr-checkpoint-trigger.json"))
     main = json.loads(_config("config/cloudbuild-main-checkpoint-trigger.json"))
-    assert rust["filename"] == "cloudbuild.rust.yaml"
+    assert "filename" not in rust and rust["build"]["steps"][1]["id"] == "rust-port"
     assert rust["includedFiles"] == ["rust/lean_eth_reference/**"]
     ignored = [
         "rust/lean_eth_reference/**",

@@ -213,12 +213,20 @@ pub const STAGES: &[Stage] = &[
         requires: &["prepare_high", "node_loop", "reconstruction"],
     },
     Stage {
-        id: "high_query_preparation",
+        id: "high_query_preparation_low",
         source_file: "SqrtLogSpace/NativeQueryPreparation.lean",
         lean_symbol: "NativeQueryPreparation.command",
         status: Status::Stub,
         machine: Machine::Local,
-        requires: &["high_count_seed"],
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "high_query_preparation",
+        source_file: "SqrtLogSpace/HighQueryProgram.lean",
+        lean_symbol: "HighQueryProgram.prepare",
+        status: Status::Stub,
+        machine: Machine::Local,
+        requires: &["high_query_preparation_low"],
     },
     Stage {
         id: "high_query_marked",
@@ -310,7 +318,7 @@ pub const STAGES: &[Stage] = &[
     },
     Stage {
         id: "outer_setup",
-        source_file: "SqrtLogSpace/NativePrepared.lean",
+        source_file: "SqrtLogSpace/NativeSetupSpace.lean",
         lean_symbol: "Native.setupAfterFrontend",
         status: Status::Stub,
         machine: Machine::Outer,
@@ -423,7 +431,12 @@ pub mod query {
 /// existing diagnostic callback used by tuple enumeration tests.
 pub mod high_query {
     use super::*;
-    local_stub!(preparation, "NativeQueryPreparation.command");
+    /// The source compiles a 40x768 low-bank command, then lifts it into the
+    /// 40x896 marked-query address space.
+    pub fn preparation_low() -> Result<Cmd<40, 768>, Error> {
+        unavailable("NativeQueryPreparation.command")
+    }
+    local_stub!(preparation, "HighQueryProgram.prepare");
     pub fn marked(_k: usize) -> Result<Cmd<40, 896>, Error> {
         unavailable("HighQueryProgram.marked")
     }

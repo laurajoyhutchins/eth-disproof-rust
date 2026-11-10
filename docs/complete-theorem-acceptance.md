@@ -597,6 +597,57 @@ No brute-force result enters the source pipeline. This is a
 finite source-correspondence/regression test, **not** an asymptotic
 test. It is committed but remains unexecuted pending a functioning
 
+### Do not mistake numeric paper admission for an adversarial CNF
+
+The existing symbolic `virtual_coupled_3cnf_step5` family
+`AND_i (x_i OR x_(i+1) OR x_(i+2))` is **easy** from the
+primal-graph viewpoint. Eliminate variables in index order:
+each vertex has at most four remaining neighbors, even after
+fill, so this supplies a width-4 elimination algorithm for
+the entire family. Its `M=3n,b=w=3` admission result is
+legitimate **numeric input auditing**, but it is not meaningful
+evidence of worst-case #SAT hardness or of favorable costs on
+high-treewidth instances.
+
+The [structural witness probe](../reference/eth_structural_adversary.py)
+adds a finite three-permutation stress family for `n=2**k`:
+
+```
+F_n = AND_i (x_i OR x_((3*i+1) mod n) OR x_((5*i+2) mod n)).
+```
+
+The maps `i -> 3*i+1` and `i -> 5*i+2` are
+bijections because 3 and 5 are odd modulo `2**k`.
+Within every clause, the three indices are distinct:
+the differences are `2*i+1`, `4*i+2`, and
+`2*i+1`, none zero modulo `2**k` for `k>=3`.
+The `3*i+1` index is the unique index of opposite
+parity, so equality of two unordered clauses forces
+equality of those indices, then equality of their originating
+`i`. Thus all `n` clauses remain distinct under
+normalization, and each variable occurs exactly three times.
+The same **numeric** Step-5 admission conditions apply.
+
+The tests report the **induced width of natural-order variable
+elimination**, not graph treewidth: for `n=8,16,32,64`,
+the cyclic family has widths `4,4,4,4`, while the
+affine family has `6,10,17,34` (and `52` at
+`n=128`). These are direct finite elimination traces.
+They show the easy witness was unrepresentative of this
+fixed ordering. **They do not establish a nonconstant
+minimum treewidth**, an expander, hard #SAT instances,
+an asymptotic lower bound, or a failure of the source's
+separated-center method.
+
+This distinction is crucial for theorem acceptance: numeric
+premises can be true for a family with a trivial dynamic
+programming algorithm. To test genuinely worst-case complexity,
+we need adversarially chosen bounded-occurrence instances
+with a separately established structural lower bound, and
+still need the uncapped exact source/Lean refinement.
+The new finite probe is deliberately capped at 512 variables
+and performs no astronomical CNF materialization.
+
 ### What is still unproved
 
 This result **does not** certify a full input-to-count algorithm.

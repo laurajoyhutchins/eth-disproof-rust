@@ -26,7 +26,7 @@ Rust ETH port work under `rust/lean_eth_reference/` can be tested without
 running the Python/Cython checkpoint, Lean build, or research benchmarks.
 
 - `.github/workflows/rust.yml` runs **only** for PRs/pushes touching
-  the Rust crate or that workflow, plus explicit manual dispatch. It uses
+  the Rust crate, plus explicit manual dispatch. It uses
   Rust **1.99.1** and checks formatting, locked offline tests, and strict
   Clippy. It has no Python installation, job dependency, or shared artifact.
   It can be manually dispatched against the Rust PR branch before the crate

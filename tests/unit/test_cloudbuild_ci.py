@@ -93,11 +93,7 @@ def test_cloudbuild_trigger_files_isolate_rust_only_changes() -> None:
     pr = json.loads(_config("config/cloudbuild-pr-checkpoint-trigger.json"))
     main = json.loads(_config("config/cloudbuild-main-checkpoint-trigger.json"))
     assert rust["filename"] == "cloudbuild.rust.yaml"
-    assert rust["includedFiles"] == [
-        "rust/lean_eth_reference/**",
-        "cloudbuild.rust.yaml",
-        "config/cloudbuild-rust-pr-trigger.json",
-    ]
+    assert rust["includedFiles"] == ["rust/lean_eth_reference/**"]
     ignored = [
         "rust/lean_eth_reference/**",
         ".github/workflows/rust.yml",

@@ -639,14 +639,74 @@ minimum treewidth**, an expander, hard #SAT instances,
 an asymptotic lower bound, or a failure of the source's
 separated-center method.
 
-This distinction is crucial for theorem acceptance: numeric
-premises can be true for a family with a trivial dynamic
-programming algorithm. To test genuinely worst-case complexity,
-we need adversarially chosen bounded-occurrence instances
-with a separately established structural lower bound, and
-still need the uncapped exact source/Lean refinement.
-The new finite probe is deliberately capped at 512 variables
-and performs no astronomical CNF materialization.
+### A separately proved growing-treewidth bounded-occurrence family
+
+We can improve on the affine heuristic with a **subcubic grid
+minor**. For an integer grid side `k>=2`, replace every vertex
+of a `k x k` square grid with a four-cycle of ports N,E,S,W.
+Connect neighboring cells through the corresponding single port.
+Each port has two internal cycle edges and at most one external
+edge, so its degree is at most three. Make every graph edge a
+positive binary clause. The exact normalized dimensions are
+
+```
+n=4*k**2,  m=6*k**2-2*k,
+M=2*m=12*k**2-4*k=(3-1/k)*n,
+b=3, w=2.
+```
+
+An **independent edge-level verifier** in
+`reference/eth_structural_adversary.py` checks every four-cycle
+and every inter-cell edge against an expected grid contract;
+it rejects a missing edge. Contracting the checked four-cycles
+recovers the original `k x k` grid as a graph minor.
+Its row/column-cross bramble has order at least `k`:
+any set of fewer than `k` vertices misses an entire
+row and an entire column, and all such crosses pairwise
+touch. By the standard bramble/treewidth correspondence
+and minor monotonicity,
+
+```
+treewidth(primal(F)) >= k-1 = Omega(sqrt(n)).
+```
+
+This is a genuine **structural lower bound for every k**,
+unlike the affine probe's upper-bound traces. It does
+not imply a #SAT runtime lower bound; this family is planar
+and can still admit algorithms with `2**O(sqrt(n))` cost.
+
+For `k=2**j`, `n=2**lambda` with `lambda=2+2j`.
+The new `virtual_subcubic_grid_step5` certificate carries
+only the exponents. It transfers the existing admitted
+bounded-occurrence sufficient checks, except for the altered
+incidence bounds. The independently audited integer inequality
+
+```
+4*Q*ceil(log2(r)) <= lambda-3
+```
+
+gives `D**2 <= n/8`, without allocating `D=r**(2Q)`.
+As `M=(3-1/k)*n >= (5/2)*n`, both required
+`10*D**2<=M` and stronger overview
+`12*D**2<=M` follow. At the literal admitted
+`lambda=2**34`, the test verifies
+`(r,Q,R)=(113,3947580,524288)` and this additional
+margin exactly. No virtual CNF, balancing schedule or
+Lean execution is fabricated.
+
+**Acceptance interpretation:** We now have an actual
+unbounded *mathematical family* with source-compatible
+Step-5 numerical parameters and provably growing primal
+treewidth. But it is not a theorem about the claimed
+algorithm's complexity. The uncapped construction,
+all-source cost composition, general-CNF reduction and
+pinned Lean refinement are still unverified.
+
+The finite cyclic/affine probe remains capped at 512
+variables; the checked finite grid-minor constructor
+is capped at side 16. Neither materializes an astronomical
+instance.
+
 
 ### What is still unproved
 

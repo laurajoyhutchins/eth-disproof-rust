@@ -29,6 +29,12 @@
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NodeReadoutSpace.lean": "b474a040a06f4fd1abbdcd12901dc11490351666",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryNodeFinish.lean": "98442b5d2b70f0e741f51e4835f4210530232aec",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LeafNodeSamplesProgram.lean": "8c7ae9a53c6d7b19a8a36f7d764705ce37b49d63",
-    "lean/OAI/Algorithms/SubexponentialSAT/RecordPrograms.lean": "c9df05c33224e16019f3504d37f079f035dd7ac2"
+    "lean/OAI/Algorithms/SubexponentialSAT/RecordPrograms.lean": "c9df05c33224e16019f3504d37f079f035dd7ac2",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeLayoutLoad.lean": "2187cc386b71a54a2cb19d55f6cbf3e9e2e25fa6",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LeafProgramLayoutMasters.lean": "edd09c6023c76ab52d0ad9bad2e5b0d0f49eef35",
+    "lean/OAI/Algorithms/SubexponentialSAT/SubexpSetupStorage.lean": "d7de4b821630445b31716ae151840e1db1e0d8d9",
+    "lean/OAI/Algorithms/SubexponentialSAT/SubexpSetupStorageCost.lean": "324026980e32ace06227c73646d2efef272acc32",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/PairNativeSetup.lean": "667a4d20c6aa07ed1dcb36ee55ae1a171d9c5ce1",
+    "lean/OAI/Algorithms/SubexponentialSAT/UnaryForPrograms.lean": "2ad54551e7bbef35cd37dd4d3c3416fc48234ecc"
   }
 }

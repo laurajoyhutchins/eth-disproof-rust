@@ -18,13 +18,13 @@ from non_exponential_sudoku.eth import (
     construct_bounded_designs, construct_from_schedules,
     count_bruteforce, count_from_constructed,
     deformation_polynomial, deterministic_schedules,
+    taylor_coefficients_separated,
 )
 from non_exponential_sudoku.eth.construction import (
     ImplicitAuxiliaryDesign, construct_implicit_auxiliary,
     construct_paper_bounded_designs,
 )
 from non_exponential_sudoku.eth.parameters import PaperParametersUnavailable
-from non_exponential_sudoku.eth.evaluation import evaluate_separated
 from non_exponential_sudoku.runtime.budget import CapacityError
 from reference.eth_measurement_basis_equivalence import (
     compare_transferred_rowspaces, projector_from_selectors,
@@ -111,15 +111,24 @@ def test_both_transfers_same_exact_rowspace_and_count(
         assert new_certificate.total_measurements == sum(map(len, new.matrices))
         reference = deformation_polynomial(
             formula, original.replacements).evaluate(Fraction(center))
-        assert evaluate_separated(
+        assert taylor_coefficients_separated(
             formula, old, original.replacements, at=center,
-        ).value == reference
-        assert evaluate_separated(
+            order=0, summation="fused",
+        ).coefficients == (reference,)
+        assert taylor_coefficients_separated(
             formula, new, compact.replacements, at=center,
-        ).value == reference
+            order=0, summation="fused",
+        ).coefficients == (reference,)
     expected = count_bruteforce(formula)
-    assert count_from_constructed(formula, compact) == expected
-    assert count_from_constructed(formula, original) == expected
+    # The original literal tuple evaluator can refuse on a large
+    # redundant selector row count. The fused exact evaluator avoids
+    # that representational explosion, without substituting brute force.
+    assert count_from_constructed(
+        formula, compact, summation="fused",
+    ) == expected
+    assert count_from_constructed(
+        formula, original, summation="fused",
+    ) == expected
 
 
 @pytest.mark.integration

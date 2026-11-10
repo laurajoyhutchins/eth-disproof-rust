@@ -58,6 +58,20 @@ class EvidenceGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must list"):
             module.validate_manifest(self.record, self.root)
 
+    def test_requires_pinned_mathlib_dependency(self) -> None:
+        lock = {"packages": [{
+            "name": "mathlib",
+            "type": "git",
+            "url": "https://github.com/leanprover-community/mathlib4.git",
+            "rev": module.MATHLIB_COMMIT,
+        }]}
+        module.verify_mathlib_lock(lock)
+        lock["packages"][0]["rev"] = "0" * 40
+        with self.assertRaisesRegex(ValueError, "Mathlib lock"):
+            module.verify_mathlib_lock(lock)
+        with self.assertRaisesRegex(ValueError, "Mathlib lock"):
+            module.verify_mathlib_lock({"packages": []})
+
     def test_has_five_distinct_source_exec_stages(self) -> None:
         self.assertEqual(len(module.STAGES), 5)
         self.assertEqual(len({row[0] for row in module.STAGES.values()}), 5)

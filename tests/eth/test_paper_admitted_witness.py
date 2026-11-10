@@ -17,7 +17,8 @@ from non_exponential_sudoku.eth.parameters import (
 )
 from non_exponential_sudoku.eth.paper_admitted_witness import (
     PAPER_COMMIT, LEAN_THEOREM,
-    virtual_unit_cnf_step5, concrete_unit_balance_witness,
+    virtual_unit_cnf_step5, virtual_coupled_3cnf_step5,
+    concrete_unit_balance_witness,
     unit_copy_partition,
 )
 
@@ -86,6 +87,74 @@ def test_virtual_certificate_is_fail_closed_and_has_no_unsafe_fallback() -> None
         virtual_unit_cnf_step5(1 << 34, max_descriptor_bits=16)
 
 
+@pytest.mark.checkpoint
+def test_coupled_cyclic_three_cnf_satisfies_full_symbolic_paper_step5() -> None:
+    # This is NOT the trivial AND-of-independent-unit-clauses witness.
+    # It is the connected family AND_i(x_i OR x_(i+1) OR x_(i+2)),
+    # with n=2**(2**34). No enormous integer n or formula is allocated.
+    coupled = virtual_coupled_3cnf_step5(1 << 34)
+    unit = virtual_unit_cnf_step5(1 << 34)
+    assert coupled.n_description == "2**17179869184"
+    assert coupled.M_description == "3*(2**17179869184)"
+    assert (coupled.r, coupled.Q, coupled.R) == (113, 3947580, 524288)
+    assert coupled.admitted_by_sufficient_conditions
+    assert all(check.status == "proved" for check in coupled.checks)
+    assert coupled.check_status("balancing_incidence_inequality") == (
+        unit.check_status("balancing_incidence_inequality")
+    )
+    assert coupled.check_status("stronger_overview_12_D_squared_le_M") == "proved"
+    assert not coupled.materialized_formula
+    assert not coupled.executed_paper_algorithm
+    assert not coupled.executed_lean_machine
+
+
+@pytest.mark.checkpoint
+def test_coupled_virtual_certificate_matches_exact_paper_admission_abi() -> None:
+    # Representable dimensions; still *not* literal Step-5 admitted.
+    lam = 1 << 20
+    n = 1 << lam
+    expected = virtual_coupled_3cnf_step5(lam)
+    actual = audit_paper_bounds(n, 3 * n, b=3, w=3)
+    outcomes = dict(actual.conditions)
+    for check in expected.checks:
+        if check.name not in outcomes:
+            continue
+        if check.status == "proved":
+            assert outcomes[check.name], check.name
+        elif check.status == "refuted":
+            assert not outcomes[check.name], check.name
+    assert not expected.admitted_by_sufficient_conditions
+    assert not actual.admitted
+
+
+@pytest.mark.checkpoint
+def test_finite_cyclic_three_cnf_is_coupled_and_normalizes_as_proved() -> None:
+    # A genuinely connected 3-regular incidence structure, not an
+    # independent-unit formula and not a paper-admitted finite instance.
+    for n in (8, 16):
+        clauses = tuple(
+            (i + 1, (i + 1) % n + 1, (i + 2) % n + 1)
+            for i in range(n)
+        )
+        formula = CNFFormula(n, clauses)
+        assert len(formula.clauses) == n
+        assert all(len(clause) == 3 for clause in formula.clauses)
+        counts = [sum(var in clause for clause in formula.clauses)
+                  for var in range(1, n + 1)]
+        assert set(counts) == {3}
+        paper = audit_bounded_cnf(formula)
+        assert paper.M == 3 * n
+        assert paper.max_variable_occurrences == paper.max_clause_width == 3
+        assert not paper.admitted
+
+
+@pytest.mark.checkpoint
+def test_coupled_virtual_certificate_refuses_invalid_descriptors() -> None:
+    for value in (0, -1, True, 3.14):
+        with pytest.raises((ValueError, TypeError)):
+            virtual_coupled_3cnf_step5(value)  # type: ignore[arg-type]
+
+
 @pytest.mark.integration
 def test_finite_paper_incidence_balance_has_all_labels_and_group_bounds() -> None:
     # This is an actual, fully enumerated admissible instance of the
@@ -135,6 +204,10 @@ def test_source_pinned_evidence_serializes_without_misrepresenting_lean() -> Non
     assert report["status"] == "complete"
     assert report["inputs_stable"] is True
     assert report["virtual_step5"]["admitted_by_sufficient_conditions"] is True
+    assert report["virtual_coupled_step5"]["admitted_by_sufficient_conditions"] is True
+    assert report["virtual_coupled_step5"]["global_intermediate_size_bound_proved"] is False
+    assert report["virtual_coupled_step5"]["physical_formula_materialized"] is False
+    assert report["virtual_coupled_step5"]["executed_lean_machine"] is False
     assert report["finite_balance"]["balancing_lemma_hypotheses"] is True
     assert report["finite_balance"]["paper_step5_admitted"] is False
     assert report["claim_boundary"]["executed_lean_machine"] is False

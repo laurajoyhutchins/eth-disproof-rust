@@ -17,6 +17,7 @@ from typing import Any
 from non_exponential_sudoku.eth.paper_admitted_witness import (
     LEAN_PATH, LEAN_SCOPE_PATH, LEAN_THEOREM, PAPER_COMMIT, PAPER_PATH,
     concrete_unit_balance_witness, virtual_unit_cnf_step5,
+    virtual_coupled_3cnf_step5,
     unit_copy_partition,
 )
 from scripts.evidence import fingerprints, git_provenance
@@ -31,8 +32,11 @@ def experiment(
     """Produce both independent certificate levels, never a solver result."""
     source_before, git_before = fingerprints(), git_provenance()
     virtual = virtual_unit_cnf_step5(lambda_bits)
+    coupled = virtual_coupled_3cnf_step5(lambda_bits)
     finite = concrete_unit_balance_witness(finite_n)
     block = unit_copy_partition(finite)
+    if not coupled.admitted_by_sufficient_conditions:
+        raise ArithmeticError("symbolic coupled Step-5 candidate is not admitted")
     if not virtual.admitted_by_sufficient_conditions:
         raise ArithmeticError("symbolic Step-5 candidate is not admitted")
     if not finite.balancing_lemma_hypotheses or not finite.balancing_lemma_conclusions:
@@ -62,6 +66,23 @@ def experiment(
             "admitted_by_sufficient_conditions": virtual.admitted_by_sufficient_conditions,
             "source_formula": "AND_{i=1}^{n} x_i; n=2**lambda",
             "mathematical_count": 1,
+        },
+        "virtual_coupled_step5": {
+            "source_formula": (
+                "AND_{i in Z/nZ}(x_i OR x_(i+1) OR x_(i+2)); "
+                "n=2**lambda; each variable occurs three times"
+            ),
+            "n_description": coupled.n_description,
+            "M_description": coupled.M_description,
+            "max_occurrences": 3,
+            "max_clause_width": 3,
+            "parameters": {"r": coupled.r, "Q": coupled.Q, "R": coupled.R},
+            "checks": [asdict(check) for check in coupled.checks],
+            "admitted_by_sufficient_conditions": coupled.admitted_by_sufficient_conditions,
+            "physical_formula_materialized": coupled.materialized_formula,
+            "executed_paper_algorithm": coupled.executed_paper_algorithm,
+            "executed_lean_machine": coupled.executed_lean_machine,
+            "global_intermediate_size_bound_proved": False,
         },
         "finite_balance": {
             **{key: value for key, value in asdict(finite).items()

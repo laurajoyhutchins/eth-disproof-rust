@@ -106,4 +106,4 @@ def test_cloud_build_setup_requires_proven_parity_before_retiring_github_gate() 
     assert "--trigger-config=config/cloudbuild-pr-checkpoint-trigger.json" in doc
     assert "A second normal PR update should" in doc
     assert "Only after an exact-head successful PR" in doc
-    assert "Then disable the redundant GitHub-hosted checkpoint" in doc
+    assert "Then disable the redundant GitHub-hosted checkpoint" in " ".join(doc.split())

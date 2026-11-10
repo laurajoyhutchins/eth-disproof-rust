@@ -98,3 +98,106 @@ def natural_order_induced_width(formula: CNFFormula) -> NaturalEliminationProfil
         maximum_clause_width=max(map(len, formula.clauses), default=0),
         natural_order_induced_width=peak,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class GridMinorCertificate:
+    """Finite checked grid minor plus a mathematical tw >= side-1 premise."""
+
+    grid_side: int
+    variables: int
+    clauses: int
+    literal_occurrences: int
+    maximum_occurrences: int
+    maximum_clause_width: int
+    contracted_grid_edges: int
+    treewidth_lower_bound: int
+
+
+def _wall_side(side: int) -> int:
+    if type(side) is not int or side < 2 or side & (side - 1) or side > 16:
+        raise ValueError("grid side must be a power of two from 2 through 16")
+    return side
+
+
+def subcubic_grid_cnf(side: int) -> CNFFormula:
+    """2-CNF whose primal graph contains a side x side grid minor.
+
+    Replace every square-grid vertex with a four-cycle of ports N,E,S,W.
+    Attach each original grid edge to its corresponding single port.
+    The new graph has maximum degree 3. Contracting each port four-cycle
+    recovers the original grid. Therefore its treewidth is >= side-1,
+    using the standard pairwise-touching row/column cross bramble.
+
+    n=4*side**2, clauses=6*side**2-2*side, M=12*side**2-4*side,
+    maximum occurrence 3, maximum clause width 2.
+    """
+    k = _wall_side(side)
+
+    def port(row: int, col: int, direction: int) -> int:
+        return 4 * (row * k + col) + direction + 1
+
+    clauses: list[tuple[int, int]] = []
+    for row in range(k):
+        for col in range(k):
+            for left, right in ((0, 1), (1, 2), (2, 3), (3, 0)):
+                clauses.append((port(row, col, left), port(row, col, right)))
+            if col + 1 < k:
+                clauses.append((port(row, col, 1), port(row, col + 1, 3)))
+            if row + 1 < k:
+                clauses.append((port(row, col, 2), port(row + 1, col, 0)))
+    return CNFFormula(4 * k * k, tuple(clauses))
+
+
+def certify_subcubic_grid_minor(
+    formula: CNFFormula, *, side: int,
+) -> GridMinorCertificate:
+    """Check every port-cycle and every inter-cell grid edge by endpoints.
+
+    The graph-minor lower bound itself follows from contracting the
+    independently checked port cycles. This check does NOT establish
+    an exponential exact-counting lower bound for this CNF family.
+    """
+    k = _wall_side(side)
+    n = 4 * k * k
+    if formula.nvars != n:
+        raise ValueError("grid-minor formula variable dimension mismatch")
+    edges: set[frozenset[int]] = set()
+    counts = [0] * n
+    for clause in formula.clauses:
+        if len(clause) != 2 or any(lit <= 0 for lit in clause):
+            raise ValueError("grid-minor clauses must be positive binary edges")
+        left, right = clause[0] - 1, clause[1] - 1
+        if left == right:
+            raise ValueError("self-edge in minor certificate")
+        edges.add(frozenset((left, right)))
+        counts[left] += 1
+        counts[right] += 1
+
+    def port(row: int, col: int, direction: int) -> int:
+        return 4 * (row * k + col) + direction
+
+    expected: set[frozenset[int]] = set()
+    contracted: set[frozenset[int]] = set()
+    for row in range(k):
+        for col in range(k):
+            for left, right in ((0, 1), (1, 2), (2, 3), (3, 0)):
+                expected.add(frozenset((port(row, col, left), port(row, col, right))))
+            if col + 1 < k:
+                expected.add(frozenset((port(row, col, 1), port(row, col + 1, 3))))
+                contracted.add(frozenset((row * k + col, row * k + col + 1)))
+            if row + 1 < k:
+                expected.add(frozenset((port(row, col, 2), port(row + 1, col, 0))))
+                contracted.add(frozenset((row * k + col, (row + 1) * k + col)))
+    if edges != expected or len(formula.clauses) != len(edges):
+        raise ValueError("actual clauses differ from the grid-port minor")
+    if max(counts) > 3:
+        raise ArithmeticError("grid-port degree exceeds three")
+    return GridMinorCertificate(
+        grid_side=k, variables=n,
+        clauses=len(edges), literal_occurrences=2 * len(edges),
+        maximum_occurrences=max(counts),
+        maximum_clause_width=2,
+        contracted_grid_edges=len(contracted),
+        treewidth_lower_bound=k - 1,
+    )

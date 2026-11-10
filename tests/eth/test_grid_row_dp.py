@@ -16,7 +16,7 @@ from reference.eth_bounded_incidence_fixtures import (
 
 
 def _count_grid_rows(formula: CNFFormula, side: int) -> int:
-    """Exact signed 2-CNF row DP with O(side*2**(4*side)) row scan.
+    """Exact signed 2-CNF row DP with O(side**2*2**(4*side)) work.
 
     A boundary clause (a OR b) fails only when both its literals are
     false. Aggregate the previous row's assignments by the subset of

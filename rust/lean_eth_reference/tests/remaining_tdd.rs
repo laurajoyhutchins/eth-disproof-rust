@@ -126,14 +126,11 @@ fn local_manifest_blob_sha<'a>(manifest: &'a str, path: &str) -> Option<&'a str>
 }
 
 #[test]
-fn catalogued_executable_sources_have_exact_local_manifest_entries() {
+fn every_catalogued_source_has_an_exact_local_blob_pin() {
     let manifest = include_str!("../reference/source-manifest.json");
     assert!(manifest.contains(&format!("\"commit\": \"{LEAN_COMMIT}\"")));
     assert!(manifest.contains("\"repository\": \"openai/math\""));
-    for stage in remaining::STAGES
-        .iter()
-        .filter(|s| matches!(s.status, Status::Executable | Status::Partial))
-    {
+    for stage in remaining::STAGES {
         assert!(
             local_manifest_blob_sha(manifest, stage.source_file).is_some(),
             "missing or malformed local upstream Git blob SHA for {}",

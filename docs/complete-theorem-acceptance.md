@@ -518,6 +518,72 @@ premise. The present bound also does not construct the balancing
 schedules, compute the selector subbasis, bypass resource limits,
 or establish the full input-to-count source refinement.
 
+### Origin Hermite CRT is also polynomial in exact input bit length
+
+The source's default `readout='origin'` runs
+`eth/interpolation.py::interpolate_origin_hermite`, not a black-box
+rational interpolator. The new [source-correlated Hermite budget](../reference/eth_hermite_origin_budget.py)
+bounds its **intermediate** Fractions, including local-modulus
+construction, inversion, truncated quotient products and the
+final sum at the origin.
+
+Let `J_i` be the Taylor conditions supplied at distinct,
+nonzero **integer** centers `c_i`, let
+`N=sum J_i`, `C=max(abs(c_i))`, and let `B` bound the
+numerator/denominator bit length of every input Taylor datum.
+The source's local modulus for center `i` is the integer
+polynomial
+
+```
+M_i(z) = product_(j != i) (c_i-c_j+z)**J_j.
+```
+
+Its coefficients have absolute value at most
+`T=(2*C+1)**N` and its constant term `a_i`
+is a nonzero integer of magnitude at most `T`.
+The inverse jet coefficient at degree `k` is of the form
+`u_k/a_i**(k+1)`, with
+`abs(u_k)<=(N*T**2)**k`, by the explicit inverse recurrence.
+All Taylor data denominators have a shared multiple with
+at most `N*B` bits. Thus every local quotient denominator
+divides that multiple times `a_i**J_i`, and the final origin
+sum denominator divides that multiple times
+`product_i a_i**J_i`.
+
+Charging the source's intermediate prefix sums, multiplications,
+Horner evaluations and inverse residuals gives a generous
+polynomial ceiling for both numerator and denominator bits:
+
+```
+32*(N+1)**2*(B+ceil(log2(2C+2))+ceil(log2(N+1))+3).
+```
+
+The same reference gives conservative scalar-operation and
+live-rational-slot ceilings `128*(N+1)**4` and
+`16*(N+1)**2`. These are mathematical rational-field and
+schoolbook bit-cost inputs, not exact CPython instructions
+or peak-byte measurements. They assume already computed,
+mathematically valid Taylor data.
+
+The attached test performs 200 seeded polynomial/Hermite
+reconstructions, independently records all rational arithmetic
+results in a source-shaped CRT trace, and compares the origin,
+intermediate heights and operation bound to the production
+implementation. A standalone local implementation passed
+the same 200 seeded trace checks; the reference budget passed
+strict mypy 2.4.1 locally. Full production-import tests are
+but **have not executed** because no runnable CI worker was
+assigned.
+
+For the paper's construction, `C<=Q` and
+`N=Q*(q+1)` with `Q*q=O(nR)`. Thus the origin CRT
+cost is polynomial in `n`, `Q`, `R` and the
+input Taylor coefficient bit heights. The center evaluator's
+conditional source-level bit budget already bounds those
+input coefficients. The Hermite stage therefore cannot,
+by itself, insert another exponential intermediate-height
+factor into the stated **conditional** composition.
+
 ### What is still unproved
 
 This result **does not** certify a full input-to-count algorithm.

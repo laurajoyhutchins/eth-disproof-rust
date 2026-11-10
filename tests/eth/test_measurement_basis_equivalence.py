@@ -24,6 +24,7 @@ from non_exponential_sudoku.eth.construction import (
     ImplicitAuxiliaryDesign, construct_implicit_auxiliary,
     construct_paper_bounded_designs,
 )
+from non_exponential_sudoku.eth.evaluation import evaluate_separated
 from non_exponential_sudoku.eth.parameters import PaperParametersUnavailable
 from non_exponential_sudoku.runtime.budget import CapacityError
 from reference.eth_measurement_basis_equivalence import (
@@ -176,3 +177,43 @@ def test_strict_entrypoint_opt_in_retains_literal_admission_and_invalid_mode_pol
         construct_paper_bounded_designs(
             formula, measurement_basis="invalid",  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.integration
+def test_same_rowspace_but_selector_tuples_refuse_and_projector_succeeds() -> None:
+    """An observed operational separation, not an algebraic separation."""
+    formula = CNFFormula(4, ((1, 2), (3, 4)))
+    a, d = deterministic_schedules(formula, r=2, Q=3)
+    limits = ConstructionLimits(max_measurement_rows=1000)
+    selectors = construct_from_schedules(
+        formula,
+        construct_implicit_auxiliary(
+            r=2, Q=3, R=2, measurement_basis="selectors",
+            limits=limits),
+        a, d, limits=limits,
+    )
+    projected = construct_from_schedules(
+        formula,
+        construct_implicit_auxiliary(
+            r=2, Q=3, R=2, measurement_basis="projector",
+            limits=limits),
+        a, d, limits=limits,
+    )
+    witness = compare_transferred_rowspaces(
+        selectors.centers, projected.centers)
+    assert witness.exact_rowspace_inclusions_checked > 0
+    assert witness.projector_row_count < witness.selector_row_count
+    center, selector_design = selectors.centers[0]
+    _, projected_design = projected.centers[0]
+    with pytest.raises(CapacityError, match="measurement tuple limit"):
+        evaluate_separated(
+            formula, selector_design, selectors.replacements, at=center)
+    exact = deformation_polynomial(
+        formula, projected.replacements).evaluate(Fraction(center))
+    assert evaluate_separated(
+        formula, projected_design, projected.replacements, at=center
+    ).value == exact
+    assert taylor_coefficients_separated(
+        formula, selector_design, selectors.replacements, at=center,
+        order=0, summation="fused",
+    ).coefficients == (exact,)

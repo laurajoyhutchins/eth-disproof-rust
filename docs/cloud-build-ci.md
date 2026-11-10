@@ -89,8 +89,9 @@ Then review the pinned build identity's effective permissions, including
 bucket-scoped grants; do not widen its project permissions, use the
 deployer account or default broad Compute identity, or move untrusted
 PR tests onto a private-compiler production credential. When it is
-safe, **create this trigger once**, on an accepted reviewed source
-containing the manifest:
+safe, **create this trigger once**, from a reviewed checkout of
+this PR branch containing the manifest. This bootstraps verification
+*before* the manifest has merged to main:
 
 ```bash
 gcloud builds triggers create github \

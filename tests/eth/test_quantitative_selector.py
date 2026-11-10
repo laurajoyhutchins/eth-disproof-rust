@@ -119,6 +119,15 @@ def test_actual_selector_subbasis_inherits_rowspace_and_quantitative_l1(
             r=2, Q=Q, R=R, measurement_basis="projector"),
         a, d, limits=ConstructionLimits(max_measurement_rows=1000),
     )
+    assert selectors.auxiliary is not None
+    original_selector_count = len(selectors.auxiliary.measurement_selectors)
+    original_row_bound = 2 * selectors.label_multiplicity * original_selector_count
+    for _, source_design in selectors.centers:
+        assert sum(map(len, source_design.matrices)) == original_row_bound
+        assert all(
+            sum(abs(value) for value in row) <= selectors.auxiliary.dimension
+            for group_rows in source_design.matrices for row in group_rows
+        )
     compressed_centers = []
     saw_nonempty = False
     for center, old in selectors.centers:

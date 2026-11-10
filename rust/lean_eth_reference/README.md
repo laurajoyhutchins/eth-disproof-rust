@@ -374,3 +374,23 @@ This exposes a reusable, executable `flatProgram`. It is **not yet wired**
 to `LayoutProgramScalar.hFlatProgram` or
 `LayoutProgram.IntegerCache.program`. The full bootstrap, Lean differential
 execution, and ETH running-time/space claims remain unverified.
+
+## v0.13.0: complete source-defined node bootstrap
+
+The Rust `SignatureHeadLoader.bootstrapProgram` now composes four finite
+machine commands: `initializeAddress`, `countRows`, `initializeCache`,
+and `retainCache`. The integer cache is computed from unary height/order/width
+input at physical stacks 139/138/140, with a fixed 8×24 callee in the
+340..363 work bank. Outputs 640..643 and retained 710..712 have been
+checked against the source-defined framing and coefficient recurrence.
+The exact `QueryStreamProgram.bootstrapNode` register offset 24 and stack
+offset 128 are also executable.
+
+Local Rust 1.99.1 validation: 97 tests in the source-only v0.13.0 archive;
+the GitHub change additionally includes four focused integration tests.
+Debug and release tests, formatting, and strict Clippy passed locally.
+These are Rust machine tests, not Lean/Rust imported-source differential
+traces. Correct coefficient values require the Lean width precondition
+`width.length >= 1 + 2 * height.length * R.length`. The program does
+not verify that precondition. Query-node pair expansion and query finish
+are not yet closed, nor is the ETH theorem proved by this Rust code.

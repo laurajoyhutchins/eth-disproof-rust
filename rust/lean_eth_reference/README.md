@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.5.0)
+# OpenAI ETH formalization: executable Rust port (v0.6.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -206,3 +206,38 @@ incomplete, and no source-level differential pass is claimed. The actual
 `QueryReconstruction`, and the full native leaf still need executable ports.
 This source prefix does **not** compute a query count and does not establish
 an ETH-disproving complexity bound.
+
+## v0.6.0: Native interpolation-node cursor and framed reader
+
+The actual first two commands in `QueryStreamProgram.nodes` now execute:
+`QueryAssembler.Nodes.initializeNodes` and `QueryNodeFinish.guardCursor`.
+This includes the physical copy of the produced framed interpolation-node
+table from stack 300 onto cursor 301, all source-defined scratch/index clears,
+and the non-consuming loop guard peek (registers 37/38).
+
+`QueryAssembler.Nodes.beginNode` also executes through the real `RecordPrograms`
+frame parser and `RingNodeSetup.readNode`, placing the current node on stack 78
+and preserving the unread suffix of the cursor on stack 301. The separate
+`QueryNodeFinish.finishNode` control suffix is ported (cleanup, unary index
+advance, guard refresh), but **not** its preceding signed coefficient result
+append. Tests include a clearly marked diagnostic loop using the real reader
+and control suffix; that loop is **not** the source `QueryStreamProgram.nodeLoop`.
+
+The source-composed `query_nodes_entry_command` executes `prepareHigh` followed
+by exactly the two node-entry commands, stopping before the native pair and
+interpolation calculations. Tests independently verify framed records, exact
+source instruction counts, dirty scratch cleanup, high-bank preservation,
+zero-record handling, and the diagnostic index/cursor lifecycle.
+
+A new paired trace harness imports the *original pinned Lean source* directly:
+
+```sh
+cargo run --offline --quiet --bin native-nodes-trace > rust-nodes.txt
+# With complete pinned Lean 4.34.1/Mathlib environment ONLY:
+# lake env lean --run reference/lean_native_nodes_trace.lean > lean-nodes.txt
+python scripts/compare-native-nodes-trace.py --lean lean-nodes.txt --rust rust-nodes.txt
+```
+
+The full imported-source Lean differential run remains **UNEXECUTED** in this
+VM due to the incomplete pinned Mathlib cache. This implementation has not
+executed the native node/pair arithmetic or proved any ETH complexity claim.

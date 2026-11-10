@@ -22,6 +22,13 @@
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/HighIncidenceProgramMask.lean": "d596c4c1cc60f8ea9b814722a577a7b24a36a07f",
     "lean/OAI/Algorithms/SubexponentialSAT/Subexp/AssignmentRecordViews.lean": "c5bfc0d14c24156454eb60deb8b89b0ff2a17231",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/HighIncidenceProgramRestriction.lean": "04a8acd676a5571294d5db8f5c3325857afe54ec",
-    "lean/OAI/Algorithms/SubexponentialSAT/ParserProgram.lean": "9461361e12630b91419b6788ea8d2af4b2de5e9b"
+    "lean/OAI/Algorithms/SubexponentialSAT/ParserProgram.lean": "9461361e12630b91419b6788ea8d2af4b2de5e9b",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryAssembler.lean": "301f68b19b62766f8b56508d0c066ae5e6f09924",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/RingNodeGuard.lean": "a471688ba758a82205a50e15ad04839a28e1d13a",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/RingNodeSetup.lean": "539b9917cf162b55bc75e3c3d25e5b71f0eb7a4d",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NodeReadoutSpace.lean": "b474a040a06f4fd1abbdcd12901dc11490351666",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryNodeFinish.lean": "98442b5d2b70f0e741f51e4835f4210530232aec",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LeafNodeSamplesProgram.lean": "8c7ae9a53c6d7b19a8a36f7d764705ce37b49d63",
+    "lean/OAI/Algorithms/SubexponentialSAT/RecordPrograms.lean": "c9df05c33224e16019f3504d37f079f035dd7ac2"
   }
 }

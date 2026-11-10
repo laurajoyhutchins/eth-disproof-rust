@@ -131,6 +131,6 @@ def test_hermite_budget_fails_closed_on_nonintegral_and_repeated_centers() -> No
         ((1, 2), (1,)),
     ):
         with pytest.raises(ValueError):
-            hermite_origin_budget(centers, orders, input_fraction_bits=10)
+            hermite_origin_budget(centers, orders, input_fraction_bits=10)  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         hermite_origin_budget((1, 2), (2, 2), input_fraction_bits=0)

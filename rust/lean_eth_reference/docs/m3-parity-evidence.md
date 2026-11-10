@@ -24,7 +24,7 @@ From rust/lean_eth_reference:
 
 These tests run in scripts/verify-local.sh before fmt, offline Cargo tests,
 and strict Clippy. They cover correct and wrong source hashes, missing files,
-incorrect source/toolchain pins, traversal/empty manifests, Mathlib lock mismatch, and stage uniqueness.
+incorrect source/toolchain pins, traversal/empty manifests, Mathlib lock mismatch, stage uniqueness, and same-path refusal in all five comparators.
 
 ## Real source-executed verification (blocked pending complete Mathlib restore)
 
@@ -50,7 +50,7 @@ It reports no Lean/Rust equivalence result until actual execution succeeds.
 | Requirement | Current status |
 |---|---|
 | Rust finite stage executables | Present in PR #96; combined-branch runtime tests not re-run here |
-| Evidence-gate source pin, provenance and refusal behavior | Implemented; seven offline Python unit tests passed locally |
+| Evidence-gate source pin, provenance and refusal behavior | Implemented; eight offline Python unit tests exercised locally |
 | Original imported Lean/Rust fixture snapshot parity | **Blocked** by incomplete Mathlib 4.34.1 restoration |
 | Full instruction table, PC, register, stack, protected frame and halting refinement | **Not established** by fixture snapshots |
 | Complete query, native counter, independent CNF counting | Requires M1/M2 #104/#107/#108 |

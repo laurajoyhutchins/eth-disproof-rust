@@ -1,6 +1,6 @@
 //! Stubs describe unfinished work without fabricating success.
 use lean_eth_reference::Error;
-use lean_eth_reference::bit_program::{Instr, Program};
+use lean_eth_reference::bit_program::{Cmd, Instr, Program};
 use lean_eth_reference::remaining::{self, Machine, Status};
 
 fn refused<T: std::fmt::Debug>(result: Result<T, Error>) {
@@ -61,12 +61,12 @@ fn unported_query_and_leaf_commands_refuse_all_parameters() {
     refused(high_query::marked(0));
     refused(high_query::accepted(usize::MAX));
     refused(leaf::preparation());
-    refused(leaf::rounds());
-    refused(leaf::accepted_stage());
+    refused(leaf::rounds(Cmd::Skip));
+    refused(leaf::accepted_stage(Cmd::Skip));
     refused(leaf::local_command(0));
     refused(leaf::local_program(3));
-    refused(leaf::execution());
-    refused(leaf::terminal_dispatch());
+    refused(leaf::execution(Cmd::Skip));
+    refused(leaf::terminal_dispatch(Cmd::Skip));
     refused(leaf::command(3));
     refused(leaf::program(3));
 }
@@ -75,14 +75,14 @@ fn unported_query_and_leaf_commands_refuse_all_parameters() {
 fn outer_count_and_primitive_do_not_fall_back_to_semantic_enumeration() {
     use remaining::{outer, primitive};
     refused(outer::frontend());
-    refused(outer::finite_fallback(0));
-    refused(outer::finite_fallback(usize::MAX));
-    refused(outer::setup());
-    refused(outer::dfs(2));
+    refused(outer::finite_fallback(0, Cmd::Skip));
+    refused(outer::finite_fallback(usize::MAX, Cmd::Skip));
+    refused(outer::setup(2));
+    refused(outer::dfs(2, Cmd::Skip));
     refused(outer::answer_suffix());
-    refused(outer::outer_command(2));
-    refused(outer::entry(0, 2));
-    refused(outer::counting_program(100, 2));
+    refused(outer::outer_command(2, Cmd::Skip));
+    refused(outer::entry(0, Cmd::Skip));
+    refused(outer::counting_program(100, 2, Cmd::Skip));
     let trivial = Program::<2, 2>::new(0, 1, 0, vec![Instr::Halt]).unwrap();
     refused(primitive::compile(&trivial));
 }

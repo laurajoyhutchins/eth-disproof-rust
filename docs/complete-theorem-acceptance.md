@@ -344,6 +344,115 @@ but `n=2**lambda` is even less physically representable.
 These are exact symbolic **upper-rate** computations, not
 runs of the paper algorithm and not runtime lower bounds.
 
+### The real spectral transfer has bounded coefficient heights
+
+The [integer-only transfer certificate](../reference/eth_spectral_transfer_height.py)
+now supplies an input to the witness/center bounds directly from
+`eth/construction.py`, avoiding any unproved assumption that its
+replacement coefficients have small numerators and denominators.
+Its input includes an independently justified
+`ceil(log2(M+1))` upper bound, so `n=2**lambda` and
+`D=r**(2Q)` need **not** be materialized.
+
+The spectral interpolation source builds the polynomial `f` in a
+Newton basis from `R` consecutive integer points in `[0,Q]`.
+Its k-th Newton difference is `(-2)**k`, so for every integer
+`0<=j<=Q`, `f(j)` is an **integer** of magnitude at most
+`R*(2Q)**R`. Source Walsh fractions thus have denominators
+dividing `2**Q`; the `Q+1` kernel arrays add fractions with
+this *shared denominator*, rather than multiplying denominator
+sizes across `2**Q` terms.
+
+For a source `row_at(u,w)` coefficient, the exceptional-degree
+condition ensures that the correction is a product of at most
+`R-1` distinct factors `(1-T/t)`, `1<=t<=Q`. Hence all its
+rational polynomial coefficients have denominators dividing
+`2**Q*Q!`. The transferred coefficient of any variable in any
+occurrence is a sum of at most `M` such polynomials and preserves
+this common denominator. Horner evaluation at the required centers
+`1,...,Q` adds at most `R` multiplication/addition stages.
+The reference separately bounds **intermediate** Walsh/kernel and
+polynomial coefficient heights, and coefficients evaluated at centers.
+
+A conservative source bound is
+`B_transfer=O(Q*log(Q+1)+R*log(Q+1)+log(M+1))`
+bits per reduced rational numerator/denominator; the reference
+gives exact-integer coefficients and additive margins rather than
+hiding this in big-O notation. On the source Step-5 schedule,
+`Q=O(lambda/log(lambda))`, `R=O(sqrt(lambda))`,
+`M<=3n`, and `lambda=ceil(log2 n)`, so
+`B_transfer=O(lambda)`: **logarithmic in n**, though
+the admitted physical instance is impossibly large.
+For the coupled virtual family at `lambda=2**34`, the
+source-correlated evaluated-coefficient ceiling is about
+`1.007*lambda` bits. This is a symbolic ceiling only.
+
+The committed source integration tests verify actual
+`_interpolation_polynomial`, `_walsh_by_weight`,
+`construct_implicit_auxiliary.row_at` and
+`construct_bounded_designs` against these ceilings,
+including the explicit common denominator. Locally, an
+independently transcribed source-shaped implementation checked
+15,618 row pairs over eight small spectral settings with no
+height/denominator violations. **The committed tests have not
+transcription is not an integration receipt.
+
+### Balancing and selector enumeration cost: bounded in principle, not uncapped code
+
+The real conditional-expectation routine
+`eth/balance.py::choose_balanced_schedules` enumerates
+`K=r**Q` candidate schedules for at most `n+m` entities.
+It recomputes an `M**2` incidence-pair potential and a
+`Q*n**2` group potential for each candidate. Thus its
+direct source-loop count is bounded, up to polynomial
+administration, by
+
+```
+O((n+m)*r**Q*(M**2 + Q*n**2)).
+```
+
+Its source expectation values use `1/K`, `1/K**2`
+and `1/r`, and its normalized potential has a denominator
+dividing `K**2 * r * M*(b+w) * Q*n` for nonzero `M`.
+The prefix sums and finite-precision-free comparisons
+therefore have polynomial rational heights in
+`Q*log(r)+log(n+M+Q)`; no randomized oracle is assumed.
+The implementation still constructs the entire `K`-element
+candidate domain and refuses at `BalanceLimits`.
+
+On the strict `selectors` path,
+`construct_implicit_auxiliary` enumerates at most
+`c<=D=r**(2Q)` exceptional tensor selectors.
+`construct_from_schedules` materializes at most `M`
+occupied label copies, at most `M*n` occurrence-to-variable
+polynomial coordinates, and at most `Q*r*h*c` transferred
+measurement rows (with their group coordinates).
+The scalar operations are consequently bounded by a
+polynomial in `n,m,M,Q,R,r,D` for the **mathematical
+uncapped selector implementation**. The manuscript checks
+`D**128<=2*n`, so `D` and `K` are polynomial in
+`n`, notwithstanding their enormous concrete sizes.
+
+The projected Gram path is a *different* implementation.
+Its primitive integer basis need not satisfy source `L1<=D`.
+Draft PR #95 identifies an existential, polynomial-in-`D`
+alternative: retain independent **original selector rows**,
+which preserves the original L1 bound and, subject to the
+balancing lemma, satisfies the quantitative row-count bound.
+That argument should be reviewed and tested independently;
+the present PR does not import its implementation or silently
+equate a projector basis with that selector subbasis.
+
+**Still missing from this composition:** an independently
+verified uncapped input-to-output construction with exact
+numeric source preconditions; a combined checked bound for
+all arithmetic operations and live objects during selector
+extraction and center certification; final Hermite
+reconstruction bit height; and a source-to-Lean algorithm
+refinement. The current production implementation has
+explicit finite caps, so it is not the claimed asymptotic
+algorithm, regardless of the symbolic ceilings above.
+
 ### Exact measurement witness solving: close the intermediate-height premise
 
 The independent [measurement-witness bit budget](../reference/eth_measurement_witness_budget.py)

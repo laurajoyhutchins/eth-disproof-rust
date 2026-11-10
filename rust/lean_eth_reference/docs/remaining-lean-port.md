@@ -6,6 +6,8 @@ The new `src/remaining.rs` records the **executable dependency spine** in topolo
 
 ## Next executable work
 
+`NativeQueryPreparation.command` runs in a **40x768** low bank and is lifted by `HighQueryProgram.prepare` to **40x896**. The similarly named `SignatureHeadLoader.bootstrapProgram` is also a **40x768** program lifted into the query bank. Both boundaries are explicitly typed in the scaffold.
+
 The actual `QueryStreamProgram.nodeBody` is `beginNode` -> `NativeLayoutLoad.command` -> `SignatureHeadLoader.bootstrapProgram` -> `PairNativeSetup.setupCaller` -> `DifferencePairsProgram.command` (with `QueryExecution.PairStart`, `SignatureTupleComplete.command`, `QueryAssembler.commitPair`) -> `QueryNodeFinish.command`. The first, second and pair *setup* portions are executable Rust. In particular, `PairNativeSetup.expandCaller`, signed pair iteration, signature tuple DFS, node coefficient append and canonical count reconstruction are **not** implemented.
 
 `QueryStreamProgram.command` feeds `HighQueryProgram.marked/accepted` via real high-assignment enumeration. Those, in turn, feed `NativeLeafRun.command` (preparation, marked greedy rounds, separate accepted query). `NativeLeafProgram.localCommand k` is a **40x896** bit machine. `NativeLeafProgram.command k` lifts it into the **80x1220** outer machine via terminal dispatch and leaf-bank load/export. `Native.outerCommand` connects frontend setup, disjoint counting DFS and positivity. `Native.entryCommand` selects between the bounded fallback and this large-input path; `Native.countingProgram` compiles it. `BitProgram.tm` and `GuardedCompiler.primitive` are separate finite TM2 refinement obligations.

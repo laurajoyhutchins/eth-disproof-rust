@@ -597,7 +597,7 @@ No brute-force result enters the source pipeline. This is a
 finite source-correspondence/regression test, **not** an asymptotic
 test. It is committed but remains unexecuted pending a functioning
 
-### Do not mistake numeric paper admission for an adversarial CNF
+### Test boundaries: numerical admission, structure, counting, not hardness
 
 The existing symbolic `virtual_coupled_3cnf_step5` family
 `AND_i (x_i OR x_(i+1) OR x_(i+2))` is **easy** from the
@@ -609,7 +609,7 @@ legitimate **numeric input auditing**, but it is not meaningful
 evidence of worst-case #SAT hardness or of favorable costs on
 high-treewidth instances.
 
-The [structural witness probe](../reference/eth_structural_adversary.py)
+The [structural witness probe](../reference/eth_bounded_incidence_fixtures.py)
 adds a finite three-permutation stress family for `n=2**k`:
 
 ```
@@ -656,7 +656,7 @@ b=3, w=2.
 ```
 
 An **independent edge-level verifier** in
-`reference/eth_structural_adversary.py` checks every four-cycle
+`reference/eth_bounded_incidence_fixtures.py` checks every four-cycle
 and every inter-cell edge against an expected grid contract;
 it rejects a missing edge. Contracting the checked four-cycles
 recovers the original `k x k` grid as a graph minor.
@@ -715,22 +715,63 @@ order, which is *not* a treewidth lower bound.
 The cyclic witness's width is constant.
 
 **Another important obstruction to unsupported shortcuts:**
-the groups obtained after spectral transfer do *not*
-factor along components of the original clause-incidence
-hypergraph. Source replacement rows have coefficients
-on additional variables within their assigned group.
-An independently reviewed, exact measurement-zero
-example has group-weight matrix
-`[[1,1/2],[1/2,3/8]]` with determinant 1/8.
-If the two original components separated into products,
-that matrix would have rank one and determinant zero.
-See [the reviewed finite counterexample](https://github.com/mathcommunity/oai-math-revised/pull/60)
-and its full [PR #60 review discussion](https://github.com/mathcommunity/oai-math-revised/pull/60).
-Do not infer a within-group factorization from the
-original clause graph, or use its component sizes as
-a bound on intermediate tensor scopes. The *published*
-measurement-separation lemma only factors at whole-group
-boundaries and is not contradicted by this example.
+even a *valid* measurement certificate does not generally permit
+factorization along components of the **original clause graph within
+one variable group**. The executable
+[`test_within_group_coupling.py`](../tests/eth/test_within_group_coupling.py)
+supplies two originally disconnected unit clauses `(x1)` and
+`(x2)`, then the valid polynomial replacements
+
+```
+L1(T) = x1 + (T/2)*x2,
+L2(T) = x2 + (T/2)*x1.
+```
+
+These equal their original literals at `T=0`. Put
+`x1,x2` in one group and two unused declared variables
+in another, both with empty measurement matrices. All
+cross-group coefficients vanish, so the source's *actual*
+`certify_measurements` accepts this design at `T=1`
+with `tau=D=0`. The first group's exact factor table is
+
+```
+W(x1,x2) = [[0, 1/2], [1/2, 9/4]],
+det(W) = -1/4 != 0.
+```
+
+If this were `f(x1)*g(x2)` its matrix would have rank
+at most one and determinant zero. This disproves the
+**generic within-group component-product shortcut**.
+It does **not** contradict the original published
+whole-group measurement-separation identity. A second
+integration test compares the real separated Taylor
+source against an independent direct deformation
+polynomial at centers `0,1,2`, including positive-order
+coefficients. This counterexample is a **manual valid
+design**, not a claim that the spectral constructor
+necessarily generates its particular rows.
+
+The test suite is explicitly partitioned:
+
+- [`test_bounded_incidence_fixtures.py`](../tests/eth/test_bounded_incidence_fixtures.py):
+  finite clause counts, exact grid minor, all-positive
+  satisfiability, sign changes, and widths for a **specified**
+  elimination order (not treewidth lower bounds)
+- [`test_numeric_paper_admission.py`](../tests/eth/test_numeric_paper_admission.py):
+  symbolic Step-5 inequalities and finite source-normalizer
+  agreement, not constructor execution
+- [`test_grid_row_dp.py`](../tests/eth/test_grid_row_dp.py):
+  conventional signed 2-CNF row transfer with subset-zeta
+  aggregation, `O(poly(k)*2**(4*k))` for this grid family;
+  at `k=2` its 1,649 and 147 counts match an independent
+  exhaustive oracle, while `k=4` runs without `2**64`
+  enumeration
+- [`test_within_group_coupling.py`](../tests/eth/test_within_group_coupling.py):
+  a direct **false factorization** counterexample and
+  positive control that whole-group separation remains exact
+
+None of these fixture tests is an ETH-disproof, a
+worst-case #SAT lower bound, or a simulated Lean run.
 
 **Acceptance interpretation:** These families demonstrate
 numeric input admission, certified source identities,

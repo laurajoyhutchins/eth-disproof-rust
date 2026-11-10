@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.7.0)
+# OpenAI ETH formalization: executable Rust port (v0.8.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -31,7 +31,7 @@ It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
 | **`PairNativeSetup.CountFalse.command`, `setupCaller`** | `src/native_pair_setup.rs` | **Actual free-coordinate tally, isolated scratch, metadata staging** |
 | `BitProgramCompile.primitive` and TM2 microsteps | Not implemented | Do not infer primitive time/tape costs |
 | `NativeLeafProgram.command k`, `NativeOuter`, `Native.countingProgram` | Not implemented | Primary next execution milestones |
-| `FiniteFallback` bounded lookup | Not implemented | Source table is noncomputably chosen |
+| `FiniteFallback` bounded lookup | `remaining::outer::finite_fallback` | Explicit fail-closed stub: noncomputable Lean table |
 
 The semantic DFS's leaf callback remains **bounded exponential enumeration**.
 It is **not** a port of the native marked-query leaf and cannot establish ETH's
@@ -294,3 +294,8 @@ complete program. The actual signed pair iteration, signature tuple DFS,
 ring evaluation, canonical query reconstruction and the full ETH-disproving
 program remain unimplemented. No source-level cross-language refinement or
 complexity guarantee is claimed.
+
+
+## v0.8.0: Entire remaining executable path stubbed, no false successes
+
+All remaining **runtime** stages from the native query through the proof-facing TM2 compiler are now represented by typed fail-closed entry points in `src/remaining.rs`. This includes signature bootstrapping, pair DFS, tuple visitor, ring reconstruction, marked/accepted high queries, greedy leaf rounds, native leaf lifting and terminal dispatch, outer DFS, frontend/fallback, final counting program and primitive compiler. `STAGES` provides the pinned Lean source symbols, machine dimensions, and prerequisites. Every unported function returns `Error::NotImplemented` rather than an accepting halt or an enumerating oracle. See [`docs/remaining-lean-port.md`](docs/remaining-lean-port.md). **No additional stage becomes executable in v0.8.0.** The original 58 tests are unchanged; the three new scaffold tests require a local toolchain run.

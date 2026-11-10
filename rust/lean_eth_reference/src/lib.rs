@@ -686,3 +686,6 @@ pub mod native_loader_frames;
 
 /// Source-defined pruned difference-pair streaming controller.
 pub mod native_difference_pairs;
+
+/// Physical source-defined attained-signature controller and level initializer.
+pub mod native_signature_tuple;

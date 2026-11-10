@@ -1,4 +1,4 @@
-name: ETH selector projector fused-exact differential verification
+name: ETH selector projector exact refusal and strict admission differential
 on:
   push:
     branches:

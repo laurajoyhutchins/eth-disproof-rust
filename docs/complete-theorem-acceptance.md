@@ -204,6 +204,161 @@ all-input totality separately.
 Existing acceptance remains intentionally **RED**. No independent
 theorem registry, scheduler or additional CI workflow is needed.
 
+## Conditional bit-work and streaming-space bound for one separated spectral center
+
+The [source-correlated mathematical reference](../reference/eth_separated_center_budget.py)
+addresses a **different** representation from the dense fused
+factor-table obstruction above: the original `eth/taylor.py`
+`summation='tuples'` algorithm, **after** a valid
+`MeasurementCertificate` has been supplied.
+
+For a normalized CNF with `n` declared variables, `m` clauses,
+`ell` literal occurrences, Taylor order `q<=n`, and a
+certified measurement design with `r` groups of sizes `g_i`,
+`s` total measurement rows and maximum row L1 norm `D`, put
+
+```
+P = sum_{j=0}^q binom(n,j)*2**j
+Y = (2*D+1)**s
+A = sum_i 2**g_i
+W = sum_i (number of clauses owned by group i)*2**g_i
+```
+
+These are **source-loop** quantities, not a hypothesized tensor rank:
+`taylor_coefficients_separated` invokes exactly `P`
+`restricted(E,U)` calls; for each one, the tuple evaluator
+visits at most `Y` shared measurement vectors and at most
+`A` group masks per vector. Therefore the group-mask visit
+ceiling is `P*Y*A`, and the number of per-clause factor
+evaluations is at most `P*Y*W`. Early zero exits only lower
+the observed work. Source tests independently compare completed
+spectral executions' recorded counters to these ceilings.
+
+### Rational coefficients: the missing factor-table height is not needed
+
+Let `d` be the maximum degree of a transferred replacement
+coefficient polynomial; let `K` count **all** rational input
+coefficients, the center, and the independently certified
+local/lambda witness entries. Let `B` bound their numerator
+and denominator bit lengths. The product `H` of their
+denominators has `log2 H <= K*B`.
+
+The source computes shifted coefficients of `P(t+z)` using
+Horner arithmetic. Every shifted coefficient's denominator
+divides `H**(d+1)`. The `U`-specific corrections are sums
+of at most `n` shifts; the source's scalar base terms sum
+at most `n+s` rational entries, each measured integer being
+bounded by `D`. Consequently every linear literal jet has
+denominator dividing `H**(d+1)`.
+
+Every clause is a product of at most its literal count of
+these jets; across the entire CNF, no term multiplies more
+than `ell` literal jets. All partial products and sums
+therefore live on the *same* rational denominator lattice
+`H**((d+1)*ell)`. Truncated jet multiplication introduces
+at most `(q+1)**ell` coefficient-index combinations.
+The nested sums over masks, measurement vectors and
+`(E,U)` add at most `n+ceil(log2 Y)+ceil(log2 P)`
+bits of numerator height. The explicit conservative bound
+`every_intermediate_fraction_bits_upper` composes these
+sources, rather than relying on final-output height alone.
+
+The reference charges all source-local precomputation, each
+pair, each measurement loop and each group/clause visit with
+a deliberately loose polynomial multiplier for coordinate
+work and schoolbook rational normalization. Its
+`abstract_schoolbook_bit_work_upper` is a ceiling for that
+**specified mathematical schoolbook cost model** conditional
+on the supplied certificate and input scalar heights,
+not measured CPython machine bit instructions or proof
+of the certificate-generation runtime.
+
+### Memory correction found in the source
+
+The former expression `itertools.product(range(-D,D+1),repeat=s)`
+internally materialized an input pool of `2D+1` integers
+**before yielding the first measurement vector**. The
+production tuple evaluator now uses
+`_measurement_vectors(D,s)`, a lexicographically identical
+odometer whose simultaneous state holds `O(s)` integers.
+A test requests the first three tuples for `D=10**100`
+without creating the range pool. This is an actual
+source-level memory improvement, not an asymptotic runtime
+claim.
+
+The other live objects consist of the `O(ell*n)` source
+replacement and shifted-polynomial entries, the certified
+measurement matrices and witnesses, at most a configured
+number of `U`-correction entries (64 by default), and
+current `q+1`-coefficient jets. The bound
+`retained_rational_slots_upper` is deliberately slack;
+multiplied by the common bit-height ceiling, it gives
+polynomial **mathematical coefficient** storage whenever
+the source input/certificate parameters are polynomially
+bounded. It is not a byte-perfect CPython heap model.
+
+### What the literal Step-5 inequalities would give
+
+Under the *actual* manuscript quantitative conditions
+
+```
+q <= 3*n*R/Q          delta = 3*R/Q <= 1/2
+s <= 2*n/(r*lambda)   D <= r**(2Q)
+max(g_i) <= 2*n/r     lambda = ceil(log2 n)
+```
+
+the source-loop exponent satisfies the conservative bound
+
+```
+log2(P*Y*A) <= n*Gamma + ceil(log2(n+1)) + ceil(log2 r)
+
+Gamma = delta*ceil(log2(6/delta))
+      + 2*(2*Q*ceil(log2 r)+2)/(r*lambda)
+      + 2/r.
+```
+
+The first inequality follows from
+`binom(n,j)*2**j <= (2*e*n/j)**j` and `2e<6`
+for `j<=q<=n/2`, then
+`P<=(n+1)*2**(n*delta*ceil(log2(6/delta)))`.
+The remaining terms charge **all** measurement signatures and
+the **sum**, not product, of independent group-mask domains.
+
+For the source's literal
+`r=floor(sqrt(lambda)/nu**2)`,
+`Q=floor(lambda/(128*nu))`,
+`R=4*ceil(sqrt(lambda))`, `nu=ceil(log2 lambda)`,
+`Gamma=O(nu**2/sqrt(lambda))=o(1)`. This is a
+conditional `2**o(n)` **one-center loop and abstract bit-work
+bound**, if the supplied certificate has polynomial-height
+entries and satisfies all quantitative inequalities.
+There is no hidden large Boolean table.
+
+The numerical caveat matters: the first symbolically admitted
+coupled family at `lambda=2**34` has `q/n<=0.39844`
+and this conservative `Gamma>1.61`. The upper bound
+does **not** certify a finite practical speedup even for
+an astronomically large input. At `lambda=2**50`,
+the same coefficient of `n` is below `0.028`,
+but `n=2**lambda` is even less physically representable.
+These are exact symbolic **upper-rate** computations, not
+runs of the paper algorithm and not runtime lower bounds.
+
+### What is still unproved
+
+This result **does not** certify a full input-to-count algorithm.
+Most importantly, strict paper admission currently does not
+prove that *every* source-transferred selector/projector design
+meets the quantitative row-count and coefficient-height
+conditions without resource refusal. Constructing the
+conditional-expectation schedules, obtaining a sound actual
+measurement certificate, and proving all their source-level
+bit costs are separate tasks. So are the complete number
+of centers, Hermite readout, disjoint sparsification,
+finite-boundary handling, and refinement to the pinned
+Lean primitive machine. The complete theorem gate remains
+**RED**.
+
 ## A total exact baseline that does not prove the target theorem
 
 `reference/total_exact_cnf.py` provides a separate, **total mathematical

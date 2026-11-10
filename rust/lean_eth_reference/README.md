@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.6.0)
+# OpenAI ETH formalization: executable Rust port (v0.7.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -27,6 +27,8 @@ It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
 | **`HighQueryProgram.copyHighCounter`** | `src/native_query_prefix.rs` | **Physical durable-counter copy before query execution** |
 | `ParserProgram.frameProgram`, `AssignmentRecordViews.flattenProgram` | `src/native_query_prefix.rs` | Exact finite parser and framed-record flattening |
 | `HighIncidenceProgram.Restriction.program` | `src/native_query_prefix.rs` | Exact high/low coordinate merge |
+| **`NativeLayoutLoad.command`** | `src/native_layout.rs` | **17 port clears and 14 parked master copies; exact nested finite source tables** |
+| **`PairNativeSetup.CountFalse.command`, `setupCaller`** | `src/native_pair_setup.rs` | **Actual free-coordinate tally, isolated scratch, metadata staging** |
 | `BitProgramCompile.primitive` and TM2 microsteps | Not implemented | Do not infer primitive time/tape costs |
 | `NativeLeafProgram.command k`, `NativeOuter`, `Native.countingProgram` | Not implemented | Primary next execution milestones |
 | `FiniteFallback` bounded lookup | Not implemented | Source table is noncomputably chosen |
@@ -48,7 +50,7 @@ printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
 # count=5 nodes=3 leaves=2 peak_frontier=2
 ```
 
-There are 43 Rust tests, including 960 independent structured-program cases
+There are 58 Rust tests, including 960 independent structured-program cases
 (120 command shapes × 8 input/register states), all short-stack loop cases,
 source-derived CNF/golden encoding vectors, strict finite-index checks, exact
 branch partitioning, refusal behavior, and subroutine relocation, executable marked-query initialization, its exact instruction counts, mapped subroutines, and dirty-scratch regression cases. They are
@@ -241,3 +243,54 @@ python scripts/compare-native-nodes-trace.py --lean lean-nodes.txt --rust rust-n
 The full imported-source Lean differential run remains **UNEXECUTED** in this
 VM due to the incomplete pinned Mathlib cache. This implementation has not
 executed the native node/pair arithmetic or proved any ETH complexity claim.
+
+
+## v0.7.0: node layout loading and physical pair initialization
+
+The source-pinned `NativeLayoutLoad.command` is now fully executable as a
+**167-label finite instruction program**. It clears 17 named scratch/low ports,
+then loads 14 parked source masters from 730–743 into 128–141 using the
+source-prescribed preserving-copy subroutines. Both nested `liftCommand`
+compilation boundaries are retained. Independent tests verify the exact
+source-instruction cost, all 14 word mappings, register/stack frames, and
+explicit word/peak-live-stack bounds over dirty initial states.
+
+The new `first_node_layout_prefix_command` composes the existing actual
+`prepareHigh`, node-table initialization, non-consuming guard, one native
+node read, and `NativeLayoutLoad`. It stops **immediately after the first
+node layout load**, using a one-iteration branch rather than pretending to
+implement the full `QueryStreamProgram.nodeLoop` without its arithmetic.
+
+The source-defined `PairNativeSetup.setupCaller` is also ported, including:
+
+- `CountFalse.command` and its `UnaryForPrograms` counted loop, which
+  physically emits one unary bit per *false* high-mask coordinate.
+- `SubexpSetupStorage.isolated` preparation, compiled callback invocation,
+  result transfer and complete scratch-bank cleanup.
+- Actual count output on stack **832**, preserved metadata copied from 243
+  to **833**, and the clears on 834/835.
+
+The new tests exhaust all Boolean masks up to eight bits for the local count
+and up to seven bits for the full 40×896 caller. They check exact instruction
+formulas and that scratch and unrelated persistent state are preserved or
+cleared as prescribed. **58 tests** pass on pinned Rust 1.99.1 in both debug
+and release, with formatting and strict Clippy checks.
+
+Direct imported-source Lean/Rust differential fixtures are prepared:
+
+```sh
+cargo run --offline --quiet --bin native-layout-pair-trace > rust-layout-pair.txt
+# Requires complete Lean 4.34.1 / pinned Mathlib source build:
+# lake env lean --run reference/lean_native_layout_pair_trace.lean > lean-layout-pair.txt
+python scripts/compare-native-layout-pair-trace.py \
+  --lean lean-layout-pair.txt --rust rust-layout-pair.txt
+```
+
+The original Lean fixture has **not been executed** due to the incomplete
+Mathlib cache. The original `SignatureHeadLoader.bootstrapProgram` lies
+between layout load and pair setup in the source graph and is **not** ported.
+These independently executable stages are not falsely concatenated into one
+complete program. The actual signed pair iteration, signature tuple DFS,
+ring evaluation, canonical query reconstruction and the full ETH-disproving
+program remain unimplemented. No source-level cross-language refinement or
+complexity guarantee is claimed.

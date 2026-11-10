@@ -677,3 +677,6 @@ pub mod native_cache_iteration;
 
 /// Source-refined fixed-width flattening and executable integer cache.
 pub mod native_flatten;
+
+/// Source-defined fixed-width H-cache normalization and signed flattening.
+pub mod native_cache_normalize;

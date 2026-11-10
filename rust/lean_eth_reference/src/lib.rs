@@ -672,3 +672,5 @@ pub mod remaining;
 
 pub mod native_bootstrap;
 pub mod native_integer_cache;
+
+pub mod native_cache_iteration;

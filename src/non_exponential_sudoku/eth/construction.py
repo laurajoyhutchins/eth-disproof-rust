@@ -650,11 +650,11 @@ def construct_paper_bounded_designs(
     parameters or brute force. General-CNF disjoint sparsification
     remains unimplemented.
     """
+    if measurement_basis not in ('selectors', 'projector'):
+        raise ValueError('unknown ETH measurement basis')
     audit = audit_bounded_cnf(formula)
     audit.require()
     p = audit.parameters
-    if measurement_basis not in ('selectors', 'projector'):
-        raise ValueError('unknown ETH measurement basis')
     result = construct_bounded_designs(
         formula, r=p.r, Q=p.Q, R=p.R,
         schedule='conditional', limits=limits, balance_limits=balance_limits,

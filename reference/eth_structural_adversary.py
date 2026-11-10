@@ -201,3 +201,71 @@ def certify_subcubic_grid_minor(
         contracted_grid_edges=len(contracted),
         treewidth_lower_bound=k - 1,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class VirtualSubcubicGridStep5:
+    """Symbolic bounded-incidence and grid-minor certificate, no giant graph."""
+
+    lambda_bits: int
+    grid_side_expression: str
+    variables_expression: str
+    clauses_expression: str
+    literal_occurrences_expression: str
+    treewidth_lower_bound_expression: str
+    r: int
+    Q: int
+    R: int
+    spectral_dimension_squared_log2_upper: int
+    spectral_overview_margin_proved: bool
+    numeric_step5_admitted: bool
+    materialized_cnf: bool = False
+    executed_paper_algorithm: bool = False
+    executed_lean_machine: bool = False
+
+
+def virtual_subcubic_grid_step5(lambda_bits: int) -> VirtualSubcubicGridStep5:
+    """Extend the coupled Step-5 numeric audit to a proven grid-minor family.
+
+    For even lambda, let k=2**((lambda-2)//2), n=4*k*k=2**lambda.
+    The wall has b=3,w=2 and M=(3-1/k)*n, with k>=2.
+
+    Compare to the already-admitted cyclic b=3,w=3,M=3n family:
+    every numeric check except balancing incidence and the stronger
+    12D**2 overview inequality is unchanged or weaker.
+    The additional independently tested symbolic sufficient condition
+        4*Q*ceil(log2(r)) <= lambda-3
+    yields D**2 <= n/8. Therefore both
+        2*(3+2)*D**2 <= 10*n/8 <= M
+        12*D**2 <= 12*n/8 <= M
+    hold because M>=5n/2. This is arithmetic admission, NOT a
+    proof of #SAT hardness or of the source's unbounded execution.
+    """
+    from non_exponential_sudoku.eth.paper_admitted_witness import (
+        virtual_coupled_3cnf_step5,
+    )
+
+    if type(lambda_bits) is not int or lambda_bits < 4 or lambda_bits % 2:
+        raise ValueError("even lambda at least four required for wall grid")
+    witness = virtual_coupled_3cnf_step5(lambda_bits)
+    if not witness.admitted_by_sufficient_conditions:
+        raise ValueError("coupled Step-5 base sufficient conditions unproved")
+    D2_log_upper = 4 * witness.Q * (witness.r - 1).bit_length()
+    # ceil(log2(r)) bounds log2(r) without constructing D=r**(2Q).
+    if D2_log_upper > lambda_bits - 3:
+        raise ValueError("wall incidence/overview margin unproved")
+    exponent = (lambda_bits - 2) // 2
+    k = f"2**{exponent}"
+    n = f"2**{lambda_bits}"
+    return VirtualSubcubicGridStep5(
+        lambda_bits=lambda_bits,
+        grid_side_expression=k,
+        variables_expression=n,
+        clauses_expression=f"6*({k})**2-2*({k})",
+        literal_occurrences_expression=f"3*({n})-4*({k})",
+        treewidth_lower_bound_expression=f"({k})-1",
+        r=witness.r, Q=witness.Q, R=witness.R,
+        spectral_dimension_squared_log2_upper=D2_log_upper,
+        spectral_overview_margin_proved=True,
+        numeric_step5_admitted=True,
+    )

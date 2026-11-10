@@ -636,22 +636,29 @@ def construct_paper_bounded_designs(
     formula: CNFFormula, *,
     limits: ConstructionLimits = ConstructionLimits(),
     balance_limits: BalanceLimits = BalanceLimits(),
+    measurement_basis: Literal['selectors', 'projector'] = 'selectors',
 ) -> ConstructedDesigns:
     """Strictly admitted main-body construction for width/occurrence <=3.
 
     Uses ONLY the paper's explicit r,Q,R schedule and the conditional-
-    expectation derandomization. If any theorem prerequisite is missing,
-    refuse rather than substituting tiny demo parameters or brute force.
-    Admission is necessary, not sufficient for this bounded implementation's
-    resource limits. This is NOT a general-CNF path: disjoint sparsification
+    expectation derandomization. 'selectors' preserves the original
+    measurement representation; the explicit opt-in 'projector' uses
+    an identical restricted row space but DIFFERENT row-count and
+    L1 cost certificates. The latter still must pass the strict actual
+    bounds below, and does not discharge runtime capacity limits.
+    If a theorem prerequisite is missing, refuse without substituting toy
+    parameters or brute force. General-CNF disjoint sparsification
     remains unimplemented.
     """
+    if measurement_basis not in ('selectors', 'projector'):
+        raise ValueError('unknown ETH measurement basis')
     audit = audit_bounded_cnf(formula)
     audit.require()
     p = audit.parameters
     result = construct_bounded_designs(
         formula, r=p.r, Q=p.Q, R=p.R,
         schedule='conditional', limits=limits, balance_limits=balance_limits,
+        representation='implicit', measurement_basis=measurement_basis,
     )
     if result.balancing is None or not result.balancing.lemma_hypotheses_met:
         raise ArithmeticError('paper balancing lemma prerequisites lost')

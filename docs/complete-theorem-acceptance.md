@@ -400,3 +400,26 @@ the selector-mode strict paper constructor**, independent
 balancing totality, the rest of the transfer, or the recursive
 contraction's worst-case bit/memory recurrence. The complete
 non-exponential theorem gate remains RED.
+
+## Selector versus projected measurement row-space identity
+
+The source-specific proof in
+[eth-selector-projector-equivalence.md](eth-selector-projector-equivalence.md)
+establishes the exact identity `G=B^T W B` for the restricted
+exceptional selector matrix `B` and the projected Gram `G`,
+with `W` positive definite. Consequently their rational row
+spaces coincide, even for rank-deficient groups and collided
+incidence labels. Exact source tests compare both original and
+projected transferred representations, measurement witnesses,
+center evaluations and final counts.
+
+**Quantitative admission is not basis-invariant.** The row count,
+primitive integer row `L1` norm, lambda coefficients and literal
+measurement tuple domain can differ. The strict paper entrypoint
+now provides an *explicit* `measurement_basis='projector'` opt-in
+while preserving selector defaults; it still audits all original
+parameter prerequisites and actual resulting `tau,D` bounds,
+and it may refuse. This closes row-space equivalence, **not**
+projected-mode numeric admission, full source-level construction
+totality or the non-exponential recursive theorem. The theorem
+acceptance remains RED.

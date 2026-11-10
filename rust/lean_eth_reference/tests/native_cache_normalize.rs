@@ -144,7 +144,22 @@ fn complete_flat_program_parses_and_normalizes_real_framed_rows() {
                 put(&mut d, 18, &vec![true; width]);
                 d.regs[5] = true;
                 let stats = program.run(&mut d, RunLimits::default()).unwrap();
-                assert!(stats.instructions > 0);
+                // Sum the actual source costs: each pair parser consumes
+                // 6*input_len+12 steps, each positive/negative component
+                // incurs its own width normalization, the loop checks once
+                // per record plus the terminating false check, and both flat
+                // accumulators are physically transferred at the end.
+                let total_input: usize = words.iter().map(Vec::len).sum();
+                let discarded: usize = words
+                    .iter()
+                    .map(|word| word.len().saturating_sub(width))
+                    .sum();
+                let expected_steps =
+                    12 + count * (40 * width + 49) + 6 * total_input + 2 * discarded;
+                assert_eq!(
+                    stats.instructions, expected_steps as u64,
+                    "source cost width={width} count={count} seed={seed}"
+                );
                 assert!(d.pc.is_none());
                 assert!(d.regs[5]);
                 let expected: Vec<_> = words.iter().flat_map(|w| padded(width, w)).collect();

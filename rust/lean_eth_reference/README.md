@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.4.0)
+# OpenAI ETH formalization: executable Rust port (v0.5.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -23,6 +23,10 @@ It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
 | **`ExecCNFTupleOdometer.program`** | `src/native_tuple.rs` | **Exact 18-label bit-stack program, complete carry/overflow** |
 | **`ExecCNFTupleEnumeration.enumerate`** | `src/native_tuple.rs` | **Compiled start/while/callback/advance loop, including final overflow** |
 | **`HighQueryAdapter.highPorts.counter`** | `src/native_tuple.rs` | **Real 40×896 machine mapping: registers 19–21, stacks 789–790** |
+| **`HighQueryAdapter.prepareHigh`** | `src/native_query_prefix.rs` | **Actual masked-assignment query-stream prefix, physically compiled** |
+| **`HighQueryProgram.copyHighCounter`** | `src/native_query_prefix.rs` | **Physical durable-counter copy before query execution** |
+| `ParserProgram.frameProgram`, `AssignmentRecordViews.flattenProgram` | `src/native_query_prefix.rs` | Exact finite parser and framed-record flattening |
+| `HighIncidenceProgram.Restriction.program` | `src/native_query_prefix.rs` | Exact high/low coordinate merge |
 | `BitProgramCompile.primitive` and TM2 microsteps | Not implemented | Do not infer primitive time/tape costs |
 | `NativeLeafProgram.command k`, `NativeOuter`, `Native.countingProgram` | Not implemented | Primary next execution milestones |
 | `FiniteFallback` bounded lookup | Not implemented | Source table is noncomputably chosen |
@@ -44,7 +48,7 @@ printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
 # count=5 nodes=3 leaves=2 peak_frontier=2
 ```
 
-There are 37 Rust tests, including 960 independent structured-program cases
+There are 43 Rust tests, including 960 independent structured-program cases
 (120 command shapes × 8 input/register states), all short-stack loop cases,
 source-derived CNF/golden encoding vectors, strict finite-index checks, exact
 branch partitioning, refusal behavior, and subroutine relocation, executable marked-query initialization, its exact instruction counts, mapped subroutines, and dirty-scratch regression cases. They are
@@ -67,7 +71,7 @@ Avoid introducing an unrelated fast #SAT backend at the semantic leaf seam.
 Treat **Lean code table identity, exact output, halt/cleanup invariants,
 primitive time, and visited space** as independent acceptance criteria.
 
-## First real native marked-query execution boundary (v0.4.0)
+## First real native marked-query execution boundary (v0.5.0)
 
 `HighCountSeed.initializeProgram` is the **actual compiled source program**
 composed of `HighCountSeed.command` and `HighCountInit.command` from the pinned
@@ -148,3 +152,57 @@ python scripts/compare-native-tuple-trace.py --lean lean-tuple.txt --rust rust-t
 Do not substitute the Rust output into the Lean input: such a self-comparison
 validates the parser only, not cross-language conformance. The production
 `HighQueryProgram.marked` cannot yet be called or counted from Rust.
+
+
+## v0.5.0: First actual query-stream command executes
+
+The previous v0.4.0 callback was diagnostic only. The new `native_query_prefix`
+module implements the first **actual command** in `QueryStreamProgram.command`,
+namely `HighQueryAdapter.prepareHigh`, with its physical `BitProgram`
+instruction table. It also ports the immediately preceding
+`HighQueryAdapter.copyHighCounter` from `HighQueryProgram.conditioned`.
+
+The real query-stream prefix is therefore:
+
+1. Copy the current framed high-counter stack `789` to query stack `330`;
+   leave the durable counter intact, clearing scratch `792`.
+2. Clear stale high-context stacks (including old `703`) using the exact
+   source clear programs.
+3. Decode the query assignment by running the source seven-label frame
+   parser and the source framed-record flattener (not by indexing a Rust array).
+4. Reverse the original high mask, merge the supplied assignment into
+   ambient coordinates, and emit the complete reversed bit vector on `703`.
+
+The source-defined `prepareHighProgram` has exactly **85 finite control
+labels**, irrespective of mask size. A source-composed `query_stream_prefix`
+callback executes within the actual `ExecCNFTupleEnumeration` high loop,
+producing the correctly aligned vector for each visited assignment, followed
+by the real overflow increment. All data resides on the original
+`40 × 896` machine ports.
+
+The additional six tests exhaust all high assignments across Boolean masks
+up to six coordinates (and test actual high-loop visits up to four), verify
+individual parser/transfer/flatten/merge *instruction counts*, dirty-scratch
+cleanup, retained counter and ambient registers, exact coordinates, and
+bounded termination. The tests use a separate direct mask/assignment model
+for expected outputs. **43 tests pass on Rust 1.99.1** in both debug and
+release, with strict Clippy and formatting checks.
+
+`reference/lean_native_query_prefix_trace.lean` imports the original pinned
+OpenAI program and traces six physical input cases using its `BitProgram.step`.
+The matching Rust trace producer and strict comparator are:
+
+```sh
+cargo run --quiet --offline --bin native-query-prefix-trace > rust-prefix.txt
+# Run only with pinned Lean 4.34.1 and a *complete* matching Mathlib cache:
+# lake env lean --run reference/lean_native_query_prefix_trace.lean > lean-prefix.txt
+python scripts/compare-native-query-prefix-trace.py \
+  --lean lean-prefix.txt --rust rust-prefix.txt
+```
+
+**This Lean trace has not been executed.** The existing Mathlib cache is
+incomplete, and no source-level differential pass is claimed. The actual
+`QueryStreamProgram.nodes`, pair DFS, ring interpolation, signed accumulation,
+`QueryReconstruction`, and the full native leaf still need executable ports.
+This source prefix does **not** compute a query count and does not establish
+an ETH-disproving complexity bound.

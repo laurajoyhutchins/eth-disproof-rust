@@ -658,3 +658,5 @@ pub fn parse_dimacs(text: &str) -> Result<Cnf, Error> {
 pub mod bit_program;
 pub mod native_high;
 pub mod native_tuple;
+
+pub mod native_query_prefix;

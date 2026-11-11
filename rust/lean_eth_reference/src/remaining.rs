@@ -619,13 +619,6 @@ macro_rules! local_stub {
         }
     };
 }
-macro_rules! outer_stub {
-    ($name:ident, $symbol:literal) => {
-        pub fn $name() -> Result<Cmd<80, 1220>, Error> {
-            unavailable($symbol)
-        }
-    };
-}
 
 /// The missing body of QueryStreamProgram.nodeLoop. Its first layout and
 /// pair-setup components already execute elsewhere in this crate.

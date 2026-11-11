@@ -140,6 +140,9 @@ def main() -> int:
         required.append("native")
     command = [sys.executable, "-m", "pytest", "-q", "-m", args.tier,
                "--durations=20", "--junitxml=" + str(junit)]
+    if args.tier == "checkpoint":
+        # Report the active test before a hard timeout truncates JUnit output.
+        command.append("-vv")
     manifest_path: Path | None = None
     if args.shard_count > 1 and (impact is None or impact["mode"] == "full"):
         manifest_path = output / f"checkpoint-shard-{args.shard_index}.json"

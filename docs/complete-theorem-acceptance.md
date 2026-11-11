@@ -498,3 +498,37 @@ and it may refuse. This closes row-space equivalence, **not**
 projected-mode numeric admission, full source-level construction
 totality or the non-exponential recursive theorem. The theorem
 acceptance remains RED.
+
+
+
+## Quantitative selector witness for the projected measurement space
+
+[The source-specific quantitative selector certificate](eth-quantitative-selector-witness.md)
+establishes a stronger **existence** result than the preceding
+row-space identity: under the manuscript's exact Step-5
+hypotheses and the separately verified balancing multiplicity
+bound \(hD\le2M\), every projected row space admits a basis
+formed by **independent original integer selector rows** with
+
+\[
+ \#\mathrm{rows}\le \frac{2n}{r\lambda},
+ \qquad \max\|b\|_1\le D=r^{2Q}.
+\]
+
+The source's exceptional selector fraction is a
+\(\mathrm{Binomial}(Q,(r-1)/(2r))\) tail. Hoeffding and the
+literal \(R^2\ge2048Q\nu\) parameter condition give
+\(c/D\le2^{1-256\nu}\), and \(M\le3n,\ r^2\le\lambda
+\le2^\nu\) complete the row-count inequality.
+The certificate uses only symbolic parameter arithmetic,
+not a virtual giant matrix or invented small admitted input.
+
+**Do not transfer this L1 bound to the actual primitive Gram
+basis.** A generic primitive RREF can enlarge integer row norms
+despite preserving row space. The implemented independent
+selector-subbasis extractor retains actual original integral
+rows and re-certifies the resulting quantitative design;
+it currently requires enumerated selector rows and hence may
+still encounter the existing implementation's source caps.
+Balancing algorithm totality, all transfer/certification costs,
+and the recursive non-exponential theorem remain **RED**.

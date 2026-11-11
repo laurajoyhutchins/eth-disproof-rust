@@ -782,11 +782,15 @@ pub mod outer {
         crate::native_clause_relations::relation_program()
     }
     /// Three-mode source record scan on encoded formula, 15x12.
-    pub fn relation_scan(mode: crate::native_clause_relation_scan::Mode) -> Result<Program<15, 12>, Error> {
+    pub fn relation_scan(
+        mode: crate::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 12>, Error> {
         crate::native_clause_relation_scan::program(mode)
     }
     /// Source physical preserving scanner on 15x13 work bank.
-    pub fn preserving_relation_scan(mode: crate::native_clause_relation_scan::Mode) -> Result<Program<15, 13>, Error> {
+    pub fn preserving_relation_scan(
+        mode: crate::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 13>, Error> {
         crate::native_clause_dedup::preserving_scan_program(mode)
     }
     /// Last-equivalent-clause selection with original source order.
@@ -795,7 +799,9 @@ pub mod outer {
     }
     /// Strict-subset physical self-filter, 15x16.
     pub fn filter_supersets() -> Result<Program<15, 16>, Error> {
-        crate::native_clause_filter::self_filter_program(crate::native_clause_relation_scan::Mode::StrictSubset)
+        crate::native_clause_filter::self_filter_program(
+            crate::native_clause_relation_scan::Mode::StrictSubset,
+        )
     }
     /// Complete source normalization: literal cleanup, tautology filter,
     /// clause deduplication and strict-subset absorption. Not a SAT oracle.

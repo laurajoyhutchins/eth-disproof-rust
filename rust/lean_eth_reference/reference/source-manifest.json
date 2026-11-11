@@ -1,0 +1,15 @@
+{
+  "repository": "openai/math",
+  "commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "toolchain": "leanprover/lean4:v4.34.1",
+  "files": {
+    "lean/OAI/Algorithms/SubexponentialSAT/BitProgram.lean": "b5f18adbb17da725e5401649f6e8b01516a47048",
+    "lean/OAI/Algorithms/SubexponentialSAT/StructuredCalls.lean": "d0e2a152c49ad0f25230591393c322001820b1a3",
+    "lean/OAI/Algorithms/SubexponentialSAT/ProgramLinking.lean": "a22e92d136bca9fcabc158c45f18ed3b06da18fc",
+    "lean/OAI/Algorithms/SubexponentialSAT/StackRoutines.lean": "c6a3afd31d575c518aa8af770826f22df703135d",
+    "lean/OAI/Algorithms/SubexponentialSAT/BankRoutines.lean": "d028db9c8d6ac9103eee7de3264e88021605f2bc",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/HighIncidenceProgramBranches.lean": "b1ceeb52301430094019901fecf7ae7f8bdb3fa0",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighCountSeed.lean": "7c839a9ff83451328fe5e1795a25dcb324778d82",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighCountInit.lean": "d949b85a1942bec6bdf8a7656b6d15f111e6e9d9"
+  }
+}

@@ -738,3 +738,21 @@ mod canonical_clause_tests {
         );
     }
 }
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_frames;
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_generator;
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_rescan;
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_key;
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_arithmetic;
+
+/// Source-defined full predecessor rescan and finite tuple probe.
+pub mod native_signature_candidate;

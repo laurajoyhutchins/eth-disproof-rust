@@ -57,7 +57,7 @@ jobs:
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_compiler_cache_workflow.py' -v
 
   original-compiled-batch:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.number == 161)
+    if: github.event_name == 'workflow_dispatch'
     name: source-compiled Lean machines to native Rust
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -66,9 +66,9 @@ jobs:
       ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
       PINNED_ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
       LEAN_ROOT: instrumentation/lean-env
-      PROGRAM_REGEX: ${{ github.event_name == 'workflow_dispatch' && inputs.name_regex || '(SqrtLog\.Setup\.(computeLProgram|logSuccProgram)|SqrtLogSpace\.DisjointReuse\.SparseFrontierProgram\.(pushProgram|initFrontierProgram|popProgram|popIfPresentProgram|pushPairProgram))' }}
-      PROGRAM_LIMIT: ${{ inputs.limit || 7 }}
-      PROGRAM_TIMEOUT: ${{ inputs.timeout_seconds || 240 }}
+      PROGRAM_REGEX: ${{ inputs.name_regex }}
+      PROGRAM_LIMIT: ${{ inputs.limit }}
+      PROGRAM_TIMEOUT: ${{ inputs.timeout_seconds }}
     steps:
       - uses: actions/checkout@v4
         with:

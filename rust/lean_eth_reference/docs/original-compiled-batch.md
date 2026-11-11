@@ -50,9 +50,9 @@ limit (default one), and per-program timeout. It runs on public GitHub-hosted
 manual dispatch after the workflow is present on the default branch.
 The initial large-target attempt (#43041032199) exported **zero** original
 programs: three reduction heartbeat refusals (200,000 default heartbeats)
-and one module-build timeout (900 seconds). The next bounded batch instead
-selects seven smaller, source-defined targets: two `SqrtLog.Setup` programs
-and five `SparseFrontierProgram` commands in the query import closure.
+and one module-build timeout (900 seconds). The subsequently verified bounded
+batch attempted seven smaller source-defined targets: two `SqrtLog.Setup`
+programs and five `SparseFrontierProgram` commands in the query import closure.
 Lean has a 2,000,000-heartbeat deterministic limit and subprocesses still
 have a 240-second wall-clock limit per operation. The job shares a pinned
 OAI dependency-build cache with the full-query exporter, but cached compiler
@@ -113,6 +113,50 @@ python3 tools/compile_exported_batch.py \
   --typecheck-crate /tmp/original-compiled-check --rust-crate . \
   --max-labels 4096
 ```
+
+
+## Accepted original-source batch (2026-11-11)
+
+The exact-head [original Lean compiled-program run #43089663285](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43089663285)
+on commit `ac4b677feab8600563c37888cae082fc472bbc6a` completed with **six
+source-authenticated exports, one explicitly refused declaration**. All six
+tables were checked against source/toolchain/ABI/SHA-256 receipts, converted
+to Rust by `lean-original-codegen`, then typechecked together by Cargo in a
+separate crate. The matching Rust format/test/Clippy check also passed
+(run #43089663264).
+
+| Original declaration | Finite labels | Result |
+| --- | ---: | --- |
+| `SqrtLog.Setup.logSuccProgram` | 36 | Source-exported; generated Rust typechecked |
+| `SparseFrontierProgram.pushProgram` | 22 | Source-exported; generated Rust typechecked |
+| `SparseFrontierProgram.initFrontierProgram` | 24 | Source-exported; generated Rust typechecked |
+| `SparseFrontierProgram.popProgram` | 13 | Source-exported; generated Rust typechecked |
+| `SparseFrontierProgram.popIfPresentProgram` | 15 | Source-exported; generated Rust typechecked |
+| `SparseFrontierProgram.pushPairProgram` | 33 | Source-exported; generated Rust typechecked |
+| `SqrtLog.Setup.computeLProgram` | — | **Refused**: original Lean reduction exceeded 2,000,000 heartbeats |
+
+The full source tables, per-declaration receipts, generated Rust, batch report,
+and refusal details are retained as run artifact
+[`original-compiled-rust-ac4b677...`](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43089663285).
+Five of the six successful exports were revalidated cache hits in the final run;
+their first source-exported batch with zero refusals is run #43089112570.
+The `logSuccProgram` export is new in the final run. These receipts establish
+generation from genuine pinned original Lean programs, not independently
+executed Rust/Lean state-trace equivalence.
+
+An earlier compiler integration failure was traced to the generated Cargo
+manifest naming the library alias `lean_eth_reference` without specifying the
+actual package `lean-eth-reference`. The corrected dependency includes
+`package="lean-eth-reference"`; its regression and full generated-crate
+typecheck now pass. Original-source compilation ran automatically on PR #161
+only during acceptance testing and has been restored to manual-only dispatch.
+Ordinary pull requests run the fast source-tool regressions instead.
+
+**Not yet established:** source-independent Lean/Rust trace parity for these
+six composed programs, any generated Rust for `computeLProgram`, a full
+`QueryStreamProgram.program` translation, or the ETH theorem / #SAT complexity
+claim. Generated Rust lives in retained CI artifacts, not the committed
+application runtime.
 
 ## Verification boundary
 

@@ -413,3 +413,16 @@ The actual `SignatureHeadLoader.localProgram`, which computes the matrix,
 is **not** ported. Tests involving prepopulated matrix data are diagnostic;
 they do not claim a complete head loader or query count. Imported-source Lean
 differential execution and ETH complexity verification remain pending.
+
+
+## Native signed matrix to signature pipeline
+
+The `native_signed_arithmetic`, `native_matrix_preprocess` and `native_signature`
+modules execute source-defined fixed Boolean-stack instructions for signed
+coefficient shifting, row-major matrix framing, conditional accumulation and
+canonical signature keys. `signed_matrix_signature_program` is a separate
+single-machine integration adapter over these two original programs, not an
+upstream Lean definition. The 4×6 all-assignments regression verifies the
+source's signed-signature collision equivalence on the admissible input domain.
+See `docs/signed-signature-pipeline.md` for full source definitions, machine
+ports, local verification and the still-unported incidence entry controller.

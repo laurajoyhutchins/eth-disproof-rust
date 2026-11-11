@@ -693,3 +693,7 @@ pub mod native_head_factors;
 pub mod native_head_scatter;
 pub mod native_head_selection;
 pub mod native_head_support;
+
+pub mod native_signed_arithmetic;
+pub mod native_matrix_preprocess;
+pub mod native_signature;

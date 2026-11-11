@@ -14,10 +14,8 @@ fn high_fixture() -> String {
 
 #[test]
 fn cli_accepts_independent_paths_but_rejects_aliases_and_bad_records() {
-    let dir = std::env::temp_dir().join(format!(
-        "eth-rust-trace-comparison-{}",
-        std::process::id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("eth-rust-trace-comparison-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     let lean = dir.join("lean.trace");
     let rust = dir.join("rust.trace");
@@ -44,7 +42,15 @@ fn cli_accepts_independent_paths_but_rejects_aliases_and_bad_records() {
     assert!(!alias.status.success());
     assert!(String::from_utf8_lossy(&alias.stderr).contains("distinct files"));
 
-    fs::write(&rust, high_fixture().lines().skip(1).collect::<Vec<_>>().join("\n")).unwrap();
+    fs::write(
+        &rust,
+        high_fixture()
+            .lines()
+            .skip(1)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .unwrap();
     let incomplete = Command::new(exe)
         .args(["--suite", "high", "--lean"])
         .arg(&lean)

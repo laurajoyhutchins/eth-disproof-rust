@@ -113,3 +113,20 @@ This **does not** claim to measure primitive TM2 operations. Running this
 profiler is separate from a genuine imported-Lean full-state comparison.
 A fair evaluation of interpretation overhead needs an uninstrumented runtime
 baseline as well, because these measured times include observer costs.
+
+## Hosted exact-source reproduction (PR #156)
+
+The standalone `reference/lean-env` project pins Lean 4.34.1, the exact
+Mathlib manifest, and an authenticated symbolic link into a clean checkout of
+`openai/math@4eaee87548250b2682affda7d05d947c05554bae`. It avoids the
+incomplete local Mathlib archive without editing the mathematical source.
+The wrapper's optional `--lake-root` is validated against the pinned original
+source symlink. The hosted workflow runs `--suite full` and retains complete
+traces or failure evidence. A real imported-Lean success receipt, not Rust CI,
+is the necessary acceptance criterion.
+
+First hosted attempt built all 9,023 required original-source module jobs and
+failed to parse the *observer* `lean_full_machine_trace.lean` at its dirty
+state lambda (line 46), not an upstream program. The observer's lambda is now
+parenthesized. The wrapper also prints source parse errors directly and keeps
+a fail-closed receipt, so a failed comparison never becomes `PASS`.

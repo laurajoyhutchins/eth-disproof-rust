@@ -43,7 +43,7 @@ def main : IO Unit := do
           (if dirty then "_dirty" else "_clean")
         let init := BitProgram.initial program (mask size code)
         let start := if dirty then
-          { init with regs := fun _ => true,
+          { init with regs := (fun _ => true),
             «stacks» := Function.update init.stacks (1 : Fin 2) [true, false] }
           else init
         run program name 512 0 start

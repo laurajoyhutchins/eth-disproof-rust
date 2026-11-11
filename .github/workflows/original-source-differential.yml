@@ -1,0 +1,92 @@
+name: Original Lean full-state differential
+on:
+  push:
+    branches:
+      - verify/pinned-lean-state-gate-20261111
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pinned-source-state-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-differential:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      LEAN_ROOT: rust/lean_eth_reference/reference/lean-env
+    steps:
+      - name: Checkout exact test head
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fetch the original pinned OpenAI source, not a trace fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth 1 --filter=blob:none origin "$SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$SOURCE_SHA"
+          test -z "$(git -C upstream/openai-math status --porcelain --untracked-files=no)"
+          ln -s "$GITHUB_WORKSPACE/upstream/openai-math/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Restore Lean 4.34.1 with official Mathlib cache
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: rust/lean_eth_reference/reference/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Validate real Mathlib import and exact revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$LEAN_ROOT"
+          lake env lean --version | grep -F 'Lean (version 4.34.1'
+          test "$(git -C .lake/packages/mathlib rev-parse HEAD)" = "$MATHLIB_SHA"
+          test -z "$(git -C .lake/packages/mathlib status --porcelain --untracked-files=no)"
+          lake env lean SmokeMathlib.lean
+
+      - name: Install pinned Rust interpreter
+        shell: bash
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          rustc --version | grep -F 'rustc 1.99.1'
+
+      - name: Independently execute original Lean and Rust full-state traces
+        shell: bash
+        run: |
+          set -euo pipefail
+          rust/lean_eth_reference/scripts/verify-lean-differential.sh \
+            --lean-repo "$GITHUB_WORKSPACE/upstream/openai-math" \
+            --lake-root "$GITHUB_WORKSPACE/$LEAN_ROOT" \
+            --suite full \
+            --output-dir "$RUNNER_TEMP/original-lean-differential"
+          python3 -m json.tool "$RUNNER_TEMP/original-lean-differential/receipt.json"
+          echo "SOURCE_STATE_DIFFERENTIAL=PASS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve actual traces or failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-lean-full-state-evidence-${{ github.sha }}
+          path: ${{ runner.temp }}/original-lean-differential/
+          retention-days: 14
+          if-no-files-found: warn

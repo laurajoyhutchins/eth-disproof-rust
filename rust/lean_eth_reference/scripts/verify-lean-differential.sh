@@ -6,6 +6,7 @@ set -euo pipefail
 CRATE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 REPOSITORY="$(cd -- "$CRATE/../.." && pwd)"
 UPSTREAM=""
+LAKE_ROOT_ARG=""
 OUT="$CRATE/target/lean-differential"
 SUITE=full
 SOURCE_SHA=4eaee87548250b2682affda7d05d947c05554bae
@@ -13,7 +14,7 @@ MATHLIB_SHA=d13f23b723b8a846827a245b89c10fc7d3f11612
 
 usage() {
   cat <<'HELP'
-Usage: scripts/verify-lean-differential.sh --lean-repo /path/to/openai/math [--suite full|all|high|tuple|layout|nodes|query] [--output-dir PATH]
+Usage: scripts/verify-lean-differential.sh --lean-repo /path/to/openai/math [--lake-root PATH] [--suite full|all|high|tuple|layout|nodes|query] [--output-dir PATH]
 
 The OpenAI checkout must be at 4eaee87548250b2682affda7d05d947c05554bae,
 with a complete Lean 4.34.1 and pinned Mathlib cache. No fake Lean source or
@@ -23,6 +24,7 @@ HELP
 while (( $# )); do
   case "$1" in
     --lean-repo) UPSTREAM="${2:?requires path}"; shift 2 ;;
+    --lake-root) LAKE_ROOT_ARG="${2:?requires path}"; shift 2 ;;
     --suite) SUITE="${2:?requires suite}"; shift 2 ;;
     --output-dir) OUT="${2:?requires directory}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -34,6 +36,15 @@ for tool in git python3 cargo rustc lake; do
   command -v "$tool" >/dev/null || { echo "BLOCKED: $tool unavailable" >&2; exit 3; }
 done
 UPSTREAM="$(realpath -- "$UPSTREAM")"
+LAKE_ROOT="$(realpath -- "${LAKE_ROOT_ARG:-$UPSTREAM/lean}")"
+if [[ "$LAKE_ROOT" != "$(realpath -- "$UPSTREAM/lean")" ]]; then
+  [[ -f "$LAKE_ROOT/lakefile.lean" && -L "$LAKE_ROOT/OAI" ]] || {
+    echo 'BLOCKED: standalone Lake root requires a real lakefile.lean and OAI source symlink' >&2; exit 3;
+  }
+  [[ "$(realpath -- "$LAKE_ROOT/OAI")" == "$(realpath -- "$UPSTREAM/lean/OAI")" ]] || {
+    echo 'BLOCKED: standalone Lake project does not import pinned original OAI source' >&2; exit 3;
+  }
+fi
 OUT="$(realpath -m -- "$OUT")"
 mkdir -p -- "$OUT"
 # A failed rerun must never leave a stale success receipt.
@@ -49,13 +60,13 @@ observed="$(git -C "$UPSTREAM" rev-parse HEAD)"
 if [[ -n "$(git -C "$UPSTREAM" status --porcelain --untracked-files=all -- lean/OAI/Algorithms/SubexponentialSAT)" ]]; then
   echo 'BLOCKED: OpenAI source tree has uncommitted additions/modifications' >&2; exit 3
 fi
-MATHLIB="$UPSTREAM/lean/.lake/packages/mathlib"
+MATHLIB="$LAKE_ROOT/.lake/packages/mathlib"
 [[ -d "$MATHLIB" ]] || { echo 'BLOCKED: Mathlib checkout missing' >&2; exit 3; }
 mathlib_head="$(git -C "$MATHLIB" rev-parse HEAD)"
 [[ "$mathlib_head" == "$MATHLIB_SHA" ]] || {
   echo "BLOCKED: wrong Mathlib source commit: $mathlib_head" >&2; exit 3;
 }
-lean_version="$(cd "$UPSTREAM/lean" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean --version)"
+lean_version="$(cd "$LAKE_ROOT" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean --version)"
 [[ "$lean_version" == "Lean (version 4.34.1,"* ]] || {
   echo "BLOCKED: expected Lean 4.34.1, got $lean_version" >&2; exit 3;
 }
@@ -69,7 +80,7 @@ rust_version="$(rustc --version)"
 }
 # One honest Mathlib import, not a compiler-version smoke test alone.
 printf 'import Mathlib\n#eval 40 + 2\n' > "$OUT/import-mathlib.lean"
-if ! (cd "$UPSTREAM/lean" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean "$OUT/import-mathlib.lean") >"$OUT/import-mathlib.stdout" 2>"$OUT/import-mathlib.stderr"; then
+if ! (cd "$LAKE_ROOT" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean "$OUT/import-mathlib.lean") >"$OUT/import-mathlib.stdout" 2>"$OUT/import-mathlib.stderr"; then
   echo "BLOCKED: authentic import Mathlib failed. Inspect $OUT/import-mathlib.stderr" >&2
   exit 4
 fi
@@ -102,11 +113,17 @@ for part in "${suites[@]}"; do
   # Rebuild imported target modules from the pinned source so stale OAI .olean
   # files from a different revision cannot masquerade as upstream code.
   for module in "${modules[@]}"; do
-    (cd "$UPSTREAM/lean" && env -u LEAN_PATH -u LEAN_SRC_PATH lake build "OAI.Algorithms.SubexponentialSAT.$module") > "$OUT/$part.build.stdout" 2> "$OUT/$part.build.stderr"
+    (cd "$LAKE_ROOT" && env -u LEAN_PATH -u LEAN_SRC_PATH lake build "OAI.Algorithms.SubexponentialSAT.$module") > "$OUT/$part.build.stdout" 2> "$OUT/$part.build.stderr"
   done
   # Delete stale files so failed commands cannot leave an apparently passing pair.
   rm -f -- "$OUT/$part.lean.trace" "$OUT/$part.rust.trace" "$OUT/$part.pass"
-  (cd "$UPSTREAM/lean" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean --run "$CRATE/reference/$lean") > "$OUT/$part.lean.trace"
+  if ! (cd "$LAKE_ROOT" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean --run "$CRATE/reference/$lean") \
+    > "$OUT/$part.lean.trace" 2> "$OUT/$part.lean.stderr"; then
+    echo "FAILED: original Lean observer for $part (source trace retained)" >&2
+    tail -n 35 "$OUT/$part.lean.trace" >&2 || :
+    tail -n 35 "$OUT/$part.lean.stderr" >&2 || :
+    exit 4
+  fi
   "$CRATE/target/debug/$bin" > "$OUT/$part.rust.trace"
   python3 "$CRATE/scripts/$compare" --lean "$OUT/$part.lean.trace" --rust "$OUT/$part.rust.trace"
   if [[ "$part" == full ]]; then

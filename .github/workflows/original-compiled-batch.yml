@@ -59,7 +59,7 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s rust/lean_eth_reference/tools \
             -p 'test_source_compiled.py' -v
-          python3 -m unittest discover -s rust/lean_eth_reference/tools \\
+          python3 -m unittest discover -s rust/lean_eth_reference/tools \
             -p 'test_lean_rust.py' -v
           python3 rust/lean_eth_reference/tools/extract_compiled_catalog.py \
             --upstream "$PINNED_ORIGINAL_SOURCE" --query-closure \

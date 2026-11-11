@@ -130,15 +130,15 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
     let expected_pin = match kind {
         TableKind::Query => format!("PIN|query|{SOURCE_COMMIT}|{QUERY_SOURCE_BLOB}"),
         TableKind::Fixture => "PIN|fixture|synthetic".to_string(),
-        TableKind::OriginalBinaryAdd => format!(
-            "PIN|binary-add|{SOURCE_COMMIT}|ab8a858c2466aa3879087f825802aa76c7aa768f"
-        ),
-        TableKind::OriginalQueryParity => format!(
-            "PIN|query-parity|{SOURCE_COMMIT}|7a2535f7c479463a5f5ed8a30a33192aad1b063e"
-        ),
-        TableKind::OriginalTypeBit => format!(
-            "PIN|type-bit|{SOURCE_COMMIT}|4e020c828e458b4420179da94c3451bea653a7b9"
-        ),
+        TableKind::OriginalBinaryAdd => {
+            format!("PIN|binary-add|{SOURCE_COMMIT}|ab8a858c2466aa3879087f825802aa76c7aa768f")
+        }
+        TableKind::OriginalQueryParity => {
+            format!("PIN|query-parity|{SOURCE_COMMIT}|7a2535f7c479463a5f5ed8a30a33192aad1b063e")
+        }
+        TableKind::OriginalTypeBit => {
+            format!("PIN|type-bit|{SOURCE_COMMIT}|4e020c828e458b4420179da94c3451bea653a7b9")
+        }
     };
     if rows[0] != expected_pin {
         return Err("table provenance/pin mismatch".into());
@@ -271,9 +271,18 @@ mod tests {
         );
         assert!(generate(&format!("{TINY}\n"), TableKind::Fixture, 100).is_err());
         let originals = [
-            (include_str!("fixtures/original/binary-add.table"), TableKind::OriginalBinaryAdd),
-            (include_str!("fixtures/original/query-parity.table"), TableKind::OriginalQueryParity),
-            (include_str!("fixtures/original/type-bit.table"), TableKind::OriginalTypeBit),
+            (
+                include_str!("fixtures/original/binary-add.table"),
+                TableKind::OriginalBinaryAdd,
+            ),
+            (
+                include_str!("fixtures/original/query-parity.table"),
+                TableKind::OriginalQueryParity,
+            ),
+            (
+                include_str!("fixtures/original/type-bit.table"),
+                TableKind::OriginalTypeBit,
+            ),
         ];
         for (original, kind) in originals {
             let result = generate(original, kind, 100).unwrap();

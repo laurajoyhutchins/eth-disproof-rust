@@ -1,5 +1,6 @@
 [package]
 name = "lean-eth-reference"
+default-run = "eth"
 version = "0.16.0"
 edition = "2024"
 license = "MIT AND Apache-2.0"

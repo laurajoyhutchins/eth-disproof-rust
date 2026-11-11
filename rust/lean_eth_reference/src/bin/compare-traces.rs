@@ -41,7 +41,9 @@ impl Suite {
                 }
             }
             Self::Tuple => {
-                for case in ["empty", "width0", "one", "two", "split", "three", "carry", "overflow"] {
+                for case in [
+                    "empty", "width0", "one", "two", "split", "three", "carry", "overflow",
+                ] {
                     keys.insert(("odometer".into(), case.into()));
                 }
                 for case in ["empty", "width0", "one", "two", "split", "three"] {
@@ -125,7 +127,10 @@ fn check(suite: Suite, fields: &[&str]) -> Result<(), &'static str> {
             if !decimal(fields[2]) || fields[2] == "0" {
                 return Err("missing positive source instruction count");
             }
-            if !fields[3..].iter().all(|v| v.bytes().all(|b| b == b'0' || b == b'1' || b == b',')) {
+            if !fields[3..]
+                .iter()
+                .all(|v| v.bytes().all(|b| b == b'0' || b == b'1' || b == b','))
+            {
                 return Err("invalid Boolean word or bank delimiter");
             }
             if !fields[width - 2..].iter().all(|s| s.len() == 1) {
@@ -183,12 +188,21 @@ fn parse_text(suite: Suite, source: &str) -> Result<Records, String> {
             return Err(format!("line {}: unexpected trace key {key:?}", index + 1));
         }
         check(suite, &fields).map_err(|e| format!("line {}: {e}", index + 1))?;
-        if observed.insert(key.clone(), fields[2..].iter().map(|s| (*s).to_string()).collect()).is_some() {
+        if observed
+            .insert(
+                key.clone(),
+                fields[2..].iter().map(|s| (*s).to_string()).collect(),
+            )
+            .is_some()
+        {
             return Err(format!("line {}: duplicate trace key {key:?}", index + 1));
         }
     }
     if observed.keys().cloned().collect::<BTreeSet<_>>() != expected {
-        let missing: Vec<_> = expected.difference(&observed.keys().cloned().collect()).cloned().collect();
+        let missing: Vec<_> = expected
+            .difference(&observed.keys().cloned().collect())
+            .cloned()
+            .collect();
         return Err(format!("missing trace keys: {missing:?}"));
     }
     Ok(observed)
@@ -199,7 +213,10 @@ fn compare(suite: Suite, lean: &str, rust: &str) -> Result<usize, String> {
     let port = parse_text(suite, rust).map_err(|e| format!("Rust trace: {e}"))?;
     for (key, left) in &source {
         if port.get(key) != Some(left) {
-            return Err(format!("Lean/Rust divergence in {key:?}: Lean={left:?}, Rust={:?}", port.get(key)));
+            return Err(format!(
+                "Lean/Rust divergence in {key:?}: Lean={left:?}, Rust={:?}",
+                port.get(key)
+            ));
         }
     }
     Ok(source.len())
@@ -211,7 +228,9 @@ fn run() -> Result<(), String> {
     let mut lean = None;
     let mut rust = None;
     while let Some(flag) = args.next() {
-        let value = args.next().ok_or_else(|| format!("missing argument for {flag}"))?;
+        let value = args
+            .next()
+            .ok_or_else(|| format!("missing argument for {flag}"))?;
         match flag.as_str() {
             "--suite" => suite = Some(Suite::parse(&value)?),
             "--lean" => lean = Some(value),
@@ -232,7 +251,9 @@ fn run() -> Result<(), String> {
     let lean_text = fs::read_to_string(lean_path).map_err(|e| format!("Lean trace: {e}"))?;
     let rust_text = fs::read_to_string(rust_path).map_err(|e| format!("Rust trace: {e}"))?;
     let cases = compare(suite, &lean_text, &rust_text)?;
-    println!("PASS: {cases} exact machine trace records agree; provenance requires original Lean execution");
+    println!(
+        "PASS: {cases} exact machine trace records agree; provenance requires original Lean execution"
+    );
     Ok(())
 }
 
@@ -248,49 +269,140 @@ mod tests {
     use super::*;
 
     fn valid(suite: Suite) -> String {
-        suite.expected().into_iter().map(|(kind, case)| {
-            let columns = match suite {
-                Suite::High => vec![kind, case, "1".into(), "0".into(), "1".into(), "0".into(), "1".into()],
-                Suite::Tuple => if kind == "odometer" {
-                    vec![kind, case, "1".into(), "0".into(), "0".into(), "1".into(), "0".into(), "1".into()]
-                } else {
-                    vec![kind, case, "1".into(), "0".into(), "1".into(), "0".into(), "1".into(), "0".into(), "1".into()]
-                },
-                Suite::Layout => if kind == "layout" {
-                    vec![kind, case, "1".into(), vec!["0"; 14].join(","), vec!["0"; 14].join(","), "0".into(), "0".into(), "0".into(), "1".into(), "0".into()]
-                } else {
-                    vec![kind, case, "1".into(), "0".into(), "0".into(), "0".into(), "0".into(), vec!["0"; 5].join(","), "0".into(), "0".into(), "1".into(), "0".into()]
-                },
-                Suite::Nodes => {
-                    let mut row = vec![kind, case.clone(), "1".into(), if case == "empty" { "0" } else { "1" }.into()];
-                    row.extend(vec!["0".into(); 14]);
-                    row
-                }
-                Suite::Query => {
-                    let mut row = vec![kind, case, "1".into()];
-                    row.extend(vec!["0".into(); 12]);
-                    row
-                }
-            };
-            columns.join("|")
-        }).collect::<Vec<_>>().join("\n") + "\n"
+        suite
+            .expected()
+            .into_iter()
+            .map(|(kind, case)| {
+                let columns = match suite {
+                    Suite::High => vec![
+                        kind,
+                        case,
+                        "1".into(),
+                        "0".into(),
+                        "1".into(),
+                        "0".into(),
+                        "1".into(),
+                    ],
+                    Suite::Tuple => {
+                        if kind == "odometer" {
+                            vec![
+                                kind,
+                                case,
+                                "1".into(),
+                                "0".into(),
+                                "0".into(),
+                                "1".into(),
+                                "0".into(),
+                                "1".into(),
+                            ]
+                        } else {
+                            vec![
+                                kind,
+                                case,
+                                "1".into(),
+                                "0".into(),
+                                "1".into(),
+                                "0".into(),
+                                "1".into(),
+                                "0".into(),
+                                "1".into(),
+                            ]
+                        }
+                    }
+                    Suite::Layout => {
+                        if kind == "layout" {
+                            vec![
+                                kind,
+                                case,
+                                "1".into(),
+                                vec!["0"; 14].join(","),
+                                vec!["0"; 14].join(","),
+                                "0".into(),
+                                "0".into(),
+                                "0".into(),
+                                "1".into(),
+                                "0".into(),
+                            ]
+                        } else {
+                            vec![
+                                kind,
+                                case,
+                                "1".into(),
+                                "0".into(),
+                                "0".into(),
+                                "0".into(),
+                                "0".into(),
+                                vec!["0"; 5].join(","),
+                                "0".into(),
+                                "0".into(),
+                                "1".into(),
+                                "0".into(),
+                            ]
+                        }
+                    }
+                    Suite::Nodes => {
+                        let mut row = vec![
+                            kind,
+                            case.clone(),
+                            "1".into(),
+                            if case == "empty" { "0" } else { "1" }.into(),
+                        ];
+                        row.extend(vec!["0".into(); 14]);
+                        row
+                    }
+                    Suite::Query => {
+                        let mut row = vec![kind, case, "1".into()];
+                        row.extend(vec!["0".into(); 12]);
+                        row
+                    }
+                };
+                columns.join("|")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n"
     }
 
     #[test]
     fn each_suite_requires_complete_validated_records() {
-        for suite in [Suite::High, Suite::Tuple, Suite::Layout, Suite::Nodes, Suite::Query] {
+        for suite in [
+            Suite::High,
+            Suite::Tuple,
+            Suite::Layout,
+            Suite::Nodes,
+            Suite::Query,
+        ] {
             let original = valid(suite);
             let count = compare(suite, &original, &original).unwrap();
             assert_eq!(count, suite.expected().len());
-            assert!(parse_text(suite, &original.lines().skip(1).collect::<Vec<_>>().join("\n")).is_err());
+            assert!(
+                parse_text(
+                    suite,
+                    &original.lines().skip(1).collect::<Vec<_>>().join("\n")
+                )
+                .is_err()
+            );
             assert!(parse_text(suite, &(original.clone() + &original)).is_err());
-            assert!(compare(suite, &original, &(original.clone() + "extraneous|case|1\n")).is_err());
+            assert!(
+                compare(
+                    suite,
+                    &original,
+                    &(original.clone() + "extraneous|case|1\n")
+                )
+                .is_err()
+            );
         }
     }
 
     #[test]
     fn changed_physical_word_cannot_pass() {
-        for suite in [Suite::High, Suite::Tuple, Suite::Layout, Suite::Nodes, Suite::Query] {
+        for suite in [
+            Suite::High,
+            Suite::Tuple,
+            Suite::Layout,
+            Suite::Nodes,
+            Suite::Query,
+        ] {
             let original = valid(suite);
             let mut rows: Vec<_> = original.lines().map(str::to_owned).collect();
             let mut fields: Vec<_> = rows[0].split('|').map(str::to_owned).collect();
@@ -308,7 +420,13 @@ mod tests {
 
     #[test]
     fn invalid_schema_cannot_be_accepted() {
-        for suite in [Suite::High, Suite::Tuple, Suite::Layout, Suite::Nodes, Suite::Query] {
+        for suite in [
+            Suite::High,
+            Suite::Tuple,
+            Suite::Layout,
+            Suite::Nodes,
+            Suite::Query,
+        ] {
             let source = valid(suite);
             let mut lines: Vec<_> = source.lines().map(str::to_owned).collect();
             lines[0].push_str("|unexpected");

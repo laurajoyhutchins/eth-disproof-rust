@@ -39,7 +39,7 @@ The semantic counting fallback is not the Lean program's complete native countin
 
 A passing `cargo test` does not discharge any of these obligations. Incomplete computations must refuse rather than silently substitute a semantic oracle.
 
-For deeper details, see [the remaining-port map](docs/remaining-lean-port.md), [TDD accuracy audit](docs/tdd-accuracy-audit.md), and [guided Git history](docs/reading-the-history.md). The main repository [README](../../README.md) explains the project and licenses.
+For deeper details, see [the remaining-port map](docs/remaining-lean-port.md), [source-linked signed-signature pipeline](docs/signed-signature-pipeline.md), [TDD accuracy audit](docs/tdd-accuracy-audit.md), and [guided Git history](docs/reading-the-history.md). The main repository [README](../../README.md) explains the project and licenses.
 
 ## Licensing
 

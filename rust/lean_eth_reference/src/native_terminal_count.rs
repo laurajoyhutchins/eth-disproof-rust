@@ -7,13 +7,15 @@
 //! refuse rather than interpreting an empty count stack as zero. This is not
 //! an implementation of the full ETH construction or its TM2 cost bound.
 
-use crate::bit_program::{Config, Program, RunLimits, RunStats};
+use crate::bit_program::{Cmd, Config, Program, RunLimits, RunStats};
 use crate::{Cnf, Error};
 use crate::{native_answer, native_frontend, native_terminal_classifier};
+use crate::native_high::{clear_program, copy_program};
 
-pub const SOURCE_STAGES: [&str; 3] = [
+pub const SOURCE_STAGES: [&str; 4] = [
     "Native.frontendCommand",
     "NativeTerminal.readyCommand",
+    "TerminalCount.count_to_answer_input (source-primitive adapter)",
     "Native.answerCommand",
 ];
 
@@ -25,10 +27,23 @@ pub struct TerminalCount {
     pub positive: bool,
     /// BitProgram instruction counts and live stack-bit peaks, per stage.
     /// These are NOT primitive two-tape TM steps or tape-space bounds.
-    pub stages: [RunStats; 3],
+    pub stages: [RunStats; 4],
     pub total_instructions: u64,
     pub peak_stack_bits: usize,
     pub normalized_body: Vec<bool>,
+}
+
+/// The original Native.outerCommand normally establishes the answerCommand
+/// precondition: an exact binary count at ABI.countStack = 256. Our bounded
+/// terminal-only path does not run the absent outer/DFS counting program.
+/// Source-defined StackRoutines.clearProgram and copyProgram physically
+/// transfer the terminal count from leaf output 263 to answer input 256.
+/// This is an explicitly marked *adapter*, NOT a source-equivalent outer program.
+fn count_to_answer_input_program() -> Result<Program<80, 1220>, Error> {
+    Cmd::seq(
+        Cmd::Call(clear_program(256, 72, 73)?),
+        Cmd::Call(copy_program(263, 256, 1219, 72, 73)?),
+    ).compiled(263, 256)
 }
 
 fn execute_stage(
@@ -75,9 +90,20 @@ pub fn count_terminal(cnf: &Cnf, limits: RunLimits) -> Result<TerminalCount, Err
     if state.stacks[263].is_empty() {
         return Err(Error::Invalid("terminal source machine produced no count word".into()));
     }
+    if state.stacks[256].iter().copied().ne(input.bytes().map(|b| b == b'1')) {
+        return Err(Error::Invalid("source frontend modified its preserved input".into()));
+    }
+    if !state.stacks[1219].is_empty() {
+        return Err(Error::Invalid("count transfer scratch stack is not empty".into()));
+    }
+    let transfer = count_to_answer_input_program()?;
+    let c = execute_stage(&transfer, &mut state, &mut remaining, limits.max_stack_bits)?;
+    if state.stacks[256] != state.stacks[263] {
+        return Err(Error::Invalid("count transfer lost or reordered a source bit".into()));
+    }
 
     let answer = native_answer::answer_program()?;
-    let c = execute_stage(&answer, &mut state, &mut remaining, limits.max_stack_bits)?;
+    let d = execute_stage(&answer, &mut state, &mut remaining, limits.max_stack_bits)?;
 
     if state.stacks[1216].len() != 1 {
         return Err(Error::Invalid("source answer was not one physical bit".into()));
@@ -91,8 +117,8 @@ pub fn count_terminal(cnf: &Cnf, limits: RunLimits) -> Result<TerminalCount, Err
             state.stacks[258].len(), state.stacks[265].len(),
         )));
     }
-    if state.stacks[256].iter().copied().ne(input.bytes().map(|b| b == b'1')) {
-        return Err(Error::Invalid("source frontend modified its preserved input".into()));
+    if state.stacks[256] != state.stacks[263] {
+        return Err(Error::Invalid("answer command modified its source count".into()));
     }
     for port in [268, 269, 1217, 1218, 1219] {
         if !state.stacks[port].is_empty() {
@@ -100,13 +126,15 @@ pub fn count_terminal(cnf: &Cnf, limits: RunLimits) -> Result<TerminalCount, Err
         }
     }
     let total_instructions = a.instructions.checked_add(b.instructions)
-        .and_then(|v| v.checked_add(c.instructions)).ok_or(Error::Overflow)?;
+        .and_then(|v| v.checked_add(c.instructions))
+        .and_then(|v| v.checked_add(d.instructions)).ok_or(Error::Overflow)?;
     Ok(TerminalCount {
         count_lsb,
         positive,
-        stages: [a, b, c],
+        stages: [a, b, c, d],
         total_instructions,
-        peak_stack_bits: a.peak_stack_bits.max(b.peak_stack_bits).max(c.peak_stack_bits),
+        peak_stack_bits: a.peak_stack_bits.max(b.peak_stack_bits)
+            .max(c.peak_stack_bits).max(d.peak_stack_bits),
         normalized_body: state.stacks[265].iter().copied().collect(),
     })
 }

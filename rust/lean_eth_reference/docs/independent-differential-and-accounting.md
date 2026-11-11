@@ -39,15 +39,28 @@ printf 'p cnf 3 1\n0\n' | cargo run --locked --offline --bin eth-terminal-count
 ```
 
 For terminal normalized CNFs, the native Rust port executes three **source
-BitProgram command tables**, retaining the same 80-register/1220-stack machine
+BitProgram command families plus an explicit source-primitive port adapter**, retaining the same 80-register/1220-stack machine
 state across the boundaries:
 
 1. `Native.frontendCommand` performs physical CNF normalization.
 2. `NativeTerminal.readyCommand` classifies and constructs the physical
    little-endian count on stack 263 (0 for an empty clause; 2^n for no clauses).
-3. `Native.answerCommand` preserves the count and writes positivity to 1216.
+3. A deliberately explicit source-primitive adapter copies the count from 263
+   to the actual answer ABI input port 256, replacing the preserved formula.
+4. `Native.answerCommand` preserves the count and writes positivity to 1216.
 
-All three execute without `EnumeratingLeaf`, `Cnf::normalize`, a host-side
+The source count/answer ports **do not line up** in the shortened
+terminal pipeline. The original `Native.outerCommand` must establish a count
+on `ABI.countStack = 256`, but `NativeTerminal.readyCommand` places its
+intermediate result on 263. To make a complete *bounded terminal path*, an
+explicit fourth stage physically clears 256 and preserves/copies 263 → 256
+using source-defined `StackRoutines.clearProgram` and
+`StackRoutines.copyProgram`. This is an **adapter**, not a claim that the
+original outer DFS counting program was reproduced. The answerCommand then
+reads the correct ABI count input. The preserved original CNF input is
+asserted **before** the adapter deliberately replaces stack 256.
+
+All stages execute without `EnumeratingLeaf`, `Cnf::normalize`, a host-side
 SAT predicate, or an invented nonterminal command. Decimal formatting is a
 post-halt representation conversion and supports counts beyond 128 bits.
 A nonterminal formula **fails closed** with `NotImplemented`, rather than

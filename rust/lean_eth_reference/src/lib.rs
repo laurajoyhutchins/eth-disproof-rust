@@ -711,6 +711,8 @@ pub mod native_clause_filter;
 pub mod native_clause_relation_scan;
 /// Source physical clause subset and dual-direction relation kernel.
 pub mod native_clause_relations;
+/// Complete original physical Native.frontendCommand on the 80x1220 machine.
+pub mod native_frontend;
 /// Source-fixed unary header reader and binary length initializer.
 pub mod native_frontend_header;
 pub mod native_membership;

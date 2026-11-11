@@ -9,13 +9,12 @@ claimed asymptotic resource bounds are not established on `main`.
 
 ## Run the source-defined frontend
 
-Install Rust **1.99.1** and run from a checkout:
+From the repository root, the checked-in `rust-toolchain.toml` pins **Rust 1.99.1**:
 
 ```sh
-cd rust/lean_eth_reference
 cargo test --locked --offline --all-targets
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
-  cargo run --quiet --locked --offline --bin eth-frontend
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-frontend
 ```
 
 This runs the pinned `Native.frontendCommand` as a Rust finite
@@ -28,7 +27,7 @@ For a separate, explicitly **exponential** bounded #SAT correctness oracle:
 
 ```sh
 printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
-  cargo run --quiet --locked --offline --bin lean-eth-reference
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin lean-eth-reference
 ```
 
 That example has 5 solutions. The oracle does not execute the proposed ETH
@@ -40,7 +39,9 @@ algorithm and refuses unsupported instance sizes.
 | --- | --- |
 | CNF parsing, encoding and bounded semantic oracle | Complete source-defined nonterminal #SAT count |
 | Rust bit-machine interpreter and runnable native frontend | Independently executed original Lean/Rust full-state differential |
-| Source-correlated finite instruction fragments and refusal tests | Primitive TM2 refinement and worst-case complexity argument |
+| Source-correlated instruction fragments, generated literal tables and supported terminal-family native counts | Primitive TM2 refinement and worst-case complexity argument |
+
+The root `Cargo.toml` is the canonical workspace manifest and the root `Cargo.lock` is the sole dependency lockfile. The Rust crate remains at `rust/lean_eth_reference`; from that directory, ordinary Cargo commands also resolve the workspace.
 
 The authoritative [execution and evidence matrix](rust/lean_eth_reference/docs/evidence.md)
 explains what each test actually establishes and how to reproduce it. The

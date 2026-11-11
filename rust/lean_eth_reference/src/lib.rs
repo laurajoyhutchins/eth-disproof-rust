@@ -689,5 +689,11 @@ pub mod native_difference_pairs;
 
 /// Physical source-defined attained-signature controller and level initializer.
 pub mod native_signature_tuple;
+
+/// Source-defined suspended-frame and cursor operations for attained-signature DFS.
+pub mod native_signature_frames;
+
+/// Source-defined binary fuel and attained-signature generator initialization.
+pub mod native_signature_generator;
 pub mod native_head_scatter;
 pub mod native_head_support;

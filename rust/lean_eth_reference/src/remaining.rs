@@ -375,12 +375,28 @@ pub const STAGES: &[Stage] = &[
         requires: &["bit_machine"],
     },
     Stage {
+        id: "frontend_header",
+        source_file: "SqrtLogSpace/NativeProgram.lean",
+        lean_symbol: "Native.headerCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "frontend_tail",
+        source_file: "SqrtLogSpace/NativeFrontend.lean",
+        lean_symbol: "Native.placeBodyCommand; Native.ambientCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["ambient_header"],
+    },
+    Stage {
         id: "frontend",
         source_file: "SqrtLogSpace/NativeFrontend.lean",
         lean_symbol: "Native.frontendCommand",
         status: Status::Stub,
         machine: Machine::Outer,
-        requires: &["ambient_header"],
+        requires: &["frontend_header", "frontend_tail"],
     },
     Stage {
         id: "cutoff_scan",
@@ -615,6 +631,19 @@ pub mod outer {
     /// Source-defined physical header extraction only; not a complete frontend.
     pub fn ambient_header() -> Result<Cmd<80, 1220>, Error> {
         crate::native_ambient::ambient_command()
+    }
+    /// Actual source-linked 19-label unary parser and binary length stage.
+    pub fn frontend_header() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_frontend_header::header_command()
+    }
+    /// Source-preserving body placement (1218 -> 265), not a CNF normalizer.
+    pub fn place_body() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_frontend_tail::place_body_command()
+    }
+    /// The two final source-native frontend operations. Header and
+    /// normalization must have already executed on the real machine.
+    pub fn frontend_tail() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_frontend_tail::frontend_tail_command()
     }
     outer_stub!(frontend, "Native.frontendCommand");
     pub fn finite_fallback(_cutoff: usize, _large: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {

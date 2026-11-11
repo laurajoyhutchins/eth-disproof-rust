@@ -20,11 +20,25 @@ class SourceDiscoveryTests(unittest.TestCase):
         self.assertTrue(any(x['fqn'].endswith('QueryStreamProgram.program') for x in left['candidates']))
         self.assertFalse(any(x['fqn'].endswith('QueryStreamProgram.NO_SUCH_PROGRAM') for x in left['candidates']))
 
+    def test_small_original_compiled_batch_is_in_query_closure(self):
+        candidates=discover(ROOT,True)['candidates']
+        targets={
+            'OAI.Algorithms.SubexponentialSAT.SqrtLog.Setup.computeLProgram',
+            'OAI.Algorithms.SubexponentialSAT.SqrtLog.Setup.logSuccProgram',
+            'OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointReuse.SparseFrontierProgram.pushProgram',
+            'OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointReuse.SparseFrontierProgram.initFrontierProgram',
+            'OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointReuse.SparseFrontierProgram.popProgram',
+            'OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointReuse.SparseFrontierProgram.popIfPresentProgram',
+            'OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DisjointReuse.SparseFrontierProgram.pushPairProgram',
+        }
+        self.assertEqual({x['fqn'] for x in candidates if x['fqn'] in targets},targets)
+
     def test_refuses_spoofed_program_names(self):
         rec={'module':'OAI.Algorithms.SubexponentialSAT.Foo','fqn':'OAI.Algorithms.SubexponentialSAT.Foo.program',
              'id':'foo_program_0','git_blob':'a'*40}
         probe=probe_source(rec)
         self.assertIn('#export_original_program OAI.Algorithms.SubexponentialSAT.Foo.program',probe)
+        self.assertIn('set_option maxHeartbeats 2000000',probe)
         for key,value in [('fqn','Fake.unsafe'),('id','hello\"') ,('git_blob','Z'*40)]:
             altered={**rec,key:value}
             with self.assertRaises(ValueError):probe_source(altered)

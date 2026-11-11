@@ -40,19 +40,19 @@ fn parse(source: &str) -> Fallible<Traces> {
         }
         let [_, name, step, pc, regs, left, right] = <[&str; 7]>::try_from(cols.as_slice())
             .map_err(|_| "malformed machine record")?;
-        if !valid.contains(*name) || !decimal(step)
-            || (pc != &"H" && !decimal(pc))
+        if !valid.contains(name) || !decimal(step)
+            || (pc != "H" && !decimal(pc))
             || regs.len() != 2 || !bits(regs) || !bits(left) || !bits(right)
         {
             return Err(format!("line {}: invalid case, step, PC, register or stack bits", line_no + 1));
         }
         let step = step.parse::<usize>().map_err(|_| "step overflow")?;
-        let sequence = result.entry((*name).into()).or_default();
+        let sequence = result.entry(name.to_owned()).or_default();
         if step != sequence.len() || sequence.last().is_some_and(|s| s.pc == "H") {
             return Err(format!("line {}: repeated, skipped or post-halt step", line_no + 1));
         }
-        sequence.push(State { step, pc: (*pc).into(), regs: (*regs).into(),
-            left: (*left).into(), right: (*right).into() });
+        sequence.push(State { step, pc: pc.to_owned(), regs: regs.to_owned(),
+            left: left.to_owned(), right: right.to_owned() });
     }
     if result.keys().cloned().collect::<BTreeSet<_>>() != valid {
         return Err("incomplete or unexpected complete-machine case set".into());

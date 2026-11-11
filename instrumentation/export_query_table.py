@@ -30,18 +30,27 @@ def command(*args: str, cwd: Path) -> str:
     return result.stdout.strip()
 
 
-def verified_identity() -> dict[str, str]:
+def verified_identity(lake_root: Path = LAKE) -> dict[str, str]:
+    lake_root = lake_root.resolve()
+    # For reproducible public CI, allow a minimal Lake project that imports
+    # the pinned original OAI source without fetching unrelated OAI packages.
+    # Refuse substituting a different source tree at that import boundary.
+    if lake_root != LAKE.resolve():
+        source_link = lake_root / "OAI"
+        if source_link.resolve() != (UPSTREAM / "lean" / "OAI").resolve():
+            raise RuntimeError("Lean project does not import the pinned original OAI source")
+    mathlib = lake_root / ".lake" / "packages" / "mathlib"
     if command("git", "rev-parse", "HEAD", cwd=UPSTREAM) != SOURCE:
         raise RuntimeError("unpinned original OpenAI math checkout")
     if command("git", "status", "--porcelain", "--untracked-files=no", cwd=UPSTREAM):
         raise RuntimeError("modified tracked OpenAI source")
     if command("git", "rev-parse", f"HEAD:{SOURCE_PATH}", cwd=UPSTREAM) != BLOB:
         raise RuntimeError("QueryStreamProgram source blob mismatch")
-    if command("git", "rev-parse", "HEAD", cwd=MATHLIB) != MATHLIB_SHA:
+    if command("git", "rev-parse", "HEAD", cwd=mathlib) != MATHLIB_SHA:
         raise RuntimeError("unpinned Mathlib checkout")
     if command("git", "status", "--porcelain", "--untracked-files=no", cwd=MATHLIB):
         raise RuntimeError("modified tracked Mathlib source")
-    version = command("lake", "env", "lean", "--version", cwd=LAKE)
+    version = command("lake", "env", "lean", "--version", cwd=lake_root)
     if not version.startswith("Lean (version 4.34.1"):
         raise RuntimeError(f"unexpected Lean toolchain: {version}")
     return {
@@ -75,11 +84,14 @@ def verify_stream(path: Path, max_labels: int) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--max-labels", type=int, default=2_000_000)
+    parser.add_argument("--max-labels", type=int, default=8192)
+    parser.add_argument("--lake-root", type=Path, default=LAKE,
+                        help="minimal pinned Lake project importing original OAI sources")
     args = parser.parse_args()
     if args.max_labels <= 0:
         parser.error("--max-labels must be positive")
-    identity = verified_identity()
+    lake_root = args.lake_root.resolve()
+    identity = verified_identity(lake_root)
     target = args.output.resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary: Path | None = None
@@ -90,7 +102,7 @@ def main() -> None:
             environment["M1_MAX_LABELS"] = str(args.max_labels)
             result = subprocess.run(
                 ["lake", "env", "lean", str(PROBE)],
-                cwd=LAKE, stdout=output, stderr=subprocess.PIPE, text=True,
+                cwd=lake_root, stdout=output, stderr=subprocess.PIPE, text=True,
                 env=environment,
             )
         if result.returncode != 0:

@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this research software, cite this repository and the original OpenAI Lean source separately."
+title: "ETH Disproof: source-pinned Rust port of the OpenAI Lean development"
+type: software
+authors:
+  - family-names: Hutchins
+    given-names: Laura Joy
+repository-code: "https://github.com/laurajoyhutchins/eth-disproof-rust"
+abstract: "Incomplete independent research implementation of selected executable definitions from OpenAI's Lean ETH development; not an independent proof or verification of the claimed complexity bounds."
+keywords:
+  - Rust
+  - Lean
+  - computational complexity
+  - SAT

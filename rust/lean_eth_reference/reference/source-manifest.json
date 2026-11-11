@@ -75,6 +75,7 @@
     "lean/OAI/Algorithms/SubexponentialSAT/ModularRingPrograms.lean": "4a5baf6e76e0bafd90c384e0b528fdf3799a59ac",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LayoutProgramNormalize.lean": "9d88a3cdb7a155367a02ea2c97b9ca08571aac00",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LayoutBinomialProgramCell.lean": "fef2b98a4386da1d3eac284b81e64206d57cba1c",
-    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/RowSelectionProgramParser.lean": "43b6d38b390e61adc038fdd57af3509365519688"
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/RowSelectionProgramParser.lean": "43b6d38b390e61adc038fdd57af3509365519688",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/SignatureHeadLoaderCore.lean": "e932fe1551911387abbace7a075a183cf892595d"
   }
 }

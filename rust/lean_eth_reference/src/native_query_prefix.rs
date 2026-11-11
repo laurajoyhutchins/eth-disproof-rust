@@ -138,11 +138,15 @@ pub fn mask_program() -> Result<Program<2, 4>, Error> {
 
 /// Source `HighIncidenceProgram.Restriction.command`: one initial mask pop,
 /// followed by one selected high/low bit and one output push per mask bit.
-pub fn restriction_program() -> Result<Program<4, 4>, Error> {
+/// Shared by `PairNativeSetup.expandCaller` and high-query context expansion.
+pub fn restriction_command() -> Cmd<4, 4> {
     let pop_mask = pop(0, 0, 1);
     let load = Cmd::ite(0, pop(1, 2, 3), pop(2, 2, 3));
     let body = Cmd::seq(load, Cmd::seq(push(3, 2), pop_mask.clone()));
-    Cmd::seq(pop_mask, Cmd::while_(1, body)).compiled(0, 3)
+    Cmd::seq(pop_mask, Cmd::while_(1, body))
+}
+pub fn restriction_program() -> Result<Program<4, 4>, Error> {
+    restriction_command().compiled(0, 3)
 }
 
 /// Exact `LeafHighContextProgram.Local.command`: mask reverse, counter copy,

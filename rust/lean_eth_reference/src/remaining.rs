@@ -105,7 +105,7 @@ pub const STAGES: &[Stage] = &[
         id: "signature_bootstrap",
         source_file: "SqrtLogSpace/SignatureHeadLoader.lean",
         lean_symbol: "SignatureHeadLoader.bootstrapProgram",
-        status: Status::Stub,
+        status: Status::Executable,
         machine: Machine::Local,
         requires: &["layout_load"],
     },
@@ -415,10 +415,10 @@ macro_rules! outer_stub {
 /// pair-setup components already execute elsewhere in this crate.
 pub mod query {
     use super::*;
-    /// Source bootstrapProgram compiles in the 40x768 LOW bank; its caller
-    /// separately lifts the program into the 40x896 query bank.
-    pub fn signature_bootstrap() -> Result<Program<40, 768>, Error> {
-        unavailable("SignatureHeadLoader.bootstrapProgram")
+    /// The source-defined bootstrap compiles as a 16x768 local program.
+    /// QueryStreamProgram.bootstrapNode lifts it to 40x896 separately.
+    pub fn signature_bootstrap() -> Result<Program<16, 768>, Error> {
+        crate::native_bootstrap::bootstrap_program()
     }
     local_stub!(pair_expand, "PairNativeSetup.expandCaller");
     local_stub!(signature_loader, "SignatureTupleLoader.loadHead");

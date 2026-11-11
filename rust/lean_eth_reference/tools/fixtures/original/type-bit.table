@@ -1,0 +1,10 @@
+PIN|type-bit|4eaee87548250b2682affda7d05d947c05554bae|4e020c828e458b4420179da94c3451bea653a7b9
+PROGRAM|type-bit|3|2|7|0|1|1
+CODE|type-bit|0|pop:0:0:1:1
+CODE|type-bit|1|branch:1:2:3
+CODE|type-bit|2|pop:1:0:1:0
+CODE|type-bit|3|pop:1:2:1:4
+CODE|type-bit|4|pop:1:0:1:5
+CODE|type-bit|5|branch:1:4:6
+CODE|type-bit|6|halt
+END|type-bit|7

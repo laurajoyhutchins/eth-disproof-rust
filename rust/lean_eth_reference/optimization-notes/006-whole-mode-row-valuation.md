@@ -1,5 +1,7 @@
 # Optimization experiment 006: a mode's valuation belongs to every row
 
+> **Source-structure correction (experiment 007):** In a genuine source packet, every real column shares its slot with a real row. For any nonempty tile, a paired target row forces the mode-wide geometric weight to **equal** the uniform coarse bound `a+1-i+b`. Thus the sparse single-row improvement hypothesized below cannot arise for a nonzero source mode. See [007](007-paired-packet-occupancy.md). The conditional row-arithmetic identities and their counterexamples remain valid, but are not evidence of an implementable extra speedup.
+
 **Status:** executable *conditional* whole-mode certificate, tested against the
 unchanged original finite Rust port and an independent small integer
 calculation. No live packet-to-mode integration or end-to-end speedup claimed.

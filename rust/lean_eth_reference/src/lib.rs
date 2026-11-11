@@ -707,6 +707,7 @@ pub mod native_head_scatter;
 pub mod native_head_support;
 /// Physical source-defined attained-signature controller and level initializer.
 pub mod native_signature_tuple;
+pub mod native_query_table;
 
 /// Source-defined signed pair accumulator preparation; signed update pending.
 pub mod native_pair_accumulator;

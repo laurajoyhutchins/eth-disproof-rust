@@ -42,7 +42,9 @@ fn main() {
         "ORIGINAL_LEAN_LITERAL_BUNDLE|1|4eaee87548250b2682affda7d05d947c05554bae|{expected_count}"
     ).as_str()));
     let mut all_rust = String::new();
-    all_rust.push_str("// @generated from 59 original pinned Lean program declarations.\n");
+    all_rust.push_str(&format!(
+        "// @generated from {expected_count} original pinned Lean program declarations.\n"
+    ));
     for (i, record) in manifest.enumerate() {
         let fields: Vec<_> = record.split('\t').collect();
         assert_eq!(fields.len(), 10, "catalog schema");

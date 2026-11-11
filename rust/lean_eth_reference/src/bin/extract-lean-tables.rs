@@ -429,8 +429,8 @@ fn extract(root: &Path) -> Result<(Vec<Extracted>, Vec<String>)> {
             .with_extension("")
             .to_string_lossy()
             .replace('\\', "/")
-            .replace('/', '_')
-            .replace('.', '_')
+            .replace('/', "_")
+            .replace('.', "_")
             .to_lowercase();
         match declarations(&source) {
             Ok((decls, source_failures)) => {

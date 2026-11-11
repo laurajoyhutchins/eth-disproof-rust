@@ -48,7 +48,7 @@ fn source_five_label_nat_parser_and_malformed_end() {
     let mut truncated = program.initial([]);
     let stats = program.run(&mut truncated, RunLimits::default()).unwrap();
     assert_eq!(stats.instructions, 3);
-    assert_eq!(truncated.regs[1], false);
+    assert!(!truncated.regs[1]);
 }
 
 #[test]

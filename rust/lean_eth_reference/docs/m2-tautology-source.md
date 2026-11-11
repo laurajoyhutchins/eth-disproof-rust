@@ -30,3 +30,15 @@ The local compiler snapshot is not the complete GitHub HEAD: base modules `nativ
 ## Still unsupported
 
 `SubexpNormalizationProgram.program` still requires the original **clause deduplication** (`ExecClauseDedupProgram.program`) and **strict-superset removal** (`ExecClauseFiltersProgram.selfFilterProgram .strictSubset`), plus their physical relation-scanning subprograms. Source `Native.frontendCommand` is still a stub. No nonterminal high-query, native leaf, disjoint DFS, primitive TM2 refinement or theorem acceptance claim follows from this bounded tautology-filter implementation.
+
+## Newly executable exact normalization prefix
+
+The same branch now composes `SubexpNormalizationPrefixProgram.command` as the actual `Cmd::seq(ExecCleanLiteralsProgram.clean, SubexpTautologyFilterProgram.filter)` on **13 registers × 11 stacks**, compiled with source input/output ports **0/0**. Upstream blob `a384d93bc723c51b7ab9430673a86fa4759b6f3c` is pinned in the manifest. The Rust entry point is `native_normalization_prefix::program()` and `remaining::outer::normalization_prefix()`. It does not perform a semantic host normalizer.
+
+The executable prefix now cleans repeated literals *within* each clause, removes clauses containing complementary polarity literals, and preserves the order and multiplicity of the remaining clauses. The latter is important: **clause deduplication belongs to a separate later source program**, not this prefix. An independent source-encoding oracle in the two new tests checks empty formulas, empty clauses, repeated literals, repeated clauses, complementary polarity, and **100 additional seeded random CNFs**.
+
+Restored Rust 1.99.1 offline standalone **124 tests passed debug, 124 release**, `cargo fmt --check` and strict Clippy pass. Both new prefix source/test Git blobs **exactly match** the locally compiled source by SHA: `2aed0ae6625ca88f94c802d8c2e9e52ed56eeb45`, `b4d4f1b943b7ca619af97bc6424867843d69ef08`. The earlier local Rust snapshot still uses reconstructed M2 dependency modules, so this is **not** a combined GitHub-HEAD compile or Lean/Rust differential run.
+
+A connected-source static check of the amended branch confirms **61 unique stages** in source order, **94 pinned upstream Git blobs**, no missing/forward dependencies and no orphans from `final_theorem`. It caught and corrected one accidental self-dependency in the new `normalization_prefix` stage *before* final PR review. The current graph correctly has `normalization_prefix` depending on `normalization_literal_cleanup` and `normalization_tautology_filter`, and the still-stubbed `normalization_full` depending on that executable prefix.
+
+**Remaining original normalization path:** `SubexpNormalizationProgram.absorbCommand = dedupCall; removeSupersetsCall`. Until both source programs and their physical clause-relation loops are ported, neither `SubexpNormalizationProgram.program` nor `Native.frontendCommand` is marked executable.

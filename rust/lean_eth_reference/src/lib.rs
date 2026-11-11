@@ -681,15 +681,22 @@ pub mod native_tuple;
 pub mod finite_fallback;
 pub mod native_ambient;
 pub mod native_answer;
-/// Source-fixed unary header reader and binary length initializer.
-pub mod native_frontend_header;
 /// Source-defined post-normalization body placement and ambient header suffix.
 pub mod native_frontend_tail;
 pub mod native_layout;
-pub mod native_membership;
 pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;
+
+/// Source-fixed unary header reader and binary length initializer.
+pub mod native_frontend_header;
+/// Literal cleanup across framed clauses on original 13x11 machine.
+pub mod native_literal_cleanup;
+/// Actual nested literal deduplication on source 10x8 machine.
+pub mod native_literal_dedup;
+pub mod native_membership;
+/// Source-native finite unary polarity, frame writer and record reversal.
+pub mod native_normalization_primitives;
 pub mod native_terminal;
 
 /// Exact framed-record iteration and fixed-control membership program.

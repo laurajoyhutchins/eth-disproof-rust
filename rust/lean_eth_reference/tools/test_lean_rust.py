@@ -8,7 +8,7 @@ import unittest
 from lean_rust import identity, resolve, valid_cached, execute
 from export_compiled_batch import SOURCE_SHA, MATHLIB_SHA
 
-REC = {"id":"example_0","fqn":"OAI.Algorithms.SubexponentialSAT.Example.program",
+REC = {"id":"example_0","module":"OAI.Algorithms.SubexponentialSAT.Example","fqn":"OAI.Algorithms.SubexponentialSAT.Example.program",
        "git_blob":"a"*40}
 
 class DriverTests(unittest.TestCase):
@@ -43,13 +43,25 @@ class DriverTests(unittest.TestCase):
                  "CODE|example_0|0|halt\n"
                  "END|example_0|1\n").encode("ascii")
             (folder/"example_0.table").write_bytes(raw)
-            receipt={"source_commit":SOURCE_SHA,"source_git_blob":REC["git_blob"],
+            receipt={"id":REC["id"],"module":REC["module"],
+                     "abi":{"registers":1,"stacks":1,"labels":1,"entry":0,"input":0,"output":0},
+                     "source_commit":SOURCE_SHA,"source_git_blob":REC["git_blob"],
                      "declaration":REC["fqn"],"status":"EXPORTED_FROM_PINNED_LEAN",
                      "sha256":hashlib.sha256(raw).hexdigest(),"bytes":len(raw)}
             (folder/"example_0.receipt.json").write_text(json.dumps(receipt))
             batch={"kind":"original-source-program-export", "exported":[receipt],
                    "pins":{"source_commit":SOURCE_SHA, "mathlib_commit":MATHLIB_SHA,
                            "lean":"Lean (version 4.34.1, x86_64-linux-gnu)"}}
+            (folder/"batch-report.json").write_text(json.dumps(batch))
+            self.assertTrue(valid_cached(folder,REC))
+            receipt["abi"]["labels"]=2
+            (folder/"example_0.receipt.json").write_text(json.dumps(receipt))
+            batch["exported"]=[receipt]
+            (folder/"batch-report.json").write_text(json.dumps(batch))
+            self.assertFalse(valid_cached(folder,REC))
+            receipt["abi"]["labels"]=1
+            (folder/"example_0.receipt.json").write_text(json.dumps(receipt))
+            batch["exported"]=[receipt]
             (folder/"batch-report.json").write_text(json.dumps(batch))
             self.assertTrue(valid_cached(folder,REC))
             (folder/"example_0.table").write_bytes(b"tampered")

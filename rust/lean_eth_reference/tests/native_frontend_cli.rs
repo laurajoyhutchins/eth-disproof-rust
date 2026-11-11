@@ -3,14 +3,15 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn run(args: &[&str], dimacs: &str) -> std::process::Output {
-    let bin = env!("CARGO_BIN_EXE_eth-frontend");
+    let bin = env!("CARGO_BIN_EXE_eth");
     let mut p = Command::new(bin)
+        .arg("frontend")
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("eth-frontend binary exists");
+        .expect("unified eth binary exists");
     p.stdin
         .as_mut()
         .unwrap()

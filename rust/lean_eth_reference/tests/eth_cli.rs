@@ -3,8 +3,8 @@ use std::fs;
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
 
-fn invoke(bin: &str, args: &[&str], input: &str) -> Output {
-    let mut child = Command::new(bin)
+fn run(args: &[&str], input: &str) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_eth"))
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -20,10 +20,6 @@ fn invoke(bin: &str, args: &[&str], input: &str) -> Output {
     child.wait_with_output().unwrap()
 }
 
-fn run(args: &[&str], input: &str) -> Output {
-    invoke(env!("CARGO_BIN_EXE_eth"), args, input)
-}
-
 #[test]
 fn help_is_structured_and_tells_the_truth() {
     let output = run(&["--help"], "");
@@ -37,24 +33,22 @@ fn help_is_structured_and_tells_the_truth() {
 }
 
 #[test]
-fn frontend_subcommand_matches_legacy_physical_execution() {
+fn frontend_subcommand_executes_physical_machine_without_counting() {
     let input = "p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n";
     let modern = run(&["frontend"], input);
-    let legacy = invoke(env!("CARGO_BIN_EXE_eth-frontend"), &[], input);
     assert!(modern.status.success(), "{modern:?}");
-    assert_eq!(modern.stdout, legacy.stdout);
     let stdout = String::from_utf8(modern.stdout).unwrap();
     assert!(stdout.contains("status=frontend-completed"));
+    assert!(stdout.contains("ambient_unary=1110\n"));
+    assert!(stdout.contains("variables_binary_lsb=11\n"));
     assert!(!stdout.contains("count="));
 }
 
 #[test]
-fn oracle_is_explicitly_bounded_and_matches_legacy() {
+fn oracle_is_explicitly_exponential_and_bounded() {
     let input = "p cnf 3 2\n1 2 0\n1 3 0\n";
     let modern = run(&["oracle"], input);
-    let legacy = invoke(env!("CARGO_BIN_EXE_lean-eth-reference"), &[], input);
     assert!(modern.status.success(), "{modern:?}");
-    assert_eq!(modern.stdout, legacy.stdout);
     assert!(String::from_utf8_lossy(&modern.stdout).contains("count=5"));
     let invalid = run(&["oracle", "--max-variables", "21"], input);
     assert!(!invalid.status.success());
@@ -65,10 +59,12 @@ fn oracle_is_explicitly_bounded_and_matches_legacy() {
 fn terminal_count_preserves_source_native_success_and_refusal() {
     let input = "p cnf 3 0\n";
     let modern = run(&["terminal-count"], input);
-    let legacy = invoke(env!("CARGO_BIN_EXE_eth-terminal-count"), &[], input);
     assert!(modern.status.success(), "{modern:?}");
-    assert_eq!(modern.stdout, legacy.stdout);
-    assert!(String::from_utf8_lossy(&modern.stdout).contains("count=8\n"));
+    let stdout = String::from_utf8_lossy(&modern.stdout);
+    assert!(stdout.contains("status=terminal-count-complete\n"));
+    assert!(stdout.contains("count=8\n"));
+    assert!(stdout.contains("source_instructions="));
+    assert!(stdout.contains("resource_basis=BitProgram_source_instructions_not_TM2_microsteps"));
 
     let unsupported = run(&["terminal-count"], "p cnf 1 1\n1 0\n");
     assert!(!unsupported.status.success());

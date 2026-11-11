@@ -39,7 +39,7 @@ pub struct TerminalCount {
 /// Source-defined StackRoutines.clearProgram and copyProgram physically
 /// transfer the terminal count from leaf output 263 to answer input 256.
 /// This is an explicitly marked *adapter*, NOT a source-equivalent outer program.
-fn count_to_answer_input_program() -> Result<Program<80, 1220>, Error> {
+pub fn count_to_answer_input_program() -> Result<Program<80, 1220>, Error> {
     Cmd::seq(
         Cmd::Call(clear_program(256, 72, 73)?),
         Cmd::Call(copy_program(263, 256, 1219, 72, 73)?),

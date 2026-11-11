@@ -93,3 +93,23 @@ nonterminal semantic refusal. Follow-on work should add an authenticated
 Lean trace for the terminal counter composition itself, then extend the
 source-native path to **one real nonterminal formula** before claiming a
 general counter.
+
+## Live instrumented Rust per-stage profile (no Lean assertion)
+
+```sh
+cd rust/lean_eth_reference
+cargo run --release --locked --offline --bin profile-full-machine -- --terminal > terminal-profile.csv
+```
+
+This profiler independently executes four physical 80×1220 source-instruction
+stages and reconciles their count words, final answer, stage instruction counts
+and cumulative budget with the uninstrumented native terminal runner. It
+reports per-stage per-op timing and allocation *requests*; it increments peak
+live stack bit counts and runtime stack capacity observations on push/pop,
+without a full-stack scan after every instruction. Samples include n=0,
+n=3 no clauses, n=3 empty clause, and a normalized tautology.
+
+This **does not** claim to measure primitive TM2 operations. Running this
+profiler is separate from a genuine imported-Lean full-state comparison.
+A fair evaluation of interpretation overhead needs an uninstrumented runtime
+baseline as well, because these measured times include observer costs.

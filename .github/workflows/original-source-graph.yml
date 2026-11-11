@@ -8,6 +8,8 @@ on:
       - 'rust/lean_eth_reference/tools/verify_source_graph.py'
       - 'rust/lean_eth_reference/tools/lean_physical_differential.py'
       - 'rust/lean_eth_reference/tools/test_lean_physical_differential.py'
+      - 'rust/lean_eth_reference/tools/compute_l_structural_acceptance.py'
+      - 'rust/lean_eth_reference/tools/test_compute_l_structural_acceptance.py'
       - 'rust/lean_eth_reference/tools/*compiled*.py'
       - '.github/workflows/original-source-graph.yml'
 
@@ -45,6 +47,7 @@ jobs:
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_source_compiled.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_physical_differential.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_compute_l_structural_acceptance.py' -v
 
       - name: Checkout exact original OpenAI SAT source
         shell: bash
@@ -132,6 +135,20 @@ jobs:
             --name-regex "$PROGRAM_REGEX" --limit 6 --timeout-seconds 240
           echo 'ORIGINAL_LEAN_SOURCE_GRAPH=PHYSICAL_TABLE_PARITY_AND_BOUNDED_RUST' >> "$GITHUB_STEP_SUMMARY"
 
+      # This probe is independent of the six bounded original physical tables:
+      # prior flat Lean materialization of computeL exceeded its heartbeat cap.
+      # Structural source extraction + bounded Rust behavior is a distinct
+      # evidence tier, never reported as exact original physical parity.
+      - name: Prove original computeL can be structurally exported and executed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/compute_l_structural_acceptance.py \
+            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+            --rust-crate rust/lean_eth_reference \
+            --output-dir "$RUNNER_TEMP/compute-l-graph" --timeout-seconds 240
+          echo 'ORIGINAL_COMPUTEL=SOURCE_STRUCTURAL_AND_BOUNDED_RUST_EXECUTION' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Save original Lean build dependency cache
         if: always() && steps.oai-cache.outputs.cache-hit != 'true'
         continue-on-error: true
@@ -149,5 +166,6 @@ jobs:
             ${{ runner.temp }}/source-tables/
             ${{ runner.temp }}/source-graph/
             ${{ runner.temp }}/source-physical/
+            ${{ runner.temp }}/compute-l-graph/
           if-no-files-found: warn
           retention-days: 14

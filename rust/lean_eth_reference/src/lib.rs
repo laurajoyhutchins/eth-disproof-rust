@@ -750,3 +750,6 @@ pub mod valuation_witness;
 
 /// Conditional whole-mode (rather than single-row) valuation certificates.
 pub mod valuation_mode_certificate;
+
+/// Source-packet slot support and whole-mode valuation obstruction.
+pub mod packet_mode_support;

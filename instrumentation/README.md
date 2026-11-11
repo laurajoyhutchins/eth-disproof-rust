@@ -65,6 +65,25 @@ capture records the full fixed case matrix, with exact case completeness
 required. For a complete capture, preserve the entire `lean-captures/`
 folder, not just the legacy final-state summaries.
 
+## Portable capture snapshots
+
+The local capture directory is the only output required. To carry completed
+stages between checkouts or machines, create an integrity-checked archive:
+
+```bash
+python3 instrumentation/bundle.py pack --archive ../lean-captures.zip
+python3 instrumentation/bundle.py verify --archive ../lean-captures.zip
+python3 instrumentation/bundle.py unpack --archive ../lean-captures.zip --out ./lean-captures
+```
+
+`pack` refuses missing, incomplete, corrupted or inconsistent checkpoints;
+partially completed **stage sets** are valid and explicitly listed in the
+archive manifest. `verify` and `unpack` do not run Lean, install dependencies,
+or need access to the source checkout. `unpack` refuses a nonempty destination.
+Use `inspect.py` against the restored local capture directory afterward.
+These checks establish archive consistency, not independent provenance of
+compiled `.olean` dependencies or formal proof of execution authenticity.
+
 ## What the record includes
 
 - The **complete finite instruction table** for each deeply observed program,

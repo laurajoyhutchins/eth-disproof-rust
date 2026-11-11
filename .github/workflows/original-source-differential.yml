@@ -17,6 +17,9 @@ jobs:
     name: pinned Rust exact-head regressions
     runs-on: ubuntu-24.04
     timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: rust/lean_eth_reference
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
@@ -31,7 +34,7 @@ jobs:
       - name: Execute all exact Rust tests
         run: cargo test --locked --offline --all-targets
       - name: Source comparator mutation and profiler regressions
-        run: python3 -m unittest discover -s rust/lean_eth_reference/scripts -p 'test_*.py'
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings
 

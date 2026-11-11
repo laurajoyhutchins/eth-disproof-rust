@@ -52,7 +52,9 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         let labels = root.size.checked_add(1).ok_or(Error::Overflow)?;
         let entry = root.entry_at(1, 0)?;
         if entry >= labels {
-            return Err(Error::Invalid("deferred program entry outside labels".into()));
+            return Err(Error::Invalid(
+                "deferred program entry outside labels".into(),
+            ));
         }
         Ok(Arc::new(Self {
             input_stack,
@@ -101,17 +103,26 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
     /// Used for differential testing, not for large production graphs.
     pub fn materialize(&self, max_labels: usize) -> Result<Program<R, S>, Error> {
         if self.labels > max_labels {
-            return Err(Error::Capacity("deferred materialization label budget".into()));
+            return Err(Error::Capacity(
+                "deferred materialization label budget".into(),
+            ));
         }
         let instructions = (0..self.labels)
             .map(|pc| self.instruction_at(pc))
             .collect::<Result<Vec<_>, _>>()?;
-        Program::new(self.input_stack, self.output_stack, self.entry, instructions)
+        Program::new(
+            self.input_stack,
+            self.output_stack,
+            self.entry,
+            instructions,
+        )
     }
 
     /// Execute one original physical BitProgram step, not one AST node.
     pub fn step(&self, config: &mut Config<R, S>) -> Result<bool, Error> {
-        let Some(pc) = config.pc else { return Ok(false) };
+        let Some(pc) = config.pc else {
+            return Ok(false);
+        };
         let instruction = self.instruction_at(pc)?;
         execute_instr(&instruction, config);
         Ok(true)
@@ -180,13 +191,19 @@ pub struct Block<const R: usize, const S: usize> {
 
 impl<const R: usize, const S: usize> Block<R, S> {
     pub fn skip() -> Arc<Self> {
-        Arc::new(Self { size: 0, kind: BlockKind::Skip })
+        Arc::new(Self {
+            size: 0,
+            kind: BlockKind::Skip,
+        })
     }
 
     pub fn atom(atom: Atom) -> Result<Arc<Self>, Error> {
         // Check all register/stack addresses before any execution.
         atom.instr(0).validate::<R, S>(1)?;
-        Ok(Arc::new(Self { size: 1, kind: BlockKind::Atom(atom) }))
+        Ok(Arc::new(Self {
+            size: 1,
+            kind: BlockKind::Atom(atom),
+        }))
     }
 
     pub fn call(program: Arc<DeferredProgram<R, S>>) -> Arc<Self> {
@@ -198,24 +215,40 @@ impl<const R: usize, const S: usize> Block<R, S> {
 
     pub fn seq(first: Arc<Self>, second: Arc<Self>) -> Result<Arc<Self>, Error> {
         let size = first.size.checked_add(second.size).ok_or(Error::Overflow)?;
-        Ok(Arc::new(Self { size, kind: BlockKind::Seq(first, second) }))
+        Ok(Arc::new(Self {
+            size,
+            kind: BlockKind::Seq(first, second),
+        }))
     }
 
     pub fn ite(test: usize, yes: Arc<Self>, no: Arc<Self>) -> Result<Arc<Self>, Error> {
         if test >= R {
-            return Err(Error::Invalid("deferred branch register outside Fin R".into()));
+            return Err(Error::Invalid(
+                "deferred branch register outside Fin R".into(),
+            ));
         }
-        let size = yes.size.checked_add(no.size)
-            .and_then(|n| n.checked_add(1)).ok_or(Error::Overflow)?;
-        Ok(Arc::new(Self { size, kind: BlockKind::If { test, yes, no } }))
+        let size = yes
+            .size
+            .checked_add(no.size)
+            .and_then(|n| n.checked_add(1))
+            .ok_or(Error::Overflow)?;
+        Ok(Arc::new(Self {
+            size,
+            kind: BlockKind::If { test, yes, no },
+        }))
     }
 
     pub fn while_(test: usize, body: Arc<Self>) -> Result<Arc<Self>, Error> {
         if test >= R {
-            return Err(Error::Invalid("deferred while register outside Fin R".into()));
+            return Err(Error::Invalid(
+                "deferred while register outside Fin R".into(),
+            ));
         }
         let size = body.size.checked_add(1).ok_or(Error::Overflow)?;
-        Ok(Arc::new(Self { size, kind: BlockKind::While { test, body } }))
+        Ok(Arc::new(Self {
+            size,
+            kind: BlockKind::While { test, body },
+        }))
     }
 
     pub fn size(&self) -> usize {
@@ -237,7 +270,9 @@ impl<const R: usize, const S: usize> Block<R, S> {
     fn instruction_at(&self, base: usize, exit: usize, pc: usize) -> Result<Instr, Error> {
         let end = base.checked_add(self.size).ok_or(Error::Overflow)?;
         if !(base..end).contains(&pc) {
-            return Err(Error::Invalid("deferred physical site outside source block".into()));
+            return Err(Error::Invalid(
+                "deferred physical site outside source block".into(),
+            ));
         }
         match &self.kind {
             BlockKind::Skip => Err(Error::Invalid("empty block has no instruction".into())),

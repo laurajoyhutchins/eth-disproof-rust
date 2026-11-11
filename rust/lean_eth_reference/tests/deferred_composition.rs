@@ -7,19 +7,30 @@ use lean_eth_reference::bit_program::{
 
 fn callee() -> Program<2, 2> {
     Program::new(
-        0, 1, 2,
+        0,
+        1,
+        2,
         vec![
             Instr::Halt,
             Instr::Goto { next: 0 },
-            Instr::Set { dst: 0, value: true, next: 1 },
+            Instr::Set {
+                dst: 0,
+                value: true,
+                next: 1,
+            },
         ],
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 #[test]
 fn call_relocates_every_physical_label_including_halt_and_return() {
     let call = Block::call(DeferredProgram::table(callee()));
-    let tail = Block::atom(Atom::Set { dst: 1, value: true }).unwrap();
+    let tail = Block::atom(Atom::Set {
+        dst: 1,
+        value: true,
+    })
+    .unwrap();
     let program = DeferredProgram::composed(0, 1, Block::seq(call, tail).unwrap()).unwrap();
 
     assert_eq!(program.labels(), 5);
@@ -27,8 +38,22 @@ fn call_relocates_every_physical_label_including_halt_and_return() {
     assert_eq!(program.instruction_at(0).unwrap(), Instr::Halt);
     assert_eq!(program.instruction_at(1).unwrap(), Instr::Goto { next: 4 });
     assert_eq!(program.instruction_at(2).unwrap(), Instr::Goto { next: 1 });
-    assert_eq!(program.instruction_at(3).unwrap(), Instr::Set { dst: 0, value: true, next: 2 });
-    assert_eq!(program.instruction_at(4).unwrap(), Instr::Set { dst: 1, value: true, next: 0 });
+    assert_eq!(
+        program.instruction_at(3).unwrap(),
+        Instr::Set {
+            dst: 0,
+            value: true,
+            next: 2
+        }
+    );
+    assert_eq!(
+        program.instruction_at(4).unwrap(),
+        Instr::Set {
+            dst: 1,
+            value: true,
+            next: 0
+        }
+    );
     assert!(program.instruction_at(5).is_err());
 
     let mut config = program.initial([]);
@@ -36,23 +61,44 @@ fn call_relocates_every_physical_label_including_halt_and_return() {
     assert_eq!(stats.instructions, 5);
     assert_eq!(config.pc, None);
     assert_eq!(config.regs, [true, true]);
-    assert_eq!(program.materialize(5).unwrap().code(),
-        &(0..5).map(|pc| program.instruction_at(pc).unwrap()).collect::<Vec<_>>());
+    assert_eq!(
+        program.materialize(5).unwrap().code(),
+        &(0..5)
+            .map(|pc| program.instruction_at(pc).unwrap())
+            .collect::<Vec<_>>()
+    );
 }
 
 #[test]
 fn nested_while_branch_and_call_match_existing_eager_compiler() {
     let command = Cmd::<2, 2>::seq(
-        Cmd::Atom(Atom::Set { dst: 0, value: true }),
+        Cmd::Atom(Atom::Set {
+            dst: 0,
+            value: true,
+        }),
         Cmd::seq(
-            Cmd::while_(0, Cmd::Atom(Atom::Set { dst: 0, value: false })),
+            Cmd::while_(
+                0,
+                Cmd::Atom(Atom::Set {
+                    dst: 0,
+                    value: false,
+                }),
+            ),
             Cmd::Call(callee()),
         ),
     );
     let eager = command.compiled(0, 1).unwrap();
 
-    let set_true = Block::atom(Atom::Set { dst: 0, value: true }).unwrap();
-    let set_false = Block::atom(Atom::Set { dst: 0, value: false }).unwrap();
+    let set_true = Block::atom(Atom::Set {
+        dst: 0,
+        value: true,
+    })
+    .unwrap();
+    let set_false = Block::atom(Atom::Set {
+        dst: 0,
+        value: false,
+    })
+    .unwrap();
     let loop_ = Block::while_(0, set_false).unwrap();
     let call = Block::call(DeferredProgram::table(callee()));
     let graph = Block::seq(set_true, Block::seq(loop_, call).unwrap()).unwrap();
@@ -72,18 +118,34 @@ fn nested_while_branch_and_call_match_existing_eager_compiler() {
 
 #[test]
 fn graph_sharing_avoids_materializing_hundreds_of_millions_of_labels() {
-    let mut block = Block::<2, 2>::atom(Atom::Set { dst: 0, value: true }).unwrap();
+    let mut block = Block::<2, 2>::atom(Atom::Set {
+        dst: 0,
+        value: true,
+    })
+    .unwrap();
     for _ in 0..28 {
         block = Block::seq(Arc::clone(&block), block).unwrap();
     }
     let program = DeferredProgram::composed(0, 1, block).unwrap();
     assert_eq!(program.labels(), (1 << 28) + 1);
-    assert_eq!(program.instruction_at(program.labels() - 1).unwrap(),
-        Instr::Set { dst: 0, value: true, next: 0 });
+    assert_eq!(
+        program.instruction_at(program.labels() - 1).unwrap(),
+        Instr::Set {
+            dst: 0,
+            value: true,
+            next: 0
+        }
+    );
     assert_eq!(program.instruction_at(0).unwrap(), Instr::Halt);
     assert!(program.materialize(1000).is_err());
     let mut cfg = program.initial([]);
-    let result = program.run(&mut cfg, RunLimits { max_steps: 8, max_stack_bits: 1 });
+    let result = program.run(
+        &mut cfg,
+        RunLimits {
+            max_steps: 8,
+            max_stack_bits: 1,
+        },
+    );
     assert!(result.is_err());
     assert!(cfg.pc.is_some()); // capacity refusal is not a successful halt
 }
@@ -98,7 +160,13 @@ fn malformed_source_addresses_and_budgets_refuse() {
     let push = Block::<2, 2>::atom(Atom::Push { stack: 0, src: 0 }).unwrap();
     let program = DeferredProgram::composed(0, 1, push).unwrap();
     let mut config = program.initial([false]);
-    let result = program.run(&mut config, RunLimits { max_steps: 100, max_stack_bits: 1 });
+    let result = program.run(
+        &mut config,
+        RunLimits {
+            max_steps: 100,
+            max_stack_bits: 1,
+        },
+    );
     assert!(result.is_err());
     assert_eq!(config.stacks[0].len(), 1); // refused before mutating
 }
@@ -109,12 +177,33 @@ fn empty_and_branching_blocks_match_original_layout() {
     assert_eq!(blank.labels(), 1);
     assert_eq!(blank.entry(), 0);
     let mut halted = blank.initial([]);
-    assert_eq!(blank.run(&mut halted, RunLimits::default()).unwrap().instructions, 1);
+    assert_eq!(
+        blank
+            .run(&mut halted, RunLimits::default())
+            .unwrap()
+            .instructions,
+        1
+    );
 
-    let yes = Block::<2, 2>::atom(Atom::Set { dst: 1, value: true }).unwrap();
-    let no = Block::<2, 2>::atom(Atom::Set { dst: 1, value: false }).unwrap();
+    let yes = Block::<2, 2>::atom(Atom::Set {
+        dst: 1,
+        value: true,
+    })
+    .unwrap();
+    let no = Block::<2, 2>::atom(Atom::Set {
+        dst: 1,
+        value: false,
+    })
+    .unwrap();
     let branch = DeferredProgram::composed(0, 1, Block::ite(0, yes, no).unwrap()).unwrap();
     assert_eq!(branch.labels(), 4);
     assert_eq!(branch.entry(), 1);
-    assert_eq!(branch.instruction_at(1).unwrap(), Instr::Branch { test: 0, yes: 2, no: 3 });
+    assert_eq!(
+        branch.instruction_at(1).unwrap(),
+        Instr::Branch {
+            test: 0,
+            yes: 2,
+            no: 3
+        }
+    );
 }

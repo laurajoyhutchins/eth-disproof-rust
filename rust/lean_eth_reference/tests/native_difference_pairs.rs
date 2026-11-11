@@ -103,7 +103,7 @@ fn decode_visit_logs(
 #[test]
 fn query_source_ports_and_injective_port_validation() {
     let p = query_pair_ports();
-    assert_eq!(p.registers(), [35, 36, 37, 38, 39]);
+    assert_eq!(p.registers(), [0, 1, 2, 3, 4]);
     assert_eq!(p.stacks(), [832, 833, 834, 835]);
     assert!(matches!(
         PairPorts::<5, 4>::new([0, 1, 2, 3, 3], [0, 1, 2, 3]),
@@ -134,8 +134,7 @@ fn exact_full_visit_order_matches_independent_lean_words() {
             let mut d = p.initial([]);
             store(&mut d, 832, &vec![true; n]);
             store(&mut d, 833, &vec![true; budget]);
-            d.regs[35] = false;
-            d.regs[36] = true;
+            d.regs[36] = true; // tuple controller register, not pair controller
             store(&mut d, 895, &[false, true, false]);
             let steps = run(&p, &mut d);
             assert!(steps > 0);
@@ -166,7 +165,8 @@ fn exact_full_visit_order_matches_independent_lean_words() {
             assert!(bits(&d, 835).is_empty());
             assert!(bits(&d, 509).is_empty());
             assert_eq!(bits(&d, 895), vec![false, true, false]);
-            assert!(!d.regs[36]);
+            assert!(!d.regs[1]);
+            assert!(d.regs[36], "tuple controller frame must remain untouched");
         }
     }
 }
@@ -306,7 +306,7 @@ fn pair_start_is_exact_source_composition() {
 #[test]
 fn callback_may_overwrite_all_five_controller_registers() {
     let mut callback = log_masks(834, 835, 500, 501);
-    for register in 35..40 {
+    for register in 0..5 {
         callback = Cmd::seq(
             callback,
             Cmd::Atom(Atom::Set {

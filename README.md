@@ -1,46 +1,60 @@
 # ETH Disproof: Rust Port
 
-An experimental Rust port of executable machinery from OpenAI's [*The Exponential Time Hypothesis is False*](https://github.com/openai/math/blob/main/lean/docs/378.md) Lean development.
+An independent, source-pinned Rust port of **selected executable components** of OpenAI's Lean development, [*The Exponential Time Hypothesis is False*](https://github.com/openai/math/blob/main/lean/docs/378.md).
 
-**Status:** Incomplete research implementation. This repository does **not** independently verify the ETH result, reproduce the complete native counting algorithm, or establish its time and space bounds. Executable components and unfinished proof obligations are kept distinct.
+The title identifies the upstream research being studied; **this repository is not an independent disproof of ETH**. It does not yet reproduce the complete source-native algorithm or validate the claimed asymptotic bounds.
 
-## Build and test
+## Try the current implementation
 
-Use Rust **1.99.1**. The crate has no external Cargo dependencies.
+Install **Rust 1.99.1**. The Rust crate has no external Cargo dependencies.
 
 ```sh
 cd rust/lean_eth_reference
+cargo test --locked --offline --all-targets
+printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --locked --offline
+```
+
+For this formula the count is **5**. The command-line example uses an **explicitly bounded exponential enumeration oracle**, not the proposed ETH algorithm. It refuses instances outside its supported limits rather than claiming a fast general-purpose SAT counter.
+
+For full local checks:
+
+```sh
 cargo fmt --all -- --check
 cargo test --locked --offline --all-targets
 cargo clippy --locked --offline --all-targets -- -D warnings
 ```
 
-For a small CNF counting example:
+The [Rust GitHub workflow](.github/workflows/rust.yml) is manually dispatched, and [Cloud Build configuration](cloudbuild.rust.yaml) is checked in separately. Neither test path establishes equivalence with the original Lean execution.
 
-```sh
-printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
-```
+## What has been implemented?
 
-The Rust-only CI workflow is [`.github/workflows/rust.yml`](.github/workflows/rust.yml); [`cloudbuild.rust.yaml`](cloudbuild.rust.yaml) supplies a separate Cloud Build check. Passing Rust tests is **not** a substitute for an imported-Lean comparison.
+| Area | Current boundary |
+| --- | --- |
+| CNF parsing, finite semantics, bounded counting | Executable Rust with tests |
+| Bit-program interpreter and selected native machine stages | Executable, source-correlated Rust fragments |
+| Original Lean/Mathlib execution and Lean-to-Rust differential traces | Not independently established by this repository |
+| Full source-native counting pipeline and primitive TM2 refinement | Incomplete |
+| ETH conclusion and worst-case time/space claims | Not established by Rust tests |
 
-## What is here
+The implementation intentionally distinguishes executable, partial, stubbed, noncomputable, and proof-only stages. An unavailable stage must not be silently replaced with a semantic shortcut.
 
-- [`rust/lean_eth_reference/`](rust/lean_eth_reference/): finite CNF semantics and encodings, a physical bit-program interpreter, selected source-defined machine stages, regression tests, and explicit unavailable stages.
-- [Source manifest](rust/lean_eth_reference/reference/source-manifest.json): pinned Lean source objects from [`openai/math` revision `4eaee87`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
-- [Implementation detail](rust/lean_eth_reference/README.md): coverage, physical-machine boundaries, and known gaps.
+See [the Rust implementation map](rust/lean_eth_reference/README.md) and [remaining-port inventory](rust/lean_eth_reference/docs/remaining-lean-port.md) for concrete module coverage and missing work.
 
-Not yet established: a complete executable native counting path, genuine pinned Lean/Rust differential parity, TM2 primitive time/tape refinement, or the claimed asymptotic complexity guarantee. Missing Lean/Mathlib runtime artifacts must not be replaced with simulated traces or golden fixtures.
+## Where to look
 
-## History and research branches
+- [Rust crate](rust/lean_eth_reference/): interpreter, source-correlated programs, tests, and command-line example.
+- [Pinned source manifest](rust/lean_eth_reference/reference/source-manifest.json): upstream Lean source identities, rooted at [`openai/math@4eaee875`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
+- [Tests and reference traces](rust/lean_eth_reference/tests/): bounded Rust assertions and source-derived fixtures. Fixtures alone are **not** an imported-Lean comparison.
+- [Guided Git history](rust/lean_eth_reference/docs/reading-the-history.md): a first-parent reading sequence explaining the port's implementation boundaries.
 
-`main` has a source-linked, instructional first-parent history, while original development ancestry is retained. Read it with:
+Earlier Python/Cython Sudoku experiments remain on the [`python/sudoku-research` branch](https://github.com/laurajoyhutchins/eth-disproof-rust/tree/python/sudoku-research) and are not required by this Rust crate.
 
-```sh
-git log --first-parent --reverse --oneline main
-```
+## Reproducibility and contributions
 
-See the [history guide](rust/lean_eth_reference/docs/reading-the-history.md). Earlier Python/Cython Sudoku research remains on [`python/sudoku-research`](../../tree/python/sudoku-research); it is not part of the Rust build.
+The repository pins the Rust toolchain and identifies the original Lean source revision. A complete Lean-based conformance result requires independently building and running that pinned original with its Mathlib dependencies. This has **not** been demonstrated by the tests on `main`.
 
-## License and attribution
+Bug reports, small source-faithful port increments, and reproducible counterexamples are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Please distinguish *tested Rust behavior*, *original-Lean differential evidence*, and *mathematical proof obligations* in any claim.
 
-Original contributions are provided under the [MIT license](LICENSE). Code and other materials adapted from [`openai/math`](https://github.com/openai/math) remain subject to its **Apache-2.0** terms. See [`LICENSE-APACHE`](LICENSE-APACHE) and [`NOTICE`](NOTICE). The Rust crate declares `MIT AND Apache-2.0` to reflect both sets of obligations.
+## Attribution and license
+
+This is independent research, **not an official OpenAI release**. Original contributions are MIT-licensed ([LICENSE](LICENSE)). Adapted upstream material also carries Apache-2.0 obligations ([LICENSE-APACHE](LICENSE-APACHE), [NOTICE](NOTICE)). The Rust crate declares `MIT AND Apache-2.0` to reflect both sets of obligations.

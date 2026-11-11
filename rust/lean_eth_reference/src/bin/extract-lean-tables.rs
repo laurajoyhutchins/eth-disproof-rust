@@ -202,9 +202,13 @@ fn declarations(source: &str) -> Result<(Vec<SourceDecl>, Vec<String>)> {
         let code = lines[i + 4].trim();
         let legacy =
             code.starts_with("code := ![") || code.starts_with("code q := match q.val with");
+        let split_match = code.starts_with("code ")
+            && code.ends_with(":=")
+            && lines.get(i + 5).is_some_and(|next| next.trim().starts_with("match "));
         if !code.starts_with("code := ![")
             && !(code.starts_with("code ") && code.contains(" := match "))
             && !code.starts_with("code := fun ")
+            && !split_match
         {
             continue;
         }
@@ -224,6 +228,11 @@ fn declarations(source: &str) -> Result<(Vec<SourceDecl>, Vec<String>)> {
             }
             body.push(lines[j].to_string());
             j += 1;
+        }
+        if split_match {
+            let merged = format!("{} {}", body[0].trim(), body[1].trim());
+            body.remove(0);
+            body[0] = merged;
         }
         let symbols = symbol_table(&lines[..i].join("\n"), labels);
         let instructions = match parse_code(&body, labels, &symbols) {
@@ -630,6 +639,11 @@ mod tests {
         assert_eq!(x[1].body, x[0].body);
         assert_eq!(x[2].body, x[0].body);
         assert_eq!([x[0].ordinal, x[1].ordinal, x[2].ordinal], [0, 1, 2]);
+        let split_match = "abbrev subtractProgram : Program 8 3 2 where\n  inputStack := 0\n  outputStack := 0\n  entry := 0\n  code label :=\n    match label.val with\n    | 0 => .goto 1\n    | _ => .halt\n";
+        let (parsed, failures) = declarations(split_match).unwrap();
+        assert!(failures.is_empty());
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].body, vec!["goto:1", "halt"]);
     }
     #[test]
     fn refuses_missing_labels_and_nonliteral_controllers() {

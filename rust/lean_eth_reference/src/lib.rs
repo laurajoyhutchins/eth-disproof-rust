@@ -679,6 +679,9 @@ pub mod native_ambient;
 /// Physical terminal count producers; source classifier remains unsupported.
 pub mod native_terminal;
 
+/// Exact original bit equality and clause-membership callback; record iteration pending.
+pub mod native_membership;
+
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;
 

@@ -213,3 +213,14 @@ fn scatter_support_stage_uses_exact_callee_register_and_stack_maps() {
     );
     assert_eq!(get(&d, 650), before);
 }
+
+#[test]
+fn high_registers_are_preserved_by_source_cast_add_embeddings() {
+    let p = support_program().unwrap();
+    let mut d = prepare(&p, &[0, 2], 4, 0);
+    d.regs[9..16].fill(true);
+    let protected = d.regs[9..16].to_vec();
+    run(&p, &mut d);
+    assert_eq!(&d.regs[9..16], protected.as_slice());
+    assert_eq!(get(&d, 670), vec![true, false, true, false]);
+}

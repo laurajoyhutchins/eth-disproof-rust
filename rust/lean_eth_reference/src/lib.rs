@@ -75,12 +75,16 @@ impl Literal {
 
 /// Finset representation; every clause is a sorted/deduplicated set of literals.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Clause(pub Vec<Literal>);
+pub struct Clause(Vec<Literal>);
 impl Clause {
     pub fn new(mut literals: Vec<Literal>) -> Self {
         literals.sort_unstable();
         literals.dedup();
         Self(literals)
+    }
+    /// Canonical, sorted and deduplicated literals, matching Lean's Finset.
+    pub fn literals(&self) -> &[Literal] {
+        &self.0
     }
     pub fn is_subset_of(&self, other: &Self) -> bool {
         // Sets are sorted by Lean's `literalCode`.
@@ -115,12 +119,24 @@ pub struct Cnf {
 }
 impl Cnf {
     pub fn new(variables: usize, mut clauses: Vec<Clause>) -> Result<Self, Error> {
+        // Recanonicalize internal raw clauses before operations that assume Finset order.
+        for clause in &mut clauses {
+            clause.0.sort_unstable();
+            clause.0.dedup();
+        }
         if clauses
             .iter()
             .flat_map(|c| &c.0)
             .any(|l| l.variable >= variables)
         {
             return Err(Error::Invalid("literal exceeds declared Fin n".into()));
+        }
+        if clauses
+            .iter()
+            .flat_map(|c| &c.0)
+            .any(|l| l.variable > (usize::MAX - 1) / 2)
+        {
+            return Err(Error::Overflow);
         }
         clauses.sort_unstable();
         clauses.dedup();
@@ -687,10 +703,41 @@ pub mod native_loader_frames;
 /// Source-defined pruned difference-pair streaming controller.
 pub mod native_difference_pairs;
 
-/// Physical source-defined attained-signature controller and level initializer.
-pub mod native_signature_tuple;
 pub mod native_head_scatter;
 pub mod native_head_support;
+/// Physical source-defined attained-signature controller and level initializer.
+pub mod native_signature_tuple;
+
+/// Source-defined signed pair accumulator preparation; signed update pending.
+pub mod native_pair_accumulator;
+
+/// Source-defined physical mask parity, not signed accumulation.
+pub mod native_pair_sign;
+
+#[cfg(test)]
+mod canonical_clause_tests {
+    use super::*;
+
+    #[test]
+    fn cnf_new_recanonicalizes_internal_rows_before_set_operations() {
+        let x = Literal {
+            variable: 0,
+            positive: true,
+        };
+        let y = Literal {
+            variable: 1,
+            positive: false,
+        };
+        // The raw Clause constructor is unavailable to external callers.
+        let f = Cnf::new(2, vec![Clause(vec![y, x, y])]).unwrap();
+        assert_eq!(f.clauses()[0].literals(), &[x, y]);
+        assert!(Clause::new(vec![x]).is_subset_of(&f.clauses()[0]));
+        assert_eq!(
+            f.encode_lean(),
+            Cnf::from_signed(2, &[&[1, -2]]).unwrap().encode_lean()
+        );
+    }
+}
 
 /// Experimental symbolic representation of the source power word.
 pub mod deferred_power;

@@ -59,15 +59,10 @@ pub fn true_count_program() -> Result<Program<3, 2>, Error> {
 }
 
 /// Stage `trueCount`: source 651 -> callee 0, callee 1 -> output 652.
-/// The source maps its 3 registers to caller 13..15 and two stacks to
+/// The source maps its 3 registers to caller 0..2 and two stacks to
 /// the isolated physical work ports 340 and 341.
 pub fn true_count_command() -> Result<Cmd<16, 768>, Error> {
-    stage(
-        true_count_program()?,
-        [13, 14, 15],
-        &[(651, 0)],
-        &[(1, 652)],
-    )
+    stage(true_count_program()?, [0, 1, 2], &[(651, 0)], &[(1, 652)])
 }
 
 pub fn true_count_standalone_program() -> Result<Program<16, 768>, Error> {
@@ -76,11 +71,11 @@ pub fn true_count_standalone_program() -> Result<Program<16, 768>, Error> {
 
 /// Stage `scatterSupport`: copies indices 650, unary head count 652, and
 /// ambient size 128 to callee stacks 10, 11, 12, then exports callee 0 to 670.
-/// The complete 8x13 scatter call uses caller registers 8..15.
+/// The complete 8x13 scatter call uses caller registers 0..7.
 pub fn scatter_support_command() -> Result<Cmd<16, 768>, Error> {
     stage(
         head_scatter_program()?,
-        std::array::from_fn(|i| 8 + i),
+        std::array::from_fn(|i| i),
         &[(650, 10), (652, 11), (128, 12)],
         &[(0, 670)],
     )

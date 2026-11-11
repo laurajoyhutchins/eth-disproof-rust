@@ -50,6 +50,19 @@ fn registry_is_source_pinned_unique_and_topologically_sorted() {
         }
     }
     assert_eq!(remaining::STAGES.last().unwrap().id, "final_theorem");
+
+    let nodes = graph();
+    for id in [
+        "normalization_polarity",
+        "normalization_record_reverse",
+        "normalization_literal_dedup",
+        "normalization_literal_cleanup",
+    ] {
+        assert_eq!(nodes[id].status, Status::Executable, "{id}");
+        assert_eq!(nodes[id].machine, Machine::Local, "{id}");
+    }
+    assert_eq!(nodes["normalization_full"].status, Status::Stub);
+    assert_eq!(nodes["frontend"].status, Status::Stub);
 }
 
 #[test]
@@ -177,6 +190,10 @@ fn source_machine_dimensions_are_enforced_at_compile_time() {
         remaining::outer::counting_program;
     let _: fn(Cmd<40, 896>) -> Result<Cmd<80, 1220>, Error> = remaining::leaf::execution;
     let _: fn(Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> = remaining::leaf::terminal_dispatch;
+    let _: fn() -> Result<Program<2, 2>, Error> = remaining::outer::negate_literal;
+    let _: fn() -> Result<Program<3, 4>, Error> = remaining::outer::reverse_records;
+    let _: fn() -> Result<Program<10, 8>, Error> = remaining::outer::dedup_literals;
+    let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::clean_literals;
 }
 
 #[test]

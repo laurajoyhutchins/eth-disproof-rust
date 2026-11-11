@@ -5,6 +5,22 @@ layers** of OpenAI's Lean ETH development. Source revision:
 [`openai/math@4eaee87548250b2682affda7d05d947c05554bae`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
 It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
 
+
+## Runnable native frontend
+
+The complete source-defined Lean `Native.frontendCommand` now executes on the
+80-register, 1,220-stack Rust bit machine, from canonical DIMACS CNF input through
+header parsing, physical CNF normalization, body placement and ambient restoration.
+
+```sh
+printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' |
+  cargo run --offline --locked --bin eth-frontend
+```
+
+It emits physical source-machine instruction counts and the preserved original
+input, unary/binary variable headers, and normalized body. **It does not compute
+a #SAT answer.** See [source mapping, tests and verification boundaries](docs/m2-runnable-frontend.md).
+
 ## Coverage
 
 | Source Lean definition | Rust code | Status |

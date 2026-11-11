@@ -12,6 +12,6 @@ Source `pairSignProgram` takes `10*(|E|+|U|)+19` compiled steps, and a compiled 
 
 ## Evidence and limits
 
-The seven tests in `native_pair_sign.rs` cover the exact four-label scan, every pair of masks up to length five, all subset pairs through length seven, preserved ambient/caller frames, repeated post-pop usage, bounded-step refusal, and invocation inside the already-ported pruned pair DFS. Local pinned Rust 1.99.1: seven focused tests pass in debug and release, 158 all-target tests pass, formatting and strict Clippy pass on a standalone v0.19 snapshot. GitHub exact-head Cloud Build and imported original Lean differential comparison are separate verification gates.
+The seven tests in `native_pair_sign.rs` cover the exact four-label scan, every pair of masks up to length five, all subset pairs through length seven, preserved ambient/caller frames, repeated post-pop usage, bounded-step refusal, and invocation inside the already-ported pruned pair DFS. Local pinned Rust 1.99.1: seven focused tests pass in debug and release, 158 all-target tests pass, formatting and strict Clippy pass on a standalone v0.19 snapshot. GitHub Actions checks and imported original Lean differential comparison are separate verification gates.
 
 **Unfinished:** actual `signedAccumulate`, `QueryAssembler.pairUpdate` and `commitPair`, and production `SignatureTupleComplete.command`. The sign stage does not update accumulated count 850 and cannot be used as a complete pair callback.

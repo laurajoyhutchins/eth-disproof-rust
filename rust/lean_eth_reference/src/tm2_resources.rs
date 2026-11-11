@@ -344,3 +344,162 @@ fn execute_micro<const R: usize, const S: usize>(
     for _ in 0..w {
         primitive_step(tape, Action::Left, stats, limits)?;
     }
+
+    let mut op = None;
+    let mut halts = false;
+    match instruction {
+        Micro::Halt => {
+            *pc = None;
+            halts = true;
+        }
+        Micro::Goto(next) => *pc = Some(*next),
+        Micro::Load(source) => match source {
+            Instr::Set { dst, value, .. } => regs[*dst] = *value,
+            Instr::Copy { dst, src, .. } => regs[*dst] = regs[*src],
+            Instr::Not { dst, src, .. } => regs[*dst] = !regs[*src],
+            Instr::And {
+                dst, left, right, ..
+            } => regs[*dst] = regs[*left] && regs[*right],
+            Instr::Or {
+                dst, left, right, ..
+            } => regs[*dst] = regs[*left] || regs[*right],
+            Instr::Xor {
+                dst, left, right, ..
+            } => regs[*dst] = regs[*left] ^ regs[*right],
+            _ => return Err(Error::Invalid("non-load compiled into TM2 load".into())),
+        },
+        Micro::Branch { test, yes, no } => {
+            *pc = Some(if regs[*test] { *yes } else { *no });
+        }
+        Micro::Push { src, .. } => op = Some(Some(regs[*src])),
+        Micro::Peek { value, present, .. } | Micro::Pop { value, present, .. } => {
+            let top = decode(port, p.input_stack(), &register_bits)?;
+            regs[*value] = top.unwrap_or(false);
+            regs[*present] = top.is_some();
+            if matches!(instruction, Micro::Pop { .. }) {
+                op = Some(None);
+            }
+        }
+    }
+
+    // Reading -> action state (or halt), one transition. This is a write-self
+    // for all non-halting instructions. The halt transition has no action.
+    if halts {
+        primitive_step(tape, Action::Halt, stats, limits)?;
+    } else {
+        let unchanged = tape.read();
+        primitive_step(tape, Action::Write(unchanged), stats, limits)?;
+        match op {
+            Some(Some(bit)) => {
+                // StackMachine.pushBits recurses on the tail: emit low bits
+                // right-to-left, each as move-left followed by write.
+                for value in block(port, p.input_stack(), bit).into_iter().rev() {
+                    primitive_step(tape, Action::Left, stats, limits)?;
+                    primitive_step(tape, Action::Write(Some(value)), stats, limits)?;
+                }
+            }
+            Some(None) => {
+                // StackMachine.popBits repeats blank-write, move-right
+                // even when the source stack was already empty.
+                for _ in 0..w {
+                    primitive_step(tape, Action::Write(None), stats, limits)?;
+                    primitive_step(tape, Action::Right, stats, limits)?;
+                }
+            }
+            None => {}
+        }
+        // Acting -> ready: one final write-self transition.
+        let unchanged = tape.read();
+        primitive_step(tape, Action::Write(unchanged), stats, limits)?;
+    }
+    stats.tm2_microsteps = stats.tm2_microsteps.checked_add(1).ok_or(Error::Overflow)?;
+    Ok(())
+}
+
+/// Execute the primitive-bit compiler and independently check every completed
+/// BitProgram instruction boundary. The caller's config is committed only on
+/// success: budget exhaustion and mismatches leave it unchanged.
+///
+/// The visited-cell count is distinct head positions on each physical tape,
+/// including destination positions reached on a head move. It is NOT peak
+/// allocated heap memory or a proof of an asymptotic space bound.
+pub fn run_primitive<const R: usize, const S: usize>(
+    p: &Program<R, S>,
+    config: &mut Config<R, S>,
+    limits: PrimitiveLimits,
+) -> Result<PrimitiveStats, Error> {
+    let mut regs = config.regs;
+    let mut pc = config.pc;
+    let mut tapes = (0..S)
+        .map(|port| {
+            let encoded = encoded_stack(port, p.input_stack(), config.stacks[port].iter().copied());
+            Tape::from_bits(&encoded)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut stats = PrimitiveStats {
+        peak_live_stack_bits: config.stack_bits()?,
+        source_step_overhead_bound: source_step_overhead(p)?,
+        ..PrimitiveStats::default()
+    };
+    stats.peak_encoded_bits = tapes.iter().try_fold(0usize, |sum, tape| {
+        sum.checked_add(tape.cells.len()).ok_or(Error::Overflow)
+    })?;
+    if stats.peak_encoded_bits > limits.max_encoded_bits {
+        return Err(Error::Capacity("initial physical tape bits".into()));
+    }
+    let mut reference = config.clone();
+    while let Some(label) = pc {
+        if stats.source_steps >= limits.max_source_steps {
+            return Err(Error::Capacity("source instruction budget".into()));
+        }
+        let instr = p
+            .code()
+            .get(label)
+            .ok_or_else(|| Error::Invalid("invalid program counter".into()))?;
+        let mut micro = microcode(instr);
+        for operation in &mut micro {
+            // A compiled branch evaluates the predicate, then executes a goto
+            // chosen by the predicate. No third source instruction is executed.
+            if let Micro::Goto(next) = operation
+                && *next == usize::MAX
+            {
+                *next = pc.ok_or_else(|| Error::Invalid("missing branch target".into()))?;
+            }
+            execute_micro(
+                operation, p, &mut pc, &mut regs, &mut tapes, &mut stats, limits,
+            )?;
+            let live_encoded = tapes.iter().try_fold(0usize, |sum, tape| {
+                sum.checked_add(tape.cells.len()).ok_or(Error::Overflow)
+            })?;
+            stats.peak_encoded_bits = stats.peak_encoded_bits.max(live_encoded);
+            if stats.peak_encoded_bits > limits.max_encoded_bits {
+                return Err(Error::Capacity("primitive encoded bit capacity".into()));
+            }
+        }
+        if !p.step(&mut reference)? {
+            return Err(Error::Invalid(
+                "source unexpectedly halted during primitive step".into(),
+            ));
+        }
+        stats.source_steps = stats.source_steps.checked_add(1).ok_or(Error::Overflow)?;
+        let obtained = snapshot(p, pc, regs, &tapes)?;
+        if obtained != reference {
+            return Err(Error::Invalid(format!(
+                "source/TM2 boundary mismatch after {} source instructions",
+                stats.source_steps
+            )));
+        }
+        stats.peak_live_stack_bits = stats.peak_live_stack_bits.max(obtained.stack_bits()?);
+        if stats.primitive_steps
+            > stats
+                .source_steps
+                .saturating_mul(stats.source_step_overhead_bound)
+        {
+            return Err(Error::Invalid(
+                "source compiler primitive step bound violated".into(),
+            ));
+        }
+    }
+    *config = reference;
+    Ok(stats)
+}

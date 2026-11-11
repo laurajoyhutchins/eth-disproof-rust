@@ -514,7 +514,7 @@ pub const STAGES: &[Stage] = &[
         id: "frontend",
         source_file: "SqrtLogSpace/NativeFrontend.lean",
         lean_symbol: "Native.frontendCommand",
-        status: Status::Stub,
+        status: Status::Executable,
         machine: Machine::Outer,
         requires: &["frontend_header", "frontend_normalization", "frontend_tail"],
     },
@@ -822,7 +822,13 @@ pub mod outer {
     pub fn frontend_tail() -> Result<Cmd<80, 1220>, Error> {
         crate::native_frontend_tail::frontend_tail_command()
     }
-    outer_stub!(frontend, "Native.frontendCommand");
+    /// Full source-defined Native.frontendCommand. Input: canonical
+    /// Encoding.encodeCNF on stack 256 with all work stacks initially empty.
+    /// Output: normalized body 265, unary ambient 258, binary dimension 267,
+    /// original encoded input preserved on 256. No #SAT count is produced.
+    pub fn frontend() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_frontend::command()
+    }
     pub fn finite_fallback(_cutoff: usize, _large: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("FiniteFallback.dispatchCommand (noncomputable lookup)")
     }

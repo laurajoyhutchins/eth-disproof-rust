@@ -428,7 +428,10 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "SubexpTautologyFilterProgram.program",
         status: Status::Executable,
         machine: Machine::Local,
-        requires: &["normalization_tautology_core", "normalization_record_reverse"],
+        requires: &[
+            "normalization_tautology_core",
+            "normalization_record_reverse",
+        ],
     },
     Stage {
         id: "normalization_prefix",
@@ -436,7 +439,10 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "SubexpNormalizationPrefixProgram.program",
         status: Status::Executable,
         machine: Machine::Local,
-        requires: &["normalization_literal_cleanup", "normalization_tautology_filter"],
+        requires: &[
+            "normalization_literal_cleanup",
+            "normalization_tautology_filter",
+        ],
     },
     Stage {
         id: "normalization_full",

@@ -2,9 +2,9 @@
 use lean_eth_reference::Error;
 use lean_eth_reference::bit_program::{Config, Instr, RunLimits};
 use lean_eth_reference::native_normalization_primitives::{
-    clean_literals_reverse_program, clause_filter_reverse_program,
-    emit_if_selected_command, emit_record_program, literal_dedup_reverse_program,
-    negate_literal_program, reverse_records_program, tautology_filter_reverse_program,
+    clause_filter_reverse_program, clean_literals_reverse_program, emit_if_selected_command,
+    emit_record_program, literal_dedup_reverse_program, negate_literal_program,
+    reverse_records_program, tautology_filter_reverse_program,
 };
 use std::collections::VecDeque;
 
@@ -19,13 +19,18 @@ fn bits(n: usize, k: usize) -> Vec<bool> {
 }
 fn frame(xs: &[bool]) -> Vec<bool> {
     let mut out = vec![];
-    for b in xs { out.extend([true, *b]); }
+    for b in xs {
+        out.extend([true, *b]);
+    }
     out.push(false);
     out
 }
 fn encoded(xs: &[Vec<bool>]) -> Vec<bool> {
     let mut a = vec![];
-    for x in xs { a.push(true); a.extend(frame(x)); }
+    for x in xs {
+        a.push(true);
+        a.extend(frame(x));
+    }
     a.push(false);
     a
 }
@@ -61,7 +66,13 @@ fn physical_frame_writer_and_selected_discard_branches() {
             let word = bits(n, k);
             let mut d = writer.initial(word.iter().rev().copied());
             put(&mut d, 2, &[false]);
-            assert_eq!(writer.run(&mut d, RunLimits::default()).unwrap().instructions, (5*n+7) as u64);
+            assert_eq!(
+                writer
+                    .run(&mut d, RunLimits::default())
+                    .unwrap()
+                    .instructions,
+                (5 * n + 7) as u64
+            );
             let mut expected = vec![true];
             expected.extend(frame(&word));
             expected.push(false);
@@ -71,11 +82,18 @@ fn physical_frame_writer_and_selected_discard_branches() {
                 put(&mut x, 2, &[false]);
                 x.regs[2] = selected;
                 let s = branch.run(&mut x, RunLimits::default()).unwrap();
-                let expected = if selected { expected.clone() } else { vec![false] };
+                let expected = if selected {
+                    expected.clone()
+                } else {
+                    vec![false]
+                };
                 assert_eq!(get(&x, 2), expected);
                 assert!(x.stacks[3].is_empty());
                 assert_eq!(x.regs, [false, true, false]);
-                assert_eq!(s.instructions, (if selected { 5*n+11 } else { 2*n+7 } + 1) as u64);
+                assert_eq!(
+                    s.instructions,
+                    (if selected { 5 * n + 11 } else { 2 * n + 7 } + 1) as u64
+                );
             }
         }
     }
@@ -85,8 +103,15 @@ fn physical_frame_writer_and_selected_discard_branches() {
 fn real_record_reversal_preserves_payloads_and_unread_suffix() {
     let p = reverse_records_program().unwrap();
     let cases = vec![
-        vec![], vec![vec![]], vec![vec![true]], 
-        vec![vec![true, false], vec![], vec![false, true], vec![true, false]],
+        vec![],
+        vec![vec![]],
+        vec![vec![true]],
+        vec![
+            vec![true, false],
+            vec![],
+            vec![false, true],
+            vec![true, false],
+        ],
     ];
     for records in cases {
         let mut input = encoded(&records);
@@ -148,7 +173,15 @@ fn exhausted_budget_never_returns_completed_reversal() {
     let p = reverse_records_program().unwrap();
     let mut d = p.initial(encoded(&[vec![true; 20], vec![false; 20]]));
     put(&mut d, 2, &[false]);
-    let e = p.run(&mut d, RunLimits { max_steps: 3, max_stack_bits: 10_000 }).unwrap_err();
+    let e = p
+        .run(
+            &mut d,
+            RunLimits {
+                max_steps: 3,
+                max_stack_bits: 10_000,
+            },
+        )
+        .unwrap_err();
     assert!(matches!(e, Error::Capacity(_)));
     assert!(d.pc.is_some());
 }

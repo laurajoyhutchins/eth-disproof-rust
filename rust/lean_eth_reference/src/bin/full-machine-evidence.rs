@@ -556,4 +556,29 @@ mod tests {
         assert!(native_metrics(&path, &traces).is_err());
         fs::remove_file(path).unwrap();
     }
+
+    #[test]
+    fn profiling_accounts_for_all_opcode_rows_and_rejects_missing_receipts() {
+        let cases = profiles(&parse(&fixture()).unwrap()).unwrap();
+        let dir = env::temp_dir().join(format!("eth-evidence-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let csv = dir.join("metrics.csv");
+        let mut data = CSV_FIELDS.join(",");
+        data.push('\n');
+        for name in names() {
+            data.push_str(&format!("{name},halt,1,4,0,0,0,0,0,NA\n"));
+        }
+        fs::write(&csv, data).unwrap();
+        let metrics = native_metrics(&csv, &cases).unwrap();
+        assert!(metrics.contains("\"4_15_clean\""));
+        let trace = dir.join("source.trace");
+        fs::write(&trace, fixture()).unwrap();
+        let report = dir.join("profile.json");
+        output_profile(&trace, None, Some(&csv), &report).unwrap();
+        assert!(fs::read_to_string(&report).unwrap().contains("RUST_ONLY_NOT_DIFFERENTIAL"));
+        assert!(receipt(&dir,"source","mathlib","lean","rust","head",&["full".into()]).is_err());
+        assert!(!dir.join("receipt.json").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
 }

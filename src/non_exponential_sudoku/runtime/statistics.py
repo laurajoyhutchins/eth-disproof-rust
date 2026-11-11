@@ -51,6 +51,14 @@ class Counters:
     packet_checkpoint_coordinates:int=0
     packet_checkpoint_peak_coordinates:int=0
     packet_checkpoint_count:int=0
+    pre_factor_attempts:int=0
+    pre_factor_certificates:int=0
+    pre_factor_unsupported:int=0
+    pre_factor_evaluated_rows:int=0
+    pre_factor_kept_evaluations:int=0
+    pre_factor_cache_hits:int=0
+    pre_factor_cache_misses:int=0
+    pre_factor_cache_peak_bytes:int=0
     zero_support_attempts:int=0
     zero_support_certificates:int=0
     zero_support_unsupported:int=0

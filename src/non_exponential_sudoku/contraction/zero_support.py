@@ -84,25 +84,40 @@ def certify_zero(
             return ZeroSupportResult('zero', evaluated)
         tables.append(tuple(possible_assignments))
 
-    domains = [3] * net.edges  # 1 = permit zero; 2 = permit one
+    return propagate_support_tables(
+        net.edges, tuple((v.ports, table) for v, table in zip(vertices, tables)),
+        evaluated)
+
+
+def propagate_support_tables(
+    edges: int, factors: tuple[tuple[tuple[int, ...], tuple[int, ...]], ...],
+    evaluated: int,
+) -> ZeroSupportResult:
+    """Exact binary arc-consistency on conservative local support tables.
+
+    Factor assignment integers encode local port bits in port order. This
+    routine is independent of rings, modes and packet coefficients, allowing
+    immutable tables for retained parent vertices to be shared per center.
+    """
+    domains = [3] * edges  # 1 = permit zero; 2 = permit one
     # Every changing pass removes an edge/bit possibility, at most 2M.
-    for _ in range(2 * net.edges + 1):
+    for _ in range(2 * edges + 1):
         changed = False
-        for vertex, candidates in zip(vertices, tables):
-            local_support = [0] * len(vertex.ports)
+        for ports, candidates in factors:
+            local_support = [0] * len(ports)
             compatible = False
             for assignment in candidates:
                 if any(
                     not (domains[edge] & (1 << ((assignment >> j) & 1)))
-                    for j, edge in enumerate(vertex.ports)
+                    for j, edge in enumerate(ports)
                 ):
                     continue
                 compatible = True
-                for j in range(len(vertex.ports)):
+                for j in range(len(ports)):
                     local_support[j] |= 1 << ((assignment >> j) & 1)
             if not compatible:
                 return ZeroSupportResult('zero', evaluated)
-            for edge, mask in zip(vertex.ports, local_support):
+            for edge, mask in zip(ports, local_support):
                 narrower = domains[edge] & mask
                 if narrower == 0:
                     return ZeroSupportResult('zero', evaluated)

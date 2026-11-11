@@ -85,7 +85,11 @@ pub fn count_terminal(cnf: &Cnf, limits: RunLimits) -> Result<TerminalCount, Err
     let count_lsb: Vec<bool> = state.stacks[263].iter().copied().collect();
     let positive = state.stacks[1216][0];
     if positive != count_lsb.iter().any(|b| *b) {
-        return Err(Error::Invalid("answer disagrees with exact source count word".into()));
+        return Err(Error::Invalid(format!(
+            "source answer/count disagreement: flags empty_clause={} nonempty_body={} count_lsb={:?} answer={} ambient_len={} body_len={}",
+            state.regs[0], state.regs[7], count_lsb, positive,
+            state.stacks[258].len(), state.stacks[265].len(),
+        )));
     }
     if state.stacks[256].iter().copied().ne(input.bytes().map(|b| b == b'1')) {
         return Err(Error::Invalid("source frontend modified its preserved input".into()));

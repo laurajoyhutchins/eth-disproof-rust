@@ -678,19 +678,19 @@ pub mod bit_program;
 pub mod native_high;
 pub mod native_tuple;
 
+pub mod finite_fallback;
+pub mod native_ambient;
+pub mod native_answer;
+/// Source-fixed unary header reader and binary length initializer.
+pub mod native_frontend_header;
+/// Source-defined post-normalization body placement and ambient header suffix.
+pub mod native_frontend_tail;
 pub mod native_layout;
+pub mod native_membership;
 pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;
-pub mod finite_fallback;
-pub mod native_answer;
-pub mod native_ambient;
-/// Source-defined post-normalization body placement and ambient header suffix.
-pub mod native_frontend_tail;
-/// Source-fixed unary header reader and binary length initializer.
-pub mod native_frontend_header;
 pub mod native_terminal;
-pub mod native_membership;
 
 /// Exact framed-record iteration and fixed-control membership program.
 pub mod native_record_membership;

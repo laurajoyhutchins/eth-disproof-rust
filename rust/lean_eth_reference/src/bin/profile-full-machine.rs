@@ -115,7 +115,7 @@ fn run_case(
     for (index, metric) in metrics.iter().enumerate() {
         if metric.transitions == 0 { continue }
         println!(
-            "{name},{},{},{},{},{},{},{},{}",
+            "{name},{},{},{},{},{},{},{},{},{}",
             OPCODES[index], metric.transitions, metric.elapsed_ns,
             metric.allocations, metric.reallocations, metric.bytes_requested,
             peak_bits, peak_capacity, "NA",

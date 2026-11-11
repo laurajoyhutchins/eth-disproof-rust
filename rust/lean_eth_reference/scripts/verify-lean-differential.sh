@@ -109,6 +109,14 @@ for part in "${suites[@]}"; do
   (cd "$UPSTREAM/lean" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean --run "$CRATE/reference/$lean") > "$OUT/$part.lean.trace"
   "$CRATE/target/debug/$bin" > "$OUT/$part.rust.trace"
   python3 "$CRATE/scripts/$compare" --lean "$OUT/$part.lean.trace" --rust "$OUT/$part.rust.trace"
+  if [[ "$part" == full ]]; then
+    # Independent state comparison must pass before extra profiling.
+    rm -f -- "$OUT/full.rust.ops.csv" "$OUT/full.profile.json"
+    "$CRATE/target/debug/profile-full-machine" > "$OUT/full.rust.ops.csv"
+    python3 "$CRATE/scripts/profile-full-machine-traces.py" \
+      --lean "$OUT/full.lean.trace" --rust "$OUT/full.rust.trace" \
+      --rust-metrics "$OUT/full.rust.ops.csv" --output "$OUT/full.profile.json"
+  fi
   printf '%s\n' "source=$SOURCE_SHA" "mathlib=$MATHLIB_SHA" "lean=$lean_version" "rust=$rust_version" > "$OUT/$part.pass"
 done
 # Write receipt ONLY after every fresh source execution and comparison succeeded.
@@ -122,6 +130,13 @@ for suite in suites:
         name: {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'bytes': path.stat().st_size}
         for name, path in zip(('lean', 'rust'), paths)
     }
+    if suite == 'full':
+        for name, path in (('rust_opcode_profile', out / 'full.rust.ops.csv'),
+                           ('state_resource_profile', out / 'full.profile.json')):
+            entries[suite][name] = {
+                'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                'bytes': path.stat().st_size,
+            }
 receipt = {'status': 'PASS', 'provenance': {'openai_math_commit': src, 'mathlib_commit': math, 'lean': lean, 'rust': rust, 'rust_commit': rust_head}, 'suites': entries}
 (out / 'receipt.json').write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
 print(f'PASS: {len(suites)} genuine imported-Lean differential suites. Receipt: {out / "receipt.json"}')

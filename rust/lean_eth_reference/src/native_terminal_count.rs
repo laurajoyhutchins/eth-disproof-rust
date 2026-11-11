@@ -56,11 +56,10 @@ fn execute_stage(
 
 pub fn count_terminal(cnf: &Cnf, limits: RunLimits) -> Result<TerminalCount, Error> {
     let input = cnf.encode_lean();
-    let bits = input.bytes().map(|bit| bit == b'1');
-    let mut state = native_frontend::program()?.initial(bits);
-    let mut remaining = limits.max_steps;
-
     let frontend = native_frontend::program()?;
+    let bits = input.bytes().map(|bit| bit == b'1');
+    let mut state = frontend.initial(bits);
+    let mut remaining = limits.max_steps;
     let a = execute_stage(&frontend, &mut state, &mut remaining, limits.max_stack_bits)?;
     let ready = native_terminal_classifier::ready_program()?;
     let b = execute_stage(&ready, &mut state, &mut remaining, limits.max_stack_bits)?;

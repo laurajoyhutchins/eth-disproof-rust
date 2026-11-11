@@ -1,9 +1,9 @@
-# OpenAI ETH formalization: executable Rust port (v0.14.0)
+# OpenAI ETH formalization: executable Rust port
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
 [`openai/math@4eaee87548250b2682affda7d05d947c05554bae`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
-It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
+See the source-object pins in `reference/source-manifest.json`.
 
 ## Coverage
 

@@ -575,10 +575,24 @@ mod tests {
         fs::write(&trace, fixture()).unwrap();
         let report = dir.join("profile.json");
         output_profile(&trace, None, Some(&csv), &report).unwrap();
-        assert!(fs::read_to_string(&report).unwrap().contains("RUST_ONLY_NOT_DIFFERENTIAL"));
-        assert!(receipt(&dir,"source","mathlib","lean","rust","head",&["full".into()]).is_err());
+        assert!(
+            fs::read_to_string(&report)
+                .unwrap()
+                .contains("RUST_ONLY_NOT_DIFFERENTIAL")
+        );
+        assert!(
+            receipt(
+                &dir,
+                "source",
+                "mathlib",
+                "lean",
+                "rust",
+                "head",
+                &["full".into()]
+            )
+            .is_err()
+        );
         assert!(!dir.join("receipt.json").exists());
         fs::remove_dir_all(dir).unwrap();
     }
-
 }

@@ -753,6 +753,8 @@ pub mod native_difference_pairs;
 
 pub mod native_head_scatter;
 pub mod native_head_support;
+/// Strict source-pinned importer and interpreter bridge for genuine Lean query tables.
+pub mod native_query_table;
 /// Physical source-defined attained-signature controller and level initializer.
 pub mod native_signature_tuple;
 

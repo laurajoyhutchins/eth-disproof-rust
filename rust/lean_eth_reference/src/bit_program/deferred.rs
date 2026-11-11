@@ -321,7 +321,9 @@ impl<const R: usize, const S: usize> Block<R, S> {
                 let offset = iteration.checked_mul(body.size).ok_or(Error::Overflow)?;
                 let iteration_base = base.checked_add(offset).ok_or(Error::Overflow)?;
                 let following = if iteration + 1 < *count {
-                    let next_base = iteration_base.checked_add(body.size).ok_or(Error::Overflow)?;
+                    let next_base = iteration_base
+                        .checked_add(body.size)
+                        .ok_or(Error::Overflow)?;
                     body.entry_at(next_base, exit)?
                 } else {
                     exit

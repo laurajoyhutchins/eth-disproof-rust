@@ -214,9 +214,9 @@ fn repeat_matches_explicit_sequence_even_with_nonzero_callee_entry() {
     let call = Block::call(DeferredProgram::table(callee()));
     for part in [leaf, call] {
         for n in 0..8 {
-            let repeated = DeferredProgram::composed(
-                0, 1, Block::repeat(n, Arc::clone(&part)).unwrap(),
-            ).unwrap();
+            let repeated =
+                DeferredProgram::composed(0, 1, Block::repeat(n, Arc::clone(&part)).unwrap())
+                    .unwrap();
             let mut expanded = Block::<2, 2>::skip();
             for _ in 0..n {
                 expanded = Block::seq(expanded, Arc::clone(&part)).unwrap();
@@ -237,14 +237,22 @@ fn repeat_matches_explicit_sequence_even_with_nonzero_callee_entry() {
 
 #[test]
 fn repeat_refuses_overflow_and_never_materializes_huge_control_space() {
-    let atom = Block::<2, 2>::atom(Atom::Set { dst: 0, value: true }).unwrap();
+    let atom = Block::<2, 2>::atom(Atom::Set {
+        dst: 0,
+        value: true,
+    })
+    .unwrap();
     let repeated = Block::repeat(1 << 30, Arc::clone(&atom)).unwrap();
     let source = DeferredProgram::composed(0, 1, repeated).unwrap();
     assert_eq!(source.labels(), (1 << 30) + 1);
     assert_eq!(source.entry(), 1);
     assert_eq!(
         source.instruction_at(source.labels() - 1).unwrap(),
-        Instr::Set { dst: 0, value: true, next: 0 }
+        Instr::Set {
+            dst: 0,
+            value: true,
+            next: 0
+        }
     );
     assert!(source.materialize(1024).is_err());
     let two_sites = Block::ite(0, Block::skip(), Block::skip()).unwrap();

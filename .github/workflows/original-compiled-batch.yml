@@ -66,9 +66,9 @@ jobs:
       ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
       PINNED_ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
       LEAN_ROOT: instrumentation/lean-env
-      PROGRAM_REGEX: ${{ github.event_name == 'workflow_dispatch' && inputs.name_regex || 'SparseFrontierProgram\.pushProgram' }}
-      PROGRAM_LIMIT: ${{ inputs.limit || 1 }}
-      PROGRAM_TIMEOUT: ${{ inputs.timeout_seconds || 600 }}
+      PROGRAM_REGEX: ${{ github.event_name == 'workflow_dispatch' && inputs.name_regex || 'SparseFrontierProgram\.(pushProgram|initFrontierProgram|popProgram|popIfPresentProgram|pushPairProgram)' }}
+      PROGRAM_LIMIT: ${{ inputs.limit || 5 }}
+      PROGRAM_TIMEOUT: ${{ inputs.timeout_seconds || 240 }}
     steps:
       - uses: actions/checkout@v4
         with:

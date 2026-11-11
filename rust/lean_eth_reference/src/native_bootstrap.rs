@@ -161,7 +161,7 @@ pub fn row_count_local_program() -> Result<Program<8, 15>, Error> {
 /// Physical `LeafHeadSetupProgramStorage.stage` for a fixed finite callee.
 /// Clearing the entire work bank and copying *both* directions are charged.
 /// All scratch operations use the same physical port 659 as the Lean source.
-fn stage<const R: usize, const S: usize>(
+pub(crate) fn stage<const R: usize, const S: usize>(
     callee: Program<R, S>,
     registers: [usize; R],
     inputs: &[(usize, usize)],

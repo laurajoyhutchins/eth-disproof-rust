@@ -294,10 +294,11 @@ mod tests {
             let original = valid(suite);
             let mut rows: Vec<_> = original.lines().map(str::to_owned).collect();
             let mut fields: Vec<_> = rows[0].split('|').map(str::to_owned).collect();
-            fields[fields.len() - 1] = "1".into();
+            let last = fields.len() - 1;
+            fields[last] = "1".into();
             rows[0] = fields.join("|");
             if rows[0] == original.lines().next().unwrap() {
-                fields[fields.len() - 1] = "0".into();
+                fields[last] = "0".into();
                 rows[0] = fields.join("|");
             }
             let changed = rows.join("\n");

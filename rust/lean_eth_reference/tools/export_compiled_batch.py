@@ -141,8 +141,96 @@ def atomic_write(path: Path, data: str) -> None:
         temporary.unlink(missing_ok=True)
 
 
+
+def exporter_fingerprint() -> str:
+    """Fingerprint the code that determines the exported physical instruction table."""
+    digest = hashlib.sha256()
+    for source in (BASE / 'extract_compiled_catalog.py',
+                   BASE / 'export_compiled_batch.py', LEAN_EXPORTER):
+        digest.update(source.name.encode('ascii') + b'\0')
+        digest.update(source.read_bytes())
+    return digest.hexdigest()
+
+
+def verified_receipt(dest: Path, record: dict[str, str], max_labels: int,
+                     pins: dict[str, str] | None = None) -> dict[str, Any] | None:
+    """Revalidate an individual completed export, even after a batch was interrupted."""
+    try:
+        receipt = json.loads((dest / (record['id'] + '.receipt.json')).read_text())
+        raw = (dest / (record['id'] + '.table')).read_bytes()
+        actual_pins = receipt['pins']
+        if (actual_pins['source_commit'] != SOURCE_SHA
+                or actual_pins['mathlib_commit'] != MATHLIB_SHA
+                or not actual_pins['lean'].startswith('Lean (version 4.34.1,')
+                or (pins is not None and actual_pins != pins)):
+            return None
+        if (receipt['id'] != record['id']
+                or receipt['module'] != record['module']
+                or receipt['declaration'] != record['fqn']
+                or receipt['source_commit'] != SOURCE_SHA
+                or receipt['source_git_blob'] != record['git_blob']
+                or receipt['status'] != 'EXPORTED_FROM_PINNED_LEAN'
+                or receipt['exporter_sha256'] != exporter_fingerprint()
+                or receipt['sha256'] != hashlib.sha256(raw).hexdigest()
+                or receipt['bytes'] != len(raw)):
+            return None
+        abi = validate_table(raw.decode('ascii'), record, max_labels)
+        expected = receipt['abi']
+        if abi != (expected['registers'], expected['stacks'], expected['labels'],
+                   expected['entry'], expected['input'], expected['output']):
+            return None
+        return receipt
+    except (OSError, KeyError, ValueError, TypeError, UnicodeError):
+        return None
+
+
+def export_batch(selected: list[dict[str, str]], lake: Path, dest: Path,
+                 pins: dict[str, str], max_labels: int, timeout: int,
+                 build: bool) -> dict[str, Any]:
+    """Checkpoint after every declaration so interrupted batches can resume."""
+    completed: list[dict[str, Any]] = []
+    refused: list[dict[str, str]] = []
+
+    def checkpoint(state: str) -> None:
+        report = {'kind': 'original-source-program-export', 'pins': pins,
+                  'state': state, 'planned': len(selected),
+                  'attempted': len(completed) + len(refused),
+                  'exported': completed, 'refused': refused}
+        atomic_write(dest / 'batch-report.json',
+                     json.dumps(report, indent=2, sort_keys=True) + '\n')
+
+    dest.mkdir(parents=True, exist_ok=True)
+    checkpoint('in_progress')
+    for rec in selected:
+        proof = verified_receipt(dest, rec, max_labels, pins)
+        if proof is not None:
+            completed.append(proof)
+            print(f"REUSED {rec['id']} labels={proof['abi']['labels']} "
+                  f"sha256={proof['sha256']}", flush=True)
+        else:
+            try:
+                proof = export_one(rec, lake, dest, max_labels, timeout, build, pins)
+                completed.append(proof)
+                print(f"EXPORTED {rec['id']} labels={proof['abi']['labels']} "
+                      f"sha256={proof['sha256']}", flush=True)
+            except (ValueError, subprocess.TimeoutExpired,
+                    subprocess.CalledProcessError, OSError) as exc:
+                refused.append({'id': rec['id'], 'reason': type(exc).__name__,
+                                'detail': str(exc)[-1000:]})
+                print(f"REFUSED {rec['id']} {type(exc).__name__}: "
+                      f"{str(exc)[-170:]}", flush=True)
+        checkpoint('in_progress')
+    checkpoint('complete')
+    print(f'RESULT exported={len(completed)} refused={len(refused)} '
+          f'attempted={len(selected)}', flush=True)
+    if not completed:
+        raise SystemExit('No verified original machine tables; refusing apparent success')
+    return {'exported': completed, 'refused': refused}
+
+
 def export_one(record: dict[str,str], lake: Path, dest: Path,
-               max_labels: int, timeout: int, build: bool) -> dict[str, Any]:
+               max_labels: int, timeout: int, build: bool,
+               pins: dict[str, str]) -> dict[str, Any]:
     name=record['id']
     # A refusal must never leave an earlier attempt's apparent success.
     (dest / f'{name}.table').unlink(missing_ok=True)
@@ -168,6 +256,7 @@ def export_one(record: dict[str,str], lake: Path, dest: Path,
                  'source_commit':SOURCE_SHA,'source_git_blob':record['git_blob'],
                  'sha256':hashlib.sha256(raw.encode('ascii')).hexdigest(),
                  'bytes':len(raw.encode('ascii')),
+                 'pins':pins, 'exporter_sha256':exporter_fingerprint(),
                  'abi':{'registers':abi[0],'stacks':abi[1],'labels':abi[2],
                         'entry':abi[3],'input':abi[4],'output':abi[5]},
                  'status':'EXPORTED_FROM_PINNED_LEAN'}
@@ -211,21 +300,7 @@ def main() -> None:
         print(f'PROBE_ONLY count={len(selected)}; no original tables or Rust generated')
         return
     pins=ensure_pinned(args.upstream,args.lake_root)
-    completed=[]; refused=[]
-    for rec in selected:
-        try:
-            proof=export_one(rec,args.lake_root,args.output_dir,args.max_labels,
-                             args.timeout_seconds,not args.no_build)
-            completed.append(proof)
-            print(f"EXPORTED {rec['id']} labels={proof['abi']['labels']} sha256={proof['sha256']}",flush=True)
-        except (ValueError,subprocess.TimeoutExpired,subprocess.CalledProcessError,OSError) as exc:
-            refused.append({'id':rec['id'],'reason':type(exc).__name__,
-                            'detail':str(exc)[-1000:]})
-            print(f"REFUSED {rec['id']} {type(exc).__name__}: {str(exc)[-170:]}",flush=True)
-    report={'kind':'original-source-program-export','pins':pins,
-            'attempted':len(selected),'exported':completed,'refused':refused}
-    atomic_write(args.output_dir/'batch-report.json',json.dumps(report,indent=2,sort_keys=True)+'\n')
-    print(f'RESULT exported={len(completed)} refused={len(refused)} attempted={len(selected)}')
-    if not completed:raise SystemExit('No verified original machine tables; refusing apparent success')
+    export_batch(selected, args.lake_root, args.output_dir, pins,
+                 args.max_labels, args.timeout_seconds, not args.no_build)
 
 if __name__=='__main__':main()

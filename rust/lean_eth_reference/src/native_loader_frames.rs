@@ -56,19 +56,20 @@ pub fn export_matrix_program() -> Result<Program<16, 896>, Error> {
     export_matrix_command()?.compiled(668, 847)
 }
 
-/// Source register lift `leafRegs : Fin 16 ↪ Fin 40`, identity stack map.
+/// Source register lift `leafRegs : Fin 16 ↪ Fin 40` preserves register
+/// indices (Fin.castAddEmb 24); the stack map is also the identity.
 /// These lifted snippets are *not* `SignatureHeadLoader.programFrom`, which
 /// also invokes the substantial as-yet-unported `localProgram`.
 pub fn import_address_leaf_command(src: usize) -> Result<Cmd<40, 896>, Error> {
     Ok(Cmd::Call(
         import_address_from_program(src)?
-            .lift::<40, 896>(std::array::from_fn(|i| i + 24), std::array::from_fn(|i| i))?,
+            .lift::<40, 896>(std::array::from_fn(|i| i), std::array::from_fn(|i| i))?,
     ))
 }
 
 pub fn export_matrix_leaf_command() -> Result<Cmd<40, 896>, Error> {
     Ok(Cmd::Call(export_matrix_program()?.lift::<40, 896>(
-        std::array::from_fn(|i| i + 24),
+        std::array::from_fn(|i| i),
         std::array::from_fn(|i| i),
     )?))
 }

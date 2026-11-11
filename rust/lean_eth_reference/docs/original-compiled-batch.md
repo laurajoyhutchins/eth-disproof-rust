@@ -42,8 +42,12 @@ no retained success outputs.
 
 ## Reproduce on public GitHub Actions
 
-The opt-in `.github/workflows/original-compiled-batch.yml` runs on public
-GitHub-hosted `ubuntu-24.04` with the original pinned Lean+Mathlib cache.
+The `.github/workflows/original-compiled-batch.yml` runs **offline Python
+regressions only** on relevant pull requests. The expensive source compilation
+is `workflow_dispatch` only, with a selectable declaration regex, program
+limit (default one), and per-program timeout. It runs on public GitHub-hosted
+`ubuntu-24.04` with the original pinned Lean+Mathlib cache. GitHub exposes
+manual dispatch after the workflow is present on the default branch.
 The initial large-target attempt (#43041032199) exported **zero** original
 programs: three reduction heartbeat refusals (200,000 default heartbeats)
 and one module-build timeout (900 seconds). The next bounded batch instead
@@ -54,10 +58,13 @@ have a 240-second wall-clock limit per operation. The job shares a pinned
 OAI dependency-build cache with the full-query exporter, but cached compiler
 outputs do not count as exported programs or semantic verification.
 
-The workflow records source tables, Rust code, receipts and a refusal ledger.
-Its success must be established by the actual new run; this documentation is
-not a success receipt. It is intentionally not a required quick checkpoint
-for ordinary Rust commits.
+The exporter writes an atomic `batch-report.json` checkpoint before and
+after each attempted declaration. Interrupted runs retain validated individual
+tables and receipts, and retries reuse them after independently checking their
+source identity, ABI, exact SHA-256, Lean/Mathlib versions, and exporter code
+fingerprint. Existing partial success does not transform a refused export into
+a success. Successful generated Rust, refusal details and reports are retained
+as workflow artifacts, not theorem evidence.
 
 Locally, in a checkout with the pinned original Lean source and a working
 minimal Lake project (as established by original exporter PR #145):
@@ -94,23 +101,32 @@ python3 tools/compile_exported_batch.py \
   establish a nonexponential #SAT counter, a primitive TM2 bound, or the ETH
   theorem.
 
-## Resumable local entry point (experimental)
+## Resumable local development
 
 From the repository root, after restoring the pinned original OpenAI source
 and Lean 4.34.1/Mathlib project:
 
 ```sh
-python3 rust/lean_eth_reference/tools/lean_rust.py list
-python3 rust/lean_eth_reference/tools/lean_rust.py export PROGRAM_ID
-python3 rust/lean_eth_reference/tools/lean_rust.py generate PROGRAM_ID
+python3 rust/lean_eth_reference/tools/lean_rust.py doctor
+python3 rust/lean_eth_reference/tools/lean_rust.py list --filter membership
 python3 rust/lean_eth_reference/tools/lean_rust.py build PROGRAM_ID
 python3 rust/lean_eth_reference/tools/lean_rust.py status PROGRAM_ID
 ```
 
+The `doctor` command checks existing source, Lake, Mathlib and Lean pins
+without fetching or modifying them. `build` exports, generates and type-checks
+one selected declaration, reusing validated tables where possible. `status`
+prints a compact developer view; use `status PROGRAM_ID --json` for scripts.
+For targeted stages, use `export PROGRAM_ID` and `generate PROGRAM_ID`.
+
+`verify PROGRAM_ID` currently refuses explicitly. Exporting and type-checking
+do **not** compare independently executed Lean and Rust machine-state traces.
+
 Use `--upstream`, `--lake-root` and `--output-dir` before the subcommand
-to override local paths. The default output is `.lean-rust/`, keyed by pinned
-source identity and declaration. The driver reuses a cached table only after
-checking the source Git blob, receipt, SHA-256, and canonical instruction ABI.
+to override local paths. The default output is `.lean-rust/`, keyed by pinned source, declaration
+and exporter code fingerprint. The driver reuses a cached table only after
+checking pinned source and toolchain identity, exporter fingerprint, receipt,
+SHA-256, and canonical instruction ABI.
 A failed export does not produce a success receipt. Generation still invokes
 the strict receipt-checking compiler. `build --verify` deliberately refuses:
 independent Lean/Rust machine-state differential verification has **not** yet

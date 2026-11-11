@@ -78,7 +78,7 @@ fn registry_is_source_pinned_unique_and_topologically_sorted() {
         assert_eq!(nodes[id].machine, Machine::Local, "{id}");
     }
     assert_eq!(nodes["frontend_normalization"].status, Status::Executable);
-    assert_eq!(nodes["frontend"].status, Status::Stub);
+    assert_eq!(nodes["frontend"].status, Status::Executable);
 }
 
 #[test]
@@ -306,7 +306,7 @@ fn leaf_callbacks_cannot_be_replaced_by_skip_or_diagnostic_programs() {
 #[test]
 fn outer_and_noncomputable_fallback_cannot_return_a_fake_answer() {
     use remaining::outer as o;
-    assert_refuses(o::frontend(), "Native.frontendCommand");
+    o::frontend().expect("source Native frontend must construct");
     // Physical positivity suffix is implemented, not a CNF counting oracle.
     o::answer_suffix().expect("source positivity suffix must compile");
     for cutoff in [0, 1, 64, usize::MAX] {

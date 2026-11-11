@@ -717,6 +717,8 @@ pub mod native_normalization_full;
 pub mod native_outer_normalization;
 /// Source-fixed unary header reader and binary length initializer.
 pub mod native_frontend_header;
+/// Complete original physical Native.frontendCommand on the 80x1220 machine.
+pub mod native_frontend;
 pub mod native_terminal;
 pub mod native_membership;
 

@@ -92,7 +92,7 @@ fn unported_query_and_leaf_commands_refuse_all_parameters() {
 #[test]
 fn outer_count_and_primitive_do_not_fall_back_to_semantic_enumeration() {
     use remaining::{outer, primitive};
-    refused(outer::frontend());
+    outer::frontend().expect("complete source Native frontend must construct");
     refused(outer::finite_fallback(0, Cmd::Skip));
     refused(outer::finite_fallback(usize::MAX, Cmd::Skip));
     refused(outer::setup(2));

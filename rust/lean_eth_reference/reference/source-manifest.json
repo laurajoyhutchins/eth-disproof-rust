@@ -10,6 +10,18 @@
     "lean/OAI/Algorithms/SubexponentialSAT/BankRoutines.lean": "d028db9c8d6ac9103eee7de3264e88021605f2bc",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/HighIncidenceProgramBranches.lean": "b1ceeb52301430094019901fecf7ae7f8bdb3fa0",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighCountSeed.lean": "7c839a9ff83451328fe5e1795a25dcb324778d82",
-    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighCountInit.lean": "d949b85a1942bec6bdf8a7656b6d15f111e6e9d9"
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighCountInit.lean": "d949b85a1942bec6bdf8a7656b6d15f111e6e9d9",
+    "lean/OAI/Algorithms/SubexponentialSAT/ExecCNFTupleOdometer.lean": "01d22a13324e320f773a7c7a8812836295d377fc",
+    "lean/OAI/Algorithms/SubexponentialSAT/ExecCNFTupleEnumeration.lean": "68e634091873f15744839510d82b10f9574d2440",
+    "lean/OAI/Algorithms/SubexponentialSAT/CounterForPrograms.lean": "a81a8a0bbb3020f60488d79205a46b515c4ea3a5",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighQueryAdapter.lean": "6370c2049b3273c257d530d78cd76cb910e6cb22",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighQueryProgram.lean": "9204f412020744ec3697e724b83b370f7158ea38",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryStreamProgram.lean": "c2fb29983bb33229d5cf60729cd3d1e37b9b00ca",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LeafHighContextProgramBase.lean": "51b35a7a90d1cbeb6c3aa0213a3b722c9c5cbabc",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LeafHighContextProgram.lean": "5da082b44e3639442bcc3e61039f3ff75c1cdce6",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/HighIncidenceProgramMask.lean": "d596c4c1cc60f8ea9b814722a577a7b24a36a07f",
+    "lean/OAI/Algorithms/SubexponentialSAT/Subexp/AssignmentRecordViews.lean": "c5bfc0d14c24156454eb60deb8b89b0ff2a17231",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/HighIncidenceProgramRestriction.lean": "04a8acd676a5571294d5db8f5c3325857afe54ec",
+    "lean/OAI/Algorithms/SubexponentialSAT/ParserProgram.lean": "9461361e12630b91419b6788ea8d2af4b2de5e9b"
   }
 }

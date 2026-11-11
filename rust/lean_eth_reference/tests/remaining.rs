@@ -45,7 +45,10 @@ fn dependency_spine_is_ordered_and_machine_bounds_are_declared() {
 fn unported_query_and_leaf_commands_refuse_all_parameters() {
     use remaining::{high_query, leaf, query};
     let bootstrap = query::signature_bootstrap().unwrap();
-    assert_eq!((bootstrap.input_stack(), bootstrap.output_stack()), (307, 647));
+    assert_eq!(
+        (bootstrap.input_stack(), bootstrap.output_stack()),
+        (307, 647)
+    );
     refused(query::pair_expand());
     refused(query::signature_loader());
     refused(query::query_visitor());

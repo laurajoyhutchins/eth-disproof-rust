@@ -173,7 +173,10 @@ fn source_machine_dimensions_are_enforced_at_compile_time() {
 fn unfinished_query_stages_return_the_exact_source_identity() {
     use remaining::query as q;
     let bootstrap = q::signature_bootstrap().unwrap();
-    assert_eq!((bootstrap.input_stack(), bootstrap.output_stack()), (307, 647));
+    assert_eq!(
+        (bootstrap.input_stack(), bootstrap.output_stack()),
+        (307, 647)
+    );
     assert_refuses(q::pair_expand(), "PairNativeSetup.expandCaller");
     assert_refuses(q::signature_loader(), "SignatureTupleLoader.loadHead");
     assert_refuses(q::query_visitor(), "QueryVisitorProgram.visitor");

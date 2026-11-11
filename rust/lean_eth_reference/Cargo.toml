@@ -1,0 +1,14 @@
+[package]
+name = "lean-eth-reference"
+version = "0.16.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "Source-pinned Rust port of OpenAI Lean ETH finite semantics and BitProgram instructions"
+
+[lib]
+name = "lean_eth_reference"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lean-eth-reference"
+path = "src/main.rs"

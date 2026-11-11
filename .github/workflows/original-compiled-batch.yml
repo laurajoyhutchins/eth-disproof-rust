@@ -8,6 +8,8 @@ on:
       - 'rust/lean_eth_reference/tools/export_source_program.lean'
       - 'rust/lean_eth_reference/src/bin/lean-original-codegen.rs'
       - 'rust/lean_eth_reference/tools/*source*.py'
+      - 'rust/lean_eth_reference/tools/lean_rust.py'
+      - 'rust/lean_eth_reference/tools/test_lean_rust.py'
       - '.github/workflows/original-compiled-batch.yml'
   workflow_dispatch:
 
@@ -57,6 +59,8 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s rust/lean_eth_reference/tools \
             -p 'test_source_compiled.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools \\
+            -p 'test_lean_rust.py' -v
           python3 rust/lean_eth_reference/tools/extract_compiled_catalog.py \
             --upstream "$PINNED_ORIGINAL_SOURCE" --query-closure \
             --output "$RUNNER_TEMP/query-compiled-candidates.json"

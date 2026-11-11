@@ -19,6 +19,16 @@ DEFINITION = re.compile(
     r"\s+inputStack\s*:=\s*(\d+)\s*\n"
     r"\s+outputStack\s*:=\s*(\d+)\s*\n"
     r"\s+entry\s*:=\s*(\d+)\s*\n"
+    r"\s+code\s*(?:(\w+)\s*:=\s*match\s+(\w+)\.val\s*with|:=\s*!\[|:=\s*fun\s+(\w+)\s*=>)"
+)
+# Preserve the original 61-table identifiers as the extractor learns new
+# finite syntax. Existing catalog IDs are stable cross-version references.
+LEGACY_DEFINITION = re.compile(
+    r"(?m)^(?:def|abbrev)\s+(\w+)\s*:\s*(?:[\w.]+\.)?Program\s+"
+    r"(\d+)\s+(\d+)\s+(\d+)\s+where\s*\n"
+    r"\s+inputStack\s*:=\s*(\d+)\s*\n"
+    r"\s+outputStack\s*:=\s*(\d+)\s*\n"
+    r"\s+entry\s*:=\s*(\d+)\s*\n"
     r"\s+code\s*(?:q\s*:=\s*match\s*q.val\s*with|:=\s*!\[)"
 )
 ARITIES = {
@@ -64,13 +74,15 @@ def parse_body(s: str, position: int, label_count: int) -> list[str]:
         if not m:
             raise ValueError("missing fixed vector code")
         words = m[1].split(",")
-    else:
-        m = re.search(r"\n\s*code q := match q\.val with\n((?:\s*\|[^\n]+(?:\n|$))+)", tail)
+    elif re.search(r"\n\s*code\s+\w+\s*:=\s*match", tail[:180]):
+        m = re.search(r"\n\s*code\s+(\w+)\s*:=\s*match\s+(\w+)\.val\s+with\n((?:[ \t]*\|[^\n]+(?:\n|$))+)", tail)
+        if m and m[1] != m[2]:
+            raise ValueError("match variable mismatch")
         if not m:
             raise ValueError("missing fixed label-match code")
         cases = {}
         fallback = None
-        arms = m[1].splitlines()
+        arms = m[3].splitlines()
         for pos, arm in enumerate(arms):
             v = re.fullmatch(r"\s*\|\s*(\d+|_)\s*=>\s*(\.[\w\d\s]+)", arm)
             if not v:
@@ -90,6 +102,28 @@ def parse_body(s: str, position: int, label_count: int) -> list[str]:
         words = [cases.get(i, fallback) for i in range(label_count)]
         if any(w is None for w in words):
             raise ValueError("missing original label")
+    elif re.search(r"\n\s*code\s*:=\s*fun\s+\w+\s*=>", tail[:180]):
+        m = re.search(r"\n\s*code\s*:=\s*fun\s+(\w+)\s*=>\s*(.*?)(?=\n\n(?:theorem|lemma|def|abbrev|end|namespace|/-|@\[)|\Z)", tail, re.S)
+        if not m:
+            raise ValueError("nonliteral function code")
+        var, expr = m.groups()
+        expr = re.sub(r"\s+", " ", expr).strip()
+        words = []
+        while True:
+            case = re.match(r"if\s+" + re.escape(var) + r"\s*=\s*(\d+)\s+then\s+(\.\w+(?:\s+[\w]+)*)\s+else\s+", expr)
+            if case is None:
+                break
+            if int(case[1]) != len(words):
+                raise ValueError("nonconsecutive finite function case")
+            words.append(case[2])
+            expr = expr[case.end():]
+        if not re.fullmatch(r"\.\w+(?:\s+[\w]+)*", expr):
+            raise ValueError("unsupported finite function fallback")
+        words.extend([expr] * (label_count - len(words)))
+        if len(words) != label_count:
+            raise ValueError("function emits too many finite labels")
+    else:
+        raise ValueError("unsupported original code constructor")
     if len(words) != label_count:
         raise ValueError(f"literal label count mismatch ({len(words)} != {label_count})")
     return [parse_instr(word, symbols) for word in words]
@@ -102,9 +136,18 @@ def produce(upstream: Path) -> tuple[str, str, list[str]]:
         raw = source.read_bytes()
         data = raw.decode("utf-8")
         matches = list(DEFINITION.finditer(data))
-        for occurrence, m in enumerate(matches):
-            name, r, s, labels, inp, out, entry = m.groups()
+        legacy = {m.start(): i for i, m in enumerate(LEGACY_DEFINITION.finditer(data))}
+        new_ordinal = len(legacy)
+        for m in matches:
+            occurrence = legacy.get(m.start())
+            if occurrence is None:
+                occurrence = new_ordinal
+                new_ordinal += 1
+            name, r, s, labels, inp, out, entry = m.groups()[:7]
             r, s, labels, inp, out, entry = map(int, (r, s, labels, inp, out, entry))
+            if m.group(8) != m.group(9):
+                failures.append(f"{source}: match variable mismatch")
+                continue
             relative = source.relative_to(upstream).as_posix()
             identifier = source.relative_to(upstream / BASE).with_suffix("").as_posix().replace("/", "_").replace(".", "_").lower()
             identifier = f"{identifier}_{name.lower()}_{occurrence}"

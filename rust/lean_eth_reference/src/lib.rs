@@ -659,4 +659,7 @@ pub mod bit_program;
 pub mod native_high;
 pub mod native_tuple;
 
+pub mod native_layout;
+pub mod native_nodes;
+pub mod native_pair_setup;
 pub mod native_query_prefix;

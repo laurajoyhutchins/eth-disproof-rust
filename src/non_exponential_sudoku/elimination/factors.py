@@ -12,6 +12,7 @@ from ..runtime.statistics import Counters
 
 FactorKey = int | tuple[int, int]
 ChildFactor = Callable[[FactorKey, tuple[int, ...], tuple[int, ...]], NestedCoords]
+ZeroProver = Callable[[FactorKey, tuple[int, ...], tuple[int, ...]], bool]
 
 @dataclass
 class Factor:
@@ -24,7 +25,8 @@ class FactorBuilder:
                  factor_scopes: Mapping[FactorKey, tuple[int, ...]],
                  domains: Sequence[range], ring: NestedRing, stats: Counters,
                  evaluate_child: ChildFactor, budget: ModeBudget,
-                 packet_row_caps: bool = False) -> None:
+                 packet_row_caps: bool = False,
+                 prove_zero: ZeroProver | None = None) -> None:
         self.modes=modes
         self.factor_scopes=factor_scopes
         self.domains=domains
@@ -37,6 +39,7 @@ class FactorBuilder:
         self.CapacityError=budget.CapacityError
         self.factors=budget.factors
         self.packet_row_caps=packet_row_caps
+        self.prove_zero=prove_zero
 
     def active_components(self) -> Mapping[FactorKey, tuple[int, ...]]:
         # Connectivity is determined by the actual local factors, not just
@@ -69,6 +72,8 @@ class FactorBuilder:
                 work=self.budget.work,
             )
             for assignment in assignments:
+                if self.prove_zero is not None and self.prove_zero(group, scope, assignment):
+                    continue
                 self.budget.charge_child()
                 value=self.evaluate_child(group,scope,assignment)
                 if value!=self.R.zero:

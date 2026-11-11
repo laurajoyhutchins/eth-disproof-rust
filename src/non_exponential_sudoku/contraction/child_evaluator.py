@@ -14,6 +14,8 @@ from ..core.lazy_coefficients import NestedCoords
 from .children import ChildComponent
 from .packets import EvaluationContext
 from .zero_support import certify_zero
+from .pre_factor_support import prepare_factor_support, PreparedFactorSupport
+from ..runtime.cache import BudgetedLRU
 if TYPE_CHECKING:
     from .engine import ContractionEngine
 
@@ -40,6 +42,87 @@ class ChildEvaluator:
             )
             contractor._frames[depth] = workspace
         self._workspace = workspace
+        self._pre_factor_cache: BudgetedLRU[object, PreparedFactorSupport] | None = (
+            BudgetedLRU(contractor.config.recursion.pre_factor_support_cache,
+                        shared=contractor.shared_cache)
+            if contractor.config.recursion.zero_support.pre_factor else None)
+
+    def prove_zero(self, group: int, assignment: Sequence[int], *,
+                   mode_indices: Sequence[int] | None = None,
+                   component: ChildComponent | None = None) -> bool:
+        """Prove factor support empty before exact child preparation."""
+        c = self.contractor
+        policy = c.config.recursion.zero_support
+        cache = self._pre_factor_cache
+        if cache is None:
+            return False
+        selected_modes = (self.modes if mode_indices is None else
+                          [self.modes[j] for j in mode_indices])
+        before_evictions = self._workspace.plans.evictions
+        plan, hit = self._workspace.get_plan(
+            self.net, self.packing, group, self.coordinate, component)
+        c.stats.child_plan_cache_evictions += (
+            self._workspace.plans.evictions - before_evictions)
+        c.stats.child_plan_cache_peak_estimated_bytes = max(
+            c.stats.child_plan_cache_peak_estimated_bytes,
+            self._workspace.plans.peak_bytes)
+        if hit:
+            c.stats.child_plan_cache_hits += 1
+        else:
+            c.stats.compiled_child_plans += 1
+        c.stats.pre_factor_attempts += 1
+        charge('pre_factor_support_attempts')
+        started = perf_counter_ns() if c.work_trace is not None else 0
+        prepared = cache.get(plan)
+        if prepared is None:
+            c.stats.pre_factor_cache_misses += 1
+            prepared = prepare_factor_support(plan, self.ring, policy)
+            if prepared is None:
+                c.stats.pre_factor_unsupported += 1
+                return False
+            c.stats.pre_factor_kept_evaluations += prepared.kept_evaluations
+            charge('pre_factor_support_rows', prepared.kept_evaluations)
+            cache.put(plan, prepared, prepared.estimated_owned_bytes())
+            c.stats.pre_factor_cache_peak_bytes = max(
+                c.stats.pre_factor_cache_peak_bytes, cache.peak_bytes)
+        else:
+            c.stats.pre_factor_cache_hits += 1
+        result = prepared.certify(selected_modes, tuple(assignment), policy)
+        c.stats.pre_factor_evaluated_rows += result.evaluated_rows
+        charge('pre_factor_support_rows', result.evaluated_rows)
+        if result.verdict == 'unsupported':
+            c.stats.pre_factor_unsupported += 1
+        if result.verdict == 'zero':
+            # The paper path checks this invariant for all exact children.
+            # A certified child does not materialize; check its compiled
+            # geometry instead so a zero proof cannot bypass admission.
+            if c.config.schedule == 'paper':
+                if 32 * plan.edges > 3 * self.net.edges:
+                    raise AssertionError('Certified child violates 3M/32 wire bound')
+                largest = max((len(v.ports) for v in plan.kept), default=0)
+                largest = max(largest, *(len(v.edges) for v in plan.packet_ports), 0)
+                c.stats.checked_child_edges += 1
+                c.stats.maximum_observed_child_degree = max(
+                    c.stats.maximum_observed_child_degree, largest)
+                if largest > ceil_ninth_tenths(c.config.s):
+                    raise AssertionError('Certified child degree invariant violated')
+            c.stats.pre_factor_certificates += 1
+            charge('pre_factor_zero_certificates')
+            if c.work_trace is not None:
+                c.work_trace.observe(
+                    operation='child_zero_certificate',
+                    topology=(tuple(v.ports for v in plan.kept),
+                              tuple(v.edges for v in plan.packet_ports)),
+                    exact_input=(id(self.net), id(self.packing), id(self.ring),
+                                 self.coordinate, group, component,
+                                 tuple(selected_modes), tuple(assignment), self.t, self.z),
+                    started_ns=started, output=self.ring.zero)
+            return True
+        return False
+
+    def close_pre_factor(self) -> None:
+        if self._pre_factor_cache is not None:
+            self._pre_factor_cache.clear()
 
     def evaluate(self, group: int, assignment: Sequence[int], *,
                  mode_indices: Sequence[int] | None = None,
@@ -88,7 +171,7 @@ class ChildEvaluator:
         # Only a local-support depletion certificate may bypass recursion.
         # Unproven or over-budget children retain their exact evaluator.
         policy = c.config.recursion.zero_support
-        if policy.enabled:
+        if policy.enabled and (not policy.pre_factor or c.config.mode.strategy == 'enumerate'):
             c.stats.zero_support_attempts += 1
             certificate = certify_zero(child, self.ring, policy)
             c.stats.zero_support_evaluated_rows += certificate.evaluated_rows

@@ -20,6 +20,8 @@ VARIANTS={
     'plans':RecursionConfig(child_plans=True),
     'certified-zero':RecursionConfig(child_plans=True,
         zero_support=ZeroSupportPolicy(enabled=True)),
+    'pre-factor-certified-zero':RecursionConfig(child_plans=True,
+        zero_support=ZeroSupportPolicy(enabled=True, pre_factor=True)),
     'packet':RecursionConfig(child_plans=False,native_packet=True),
     'leaf':RecursionConfig(child_plans=False,native_leaf=True),
     'leaf-plans':RecursionConfig(child_plans=True,native_leaf=True),

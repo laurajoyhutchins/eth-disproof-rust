@@ -790,3 +790,18 @@ mod canonical_clause_tests {
         );
     }
 }
+
+/// Source-defined signature head-factor construction.
+pub mod native_head_factors;
+
+/// Source-defined signature head selection.
+pub mod native_head_selection;
+
+/// Source-linked signed integer arithmetic.
+pub mod native_signed_arithmetic;
+
+/// Source-linked signed matrix preprocessing.
+pub mod native_matrix_preprocess;
+
+/// Source-linked canonical signature synthesis.
+pub mod native_signature;

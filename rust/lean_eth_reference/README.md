@@ -43,7 +43,7 @@ execution of the proposed fast algorithm.
 The [single evidence matrix](docs/evidence.md) gives the accepted execution
 claims, reproduction steps, outstanding Lean/Rust comparison, and separate
 TM2 accounting obligations. Read [remaining stages](docs/remaining-lean-port.md)
-for the dependency graph and [the history guide](docs/reading-the-history.md)
+for the dependency graph, [the signed-signature pipeline](docs/signed-signature-pipeline.md) for its separate source-primitive slice, and [the history guide](docs/reading-the-history.md)
 for the reconstructed first-parent study sequence.
 
 ## Local Rust checks

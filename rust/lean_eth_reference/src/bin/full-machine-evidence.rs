@@ -223,8 +223,7 @@ fn native_metrics(path: &Path, profiles: &BTreeMap<String, Profile>) -> Fallible
     if header.len() != CSV_FIELDS.len() || CSV_FIELDS.iter().any(|s| !header.contains(s)) {
         return Err("invalid native profiler CSV header".into());
     }
-    let mut record: BTreeMap<String, NativeCase> =
-        BTreeMap::new();
+    let mut record: BTreeMap<String, NativeCase> = BTreeMap::new();
     for (line_no, line) in rows.enumerate() {
         let fields: Vec<_> = line.split(',').collect();
         if fields.len() != CSV_FIELDS.len() {

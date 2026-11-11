@@ -72,7 +72,7 @@ fn unported_query_and_leaf_commands_refuse_all_parameters() {
     refused(leaf::local_command(0));
     refused(leaf::local_program(3));
     refused(leaf::execution(Cmd::Skip));
-    refused(leaf::terminal_dispatch(Cmd::Skip));
+    leaf::terminal_dispatch(Cmd::Skip).expect("source generic dispatch must compile");
     refused(leaf::command(3));
     refused(leaf::program(3));
 }

@@ -673,6 +673,9 @@ pub mod finite_fallback;
 /// Source-defined native count-word positivity suffix.
 pub mod native_answer;
 
+/// Physical source-defined ambient header extraction, not the full frontend.
+pub mod native_ambient;
+
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;
 

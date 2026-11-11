@@ -1,70 +1,45 @@
-# Exact Sudoku and counting experiments
+# ETH Disproof: Rust Port
 
-An executable study of exact generalized-Sudoku counting, recursive tensor
-contraction, and related #SAT constructions. **No worst-case subexponential
-algorithm for generalized Sudoku has been proved here.** An exact count is a
-correctness result for a supported input, not a running-time theorem.
+An experimental Rust port of executable machinery from OpenAI's [*The Exponential Time Hypothesis is False*](https://github.com/openai/math/blob/main/lean/docs/378.md) Lean development.
 
-## The objects
+**Status:** Incomplete research implementation. This repository does **not** independently verify the ETH result, reproduce the complete native counting algorithm, or establish its time and space bounds. Executable components and unfinished proof obligations are kept distinct.
 
-| Object | Code | Mathematical role |
-| --- | --- | --- |
-| `Puzzle` / `CNFFormula` | `sudoku/three_cnf.py`, `eth/cnf.py` | Input and count semantics |
-| `Padic`, jets and `Network` | `core/` | Exact coefficient rings and tensor graphs |
-| `ContractionEngine` | `contraction/`, `elimination/`, `recovery/` | Recursive contraction, modes and coefficient recovery |
-| Candidate obligations | `sudoku/state.py` | Shared row/column/box exact-cover representation |
-| Frontier counters | `sudoku/frontier.py`, `sudoku/components.py`, `sudoku/separators.py` | Exact dynamic programming and conditional factorization |
-| Symmetry counters | `sudoku/symmetry.py`, `sudoku/suffix_graph.py` | Certified finite-group and hypergraph reductions |
-| Decision diagrams | `sudoku/weighted_zdd.py`, `sudoku/hybrid.py` | Exact weighted state-map compression |
-| ETH reference | `eth/` | CNF reductions, separation, interpolation and explicit admission |
+## Build and test
 
-The modules implement **distinct algorithms** with distinct resource models;
-there is no claim that they are interchangeable solvers or collectively imply
-a subexponential bound.
+Use Rust **1.99.1**. The crate has no external Cargo dependencies.
 
-See the [solver architecture and evidence map](docs/system-map.md) for the
-integrated algorithm families, reproducible experiments, PR lineage, and
-remaining proof obligations.
-
-## Reproduce the claims
-
-```bash
-python -m pip install -e '.[test]'
-python -m pytest -q -m checkpoint    # Pure Python; optional backends may skip
-python -m pytest -q -m integration   # Slower cross-component comparisons
+```sh
+cd rust/lean_eth_reference
+cargo fmt --all -- --check
+cargo test --locked --offline --all-targets
+cargo clippy --locked --offline --all-targets -- -D warnings
 ```
 
-Optional independent backends are intentionally separate:
+For a small CNF counting example:
 
-```bash
-python -m pip install -e '.[test,native,flint-oracle,sat-oracle,math-audit]'
-python build_native.py
-python scripts/verify.py checkpoint --require-backend flint --require-backend ganak --require-backend native
+```sh
+printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
 ```
 
-For the mathematical arguments see [Sudoku state algebra](docs/sudoku.md),
-[CNF and interpolation](docs/eth.md), [recursive contraction](docs/mathematics.md),
-and [open proof obligations](docs/claims.md). Run `git log --reverse --format='%h %s'`
-to read the repository in conceptual order. Commits were **constructed from the
-finished source tree** to make dependencies explainable, not to recreate the
-chronology of experimentation.
 
-**Licensing:** no redistribution license has been selected. See [licensing](docs/licensing.md).
+## What is here
 
-## Run a complete bounded CNF reference
+- [`rust/lean_eth_reference/`](rust/lean_eth_reference/): finite CNF semantics and encodings, a physical bit-program interpreter, selected source-defined machine stages, regression tests, and explicit unavailable stages.
+- [Source manifest](rust/lean_eth_reference/reference/source-manifest.json): pinned Lean source objects from [`openai/math` revision `4eaee87`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
+- [Implementation detail](rust/lean_eth_reference/README.md): coverage, physical-machine boundaries, and known gaps.
 
-For a tiny executable path through disjoint leaves, count-preserving
-preprocessing, certified measurements, separated Taylor sums and Hermite
-recovery:
+Not yet established: a complete executable native counting path, genuine pinned Lean/Rust differential parity, TM2 primitive time/tape refinement, or the claimed asymptotic complexity guarantee. Missing Lean/Mathlib runtime artifacts must not be replaced with simulated traces or golden fixtures.
 
-```bash
-python -m scripts.eth_reference
-python -m scripts.eth_reference --dimacs example.cnf --output evidence.json
-python -m pytest -q tests/eth/test_end_to_end_pipeline.py
+## History and research branches
+
+`main` has a source-linked, instructional first-parent history, while original development ancestry is retained. Read it with:
+
+```sh
+git log --first-parent --reverse --oneline main
 ```
 
-This is an **experimental finite-parameter reference**, not the manuscript's
-large-parameter theorem instantiation. It uses an explicitly recorded
-two-assignment base case only for at most one active variable, never a
-general brute-force or Ganak fallback. If any branch exceeds its budgets,
-the entire count refuses. See [ETH end-to-end semantics](docs/eth.md).
+See the [history guide](rust/lean_eth_reference/docs/reading-the-history.md). Earlier Python/Cython Sudoku research remains on [`python/sudoku-research`](../../tree/python/sudoku-research); it is not part of the Rust build.
+
+## License and attribution
+
+Original contributions are provided under the [MIT license](LICENSE). Code and other materials adapted from [`openai/math`](https://github.com/openai/math) remain subject to its **Apache-2.0** terms. See [`LICENSE-APACHE`](LICENSE-APACHE) and [`NOTICE`](NOTICE). The Rust crate declares `MIT AND Apache-2.0` to reflect both sets of obligations.

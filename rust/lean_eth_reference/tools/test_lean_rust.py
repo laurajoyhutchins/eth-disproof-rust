@@ -26,7 +26,10 @@ class DriverTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             folder=Path(temp)
             self.assertFalse(valid_cached(folder,REC))
-            raw=b"untrusted example"
+            raw=(f"PIN|example_0|{SOURCE_SHA}|{REC['git_blob']}\n"
+                 "PROGRAM|example_0|1|1|1|0|0|0\n"
+                 "CODE|example_0|0|halt\n"
+                 "END|example_0|1\n").encode("ascii")
             (folder/"example_0.table").write_bytes(raw)
             receipt={"source_commit":SOURCE_SHA,"source_git_blob":REC["git_blob"],
                      "declaration":REC["fqn"],"status":"EXPORTED_FROM_PINNED_LEAN",

@@ -22,6 +22,7 @@ steps:
     args:
       - -ceu
       - |
+        rustup component add rustfmt clippy
         test -f Cargo.lock
         cargo fmt --all -- --check
         cargo test --locked --offline --all-targets

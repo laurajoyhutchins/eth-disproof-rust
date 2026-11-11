@@ -1,7 +1,6 @@
 {
   "name": "nonexp-sudoku-pr-rust",
   "description": "Independent Rust ETH port verification; no Python/Cython checkpoint",
-  "filename": "cloudbuild.rust.yaml",
   "serviceAccount": "projects/project-6b810532-a302-48dc-b56/serviceAccounts/nonexp-sudoku-pr-ci@project-6b810532-a302-48dc-b56.iam.gserviceaccount.com",
   "approvalConfig": {
     "approvalRequired": false
@@ -15,5 +14,35 @@
   },
   "includedFiles": [
     "rust/lean_eth_reference/**"
-  ]
+  ],
+  "build": {
+    "steps": [
+      {
+        "id": "admit-source",
+        "name": "gcr.io/cloud-builders/git",
+        "entrypoint": "bash",
+        "args": [
+          "-ceu",
+          "expected='$COMMIT_SHA'\nrevision='$REVISION_ID'\n[[ \"$$expected\" =~ ^[0-9a-f]{40}$$ ]]\ntest \"$$expected\" = \"$$revision\"\ntest -d .git\ntest \"$$(git rev-parse --verify HEAD)\" = \"$$expected\"\ntest -z \"$$(git status --porcelain --untracked-files=no)\"\n"
+        ]
+      },
+      {
+        "id": "rust-port",
+        "name": "rust:1.99.1-bookworm",
+        "dir": "rust/lean_eth_reference",
+        "entrypoint": "bash",
+        "waitFor": [
+          "admit-source"
+        ],
+        "args": [
+          "-ceu",
+          "rustup component add rustfmt clippy\ntest -f Cargo.lock\ncargo fmt --all -- --check\ncargo test --locked --offline --all-targets\ncargo clippy --locked --offline --all-targets -- -D warnings\n"
+        ]
+      }
+    ],
+    "timeout": "900s",
+    "options": {
+      "logging": "CLOUD_LOGGING_ONLY"
+    }
+  }
 }

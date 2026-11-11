@@ -687,6 +687,8 @@ pub mod native_loader_frames;
 /// Source-defined pruned difference-pair streaming controller.
 pub mod native_difference_pairs;
 
+pub mod native_head_scatter;
+pub mod native_head_support;
 /// Physical source-defined attained-signature controller and level initializer.
 pub mod native_signature_tuple;
 
@@ -695,8 +697,6 @@ pub mod native_signature_frames;
 
 /// Source-defined binary fuel and attained-signature generator initialization.
 pub mod native_signature_generator;
-pub mod native_head_scatter;
-pub mod native_head_support;
 
 /// Executable source-defined predecessor-key equality, freshness gate and rescan setup/cleanup.
 pub mod native_signature_rescan;

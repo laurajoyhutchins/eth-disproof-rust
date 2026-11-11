@@ -678,15 +678,15 @@ pub mod bit_program;
 pub mod native_high;
 pub mod native_tuple;
 
+pub mod finite_fallback;
+pub mod native_ambient;
+pub mod native_answer;
 pub mod native_layout;
+pub mod native_membership;
 pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;
-pub mod finite_fallback;
-pub mod native_answer;
-pub mod native_ambient;
 pub mod native_terminal;
-pub mod native_membership;
 
 /// Exact framed-record iteration and fixed-control membership program.
 pub mod native_record_membership;

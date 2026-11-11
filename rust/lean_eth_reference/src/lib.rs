@@ -672,6 +672,12 @@ pub mod native_ambient;
 pub mod native_terminal;
 pub mod native_membership;
 
+/// Exact framed-record iteration and fixed-control membership program.
+pub mod native_record_membership;
+
+/// Source physical terminal classification and guarded 80x1220 output.
+pub mod native_terminal_classifier;
+
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;
 

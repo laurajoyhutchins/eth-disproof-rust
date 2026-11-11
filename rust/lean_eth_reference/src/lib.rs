@@ -676,6 +676,9 @@ pub mod native_answer;
 /// Physical source-defined ambient header extraction, not the full frontend.
 pub mod native_ambient;
 
+/// Physical terminal count producers; source classifier remains unsupported.
+pub mod native_terminal;
+
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;
 

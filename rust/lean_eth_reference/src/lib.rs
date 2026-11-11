@@ -669,6 +669,8 @@ pub mod native_query_prefix;
 pub mod finite_fallback;
 pub mod native_answer;
 pub mod native_ambient;
+/// Source-defined post-normalization body placement and ambient header suffix.
+pub mod native_frontend_tail;
 pub mod native_terminal;
 pub mod native_membership;
 

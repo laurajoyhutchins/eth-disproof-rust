@@ -694,3 +694,6 @@ pub mod native_head_support;
 
 /// Source-defined physical suspended-frame protocol for signature tuple DFS.
 pub mod native_signature_frames;
+
+/// Source-defined binary fuel and attained-signature generator initialization.
+pub mod native_signature_generator;

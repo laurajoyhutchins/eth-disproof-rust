@@ -2,35 +2,34 @@ name: Rust ETH port
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Keep the latest PR checkpoint, but never cancel verification of a main commit.
 concurrency:
   group: rust-eth-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   rust:
     name: rust
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 10
     steps:
+      # PRs test the proposed merge, not an isolated branch head.
       - uses: actions/checkout@v4
         with:
-          # Check the submitted source commit, including stacked PRs.
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: Install pinned Rust toolchain
-        run: |
-          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
-          rustup default 1.99.1
-      - name: Formatting (workspace)
+          persist-credentials: false
+      # rust-toolchain.toml pins Rust, rustfmt and Clippy. rustup installs it on demand.
+      - name: Formatting
         run: cargo fmt --all -- --check
+      - name: Fetch locked dependencies
+        run: cargo fetch --locked
       - name: Exact Rust tests
-        run: cargo test --locked --offline --all-targets
+        run: cargo test --locked --offline --workspace --all-targets
       - name: Strict Clippy
-        run: cargo clippy --locked --offline --all-targets -- -D warnings
+        run: cargo clippy --locked --offline --workspace --all-targets -- -D warnings

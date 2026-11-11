@@ -13,6 +13,7 @@
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighCountInit.lean": "d949b85a1942bec6bdf8a7656b6d15f111e6e9d9",
     "lean/OAI/Algorithms/SubexponentialSAT/ExecCNFTupleOdometer.lean": "01d22a13324e320f773a7c7a8812836295d377fc",
     "lean/OAI/Algorithms/SubexponentialSAT/ExecCNFTupleEnumeration.lean": "68e634091873f15744839510d82b10f9574d2440",
+    "lean/OAI/Algorithms/SubexponentialSAT/CounterPrograms.lean": "5e22b28bfa71635b25b35a2e97295ec8705b678c",
     "lean/OAI/Algorithms/SubexponentialSAT/CounterForPrograms.lean": "a81a8a0bbb3020f60488d79205a46b515c4ea3a5",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighQueryAdapter.lean": "6370c2049b3273c257d530d78cd76cb910e6cb22",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/HighQueryProgram.lean": "9204f412020744ec3697e724b83b370f7158ea38",

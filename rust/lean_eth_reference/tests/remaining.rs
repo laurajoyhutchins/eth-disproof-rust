@@ -85,7 +85,7 @@ fn outer_count_and_primitive_do_not_fall_back_to_semantic_enumeration() {
     refused(outer::finite_fallback(usize::MAX, Cmd::Skip));
     refused(outer::setup(2));
     refused(outer::dfs(2, Cmd::Skip));
-    refused(outer::answer_suffix());
+    outer::answer_suffix().expect("source positivity suffix must compile");
     refused(outer::outer_command(2, Cmd::Skip));
     refused(outer::entry(0, Cmd::Skip));
     refused(outer::counting_program(100, 2, Cmd::Skip));

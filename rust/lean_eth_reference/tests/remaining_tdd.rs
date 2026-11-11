@@ -251,7 +251,7 @@ fn leaf_callbacks_cannot_be_replaced_by_skip_or_diagnostic_programs() {
 fn outer_and_noncomputable_fallback_cannot_return_a_fake_answer() {
     use remaining::outer as o;
     assert_refuses(o::frontend(), "Native.frontendCommand");
-    assert_refuses(o::answer_suffix(), "Native.answerCommand");
+    o::answer_suffix().expect("source positivity suffix must compile");
     for cutoff in [0, 1, 64, usize::MAX] {
         assert_refuses(
             o::finite_fallback(cutoff, Cmd::Skip),

@@ -1,3 +1,5 @@
+import Mathlib
+
 /-! Lightweight syntax/elaboration canary for full trace observer state setup.
     Run before compiling the original ~9k-module dependency closure. -/
 structure ObserverSyntaxState where

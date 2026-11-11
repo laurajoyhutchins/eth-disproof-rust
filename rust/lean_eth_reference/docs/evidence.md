@@ -8,9 +8,9 @@ hash is not the same thing as executing the original Lean code.
 
 | Capability | Entry point / evidence | What is established | Not established |
 | --- | --- | --- | --- |
-| Bounded semantic #SAT oracle | `cargo run --bin lean-eth-reference`; Rust unit tests | Finite CNF parsing and small-instance counts via bounded enumeration | The source-defined Lean counting algorithm or its complexity bound |
-| Source-defined native frontend | `cargo run --bin eth-frontend`; `docs/m2-runnable-frontend.md`; native frontend tests | Physical Rust `BitProgram` execution of the pinned `Native.frontendCommand` for supported inputs; preserves/checks specified ports | Any #SAT answer, independent Lean state parity, or full native counter |
-| Source-defined terminal-family count | `cargo run --bin eth-terminal-count`; `src/native_terminal_count.rs` and terminal tests; merged [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154) | Physical source frontend, classification, a separately identified primitive count-port adapter and answer for supported terminal CNFs; unsupported nonterminal CNFs refuse | General #SAT, independently executed original-Lean parity or a TM2 resource theorem |
+| Bounded semantic #SAT oracle | `cargo run --bin eth -- oracle`; Rust unit tests | Finite CNF parsing and small-instance counts via bounded enumeration | The source-defined Lean counting algorithm or its complexity bound |
+| Source-defined native frontend | `cargo run --bin eth -- frontend`; `docs/m2-runnable-frontend.md`; native frontend tests | Physical Rust `BitProgram` execution of the pinned `Native.frontendCommand` for supported inputs; preserves/checks specified ports | Any #SAT answer, independent Lean state parity, or full native counter |
+| Source-defined terminal-family count | `cargo run --bin eth -- terminal-count`; `src/native_terminal_count.rs` and terminal tests; merged [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154) | Physical source frontend, classification, a separately identified primitive count-port adapter and answer for supported terminal CNFs; unsupported nonterminal CNFs refuse | General #SAT, independently executed original-Lean parity or a TM2 resource theorem |
 | Selected native machine fragments | `src/native_*.rs`, `src/remaining/registry.rs` and their tests | Source-correlated Rust instruction behavior and boundary/refusal tests | Composition into the entire original algorithm |
 | Generated literal machine tables | Merged [code generation PR #150](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/150) | Deterministic Rust generation from pinned original Lean literal program tables (expanded by merged [#158](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/158)); exact catalog coverage is asserted by tests | Full closed `QueryStreamProgram` export, independent Lean runtime differential, or nonterminal counting |
 | Source identity | `reference/source-manifest.json` | A catalogue of source Git revision and recorded blob IDs; tests validate local pin *format and coverage* | Independent byte-for-byte verification of those blobs or semantic equivalence |
@@ -35,15 +35,15 @@ cargo clippy --locked --offline --all-targets -- -D warnings
 
 # The native physical frontend. This does not count solutions.
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
-  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-frontend
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth -- frontend
 
 # Supported terminal-family source-native count (zero clauses: 2^3).
 printf 'p cnf 3 0\n' | \
-  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-terminal-count
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth -- terminal-count
 
 # Separate bounded, exponential correctness oracle. This counts solutions.
 printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
-  cargo run --quiet --locked --offline -p lean-eth-reference --bin lean-eth-reference
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth -- oracle
 ```
 
 The [Rust Actions workflow](../../../.github/workflows/rust.yml) runs on PRs,

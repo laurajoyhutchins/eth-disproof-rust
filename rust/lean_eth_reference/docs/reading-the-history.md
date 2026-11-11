@@ -20,7 +20,7 @@ git log --all --graph --oneline
 | What does one machine instruction do to the entire state? | `src/bit_program.rs`, `tests/bit_program.rs` |
 | How are source-defined high assignments and tuple states represented? | `src/native_tuple.rs`, `src/native_query_prefix.rs` |
 | How do layout, head, cache and pair machines compose? | `src/native_layout.rs`, `src/native_bootstrap.rs`, `src/native_difference_pairs.rs` |
-| Which complete original command can run? | `src/native_frontend.rs`, `src/bin/eth-frontend.rs`, `docs/m2-runnable-frontend.md` |
+| Which complete original command can run? | `src/native_frontend.rs`, `src/bin/eth.rs`, `docs/m2-runnable-frontend.md` |
 | Which stages still refuse? | `src/remaining.rs`, `tests/remaining.rs` |
 | What does the current test evidence establish? | `docs/evidence.md` |
 

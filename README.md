@@ -17,7 +17,7 @@ printf 'p cnf 3 0\n' | cargo run --locked -p lean-eth-reference --bin eth -- ter
 printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --locked -p lean-eth-reference --bin eth -- oracle
 ```
 
-Subcommands: `frontend`, `terminal-count`, and `oracle`. Each accepts an optional DIMACS path or `-` for standard input. Source-machine commands expose explicit positive resource caps. The old three binary names remain compatibility entry points; see the [CLI guide](rust/lean_eth_reference/README.md).
+Subcommands: `frontend`, `terminal-count`, and `oracle`. Each accepts an optional DIMACS path or `-` for standard input. Source-machine commands expose explicit positive resource caps. The legacy executable wrappers have been removed; use the `eth` subcommands instead. See the [CLI guide](rust/lean_eth_reference/README.md).
 
 ## Run the source-defined frontend
 
@@ -26,7 +26,7 @@ From the repository root, the checked-in `rust-toolchain.toml` pins **Rust 1.99.
 ```sh
 cargo test --locked --offline --all-targets
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
-  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-frontend
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth -- frontend
 ```
 
 This runs the pinned `Native.frontendCommand` as a Rust finite
@@ -39,7 +39,7 @@ For a separate, explicitly **exponential** bounded #SAT correctness oracle:
 
 ```sh
 printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
-  cargo run --quiet --locked --offline -p lean-eth-reference --bin lean-eth-reference
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth -- oracle
 ```
 
 That example has 5 solutions. The oracle does not execute the proposed ETH

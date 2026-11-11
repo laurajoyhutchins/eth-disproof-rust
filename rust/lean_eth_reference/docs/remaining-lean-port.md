@@ -16,7 +16,7 @@ Lean implementation has been independently run and compared.
 
 The canonical DIMACS-to-bitword interface and the finite machine
 `Native.frontendCommand` are runnable in Rust. See
-[`eth-frontend`](../src/bin/eth-frontend.rs) and the
+[`eth frontend`](../src/bin/eth.rs) and the
 [frontend specification](m2-runnable-frontend.md). The 80-register,
 1,220-stack frontend parses the header, normalizes the clause body and
 restores its designated ABI ports. It does not return a satisfying-assignment

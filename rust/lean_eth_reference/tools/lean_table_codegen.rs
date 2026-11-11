@@ -19,8 +19,7 @@ pub enum TableKind {
 }
 
 fn decimal(s: &str) -> Result<usize, String> {
-    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit())
-        || (s.len() > 1 && s.starts_with('0'))
+    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) || (s.len() > 1 && s.starts_with('0'))
     {
         return Err(format!("noncanonical decimal: {s:?}"));
     }
@@ -71,12 +70,12 @@ fn parse_instr(s: &str, r: usize, stacks: usize, labels: usize) -> Result<String
             "config.regs[{dst}] = {}; config.pc = Some({next});",
             if *bit == 1 { "true" } else { "false" }
         ),
-        ("copy", [dst, src, next]) => format!(
-            "config.regs[{dst}] = config.regs[{src}]; config.pc = Some({next});"
-        ),
-        ("not", [dst, src, next]) => format!(
-            "config.regs[{dst}] = !config.regs[{src}]; config.pc = Some({next});"
-        ),
+        ("copy", [dst, src, next]) => {
+            format!("config.regs[{dst}] = config.regs[{src}]; config.pc = Some({next});")
+        }
+        ("not", [dst, src, next]) => {
+            format!("config.regs[{dst}] = !config.regs[{src}]; config.pc = Some({next});")
+        }
         ("and", [dst, a, b, next]) => format!(
             "config.regs[{dst}] = config.regs[{a}] && config.regs[{b}]; config.pc = Some({next});"
         ),
@@ -86,9 +85,9 @@ fn parse_instr(s: &str, r: usize, stacks: usize, labels: usize) -> Result<String
         ("xor", [dst, a, b, next]) => format!(
             "config.regs[{dst}] = config.regs[{a}] ^ config.regs[{b}]; config.pc = Some({next});"
         ),
-        ("branch", [test, yes, no]) => format!(
-            "config.pc = Some(if config.regs[{test}] {{ {yes} }} else {{ {no} }});"
-        ),
+        ("branch", [test, yes, no]) => {
+            format!("config.pc = Some(if config.regs[{test}] {{ {yes} }} else {{ {no} }});")
+        }
         ("push", [stack, src, next]) => format!(
             "if live_bits >= limits.max_stack_bits {{ return Err(Error::Capacity(\"BitProgram stack-bit limit\".into())); }}\n                live_bits = live_bits.checked_add(1).ok_or(Error::Overflow)?;\n                config.stacks[{stack}].push_front(config.regs[{src}]); config.pc = Some({next});"
         ),
@@ -138,8 +137,13 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
     let entry = decimal(header[5])?;
     let input = decimal(header[6])?;
     let output = decimal(header[7])?;
-    if r == 0 || s == 0 || labels == 0 || labels > max_labels
-        || entry >= labels || input >= s || output >= s
+    if r == 0
+        || s == 0
+        || labels == 0
+        || labels > max_labels
+        || entry >= labels
+        || input >= s
+        || output >= s
     {
         return Err("invalid dimensions, ports, entry or label budget".into());
     }
@@ -153,8 +157,7 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
     let mut body = String::new();
     for i in 0..labels {
         let record: Vec<_> = rows[i + 2].split('|').collect();
-        if record.len() != 4 || record[0] != "CODE" || record[1] != name
-            || decimal(record[2])? != i
+        if record.len() != 4 || record[0] != "CODE" || record[1] != name || decimal(record[2])? != i
         {
             return Err(format!("missing, unordered or duplicate CODE label {i}"));
         }
@@ -196,7 +199,7 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
          \x20       stats.peak_stack_bits = stats.peak_stack_bits.max(live_bits);\n\
          \x20   }\n\
          \x20   Ok(stats)\n\
-         }\n"
+         }\n",
     );
     Ok(output_rs)
 }
@@ -215,9 +218,30 @@ mod tests {
         assert!(a.contains("config.stacks[0].push_front"));
         assert!(generate(TINY, TableKind::Query, 100).is_err());
         assert!(generate(TINY, TableKind::Fixture, 2).is_err());
-        assert!(generate(&TINY.replace("CODE|fixture|3", "CODE|fixture|2"), TableKind::Fixture, 100).is_err());
-        assert!(generate(&TINY.replace("push:0:0:3", "push:4:0:3"), TableKind::Fixture, 100).is_err());
-        assert!(generate(&TINY.replace("branch:3:1:14", "branch:3:1:99"), TableKind::Fixture, 100).is_err());
+        assert!(
+            generate(
+                &TINY.replace("CODE|fixture|3", "CODE|fixture|2"),
+                TableKind::Fixture,
+                100
+            )
+            .is_err()
+        );
+        assert!(
+            generate(
+                &TINY.replace("push:0:0:3", "push:4:0:3"),
+                TableKind::Fixture,
+                100
+            )
+            .is_err()
+        );
+        assert!(
+            generate(
+                &TINY.replace("branch:3:1:14", "branch:3:1:99"),
+                TableKind::Fixture,
+                100
+            )
+            .is_err()
+        );
         assert!(generate(&format!("{TINY}\n"), TableKind::Fixture, 100).is_err());
     }
 }

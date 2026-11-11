@@ -44,10 +44,19 @@ no retained success outputs.
 
 The opt-in `.github/workflows/original-compiled-batch.yml` runs on public
 GitHub-hosted `ubuntu-24.04` with the original pinned Lean+Mathlib cache.
-It selects source programs around `ExecCNFMembership`, `HighCountSeed`,
-`QueryNodeFinish` and `QueryReconstruction` with 4,096-label and per-program
-runtime limits, then publishes source tables, Rust code, receipts and refusal
-ledger as artifacts. It is intentionally not a required quick checkpoint
+The initial large-target attempt (#43041032199) exported **zero** original
+programs: three reduction heartbeat refusals (200,000 default heartbeats)
+and one module-build timeout (900 seconds). The next bounded batch instead
+selects seven smaller, source-defined targets: two `SqrtLog.Setup` programs
+and five `SparseFrontierProgram` commands in the query import closure.
+Lean has a 2,000,000-heartbeat deterministic limit and subprocesses still
+have a 240-second wall-clock limit per operation. The job shares a pinned
+OAI dependency-build cache with the full-query exporter, but cached compiler
+outputs do not count as exported programs or semantic verification.
+
+The workflow records source tables, Rust code, receipts and a refusal ledger.
+Its success must be established by the actual new run; this documentation is
+not a success receipt. It is intentionally not a required quick checkpoint
 for ordinary Rust commits.
 
 Locally, in a checkout with the pinned original Lean source and a working
@@ -60,8 +69,8 @@ python3 tools/extract_compiled_catalog.py \
 python3 tools/export_compiled_batch.py \
   --upstream /path/to/openai-math --lake-root ../../instrumentation/lean-env \
   --output-dir /tmp/original-compiled --query-closure \
-  --name-regex 'ExecCNFMembership|HighCountSeed|QueryNodeFinish|QueryReconstruction' \
-  --limit 8 --max-labels 4096 --timeout-seconds 900
+  --name-regex 'SqrtLog\\.Setup\\.(computeLProgram|logSuccProgram)|SqrtLogSpace\\.DisjointReuse\\.SparseFrontierProgram\\.(pushProgram|initFrontierProgram|popProgram|popIfPresentProgram|pushPairProgram)' \
+  --limit 7 --max-labels 4096 --timeout-seconds 240
 python3 tools/compile_exported_batch.py \
   --tables /tmp/original-compiled --rust-output /tmp/original-compiled-rust \
   --typecheck-crate /tmp/original-compiled-check --rust-crate . \

@@ -1,0 +1,137 @@
+name: Original Lean source to Rust
+
+on:
+  pull_request:
+    paths:
+      - 'instrumentation/**'
+      - '.github/workflows/original-lean-export.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: original-lean-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  original-lean:
+    name: pinned Mathlib import and native query extraction
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      SOURCE_BLOB: c2fb29983bb33229d5cf60729cd3d1e37b9b00ca
+      MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      LEAN_ROOT: instrumentation/lean-env
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Validate exporter refusal tests
+        run: python3 -m unittest discover -s instrumentation/tests -p test_query_export.py -v
+
+      - name: Fetch exact original OpenAI Lean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth 1 --filter=blob:none origin "$SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git -C upstream/openai-math rev-parse HEAD:lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryStreamProgram.lean)" = "$SOURCE_BLOB"
+          test -z "$(git -C upstream/openai-math status --porcelain --untracked-files=no)"
+          ln -s "$GITHUB_WORKSPACE/upstream/openai-math/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Restore Lean 4.34.1 and official pinned Mathlib cache
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Verify pinned toolchain and Mathlib source
+        working-directory: instrumentation/lean-env
+        shell: bash
+        run: |
+          set -euo pipefail
+          lake env lean --version
+          lake env lean --version | grep -F 'Lean (version 4.34.1'
+          test "$(git -C .lake/packages/mathlib rev-parse HEAD)" = "$MATHLIB_SHA"
+          test -z "$(git -C .lake/packages/mathlib status --porcelain --untracked-files=no)"
+
+      - name: Prove actual import Mathlib
+        working-directory: instrumentation/lean-env
+        shell: bash
+        run: |
+          set -euo pipefail
+          lake env lean SmokeMathlib.lean
+          echo "MATHLIB_IMPORT=PASS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build original QueryStreamProgram dependency closure
+        working-directory: instrumentation/lean-env
+        shell: bash
+        run: |
+          set -euo pipefail
+          lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram
+          echo "PINNED_ORIGINAL_QUERY_MODULE=BUILT" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Export genuine original finite machine table
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/lean-export"
+          python3 instrumentation/export_query_table.py \
+            --lake-root "$LEAN_ROOT" --max-labels 8192 \
+            --output "${RUNNER_TEMP}/lean-export/query.table"
+          echo "ORIGINAL_LEAN_QUERY_TABLE=EXPORTED" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate and compile Rust from the real imported Lean table
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          cargo run --offline --locked --manifest-path rust/lean_eth_reference/Cargo.toml \
+            --bin lean-table-codegen -- \
+            "${RUNNER_TEMP}/lean-export/query.table" \
+            "${RUNNER_TEMP}/lean-export/query_generated.rs"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["RUNNER_TEMP"]) / "lean-export"
+          crate = root / "compiled"; (crate / "src").mkdir(parents=True, exist_ok=True)
+          dep = Path("rust/lean_eth_reference").resolve()
+          (crate / "Cargo.toml").write_text(
+              '[package]\nname="original_lean_generated_query"\nversion="0.0.0"\nedition="2024"\n'
+              f'[dependencies]\nlean_eth_reference={{path="{dep}"}}\n'
+          )
+          (crate / "src/lib.rs").write_bytes((root / "query_generated.rs").read_bytes())
+          PY
+          cargo check --offline --manifest-path "${RUNNER_TEMP}/lean-export/compiled/Cargo.toml"
+          echo "GENERATED_RUST_QUERY=COMPILED" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve genuine source and generated Rust with receipt
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-lean-query-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/lean-export/query.table
+            ${{ runner.temp }}/lean-export/query.table.receipt.json
+            ${{ runner.temp }}/lean-export/query_generated.rs
+          if-no-files-found: error
+          retention-days: 14

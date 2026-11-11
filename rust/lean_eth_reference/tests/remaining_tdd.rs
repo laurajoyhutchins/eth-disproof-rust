@@ -400,4 +400,3 @@ fn goldens_cover_true_false_zero_empty_tautological_and_unused_variables() {
         assert_eq!(semantic, expected, "DIMACS semantics disagree: {dimacs}");
     }
 }
-

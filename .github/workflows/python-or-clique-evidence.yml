@@ -1,0 +1,60 @@
+name: Python OR-clique quotient evidence
+
+on:
+  pull_request:
+    branches:
+      - python/sudoku-research
+    paths:
+      - 'benchmarks/eth/or_clique_cardinality.py'
+      - 'benchmarks/eth/support_join_probe.py'
+      - 'tests/eth/test_or_clique_cardinality.py'
+      - '.github/workflows/python-or-clique-evidence.yml'
+  push:
+    branches:
+      - research/symbolic-elimination-closure-20261109
+      - python/sudoku-research
+    paths:
+      - 'benchmarks/eth/or_clique_cardinality.py'
+      - 'benchmarks/eth/support_join_probe.py'
+      - 'tests/eth/test_or_clique_cardinality.py'
+      - '.github/workflows/python-or-clique-evidence.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: or-clique-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-cardinality-oracles:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install minimal test dependencies
+        run: python -m pip install -e '.[test]'
+      - name: Compile isolated reference and independent oracle
+        run: |
+          python -m compileall -q \
+            benchmarks/eth/or_clique_cardinality.py \
+            benchmarks/eth/support_join_probe.py \
+            tests/eth/test_or_clique_cardinality.py
+      - name: Verify exact quotient against brute force and independent dense elimination
+        run: |
+          python -m pytest -q tests/eth/test_or_clique_cardinality.py \
+            -m "checkpoint or integration" \
+            --junitxml=or-clique-junit.xml
+      - name: Preserve JUnit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: or-clique-quotient-${{ github.sha }}
+          path: or-clique-junit.xml
+          if-no-files-found: warn
+          retention-days: 7

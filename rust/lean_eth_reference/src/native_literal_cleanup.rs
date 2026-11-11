@@ -23,9 +23,22 @@ fn transfer(src: usize, dst: usize) -> Result<Program<13, 11>, Error> {
         dst,
         0,
         vec![
-            Instr::Pop { stack: src, value: 0, present: 1, next: 1 },
-            Instr::Branch { test: 1, yes: 2, no: 3 },
-            Instr::Push { stack: dst, src: 0, next: 0 },
+            Instr::Pop {
+                stack: src,
+                value: 0,
+                present: 1,
+                next: 1,
+            },
+            Instr::Branch {
+                test: 1,
+                yes: 2,
+                no: 3,
+            },
+            Instr::Push {
+                stack: dst,
+                src: 0,
+                next: 0,
+            },
             Instr::Halt,
         ],
     )
@@ -34,10 +47,7 @@ fn transfer(src: usize, dst: usize) -> Result<Program<13, 11>, Error> {
 /// Original literalProgram with Fin.castAdd 3 identity registers 0..9,
 /// and Fin.natAdd 3 shifted work stacks 3..10.
 pub fn literal_program() -> Result<Program<13, 11>, Error> {
-    dedup_program()?.lift::<13, 11>(
-        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-        [3, 4, 5, 6, 7, 8, 9, 10],
-    )
+    dedup_program()?.lift::<13, 11>([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [3, 4, 5, 6, 7, 8, 9, 10])
 }
 
 /// Original physical emitProgram, compiled then lifted into the 13x11 bank.
@@ -58,7 +68,10 @@ pub fn callback_command() -> Result<Cmd<13, 11>, Error> {
             Cmd::seq(
                 Cmd::Call(transfer(3, 1)?),
                 Cmd::seq(
-                    Cmd::Atom(Atom::Set { dst: 12, value: true }),
+                    Cmd::Atom(Atom::Set {
+                        dst: 12,
+                        value: true,
+                    }),
                     Cmd::Call(emit_program()?),
                 ),
             ),
@@ -72,14 +85,28 @@ pub fn scan_command() -> Result<Cmd<13, 11>, Error> {
     let reader = Cmd::Call(frame_program()?.lift::<13, 11>([10, 11], [0, 1])?);
     let advance = Cmd::ite(
         12,
-        Cmd::Atom(Atom::Set { dst: 10, value: false }),
-        Cmd::Atom(Atom::Pop { stack: 0, value: 10, present: 11 }),
+        Cmd::Atom(Atom::Set {
+            dst: 10,
+            value: false,
+        }),
+        Cmd::Atom(Atom::Pop {
+            stack: 0,
+            value: 10,
+            present: 11,
+        }),
     );
     let body = Cmd::seq(reader, Cmd::seq(callback_command()?, advance));
     Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set { dst: 12, value: false }),
+        Cmd::Atom(Atom::Set {
+            dst: 12,
+            value: false,
+        }),
         Cmd::seq(
-            Cmd::Atom(Atom::Pop { stack: 0, value: 10, present: 11 }),
+            Cmd::Atom(Atom::Pop {
+                stack: 0,
+                value: 10,
+                present: 11,
+            }),
             Cmd::while_(10, body),
         ),
     ))
@@ -87,7 +114,10 @@ pub fn scan_command() -> Result<Cmd<13, 11>, Error> {
 
 fn push_false(stack: usize) -> Cmd<13, 11> {
     Cmd::seq(
-        Cmd::Atom(Atom::Set { dst: 0, value: false }),
+        Cmd::Atom(Atom::Set {
+            dst: 0,
+            value: false,
+        }),
         Cmd::Atom(Atom::Push { stack, src: 0 }),
     )
 }
@@ -99,10 +129,7 @@ pub fn clean_command() -> Result<Cmd<13, 11>, Error> {
         push_false(2),
         Cmd::seq(
             scan_command()?,
-            Cmd::seq(
-                push_false(0),
-                Cmd::Call(clean_literals_reverse_program()?),
-            ),
+            Cmd::seq(push_false(0), Cmd::Call(clean_literals_reverse_program()?)),
         ),
     ))
 }

@@ -47,14 +47,28 @@ pub fn scan_command() -> Result<Cmd<10, 8>, Error> {
     let reader = Cmd::Call(frame_program()?.lift::<10, 8>([7, 8], [0, 1])?);
     let advance = Cmd::ite(
         9,
-        Cmd::Atom(Atom::Set { dst: 7, value: false }),
-        Cmd::Atom(Atom::Pop { stack: 0, value: 7, present: 8 }),
+        Cmd::Atom(Atom::Set {
+            dst: 7,
+            value: false,
+        }),
+        Cmd::Atom(Atom::Pop {
+            stack: 0,
+            value: 7,
+            present: 8,
+        }),
     );
     let body = Cmd::seq(reader, Cmd::seq(callback_command()?, advance));
     Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set { dst: 9, value: false }),
+        Cmd::Atom(Atom::Set {
+            dst: 9,
+            value: false,
+        }),
         Cmd::seq(
-            Cmd::Atom(Atom::Pop { stack: 0, value: 7, present: 8 }),
+            Cmd::Atom(Atom::Pop {
+                stack: 0,
+                value: 7,
+                present: 8,
+            }),
             Cmd::while_(7, body),
         ),
     ))
@@ -62,7 +76,10 @@ pub fn scan_command() -> Result<Cmd<10, 8>, Error> {
 
 fn push_false(stack: usize) -> Cmd<10, 8> {
     Cmd::seq(
-        Cmd::Atom(Atom::Set { dst: 0, value: false }),
+        Cmd::Atom(Atom::Set {
+            dst: 0,
+            value: false,
+        }),
         Cmd::Atom(Atom::Push { stack, src: 0 }),
     )
 }
@@ -75,10 +92,7 @@ pub fn dedup_command() -> Result<Cmd<10, 8>, Error> {
         push_false(2),
         Cmd::seq(
             scan_command()?,
-            Cmd::seq(
-                push_false(0),
-                Cmd::Call(literal_dedup_reverse_program()?),
-            ),
+            Cmd::seq(push_false(0), Cmd::Call(literal_dedup_reverse_program()?)),
         ),
     ))
 }

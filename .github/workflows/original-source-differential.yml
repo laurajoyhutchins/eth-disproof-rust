@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pinned-source-state-${{ github.ref }}
+  group: pinned-source-state-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:

@@ -1,6 +1,6 @@
-//! Source-pinned TDD acceptance gates for the unfinished OpenAI ETH Rust path.
-//! Green tests protect the stub ABI and executable seams. Ignored tests are
-//! deliberately RED until the corresponding native program is implemented.
+//! Source-pinned scaffold contracts for the unfinished OpenAI ETH Rust path.
+//! Active stub checks are TEMPORARY and must be retired as each stage is ported.
+//! Ignored tests are ABI smoke gates, not source-refinement or correctness proof.
 //! Do not mark an incomplete count or a diagnostic callback as a success.
 
 use lean_eth_reference::bit_program::{Atom, Cmd, Instr, Program, RunLimits};
@@ -43,7 +43,7 @@ fn registry_is_source_pinned_unique_and_topologically_sorted() {
 }
 
 #[test]
-fn every_stage_contributes_to_final_theorem_without_orphaned_work() {
+fn registry_dependency_graph_has_no_orphaned_catalogue_entries() {
     let nodes = graph();
     let mut pending = vec!["final_theorem"];
     let mut ancestors = HashSet::new();
@@ -103,20 +103,57 @@ fn machine_transitions_are_explicit_and_final_proof_is_not_executable() {
     );
 }
 
+/// Check the *local manifest's shape*, not whether GitHub actually serves those
+/// objects or that the Rust code refines the contents of a Lean source blob.
+fn local_manifest_blob_sha<'a>(manifest: &'a str, path: &str) -> Option<&'a str> {
+    let key = format!("\"lean/OAI/Algorithms/SubexponentialSAT/{path}\"");
+    let mut matches = manifest.lines().filter_map(|line| {
+        let tail = line.trim_start().strip_prefix(&key)?;
+        let tail = tail.trim_start().strip_prefix(':')?.trim_start();
+        let tail = tail.strip_prefix('"')?;
+        let (sha, rest) = tail.split_once('"')?;
+        (rest.trim().is_empty() || rest.trim() == ",").then_some(sha)
+    });
+    let sha = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    (sha.len() == 40
+        && sha
+            .bytes()
+            .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)))
+    .then_some(sha)
+}
+
 #[test]
-fn every_executable_stage_is_in_the_pinned_source_manifest() {
+fn every_catalogued_source_has_an_exact_local_blob_pin() {
     let manifest = include_str!("../reference/source-manifest.json");
-    assert!(manifest.contains(LEAN_COMMIT));
-    for stage in remaining::STAGES
-        .iter()
-        .filter(|s| s.status == Status::Executable)
-    {
+    assert!(manifest.contains(&format!("\"commit\": \"{LEAN_COMMIT}\"")));
+    assert!(manifest.contains("\"repository\": \"openai/math\""));
+    for stage in remaining::STAGES {
         assert!(
-            manifest.contains(stage.source_file),
-            "missing upstream blob pin for {}",
+            local_manifest_blob_sha(manifest, stage.source_file).is_some(),
+            "missing or malformed local upstream Git blob SHA for {}",
             stage.lean_symbol
         );
     }
+}
+
+#[test]
+fn local_manifest_parser_rejects_wrong_names_duplicates_and_invalid_shas() {
+    let path = "BitProgram.lean";
+    let full = "lean/OAI/Algorithms/SubexponentialSAT/BitProgram.lean";
+    let good = format!("  \"{full}\": \"{}\",", "a".repeat(40));
+    assert_eq!(
+        local_manifest_blob_sha(&good, path),
+        Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    );
+    assert!(local_manifest_blob_sha(&good, "SubBitProgram.lean").is_none());
+    assert!(local_manifest_blob_sha(&format!("{good}\n{good}"), path).is_none());
+    assert!(local_manifest_blob_sha(&good.replace(&"a".repeat(40), "abc"), path).is_none());
+    assert!(
+        local_manifest_blob_sha(&good.replace(&"a".repeat(40), &"A".repeat(40)), path).is_none()
+    );
 }
 
 #[test]
@@ -229,13 +266,15 @@ fn primitive_refinement_refuses_on_a_valid_executable_program() {
     assert_eq!(p, original);
 }
 
-// The tests below intentionally FAIL when explicitly enabled. They become
-// normal tests only as each corresponding command is implemented and verified
-// against the original imported-source Lean trace.
+// The following ignored tests currently fail because the stubs fail closed.
+// Passing an ABI smoke test only demonstrates type/port compatibility. It does
+// NOT establish source-table identity, Lean/Rust trace parity, exact arithmetic,
+// end-to-end correctness or complexity. Behavioral oracles must be added before
+// promoting any of them to a release acceptance gate.
 
 #[test]
 #[ignore = "RED TDD: implement exact SignatureHeadLoader.bootstrapProgram"]
-fn pending_signature_bootstrap_has_native_low_bank_abi() {
+fn pending_signature_bootstrap_abi_smoke_only() {
     let p = remaining::query::signature_bootstrap().expect("source bootstrap not implemented");
     assert_eq!((p.input_stack(), p.output_stack()), (307, 647));
     assert!(!p.code().is_empty());
@@ -243,7 +282,7 @@ fn pending_signature_bootstrap_has_native_low_bank_abi() {
 
 #[test]
 #[ignore = "RED TDD: implement QueryStreamProgram.program before enabling"]
-fn pending_query_stream_has_native_callback_abi() {
+fn pending_query_stream_abi_smoke_only() {
     let p = remaining::query::program().expect("real source query stream not implemented");
     assert_eq!((p.input_stack(), p.output_stack()), (330, 323));
     assert!(!p.code().is_empty());
@@ -251,11 +290,71 @@ fn pending_query_stream_has_native_callback_abi() {
 
 #[test]
 #[ignore = "RED TDD: implement actual native leaf, not the exponential semantic leaf"]
-fn pending_native_leaf_has_source_abi() {
+fn pending_native_leaf_abi_smoke_only() {
     let local = remaining::leaf::local_program(3).expect("local native leaf not implemented");
     assert_eq!((local.input_stack(), local.output_stack()), (784, 788));
     let outer = remaining::leaf::program(3).expect("lifted native leaf not implemented");
     assert_eq!((outer.input_stack(), outer.output_stack()), (265, 263));
+}
+
+/// Independent raw-literal truth-table oracle, deliberately not using Cnf::eval.
+/// All fixtures have at most three variables and clauses of width at most three.
+const COUNT_CASES: &[(usize, &[&[i32]], usize)] = &[
+    (3, &[&[1, 2], &[1, 3]], 5),
+    (3, &[], 8),
+    (1, &[&[1], &[-1]], 0),
+    (2, &[&[1, -1]], 4),
+    (2, &[&[]], 0),
+    (2, &[&[1, 2], &[-1, -2]], 2),
+    (3, &[&[2]], 4),
+    (3, &[&[1], &[2], &[3]], 1),
+    (3, &[&[1, 2, 3]], 7),
+];
+
+fn brute_count_independent(variables: usize, clauses: &[&[i32]]) -> usize {
+    assert!(variables < usize::BITS as usize);
+    for clause in clauses {
+        for &literal in *clause {
+            assert!((1..=variables).contains(&(literal.unsigned_abs() as usize)));
+        }
+    }
+    (0..(1usize << variables))
+        .filter(|&assignment| {
+            clauses.iter().all(|clause| {
+                clause.iter().any(|&literal| {
+                    let value = (assignment >> (literal.unsigned_abs() as usize - 1)) & 1 != 0;
+                    value == (literal > 0)
+                })
+            })
+        })
+        .count()
+}
+
+fn make_dimacs(variables: usize, clauses: &[&[i32]]) -> String {
+    let mut text = format!("p cnf {variables} {}\n", clauses.len());
+    for clause in clauses {
+        for literal in *clause {
+            text.push_str(&format!("{literal} "));
+        }
+        text.push_str("0\n");
+    }
+    text
+}
+
+#[test]
+fn goldens_cover_true_false_zero_empty_tautological_and_unused_variables() {
+    for &(variables, clauses, expected) in COUNT_CASES {
+        assert_eq!(brute_count_independent(variables, clauses), expected);
+        let dimacs = make_dimacs(variables, clauses);
+        let formula = parse_dimacs(&dimacs).unwrap();
+        let mut semantic = 0;
+        for mask in 0..(1u128 << variables) {
+            if formula.eval(mask) {
+                semantic += 1;
+            }
+        }
+        assert_eq!(semantic, expected, "DIMACS semantics disagree: {dimacs}");
+    }
 }
 
 fn binary_count_word(n: usize) -> Vec<bool> {
@@ -274,17 +373,13 @@ fn binary_count_word(n: usize) -> Vec<bool> {
 #[test]
 #[ignore = "RED TDD: full canonical native program, imported-Lean oracle and bounded execution required"]
 fn pending_native_end_to_end_counts_both_sat_and_unsat() {
-    let cases = [
-        ("p cnf 3 2\n1 2 0\n1 3 0\n", 5usize),
-        ("p cnf 3 0\n", 8),
-        ("p cnf 1 2\n1 0\n-1 0\n", 0),
-    ];
     let leaf = remaining::leaf::command(3).expect("native leaf must be implemented first");
     let program = remaining::outer::counting_program(0, 3, leaf)
         .expect("native counting program not implemented");
     assert_eq!((program.input_stack(), program.output_stack()), (256, 1216));
-    for (dimacs, expected) in cases {
-        let f = parse_dimacs(dimacs).unwrap();
+    for &(variables, clauses, expected) in COUNT_CASES {
+        let dimacs = make_dimacs(variables, clauses);
+        let f = parse_dimacs(&dimacs).unwrap();
         let encoded = f.encode_lean();
         let word = encoded.bytes().map(|bit| bit == b'1');
         let mut config = program.initial(word);

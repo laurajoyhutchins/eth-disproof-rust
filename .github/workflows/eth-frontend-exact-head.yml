@@ -1,0 +1,44 @@
+name: ETH frontend exact-head verification
+
+on:
+  push:
+    branches:
+      - ci/eth-frontend-exact-head-173f
+    paths:
+      - '.github/workflows/eth-frontend-exact-head.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-checkpoint:
+    name: Verify immutable Rust frontend source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out exact implementation commit
+        uses: actions/checkout@v4
+        with:
+          ref: 173f319e6a94eb5abeaaeb3984b36d966daa32fe
+          persist-credentials: false
+      - name: Attest checked-out head
+        run: |
+          test "$(git rev-parse HEAD)" = "173f319e6a94eb5abeaaeb3984b36d966daa32fe"
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.99.1
+      - name: Format
+        working-directory: rust/lean_eth_reference
+        run: cargo fmt --all -- --check
+      - name: Debug tests including CLI
+        working-directory: rust/lean_eth_reference
+        run: cargo test --locked --offline --all-targets
+      - name: Release tests including CLI
+        working-directory: rust/lean_eth_reference
+        run: cargo test --locked --offline --release --all-targets
+      - name: Strict Clippy
+        working-directory: rust/lean_eth_reference
+        run: cargo clippy --locked --offline --all-targets -- -D warnings

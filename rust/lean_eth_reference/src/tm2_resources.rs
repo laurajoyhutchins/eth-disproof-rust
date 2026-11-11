@@ -177,3 +177,170 @@ fn encoded_stack(port: usize, input: usize, stack: impl IntoIterator<Item = bool
         .flat_map(|bit| block(port, input, bit))
         .collect()
 }
+
+fn snapshot<const R: usize, const S: usize>(
+    p: &Program<R, S>,
+    pc: Option<usize>,
+    regs: [bool; R],
+    tapes: &[Tape],
+) -> Result<Config<R, S>, Error> {
+    let stacks: [std::collections::VecDeque<bool>; S] = (0..S)
+        .map(|port| {
+            let tape = &tapes[port];
+            let mut cells = std::collections::VecDeque::new();
+            let mut address = tape.head;
+            loop {
+                let mut bits = Vec::with_capacity(width(port, p.input_stack()));
+                for _ in 0..width(port, p.input_stack()) {
+                    bits.push(tape.cells.get(&address).copied());
+                    address = address.checked_add(1).ok_or(Error::Overflow)?;
+                }
+                match decode(port, p.input_stack(), &bits)? {
+                    Some(bit) => cells.push_back(bit),
+                    None => break,
+                }
+                // Cannot decode more blocks than physically represented cells.
+                if cells.len() > tape.cells.len() {
+                    return Err(Error::Invalid("nonterminating physical tape decode".into()));
+                }
+            }
+            Ok::<_, Error>(cells)
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .try_into()
+        .map_err(|_| Error::Invalid("incorrect tape count".into()))?;
+    Ok(Config { pc, regs, stacks })
+}
+
+#[derive(Clone, Debug)]
+enum Micro {
+    Halt,
+    Goto(usize),
+    Load(Instr),
+    Branch {
+        test: usize,
+        yes: usize,
+        no: usize,
+    },
+    Push {
+        stack: usize,
+        src: usize,
+    },
+    Peek {
+        stack: usize,
+        value: usize,
+        present: usize,
+    },
+    Pop {
+        stack: usize,
+        value: usize,
+        present: usize,
+    },
+}
+
+fn microcode(instruction: &Instr) -> Vec<Micro> {
+    match instruction {
+        Instr::Halt => vec![Micro::Halt],
+        Instr::Goto { next } => vec![Micro::Goto(*next)],
+        Instr::Branch { test, yes, no } => vec![
+            Micro::Branch {
+                test: *test,
+                yes: *yes,
+                no: *no,
+            },
+            Micro::Goto(usize::MAX), // replaced with selected branch target
+        ],
+        Instr::Push { stack, src, next } => vec![
+            Micro::Push {
+                stack: *stack,
+                src: *src,
+            },
+            Micro::Goto(*next),
+        ],
+        Instr::Peek {
+            stack,
+            value,
+            present,
+            next,
+        } => vec![
+            Micro::Peek {
+                stack: *stack,
+                value: *value,
+                present: *present,
+            },
+            Micro::Goto(*next),
+        ],
+        Instr::Pop {
+            stack,
+            value,
+            present,
+            next,
+        } => vec![
+            Micro::Pop {
+                stack: *stack,
+                value: *value,
+                present: *present,
+            },
+            Micro::Goto(*next),
+        ],
+        _ => {
+            let next = match instruction {
+                Instr::Set { next, .. }
+                | Instr::Copy { next, .. }
+                | Instr::Not { next, .. }
+                | Instr::And { next, .. }
+                | Instr::Or { next, .. }
+                | Instr::Xor { next, .. } => *next,
+                _ => unreachable!(),
+            };
+            vec![Micro::Load(instruction.clone()), Micro::Goto(next)]
+        }
+    }
+}
+
+fn source_step_overhead<const R: usize, const S: usize>(p: &Program<R, S>) -> Result<u64, Error> {
+    let max_width = if S > 1 { 2u64 } else { 1u64 };
+    let compiler = max_width * 4 + 3;
+    let block = p
+        .code()
+        .iter()
+        .map(|i| match i {
+            Instr::Halt | Instr::Goto { .. } => 1u64,
+            Instr::Branch { .. } => 3u64, // both branches counted in statementSize
+            _ => 2u64,
+        })
+        .max()
+        .ok_or_else(|| Error::Invalid("empty source program".into()))?;
+    compiler.checked_mul(block).ok_or(Error::Overflow)
+}
+
+/// Directly execute the StackCompiler primitive controller for one TM2
+/// constructor. Each write/move is charged as one physical transition.
+fn execute_micro<const R: usize, const S: usize>(
+    instruction: &Micro,
+    p: &Program<R, S>,
+    pc: &mut Option<usize>,
+    regs: &mut [bool; R],
+    tapes: &mut [Tape],
+    stats: &mut PrimitiveStats,
+    limits: PrimitiveLimits,
+) -> Result<(), Error> {
+    let port = match instruction {
+        Micro::Push { stack, .. } | Micro::Peek { stack, .. } | Micro::Pop { stack, .. } => *stack,
+        Micro::Halt => p.output_stack(),
+        _ => p.input_stack(),
+    };
+    let w = width(port, p.input_stack());
+    let tape = &mut tapes[port];
+
+    // Ready -> reading: one write bit (including blank bit) transition.
+    let unchanged = tape.read();
+    primitive_step(tape, Action::Write(unchanged), stats, limits)?;
+    let mut register_bits = Vec::with_capacity(w);
+    for _ in 0..w {
+        register_bits.push(tape.read());
+        primitive_step(tape, Action::Right, stats, limits)?;
+    }
+    for _ in 0..w {
+        primitive_step(tape, Action::Left, stats, limits)?;
+    }

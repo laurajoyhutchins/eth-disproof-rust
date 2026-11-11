@@ -17,6 +17,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             lean_table_codegen::TableKind::Fixture,
             args.next().ok_or("missing INPUT")?,
         )
+    } else if first == "--original" {
+        let name = args.next().ok_or("missing original program name")?;
+        let name = name.to_str().ok_or("non-UTF8 original program name")?;
+        let kind = match name {
+            "binary-add" => lean_table_codegen::TableKind::OriginalBinaryAdd,
+            "query-parity" => lean_table_codegen::TableKind::OriginalQueryParity,
+            "type-bit" => lean_table_codegen::TableKind::OriginalTypeBit,
+            _ => return Err("unsupported pinned source declaration".into()),
+        };
+        (kind, args.next().ok_or("missing INPUT")?)
     } else {
         (lean_table_codegen::TableKind::Query, first)
     };

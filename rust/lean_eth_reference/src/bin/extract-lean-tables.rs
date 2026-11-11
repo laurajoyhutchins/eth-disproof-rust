@@ -209,7 +209,8 @@ fn parse_code(lines: &[String], labels:usize, symbols:&BTreeMap<String,usize>)->
     Ok(output)
 }
 fn source_files(root:&Path)->Result<Vec<PathBuf>> {
-    let mut all=Vec::new(), waiting=vec![root.to_path_buf()];
+    let mut all=Vec::new();
+    let mut waiting=vec![root.to_path_buf()];
     while let Some(dir)=waiting.pop(){
         for item in fs::read_dir(dir).map_err(|e|e.to_string())? {
             let p=item.map_err(|e|e.to_string())?.path();

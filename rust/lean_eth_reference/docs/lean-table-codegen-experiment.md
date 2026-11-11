@@ -142,7 +142,7 @@ instruction tables are in `tools/fixtures/original/all-literal.bundle`.
   manifest and bundle from an original source checkout.
 - Cargo `build.rs` checks the source pins, dimensions, labels, entries,
   ports and every finite instruction record before generating
-  `OUT_DIR/original_catalog.rs` (approximately 191 KB of actual Rust code).
+  `OUT_DIR/original_catalog.rs` (202,626 bytes of actual Rust code).
   There is no external Cargo dependency.
 - `tests/original_literal_catalog.rs` reconstructs an independent
   `Program<R,S>` from each original literal table, and compares that

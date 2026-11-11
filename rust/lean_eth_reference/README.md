@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.10.0)
+# OpenAI ETH formalization: executable Rust port (v0.11.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -36,7 +36,8 @@ It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
 | `LayoutProgramScalar.cacheCellLocal`, `cacheCell` | `src/native_integer_cache.rs` | **Executable H recurrence cell** |
 | `LayoutProgramScalar.initialCommand`, `initialBuild` | `src/native_integer_cache.rs` | **Framed initial H row with runtime width** |
 | `LayoutProgram.IntegerCache.copies`, `makePower` | `src/native_integer_cache.rs` | **Executable prefix / denominator suffix; no H-flat substitution** |
-| `LayoutProgram.IntegerCache.program`, complete `SignatureHeadLoader.bootstrapProgram` | Not implemented | H-table iteration and width normalization remain |
+| `LayoutProgramScalar.cacheRow`, `cachePass`, `cacheProgram`, `buildProgram` | `src/native_cache_iteration.rs` | **Executable physical H-cache recurrence over encoded rows; all heights are runtime unary stack data** |
+| `LayoutProgram.IntegerCache.program`, complete `SignatureHeadLoader.bootstrapProgram` | Not implemented | Fixed-width normalization and full H-flat composition remain |
 | `BitProgramCompile.primitive` and TM2 microsteps | Not implemented | Do not infer primitive time/tape costs |
 | `NativeLeafProgram.command k`, `NativeOuter`, `Native.countingProgram` | Not implemented | Primary next execution milestones |
 | `FiniteFallback` bounded lookup | `remaining::outer::finite_fallback` | Explicit fail-closed stub: noncomputable Lean table |
@@ -58,7 +59,7 @@ printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
 # count=5 nodes=3 leaves=2 peak_frontier=2
 ```
 
-There are 71 Rust tests, including 960 independent structured-program cases
+The locally tested v0.11.0 standalone snapshot passes 80 Rust tests, including 960 independent structured-program cases
 (120 command shapes × 8 input/register states), all short-stack loop cases,
 source-derived CNF/golden encoding vectors, strict finite-index checks, exact
 branch partitioning, refusal behavior, and subroutine relocation, executable marked-query initialization, its exact instruction counts, mapped subroutines, and dirty-scratch regression cases. They are
@@ -320,3 +321,10 @@ All remaining **runtime** stages from the native query through the proof-facing 
 Source-pinned physical Rust programs now execute the original 13-label binary adder, its 17-label linked little-endian variant, the H recurrence cache cell, framed initial H row, fixed integer-cache copy prefix, and the unary denominator constructor. Seven new local tests pass in debug and release; the native package's full 71-test suite passes, as do formatting and strict Clippy. See [`docs/integer-cache-port-v0.10.md`](docs/integer-cache-port-v0.10.md).
 
 The complete `LayoutProgramScalar.hFlatProgram` remains unported. **Neither the complete integer cache nor `SignatureHeadLoader.bootstrapProgram` is executable**, and no imported-source Lean differential is claimed.
+
+
+## v0.11.0: physical H-cache iteration and source-defined build loop
+
+`src/native_cache_iteration.rs` now executes the 17-label literal emitter, framed-pair reader/writer, paid H-cache row transformation, one complete cache pass, unary-counted repeated passes, and the full H-row initial-build/iterate chain. Nine new locally executed regression tests check values, framing, exact writer steps, cleanup, static command sizes, and capacity refusal. In the standalone archive the full 80-test suite, formatting, and strict Clippy pass. See [`docs/h-cache-iteration-v0.11.0.md`](docs/h-cache-iteration-v0.11.0.md).
+
+This does **not** implement the fixed-width `finalFlatten` adapter, full `hFlatProgram`, complete integer-cache initialization, full node controller, or an imported-source Lean/Rust differential. Other concurrent GitHub-only scaffold tests have not been freshly rerun in this VM.

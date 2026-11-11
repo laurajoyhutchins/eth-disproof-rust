@@ -1,5 +1,7 @@
-//! Executable composition seam preceding the unported head and pair evaluator.
-//! Independent Boolean and word oracles, not an alternative arithmetic backend.
+//! Synthetic diagnostic composition of two individually source-defined stages.
+//! The actual Lean nodeBody has a SignatureHeadLoader.bootstrapProgram
+//! between NativeLayoutLoad and PairNativeSetup; this test skips that stage.
+//! Therefore these are frame/Boolean-port checks, NOT source trace refinement.
 
 use lean_eth_reference::Error;
 use lean_eth_reference::bit_program::{Cmd, Config, RunLimits};
@@ -15,7 +17,7 @@ fn put(d: &mut Config<40, 896>, port: usize, value: &[bool]) {
     d.stacks[port] = VecDeque::from(value.to_vec());
 }
 
-fn read(d: &Config<40, 896>, port: usize) -> Vec<bool> {
+fn read<const R: usize, const S: usize>(d: &Config<R, S>, port: usize) -> Vec<bool> {
     d.stacks[port].iter().copied().collect()
 }
 
@@ -103,7 +105,7 @@ fn composition_requires_the_complete_instruction_budget() {
                 max_stack_bits: 100_000
             }
         ),
-        Err(Error::Capacity(_))
+        Err(Error::Capacity(ref message)) if message == "BitProgram instruction limit"
     ));
     assert!(
         refused.pc.is_some(),
@@ -124,30 +126,65 @@ fn composition_requires_the_complete_instruction_budget() {
 }
 
 #[test]
-fn capacity_refusal_before_first_step_is_state_preserving() {
+fn initial_capacity_and_zero_step_limit_are_distinct_state_preserving_refusals() {
     let p = combined();
     let mut d = p.initial([true, false, true, false]);
     let before = d.clone();
     assert!(matches!(
-        p.run(
-            &mut d,
-            RunLimits {
-                max_steps: 0,
-                max_stack_bits: 3
-            }
-        ),
-        Err(Error::Capacity(_))
+        p.run(&mut d, RunLimits { max_steps: 100, max_stack_bits: 3 }),
+        Err(Error::Capacity(ref message)) if message == "initial bit-stack capacity"
     ));
     assert_eq!(d, before);
     assert!(matches!(
-        p.run(
-            &mut d,
-            RunLimits {
-                max_steps: 0,
-                max_stack_bits: 4
-            }
-        ),
-        Err(Error::Capacity(_))
+        p.run(&mut d, RunLimits { max_steps: 0, max_stack_bits: 4 }),
+        Err(Error::Capacity(ref message)) if message == "BitProgram instruction limit"
     ));
     assert_eq!(d, before);
+}
+
+#[test]
+fn stack_bit_limit_refuses_before_push_without_claiming_a_halt() {
+    use lean_eth_reference::bit_program::{Instr, Program};
+    let p = Program::<2, 2>::new(
+        0,
+        1,
+        0,
+        vec![
+            Instr::Set {
+                dst: 0,
+                value: true,
+                next: 1,
+            },
+            Instr::Push {
+                stack: 1,
+                src: 0,
+                next: 2,
+            },
+            Instr::Halt,
+        ],
+    )
+    .unwrap();
+    let mut capped = p.initial([true]);
+    assert!(matches!(
+        p.run(&mut capped, RunLimits { max_steps: 3, max_stack_bits: 1 }),
+        Err(Error::Capacity(ref message)) if message == "BitProgram stack-bit limit"
+    ));
+    assert_eq!(capped.pc, Some(1));
+    assert!(capped.regs[0]);
+    assert_eq!(read(&capped, 0), vec![true]);
+    assert!(read(&capped, 1).is_empty());
+    let mut complete = p.initial([true]);
+    let stats = p
+        .run(
+            &mut complete,
+            RunLimits {
+                max_steps: 3,
+                max_stack_bits: 2,
+            },
+        )
+        .unwrap();
+    assert_eq!(stats.instructions, 3);
+    assert_eq!(stats.peak_stack_bits, 2);
+    assert_eq!(complete.pc, None);
+    assert_eq!(read(&complete, 1), vec![true]);
 }

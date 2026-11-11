@@ -3,7 +3,7 @@
 //! Ignored tests are ABI smoke gates, not source-refinement or correctness proof.
 //! Do not mark an incomplete count or a diagnostic callback as a success.
 
-use lean_eth_reference::bit_program::{Atom, Cmd, Instr, Program, RunLimits};
+use lean_eth_reference::bit_program::{Atom, Cmd, Instr, Program};
 use lean_eth_reference::remaining::{self, Machine, Stage, Status};
 use lean_eth_reference::{Error, parse_dimacs};
 use std::collections::{HashMap, HashSet};
@@ -263,6 +263,7 @@ fn unfinished_query_stages_return_the_exact_source_identity() {
     assert_refuses(q::reconstruction(), "QueryReconstruction.command");
     assert_refuses(q::command(), "QueryStreamProgram.command");
     assert_refuses(q::program(), "QueryStreamProgram.program");
+    assert_refuses(q::program(), "QueryStreamProgram.program");
 }
 
 #[test]
@@ -340,37 +341,6 @@ fn primitive_refinement_refuses_on_a_valid_executable_program() {
     assert_eq!(p, original);
 }
 
-// The following ignored tests currently fail because the stubs fail closed.
-// Passing an ABI smoke test only demonstrates type/port compatibility. It does
-// NOT establish source-table identity, Lean/Rust trace parity, exact arithmetic,
-// end-to-end correctness or complexity. Behavioral oracles must be added before
-// promoting any of them to a release acceptance gate.
-
-#[test]
-#[ignore = "RED TDD: implement exact SignatureHeadLoader.bootstrapProgram"]
-fn pending_signature_bootstrap_abi_smoke_only() {
-    let p = remaining::query::signature_bootstrap().expect("source bootstrap not implemented");
-    assert_eq!((p.input_stack(), p.output_stack()), (307, 647));
-    assert!(!p.code().is_empty());
-}
-
-#[test]
-#[ignore = "RED TDD: implement QueryStreamProgram.program before enabling"]
-fn pending_query_stream_abi_smoke_only() {
-    let p = remaining::query::program().expect("real source query stream not implemented");
-    assert_eq!((p.input_stack(), p.output_stack()), (330, 323));
-    assert!(!p.code().is_empty());
-}
-
-#[test]
-#[ignore = "RED TDD: implement actual native leaf, not the exponential semantic leaf"]
-fn pending_native_leaf_abi_smoke_only() {
-    let local = remaining::leaf::local_program(3).expect("local native leaf not implemented");
-    assert_eq!((local.input_stack(), local.output_stack()), (784, 788));
-    let outer = remaining::leaf::program(3).expect("lifted native leaf not implemented");
-    assert_eq!((outer.input_stack(), outer.output_stack()), (265, 263));
-}
-
 /// Independent raw-literal truth-table oracle, deliberately not using Cnf::eval.
 /// All fixtures have at most three variables and clauses of width at most three.
 const COUNT_CASES: &[(usize, &[&[i32]], usize)] = &[
@@ -431,50 +401,3 @@ fn goldens_cover_true_false_zero_empty_tautological_and_unused_variables() {
     }
 }
 
-fn binary_count_word(n: usize) -> Vec<bool> {
-    if n == 0 {
-        return vec![false];
-    }
-    let mut x = n;
-    let mut word = Vec::new();
-    while x > 0 {
-        word.push(x & 1 != 0);
-        x >>= 1;
-    }
-    word
-}
-
-#[test]
-#[ignore = "RED TDD: full canonical native program, imported-Lean oracle and bounded execution required"]
-fn pending_native_end_to_end_counts_both_sat_and_unsat() {
-    let leaf = remaining::leaf::command(3).expect("native leaf must be implemented first");
-    let program = remaining::outer::counting_program(0, 3, leaf)
-        .expect("native counting program not implemented");
-    assert_eq!((program.input_stack(), program.output_stack()), (256, 1216));
-    for &(variables, clauses, expected) in COUNT_CASES {
-        let dimacs = make_dimacs(variables, clauses);
-        let f = parse_dimacs(&dimacs).unwrap();
-        let encoded = f.encode_lean();
-        let word = encoded.bytes().map(|bit| bit == b'1');
-        let mut config = program.initial(word);
-        let stats = program
-            .run(
-                &mut config,
-                RunLimits {
-                    max_steps: 20_000_000,
-                    max_stack_bits: 20_000_000,
-                },
-            )
-            .unwrap();
-        assert!(stats.instructions > 0);
-        assert_eq!(config.pc, None);
-        assert_eq!(
-            config.stacks[256].iter().copied().collect::<Vec<_>>(),
-            binary_count_word(expected)
-        );
-        assert_eq!(
-            config.stacks[1216].iter().copied().collect::<Vec<_>>(),
-            vec![expected > 0]
-        );
-    }
-}

@@ -19,9 +19,6 @@ jobs:
     name: rust
     runs-on: ubuntu-24.04
     timeout-minutes: 12
-    defaults:
-      run:
-        working-directory: rust/lean_eth_reference
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,7 +28,7 @@ jobs:
         run: |
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
           rustup default 1.99.1
-      - name: Formatting
+      - name: Formatting (workspace)
         run: cargo fmt --all -- --check
       - name: Exact Rust tests
         run: cargo test --locked --offline --all-targets

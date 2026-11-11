@@ -129,8 +129,10 @@ def test_coupled_virtual_certificate_matches_exact_paper_admission_abi() -> None
 
 @pytest.mark.checkpoint
 def test_finite_cyclic_three_cnf_is_coupled_and_normalizes_as_proved() -> None:
-    # A genuinely connected 3-regular incidence structure, not an
-    # independent-unit formula and not a paper-admitted finite instance.
+    # A connected 3-regular incidence structure, but all-positive and
+    # satisfiable by the all-ones assignment. This tests literal incidence
+    # and normalization, NOT SAT hardness or worst-case counting time.
+    # The numeric paper schedule is not admitted at these finite n.
     for n in (8, 16):
         clauses = tuple(
             (i + 1, (i + 1) % n + 1, (i + 2) % n + 1)
@@ -139,6 +141,7 @@ def test_finite_cyclic_three_cnf_is_coupled_and_normalizes_as_proved() -> None:
         formula = CNFFormula(n, clauses)
         assert len(formula.clauses) == n
         assert all(len(clause) == 3 for clause in formula.clauses)
+        assert formula.satisfied_mask((1 << n) - 1)
         counts = [sum(var in clause for clause in formula.clauses)
                   for var in range(1, n + 1)]
         assert set(counts) == {3}

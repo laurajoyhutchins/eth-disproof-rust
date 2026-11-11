@@ -204,6 +204,606 @@ all-input totality separately.
 Existing acceptance remains intentionally **RED**. No independent
 theorem registry, scheduler or additional CI workflow is needed.
 
+## Conditional bit-work and streaming-space bound for one separated spectral center
+
+The [source-correlated mathematical reference](../reference/eth_separated_center_budget.py)
+addresses a **different** representation from the dense fused
+factor-table obstruction above: the original `eth/taylor.py`
+`summation='tuples'` algorithm, **after** a valid
+`MeasurementCertificate` has been supplied.
+
+For a normalized CNF with `n` declared variables, `m` clauses,
+`ell` literal occurrences, Taylor order `q<=n`, and a
+certified measurement design with `r` groups of sizes `g_i`,
+`s` total measurement rows and maximum row L1 norm `D`, put
+
+```
+P = sum_{j=0}^q binom(n,j)*2**j
+Y = (2*D+1)**s
+A = sum_i 2**g_i
+W = sum_i (number of clauses owned by group i)*2**g_i
+```
+
+These are **source-loop** quantities, not a hypothesized tensor rank:
+`taylor_coefficients_separated` invokes exactly `P`
+`restricted(E,U)` calls; for each one, the tuple evaluator
+visits at most `Y` shared measurement vectors and at most
+`A` group masks per vector. Therefore the group-mask visit
+ceiling is `P*Y*A`, and the number of per-clause factor
+evaluations is at most `P*Y*W`. Early zero exits only lower
+the observed work. Source tests independently compare completed
+spectral executions' recorded counters to these ceilings.
+
+### Rational coefficients: the missing factor-table height is not needed
+
+Let `d` be the maximum degree of a transferred replacement
+coefficient polynomial; let `K` count **all** rational input
+coefficients, the center, and the independently certified
+local/lambda witness entries. Let `B` bound their numerator
+and denominator bit lengths. The product `H` of their
+denominators has `log2 H <= K*B`.
+
+The source computes shifted coefficients of `P(t+z)` using
+Horner arithmetic. Every shifted coefficient's denominator
+divides `H**(d+1)`. The `U`-specific corrections are sums
+of at most `n` shifts; the source's scalar base terms sum
+at most `n+s` rational entries, each measured integer being
+bounded by `D`. Consequently every linear literal jet has
+denominator dividing `H**(d+1)`.
+
+Every clause is a product of at most its literal count of
+these jets; across the entire CNF, no term multiplies more
+than `ell` literal jets. All partial products and sums
+therefore live on the *same* rational denominator lattice
+`H**((d+1)*ell)`. Truncated jet multiplication introduces
+at most `(q+1)**ell` coefficient-index combinations.
+The nested sums over masks, measurement vectors and
+`(E,U)` add at most `n+ceil(log2 Y)+ceil(log2 P)`
+bits of numerator height. The explicit conservative bound
+`every_intermediate_fraction_bits_upper` composes these
+sources, rather than relying on final-output height alone.
+
+The reference charges all source-local precomputation, each
+pair, each measurement loop and each group/clause visit with
+a deliberately loose polynomial multiplier for coordinate
+work and schoolbook rational normalization. Its
+`abstract_schoolbook_bit_work_upper` is a ceiling for that
+**specified mathematical schoolbook cost model** conditional
+on the supplied certificate and input scalar heights,
+not measured CPython machine bit instructions or proof
+of the certificate-generation runtime.
+
+### Memory correction found in the source
+
+The former expression `itertools.product(range(-D,D+1),repeat=s)`
+internally materialized an input pool of `2D+1` integers
+**before yielding the first measurement vector**. The
+production tuple evaluator now uses
+`_measurement_vectors(D,s)`, a lexicographically identical
+odometer whose simultaneous state holds `O(s)` integers.
+A test requests the first three tuples for `D=10**100`
+without creating the range pool. This is an actual
+source-level memory improvement, not an asymptotic runtime
+claim.
+
+The other live objects consist of the `O(ell*n)` source
+replacement and shifted-polynomial entries, the certified
+measurement matrices and witnesses, at most a configured
+number of `U`-correction entries (64 by default), and
+current `q+1`-coefficient jets. The bound
+`retained_rational_slots_upper` is deliberately slack;
+multiplied by the common bit-height ceiling, it gives
+polynomial **mathematical coefficient** storage whenever
+the source input/certificate parameters are polynomially
+bounded. It is not a byte-perfect CPython heap model.
+
+### What the literal Step-5 inequalities would give
+
+Under the *actual* manuscript quantitative conditions
+
+```
+q <= 3*n*R/Q          delta = 3*R/Q <= 1/2
+s <= 2*n/(r*lambda)   D <= r**(2Q)
+max(g_i) <= 2*n/r     lambda = ceil(log2 n)
+```
+
+the source-loop exponent satisfies the conservative bound
+
+```
+log2(P*Y*A) <= n*Gamma + ceil(log2(n+1)) + ceil(log2 r)
+
+Gamma = delta*ceil(log2(6/delta))
+      + 2*(2*Q*ceil(log2 r)+2)/(r*lambda)
+      + 2/r.
+```
+
+The first inequality follows from
+`binom(n,j)*2**j <= (2*e*n/j)**j` and `2e<6`
+for `j<=q<=n/2`, then
+`P<=(n+1)*2**(n*delta*ceil(log2(6/delta)))`.
+The remaining terms charge **all** measurement signatures and
+the **sum**, not product, of independent group-mask domains.
+
+For the source's literal
+`r=floor(sqrt(lambda)/nu**2)`,
+`Q=floor(lambda/(128*nu))`,
+`R=4*ceil(sqrt(lambda))`, `nu=ceil(log2 lambda)`,
+`Gamma=O(nu**2/sqrt(lambda))=o(1)`. This is a
+conditional `2**o(n)` **one-center loop and abstract bit-work
+bound**, if the supplied certificate has polynomial-height
+entries and satisfies all quantitative inequalities.
+There is no hidden large Boolean table.
+
+The numerical caveat matters: the first symbolically admitted
+coupled family at `lambda=2**34` has `q/n<=0.39844`
+and this conservative `Gamma>1.61`. The upper bound
+does **not** certify a finite practical speedup even for
+an astronomically large input. At `lambda=2**50`,
+the same coefficient of `n` is below `0.028`,
+but `n=2**lambda` is even less physically representable.
+These are exact symbolic **upper-rate** computations, not
+runs of the paper algorithm and not runtime lower bounds.
+
+### The real spectral transfer has bounded coefficient heights
+
+The [integer-only transfer certificate](../reference/eth_spectral_transfer_height.py)
+now supplies an input to the witness/center bounds directly from
+`eth/construction.py`, avoiding any unproved assumption that its
+replacement coefficients have small numerators and denominators.
+Its input includes an independently justified
+`ceil(log2(M+1))` upper bound, so `n=2**lambda` and
+`D=r**(2Q)` need **not** be materialized.
+
+The spectral interpolation source builds the polynomial `f` in a
+Newton basis from `R` consecutive integer points in `[0,Q]`.
+Its k-th Newton difference is `(-2)**k`, so for every integer
+`0<=j<=Q`, `f(j)` is an **integer** of magnitude at most
+`R*(2Q)**R`. Source Walsh fractions thus have denominators
+dividing `2**Q`; the `Q+1` kernel arrays add fractions with
+this *shared denominator*, rather than multiplying denominator
+sizes across `2**Q` terms.
+
+For a source `row_at(u,w)` coefficient, the exceptional-degree
+condition ensures that the correction is a product of at most
+`R-1` distinct factors `(1-T/t)`, `1<=t<=Q`. Hence all its
+rational polynomial coefficients have denominators dividing
+`2**Q*Q!`. The transferred coefficient of any variable in any
+occurrence is a sum of at most `M` such polynomials and preserves
+this common denominator. Horner evaluation at the required centers
+`1,...,Q` adds at most `R` multiplication/addition stages.
+The reference separately bounds **intermediate** Walsh/kernel and
+polynomial coefficient heights, and coefficients evaluated at centers.
+
+A conservative source bound is
+`B_transfer=O(Q*log(Q+1)+R*log(Q+1)+log(M+1))`
+bits per reduced rational numerator/denominator; the reference
+gives exact-integer coefficients and additive margins rather than
+hiding this in big-O notation. On the source Step-5 schedule,
+`Q=O(lambda/log(lambda))`, `R=O(sqrt(lambda))`,
+`M<=3n`, and `lambda=ceil(log2 n)`, so
+`B_transfer=O(lambda)`: **logarithmic in n**, though
+the admitted physical instance is impossibly large.
+For the coupled virtual family at `lambda=2**34`, the
+source-correlated evaluated-coefficient ceiling is about
+`1.007*lambda` bits. This is a symbolic ceiling only.
+
+The committed source integration tests verify actual
+`_interpolation_polynomial`, `_walsh_by_weight`,
+`construct_implicit_auxiliary.row_at` and
+`construct_bounded_designs` against these ceilings,
+including the explicit common denominator. Locally, an
+independently transcribed source-shaped implementation checked
+15,618 row pairs over eight small spectral settings with no
+height/denominator violations. **The committed tests have not
+transcription is not an integration receipt.
+
+### Balancing and selector enumeration cost: bounded in principle, not uncapped code
+
+The real conditional-expectation routine
+`eth/balance.py::choose_balanced_schedules` enumerates
+`K=r**Q` candidate schedules for at most `n+m` entities.
+It recomputes an `M**2` incidence-pair potential and a
+`Q*n**2` group potential for each candidate. Thus its
+direct source-loop count is bounded, up to polynomial
+administration, by
+
+```
+O((n+m)*r**Q*(M**2 + Q*n**2)).
+```
+
+Its source expectation values use `1/K`, `1/K**2`
+and `1/r`, and its normalized potential has a denominator
+dividing `K**2 * r * M*(b+w) * Q*n` for nonzero `M`.
+The prefix sums and finite-precision-free comparisons
+therefore have polynomial rational heights in
+`Q*log(r)+log(n+M+Q)`; no randomized oracle is assumed.
+The implementation still constructs the entire `K`-element
+candidate domain and refuses at `BalanceLimits`.
+
+On the strict `selectors` path,
+`construct_implicit_auxiliary` enumerates at most
+`c<=D=r**(2Q)` exceptional tensor selectors.
+`construct_from_schedules` materializes at most `M`
+occupied label copies, at most `M*n` occurrence-to-variable
+polynomial coordinates, and at most `Q*r*h*c` transferred
+measurement rows (with their group coordinates).
+The scalar operations are consequently bounded by a
+polynomial in `n,m,M,Q,R,r,D` for the **mathematical
+uncapped selector implementation**. The manuscript checks
+`D**128<=2*n`, so `D` and `K` are polynomial in
+`n`, notwithstanding their enormous concrete sizes.
+
+The projected Gram path is a *different* implementation.
+Its primitive integer basis need not satisfy source `L1<=D`.
+Draft PR #95 identifies an existential, polynomial-in-`D`
+alternative: retain independent **original selector rows**,
+which preserves the original L1 bound and, subject to the
+balancing lemma, satisfies the quantitative row-count bound.
+That argument should be reviewed and tested independently;
+the present PR does not import its implementation or silently
+equate a projector basis with that selector subbasis.
+
+**Still missing from this composition:** an independently
+verified uncapped input-to-output construction with exact
+numeric source preconditions; a combined checked bound for
+all arithmetic operations and live objects during selector
+extraction and center certification; final Hermite
+reconstruction bit height; and a source-to-Lean algorithm
+refinement. The current production implementation has
+explicit finite caps, so it is not the claimed asymptotic
+algorithm, regardless of the symbolic ceilings above.
+
+### Exact measurement witness solving: close the intermediate-height premise
+
+The independent [measurement-witness bit budget](../reference/eth_measurement_witness_budget.py)
+matches the exact *rectangular* `eth/design.py::_row_combination`
+Gauss-Jordan procedure. This is the stage that turns verified
+cross-group replacement vectors into rational `lambda` witnesses.
+Bounding the eventual `lambda` output alone would not suffice:
+we must also bound the fractions **while** the source eliminates.
+
+For a foreign variable group of size `g`, `s` integer measurement
+rows and a rational target `b in Q^g`, let `H` be the product of
+the `g` target denominators. Scaling the entire augmented
+`g x (s+1)` matrix by `H` yields an integer matrix with maximum
+entry bit length `B`. Put `k=min(g,s)`. By Leibniz's
+determinant formula, every minor used in exact Gauss-Jordan has
+at most
+
+```
+Mbits = (k+1)*(B+ceil(log2(k+2))+2)
+```
+
+bits. The normalized entries are ratios of such minors,
+including zero/rank-deficient cases. The source's intermediate
+multiply/subtract/normalize steps and its final reconstruction
+over at most `s` terms are consequently bounded by the explicit,
+slack bit ceiling
+
+```
+16*(s+1)*(Mbits+B+ceil(log2(s+2))+8).
+```
+
+The source uses at most
+`32*(g+1)*(s+1)*(k+1)` exact field operations and retains
+at most `4*(g+1)*(s+1)+4*(g+s+2)` rational slots within this
+one solve. A witness inconsistency can still raise; it cannot
+produce an unbounded elimination trace on finite input.
+
+The reference trace records **every reduced Fraction**, not just
+the final witness. A local 2,100-case seeded rational experiment
+verified the constructed exact solutions, including rank-deficient,
+rectangular and empty cases, and checked both ceilings.
+The standalone reference also passed **mypy 2.4.1 --strict** in the
+local CPython 3.13 VM. This is not a production-source differential
+receipt. The committed
+`tests/eth/test_measurement_witness_budget.py` additionally calls
+the **production** `_row_combination`, exercises a genuine
+conditional-schedule implicit spectral projector construction,
+and compares every foreign-group target to the independently
+certified `lambda` rows. GitHub runner admission failure means
+that full-repository differential has not yet executed.
+
+Because the source needs at most `ell*(r-1)` such solves
+per center, this gives a polynomial conditional *witness-solving*
+work/space/bit-height bound from polynomial-height transfer
+coefficients, row count, `g`, and `D`. Combined with the
+intermediate Taylor bit bound above, it avoids assuming that
+measurement witnesses are free or infinitely precise.
+
+**This does not prove row-count/row-norm admissibility.** The
+independent selector-subbasis analysis in draft PR #95 addresses
+that distinct existence obligation under the paper's balancing
+premise. The present bound also does not construct the balancing
+schedules, compute the selector subbasis, bypass resource limits,
+or establish the full input-to-count source refinement.
+
+### Origin Hermite CRT is also polynomial in exact input bit length
+
+The source's default `readout='origin'` runs
+`eth/interpolation.py::interpolate_origin_hermite`, not a black-box
+rational interpolator. The new [source-correlated Hermite budget](../reference/eth_hermite_origin_budget.py)
+bounds its **intermediate** Fractions, including local-modulus
+construction, inversion, truncated quotient products and the
+final sum at the origin.
+
+Let `J_i` be the Taylor conditions supplied at distinct,
+nonzero **integer** centers `c_i`, let
+`N=sum J_i`, `C=max(abs(c_i))`, and let `B` bound the
+numerator/denominator bit length of every input Taylor datum.
+The source's local modulus for center `i` is the integer
+polynomial
+
+```
+M_i(z) = product_(j != i) (c_i-c_j+z)**J_j.
+```
+
+Its coefficients have absolute value at most
+`T=(2*C+1)**N` and its constant term `a_i`
+is a nonzero integer of magnitude at most `T`.
+The inverse jet coefficient at degree `k` is of the form
+`u_k/a_i**(k+1)`, with
+`abs(u_k)<=(N*T**2)**k`, by the explicit inverse recurrence.
+All Taylor data denominators have a shared multiple with
+at most `N*B` bits. Thus every local quotient denominator
+divides that multiple times `a_i**J_i`, and the final origin
+sum denominator divides that multiple times
+`product_i a_i**J_i`.
+
+Charging the source's intermediate prefix sums, multiplications,
+Horner evaluations and inverse residuals gives a generous
+polynomial ceiling for both numerator and denominator bits:
+
+```
+32*(N+1)**2*(B+ceil(log2(2C+2))+ceil(log2(N+1))+3).
+```
+
+The same reference gives conservative scalar-operation and
+live-rational-slot ceilings `128*(N+1)**4` and
+`16*(N+1)**2`. These are mathematical rational-field and
+schoolbook bit-cost inputs, not exact CPython instructions
+or peak-byte measurements. They assume already computed,
+mathematically valid Taylor data.
+
+The attached test performs 200 seeded polynomial/Hermite
+reconstructions, independently records all rational arithmetic
+results in a source-shaped CRT trace, and compares the origin,
+intermediate heights and operation bound to the production
+implementation. A standalone local implementation passed
+the same 200 seeded trace checks; the reference budget passed
+strict mypy 2.4.1 locally. Full production-import tests are
+but **have not executed** because no runnable CI worker was
+assigned.
+
+For the paper's construction, `C<=Q` and
+`N=Q*(q+1)` with `Q*q=O(nR)`. Thus the origin CRT
+cost is polynomial in `n`, `Q`, `R` and the
+input Taylor coefficient bit heights. The center evaluator's
+conditional source-level bit budget already bounds those
+input coefficients. The Hermite stage therefore cannot,
+by itself, insert another exponential intermediate-height
+factor into the stated **conditional** composition.
+
+### One composed source regression instead of four unrelated receipts
+
+`tests/eth/test_composed_bit_budget.py` follows a single genuine,
+small non-admitted CNF through the source's **conditional balancing,
+implicit spectral transfer, exact measurement certificate, original
+separated Taylor tuples and origin Hermite CRT**. At each boundary
+it compares the actual generated scalars/operation counts with the
+corresponding preceding certificates, then compares the reconstructed
+origin value to an **independent Boolean exhaustive-count oracle**.
+No brute-force result enters the source pipeline. This is a
+finite source-correspondence/regression test, **not** an asymptotic
+test. It is committed but remains unexecuted pending a functioning
+
+### Test boundaries: numerical admission, structure, counting, not hardness
+
+The existing symbolic `virtual_coupled_3cnf_step5` family
+`AND_i (x_i OR x_(i+1) OR x_(i+2))` is **easy** from the
+primal-graph viewpoint. Eliminate variables in index order:
+each vertex has at most four remaining neighbors, even after
+fill, so this supplies a width-4 elimination algorithm for
+the entire family. Its `M=3n,b=w=3` admission result is
+legitimate **numeric input auditing**, but it is not meaningful
+evidence of worst-case #SAT hardness or of favorable costs on
+high-treewidth instances.
+
+The [structural witness probe](../reference/eth_bounded_incidence_fixtures.py)
+adds a finite three-permutation stress family for `n=2**k`:
+
+```
+F_n = AND_i (x_i OR x_((3*i+1) mod n) OR x_((5*i+2) mod n)).
+```
+
+The maps `i -> 3*i+1` and `i -> 5*i+2` are
+bijections because 3 and 5 are odd modulo `2**k`.
+Within every clause, the three indices are distinct:
+the differences are `2*i+1`, `4*i+2`, and
+`2*i+1`, none zero modulo `2**k` for `k>=3`.
+The `3*i+1` index is the unique index of opposite
+parity, so equality of two unordered clauses forces
+equality of those indices, then equality of their originating
+`i`. Thus all `n` clauses remain distinct under
+normalization, and each variable occurs exactly three times.
+The same **numeric** Step-5 admission conditions apply.
+
+The tests report the **induced width of natural-order variable
+elimination**, not graph treewidth: for `n=8,16,32,64`,
+the cyclic family has widths `4,4,4,4`, while the
+affine family has `6,10,17,34` (and `52` at
+`n=128`). These are direct finite elimination traces.
+They show the easy witness was unrepresentative of this
+fixed ordering. **They do not establish a nonconstant
+minimum treewidth**, an expander, hard #SAT instances,
+an asymptotic lower bound, or a failure of the source's
+separated-center method.
+
+### A separately proved growing-treewidth bounded-occurrence family
+
+We can improve on the affine heuristic with a **subcubic grid
+minor**. For an integer grid side `k>=2`, replace every vertex
+of a `k x k` square grid with a four-cycle of ports N,E,S,W.
+Connect neighboring cells through the corresponding single port.
+Each port has two internal cycle edges and at most one external
+edge, so its degree is at most three. Make every graph edge a
+positive binary clause. The exact normalized dimensions are
+
+```
+n=4*k**2,  m=6*k**2-2*k,
+M=2*m=12*k**2-4*k=(3-1/k)*n,
+b=3, w=2.
+```
+
+An **independent edge-level verifier** in
+`reference/eth_bounded_incidence_fixtures.py` checks every four-cycle
+and every inter-cell edge against an expected grid contract;
+it rejects a missing edge. Contracting the checked four-cycles
+recovers the original `k x k` grid as a graph minor.
+Its row/column-cross bramble has order at least `k`:
+any set of fewer than `k` vertices misses an entire
+row and an entire column, and all such crosses pairwise
+touch. By the standard bramble/treewidth correspondence
+and minor monotonicity,
+
+```
+treewidth(primal(F)) >= k-1 = Omega(sqrt(n)).
+```
+
+This is a genuine **structural lower bound for every k**,
+unlike the affine probe's upper-bound traces. It does
+not imply a #SAT runtime lower bound; this family is planar
+and can still admit algorithms with `2**O(sqrt(n))` cost.
+
+For `k=2**j`, `n=2**lambda` with `lambda=2+2j`.
+The new `virtual_subcubic_grid_step5` certificate carries
+only the exponents. It transfers the existing admitted
+bounded-occurrence sufficient checks, except for the altered
+incidence bounds. The independently audited integer inequality
+
+```
+4*Q*ceil(log2(r)) <= lambda-3
+```
+
+gives `D**2 <= n/8`, without allocating `D=r**(2Q)`.
+As `M=(3-1/k)*n >= (5/2)*n`, both required
+`10*D**2<=M` and stronger overview
+`12*D**2<=M` follow. At the literal admitted
+`lambda=2**34`, the test verifies
+`(r,Q,R)=(113,3947580,524288)` and this additional
+margin exactly. No virtual CNF, balancing schedule or
+Lean execution is fabricated.
+
+**Mathematical audit correction (2026-11-10): this is not
+a hardness witness.** Every clause in all three of the
+cyclic, affine and grid-port families contains positive
+literals only, so the all-ones assignment satisfies every
+formula. The SAT *decision* instances are trivial. For the
+grid-port family, exact counting is also inherently
+subexponential by a standard row-by-row transfer DP:
+retain the assignments to the 4k variables in the
+current row of k four-port cells, then transition to
+the next row. Only adjacent rows interact, so there
+are at most 2^(4k) row states and at most 2^(8k)
+state-pair comparisons per row. The total cost is
+O(poly(k)*2^(8k))=2^O(sqrt(n)) for n=4k^2.
+The proven treewidth lower bound Omega(sqrt(n))
+is therefore entirely consistent with efficient
+subexponential exact counting on this family.
+The affine experiment reports the width of one
+order, which is *not* a treewidth lower bound.
+The cyclic witness's width is constant.
+
+**Another important obstruction to unsupported shortcuts:**
+even a *valid* measurement certificate does not generally permit
+factorization along components of the **original clause graph within
+one variable group**. The executable
+[`test_within_group_coupling.py`](../tests/eth/test_within_group_coupling.py)
+supplies two originally disconnected unit clauses `(x1)` and
+`(x2)`, then the valid polynomial replacements
+
+```
+L1(T) = x1 + (T/2)*x2,
+L2(T) = x2 + (T/2)*x1.
+```
+
+These equal their original literals at `T=0`. Put
+`x1,x2` in one group and include two further independent
+unit clauses `(x3)`, `(x4)` owned by a second group.
+Both groups have active factors, but all cross-group
+coefficients vanish. The source's *actual*
+`certify_measurements` accepts this design at `T=1`
+with `tau=D=0`. The first group's exact factor table is
+
+```
+W(x1,x2) = [[0, 1/2], [1/2, 9/4]],
+det(W) = -1/4 != 0.
+```
+
+If this were `f(x1)*g(x2)` its matrix would have rank
+at most one and determinant zero. This disproves the
+**generic within-group component-product shortcut**.
+It does **not** contradict the original published
+whole-group measurement-separation identity. A second
+integration test compares the real separated Taylor
+source against an independent direct deformation
+polynomial at centers `0,1,2`, including positive-order
+coefficients. This counterexample is a **manual valid
+design**, not a claim that the spectral constructor
+necessarily generates its particular rows.
+
+The test suite is explicitly partitioned:
+
+- [`test_bounded_incidence_fixtures.py`](../tests/eth/test_bounded_incidence_fixtures.py):
+  finite clause counts, exact grid minor, all-positive
+  satisfiability, sign changes, and widths for a **specified**
+  elimination order (not treewidth lower bounds)
+- [`test_numeric_paper_admission.py`](../tests/eth/test_numeric_paper_admission.py):
+  symbolic Step-5 inequalities and finite source-normalizer
+  agreement, not constructor execution
+- [`test_grid_row_dp.py`](../tests/eth/test_grid_row_dp.py):
+  conventional signed 2-CNF row transfer with subset-zeta
+  aggregation, `O(poly(k)*2**(4*k))` for this grid family;
+  at `k=2` its 1,649 and 147 counts match an independent
+  exhaustive oracle, while `k=4` runs without `2**64`
+  enumeration
+- [`test_within_group_coupling.py`](../tests/eth/test_within_group_coupling.py):
+  a direct **false factorization** counterexample and
+  positive control that whole-group separation remains exact
+
+None of these fixture tests is an ETH-disproof, a
+worst-case #SAT lower bound, or a simulated Lean run.
+
+**Acceptance interpretation:** These families demonstrate
+numeric input admission, certified source identities,
+or a growing structural parameter. None is an obstruction
+to a 2^o(n) #SAT algorithm, none supports an ETH lower
+bound, and none proves the OpenAI algorithm false.
+The uncapped construction, complete source-level bit
+cost composition, general-CNF reduction and pinned
+Lean refinement are separate verification tasks.
+
+The finite cyclic/affine probe remains capped at 512
+variables; the checked finite grid-minor constructor
+is capped at side 16. Neither materializes an astronomical
+instance.
+
+
+### What is still unproved
+
+This result **does not** certify a full input-to-count algorithm.
+Most importantly, strict paper admission currently does not
+prove that *every* source-transferred selector/projector design
+meets the quantitative row-count and coefficient-height
+conditions without resource refusal. Constructing the
+conditional-expectation schedules, obtaining a sound actual
+measurement certificate, and proving all their source-level
+bit costs are separate tasks. So are the complete number
+of centers, Hermite readout, disjoint sparsification,
+finite-boundary handling, and refinement to the pinned
+Lean primitive machine. The complete theorem gate remains
+**RED**.
+
 ## A total exact baseline that does not prove the target theorem
 
 `reference/total_exact_cnf.py` provides a separate, **total mathematical

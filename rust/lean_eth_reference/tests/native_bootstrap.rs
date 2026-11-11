@@ -95,12 +95,18 @@ fn local_row_count_copies_preserved_source_then_physically_parses() {
         let encoded = framed(&words);
         let mut d = p.initial([]);
         put(&mut d, 1, &encoded);
+        d.regs[6] = true;
+        d.regs[7] = true;
         let payload: usize = words.iter().map(Vec::len).sum();
         let expected = 7 * encoded.len() + 5 + 4 * payload + 6 * n + 5 + 1;
         let stats = p.run(&mut d, RunLimits::default()).unwrap();
         assert_eq!(stats.instructions, expected as u64);
         assert_eq!(read(&d, 1), encoded);
         assert_eq!(read(&d, 2), vec![true; n]);
+        assert!(
+            d.regs[6] && d.regs[7],
+            "Fin.castAdd must preserve register indices"
+        );
         assert!(d.stacks[14].is_empty());
     }
 }
@@ -187,21 +193,21 @@ fn retention_uses_actual_preserving_copies_and_does_not_reconstruct_cache() {
 }
 
 #[test]
-fn actual_node_abi_offsets_are_128_for_stacks_and_24_for_registers() {
+fn node_abi_widens_indices_without_shifting_them() {
     let p = bootstrap_prefix_node_command()
         .unwrap()
-        .compiled(435, 775)
+        .compiled(307, 647)
         .unwrap();
     let mut d = p.initial([]);
-    put(&mut d, 258, &[true, true]); // lower 130
-    put(&mut d, 435, &[true, true, true]); // lower 307
-    put(&mut d, 264, &framed(&[vec![true], vec![]])); // lower 136
-    put(&mut d, 660, &[false, true]); // unrelated outer-low physical port
-    d.regs[3] = true;
+    put(&mut d, 130, &[true, true]);
+    put(&mut d, 307, &[true, true, true]);
+    put(&mut d, 136, &framed(&[vec![true], vec![]]));
+    put(&mut d, 800, &[false, true]); // beyond the lifted 768-stack submachine
+    d.regs[19] = true; // beyond the lifted 16-register submachine
     p.run(&mut d, RunLimits::default()).unwrap();
-    assert_eq!(read(&d, 776), vec![true, true]); // lower 648
-    assert_eq!(read(&d, 777), vec![true; 6]); // lower 649
-    assert_eq!(read(&d, 775), vec![true, true]); // lower 647
-    assert_eq!(read(&d, 660), vec![false, true]);
-    assert!(d.regs[3]);
+    assert_eq!(read(&d, 648), vec![true, true]);
+    assert_eq!(read(&d, 649), vec![true; 6]);
+    assert_eq!(read(&d, 647), vec![true, true]);
+    assert_eq!(read(&d, 800), vec![false, true]);
+    assert!(d.regs[19]);
 }

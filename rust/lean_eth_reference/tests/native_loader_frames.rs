@@ -110,7 +110,8 @@ fn full_leaf_register_lift_keeps_global_controls_untouched() {
     d.regs[23] = true;
     let regs = d.regs;
     run(&p, &mut d);
-    assert_eq!(d.regs[..24], regs[..24]);
+    assert_eq!(d.regs[16..], regs[16..]);
+    assert_eq!(&d.regs[..2], &[false, false]);
     assert_eq!(read(&d, 649), vec![true, false, true, true]);
     assert_eq!(read(&d, 847), vec![false, true, false]);
     assert!(d.stacks[659].is_empty());

@@ -15,8 +15,8 @@
 
 use crate::Error;
 use crate::bit_program::{Atom, Cmd, Instr, Program};
-use crate::native_high::{clear_program, copy_program};
 use crate::native_flatten::integer_cache_program;
+use crate::native_high::{clear_program, copy_program};
 
 const TEMPORARY: usize = 659;
 const WORK_BASE: usize = 340;
@@ -150,7 +150,7 @@ pub fn record_counter_program() -> Result<Program<2, 2>, Error> {
 
 /// `SubexpScopeCountSetup.countCommand`, not its later fuel setup command.
 pub fn row_count_local_command() -> Result<Cmd<8, 15>, Error> {
-    let counter = record_counter_program()?.lift::<8, 15>([6, 7], [14, 2])?;
+    let counter = record_counter_program()?.lift::<8, 15>([0, 1], [14, 2])?;
     Ok(Cmd::seq(copy(1, 14, 5)?, Cmd::Call(counter)))
 }
 
@@ -212,7 +212,7 @@ pub(crate) fn stage<const R: usize, const S: usize>(
 pub fn initialize_address_command() -> Result<Cmd<16, 768>, Error> {
     stage(
         address_local_program()?,
-        [13, 14, 15],
+        [0, 1, 2],
         &[(130, 0), (307, 2)],
         &[(3, 648), (4, 649)],
     )
@@ -223,7 +223,7 @@ pub fn initialize_address_command() -> Result<Cmd<16, 768>, Error> {
 pub fn count_rows_command() -> Result<Cmd<16, 768>, Error> {
     stage(
         row_count_local_program()?,
-        std::array::from_fn(|i| 8 + i),
+        std::array::from_fn(|i| i),
         &[(136, 1)],
         &[(2, 647)],
     )
@@ -256,12 +256,13 @@ pub fn retain_cache_program() -> Result<Program<16, 768>, Error> {
 }
 
 /// The real node callback lifts the lower 16×768 machine into registers
-/// 24..39, stacks 128..895. This is a *prefix only* until integer-cache
+/// 0..15, stacks 0..767 (Fin.castAddEmb preserves indices). This is
+/// a *prefix only* until integer-cache
 /// construction was implemented. The full callback is provided below.
 pub fn bootstrap_prefix_node_command() -> Result<Cmd<40, 896>, Error> {
     Ok(Cmd::Call(bootstrap_prefix_program()?.lift::<40, 896>(
-        std::array::from_fn(|i| 24 + i),
-        std::array::from_fn(|i| 128 + i),
+        std::array::from_fn(|i| i),
+        std::array::from_fn(|i| i),
     )?))
 }
 
@@ -272,7 +273,7 @@ pub fn bootstrap_prefix_node_command() -> Result<Cmd<40, 896>, Error> {
 pub fn initialize_cache_command() -> Result<Cmd<16, 768>, Error> {
     stage(
         integer_cache_program()?,
-        std::array::from_fn(|i| 8 + i),
+        std::array::from_fn(|i| i),
         &[(139, 20), (138, 21), (140, 22)],
         &[(0, 640), (1, 641), (2, 642), (19, 643)],
     )
@@ -296,10 +297,11 @@ pub fn bootstrap_program() -> Result<Program<16, 768>, Error> {
     bootstrap_command()?.compiled(307, 647)
 }
 
-/// QueryStreamProgram.bootstrapNode lifts registers by 24 and stacks by 128.
+/// QueryStreamProgram.bootstrapNode widens registers by 24 and stacks by 128,
+/// without changing their indices (Fin.castAddEmb).
 pub fn bootstrap_node_command() -> Result<Cmd<40, 896>, Error> {
     Ok(Cmd::Call(bootstrap_program()?.lift::<40, 896>(
-        std::array::from_fn(|i| 24 + i),
-        std::array::from_fn(|i| 128 + i),
+        std::array::from_fn(|i| i),
+        std::array::from_fn(|i| i),
     )?))
 }

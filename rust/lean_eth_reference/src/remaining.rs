@@ -113,7 +113,7 @@ pub const STAGES: &[Stage] = &[
         id: "pair_expand",
         source_file: "SqrtLogSpace/PairNativeSetup.lean",
         lean_symbol: "PairNativeSetup.expandCaller",
-        status: Status::Stub,
+        status: Status::Executable,
         machine: Machine::Local,
         requires: &["pair_setup"],
     },
@@ -145,9 +145,17 @@ pub const STAGES: &[Stage] = &[
         id: "pair_start",
         source_file: "SqrtLogSpace/QueryExecution.lean",
         lean_symbol: "QueryExecution.PairStart.command",
-        status: Status::Stub,
+        status: Status::Executable,
         machine: Machine::Local,
         requires: &["pair_expand"],
+    },
+    Stage {
+        id: "pair_dfs_controller",
+        source_file: "SqrtLogSpace/DifferencePairsProgram.lean",
+        lean_symbol: "DifferencePairsProgram.command",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["bit_machine"],
     },
     Stage {
         id: "pair_dfs",
@@ -155,7 +163,7 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "QueryStreamProgram.pairs",
         status: Status::Stub,
         machine: Machine::Local,
-        requires: &["pair_start", "signature_tuple"],
+        requires: &["pair_start", "pair_dfs_controller", "signature_tuple"],
     },
     Stage {
         id: "pair_commit",
@@ -319,20 +327,12 @@ pub const STAGES: &[Stage] = &[
         requires: &["bit_machine"],
     },
     Stage {
-        id: "cutoff_scan",
-        source_file: "SqrtLogSpace/FiniteFallback.lean",
-        lean_symbol: "FiniteFallback.cutoffCommand",
-        status: Status::Executable,
-        machine: Machine::Outer,
-        requires: &["bit_machine"],
-    },
-    Stage {
         id: "finite_fallback",
         source_file: "SqrtLogSpace/FiniteFallback.lean",
         lean_symbol: "FiniteFallback.dispatchCommand",
         status: Status::Noncomputable,
         machine: Machine::Outer,
-        requires: &["frontend", "cutoff_scan"],
+        requires: &["frontend"],
     },
     Stage {
         id: "outer_setup",
@@ -428,11 +428,29 @@ pub mod query {
     pub fn signature_bootstrap() -> Result<Program<16, 768>, Error> {
         crate::native_bootstrap::bootstrap_program()
     }
-    local_stub!(pair_expand, "PairNativeSetup.expandCaller");
+    /// Real lifted 16-register mask expansion, no diagnostic callback.
+    /// Source PairNativeSetup.expandCaller; both inputs are preserved.
+    pub fn pair_expand() -> Result<Cmd<40, 896>, Error> {
+        crate::native_pair_setup::expand_caller_command()
+    }
     local_stub!(signature_loader, "SignatureTupleLoader.loadHead");
     local_stub!(query_visitor, "QueryVisitorProgram.visitor");
     local_stub!(signature_tuple, "SignatureTupleComplete.command");
-    local_stub!(pair_start, "QueryExecution.PairStart.command");
+    /// Source QueryExecution.PairStart.command: reset dictionary then
+    /// expand both masks physically through the finite BitProgram table.
+    pub fn pair_start() -> Result<Cmd<40, 896>, Error> {
+        crate::native_difference_pairs::pair_start_command()
+    }
+
+    /// Literal generic DifferencePairsProgram.command controller.
+    /// Its argument is an already compiled physical command, not a host
+    /// callback. It does NOT supply the unported signed tuple/commit body.
+    pub fn pair_dfs_controller(callback: Cmd<40, 896>) -> Cmd<40, 896> {
+        crate::native_difference_pairs::query_pairs_command(callback)
+    }
+
+    // QueryStreamProgram.pairs requires the signed pair callback from #103.
+    // Its stub must not be mistaken for the independently executable controller.
     local_stub!(pair_dfs, "QueryStreamProgram.pairs");
     local_stub!(pair_commit, "QueryAssembler.commitPair");
     local_stub!(node_append, "NodeAppendSpace.command");
@@ -498,11 +516,6 @@ pub mod leaf {
 /// FiniteFallback's source-chosen lookup table has no constructive Rust data.
 pub mod outer {
     use super::*;
-    /// Executable Lean FiniteFallback.cutoffCommand before dispatch.
-    /// The bounded counting table and the outer entry remain unsupported.
-    pub fn cutoff_scan(cutoff: usize) -> Result<Program<80, 1220>, Error> {
-        crate::finite_fallback::cutoff_program(cutoff)
-    }
     outer_stub!(frontend, "Native.frontendCommand");
     pub fn finite_fallback(_cutoff: usize, _large: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("FiniteFallback.dispatchCommand (noncomputable lookup)")

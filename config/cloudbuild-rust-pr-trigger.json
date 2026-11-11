@@ -1,12 +1,12 @@
 {
   "name": "nonexp-sudoku-pr-rust",
-  "description": "Independent Rust ETH port verification; no Python/Cython checkpoint",
+  "description": "Independent Rust ETH port PR verification for renamed canonical GitHub repository",
   "serviceAccount": "projects/project-6b810532-a302-48dc-b56/serviceAccounts/nonexp-sudoku-pr-ci@project-6b810532-a302-48dc-b56.iam.gserviceaccount.com",
   "approvalConfig": {
     "approvalRequired": false
   },
   "repositoryEventConfig": {
-    "repository": "projects/project-6b810532-a302-48dc-b56/locations/us-west1/connections/engineering-infra-native-ci/repositories/nonexp-sudoku",
+    "repository": "projects/project-6b810532-a302-48dc-b56/locations/us-west1/connections/engineering-infra-native-ci/repositories/eth-disproof-rust",
     "pullRequest": {
       "branch": "^main$",
       "commentControl": "COMMENTS_ENABLED_FOR_EXTERNAL_CONTRIBUTORS_ONLY"

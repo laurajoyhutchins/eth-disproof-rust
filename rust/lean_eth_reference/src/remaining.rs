@@ -295,6 +295,22 @@ pub const STAGES: &[Stage] = &[
         requires: &["leaf_local"],
     },
     Stage {
+        id: "terminal_power",
+        source_file: "SqrtLogSpace/NativeTerminal.lean",
+        lean_symbol: "NativeTerminal.power",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "terminal_zero",
+        source_file: "SqrtLogSpace/NativeTerminal.lean",
+        lean_symbol: "NativeTerminal.zero",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["bit_machine"],
+    },
+    Stage {
         id: "terminal_dispatch",
         source_file: "SqrtLogSpace/NativeLeafDispatch.lean",
         lean_symbol: "NativeLeafDispatch.command",
@@ -490,6 +506,14 @@ pub mod leaf {
     }
     pub fn execution(_local_command: Cmd<40, 896>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("NativeLeafExecution.command")
+    }
+    /// Actual source-native terminal power after the caller proves F is empty.
+    pub fn terminal_power() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_terminal::terminal_power_command()
+    }
+    /// Actual source-native zero after the caller proves an empty clause.
+    pub fn terminal_zero() -> Result<Cmd<80, 1220>, Error> {
+        Ok(crate::native_terminal::terminal_zero_command())
     }
     pub fn terminal_dispatch(_nonterminal: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("NativeLeafDispatch.command")

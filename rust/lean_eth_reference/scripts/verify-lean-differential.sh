@@ -30,7 +30,7 @@ while (( $# )); do
   esac
 done
 [[ -n "$UPSTREAM" ]] || { usage >&2; echo 'Missing --lean-repo' >&2; exit 2; }
-for tool in git python3 cargo rustc lake; do
+for tool in git sha256sum cargo rustc lake; do
   command -v "$tool" >/dev/null || { echo "BLOCKED: $tool unavailable" >&2; exit 3; }
 done
 UPSTREAM="$(realpath -- "$UPSTREAM")"
@@ -92,7 +92,7 @@ esac
 (cd "$CRATE" && cargo build --locked --offline --bins)
 for part in "${suites[@]}"; do
   case "$part" in
-    full) lean=lean_full_machine_trace.lean; bin=lean-full-machine-trace; compare=compare-full-machine-trace.py; modules=(SqrtLog.HighIncidenceProgramBranches) ;;
+    full) lean=lean_full_machine_trace.lean; bin=lean-full-machine-trace; modules=(SqrtLog.HighIncidenceProgramBranches) ;;
     high) lean=lean_native_high_trace.lean; bin=native-high-trace; modules=(SqrtLog.HighIncidenceProgramBranches SqrtLogSpace.HighCountSeed) ;;
     tuple) lean=lean_native_tuple_trace.lean; bin=native-tuple-trace; modules=(ExecCNFTupleOdometer ExecCNFTupleEnumeration) ;;
     layout) lean=lean_native_layout_pair_trace.lean; bin=native-layout-pair-trace; modules=(SqrtLogSpace.NativeLayoutLoad SqrtLogSpace.PairNativeSetup) ;;
@@ -109,8 +109,9 @@ for part in "${suites[@]}"; do
   (cd "$UPSTREAM/lean" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean --run "$CRATE/reference/$lean") > "$OUT/$part.lean.trace"
   "$REPOSITORY/target/debug/$bin" > "$OUT/$part.rust.trace"
   if [[ "$part" == full ]]; then
-    # The full-state Python parser remains shared with the resource profiler.
-    python3 "$CRATE/scripts/$compare" --lean "$OUT/$part.lean.trace" --rust "$OUT/$part.rust.trace"
+    # Parse every program counter, register, and stack from real independent executions.
+    "$REPOSITORY/target/debug/full-machine-evidence" compare \
+      --lean "$OUT/$part.lean.trace" --rust "$OUT/$part.rust.trace"
   else
     # One Rust validator for all five source-specific snapshot schemas.
     "$REPOSITORY/target/debug/compare-traces" --suite "$part" \
@@ -120,31 +121,18 @@ for part in "${suites[@]}"; do
     # Independent state comparison must pass before extra profiling.
     rm -f -- "$OUT/full.rust.ops.csv" "$OUT/full.profile.json"
     "$REPOSITORY/target/debug/profile-full-machine" > "$OUT/full.rust.ops.csv"
-    python3 "$CRATE/scripts/profile-full-machine-traces.py" \
+    "$REPOSITORY/target/debug/full-machine-evidence" profile \
       --lean "$OUT/full.lean.trace" --rust "$OUT/full.rust.trace" \
       --rust-metrics "$OUT/full.rust.ops.csv" --output "$OUT/full.profile.json"
   fi
   printf '%s\n' "source=$SOURCE_SHA" "mathlib=$MATHLIB_SHA" "lean=$lean_version" "rust=$rust_version" > "$OUT/$part.pass"
 done
-# Write receipt ONLY after every fresh source execution and comparison succeeded.
-python3 - "$OUT" "$SOURCE_SHA" "$MATHLIB_SHA" "$lean_version" "$rust_version" "$rust_head" "${suites[@]}" <<'PY'
-import hashlib, json, pathlib, sys
-out = pathlib.Path(sys.argv[1]); src, math, lean, rust, rust_head = sys.argv[2:7]; suites = sys.argv[7:]
-entries = {}
-for suite in suites:
-    paths = (out / f'{suite}.lean.trace', out / f'{suite}.rust.trace')
-    entries[suite] = {
-        name: {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'bytes': path.stat().st_size}
-        for name, path in zip(('lean', 'rust'), paths)
-    }
-    if suite == 'full':
-        for name, path in (('rust_opcode_profile', out / 'full.rust.ops.csv'),
-                           ('state_resource_profile', out / 'full.profile.json')):
-            entries[suite][name] = {
-                'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
-                'bytes': path.stat().st_size,
-            }
-receipt = {'status': 'PASS', 'provenance': {'openai_math_commit': src, 'mathlib_commit': math, 'lean': lean, 'rust': rust, 'rust_commit': rust_head}, 'suites': entries}
-(out / 'receipt.json').write_text(json.dumps(receipt, sort_keys=True, indent=2) + '\n')
-print(f'PASS: {len(suites)} genuine imported-Lean differential suites. Receipt: {out / "receipt.json"}')
-PY
+# A failed source execution cannot be replaced by an old or synthetic receipt.
+receipt_suites=()
+for part in "${suites[@]}"; do
+  receipt_suites+=(--suite "$part")
+done
+"$REPOSITORY/target/debug/full-machine-evidence" receipt \
+  --output-dir "$OUT" --source "$SOURCE_SHA" --mathlib "$MATHLIB_SHA" \
+  --lean-version "$lean_version" --rust-version "$rust_version" \
+  --rust-commit "$rust_head" "${receipt_suites[@]}"

@@ -12,7 +12,7 @@ use crate::Error;
 
 /// Source instruction view hides only the callee's *finite dimensions*, not
 /// its instructions or any machine steps. A lifted program stays on demand.
-trait PhysicalSource: std::fmt::Debug {
+trait PhysicalSource: std::fmt::Debug + Send + Sync {
     fn instruction_at(&self, pc: usize) -> Result<Instr, Error>;
 }
 

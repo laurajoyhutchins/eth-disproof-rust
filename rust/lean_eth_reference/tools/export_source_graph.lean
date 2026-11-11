@@ -1,0 +1,221 @@
+import Lean
+import OAI.Algorithms.SubexponentialSAT.StructuredCalls
+
+/-!
+Emit a typed, source-elaborated StructuredCalls graph. Only a bounded Call
+leaf is materialized: the parent command is NOT expanded into Fin-indexed code.
+Refuse unknown constructors rather than translating an approximate operation.
+The wrapper pins git source, Lean, and Mathlib before this command executes.
+-/
+namespace OriginalSourceGraph
+open Lean Meta Elab Command
+
+private def number (e : Expr) : MetaM Nat := do
+  let e ← whnf e
+  match e with
+  | .lit (.natVal n) => return n
+  | _ => throwError m!"not a finite source numeric literal: {e}"
+
+private def fin (e : Expr) : MetaM Nat :=
+  number (mkProj ``Fin 0 e)
+
+private def bit (e : Expr) : MetaM Nat := do
+  let v ← whnf e
+  match v with
+  | .const n _ =>
+    if n == ``Bool.true then return 1
+    if n == ``Bool.false then return 0
+    throwError m!"unrecognized source Boolean: {n}"
+  | _ => throwError m!"source Boolean did not elaborate to a constructor: {v}"
+
+private def operand (key : String) (n : Nat) : String := s!"{key}:{n}"
+
+private def atom (e : Expr) : MetaM String := do
+  let v ← whnf e
+  match v.getAppFn with
+  | .const n _ =>
+    let a := v.getAppArgs
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.set then
+      return s!"set:{← fin a[2]!}:{← bit a[3]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.copy then
+      return s!"copy:{← fin a[2]!}:{← fin a[3]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.bnot then
+      return s!"not:{← fin a[2]!}:{← fin a[3]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.band then
+      return s!"and:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.bor then
+      return s!"or:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.bxor then
+      return s!"xor:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.push then
+      return s!"push:{← fin a[2]!}:{← fin a[3]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.peek then
+      return s!"peek:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.pop then
+      return s!"pop:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
+    throwError m!"unsupported original atom constructor: {n}"
+  | _ => throwError m!"original atom did not reduce to a constructor: {v}"
+
+private def physicalInstr (e : Expr) : MetaM String := do
+  let v ← whnf e
+  match v.getAppFn with
+  | .const n _ =>
+    let a := v.getAppArgs
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.halt then
+      return "halt"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.goto then
+      return s!"goto:{← fin a[3]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.set then
+      return s!"set:{← fin a[3]!}:{← bit a[4]!}:{← fin a[5]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.copy then
+      return s!"copy:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.bnot then
+      return s!"not:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.band then
+      return s!"and:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.bor then
+      return s!"or:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.bxor then
+      return s!"xor:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.branch then
+      return s!"branch:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.push then
+      return s!"push:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.peek then
+      return s!"peek:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
+    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.pop then
+      return s!"pop:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
+    throwError m!"unsupported original physical opcode: {n}"
+  | _ => throwError m!"original physical instruction remains opaque: {v}"
+
+private def boundedTable (p : Expr) (maxLabels : Nat) : MetaM Json := do
+  let tp ← inferType p
+  let args := tp.getAppArgs
+  if args.size != 3 then throwError m!"call did not elaborate to a closed Program: {tp}"
+  let r ← number args[0]!
+  let s ← number args[1]!
+  let l ← number args[2]!
+  if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
+    throwError m!"unsupported bounded callee dimensions: {r} {s} {l}"
+  let entry ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 2 p)
+  let input ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 0 p)
+  let output ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 1 p)
+  if entry >= l || input >= s || output >= s then
+    throwError "callee has invalid finite entry or I/O port"
+  let code := mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 3 p
+  let mut rows : Array String := #[]
+  for i in [:l] do
+    let bound := mkNatLit l
+    let index := mkNatLit i
+    let proof ← mkDecideProof (← mkAppM ``LT.lt #[index, bound])
+    let label := mkAppN (mkConst ``Fin.mk []) #[bound, index, proof]
+    rows := rows.push (← physicalInstr (mkApp code label))
+  return Json.mkObj [
+    ("r", toJson r), ("s", toJson s), ("labels", toJson l),
+    ("entry", toJson entry), ("input", toJson input),
+    ("output", toJson output), ("code", toJson rows)
+  ]
+
+private partial def structured (e : Expr) (maxLabels fuel : Nat) : MetaM Json := do
+  if fuel == 0 then throwError "source command nesting exceeded 512 nodes"
+  let v ← whnf e
+  match v.getAppFn with
+  | .const n _ =>
+    let a := v.getAppArgs
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.base then
+      return (← basic a[2]! maxLabels (fuel - 1))
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call then
+      return Json.mkObj [("kind", toJson "call"),
+        ("program", ← boundedTable a[3]! maxLabels)]
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq then
+      return Json.mkObj [("kind", toJson "seq"),
+        ("first", ← structured a[2]! maxLabels (fuel - 1)),
+        ("second", ← structured a[3]! maxLabels (fuel - 1))]
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.ite then
+      return Json.mkObj [("kind", toJson "if"), ("test", toJson (← fin a[2]!)),
+        ("yes", ← structured a[3]! maxLabels (fuel - 1)),
+        ("no", ← structured a[4]! maxLabels (fuel - 1))]
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.while then
+      return Json.mkObj [("kind", toJson "while"), ("test", toJson (← fin a[2]!)),
+        ("body", ← structured a[3]! maxLabels (fuel - 1))]
+    throwError m!"unsupported StructuredCalls command: {n}"
+  | _ => throwError m!"source StructuredCalls command is not a constructor: {v}"
+where
+  basic (e : Expr) (maxLabels fuel : Nat) : MetaM Json := do
+    if fuel == 0 then throwError "source basic command depth exceeded"
+    let v ← whnf e
+    match v.getAppFn with
+    | .const n _ =>
+      let a := v.getAppArgs
+      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.skip then
+        return Json.mkObj [("kind", toJson "skip")]
+      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.atom then
+        return Json.mkObj [("kind", toJson "atom"), ("opcode", toJson (← atom a[2]!))]
+      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.seq then
+        return Json.mkObj [("kind", toJson "seq"),
+          ("first", ← basic a[2]! maxLabels (fuel - 1)),
+          ("second", ← basic a[3]! maxLabels (fuel - 1))]
+      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.ite then
+        return Json.mkObj [("kind", toJson "if"), ("test", toJson (← fin a[2]!)),
+          ("yes", ← basic a[3]! maxLabels (fuel - 1)),
+          ("no", ← basic a[4]! maxLabels (fuel - 1))]
+      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.while then
+        return Json.mkObj [("kind", toJson "while"), ("test", toJson (← fin a[2]!)),
+          ("body", ← basic a[3]! maxLabels (fuel - 1))]
+      throwError m!"unsupported StructuredProgram command: {n}"
+    | _ => throwError m!"source StructuredProgram command is not a constructor: {v}"
+
+syntax (name := exportOriginalSourceGraph)
+  "#export_original_source_graph " ident str str : command
+
+elab_rules : command
+  | `(#export_original_source_graph $program:ident $id:str $blob:str) => do
+    let programName := program.getId
+    let label := id.getString
+    let sourceBlob := blob.getString
+    unless label.toList.all (fun c => c.isAlphanum || c == '_' || c == '-') do
+      throwError "invalid source graph identifier"
+    unless sourceBlob.length == 40 && sourceBlob.toList.all
+      (fun c => c.isDigit || (c >= 'a' && c <= 'f')) do
+      throwError "invalid source Git blob"
+    let maxLabels := ((← liftIO <| IO.getEnv "ORIGINAL_MAX_LABELS").getD "4096").toNat?.getD 0
+    if maxLabels == 0 || maxLabels > 8192 then
+      throwError "ORIGINAL_MAX_LABELS must be 1..8192"
+    let body ← liftTermElabM do
+      let info ← getConstInfo programName
+      match info with
+      | .defnInfo v => return v.value
+      | _ => throwError m!"source program is not a definitional constant: {programName}"
+    let graph ← liftTermElabM do
+      let tp ← inferType (mkConst programName)
+      let a := tp.getAppArgs
+      if a.size != 3 then throwError m!"expected a closed BitProgram.Program: {tp}"
+      let r ← number a[0]!
+      let s ← number a[1]!
+      let l ← number a[2]!
+      if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
+        throwError m!"source machine out of bounded test dimensions: {r} {s} {l}"
+      match body.getAppFn with
+      | .const n _ =>
+        if n != ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled then
+          throwError m!"not a direct compiled StructuredCalls command: {n}"
+        let args := body.getAppArgs
+        if args.size != 5 then
+          throwError m!"unexpected compiled command arity {args.size}"
+        let input ← fin args[3]!
+        let output ← fin args[4]!
+        let command ← structured args[2]! maxLabels 512
+        return Json.mkObj [
+          ("kind", toJson "original-structured-source-v1"),
+          ("source_commit", toJson "4eaee87548250b2682affda7d05d947c05554bae"),
+          ("source_blob", toJson sourceBlob),
+          ("declaration", toJson (toString programName)),
+          ("id", toJson label),
+          ("abi", Json.mkObj [("r", toJson r), ("s", toJson s),
+            ("labels", toJson l), ("input", toJson input), ("output", toJson output)]),
+          ("command", command)
+        ]
+      | _ => throwError m!"source compilation root remains opaque: {body}"
+    liftIO <| IO.println graph.compress
+
+end OriginalSourceGraph

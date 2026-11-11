@@ -69,7 +69,7 @@ python3 tools/extract_compiled_catalog.py \
 python3 tools/export_compiled_batch.py \
   --upstream /path/to/openai-math --lake-root ../../instrumentation/lean-env \
   --output-dir /tmp/original-compiled --query-closure \
-  --name-regex 'SqrtLog\\.Setup\\.(computeLProgram|logSuccProgram)|SqrtLogSpace\\.DisjointReuse\\.SparseFrontierProgram\\.(pushProgram|initFrontierProgram|popProgram|popIfPresentProgram|pushPairProgram)' \
+  --name-regex 'SqrtLog\.Setup\.(computeLProgram|logSuccProgram)|SqrtLogSpace\.DisjointReuse\.SparseFrontierProgram\.(pushProgram|initFrontierProgram|popProgram|popIfPresentProgram|pushPairProgram)' \
   --limit 7 --max-labels 4096 --timeout-seconds 240
 python3 tools/compile_exported_batch.py \
   --tables /tmp/original-compiled --rust-output /tmp/original-compiled-rust \

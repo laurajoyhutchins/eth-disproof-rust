@@ -12,13 +12,14 @@ permissions:
 
 concurrency:
   group: original-lean-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # The original OAI closure is large; a bot restack must not discard it.
+  cancel-in-progress: false
 
 jobs:
   original-lean:
     name: pinned Mathlib import and native query extraction
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
       SOURCE_BLOB: c2fb29983bb33229d5cf60729cd3d1e37b9b00ca

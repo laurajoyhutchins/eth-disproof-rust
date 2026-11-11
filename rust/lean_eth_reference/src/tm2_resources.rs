@@ -49,6 +49,28 @@ pub struct PrimitiveStats {
     pub source_step_overhead_bound: u64,
 }
 
+/// One executed primitive controller transition. A blank is None, while
+/// Some(false) is a physically written zero. Heads use per-tape coordinates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PrimitiveAction {
+    Write(Option<bool>),
+    Left,
+    Right,
+    Halt,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PrimitiveEvent {
+    pub source_index: u64,
+    pub micro_index: u64,
+    pub tape: usize,
+    pub action: PrimitiveAction,
+    pub head_before: i64,
+    pub head_after: i64,
+    pub cell_before: Option<bool>,
+    pub cell_after: Option<bool>,
+}
+
 #[derive(Clone, Debug)]
 struct Tape {
     /// A some false is a real, nonblank cell. Absence is Lean's none.
@@ -90,26 +112,30 @@ impl Tape {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-enum Action {
-    Write(Option<bool>),
-    Left,
-    Right,
-    Halt,
+type Action = PrimitiveAction;
+
+struct Accounting<'a, 'b> {
+    stats: &'a mut PrimitiveStats,
+    limits: PrimitiveLimits,
+    trace: &'a mut Option<&'b mut Vec<PrimitiveEvent>>,
+    max_trace_events: usize,
 }
 
 fn primitive_step(
     tape: &mut Tape,
     action: Action,
-    stats: &mut PrimitiveStats,
-    limits: PrimitiveLimits,
+    tape_index: usize,
+    ctx: &mut Accounting<'_, '_>,
 ) -> Result<(), Error> {
-    if stats.primitive_steps >= limits.max_primitive_steps {
-        return Err(Error::Capacity(
-            "primitive TM tape-transition budget".into(),
-        ));
+    if ctx.trace.as_ref().is_some_and(|v| v.len() >= ctx.max_trace_events) {
+        return Err(Error::Capacity("primitive trace event budget".into()));
     }
-    tape.touch(stats, limits)?;
+    if ctx.stats.primitive_steps >= ctx.limits.max_primitive_steps {
+        return Err(Error::Capacity("primitive TM tape-transition budget".into()));
+    }
+    tape.touch(ctx.stats, ctx.limits)?;
+    let head_before = tape.head;
+    let cell_before = tape.read();
     match action {
         Action::Write(bit) => {
             if let Some(value) = bit {
@@ -117,7 +143,7 @@ fn primitive_step(
             } else {
                 tape.cells.remove(&tape.head);
             }
-            stats.writes = stats.writes.checked_add(1).ok_or(Error::Overflow)?;
+            ctx.stats.writes = ctx.stats.writes.checked_add(1).ok_or(Error::Overflow)?;
         }
         Action::Left | Action::Right => {
             tape.head = if matches!(action, Action::Left) {
@@ -126,15 +152,24 @@ fn primitive_step(
                 tape.head.checked_add(1)
             }
             .ok_or(Error::Overflow)?;
-            tape.touch(stats, limits)?;
-            stats.head_moves = stats.head_moves.checked_add(1).ok_or(Error::Overflow)?;
+            tape.touch(ctx.stats, ctx.limits)?;
+            ctx.stats.head_moves = ctx.stats.head_moves.checked_add(1).ok_or(Error::Overflow)?;
         }
         Action::Halt => {}
     }
-    stats.primitive_steps = stats
-        .primitive_steps
-        .checked_add(1)
-        .ok_or(Error::Overflow)?;
+    if let Some(events) = ctx.trace.as_mut() {
+        events.push(PrimitiveEvent {
+            source_index: ctx.stats.source_steps,
+            micro_index: ctx.stats.tm2_microsteps,
+            tape: tape_index,
+            action,
+            head_before,
+            head_after: tape.head,
+            cell_before,
+            cell_after: tape.read(),
+        });
+    }
+    ctx.stats.primitive_steps = ctx.stats.primitive_steps.checked_add(1).ok_or(Error::Overflow)?;
     Ok(())
 }
 
@@ -322,8 +357,7 @@ fn execute_micro<const R: usize, const S: usize>(
     pc: &mut Option<usize>,
     regs: &mut [bool; R],
     tapes: &mut [Tape],
-    stats: &mut PrimitiveStats,
-    limits: PrimitiveLimits,
+    ctx: &mut Accounting<'_, '_>,
 ) -> Result<(), Error> {
     let port = match instruction {
         Micro::Push { stack, .. } | Micro::Peek { stack, .. } | Micro::Pop { stack, .. } => *stack,
@@ -335,14 +369,14 @@ fn execute_micro<const R: usize, const S: usize>(
 
     // Ready -> reading: one write bit (including blank bit) transition.
     let unchanged = tape.read();
-    primitive_step(tape, Action::Write(unchanged), stats, limits)?;
+    primitive_step(tape, Action::Write(unchanged), port, ctx)?;
     let mut register_bits = Vec::with_capacity(w);
     for _ in 0..w {
         register_bits.push(tape.read());
-        primitive_step(tape, Action::Right, stats, limits)?;
+        primitive_step(tape, Action::Right, port, ctx)?;
     }
     for _ in 0..w {
-        primitive_step(tape, Action::Left, stats, limits)?;
+        primitive_step(tape, Action::Left, port, ctx)?;
     }
 
     let mut op = None;
@@ -385,34 +419,34 @@ fn execute_micro<const R: usize, const S: usize>(
     // Reading -> action state (or halt), one transition. This is a write-self
     // for all non-halting instructions. The halt transition has no action.
     if halts {
-        primitive_step(tape, Action::Halt, stats, limits)?;
+        primitive_step(tape, Action::Halt, port, ctx)?;
     } else {
         let unchanged = tape.read();
-        primitive_step(tape, Action::Write(unchanged), stats, limits)?;
+        primitive_step(tape, Action::Write(unchanged), port, ctx)?;
         match op {
             Some(Some(bit)) => {
                 // StackMachine.pushBits recurses on the tail: emit low bits
                 // right-to-left, each as move-left followed by write.
                 for value in block(port, p.input_stack(), bit).into_iter().rev() {
-                    primitive_step(tape, Action::Left, stats, limits)?;
-                    primitive_step(tape, Action::Write(Some(value)), stats, limits)?;
+                    primitive_step(tape, Action::Left, port, ctx)?;
+                    primitive_step(tape, Action::Write(Some(value)), port, ctx)?;
                 }
             }
             Some(None) => {
                 // StackMachine.popBits repeats blank-write, move-right
                 // even when the source stack was already empty.
                 for _ in 0..w {
-                    primitive_step(tape, Action::Write(None), stats, limits)?;
-                    primitive_step(tape, Action::Right, stats, limits)?;
+                    primitive_step(tape, Action::Write(None), port, ctx)?;
+                    primitive_step(tape, Action::Right, port, ctx)?;
                 }
             }
             None => {}
         }
         // Acting -> ready: one final write-self transition.
         let unchanged = tape.read();
-        primitive_step(tape, Action::Write(unchanged), stats, limits)?;
+        primitive_step(tape, Action::Write(unchanged), port, ctx)?;
     }
-    stats.tm2_microsteps = stats.tm2_microsteps.checked_add(1).ok_or(Error::Overflow)?;
+    ctx.stats.tm2_microsteps = ctx.stats.tm2_microsteps.checked_add(1).ok_or(Error::Overflow)?;
     Ok(())
 }
 
@@ -427,6 +461,30 @@ pub fn run_primitive<const R: usize, const S: usize>(
     p: &Program<R, S>,
     config: &mut Config<R, S>,
     limits: PrimitiveLimits,
+) -> Result<PrimitiveStats, Error> {
+    run_primitive_inner(p, config, limits, None, 0)
+}
+
+/// Return all primitive transition events for bounded, small fixtures. No
+/// partial trace escapes on refusal; the input config is unchanged on error.
+pub fn run_primitive_traced<const R: usize, const S: usize>(
+    p: &Program<R, S>,
+    config: &mut Config<R, S>,
+    limits: PrimitiveLimits,
+    max_trace_events: usize,
+) -> Result<(PrimitiveStats, Vec<PrimitiveEvent>), Error> {
+    let mut events = Vec::new();
+    let stats = run_primitive_inner(p, config, limits, Some(&mut events), max_trace_events)?;
+    debug_assert_eq!(events.len() as u64, stats.primitive_steps);
+    Ok((stats, events))
+}
+
+fn run_primitive_inner<const R: usize, const S: usize>(
+    p: &Program<R, S>,
+    config: &mut Config<R, S>,
+    limits: PrimitiveLimits,
+    mut trace: Option<&mut Vec<PrimitiveEvent>>,
+    max_trace_events: usize,
 ) -> Result<PrimitiveStats, Error> {
     let mut regs = config.regs;
     let mut pc = config.pc;
@@ -466,7 +524,17 @@ pub fn run_primitive<const R: usize, const S: usize>(
                 *next = pc.ok_or_else(|| Error::Invalid("missing branch target".into()))?;
             }
             execute_micro(
-                operation, p, &mut pc, &mut regs, &mut tapes, &mut stats, limits,
+                operation,
+                p,
+                &mut pc,
+                &mut regs,
+                &mut tapes,
+                &mut Accounting {
+                    stats: &mut stats,
+                    limits,
+                    trace: &mut trace,
+                    max_trace_events,
+                },
             )?;
             let live_encoded = tapes.iter().try_fold(0usize, |sum, tape| {
                 sum.checked_add(tape.cells.len()).ok_or(Error::Overflow)

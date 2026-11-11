@@ -255,6 +255,10 @@ fn repeat_refuses_overflow_and_never_materializes_huge_control_space() {
         }
     );
     assert!(source.materialize(1024).is_err());
-    let two_sites = Block::<2, 2>::ite(0, Block::skip(), Block::skip()).unwrap();
+    let two_sites = Block::<2, 2>::ite(
+        0,
+        Block::atom(Atom::Set { dst: 0, value: true }).unwrap(),
+        Block::skip(),
+    ).unwrap();
     assert!(Block::repeat(usize::MAX, two_sites).is_err());
 }

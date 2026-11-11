@@ -697,3 +697,6 @@ pub mod native_signature_frames;
 pub mod native_signature_generator;
 pub mod native_head_scatter;
 pub mod native_head_support;
+
+/// Executable source-defined predecessor-key equality, freshness gate and rescan setup/cleanup.
+pub mod native_signature_rescan;

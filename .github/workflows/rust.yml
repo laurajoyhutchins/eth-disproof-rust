@@ -28,13 +28,7 @@ jobs:
         run: |
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
           rustup default 1.99.1
-      - name: Resolve updated Cargo lockfile (temporary migration check)
-        run: |
-          cargo generate-lockfile
-          echo 'BEGIN_GENERATED_CARGO_LOCK'
-          cat Cargo.lock
-          echo 'END_GENERATED_CARGO_LOCK'
-      - name: Fetch dependencies
+      - name: Fetch pinned Cargo dependencies
         run: cargo fetch --locked
       - name: Formatting (workspace)
         run: cargo fmt --all -- --check

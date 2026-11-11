@@ -697,6 +697,8 @@ pub mod native_clause_dedup;
 pub mod native_clause_filter;
 /// Complete source-defined CNF normalization command on 15x16 machine.
 pub mod native_normalization_full;
+/// Original 80x1220 lift of the source-normalizing 15x16 machine.
+pub mod native_outer_normalization;
 /// Source-fixed unary header reader and binary length initializer.
 pub mod native_frontend_header;
 pub mod native_terminal;

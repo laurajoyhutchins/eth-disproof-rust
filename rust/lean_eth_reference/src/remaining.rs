@@ -423,6 +423,14 @@ pub const STAGES: &[Stage] = &[
         requires: &["normalization_tautology_core", "normalization_record_reverse"],
     },
     Stage {
+        id: "normalization_prefix",
+        source_file: "SubexpNormalizationPrefixProgram.lean",
+        lean_symbol: "SubexpNormalizationPrefixProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_prefix"],
+    },
+    Stage {
         id: "normalization_full",
         source_file: "SubexpNormalizationProgram.lean",
         lean_symbol: "SubexpNormalizationProgram.program",
@@ -703,6 +711,11 @@ pub mod outer {
     /// Neither clause deduplication nor strict subset filtering is performed.
     pub fn tautology_filter() -> Result<Program<13, 11>, Error> {
         crate::native_tautology_filter::program()
+    }
+    /// Executable source prefix: literal cleanup then tautology filtering.
+    /// Does not perform the later clause absorption or full frontend.
+    pub fn normalization_prefix() -> Result<Program<13, 11>, Error> {
+        crate::native_normalization_prefix::program()
     }
     /// Source-preserving body placement (1218 -> 265), not a CNF normalizer.
     pub fn place_body() -> Result<Cmd<80, 1220>, Error> {

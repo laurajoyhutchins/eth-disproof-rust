@@ -708,19 +708,27 @@ pub mod native_head_support;
 /// Physical source-defined attained-signature controller and level initializer.
 pub mod native_signature_tuple;
 
-
 #[cfg(test)]
 mod canonical_clause_tests {
     use super::*;
 
     #[test]
     fn cnf_new_recanonicalizes_internal_rows_before_set_operations() {
-        let x = Literal { variable: 0, positive: true };
-        let y = Literal { variable: 1, positive: false };
+        let x = Literal {
+            variable: 0,
+            positive: true,
+        };
+        let y = Literal {
+            variable: 1,
+            positive: false,
+        };
         // The raw Clause constructor is unavailable to external callers.
         let f = Cnf::new(2, vec![Clause(vec![y, x, y])]).unwrap();
         assert_eq!(f.clauses()[0].literals(), &[x, y]);
         assert!(Clause::new(vec![x]).is_subset_of(&f.clauses()[0]));
-        assert_eq!(f.encode_lean(), Cnf::from_signed(2, &[&[1, -2]]).unwrap().encode_lean());
+        assert_eq!(
+            f.encode_lean(),
+            Cnf::from_signed(2, &[&[1, -2]]).unwrap().encode_lean()
+        );
     }
 }

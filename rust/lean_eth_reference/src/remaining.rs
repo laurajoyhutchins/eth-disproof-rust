@@ -234,7 +234,12 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "HighQueryProgram.marked",
         status: Status::Stub,
         machine: Machine::Local,
-        requires: &["high_query_preparation", "high_tuple_loop", "query_stream"],
+        requires: &[
+            "high_count_seed",
+            "high_query_preparation",
+            "high_tuple_loop",
+            "query_stream",
+        ],
     },
     Stage {
         id: "high_query_accepted",
@@ -242,7 +247,12 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "HighQueryProgram.accepted",
         status: Status::Stub,
         machine: Machine::Local,
-        requires: &["high_query_preparation", "high_tuple_loop", "query_stream"],
+        requires: &[
+            "high_count_seed",
+            "high_query_preparation",
+            "high_tuple_loop",
+            "query_stream",
+        ],
     },
     Stage {
         id: "leaf_preparation",

@@ -77,6 +77,7 @@ fn registry_is_source_pinned_unique_and_topologically_sorted() {
         assert_eq!(nodes[id].status, Status::Executable, "{id}");
         assert_eq!(nodes[id].machine, Machine::Local, "{id}");
     }
+    assert_eq!(nodes["frontend_normalization"].status, Status::Executable);
     assert_eq!(nodes["frontend"].status, Status::Stub);
 }
 
@@ -222,6 +223,7 @@ fn source_machine_dimensions_are_enforced_at_compile_time() {
     let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::dedup_clauses;
     let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::filter_supersets;
     let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::normalization_full;
+    let _: fn() -> Result<Cmd<80, 1220>, Error> = remaining::outer::frontend_normalization;
 }
 
 #[test]

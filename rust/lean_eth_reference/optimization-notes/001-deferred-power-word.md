@@ -2,7 +2,7 @@
 
 **Status:** proposed transformation, not implemented or benchmarked.
 
-**Lean source:** [`LayoutProgram.powerCommand`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/LayoutProgramPower.lean), pinned at `openai/math@4eaee87548250b2682affda7d05d947c05554bae`.
+**Lean source:** [`LayoutProgram.powerCommand`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LayoutProgramPower.lean), pinned at `openai/math@4eaee87548250b2682affda7d05d947c05554bae`.
 
 **Literal Rust anchor:** [`native_integer_cache.rs::power_command`](../src/native_integer_cache.rs), and its use through `make_power_command`. The reference implementation is **not** changed by this annotation. Branch baseline: `main@1c008a281773dfa979b8bc3c2eba7facb991af71`.
 

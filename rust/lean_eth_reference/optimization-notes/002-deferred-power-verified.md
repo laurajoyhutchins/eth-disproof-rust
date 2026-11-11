@@ -3,7 +3,7 @@
 **Status:** locally tested *isolated* representation change, not an end-to-end
 algorithmic speedup.
 
-**Pinned source:** [`LayoutProgram.powerCommand`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/LayoutProgramPower.lean).
+**Pinned source:** [`LayoutProgram.powerCommand`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/LayoutProgramPower.lean).
 
 **Literal Rust oracle:** `src/native_integer_cache.rs::power_program` and
 `make_power_program`. Neither was changed.

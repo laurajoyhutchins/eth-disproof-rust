@@ -8,9 +8,9 @@ All indices in E and U are zero-based Boolean variable indices.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Iterator, Literal
 from fractions import Fraction
-from itertools import combinations, product
+from itertools import combinations
 from math import comb
 
 from non_exponential_sudoku.runtime.budget import CapacityError
@@ -260,6 +260,33 @@ def _shift_polynomial(
     return value
 
 
+def _measurement_vectors(bound: int, rows: int) -> Iterator[tuple[int, ...]]:
+    """Enumerate [-bound, bound]**rows in product's lexicographic order.
+
+    itertools.product(range(...), repeat=rows) materializes the ENTIRE
+    (2*bound+1)-element input pool, even though only one tuple is needed
+    at a time. This odometer retains O(rows) integers instead of O(bound)
+    and never allocates the exponentially many output tuples.
+    """
+    if (type(bound) is not int or type(rows) is not int
+            or bound < 0 or rows < 0):
+        raise ValueError('measurement bound and row count must be nonnegative integers')
+    if rows == 0:
+        yield ()
+        return
+    current = [-bound] * rows
+    while True:
+        yield tuple(current)
+        for position in range(rows - 1, -1, -1):
+            if current[position] < bound:
+                current[position] += 1
+                for reset in range(position + 1, rows):
+                    current[reset] = -bound
+                break
+        else:
+            return
+
+
 def _validate_indices(
     E: tuple[int, ...], U: tuple[int, ...], nvars: int,
 ) -> None:
@@ -383,7 +410,7 @@ class _TaylorEvaluator:
         group_required = tuple(tuple(j for j, index in enumerate(group) if index in E)
                                for group in design.groups)
         total = self.zero
-        for y in product(range(-design.D, design.D + 1), repeat=cert.total_measurements):
+        for y in _measurement_vectors(design.D, cert.total_measurements):
             group_product = self.one
             for g, (group, matrix) in enumerate(zip(design.groups, design.matrices)):
                 wanted = y[self.offsets[g]:self.offsets[g] + len(matrix)]

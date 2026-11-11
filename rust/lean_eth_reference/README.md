@@ -1,4 +1,4 @@
-# OpenAI ETH formalization: executable Rust port (v0.11.0)
+# OpenAI ETH formalization: executable Rust port (v0.12.0)
 
 This is a **source-pinned, dependency-free implementation of the first executable
 layers** of OpenAI's Lean ETH development. Source revision:
@@ -37,7 +37,9 @@ It shares the exact pin in `nonexp-sudoku/reference/lean_eth_source.json`.
 | `LayoutProgramScalar.initialCommand`, `initialBuild` | `src/native_integer_cache.rs` | **Framed initial H row with runtime width** |
 | `LayoutProgram.IntegerCache.copies`, `makePower` | `src/native_integer_cache.rs` | **Executable prefix / denominator suffix; no H-flat substitution** |
 | `LayoutProgramScalar.cacheRow`, `cachePass`, `cacheProgram`, `buildProgram` | `src/native_cache_iteration.rs` | **Executable physical H-cache recurrence over encoded rows; all heights are runtime unary stack data** |
-| `LayoutProgram.IntegerCache.program`, complete `SignatureHeadLoader.bootstrapProgram` | Not implemented | Fixed-width normalization and full H-flat composition remain |
+| `LayoutBinomialProgram.flatProgram`, `finalFlatten`, `LayoutProgramScalar.hFlatProgram` | `src/native_flatten.rs` | Source-defined fixed-width word padding and complete H flat cache |
+| `LayoutProgram.IntegerCache.program` | `src/native_flatten.rs` | Executable preserving copies, both signed flat arrays, runtime denominator |
+| `SignatureHeadLoader.bootstrapProgram` | Not implemented | Integer cache is ready but the full staged bootstrap has not been composed |
 | `BitProgramCompile.primitive` and TM2 microsteps | Not implemented | Do not infer primitive time/tape costs |
 | `NativeLeafProgram.command k`, `NativeOuter`, `Native.countingProgram` | Not implemented | Primary next execution milestones |
 | `FiniteFallback` bounded lookup | `remaining::outer::finite_fallback` | Explicit fail-closed stub: noncomputable Lean table |
@@ -328,3 +330,23 @@ The complete `LayoutProgramScalar.hFlatProgram` remains unported. **Neither the 
 `src/native_cache_iteration.rs` now executes the 17-label literal emitter, framed-pair reader/writer, paid H-cache row transformation, one complete cache pass, unary-counted repeated passes, and the full H-row initial-build/iterate chain. Nine new locally executed regression tests check values, framing, exact writer steps, cleanup, static command sizes, and capacity refusal. In the standalone archive the full 80-test suite, formatting, and strict Clippy pass. See [`docs/h-cache-iteration-v0.11.0.md`](docs/h-cache-iteration-v0.11.0.md).
 
 This does **not** implement the fixed-width `finalFlatten` adapter, full `hFlatProgram`, complete integer-cache initialization, full node controller, or an imported-source Lean/Rust differential. Other concurrent GitHub-only scaffold tests have not been freshly rerun in this VM.
+
+
+## v0.12.0: exact fixed-width flattening and full integer cache
+
+`src/native_flatten.rs` ports the 5-label padding and 12-label linked
+normalization programs, paid per-component copies/transfers, row parsing,
+positive and negative flat arrays, the complete `hFlatProgram`, and the
+source-defined `LayoutProgram.IntegerCache.program`. All control tables are
+static; unary input lengths determine the runtime work. Nine new tests
+verify stack frames, bit orientation, both signed components, ordering,
+source instruction counts, exact H-values and denominator, and fail-closed
+resource limits. The **standalone 89-test suite**, release tests, formatting,
+and strict Clippy pass offline using Rust 1.99.1. See
+[`docs/integer-cache-v0.12.0.md`](docs/integer-cache-v0.12.0.md).
+
+The complete staged `SignatureHeadLoader.bootstrapProgram` is **not yet
+composed**, and no imported-source Lean/Rust differential, outer query
+execution, TM2 resource refinement, or ETH theorem is claimed. Historical
+status descriptions in prior version sections describe their respective
+versions, not the current implementation.

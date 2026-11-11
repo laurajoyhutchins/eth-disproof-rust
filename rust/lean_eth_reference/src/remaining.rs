@@ -431,12 +431,60 @@ pub const STAGES: &[Stage] = &[
         requires: &["normalization_literal_cleanup", "normalization_tautology_filter"],
     },
     Stage {
+        id: "normalization_subset",
+        source_file: "ExecCNFSubset.lean",
+        lean_symbol: "ExecCNFSubset.subsetProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["encoded_record_membership"],
+    },
+    Stage {
+        id: "normalization_clause_relations",
+        source_file: "ExecClauseRelationsProgram.lean",
+        lean_symbol: "ExecClauseRelationsProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_subset"],
+    },
+    Stage {
+        id: "normalization_clause_relation_scan",
+        source_file: "ExecClauseRelationScan.lean",
+        lean_symbol: "ExecClauseRelationScan.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_clause_relations"],
+    },
+    Stage {
+        id: "normalization_preserving_relation_scan",
+        source_file: "ExecClauseRelationScanPreserve.lean",
+        lean_symbol: "ExecClauseRelationScan.Preserving.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_clause_relation_scan"],
+    },
+    Stage {
+        id: "normalization_clause_dedup",
+        source_file: "ExecClauseDedupProgram.lean",
+        lean_symbol: "ExecClauseDedupProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_preserving_relation_scan", "normalization_record_reverse"],
+    },
+    Stage {
+        id: "normalization_strict_subset_filter",
+        source_file: "ExecClauseSelfFilterProgram.lean",
+        lean_symbol: "ExecClauseFiltersProgram.selfFilterProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_preserving_relation_scan", "normalization_record_reverse"],
+    },
+    Stage {
         id: "normalization_full",
         source_file: "SubexpNormalizationProgram.lean",
         lean_symbol: "SubexpNormalizationProgram.program",
-        status: Status::Stub,
+        status: Status::Executable,
         machine: Machine::Local,
-        requires: &["normalization_prefix"],
+        requires: &["normalization_prefix", "normalization_clause_dedup", "normalization_strict_subset_filter"],
     },
     Stage {
         id: "frontend_header",
@@ -716,6 +764,35 @@ pub mod outer {
     /// Does not perform the later clause absorption or full frontend.
     pub fn normalization_prefix() -> Result<Program<13, 11>, Error> {
         crate::native_normalization_prefix::program()
+    }
+    /// Actual source finite clause subset machine on 10x8 bit ports.
+    pub fn subset_clause() -> Result<Program<10, 8>, Error> {
+        crate::native_clause_relations::subset_program()
+    }
+    /// Both directional physical subset checks, 12x10 machine.
+    pub fn clause_relations() -> Result<Program<12, 10>, Error> {
+        crate::native_clause_relations::relation_program()
+    }
+    /// Three-mode source record scan on encoded formula, 15x12.
+    pub fn relation_scan(mode: crate::native_clause_relation_scan::Mode) -> Result<Program<15, 12>, Error> {
+        crate::native_clause_relation_scan::program(mode)
+    }
+    /// Source physical preserving scanner on 15x13 work bank.
+    pub fn preserving_relation_scan(mode: crate::native_clause_relation_scan::Mode) -> Result<Program<15, 13>, Error> {
+        crate::native_clause_dedup::preserving_scan_program(mode)
+    }
+    /// Last-equivalent-clause selection with original source order.
+    pub fn dedup_clauses() -> Result<Program<15, 16>, Error> {
+        crate::native_clause_dedup::program()
+    }
+    /// Strict-subset physical self-filter, 15x16.
+    pub fn filter_supersets() -> Result<Program<15, 16>, Error> {
+        crate::native_clause_filter::self_filter_program(crate::native_clause_relation_scan::Mode::StrictSubset)
+    }
+    /// Complete source normalization: literal cleanup, tautology filter,
+    /// clause deduplication and strict-subset absorption. Not a SAT oracle.
+    pub fn normalization_full() -> Result<Program<15, 16>, Error> {
+        crate::native_normalization_full::program()
     }
     /// Source-preserving body placement (1218 -> 265), not a CNF normalizer.
     pub fn place_body() -> Result<Cmd<80, 1220>, Error> {

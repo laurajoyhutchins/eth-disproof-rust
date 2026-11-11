@@ -33,15 +33,18 @@ class SourceDiscoveryTests(unittest.TestCase):
         }
         self.assertEqual({x['fqn'] for x in candidates if x['fqn'] in targets},targets)
 
-    def test_workflow_regex_selects_seven_original_programs(self):
+    def test_acceptance_workflow_selects_six_original_programs(self):
         workflow=(pathlib.Path(__file__).resolve().parents[3] /
-                  '.github/workflows/original-compiled-batch.yml').read_text()
+                  '.github/workflows/original-source-graph.yml').read_text()
         line=next(line for line in workflow.splitlines()
-                  if "default: '(SqrtLog" in line)
-        pattern=line.split("default: '",1)[1].rsplit("'",1)[0]
+                  if line.strip().startswith('PROGRAM_REGEX: '))
+        pattern=line.split("PROGRAM_REGEX: '",1)[1].rsplit("'",1)[0]
         selected=[c for c in discover(ROOT,True)['candidates']
                   if __import__('re').search(pattern,c['fqn'])]
-        self.assertEqual(len(selected),7)
+        self.assertEqual(len(selected),6)
+        self.assertNotIn(
+            'OAI.Algorithms.SubexponentialSAT.SqrtLog.Setup.computeLProgram',
+            {r['fqn'] for r in selected})
 
     def test_refuses_spoofed_program_names(self):
         rec={'module':'OAI.Algorithms.SubexponentialSAT.Foo','fqn':'OAI.Algorithms.SubexponentialSAT.Foo.program',

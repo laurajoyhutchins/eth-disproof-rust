@@ -15,6 +15,7 @@ cargo clippy --locked --offline --all-targets -- -D warnings
 printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
 ```
 
+The crate has no third-party Cargo dependencies. The [Rust GitHub Actions workflow](../../.github/workflows/rust.yml) runs these checks on pull requests and pushes to `main`, independently of the Python/Cython Sudoku environment.
 
 ## Source and implementation map
 

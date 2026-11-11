@@ -29,6 +29,7 @@ historical checkpoints were independently recompiled after reconstruction.
 | 08 | Which strict difference pairs are visited, in what order? | `src/native_difference_pairs.rs`, `tests/native_difference_pairs.rs` |
 | 09 | How are signature tuples and head support staged? | `src/native_signature_tuple.rs`, `src/native_head_support.rs`, `src/native_head_scatter.rs` |
 | 10 | How does the Rust crate stand apart from the Python research tree? | Repository `README.md`, isolated workflow and source fixtures |
+| 11 | How is an exact Git revision checked without a Python solver run? | Repository `.github/workflows/rust.yml` |
 | 12 | Does Lean's finite-index embedding preserve the original register index? | `src/native_bootstrap.rs`, `src/native_difference_pairs.rs`, `src/native_head_support.rs`, `src/lib.rs` |
 | 13 | Do tests catch corruption of otherwise unmapped machine state? | `tests/bootstrap_integration.rs`, `tests/native_difference_pairs.rs`, `tests/native_head_support.rs` |
 | 14 | Which changes are purely formatting under the pinned Rust compiler? | `src/lib.rs`, `src/native_head_support.rs`, and the changed tests |

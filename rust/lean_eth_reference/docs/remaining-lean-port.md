@@ -26,4 +26,4 @@ cargo test --offline
 cargo clippy --offline --all-targets -- -D warnings
 ```
 
-The scaffold adds three integration tests for graph ordering and failure-closed behavior. It does not use GitHub Actions minutes or claim a compilation/run that has not occurred.
+The scaffold adds three integration tests for graph ordering and failure-closed behavior. It does not claim a compilation/run that has not occurred.

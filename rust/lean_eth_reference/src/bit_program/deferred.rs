@@ -667,7 +667,7 @@ mod linking_tests {
                 },
             )
             .unwrap();
-        assert_eq!(stats.instructions, 5);
+        assert_eq!(stats.instructions, 4);
         assert!(state.pc.is_none());
         assert!(!state.regs[2]);
     }

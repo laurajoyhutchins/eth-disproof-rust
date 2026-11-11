@@ -107,23 +107,23 @@ fn wide_node_callback_equals_local_bootstrap_and_preserves_unmapped_ports() {
     let local = bootstrap_program().unwrap();
     let wide = bootstrap_node_command()
         .unwrap()
-        .compiled(435, 775)
+        .compiled(307, 647)
         .unwrap();
     let mut low = input();
     let mut outer = wide.initial([]);
     for i in 0..768 {
-        outer.stacks[i + 128] = low.stacks[i].clone();
+        outer.stacks[i] = low.stacks[i].clone();
     }
-    outer.regs[24..40].copy_from_slice(&low.regs);
-    outer.regs[3] = true;
-    put(&mut outer, 127, &[true, false]);
+    outer.regs[..16].copy_from_slice(&low.regs);
+    outer.regs[23] = true;
+    put(&mut outer, 800, &[true, false]);
     run(&local, &mut low);
     run(&wide, &mut outer);
-    assert_eq!(&outer.regs[24..40], &low.regs);
-    assert!(outer.regs[3]);
-    assert_eq!(get(&outer, 127), vec![true, false]);
+    assert_eq!(&outer.regs[..16], &low.regs);
+    assert!(outer.regs[23]);
+    assert_eq!(get(&outer, 800), vec![true, false]);
     for i in 0..768 {
-        assert_eq!(outer.stacks[i + 128], low.stacks[i], "{i}");
+        assert_eq!(outer.stacks[i], low.stacks[i], "{i}");
     }
 }
 #[test]

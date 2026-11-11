@@ -149,6 +149,7 @@ fn make_power_preserves_flat_cache_and_runtime_inputs() {
         d.regs = [true, true, true, true, true, true, true, true];
         let before = d.clone();
         let stats = p.run(&mut d, RunLimits::default()).unwrap();
+        assert_eq!(&d.regs[6..8], &before.regs[6..8]);
         assert_eq!(
             stats.instructions,
             (7 * exponent + 4 * exponent.saturating_sub(1) + 12) as u64

@@ -79,6 +79,7 @@
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/SignatureHeadLoaderCore.lean": "e932fe1551911387abbace7a075a183cf892595d",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DifferencePairsProgram.lean": "0ffbcd1bfd8ed16e12e017c892bd7d92b59689ce",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/FactorEnvironment.lean": "f3107b585cac4d0dd775426251ea973d277fe76c",
-    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryTupleVisitor.lean": "175c17ca25d8d7b9188ac7ad53189efad10f5454"
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryTupleVisitor.lean": "175c17ca25d8d7b9188ac7ad53189efad10f5454",
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryProgram.lean": "7a2535f7c479463a5f5ed8a30a33192aad1b063e"
   }
 }

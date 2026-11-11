@@ -1,0 +1,63 @@
+name: One-time Git history CI scrub
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Preview first; apply only after validation
+        required: true
+        type: choice
+        options:
+          - dry-run
+          - apply
+      expected_head:
+        description: Exact current main SHA to guard all ref updates
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eth-history-one-time
+  cancel-in-progress: false
+
+jobs:
+  scrub:
+    if: github.repository == 'laurajoyhutchins/eth-disproof-rust' && github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+      REWRITE_EXPECTED_HEAD: \${{ inputs.expected_head }}
+      REWRITE_MODE: \${{ inputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install SHA-256-verified git-filter-repo
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/history-tools"
+          "$RUNNER_TEMP/history-tools/bin/pip" download --only-binary=:all: --no-deps --dest "$RUNNER_TEMP" git-filter-repo==2.47.0
+          echo '2cd04929b9024e83e65db571cbe36aec65ead0cb5f9ec5abe42158654af5ad83  '"$RUNNER_TEMP/git_filter_repo-2.47.0-py3-none-any.whl" | sha256sum --check -
+          "$RUNNER_TEMP/history-tools/bin/pip" install --no-index --find-links "$RUNNER_TEMP" git-filter-repo==2.47.0
+          echo "$RUNNER_TEMP/history-tools/bin" >> "$GITHUB_PATH"
+      - name: Rewrite all published heads and inspect results
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh auth setup-git --hostname github.com
+          python3 scripts/rewrite_eth_history.py
+      - name: Short-lived recovery bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eth-pre-rewrite-recovery
+          path: |
+            \${{ runner.temp }}/eth-before.bundle
+            \${{ runner.temp }}/eth-refs-before.txt
+          retention-days: 1
+          if-no-files-found: ignore

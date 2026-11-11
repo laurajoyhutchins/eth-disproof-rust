@@ -691,3 +691,6 @@ pub mod native_difference_pairs;
 pub mod native_signature_tuple;
 pub mod native_head_scatter;
 pub mod native_head_support;
+
+/// Experimental symbolic representation of the source power word.
+pub mod deferred_power;

@@ -1,62 +1,66 @@
-# Rust port of the OpenAI ETH Lean program
+# Rust implementation of the OpenAI Lean ETH machine
 
-A source-pinned Rust implementation of **selected executable parts** of OpenAI's Lean development for *The Exponential Time Hypothesis is False*. The upstream source is [`openai/math@4eaee87`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT); individual Git object identities are recorded in [`reference/source-manifest.json`](reference/source-manifest.json).
+This crate implements selected executable components from the pinned
+[`openai/math` Lean development](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
+It contains **two separate CLI programs** with different correctness claims.
 
-This is a work in progress, **not** an independent proof of the theorem or a complete native SAT counter.
+## Source-defined physical frontend
 
-## Build and test
+```sh
+cd rust/lean_eth_reference
+printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
+  cargo run --locked --offline --bin eth-frontend
+```
 
-Install Rust **1.99.1**, then from this directory run:
+This executes the source-correlated `Native.frontendCommand` as a Rust
+`BitProgram` with 80 registers and 1,220 stacks. It prints the preserved
+input, ambient header and normalized formula body, together with source
+instruction count and peak live stack bits. The answer port remains empty.
+It does **not** compute #SAT. See [the physical ABI and example](docs/m2-runnable-frontend.md).
+
+## Bounded semantic counting oracle
+
+```sh
+printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
+  cargo run --locked --offline --bin lean-eth-reference
+```
+
+This produces `count=5` using a bounded exponential enumeration leaf.
+It is useful as an independent small-input correctness check, **not** an
+execution of the proposed fast algorithm.
+
+## Code map
+
+| Location | Responsibility |
+| --- | --- |
+| `src/bit_program.rs` | Source-correlated register/stack interpreter and program combinators |
+| `src/native_frontend.rs`, `src/native_*.rs` | Source-defined executable frontend and other selected machine fragments |
+| `src/remaining.rs` | Dependency spine and explicit unsupported/refusal boundaries |
+| `src/lib.rs` | Finite CNF semantics, encodings and bounded semantic counting |
+| `tests/` | Rust behavior, invariant and refusal tests |
+| `reference/source-manifest.json` | Pinned upstream source inventory; not Lean/Rust equivalence evidence |
+
+The [single evidence matrix](docs/evidence.md) gives the accepted execution
+claims, reproduction steps, outstanding Lean/Rust comparison, and separate
+TM2 accounting obligations. Read [remaining stages](docs/remaining-lean-port.md)
+for the dependency graph and [the history guide](docs/reading-the-history.md)
+for the reconstructed first-parent study sequence.
+
+## Local Rust checks
+
+Install Rust **1.99.1**. The crate has no third-party Cargo dependencies.
 
 ```sh
 cargo fmt --all -- --check
 cargo test --locked --offline --all-targets
 cargo clippy --locked --offline --all-targets -- -D warnings
-printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
 ```
 
-The crate has no third-party Cargo dependencies. The [Rust GitHub Actions workflow](../../.github/workflows/rust.yml) runs these checks on pull requests and pushes to `main`, independently of the Python/Cython Sudoku environment.
+The [public Rust workflow](../../.github/workflows/rust.yml) executes on
+PRs, pushes to `main`, and manual dispatch. Check its result for the exact
+commit you are evaluating. Imported-Lean differential execution and primitive
+TM2 resource verification have distinct acceptance requirements.
 
-
-## Runnable native frontend
-
-The complete source-defined Lean `Native.frontendCommand` now executes on the
-80-register, 1,220-stack Rust bit machine, from canonical DIMACS CNF input through
-header parsing, physical CNF normalization, body placement and ambient restoration.
-
-```sh
-printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' |
-  cargo run --offline --locked --bin eth-frontend
-```
-
-It emits physical source-machine instruction counts and the preserved original
-input, unary/binary variable headers, and normalized body. **It does not compute
-a #SAT answer.** See [source mapping, tests and verification boundaries](docs/m2-runnable-frontend.md).
-
-## Source and implementation map
-
-| Area | Code | Boundary |
-| --- | --- | --- |
-| Finite CNF semantics and encoding | [`src/lib.rs`](src/lib.rs) | Executable Rust finite model |
-| Physical stack/register machine, structured programs | [`src/bit_program.rs`](src/bit_program.rs) | Executable instruction interpreter and compiler |
-| Selected high/tuple/query stages | `src/native_high.rs`, `src/native_tuple.rs`, `src/native_query_prefix.rs` | Source-correlated executable fragments |
-| Layout, cache, head and pair stages | `src/native_*.rs` | Selected source-defined fragments, not a complete pipeline |
-| Missing and partial stages | [`src/remaining.rs`](src/remaining.rs) | Explicit executable/partial/stub/proof-obligation boundaries |
-| Regression and conformance cases | [`tests/`](tests/) | Finite Rust properties and source-derived examples |
-| Pinned Lean traces and source metadata | [`reference/`](reference/) | Fixtures and manifests; not proof of an executed Lean/Rust comparison |
-
-The semantic counting fallback is not the Lean program's complete native counting path. Source-instruction counts and live stack-bit metrics are **not** TM2 microstep counts, physical memory measurements, or the theorem's asymptotic resource bounds.
-
-## What would establish stronger correctness
-
-- Compile and execute the **original pinned Lean modules**, including the required Mathlib dependencies.
-- Compare complete machine transitions and halt/cleanup behavior against independently executed Rust implementations, without replacing unavailable Lean with fixtures.
-- Complete the source-defined counting pipeline, then separately validate primitive TM2 resource accounting and the claimed worst-case bounds.
-
-A passing `cargo test` does not discharge any of these obligations. Incomplete computations must refuse rather than silently substitute a semantic oracle.
-
-For deeper details, see [the remaining-port map](docs/remaining-lean-port.md), [TDD accuracy audit](docs/tdd-accuracy-audit.md), and [guided Git history](docs/reading-the-history.md). The main repository [README](../../README.md) explains the project and licenses.
-
-## Licensing
-
-Original project contributions: MIT. Upstream-derived material: Apache-2.0 obligations also apply. See the repository's `LICENSE`, `LICENSE-APACHE`, and `NOTICE`.
+Original contributions are MIT-licensed. Adapted upstream source is subject
+to Apache-2.0 obligations; see the repository's `LICENSE`,
+`LICENSE-APACHE` and `NOTICE`.

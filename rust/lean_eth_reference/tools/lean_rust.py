@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -40,6 +41,14 @@ def valid_cached(folder: Path, rec: dict) -> bool:
     try:
         receipt = json.loads(receipt_path.read_text())
         raw = table_path.read_bytes()
+        batch = json.loads((folder / "batch-report.json").read_text())
+        if batch.get("kind") != "original-source-program-export" or batch.get("exported") != [receipt]:
+            return False
+        pins = batch.get("pins", {})
+        if pins.get("source_commit") != SOURCE_SHA or pins.get("mathlib_commit") != MATHLIB_SHA:
+            return False
+        if not pins.get("lean", "").startswith("Lean (version 4.34.1,"):
+            return False
         return (receipt["source_commit"] == SOURCE_SHA
                 and receipt["source_git_blob"] == rec["git_blob"]
                 and receipt["declaration"] == rec["fqn"]
@@ -47,7 +56,7 @@ def valid_cached(folder: Path, rec: dict) -> bool:
                 and receipt["sha256"] == hashlib.sha256(raw).hexdigest()
                 and receipt["bytes"] == len(raw)
                 and bool(validate_table(raw.decode("ascii"), rec, 8192)))
-    except (OSError, KeyError, ValueError, TypeError):
+    except (OSError, KeyError, ValueError, TypeError, UnicodeError):
         return False
 
 def execute(argv: list[str]) -> None:
@@ -72,6 +81,8 @@ def main() -> int:
             command.add_argument("--verify", action="store_true",
                                  help="refuse until independent differential verification is available")
     a = p.parse_args()
+    if a.command == "build" and a.verify:
+        raise RuntimeError("independent Lean/Rust differential verification not wired; refusing verified status")
     inventory = discover(a.upstream, True)["candidates"]
     if a.command == "list":
         for r in inventory:
@@ -95,7 +106,7 @@ def main() -> int:
             execute([sys.executable, str(TOOLS / "export_compiled_batch.py"),
                      "--upstream", str(a.upstream), "--lake-root", str(a.lake_root),
                      "--output-dir", str(tables), "--query-closure",
-                     "--name-regex", "^" + __import__("re").escape(rec["fqn"]) + "$",
+                     "--name-regex", "^" + re.escape(rec["fqn"]) + "$",
                      "--limit", "1", "--max-labels", str(a.max_labels),
                      "--timeout-seconds", str(a.timeout_seconds)]
                     + (["--no-build"] if a.no_build else []))
@@ -108,8 +119,6 @@ def main() -> int:
                  "--tables", str(tables), "--rust-output", str(generated),
                  "--typecheck-crate", str(folder / "typecheck"),
                  "--rust-crate", str(REPO / "rust/lean_eth_reference")])
-    if a.command == "build" and a.verify:
-        raise RuntimeError("independent Lean/Rust differential verification not wired; refusing verified status")
     return 0
 
 if __name__ == "__main__":

@@ -843,9 +843,17 @@ impl<const R: usize, const S: usize> Cmd<R, S> {
         output_stack: usize,
     ) -> Result<Program<R, S>, Error> {
         let size = self.size()?;
-        let exit = size;
-        let mut code = vec![Instr::Halt; size.checked_add(1).ok_or(Error::Overflow)?];
-        self.emit(0, exit, &mut code)?;
-        Program::new(input_stack, output_stack, self.entry_at(0, exit)?, code)
+        // Original StructuredCalls.compiled uses
+        // (siteEquiv c).optionCongr.trans (finSuccEquiv _).symm.
+        // The outer None (halt/exit) is physical label 0; each real
+        // instruction occupies 1..=size. Our previous 0..size-1 layout
+        // was behaviorally equivalent but NOT an exact source-state port.
+        //
+        // Embed at label 1 and route the command exit to label 0.
+        // Direct Program::new imports retain their source-given labels.
+        let code_len = size.checked_add(1).ok_or(Error::Overflow)?;
+        let mut code = vec![Instr::Halt; code_len];
+        self.emit(1, 0, &mut code)?;
+        Program::new(input_stack, output_stack, self.entry_at(1, 0)?, code)
     }
 }

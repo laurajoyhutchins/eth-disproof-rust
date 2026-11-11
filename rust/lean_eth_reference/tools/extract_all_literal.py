@@ -33,7 +33,7 @@ def source_blob(content: bytes) -> str:
     return hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content).hexdigest()
 
 
-def parse_instr(raw: str) -> str:
+def parse_instr(raw: str, symbols: dict[str, int]) -> str:
     m = re.fullmatch(r"\s*\.(\w+)(?:\s+([\w\d\s]+))?\s*", raw)
     if not m or m[1] not in ARITIES:
         raise ValueError(f"unsupported source instruction: {raw!r}")
@@ -43,12 +43,21 @@ def parse_instr(raw: str) -> str:
     for j, a in enumerate(args):
         if m[1] == "set" and j == 1 and a in ("true", "false"):
             args[j] = "1" if a == "true" else "0"
+        elif a in symbols:
+            args[j] = str(symbols[a])
         elif not a.isdecimal() or (len(a) > 1 and a[0] == "0"):
             raise ValueError(f"nonliteral instruction operand: {raw!r}")
     return ":".join([RENAMES.get(m[1], m[1]), *args])
 
 
 def parse_body(s: str, position: int, label_count: int) -> list[str]:
+    # Only *closed numeric Fin constants* are substituted. They are source
+    # declarations, not an evaluator for arbitrary Lean expressions.
+    symbols = {}
+    for m in re.finditer(r"(?m)^def\s+(\w+)\s*:\s*Fin\s+(\d+)\s*:=\s*(\d+)\s*$", s[:position]):
+        name, domain, value = m.groups()
+        if int(domain) == label_count and int(value) < label_count:
+            symbols[name] = int(value)
     tail = s[position:]
     if ":= ![" in tail[:160]:
         m = re.search(r"\n\s*code := !\[(.*?)\]", tail, re.S)
@@ -59,19 +68,31 @@ def parse_body(s: str, position: int, label_count: int) -> list[str]:
         m = re.search(r"\n\s*code q := match q\.val with\n((?:\s*\|[^\n]+(?:\n|$))+)", tail)
         if not m:
             raise ValueError("missing fixed label-match code")
-        words = []
-        for arm in m[1].splitlines():
+        cases = {}
+        fallback = None
+        arms = m[1].splitlines()
+        for pos, arm in enumerate(arms):
             v = re.fullmatch(r"\s*\|\s*(\d+|_)\s*=>\s*(\.[\w\d\s]+)", arm)
             if not v:
                 raise ValueError("unsupported label-match arm")
-            if v[1] != "_" and int(v[1]) != len(words):
-                raise ValueError("nonsequential original label")
-            if v[1] == "_" and len(words) != label_count - 1:
-                raise ValueError("unsupported nonfinal fallback")
-            words.append(v[2])
+            key, expression = v.groups()
+            if key == "_":
+                if pos != len(arms) - 1 or fallback is not None:
+                    raise ValueError("nonfinal or repeated fallback")
+                fallback = expression
+            else:
+                label = int(key)
+                if label >= label_count or label in cases:
+                    raise ValueError("duplicate or out-of-range original label")
+                cases[label] = expression
+        if fallback is None and len(cases) != label_count:
+            raise ValueError("incomplete labels without fallback")
+        words = [cases.get(i, fallback) for i in range(label_count)]
+        if any(w is None for w in words):
+            raise ValueError("missing original label")
     if len(words) != label_count:
         raise ValueError(f"literal label count mismatch ({len(words)} != {label_count})")
-    return [parse_instr(word) for word in words]
+    return [parse_instr(word, symbols) for word in words]
 
 
 def produce(upstream: Path) -> tuple[str, str, list[str]]:

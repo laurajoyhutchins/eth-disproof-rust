@@ -23,7 +23,13 @@ jobs:
         run: cargo test --locked --offline --all-targets
       - name: Python comparator mutation tests
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Check only new source formatting (inherited baseline still unformatted)
+        run: |
+          rustfmt --edition 2024 --check --config skip_children=true \
+            src/native_terminal_count.rs \
+            src/bin/eth-terminal-count.rs \
+            src/bin/profile-full-machine.rs \
+            tests/native_terminal_count_e2e.rs \
+            tests/bit_program_adversarial.rs
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

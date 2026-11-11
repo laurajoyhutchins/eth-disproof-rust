@@ -8,9 +8,9 @@
 //! an implementation of the full ETH construction or its TM2 cost bound.
 
 use crate::bit_program::{Cmd, Config, Program, RunLimits, RunStats};
+use crate::native_high::{clear_program, copy_program};
 use crate::{Cnf, Error};
 use crate::{native_answer, native_frontend, native_terminal_classifier};
-use crate::native_high::{clear_program, copy_program};
 
 pub const SOURCE_STAGES: [&str; 4] = [
     "Native.frontendCommand",
@@ -43,7 +43,8 @@ fn count_to_answer_input_program() -> Result<Program<80, 1220>, Error> {
     Cmd::seq(
         Cmd::Call(clear_program(256, 72, 73)?),
         Cmd::Call(copy_program(263, 256, 1219, 72, 73)?),
-    ).compiled(263, 256)
+    )
+    .compiled(263, 256)
 }
 
 fn execute_stage(
@@ -65,7 +66,9 @@ fn execute_stage(
     if state.pc.is_some() {
         return Err(Error::Invalid("native source stage did not halt".into()));
     }
-    *remaining = remaining.checked_sub(stats.instructions).ok_or(Error::Overflow)?;
+    *remaining = remaining
+        .checked_sub(stats.instructions)
+        .ok_or(Error::Overflow)?;
     Ok(stats)
 }
 
@@ -83,58 +86,90 @@ pub fn count_terminal(cnf: &Cnf, limits: RunLimits) -> Result<TerminalCount, Err
     // [0] means empty clause, [7] means nonempty normalized clause list.
     if !state.regs[0] && state.regs[7] {
         if !state.stacks[263].is_empty() {
-            return Err(Error::Invalid("nonterminal acquired a fabricated count".into()));
+            return Err(Error::Invalid(
+                "nonterminal acquired a fabricated count".into(),
+            ));
         }
-        return Err(Error::NotImplemented("NativeLeafProgram.nonterminal #SAT counting"));
+        return Err(Error::NotImplemented(
+            "NativeLeafProgram.nonterminal #SAT counting",
+        ));
     }
     if state.stacks[263].is_empty() {
-        return Err(Error::Invalid("terminal source machine produced no count word".into()));
+        return Err(Error::Invalid(
+            "terminal source machine produced no count word".into(),
+        ));
     }
-    if state.stacks[256].iter().copied().ne(input.bytes().map(|b| b == b'1')) {
-        return Err(Error::Invalid("source frontend modified its preserved input".into()));
+    if state.stacks[256]
+        .iter()
+        .copied()
+        .ne(input.bytes().map(|b| b == b'1'))
+    {
+        return Err(Error::Invalid(
+            "source frontend modified its preserved input".into(),
+        ));
     }
     if !state.stacks[1219].is_empty() {
-        return Err(Error::Invalid("count transfer scratch stack is not empty".into()));
+        return Err(Error::Invalid(
+            "count transfer scratch stack is not empty".into(),
+        ));
     }
     let transfer = count_to_answer_input_program()?;
     let c = execute_stage(&transfer, &mut state, &mut remaining, limits.max_stack_bits)?;
     if state.stacks[256] != state.stacks[263] {
-        return Err(Error::Invalid("count transfer lost or reordered a source bit".into()));
+        return Err(Error::Invalid(
+            "count transfer lost or reordered a source bit".into(),
+        ));
     }
 
     let answer = native_answer::answer_program()?;
     let d = execute_stage(&answer, &mut state, &mut remaining, limits.max_stack_bits)?;
 
     if state.stacks[1216].len() != 1 {
-        return Err(Error::Invalid("source answer was not one physical bit".into()));
+        return Err(Error::Invalid(
+            "source answer was not one physical bit".into(),
+        ));
     }
     let count_lsb: Vec<bool> = state.stacks[263].iter().copied().collect();
     let positive = state.stacks[1216][0];
     if positive != count_lsb.iter().any(|b| *b) {
         return Err(Error::Invalid(format!(
             "source answer/count disagreement: flags empty_clause={} nonempty_body={} count_lsb={:?} answer={} ambient_len={} body_len={}",
-            state.regs[0], state.regs[7], count_lsb, positive,
-            state.stacks[258].len(), state.stacks[265].len(),
+            state.regs[0],
+            state.regs[7],
+            count_lsb,
+            positive,
+            state.stacks[258].len(),
+            state.stacks[265].len(),
         )));
     }
     if state.stacks[256] != state.stacks[263] {
-        return Err(Error::Invalid("answer command modified its source count".into()));
+        return Err(Error::Invalid(
+            "answer command modified its source count".into(),
+        ));
     }
     for port in [268, 269, 1217, 1218, 1219] {
         if !state.stacks[port].is_empty() {
-            return Err(Error::Invalid(format!("source work stack {port} not cleared")));
+            return Err(Error::Invalid(format!(
+                "source work stack {port} not cleared"
+            )));
         }
     }
-    let total_instructions = a.instructions.checked_add(b.instructions)
+    let total_instructions = a
+        .instructions
+        .checked_add(b.instructions)
         .and_then(|v| v.checked_add(c.instructions))
-        .and_then(|v| v.checked_add(d.instructions)).ok_or(Error::Overflow)?;
+        .and_then(|v| v.checked_add(d.instructions))
+        .ok_or(Error::Overflow)?;
     Ok(TerminalCount {
         count_lsb,
         positive,
         stages: [a, b, c, d],
         total_instructions,
-        peak_stack_bits: a.peak_stack_bits.max(b.peak_stack_bits)
-            .max(c.peak_stack_bits).max(d.peak_stack_bits),
+        peak_stack_bits: a
+            .peak_stack_bits
+            .max(b.peak_stack_bits)
+            .max(c.peak_stack_bits)
+            .max(d.peak_stack_bits),
         normalized_body: state.stacks[265].iter().copied().collect(),
     })
 }
@@ -156,5 +191,9 @@ pub fn count_word_decimal(word_lsb: &[bool]) -> String {
             carry /= 10;
         }
     }
-    decimal_le.iter().rev().map(|digit| char::from(b'0' + *digit)).collect()
+    decimal_le
+        .iter()
+        .rev()
+        .map(|digit| char::from(b'0' + *digit))
+        .collect()
 }

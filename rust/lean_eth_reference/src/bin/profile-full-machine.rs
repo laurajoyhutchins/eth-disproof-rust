@@ -21,21 +21,30 @@ unsafe impl GlobalAlloc for CountAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         if MEASURE.load(Ordering::Relaxed) {
             ALLOCS.fetch_add(1, Ordering::Relaxed);
-            BYTES.fetch_add(u64::try_from(layout.size()).unwrap_or(u64::MAX), Ordering::Relaxed);
+            BYTES.fetch_add(
+                u64::try_from(layout.size()).unwrap_or(u64::MAX),
+                Ordering::Relaxed,
+            );
         }
         unsafe { System.alloc(layout) }
     }
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         if MEASURE.load(Ordering::Relaxed) {
             ALLOCS.fetch_add(1, Ordering::Relaxed);
-            BYTES.fetch_add(u64::try_from(layout.size()).unwrap_or(u64::MAX), Ordering::Relaxed);
+            BYTES.fetch_add(
+                u64::try_from(layout.size()).unwrap_or(u64::MAX),
+                Ordering::Relaxed,
+            );
         }
         unsafe { System.alloc_zeroed(layout) }
     }
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         if MEASURE.load(Ordering::Relaxed) {
             REALLOCS.fetch_add(1, Ordering::Relaxed);
-            BYTES.fetch_add(u64::try_from(new_size).unwrap_or(u64::MAX), Ordering::Relaxed);
+            BYTES.fetch_add(
+                u64::try_from(new_size).unwrap_or(u64::MAX),
+                Ordering::Relaxed,
+            );
         }
         unsafe { System.realloc(ptr, layout, new_size) }
     }
@@ -45,8 +54,7 @@ unsafe impl GlobalAlloc for CountAlloc {
 }
 
 const OPCODES: [&str; 12] = [
-    "halt", "goto", "set", "copy", "not", "and", "or", "xor",
-    "branch", "push", "peek", "pop",
+    "halt", "goto", "set", "copy", "not", "and", "or", "xor", "branch", "push", "peek", "pop",
 ];
 fn opcode(op: &Instr) -> usize {
     match op {
@@ -87,7 +95,11 @@ fn run_case(
     }
     let mut metrics = [Measure::default(); 12];
     let mut peak_bits = cfg.stack_bits()?;
-    let mut peak_capacity: usize = cfg.stacks.iter().map(std::collections::VecDeque::capacity).sum();
+    let mut peak_capacity: usize = cfg
+        .stacks
+        .iter()
+        .map(std::collections::VecDeque::capacity)
+        .sum();
     for _ in 0..512 {
         let Some(pc) = cfg.pc else { break };
         let op = opcode(&program.code()[pc]);
@@ -107,18 +119,31 @@ fn run_case(
         item.reallocations += REALLOCS.load(Ordering::Relaxed) - realloc_before;
         item.bytes_requested += BYTES.load(Ordering::Relaxed) - bytes_before;
         peak_bits = peak_bits.max(cfg.stack_bits()?);
-        peak_capacity = peak_capacity.max(cfg.stacks.iter().map(std::collections::VecDeque::capacity).sum());
+        peak_capacity = peak_capacity.max(
+            cfg.stacks
+                .iter()
+                .map(std::collections::VecDeque::capacity)
+                .sum(),
+        );
     }
     if cfg.pc.is_some() {
         return Err(format!("source-instruction fuel exhausted: {name}").into());
     }
     for (index, metric) in metrics.iter().enumerate() {
-        if metric.transitions == 0 { continue }
+        if metric.transitions == 0 {
+            continue;
+        }
         println!(
             "{name},{},{},{},{},{},{},{},{},{}",
-            OPCODES[index], metric.transitions, metric.elapsed_ns,
-            metric.allocations, metric.reallocations, metric.bytes_requested,
-            peak_bits, peak_capacity, "NA",
+            OPCODES[index],
+            metric.transitions,
+            metric.elapsed_ns,
+            metric.allocations,
+            metric.reallocations,
+            metric.bytes_requested,
+            peak_bits,
+            peak_capacity,
+            "NA",
         );
     }
     Ok(())
@@ -127,7 +152,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let p = branch_program()?;
     // No commas occur in the case names. These are physical source-op counts,
     // Rust heap allocation events inside step(), and stack capacity, NOT TM2.
-    println!("case,opcode,transitions,elapsed_ns,allocation_calls,reallocation_calls,requested_bytes,peak_stack_bits,peak_stack_capacity_bits,max_integer_bits");
+    println!(
+        "case,opcode,transitions,elapsed_ns,allocation_calls,reallocation_calls,requested_bytes,peak_stack_bits,peak_stack_capacity_bits,max_integer_bits"
+    );
     for size in 0..=4_usize {
         for code in 0..(1_usize << size) {
             for dirty in [false, true] {

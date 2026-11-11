@@ -207,7 +207,7 @@ pub fn make_power_command() -> Result<Cmd<8, 24>, Error> {
         value: 0,
         present: 1,
     });
-    let power = Cmd::Call(power_program()?.lift::<8, 24>([6, 7], [23, 2])?);
+    let power = Cmd::Call(power_program()?.lift::<8, 24>([0, 1], [23, 2])?);
     Ok(Cmd::seq(copy, Cmd::seq(pop, power)))
 }
 

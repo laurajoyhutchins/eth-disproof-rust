@@ -700,3 +700,6 @@ pub mod native_head_support;
 
 /// Executable source-defined predecessor-key equality, freshness gate and rescan setup/cleanup.
 pub mod native_signature_rescan;
+
+/// Source-defined attained-signature key scanner and canonical-word normalizer.
+pub mod native_signature_key;

@@ -707,6 +707,8 @@ pub mod native_head_scatter;
 pub mod native_head_support;
 /// Physical source-defined attained-signature controller and level initializer.
 pub mod native_signature_tuple;
+pub mod native_node_append;
+pub mod native_node_readout;
 
 #[cfg(test)]
 mod canonical_clause_tests {

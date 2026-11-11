@@ -30,6 +30,17 @@ still required. See the crate's implementation notes and test cases.
 The `.lean` fixtures and small Python comparison scripts *inside the Rust
 crate* are conformance tooling, not the former Python Sudoku implementation.
 
+## A guided reading of the Git history
+
+The `main` first-parent commits teach the port in dependency order, from
+finite CNF semantics and the bit-machine through source-defined query,
+cache, signature and pair stages. They are exact historical source trees,
+not a claim that the full Lean theorem is executable.
+
+Run `git log --first-parent --reverse --oneline main` and follow
+[the reading guide](rust/lean_eth_reference/docs/reading-the-history.md).
+The original development ancestry remains reachable without a force-push.
+
 ## Branches
 
 - `main`: Rust implementation and Rust-specific verification.

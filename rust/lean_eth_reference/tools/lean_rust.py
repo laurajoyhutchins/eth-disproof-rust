@@ -98,7 +98,8 @@ def main() -> int:
     if a.command == "status":
         print(json.dumps({"declaration": rec["fqn"], "cache": str(folder),
                           "exported": valid_cached(tables, rec),
-                          "generated": (generated / (rec["id"] + ".rs")).is_file()},
+                          "generated_file_present": (generated / (rec["id"] + ".rs")).is_file(),
+                          "generated_verified": False},
                          indent=2))
         return 0
     if a.command in ("export", "build"):

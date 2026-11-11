@@ -681,6 +681,10 @@ pub mod native_tuple;
 pub mod finite_fallback;
 pub mod native_ambient;
 pub mod native_answer;
+/// Source-fixed unary header reader and binary length initializer.
+pub mod native_frontend_header;
+/// Source-defined post-normalization body placement and ambient header suffix.
+pub mod native_frontend_tail;
 pub mod native_layout;
 pub mod native_membership;
 pub mod native_nodes;

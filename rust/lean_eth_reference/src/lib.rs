@@ -671,6 +671,8 @@ pub mod native_answer;
 pub mod native_ambient;
 /// Source-defined post-normalization body placement and ambient header suffix.
 pub mod native_frontend_tail;
+/// Source-fixed unary header reader and binary length initializer.
+pub mod native_frontend_header;
 pub mod native_terminal;
 pub mod native_membership;
 

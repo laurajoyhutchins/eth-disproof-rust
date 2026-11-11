@@ -1,14 +1,14 @@
 //! Observational native Rust BitProgram profiler for the imported-Lean
 //! full-machine differential. No instruction or state semantics are changed.
 //! Timings include instrumentation overhead and are NOT TM2 primitive costs.
-use lean_eth_reference::bit_program::{Instr, Program};
-use lean_eth_reference::native_high::branch_program;
+use lean_eth_reference::Cnf;
 use lean_eth_reference::bit_program::{Config, RunLimits};
+use lean_eth_reference::bit_program::{Instr, Program};
 use lean_eth_reference::native_answer;
 use lean_eth_reference::native_frontend;
+use lean_eth_reference::native_high::branch_program;
 use lean_eth_reference::native_terminal_classifier;
 use lean_eth_reference::native_terminal_count::{count_terminal, count_to_answer_input_program};
-use lean_eth_reference::Cnf;
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -141,7 +141,7 @@ fn run_case(
             continue;
         }
         println!(
-            "{name},{},{},{},{},{},{},{},{},{}",
+            "{name},{},{},{},{},{},{},{},{},NA",
             OPCODES[index],
             metric.transitions,
             metric.elapsed_ns,
@@ -150,7 +150,6 @@ fn run_case(
             metric.bytes_requested,
             peak_bits,
             peak_capacity,
-            "NA",
         );
     }
     Ok(())
@@ -168,7 +167,11 @@ fn profile_terminal_stage(
     let mut measures = [Measure::default(); 12];
     let mut peak_bits = state.stack_bits()?;
     let mut live_bits = peak_bits;
-    let mut capacity = state.stacks.iter().map(std::collections::VecDeque::capacity).sum::<usize>();
+    let mut capacity = state
+        .stacks
+        .iter()
+        .map(std::collections::VecDeque::capacity)
+        .sum::<usize>();
     let mut peak_capacity = capacity;
 
     let mut steps = 0;
@@ -255,7 +258,10 @@ fn profile_terminal_cases() -> Result<(), Box<dyn std::error::Error>> {
         ("three_empty_clause", Cnf::from_signed(3, &[&[]])?),
         ("two_tautology", Cnf::from_signed(2, &[&[-1, 1]])?),
     ];
-    let limits = RunLimits { max_steps: 20_000_000, max_stack_bits: 300_000 };
+    let limits = RunLimits {
+        max_steps: 20_000_000,
+        max_stack_bits: 300_000,
+    };
     for (name, cnf) in cases {
         let unobserved = count_terminal(&cnf, limits)?;
         let frontend = &stages[0].1;
@@ -263,16 +269,26 @@ fn profile_terminal_cases() -> Result<(), Box<dyn std::error::Error>> {
         let mut n = 0;
         for (i, (stage, program)) in stages.iter().enumerate() {
             let before = n;
-            n += profile_terminal_stage(program, &mut state, &format!("{name}_{stage}"), limits.max_steps - n)?;
+            n += profile_terminal_stage(
+                program,
+                &mut state,
+                &format!("{name}_{stage}"),
+                limits.max_steps - n,
+            )?;
             if n - before != unobserved.stages[i].instructions {
-                return Err(format!("{name}/{stage}: instrumented and ordinary stage instruction counts disagree").into());
+                return Err(format!(
+                    "{name}/{stage}: instrumented and ordinary stage instruction counts disagree"
+                )
+                .into());
             }
         }
         if n != unobserved.total_instructions {
             return Err(format!("{name}: cumulative step count disagrees").into());
         }
         if state.stacks[263].iter().copied().collect::<Vec<_>>() != unobserved.count_lsb {
-            return Err(format!("{name}: source count word disagrees after instrumented trace").into());
+            return Err(
+                format!("{name}: source count word disagrees after instrumented trace").into(),
+            );
         }
         if state.stacks[1216].front().copied() != Some(unobserved.positive) {
             return Err(format!("{name}: source answer disagrees after instrumented trace").into());
@@ -288,7 +304,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         _ => return Err("usage: profile-full-machine [--terminal]".into()),
     };
     if terminal {
-        println!("case,opcode,transitions,elapsed_ns,allocation_calls,reallocation_calls,requested_bytes,peak_stack_bits,peak_stack_capacity_bits,max_integer_bits");
+        println!(
+            "case,opcode,transitions,elapsed_ns,allocation_calls,reallocation_calls,requested_bytes,peak_stack_bits,peak_stack_capacity_bits,max_integer_bits"
+        );
         return profile_terminal_cases();
     }
     let p = branch_program()?;

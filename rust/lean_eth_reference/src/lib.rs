@@ -20,6 +20,8 @@ pub enum Error {
     Invalid(String),
     Capacity(String),
     Overflow,
+    /// An explicit unfinished source-defined command, never a successful halt.
+    NotImplemented(&'static str),
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -27,6 +29,7 @@ impl fmt::Display for Error {
             Self::Invalid(s) => write!(f, "invalid formula: {s}"),
             Self::Capacity(s) => write!(f, "capacity refusal: {s}"),
             Self::Overflow => write!(f, "exact count overflow"),
+            Self::NotImplemented(symbol) => write!(f, "unimplemented Lean source stage: {symbol}"),
         }
     }
 }
@@ -663,3 +666,9 @@ pub mod native_layout;
 pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;
+
+/// Explicit, source-pinned remainder of the native ETH program.
+pub mod remaining;
+
+pub mod native_bootstrap;
+pub mod native_integer_cache;

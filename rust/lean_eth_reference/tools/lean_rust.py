@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import re
+import time
 from pathlib import Path
 import subprocess
 import sys
@@ -59,9 +60,24 @@ def valid_cached(folder: Path, rec: dict) -> bool:
     except (OSError, KeyError, ValueError, TypeError, UnicodeError):
         return False
 
-def execute(argv: list[str]) -> None:
+def execute(argv: list[str], *, stage: str, folder: Path) -> None:
+    """Preserve a reproducible failure bundle without inventing success."""
+    folder.mkdir(parents=True, exist_ok=True)
+    log = folder / (stage + ".log")
+    metadata = folder / (stage + ".json")
+    started = time.monotonic()
     print("+", " ".join(argv), flush=True)
-    subprocess.run(argv, cwd=REPO, check=True)
+    with log.open("w", encoding="utf-8") as stream:
+        result = subprocess.run(argv, cwd=REPO, stdout=stream, stderr=subprocess.STDOUT,
+                                check=False)
+    report = {"stage": stage, "command": argv, "cwd": str(REPO),
+              "exit_code": result.returncode, "elapsed_seconds": round(time.monotonic()-started, 3),
+              "log": str(log)}
+    metadata.write_text(json.dumps(report, indent=2, sort_keys=True)+"\\n")
+    if result.returncode:
+        tail = log.read_text(errors="replace")[-2000:]
+        raise RuntimeError(f"{stage} failed (exit {result.returncode}); {log}\\n{tail}")
+    print(f"{stage}: complete in {report['elapsed_seconds']}s; log={log}")
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
@@ -110,7 +126,7 @@ def main() -> int:
                      "--name-regex", "^" + re.escape(rec["fqn"]) + "$",
                      "--limit", "1", "--max-labels", str(a.max_labels),
                      "--timeout-seconds", str(a.timeout_seconds)]
-                    + (["--no-build"] if a.no_build else []))
+                    + (["--no-build"] if a.no_build else []), stage="export", folder=folder)
         else:
             print("REUSED verified original Lean table", rec["id"])
     if a.command in ("generate", "build"):
@@ -119,7 +135,7 @@ def main() -> int:
         execute([sys.executable, str(TOOLS / "compile_exported_batch.py"),
                  "--tables", str(tables), "--rust-output", str(generated),
                  "--typecheck-crate", str(folder / "typecheck"),
-                 "--rust-crate", str(REPO / "rust/lean_eth_reference")])
+                 "--rust-crate", str(REPO / "rust/lean_eth_reference")], stage="generate", folder=folder)
     return 0
 
 if __name__ == "__main__":

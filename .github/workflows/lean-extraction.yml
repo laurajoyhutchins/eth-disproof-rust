@@ -39,14 +39,9 @@ jobs:
         run: |
           cargo run --locked --offline -p lean-eth-reference --bin extract-lean-tables -- \
             --upstream "$RUNNER_TEMP/original-math" \
-            --output-dir "$RUNNER_TEMP/generated-tables"
-          diff -u rust/lean_eth_reference/tools/fixtures/original/all-literal.tsv "$RUNNER_TEMP/generated-tables/all-literal.tsv"
-          diff -u rust/lean_eth_reference/tools/fixtures/original/all-literal.bundle "$RUNNER_TEMP/generated-tables/all-literal.bundle"
+            --output-dir rust/lean_eth_reference/tools/fixtures/original --check
       - name: Check legacy fixed table identities
         run: |
           cargo run --locked --offline -p lean-eth-reference --bin extract-lean-tables -- \
             --upstream "$RUNNER_TEMP/original-math" \
-            --output-dir "$RUNNER_TEMP/generated-legacy" --legacy
-          for name in binary-add query-parity type-bit; do
-            diff -u "rust/lean_eth_reference/tools/fixtures/original/${name}.table" "$RUNNER_TEMP/generated-legacy/${name}.table"
-          done
+            --output-dir rust/lean_eth_reference/tools/fixtures/original --legacy --check

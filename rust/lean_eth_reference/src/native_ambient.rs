@@ -49,6 +49,7 @@ pub fn nat_program() -> Result<Program<2, 2>, Error> {
 /// 2. Seed unary stack 258 with the terminator zero.
 /// 3. Parse the unary header from 1218, building 1^n 0 on 258.
 /// 4. Clear the remaining payload body from 1218.
+///
 /// Preconditions: 258, 1218, 1219 initially empty and input starts with a
 /// terminated unary field. No semantic formula/count computation occurs.
 pub fn ambient_command() -> Result<Cmd<80, 1220>, Error> {

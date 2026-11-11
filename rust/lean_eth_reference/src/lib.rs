@@ -671,6 +671,13 @@ pub mod native_answer;
 pub mod native_ambient;
 /// Source-defined post-normalization body placement and ambient header suffix.
 pub mod native_frontend_tail;
+
+/// Source-native finite unary polarity, frame writer and record reversal.
+pub mod native_normalization_primitives;
+/// Actual nested literal deduplication on source 10x8 machine.
+pub mod native_literal_dedup;
+/// Literal cleanup across framed clauses on original 13x11 machine.
+pub mod native_literal_cleanup;
 /// Source-fixed unary header reader and binary length initializer.
 pub mod native_frontend_header;
 pub mod native_terminal;

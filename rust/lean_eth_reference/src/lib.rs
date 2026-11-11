@@ -688,13 +688,10 @@ pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;
 
-/// Source-fixed unary header reader and binary length initializer.
-pub mod native_frontend_header;
 /// Literal cleanup across framed clauses on original 13x11 machine.
 pub mod native_literal_cleanup;
 /// Actual nested literal deduplication on source 10x8 machine.
 pub mod native_literal_dedup;
-pub mod native_membership;
 /// Source-defined preserving unary-polarity complement query.
 pub mod native_negated_query;
 /// Exact source prefix: physical clause-wise literal cleanup then tautology removal.
@@ -705,6 +702,22 @@ pub mod native_normalization_primitives;
 pub mod native_tautology_core;
 /// Original nested formula-wide tautology filter and record-order restoration.
 pub mod native_tautology_filter;
+
+/// Preserving equivalence scans and last-occurrence clause deduplication.
+pub mod native_clause_dedup;
+/// Source fixed-master strict-subset filtering of clause records.
+pub mod native_clause_filter;
+/// Three-mode encoded formula relation scanner.
+pub mod native_clause_relation_scan;
+/// Source physical clause subset and dual-direction relation kernel.
+pub mod native_clause_relations;
+/// Source-fixed unary header reader and binary length initializer.
+pub mod native_frontend_header;
+pub mod native_membership;
+/// Complete source-defined CNF normalization command on 15x16 machine.
+pub mod native_normalization_full;
+/// Original 80x1220 lift of the source-normalizing 15x16 machine.
+pub mod native_outer_normalization;
 pub mod native_terminal;
 
 /// Exact framed-record iteration and fixed-control membership program.

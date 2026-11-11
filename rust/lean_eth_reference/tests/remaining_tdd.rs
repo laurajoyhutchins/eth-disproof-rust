@@ -65,7 +65,19 @@ fn registry_is_source_pinned_unique_and_topologically_sorted() {
         assert_eq!(nodes[id].status, Status::Executable, "{id}");
         assert_eq!(nodes[id].machine, Machine::Local, "{id}");
     }
-    assert_eq!(nodes["normalization_full"].status, Status::Stub);
+    assert_eq!(nodes["normalization_full"].status, Status::Executable);
+    for id in [
+        "normalization_subset",
+        "normalization_clause_relations",
+        "normalization_clause_relation_scan",
+        "normalization_preserving_relation_scan",
+        "normalization_clause_dedup",
+        "normalization_strict_subset_filter",
+    ] {
+        assert_eq!(nodes[id].status, Status::Executable, "{id}");
+        assert_eq!(nodes[id].machine, Machine::Local, "{id}");
+    }
+    assert_eq!(nodes["frontend_normalization"].status, Status::Executable);
     assert_eq!(nodes["frontend"].status, Status::Stub);
 }
 
@@ -202,6 +214,18 @@ fn source_machine_dimensions_are_enforced_at_compile_time() {
     let _: fn() -> Result<Program<10, 8>, Error> = remaining::outer::tautology_clause;
     let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::tautology_filter;
     let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::normalization_prefix;
+    let _: fn() -> Result<Program<10, 8>, Error> = remaining::outer::subset_clause;
+    let _: fn() -> Result<Program<12, 10>, Error> = remaining::outer::clause_relations;
+    let _: fn(
+        lean_eth_reference::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 12>, Error> = remaining::outer::relation_scan;
+    let _: fn(
+        lean_eth_reference::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 13>, Error> = remaining::outer::preserving_relation_scan;
+    let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::dedup_clauses;
+    let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::filter_supersets;
+    let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::normalization_full;
+    let _: fn() -> Result<Cmd<80, 1220>, Error> = remaining::outer::frontend_normalization;
 }
 
 #[test]

@@ -41,20 +41,20 @@ HIGH_CASES = ("empty", "zero", "one", "mixed", "alternate", "all")
 TUPLE_ODO = ("empty", "width0", "one", "two", "split", "three", "carry", "overflow")
 TUPLE_ENUM = ("empty", "width0", "one", "two", "split", "three")
 STAGES: dict[str, Stage] = {
-    "native-high": Stage("native_high_trace.lean", "legacy", tuple(
+    "native-high": Stage("lean_native_high_trace.lean", "legacy", tuple(
         f"{k}/{c}" for k in ("branch", "initialize") for c in HIGH_CASES)),
-    "native-tuple": Stage("native_tuple_trace.lean", "legacy", tuple(
+    "native-tuple": Stage("lean_native_tuple_trace.lean", "legacy", tuple(
         [f"odometer/{c}" for c in TUPLE_ODO] +
         [f"enumerate/{c}" for c in TUPLE_ENUM])),
-    "native-query-prefix": Stage("native_query_prefix_trace.lean", "legacy",
+    "native-query-prefix": Stage("lean_native_query_prefix_trace.lean", "legacy",
         tuple(f"prepare/{c}" for c in ("empty", "none", "first", "middle", "separated", "all"))),
-    "native-nodes": Stage("native_nodes_trace.lean", "legacy",
+    "native-nodes": Stage("lean_native_nodes_trace.lean", "legacy",
         tuple(f"nodes/{c}" for c in ("empty", "zero", "one", "two", "third", "mixed"))),
-    "native-layout-pair": Stage("native_layout_pair_trace.lean", "legacy",
+    "native-layout-pair": Stage("lean_native_layout_pair_trace.lean", "legacy",
         tuple(f"{k}/{n}" for k in ("layout", "pair") for n in range(4))),
     "machine-branch": Stage("machine_dump.lean", "machine", HIGH_CASES, ("branch",)),
     "machine-initialize": Stage("machine_dump.lean", "machine", HIGH_CASES, ("initialize",)),
-    "machine-odometer": Stage("machine_dump.lean", "machine", TUPLE_ODO, ("odometer",)),
+    "machine-odometer": Stage("machine_odometer_trace.lean", "machine", TUPLE_ODO, ("odometer",)),
     "machine-enumerate": Stage("machine_dump.lean", "machine", TUPLE_ENUM, ("enumerate",)),
 }
 

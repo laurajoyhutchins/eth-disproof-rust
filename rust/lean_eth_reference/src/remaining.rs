@@ -487,6 +487,14 @@ pub const STAGES: &[Stage] = &[
         requires: &["normalization_prefix", "normalization_clause_dedup", "normalization_strict_subset_filter"],
     },
     Stage {
+        id: "frontend_normalization",
+        source_file: "SqrtLogSpace/NativeFrontend.lean",
+        lean_symbol: "Native.normalizationCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["normalization_full"],
+    },
+    Stage {
         id: "frontend_header",
         source_file: "SqrtLogSpace/NativeProgram.lean",
         lean_symbol: "Native.headerCommand",
@@ -508,7 +516,7 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "Native.frontendCommand",
         status: Status::Stub,
         machine: Machine::Outer,
-        requires: &["frontend_header", "normalization_full", "frontend_tail"],
+        requires: &["frontend_header", "frontend_normalization", "frontend_tail"],
     },
     Stage {
         id: "cutoff_scan",
@@ -793,6 +801,11 @@ pub mod outer {
     /// clause deduplication and strict-subset absorption. Not a SAT oracle.
     pub fn normalization_full() -> Result<Program<15, 16>, Error> {
         crate::native_normalization_full::program()
+    }
+    /// Physically execute full normalized-body transformation in Native's
+    /// 80x1220 ABI, preserving original input stack 256 and binary header 267.
+    pub fn frontend_normalization() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_outer_normalization::command()
     }
     /// Source-preserving body placement (1218 -> 265), not a CNF normalizer.
     pub fn place_body() -> Result<Cmd<80, 1220>, Error> {

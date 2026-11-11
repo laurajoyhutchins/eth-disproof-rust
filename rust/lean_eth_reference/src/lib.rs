@@ -738,3 +738,6 @@ mod canonical_clause_tests {
         );
     }
 }
+
+/// Experimental symbolic representation of the source power word.
+pub mod deferred_power;

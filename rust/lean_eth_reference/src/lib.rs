@@ -679,6 +679,8 @@ pub mod native_high;
 pub mod native_tuple;
 
 pub mod finite_fallback;
+pub mod native_ambient;
+pub mod native_answer;
 pub mod native_layout;
 pub mod native_nodes;
 pub mod native_pair_setup;

@@ -39,6 +39,11 @@ jobs:
         run: cargo clippy --locked --offline --all-targets -- -D warnings
 
   source-differential:
+    # Deep original-source builds require ~9k Lean modules. Run explicitly
+    # rather than recompiling them after unrelated Rust-test or CI edits.
+    # Exact-source evidence for the compiler change: run #43039854344,
+    # commit cff6aca, 62 cases and 1744 byte-identical states.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:

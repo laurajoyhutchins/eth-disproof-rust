@@ -4,13 +4,13 @@ Status: design and measured vertical slice, **not** an end-to-end port.
 
 ## Scope and preservation contract
 
-The original source of truth is \`openai/math@4eaee87548250b2682affda7d05d947c05554bae\`
+The original source of truth is `openai/math@4eaee87548250b2682affda7d05d947c05554bae`
 with Lean 4.34.1 and the pinned Mathlib dependency. The goal is the *complete
 executable source closure* of the ETH SAT implementation, including
-\`SqrtLogSpace.QueryStreamProgram.program\` and the native counting path,
+`SqrtLogSpace.QueryStreamProgram.program` and the native counting path,
 not textual translation of every theorem in the imported mathematical library.
 
-A Lean \`theorem\`, proof of \`Prop\`, quotient/law, or noncomputable
+A Lean `theorem`, proof of `Prop`, quotient/law, or noncomputable
 mathematical specification does not become a Rust function merely because
 it appears in the import graph. Lean keeps checking those definitions and
 their proofs; the export boundary contains only well-founded executable
@@ -23,21 +23,21 @@ equivalence from successful Rust compilation.
 
 ## Finding in the original source
 
-\`StructuredProgram.Cmd\` contains atoms, sequencing, if-then-else, and
-while. \`StructuredCalls.Cmd\` adds calls to finite \`BitProgram.Program\`s.
-\`ProgramLinking\` provides physical relocation, lifting and linking of
+`StructuredProgram.Cmd` contains atoms, sequencing, if-then-else, and
+while. `StructuredCalls.Cmd` adds calls to finite `BitProgram.Program`s.
+`ProgramLinking` provides physical relocation, lifting and linking of
 register/stack/label maps. These are reusable *source definitions* with
 existing Lean execution-preservation theorems.
 
-The legacy generator traverses \`Fin l\` for every label of each
-\`Program r s l\` and repeatedly invokes \`Meta.whnf\` to extract a
-\`BitProgram.Instr\`. It is exact when it finishes, but the work and
+The legacy generator traverses `Fin l` for every label of each
+`Program r s l` and repeatedly invokes `Meta.whnf` to extract a
+`BitProgram.Instr`. It is exact when it finishes, but the work and
 intermediate memory grow with the fully expanded table size. One source
-declaration, \`SqrtLog.Setup.computeLProgram\`, refused at two million
+declaration, `SqrtLog.Setup.computeLProgram`, refused at two million
 Lean heartbeats in the seven-target batch. Repeatedly raising heartbeats
 is not a generalized solution.
 
-The new Rust \`DeferredProgram\` is a provisional *consumer* for a
+The new Rust `DeferredProgram` is a provisional *consumer* for a
 source-grounded graph. It preserves label 0 as the original source halt,
 calls as their full source physical label spaces, and allocates one
 shared node per constructed operation instead of one instruction per
@@ -49,7 +49,7 @@ ETH source size or mathematical complexity.
 ## Required intermediate representation
 
 The transport format should be a versioned, deterministic, source-bound,
-typed declaration graph. A \`Program\` node carries the exact original
+typed declaration graph. A `Program` node carries the exact original
 declaration, source blob, dependencies, finite register/stack dimensions,
 entry, input/output ports, and control root. An instruction retains all
 12 original source constructors; no #SAT semantic shortcuts.
@@ -58,31 +58,32 @@ The next graph node forms, in implementation order:
 
 | Node | Meaning | Physical source obligation |
 | --- | --- | --- |
-| \`Atom\`, \`Skip\` | \`StructuredProgram\` leaves | Exact source instruction |
-| \`Seq\`, \`Branch\`, \`While\` | Structured composition | Exact \`siteEquiv\` order and continuation |
-| \`Call\`, \`Reference\` | Shared callee | Original label count, entry, halt-to-return relocation |
-| \`Table\` | Already source-verified finite instruction table | Byte-identical instructions and validated Fin indexes |
-| \`Lift\` | Register/stack embedding | Injective source-port map, unchanged physical labels |
-| \`Link\` | \`ProgramLinking.linkInto\` / \`link\` | Left halt becomes jump to right entry; exact offsets |
-| \`Repeat\`, \`Fold\` | Proven fixed combinator generators | Same order/size/entry as Lean recursion, without expansion |
-| \`CodeAt\` | Residual pure \`Fin l → Instr\` term | Must yield exact physical instruction or typed refusal |
+| `Atom`, `Skip` | `StructuredProgram` leaves | Exact source instruction |
+| `Seq`, `Branch`, `While` | Structured composition | Exact `siteEquiv` order and continuation |
+| `Call`, `Reference` | Shared callee | Original label count, entry, halt-to-return relocation |
+| `Table` | Already source-verified finite instruction table | Byte-identical instructions and validated Fin indexes |
+| `Lift` | Register/stack embedding | Injective source-port map, unchanged physical labels |
+| `Link` | `ProgramLinking.linkInto` / `link` | Left halt becomes jump to right entry; exact offsets |
+| `Repeat`, `Fold` | Proven fixed combinator generators | Same order/size/entry as Lean recursion, without expansion |
+| `CodeAt` | Residual pure `Fin l → Instr` term | Must yield exact physical instruction or typed refusal |
 
 The current Rust vertical slice implements the first four rows for equal
-register/stack dimensions, including shared subprogram graphs. It **does
-not** yet implement \`Lift\`, \`Link\`, \`Repeat\`, \`Fold\`, a genuine Lean
-graph producer, or arbitrary-precision label sizes. This is deliberately
+register/stack dimensions, including shared subprogram graphs, plus a checked
+`Repeat` node verified against explicit source `Seq` expansion. It **does not**
+yet implement `Lift`, `Link`, `Fold`, a genuine Lean graph producer, or
+arbitrary-precision label sizes. This is deliberately
 explicit so an unsupported case cannot masquerade as a successful port.
 
 ### Physical layout matters
 
-Original Lean \`StructuredCalls.compiled\` reserves physical label **0**
+Original Lean `StructuredCalls.compiled` reserves physical label **0**
 for halt, and places every command site at a positive physical label.
 An embedded callee's halt changes into a jump to its caller continuation.
 Branch and while control sites also count as physical steps. These facts
 must hold under any symbolic representation; skipping a call/branch as a
 host-language operation changes the source trace and cost model.
 
-The preexisting eager Rust \`Cmd::compiled\` uses a different halt-label
+The preexisting eager Rust `Cmd::compiled` uses a different halt-label
 layout in some branches. Compare complete source physical labels, not just
 terminal register values. PR #156 contains independent exact original
 Lean full-state differential evidence for a separate compiler repair;
@@ -93,28 +94,28 @@ machine bit-complexity. Keep separate measurements and explicit maps.
 
 ## Lean producer
 
-Implement an original-Lean \`MetaM\` exporter run under the pinned Lake
+Implement an original-Lean `MetaM` exporter run under the pinned Lake
 environment. It must not reimplement the Lean parser in Python or Rust.
 
 1. Load only the transitive executable entrypoint closure by original
    declaration identity, with the exact original Git and Mathlib pins.
 2. Inspect the elaborated, fully typed declaration value. Reduce only
    enough of its **outer constructor** to recognize
-   \`StructuredCalls.compiled\`, \`StructuredProgram.compiled\`,
-   \`ProgramLinking.liftProgram\` / \`linkInto\`, concrete
-   \`BitProgram.Program\` records, and their structured \`Cmd\` variants.
-   Do not normalize every \`p.code i\` to discover a program's shape.
+   `StructuredCalls.compiled`, `StructuredProgram.compiled`,
+   `ProgramLinking.liftProgram` / `linkInto`, concrete
+   `BitProgram.Program` records, and their structured `Cmd` variants.
+   Do not normalize every `p.code i` to discover a program's shape.
 3. Retain references to subprogram constants and parameter substitutions.
    Memoize by elaborated declaration, arguments, source identity and
    type. No textual guessing from an unelaborated name.
 4. Reflect finite port maps under bounds with a closed, typed representation;
    require injectivity where the source theorem assumes it. A failed map
    is not silently substituted with identity.
-5. Recognize original fixed combinator generators (\`Nat.rec\`,
-   \`List.foldl\`, \`Fin\` cases, static repetition) as
-   \`Repeat\` / \`Fold\` or residual pure \`CodeAt\` nodes when preserving
+5. Recognize original fixed combinator generators (`Nat.rec`,
+   `List.foldl`, `Fin` cases, static repetition) as
+   `Repeat` / `Fold` or residual pure `CodeAt` nodes when preserving
    exact semantics is possible. Fall back to per-label
-   \`Meta.whnf\` **only for a bounded leaf**, not the entire program.
+   `Meta.whnf` **only for a bounded leaf**, not the entire program.
 6. Detect cycles and partial reductions. Record the smallest unsupported
    declaration/path and a machine-readable reason. Put no synthetic
    "successful" table in its place.
@@ -131,8 +132,8 @@ required maps, integer overflow and out-of-range finite indexes.
 
 ## Large address spaces
 
-\`BitProgram.Program\` uses mathematical \`Nat\` and \`Fin\` label counts.
-A \`usize\` Rust program counter is sufficient only if every source
+`BitProgram.Program` uses mathematical `Nat` and `Fin` label counts.
+A `usize` Rust program counter is sufficient only if every source
 address fits it. The graph IR must eventually represent symbolic control
 paths or an exact unbounded integer index, with a proven mapping to the
 Lean numeric label. Do not truncate large source sizes into machine words
@@ -158,7 +159,7 @@ These are distinct gates and must be reported separately:
    every PC, register, stack, halt, capacity refusal and step count.
 5. **Compositional refinement:** a Lean theorem, or explicit residual
    obligation, connects each graph constructor to original
-   \`StructuredCalls.code\` / \`ProgramLinking.relocateInstr\` semantics.
+   `StructuredCalls.code` / `ProgramLinking.relocateInstr` semantics.
 6. **End-to-end:** the complete source-defined SAT frontend, counting
    control, output ABI and adversarial bounded inputs run without a
    host-side oracle substitution.
@@ -184,11 +185,11 @@ physical instruction tables against the already accepted source tables,
 and then verify independently executed original Lean state traces. This
 is the key cross-implementation acceptance gate.
 
-D. Handle \`computeLProgram\` as the first nontrivial generator case,
+D. Handle `computeLProgram` as the first nontrivial generator case,
 without increasing global heartbeat limits. Add bounded folds/repeats
 or residual code-at semantics only when exact label equivalence is tested.
 
-E. Expand across the \`QueryStreamProgram\` *executable* dependency DAG,
+E. Expand across the `QueryStreamProgram` *executable* dependency DAG,
 recording coverage per unique declaration and per graph kind. Keep
 denominator/factor and counting semantics explicit. Reuse existing native
 Rust implementations only after exact correspondence is demonstrated.

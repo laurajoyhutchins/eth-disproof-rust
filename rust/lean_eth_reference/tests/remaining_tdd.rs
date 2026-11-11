@@ -57,6 +57,10 @@ fn registry_is_source_pinned_unique_and_topologically_sorted() {
         "normalization_record_reverse",
         "normalization_literal_dedup",
         "normalization_literal_cleanup",
+        "normalization_negated_query",
+        "normalization_tautology_core",
+        "normalization_tautology_filter",
+        "normalization_prefix",
     ] {
         assert_eq!(nodes[id].status, Status::Executable, "{id}");
         assert_eq!(nodes[id].machine, Machine::Local, "{id}");
@@ -194,6 +198,10 @@ fn source_machine_dimensions_are_enforced_at_compile_time() {
     let _: fn() -> Result<Program<3, 4>, Error> = remaining::outer::reverse_records;
     let _: fn() -> Result<Program<10, 8>, Error> = remaining::outer::dedup_literals;
     let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::clean_literals;
+    let _: fn() -> Result<Program<2, 4>, Error> = remaining::outer::negated_query;
+    let _: fn() -> Result<Program<10, 8>, Error> = remaining::outer::tautology_clause;
+    let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::tautology_filter;
+    let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::normalization_prefix;
 }
 
 #[test]

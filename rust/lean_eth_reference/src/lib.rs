@@ -695,8 +695,16 @@ pub mod native_literal_cleanup;
 /// Actual nested literal deduplication on source 10x8 machine.
 pub mod native_literal_dedup;
 pub mod native_membership;
+/// Source-defined preserving unary-polarity complement query.
+pub mod native_negated_query;
+/// Exact source prefix: physical clause-wise literal cleanup then tautology removal.
+pub mod native_normalization_prefix;
 /// Source-native finite unary polarity, frame writer and record reversal.
 pub mod native_normalization_primitives;
+/// Physical complementary-literal search inside one encoded clause.
+pub mod native_tautology_core;
+/// Original nested formula-wide tautology filter and record-order restoration.
+pub mod native_tautology_filter;
 pub mod native_terminal;
 
 /// Exact framed-record iteration and fixed-control membership program.

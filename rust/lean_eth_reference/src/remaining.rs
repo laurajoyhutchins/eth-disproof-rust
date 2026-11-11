@@ -354,9 +354,9 @@ pub const STAGES: &[Stage] = &[
         id: "answer_suffix",
         source_file: "SqrtLogSpace/NativeProgram.lean",
         lean_symbol: "Native.answerCommand",
-        status: Status::Stub,
+        status: Status::Executable,
         machine: Machine::Outer,
-        requires: &["outer_dfs"],
+        requires: &["bit_machine"],
     },
     Stage {
         id: "outer_command",
@@ -513,7 +513,11 @@ pub mod outer {
     pub fn dfs(_k: usize, _leaf: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("DFSCountProgram.command")
     }
-    outer_stub!(answer_suffix, "Native.answerCommand");
+    /// Complete source-defined physical full-word positivity suffix.
+    /// This does not compute the count or make the outer DFS executable.
+    pub fn answer_suffix() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_answer::answer_command()
+    }
     pub fn outer_command(_k: usize, _leaf: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("Native.outerCommand")
     }

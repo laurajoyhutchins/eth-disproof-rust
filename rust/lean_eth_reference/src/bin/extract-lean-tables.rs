@@ -19,7 +19,7 @@ type Result<T> = std::result::Result<T, String>;
 struct SourceDecl {
     name: String, r: usize, s: usize, labels: usize,
     input: usize, output: usize, entry: usize,
-    body: Vec<String>, ordinal: usize, legacy: bool,
+    body: Vec<String>, ordinal: usize,
 }
 #[derive(Clone, Debug)]
 struct Extracted {
@@ -81,7 +81,7 @@ fn instruction(raw: &str, symbols: &BTreeMap<String, usize>) -> Result<String> {
     let mut args=Vec::new();
     for (index,&word) in toks[1..].iter().enumerate(){
         let v=if op=="set" && index==1 {
-            match word{"true"=>0+1,"false"=>0,_=>*symbols.get(word).unwrap_or(&num(word)?)} 
+            match word{"true"=>1,"false"=>0,_=>if let Some(&v)=symbols.get(word){v}else{num(word)?}} 
         } else if let Some(v)=symbols.get(word){*v} else {num(word)?};
         args.push(v.to_string());
     }
@@ -104,9 +104,10 @@ fn field(line: &str, name:&str)->Result<usize>{
     let prefix=format!("{name} :=");
     num(line.trim().strip_prefix(&prefix).ok_or_else(||format!("missing {name}"))?.trim())
 }
-fn declarations(source: &str) -> Result<Vec<SourceDecl>> {
+fn declarations(source: &str) -> Result<(Vec<SourceDecl>, Vec<String>)> {
     let lines:Vec<_>=source.lines().collect();
     let mut decls=Vec::new();
+    let mut failures=Vec::new();
     for i in 0..lines.len(){
         let Some((name,r,s,labels))=parse_header(lines[i]) else {continue};
         if i+4>=lines.len(){return Err(format!("{name}: truncated finite declaration"));}
@@ -115,7 +116,8 @@ fn declarations(source: &str) -> Result<Vec<SourceDecl>> {
         let entry=field(lines[i+3],"entry")?;
         let code=lines[i+4].trim();
         let legacy=code.starts_with("code := ![") || code.starts_with("code q := match q.val with");
-        if !code.starts_with("code ") {continue;}
+        if !code.starts_with("code := ![") && !(code.starts_with("code ") && code.contains(" := match "))
+            && !code.starts_with("code := fun ") {continue;}
         let mut body=Vec::new();
         let mut j=i+4;
         while j<lines.len() {
@@ -127,19 +129,21 @@ fn declarations(source: &str) -> Result<Vec<SourceDecl>> {
             j+=1;
         }
         let symbols=symbol_table(&lines[..i].join("\n"),labels);
-        let instructions=parse_code(&body,labels,&symbols)
-            .map_err(|e|format!("{name}: {e}"))?;
+        let instructions=match parse_code(&body,labels,&symbols) {
+            Ok(x)=>x,Err(e)=>{failures.push(format!("{name}: {e}"));continue;}
+        };
         // Store source instructions now, no semantic interpretation of Lean.
         decls.push((name,r,s,labels,input,output,entry,legacy,instructions));
     }
     let legacy_count=decls.iter().filter(|item|item.7).count();
     let mut legacy_position=0;
     let mut new_position=legacy_count;
-    Ok(decls.into_iter().map(|(name,r,s,labels,input,output,entry,legacy,body)|{
+    let result=decls.into_iter().map(|(name,r,s,labels,input,output,entry,legacy,body)|{
         let ordinal=if legacy {let n=legacy_position;legacy_position+=1;n}
             else {let n=new_position;new_position+=1;n};
-        SourceDecl{name,r,s,labels,input,output,entry,body,ordinal,legacy}
-    }).collect())
+        SourceDecl{name,r,s,labels,input,output,entry,body,ordinal}
+    }).collect();
+    Ok((result,failures))
 }
 fn parse_code(lines: &[String], labels:usize, symbols:&BTreeMap<String,usize>)->Result<Vec<String>> {
     let head=lines.first().ok_or("missing code")?.trim();
@@ -236,13 +240,15 @@ fn extract(root:&Path)->Result<(Vec<Extracted>,Vec<String>)>{
         let relative=path.strip_prefix(&base).map_err(|e|e.to_string())?.with_extension("")
             .to_string_lossy().replace('\\',"/").replace('/','_').replace('.','_').to_lowercase();
         match declarations(&source){
-            Ok(decls)=>for d in decls {
+            Ok((decls, source_failures))=>{ 
+                for failure in source_failures { failures.push(format!("{source_path}: {failure}")); }
+                for d in decls {
                 let id=format!("{relative}_{}_{}",d.name.to_lowercase(),d.ordinal);
                 if !(d.r>0 && d.s>0 && d.labels>0 && d.r<=256 && d.s<=4096 && d.labels<=8192 &&
                     d.input<d.s && d.output<d.s && d.entry<d.labels){
                     failures.push(format!("{source_path}:{}: unsupported machine dimensions",d.name));continue;
                 }
-                let mut e=Extracted{id,file:source_path.clone(),blob:blob.clone(),r:d.r,s:d.s,
+                let e=Extracted{id,file:source_path.clone(),blob:blob.clone(),r:d.r,s:d.s,
                     labels:d.labels,entry:d.entry,input:d.input,output:d.output,table:d.body.join("\n")};
                 // Reject erroneous jump/port indices using the existing Rust generator's parser.
                 if let Err(err)=lean_table_codegen::generate(&table(&e),
@@ -252,6 +258,7 @@ fn extract(root:&Path)->Result<(Vec<Extracted>,Vec<String>)>{
                 }
                 // Table bytes stored as instruction rows only until final assembly.
                 entries.push(e);
+                }
             },
             Err(err)=>failures.push(format!("{source_path}: {err}")),
         }
@@ -338,7 +345,8 @@ mod tests{
     #[test]
     fn extracts_all_three_source_syntaxes(){
         let sample="def a : Program 2 1 2 where\n  inputStack := 0\n  outputStack := 0\n  entry := 0\n  code := ![.goto 1, .halt]\n\ndef b : Program 2 1 2 where\n  inputStack := 0\n  outputStack := 0\n  entry := 0\n  code q := match q.val with\n    | 0 => .goto 1\n    | _ => .halt\n\ndef c : Program 2 1 2 where\n  inputStack := 0\n  outputStack := 0\n  entry := 0\n  code := fun q => if q = 0 then .goto 1 else .halt\n";
-        let x=declarations(sample).unwrap();
+        let (x,failures)=declarations(sample).unwrap();
+        assert!(failures.is_empty());
         assert_eq!(x.len(),3);
         assert_eq!(x[0].body,vec!["goto:1","halt"]);
         assert_eq!(x[1].body,x[0].body);

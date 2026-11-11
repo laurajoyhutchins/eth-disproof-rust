@@ -23,17 +23,17 @@ END|query|N
 
 All 12 source instruction constructors have direct mappings to Rust variants. The importer requires exactly `N` ordered instructions, dimensions 40×896, input 330, output 323, exact pinned source identities, a complete terminal record, and **no trailing data**. It validates each register, stack, and branch target using `Program::new`. Import limits default to 2,000,000 labels and 256 MB; callers may choose smaller or larger explicit limits. Physical runtime capacity is separately controlled by `RunLimits`.
 
-After restoring Lean 4.34.1, exact pinned Mathlib and OpenAI source, verify the checkout's Git state and blob identities, then, in its Lake environment, run:
+After restoring Lean 4.34.1 and the exact pinned Mathlib and OpenAI source, run the source-reference branch's **attested elaborator-based** exporter from its repository root:
 
 ```sh
-(
-  cd upstream/openai-math/lean
-  lake env lean --run ../../../instrumentation/probes/query_program_dump.lean 2000000
-) > query.table
-sha256sum query.table
+python3 instrumentation/export_query_table.py --output query.table --max-labels 2000000
 ```
 
-Do **not** treat the file as source-attested merely because its `PIN` line matches. Preserve the exact Lean/toolchain/repository provenance and SHA-256 digest in a separate evidence receipt.
+The wrapper checks both clean Git revisions, the upstream query-source Git blob, and the running Lean compiler version. It then runs `lake env lean` to **elaborate** `query_program_dump.lean`, checks the complete ordered table and writes an atomic SHA-256 receipt next to it. The script uses `Lean.Meta.whnf` to reduce each noncomputable source term to an exact `BitProgram.Instr`, failing on unreduced terms. **Do not use `lean --run`**, because direct executable references to a `noncomputable def` are rejected.
+
+Pinned Lean 4.34.1 standalone compiler testing has exercised this metaprogramming technique on a **toy** noncomputable 40×896 program containing all twelve instruction variants. Its exported table was independently parsed and executed by the Rust CLI. This is a compiler-to-Rust interface test, **not** a real OpenAI query export, Lean/Mathlib import, or mathematical result.
+
+Do **not** treat the table as source-attested merely because its `PIN` line matches. Require the wrapper's real-toolchain provenance and SHA-256 receipt.
 
 The Rust binary reads a finite stack/register fixture, then runs the imported table with limits:
 
@@ -46,7 +46,7 @@ Fixture lines are `STACK|port|bits` (top bit first) or `REG|port|0/1`. One recor
 
 ## Verification and remaining acceptance
 
-Local Rust 1.99.1: **156 tests in both debug and release** on a retained standalone v0.19 snapshot, including five new importer tests; rustfmt and strict Clippy pass. The CLI executes an independent three-label table and rejects a corrupted terminator. The imported-table implementation and tests were uploaded byte-for-byte to GitHub; the complete GitHub branch needs its **own exact-head** build and checks.
+Local Rust 1.99.1: **158 tests in both debug and release** on a retained standalone v0.19 snapshot, including five importer and two CLI subprocess tests; rustfmt and strict Clippy pass. The CLI executes an independent three-label table and rejects a corrupted terminator. The imported-table implementation and tests were uploaded byte-for-byte to GitHub; the complete GitHub branch needs its **own exact-head** build and checks.
 
 **Not yet established:**
 - A successful Lean 4.34.1/Mathlib import and `query_program_dump.lean` compilation, reduction, or table export. The upstream `QueryStreamProgram` lives in a `noncomputable` section; actual elaboration/evaluation must be tested, not assumed.

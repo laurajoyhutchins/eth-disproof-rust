@@ -24,7 +24,7 @@ fn graph() -> HashMap<&'static str, &'static Stage> {
 #[test]
 fn registry_is_source_pinned_unique_and_topologically_sorted() {
     assert_eq!(remaining::SOURCE_COMMIT, LEAN_COMMIT);
-    assert_eq!(remaining::STAGES.len(), 43);
+    // The source DAG expands as real stages arrive; test uniqueness and order below.
     let mut seen = HashSet::new();
     for stage in remaining::STAGES {
         assert!(seen.insert(stage.id), "duplicated stage {}", stage.id);

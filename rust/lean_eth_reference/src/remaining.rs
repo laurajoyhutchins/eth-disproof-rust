@@ -404,7 +404,7 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "SubexpNormalizationProgram.program",
         status: Status::Stub,
         machine: Machine::Local,
-        requires: &["normalization_literal_cleanup"],
+        requires: &["normalization_literal_cleanup", "normalization_polarity"],
     },
     Stage {
         id: "frontend_header",

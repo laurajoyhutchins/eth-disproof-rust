@@ -16,6 +16,22 @@ printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --offline
 ```
 
 
+
+## Runnable native frontend
+
+The complete source-defined Lean `Native.frontendCommand` now executes on the
+80-register, 1,220-stack Rust bit machine, from canonical DIMACS CNF input through
+header parsing, physical CNF normalization, body placement and ambient restoration.
+
+```sh
+printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' |
+  cargo run --offline --locked --bin eth-frontend
+```
+
+It emits physical source-machine instruction counts and the preserved original
+input, unary/binary variable headers, and normalized body. **It does not compute
+a #SAT answer.** See [source mapping, tests and verification boundaries](docs/m2-runnable-frontend.md).
+
 ## Source and implementation map
 
 | Area | Code | Boundary |

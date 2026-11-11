@@ -711,6 +711,9 @@ pub mod native_signature_tuple;
 /// Source-defined signed pair accumulator preparation; signed update pending.
 pub mod native_pair_accumulator;
 
+/// Source-defined physical mask parity, not signed accumulation.
+pub mod native_pair_sign;
+
 #[cfg(test)]
 mod canonical_clause_tests {
     use super::*;

@@ -33,3 +33,17 @@ jobs:
             tests/bit_program_adversarial.rs
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings
+      - name: Execute physical op profilers and collect first cost samples
+        run: |
+          mkdir -p target/observations
+          cargo run --quiet --locked --offline --bin profile-full-machine > target/observations/full-machine-opcodes.csv
+          cargo run --quiet --locked --offline --bin profile-full-machine -- --terminal > target/observations/terminal-count-opcodes.csv
+          printf 'p cnf 3 0\n' | /usr/bin/time -f 'elapsed_seconds=%e peak_rss_kib=%M' -o target/observations/terminal-count-runtime.txt target/debug/eth-terminal-count > target/observations/terminal-count-native.txt
+          sha256sum target/observations/*
+          wc -l target/observations/*.csv
+      - name: Preserve profiler evidence from the exact Git head
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-source-profile-${{ github.sha }}
+          path: rust/lean_eth_reference/target/observations/
+          retention-days: 30

@@ -59,7 +59,7 @@ def compile_batch(tables: Path, generated: Path, crate_root: Path, rust_crate: P
         lib+=f'pub mod program_{index} {{ include!({json.dumps(str(rust.resolve()))}); }}\n'
     (crate_root/'src/lib.rs').write_text(lib,encoding='utf-8')
     toml='[package]\nname="pinned_original_lean_batch"\nversion="0.0.0"\nedition="2024"\n\n'
-    toml+='[dependencies]\nlean_eth_reference={path='+json.dumps(str(rust_crate.resolve()))+'}\n'
+    toml+='[dependencies]\nlean_eth_reference={package="lean-eth-reference",path='+json.dumps(str(rust_crate.resolve()))+'}\n'
     (crate_root/'Cargo.toml').write_text(toml,encoding='ascii')
     result=subprocess.run(['cargo','check','--offline','--manifest-path',str(crate_root/'Cargo.toml')],
                           text=True,capture_output=True)

@@ -42,6 +42,16 @@ class GitHubCheckpointTests(unittest.TestCase):
         self.assertIn("actions/cache/restore@", restore)
         self.assertIn("actions/cache/save@", save)
 
+    def test_generated_crate_uses_actual_cargo_package_name(self):
+        # Prevent a manifest alias mismatch from blocking valid original exports.
+        import tomllib
+        from compile_exported_batch import compile_batch
+        source = Path(__file__).with_name('compile_exported_batch.py').read_text()
+        package = tomllib.loads((Path(__file__).parents[1] / 'Cargo.toml').read_text())
+        self.assertEqual(package['package']['name'], 'lean-eth-reference')
+        self.assertEqual(package['lib']['name'], 'lean_eth_reference')
+        self.assertIn('lean_eth_reference={package="lean-eth-reference",path=', source)
+        self.assertTrue(callable(compile_batch))
     def test_resume_is_remote_only_on_manual_compilation(self):
         workflow = WORKFLOW.read_text()
         # PRs should not perform Lean/Mathlib setup or touch GitHub cache.

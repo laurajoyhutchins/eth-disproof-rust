@@ -1,0 +1,76 @@
+name: Stage source-ordered Rustfmt snapshots and validate exact M2 head
+
+on:
+  push:
+    branches: [ci/m2-rustfmt-stage-20261110]
+    paths: ['.github/workflows/m2-rustfmt-stage.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  format-stage-heads:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.99.1
+      - name: Format each exact, source-ordered stage into immutable Git commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          formatted=()
+          while read -r pr sha; do
+            git fetch --no-tags --depth=1 origin "$sha"
+            git checkout --detach "$sha"
+            cargo fmt --all --manifest-path rust/lean_eth_reference/Cargo.toml
+            git add -u -- rust/lean_eth_reference
+            if ! git diff --cached --quiet; then
+              git commit -m "style(m2-$pr): apply pinned Rust 1.99.1 rustfmt at this stage"
+            fi
+            result="$(git rev-parse HEAD)"
+            formatted+=("$result")
+            echo "FORMATTED_STAGE $pr $sha $result"
+          done <<'STAGES'
+          125 a4b1a5cda8329f1ac9dfbeec9f3a833e1cc17d13
+          127 5afdc17fddd95a57999e9c8dfa50aa52cd90d0c3
+          128 e47d19a8d9863075bcc432df183059f442732bbd
+          132 4d29edab4d27bae49d7bdf038459d689981244ac
+          135 b92b4d17c611a543092b3fff0caf3a8055c12da7
+          138 99136f58317ac8a9fbfcc1f3619ee7cd480a576f
+          139 73a4a09705cd38721bf3aaf5b6508e912d50d1f0
+          143 f3d1a3dabcb157e394a565db77090af1691e179f
+          147 80ab2f80385b46ff0ab3e65f32e297cfb8e18d3d
+          STAGES
+          test "${#formatted[@]}" -eq 9
+          top="${formatted[8]}"
+          echo "$top" > /tmp/m2_formatted_top
+          # One throwaway reference transports all nine immutable formatted
+          # snapshots, preserving the original stage trees as their parents.
+          tree="$(git rev-parse "$top^{tree}")"
+          parents=()
+          for commit in "${formatted[@]}"; do parents+=(-p "$commit"); done
+          bundle="$(printf 'chore(ci): retain formatted M2 snapshots for exact-head verification\n' |
+            git commit-tree "$tree" "${parents[@]}")"
+          git push origin "$bundle:refs/heads/ci/m2-rustfmt-snapshots-20261110"
+          echo "SNAPSHOT_BUNDLE $bundle"
+      - name: Confirm final snapshot formatting
+        shell: bash
+        run: |
+          git checkout --detach "$(cat /tmp/m2_formatted_top)"
+          cargo fmt --all --manifest-path rust/lean_eth_reference/Cargo.toml -- --check
+      - name: Compile and test complete exact snapshot, debug and release
+        working-directory: rust/lean_eth_reference
+        run: |
+          cargo test --offline --locked --all-targets
+          cargo test --offline --locked --release --all-targets
+      - name: Clippy strict
+        working-directory: rust/lean_eth_reference
+        run: cargo clippy --offline --locked --all-targets -- -D warnings

@@ -204,6 +204,7 @@ const CSV_FIELDS: [&str; 10] = [
     "peak_stack_capacity_bits",
     "max_integer_bits",
 ];
+type NativeCase = (BTreeMap<String, u128>, BTreeMap<String, String>);
 const ACCOUNTS: [&str; 5] = [
     "transitions",
     "elapsed_ns",
@@ -222,7 +223,7 @@ fn native_metrics(path: &Path, profiles: &BTreeMap<String, Profile>) -> Fallible
     if header.len() != CSV_FIELDS.len() || CSV_FIELDS.iter().any(|s| !header.contains(s)) {
         return Err("invalid native profiler CSV header".into());
     }
-    let mut record: BTreeMap<String, (BTreeMap<String, u128>, BTreeMap<String, String>)> =
+    let mut record: BTreeMap<String, NativeCase> =
         BTreeMap::new();
     for (line_no, line) in rows.enumerate() {
         let fields: Vec<_> = line.split(',').collect();

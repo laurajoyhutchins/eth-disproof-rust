@@ -120,3 +120,34 @@ OpenAI Lean/Mathlib environment has not yet executed a differential TM2 trace.
    mathematical obligations**, not implied by these finite tests.
 
 This is an incremental implementation of #110, which remains **open**.
+
+
+## Independent primitive-transition oracle increment
+
+The follow-up stacked branch exposes a **bounded, optional** event stream from
+the physical simulator with the source instruction index, TM2 constructor index,
+selected tape, action (write, move left/right, or halt), head position and
+cell value **before and after every primitive transition**. `None` is a
+blank, distinct from an explicitly written `Some(false)`.
+
+The separate integration test `tests/tm2_transition_oracle.rs` transcribes
+the finite `StackCompiler.controller` ready/read/act/return phases
+independently instead of invoking the production simulator's lowered
+`Micro` instruction list. It checks **every transition event**, final source
+configuration, TM2 constructor count, visited coordinates, moves and writes.
+The deterministic corpus includes all twelve instruction kinds; empty and
+nonempty Boolean stacks; the actual `HighIncidenceProgram.Branches.program`;
+a structured loop plus compiled call; and raw width-one single-tape data.
+The event cap is enforced with atomic refusal of the caller's config.
+
+The untraced `run_primitive` remains the default and does not allocate an
+event vector. Its finite cost semantics have not changed.
+
+**Local verification:** The five transition-oracle tests passed on the
+standalone v0.16 Rust snapshot in debug and release; the existing nine TM2
+tests also passed, together with formatting and strict Clippy (Rust 1.99.1).
+The **actual combined GitHub PR head** remains unverified.
+
+The second implementation is **independent Rust code**, not original imported
+Lean execution. Full source/primitive equivalence, head-span proofs, physical
+memory accounting, and any asymptotic resource theorem remain open under #110.

@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Parser, Subcommand};
 
@@ -45,10 +45,20 @@ pub struct FrontendArgs {
     #[arg(value_name = "INPUT", default_value = "-")]
     pub input: PathBuf,
     /// Maximum source BitProgram instructions.
-    #[arg(long, value_name = "N", default_value_t = 1_000_000, value_parser = positive_u64)]
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 1_000_000,
+        value_parser = positive_u64
+    )]
     pub max_steps: u64,
     /// Maximum live stack bits.
-    #[arg(long, value_name = "N", default_value_t = 1_000_000, value_parser = positive_usize)]
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 1_000_000,
+        value_parser = positive_usize
+    )]
     pub max_stack_bits: usize,
 }
 
@@ -58,10 +68,20 @@ pub struct TerminalCountArgs {
     #[arg(value_name = "INPUT", default_value = "-")]
     pub input: PathBuf,
     /// Maximum source BitProgram instructions per stage.
-    #[arg(long, value_name = "N", default_value_t = 20_000_000, value_parser = positive_u64)]
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 20_000_000,
+        value_parser = positive_u64
+    )]
     pub max_steps: u64,
     /// Maximum live stack bits.
-    #[arg(long, value_name = "N", default_value_t = 300_000, value_parser = positive_usize)]
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 300_000,
+        value_parser = positive_usize
+    )]
     pub max_stack_bits: usize,
 }
 
@@ -71,7 +91,12 @@ pub struct OracleArgs {
     #[arg(value_name = "INPUT", default_value = "-")]
     pub input: PathBuf,
     /// Maximum variables admitted by the exponential leaf (cannot exceed 20).
-    #[arg(long, value_name = "N", default_value_t = 20, value_parser = bounded_variables)]
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 20,
+        value_parser = bounded_variables
+    )]
     pub max_variables: usize,
 }
 
@@ -99,7 +124,7 @@ fn bounded_variables(raw: &str) -> Result<usize, String> {
     Ok(n)
 }
 
-fn read_input(path: &PathBuf) -> Result<String, String> {
+fn read_input(path: &Path) -> Result<String, String> {
     if path.as_os_str() == "-" {
         let mut source = String::new();
         io::stdin()
@@ -234,10 +259,16 @@ mod tests {
 
     #[test]
     fn help_and_refusals_are_typed() {
-        assert!(EthCli::try_parse_from(["eth", "--help"]).unwrap_err().use_stderr() == false);
+        let help = EthCli::try_parse_from(["eth", "--help"]).unwrap_err();
+        assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
         assert!(EthCli::try_parse_from(["eth", "frontend", "--max-steps", "0"]).is_err());
-        assert!(EthCli::try_parse_from(["eth", "terminal-count", "--max-stack-bits", "0"]).is_err());
-        assert!(EthCli::try_parse_from(["eth", "oracle", "--max-variables", "21"]).is_err());
+        assert!(
+            EthCli::try_parse_from(["eth", "terminal-count", "--max-stack-bits", "0"])
+                .is_err()
+        );
+        assert!(
+            EthCli::try_parse_from(["eth", "oracle", "--max-variables", "21"]).is_err()
+        );
         assert!(EthCli::try_parse_from(["eth", "unknown"]).is_err());
         assert!(EthCli::try_parse_from(["eth"]).is_err());
     }

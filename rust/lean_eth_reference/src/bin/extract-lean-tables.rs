@@ -204,7 +204,9 @@ fn declarations(source: &str) -> Result<(Vec<SourceDecl>, Vec<String>)> {
             code.starts_with("code := ![") || code.starts_with("code q := match q.val with");
         let split_match = code.starts_with("code ")
             && code.ends_with(":=")
-            && lines.get(i + 5).is_some_and(|next| next.trim().starts_with("match "));
+            && lines
+                .get(i + 5)
+                .is_some_and(|next| next.trim().starts_with("match "));
         if !code.starts_with("code := ![")
             && !(code.starts_with("code ") && code.contains(" := match "))
             && !code.starts_with("code := fun ")

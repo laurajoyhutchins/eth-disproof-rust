@@ -111,3 +111,64 @@ table. No full query or native counter has been extracted or run. The complete
 GitHub PR checkout still requires its own exact-head CI result. Do not count
 these source-defined subprogram tests as a Lean/Rust refinement proof or ETH
 time/space result.
+
+
+## Complete mechanically extractable literal-program catalog
+
+The scan of all 3,977 Lean files in the original pinned
+`lean/OAI/Algorithms/SubexponentialSAT` tree found **61** closed,
+fixed-dimension `BitProgram.Program` declarations whose instruction tables
+are written literally as `![...]` or a finite `match q.val`.
+
+All **61** were compiled into direct Rust control-flow functions. This includes
+sparse label matches with an explicit final fallback, and symbolic labels
+only when defined in the same file as closed `Fin N := numeric-literal`
+declarations. No arbitrary elaboration or expression evaluation is accepted.
+The scanner now reports **zero unsupported declarations in this narrowly
+defined syntactic category**. Other composed `Cmd` programs are outside this
+category and are **not counted**.
+
+The canonical complete inventory is
+`tools/fixtures/original/all-literal.tsv` (61 rows, source paths, Git blob
+identities, machine ABI and per-table SHA-256). The corresponding 61 canonical
+instruction tables are in `tools/fixtures/original/all-literal.bundle`.
+
+- Original source pin: `openai/math@4eaee87548250b2682affda7d05d947c05554bae`.
+- All **52** distinct upstream source-file Git blobs (including the two
+  source-control-flow exceptions formerly unsupported) were independently
+  checked against the GitHub contents at the exact original commit; every
+  recorded blob matched.
+- `tools/extract_all_literal.py --check` re-derives and compares the canonical
+  manifest and bundle from an original source checkout.
+- Cargo `build.rs` checks the source pins, dimensions, labels, entries,
+  ports and every finite instruction record before generating
+  `OUT_DIR/original_catalog.rs` (approximately 191 KB of actual Rust code).
+  There is no external Cargo dependency.
+- `tests/original_literal_catalog.rs` reconstructs an independent
+  `Program<R,S>` from each original literal table, and compares that
+  interpreter against the **separately compiled generated Rust** for all
+  61 programs across a matrix of eight initial configurations, six
+  instruction limits and three stack-bit limits. This is **8,784**
+  differential executions, comparing the entire machine state and result
+  on success and refusal, not only final output.
+- On the retained local v0.21.0 Rust reference source snapshot, verified Rust
+  1.99.1 `cargo fmt`, offline locked all-target tests, release-mode
+  original-program tests and strict Clippy all passed. The exact updated
+  GitHub PR checkout still needs a separate combined-head CI result.
+
+Command to independently rebuild the catalog from authentic source:
+
+```sh
+cd rust/lean_eth_reference
+python3 tools/extract_all_literal.py \
+    --upstream /path/to/original/openai-math \
+    --output-dir tools/fixtures/original --check
+cargo test --offline --locked --test original_literal_catalog
+```
+
+**Boundary:** a literal instruction-table declaration is not the same as the
+full noncomputable, heavily composed `QueryStreamProgram.program`.
+The original full query exporter remains blocked on an import-capable Lean
+4.34.1 + pinned Mathlib runtime and may still exceed finite table/codegen
+budget. A full native SAT count, genuine imported-source parity and ETH
+complexity claims are not established here.

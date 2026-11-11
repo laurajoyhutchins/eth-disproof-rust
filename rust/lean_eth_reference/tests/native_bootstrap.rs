@@ -103,7 +103,10 @@ fn local_row_count_copies_preserved_source_then_physically_parses() {
         assert_eq!(stats.instructions, expected as u64);
         assert_eq!(read(&d, 1), encoded);
         assert_eq!(read(&d, 2), vec![true; n]);
-        assert!(d.regs[6] && d.regs[7], "Fin.castAdd must preserve register indices");
+        assert!(
+            d.regs[6] && d.regs[7],
+            "Fin.castAdd must preserve register indices"
+        );
         assert!(d.stacks[14].is_empty());
     }
 }

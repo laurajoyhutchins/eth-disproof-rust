@@ -62,12 +62,7 @@ pub fn true_count_program() -> Result<Program<3, 2>, Error> {
 /// The source maps its 3 registers to caller 0..2 and two stacks to
 /// the isolated physical work ports 340 and 341.
 pub fn true_count_command() -> Result<Cmd<16, 768>, Error> {
-    stage(
-        true_count_program()?,
-        [0, 1, 2],
-        &[(651, 0)],
-        &[(1, 652)],
-    )
+    stage(true_count_program()?, [0, 1, 2], &[(651, 0)], &[(1, 652)])
 }
 
 pub fn true_count_standalone_program() -> Result<Program<16, 768>, Error> {

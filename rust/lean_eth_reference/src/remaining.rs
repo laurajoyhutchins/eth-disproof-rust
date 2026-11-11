@@ -346,7 +346,7 @@ pub const STAGES: &[Stage] = &[
         id: "terminal_dispatch",
         source_file: "SqrtLogSpace/NativeLeafDispatch.lean",
         lean_symbol: "NativeLeafDispatch.command",
-        status: Status::Stub,
+        status: Status::Partial,
         machine: Machine::Outer,
         requires: &["terminal_ready", "leaf_execution"],
     },
@@ -564,8 +564,10 @@ pub mod leaf {
     pub fn terminal_zero() -> Result<Cmd<80, 1220>, Error> {
         Ok(crate::native_terminal::terminal_zero_command())
     }
-    pub fn terminal_dispatch(_nonterminal: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
-        unavailable("NativeLeafDispatch.command")
+    /// Real source NativeLeafDispatch.command with a supplied physical leaf.
+    /// This does not furnish the missing nonterminal NativeLeafProgram.
+    pub fn terminal_dispatch(nonterminal: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
+        crate::native_leaf_dispatch::command(nonterminal)
     }
     pub fn command(_k: usize) -> Result<Cmd<80, 1220>, Error> {
         unavailable("NativeLeafProgram.command")

@@ -6,12 +6,27 @@ import tempfile
 import unittest
 
 from verify_source_graph import (
-    SOURCE_SHA, Node, parse_instr, parse_node, generate_test,
+    SOURCE_SHA, Node, parse_instr, parse_node, generate_test, rust_instr,
     parse_golden, validate_and_generate,
 )
 
 
 class GraphContracts(unittest.TestCase):
+    def test_register_value_is_not_a_bool_in_peek_or_pop(self):
+        # 'value' names a register in these instructions, unlike .set.
+        self.assertEqual(
+            rust_instr(('peek', (1, 2, 0, 3))),
+            'Instr::Peek { stack: 1, value: 2, present: 0, next: 3 }')
+        self.assertEqual(
+            rust_instr(('pop', (1, 2, 0, 3))),
+            'Instr::Pop { stack: 1, value: 2, present: 0, next: 3 }')
+        self.assertEqual(
+            rust_instr(('set', (2, 1, 3))),
+            'Instr::Set { dst: 2, value: true, next: 3 }')
+        self.assertEqual(
+            rust_instr(('set', (2, 0, 3))),
+            'Instr::Set { dst: 2, value: false, next: 3 }')
+
     def test_simple_sequence_exact_physical_layout(self):
         cmd = {'kind':'seq',
                'first':{'kind':'atom','opcode':'set:0:1'},

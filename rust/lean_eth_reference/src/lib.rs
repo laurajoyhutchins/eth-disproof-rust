@@ -688,6 +688,15 @@ pub mod native_pair_setup;
 pub mod native_query_prefix;
 pub mod native_terminal;
 
+/// Exact framed-record iteration and fixed-control membership program.
+pub mod native_record_membership;
+
+/// Source physical terminal classification and guarded 80x1220 output.
+pub mod native_terminal_classifier;
+
+/// Source-defined generic terminal/nonterminal branch dispatcher; no leaf oracle.
+pub mod native_leaf_dispatch;
+
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;
 

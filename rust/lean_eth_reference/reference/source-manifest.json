@@ -78,6 +78,7 @@
     "lean/OAI/Algorithms/SubexponentialSAT/ExecCleanLiteralsProgram.lean": "113bb3895170816c4b7e5c6dd3581308e37ba5e3",
     "lean/OAI/Algorithms/SubexponentialSAT/ExecClauseFilterReverse.lean": "e34fcf8e5e6545d63cf3cf748fa0365f937c2394",
     "lean/OAI/Algorithms/SubexponentialSAT/SubexpTautologyFilterProgram.lean": "50884940290289fe287192b484bf9b6c1cfee02c",
+    "lean/OAI/Algorithms/SubexponentialSAT/SubexpNormalizationProgram.lean": "0d425a55a1d936dda93b1638fad908a51627cee6",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeProgram.lean": "864ccb2308317df3cc7d218c8b45d43d32558ffd",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeQueryPreparation.lean": "a774eb0dd67f4921697b0dbaad25762bbe11f869",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeSetupSpace.lean": "f7112a4933c733a5567646174969b9a423aa14f4",

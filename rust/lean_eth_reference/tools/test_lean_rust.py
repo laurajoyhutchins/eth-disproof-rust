@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -133,6 +134,40 @@ class DriverTests(unittest.TestCase):
             self.assertEqual(final["state"], "complete")
             self.assertEqual(final["attempted"], 2)
             self.assertEqual(len(final["exported"]), 2)
+
+    def test_restored_remote_snapshot_reuses_only_validated_individual_exports(self):
+        """A fresh runner may restore files, but never trust them without validation."""
+        with tempfile.TemporaryDirectory() as temp:
+            first = Path(temp) / "first-github-run"
+            second = Path(temp) / "second-github-run"
+            first.mkdir()
+            receipt = write_receipt(first)
+            atomic_write(first / "batch-report.json",
+                         json.dumps({"kind": "original-source-program-export",
+                                     "pins": PINS, "exported": [receipt]}) + "\n")
+            shutil.copytree(first, second)
+            with patch("export_compiled_batch.export_one") as compiler:
+                result = export_batch([REC], second, second, PINS, 10, 2, False)
+            compiler.assert_not_called()
+            self.assertEqual([row["id"] for row in result["exported"]], [REC["id"]])
+
+            # A corrupted restore is re-exported rather than accepted or marked verified.
+            (second / "example_0.table").write_bytes(b"bad-cache-bytes")
+            with patch("export_compiled_batch.export_one",
+                       side_effect=lambda rec, *_: write_receipt(second, rec)) as compiler:
+                result = export_batch([REC], second, second, PINS, 10, 2, False)
+            compiler.assert_called_once()
+            self.assertEqual(len(result["exported"]), 1)
+
+            # A previous exported table under an old implementation is also stale.
+            with tempfile.TemporaryDirectory() as changed:
+                fake_exporter = Path(changed) / "changed-exporter.lean"
+                fake_exporter.write_text("changed implementation")
+                with patch("export_compiled_batch.LEAN_EXPORTER", fake_exporter):
+                    with patch("export_compiled_batch.export_one",
+                               side_effect=lambda rec, *_: write_receipt(second, rec)) as compiler:
+                        export_batch([REC], second, second, PINS, 10, 2, False)
+                    compiler.assert_called_once()
 
     def test_exporter_receipt_is_not_parity_evidence(self):
         with tempfile.TemporaryDirectory() as temp:

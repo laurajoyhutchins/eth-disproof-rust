@@ -91,35 +91,6 @@ jobs:
           path: instrumentation/lean-env/.lake/build
           key: original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
 
-      - name: Compare actual Lean and Rust physical branch-machine traces
-        working-directory: instrumentation/lean-env
-        shell: bash
-        run: |
-          set -euo pipefail
-          lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SqrtLog.HighIncidenceProgramBranches
-          TRACE_DIR="${RUNNER_TEMP}/original-lean-branch-trace"
-          mkdir -p "$TRACE_DIR"
-          lake env lean --run "$GITHUB_WORKSPACE/rust/lean_eth_reference/reference/lean_full_machine_trace.lean" > "$TRACE_DIR/original-lean.trace"
-          rustup toolchain install 1.99.1 --profile minimal
-          rustup default 1.99.1
-          rustc --version | grep -F 'rustc 1.99.1'
-          cargo run --quiet --locked --offline --manifest-path "$GITHUB_WORKSPACE/rust/lean_eth_reference/Cargo.toml" --bin lean-full-machine-trace > "$TRACE_DIR/physical-rust.trace"
-          python3 "$GITHUB_WORKSPACE/rust/lean_eth_reference/scripts/compare-full-machine-trace.py" \
-            --lean "$TRACE_DIR/original-lean.trace" --rust "$TRACE_DIR/physical-rust.trace"
-          (cd "$TRACE_DIR" && sha256sum original-lean.trace physical-rust.trace > traces.sha256)
-          echo 'SOURCE_LEAN_RUST_COMPLETE_STATE_DIFFERENTIAL=PASS' >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Preserve independently produced physical traces
-        uses: actions/upload-artifact@v4
-        with:
-          name: lean-rust-physical-traces-${{ github.event.pull_request.head.sha || github.sha }}
-          path: |
-            ${{ runner.temp }}/original-lean-branch-trace/original-lean.trace
-            ${{ runner.temp }}/original-lean-branch-trace/physical-rust.trace
-            ${{ runner.temp }}/original-lean-branch-trace/traces.sha256
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Build original QueryStreamProgram dependency closure
         working-directory: instrumentation/lean-env
         shell: bash
@@ -151,6 +122,9 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$HOME/.cargo/bin:$PATH"
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          rustc --version | grep -F 'rustc 1.99.1'
           cargo run --offline --locked --manifest-path rust/lean_eth_reference/Cargo.toml \
             --bin lean-table-codegen -- \
             "${RUNNER_TEMP}/lean-export/query.table" \

@@ -63,6 +63,13 @@ jobs:
           test -z "$(git -C .lake/packages/mathlib status --porcelain --untracked-files=no)"
           lake env lean SmokeMathlib.lean
 
+      - name: Parse and elaborate observer dirty-state syntax before large source build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$LEAN_ROOT"
+          lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/reference/observer_state_syntax_smoke.lean"
+
       - name: Install pinned Rust interpreter
         shell: bash
         run: |

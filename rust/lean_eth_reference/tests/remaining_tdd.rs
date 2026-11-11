@@ -216,10 +216,12 @@ fn source_machine_dimensions_are_enforced_at_compile_time() {
     let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::normalization_prefix;
     let _: fn() -> Result<Program<10, 8>, Error> = remaining::outer::subset_clause;
     let _: fn() -> Result<Program<12, 10>, Error> = remaining::outer::clause_relations;
-    let _: fn(lean_eth_reference::native_clause_relation_scan::Mode) -> Result<Program<15, 12>, Error> =
-        remaining::outer::relation_scan;
-    let _: fn(lean_eth_reference::native_clause_relation_scan::Mode) -> Result<Program<15, 13>, Error> =
-        remaining::outer::preserving_relation_scan;
+    let _: fn(
+        lean_eth_reference::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 12>, Error> = remaining::outer::relation_scan;
+    let _: fn(
+        lean_eth_reference::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 13>, Error> = remaining::outer::preserving_relation_scan;
     let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::dedup_clauses;
     let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::filter_supersets;
     let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::normalization_full;

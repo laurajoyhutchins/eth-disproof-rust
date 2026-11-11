@@ -670,6 +670,9 @@ pub mod native_query_prefix;
 /// Constructive finite cutoff scanner; finite counting table remains noncomputable.
 pub mod finite_fallback;
 
+/// Source-defined native count-word positivity suffix.
+pub mod native_answer;
+
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;
 

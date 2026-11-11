@@ -1,0 +1,21 @@
+Third-party attribution and license obligations
+================================================
+
+This repository implements and adapts portions of the Lean mathematical and
+executable development published by OpenAI in the "openai/math" repository.
+
+Upstream: https://github.com/openai/math
+Source revision: 4eaee87548250b2682affda7d05d947c05554bae
+Source area: lean/OAI/Algorithms/SubexponentialSAT
+Upstream license: Apache License, Version 2.0 (see LICENSE-APACHE)
+
+Changes in this repository include Rust translations of selected executable
+definitions, supporting Rust finite-machine infrastructure, independent tests,
+conformance utilities, and documentation. The Rust implementation is incomplete.
+
+The MIT license in LICENSE applies to original contributions made to this
+repository. It does not remove or replace obligations that apply to content
+derived from upstream Apache-2.0 material. The Rust crate's SPDX expression is
+"MIT AND Apache-2.0".
+
+This is independent research work and is not an official OpenAI distribution.

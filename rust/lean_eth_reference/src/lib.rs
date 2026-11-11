@@ -738,3 +738,6 @@ mod canonical_clause_tests {
         );
     }
 }
+
+/// Experimental source-linked primitive TM2 resource accounting.
+pub mod tm2_resources;

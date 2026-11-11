@@ -7,6 +7,7 @@ for DeferredProgram and executes bounded equivalence tests. It is NOT an
 independent Lean/Rust state differential or a completeness claim.
 """
 from __future__ import annotations
+from temporary_rust_crate import isolated_cargo_manifest
 import argparse
 import hashlib
 import json
@@ -294,8 +295,7 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
         (project/'src').mkdir(parents=True,exist_ok=True)
         (project/'src/lib.rs').write_text('// No semantic SAT oracle\n')
         (project/'tests/source.rs').write_text(body)
-        (project/'Cargo.toml').write_text('[package]\nname="original_graph_check"\nversion="0.0.0"\nedition="2024"\n\n'
-          '[dependencies]\nlean_eth_reference={package="lean-eth-reference",path='+json.dumps(str(crate.resolve()))+'}\n')
+        (project/'Cargo.toml').write_text(isolated_cargo_manifest('original_graph_check', crate))
         result=subprocess.run(['cargo','test','--offline','--manifest-path',str(project/'Cargo.toml')],
                               capture_output=True,text=True,timeout=240)
         if result.returncode:

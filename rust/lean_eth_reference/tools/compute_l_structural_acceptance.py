@@ -8,6 +8,7 @@ refused this declaration at its heartbeat budget. Unknown/malformed source
 structure, wrong dimensions, and failed Rust execution are hard refusals.
 """
 from __future__ import annotations
+from temporary_rust_crate import isolated_cargo_manifest
 
 import argparse
 from collections import Counter
@@ -125,8 +126,7 @@ def run(upstream:Path,lake:Path,rust_crate:Path,dest:Path,timeout:int):
         (crate/'src').mkdir(parents=True)
         (crate/'src/lib.rs').write_text('// Original source structural acceptance\n')
         (crate/'tests/compute_l.rs').write_text(rust)
-        (crate/'Cargo.toml').write_text('[package]\nname="original-compute-l-check"\nversion="0.0.0"\nedition="2024"\n\n'
-                '[dependencies]\nlean_eth_reference={package="lean-eth-reference",path='+json.dumps(str(rust_crate.resolve()))+'}\n')
+        (crate/'Cargo.toml').write_text(isolated_cargo_manifest('original-compute-l-check', rust_crate))
         execute('cargo','test','--offline','--manifest-path',str(crate/'Cargo.toml'),'--tests')
         dest.mkdir(parents=True,exist_ok=True)
         atomic_write(dest/'compute-l.graph.json',raw)

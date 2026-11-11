@@ -9,6 +9,7 @@ an import of original OAI modules and does NOT validate the structural graph
 exporter. It verifies machine-step semantics using Lean, not a Python oracle.
 """
 from __future__ import annotations
+from temporary_rust_crate import isolated_cargo_manifest
 
 import argparse
 from collections import Counter
@@ -245,8 +246,7 @@ def differential(upstream:Path,lake:Path,golden:Path,rust_crate:Path,dest:Path,
         crate=work/'rust-check'
         (crate/'src').mkdir(parents=True)
         (crate/'tests').mkdir(parents=True)
-        (crate/'Cargo.toml').write_text('[package]\nname="lean-physical-differential"\nversion="0.0.0"\nedition="2024"\n\n'
-                                          '[dependencies]\nlean_eth_reference={package="lean-eth-reference",path='+json.dumps(str(rust_crate.resolve()))+'}\n')
+        (crate/'Cargo.toml').write_text(isolated_cargo_manifest('lean-physical-differential', rust_crate))
         (crate/'src/lib.rs').write_text('// Independent Lean state traces\n')
         (crate/'tests/physical.rs').write_text(rust_code)
         (crate/'lean-traces.txt').write_text(output)

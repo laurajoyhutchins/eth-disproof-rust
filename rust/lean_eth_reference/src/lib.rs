@@ -727,6 +727,8 @@ pub mod native_record_membership;
 
 /// Source physical terminal classification and guarded 80x1220 output.
 pub mod native_terminal_classifier;
+/// Bounded source-physical terminal CNF counter; nonterminal cases refuse.
+pub mod native_terminal_count;
 
 /// Source-defined generic terminal/nonterminal branch dispatcher; no leaf oracle.
 pub mod native_leaf_dispatch;

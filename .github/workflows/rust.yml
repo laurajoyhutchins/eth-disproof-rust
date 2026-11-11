@@ -35,5 +35,7 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Exact Rust tests
         run: cargo test --locked --offline --all-targets
+      - name: Source-machine trace and profiling regressions
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

@@ -303,6 +303,14 @@ pub const STAGES: &[Stage] = &[
         requires: &["bit_machine"],
     },
     Stage {
+        id: "encoded_record_membership",
+        source_file: "ExecCNFMembership.lean",
+        lean_symbol: "ExecCNFMembership.rawMembershipProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["encoded_membership_callback"],
+    },
+    Stage {
         id: "terminal_power",
         source_file: "SqrtLogSpace/NativeTerminal.lean",
         lean_symbol: "NativeTerminal.power",
@@ -319,12 +327,28 @@ pub const STAGES: &[Stage] = &[
         requires: &["bit_machine"],
     },
     Stage {
+        id: "terminal_classifier",
+        source_file: "SqrtLogSpace/NativeTerminal.lean",
+        lean_symbol: "NativeTerminal.classifier",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["encoded_record_membership"],
+    },
+    Stage {
+        id: "terminal_ready",
+        source_file: "SqrtLogSpace/NativeTerminal.lean",
+        lean_symbol: "NativeTerminal.readyCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["terminal_classifier", "terminal_power", "terminal_zero"],
+    },
+    Stage {
         id: "terminal_dispatch",
         source_file: "SqrtLogSpace/NativeLeafDispatch.lean",
         lean_symbol: "NativeLeafDispatch.command",
         status: Status::Stub,
         machine: Machine::Outer,
-        requires: &["leaf_execution"],
+        requires: &["terminal_ready", "leaf_execution"],
     },
     Stage {
         id: "leaf_command",
@@ -519,6 +543,18 @@ pub mod leaf {
     /// This is NOT the full encoded-record membership search or terminal classifier.
     pub fn membership_callback() -> Result<Cmd<7, 5>, Error> {
         crate::native_membership::membership_callback_command()
+    }
+    /// Actual complete source encoded-list membership machine, not a SAT oracle.
+    pub fn encoded_membership() -> Result<Program<7, 5>, Error> {
+        crate::native_record_membership::raw_membership_program()
+    }
+    /// Actual lifted terminal classifier; only canonical encoded input is supported.
+    pub fn terminal_classifier() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_terminal_classifier::terminal_classifier_command()
+    }
+    /// Actual source-ready terminal paths; the nonterminal leaf is still unsupported.
+    pub fn terminal_ready() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_terminal_classifier::ready_command()
     }
     /// Actual source-native terminal power after the caller proves F is empty.
     pub fn terminal_power() -> Result<Cmd<80, 1220>, Error> {

@@ -13,11 +13,23 @@ The source `Native.powerCommand` takes canonical unary `true^n ++ [false]` on st
 
 `NativeTerminal.zero` executes two real instruction atoms and writes `[false]` to stack 263, provided that stack was initially empty. Its test wrapper adds one halt, for exactly three instructions.
 
+## Exact comparison machinery toward the terminal classifier
+
+This branch also ports a constructive inner callback used by the source membership search:
+
+- `ExecClauseCost.bitEqualityProgram`, exact ten-label two-stack bit equality machine (Git blob `51c46718cb695ee49f627e92b1d9b6d4a8a02c46`).
+- `ExecClauseCost.membershipEqProgram`, exact lift into 7 registers / 5 stacks (Git blob `5e63716727ed69dd56806971288d60e97952efc5`). **Lean `Fin.castAdd 2` is identity on register indices 0..4**, *not* an offset by 2; registers 5 and 6 are protected outer control state.
+- `ExecCNFMembership.callback`, physical preserving-copy of reversed query 2 to scratch-comparison stack 3, actual comparator on reversed payload 1, and clearing 1 and 3 (Git blob `50e7a70685a6a1132da9a5a1c7ae31a2f59db1df`).
+
+The callback is fully executable and tested on all Boolean word pairs through length five, including early mismatch, different lengths, protected registers and stacks, preserved query, scratch cleanup and fail-closed step limits. This is **not** a complete `ExecCNFMembership.membership` or `SubexpEmptyClauseProgram`: the source encoded-record iterator/outer member search has not been ported.
+
+A focused local test initially exposed a wrong interpretation of `Fin.castAdd 2`; the shifted register map violated the source's protected-regs contract. The map was corrected to `[0,1,2,3,4]` before committing, with regression assertions for registers 5 and 6. Full local standalone source after both increments: **134 tests debug and 134 tests release**, rustfmt and strict Clippy clean on Rust 1.99.1.
+
 ## Explicitly outside this increment
 
 `NativeTerminal.classifier` uses `SqrtLog.LeafProgram.Trivial.program`, `SubexpEmptyClauseProgram.program` and a real `ExecCNFMembership` stack-scanning comparator. That source classifier is **not** yet ported. Consequently, neither the Rust tests nor the production API autonomously decide whether a CNF has an empty clause, is empty, or is nonterminal. The caller must establish source terminal branch premises independently. No `SAT.count`, semantic `LeafCounter`, or host truth table is injected. `NativeTerminal.command` and `NativeLeafDispatch.command` remain unresolved.
 
-The local source snapshot tests both native count producers up to 128 variables and 256 variables as a non-word-sized count, asserts exact instruction costs, preserved ambient/protected ABI state, and fail-closed step/stack capacity. The full local standalone crate was checked in debug and release with **129 passing tests each**, plus `cargo fmt --check` and strict Clippy on Rust 1.99.1.
+The local source snapshot tests both native count producers up to 128 variables and 256 variables as a non-word-sized count, asserts exact instruction costs, preserved ambient/protected ABI state, and fail-closed step/stack capacity. The full local standalone crate was checked in debug and release with **134 passing tests each**, plus `cargo fmt --check` and strict Clippy on Rust 1.99.1.
 
 This standalone crate does not include the repository's `remaining.rs`, and the exact GitHub stacked-head must still be verified before integration. Imported Lean source traces and TM2 resource results are separate obligations.
 

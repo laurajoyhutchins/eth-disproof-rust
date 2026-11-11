@@ -295,6 +295,14 @@ pub const STAGES: &[Stage] = &[
         requires: &["leaf_local"],
     },
     Stage {
+        id: "encoded_membership_callback",
+        source_file: "ExecCNFMembership.lean",
+        lean_symbol: "ExecCNFMembership.callback",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["bit_machine"],
+    },
+    Stage {
         id: "terminal_power",
         source_file: "SqrtLogSpace/NativeTerminal.lean",
         lean_symbol: "NativeTerminal.power",
@@ -506,6 +514,11 @@ pub mod leaf {
     }
     pub fn execution(_local_command: Cmd<40, 896>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("NativeLeafExecution.command")
+    }
+    /// Source-defined seven-register, five-stack payload equality callback.
+    /// This is NOT the full encoded-record membership search or terminal classifier.
+    pub fn membership_callback() -> Result<Cmd<7, 5>, Error> {
+        crate::native_membership::membership_callback_command()
     }
     /// Actual source-native terminal power after the caller proves F is empty.
     pub fn terminal_power() -> Result<Cmd<80, 1220>, Error> {

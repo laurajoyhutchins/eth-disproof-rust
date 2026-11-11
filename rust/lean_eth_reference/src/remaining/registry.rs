@@ -618,4 +618,3 @@ pub const STAGES: &[Stage] = &[
         requires: &["primitive_tm2"],
     },
 ];
-

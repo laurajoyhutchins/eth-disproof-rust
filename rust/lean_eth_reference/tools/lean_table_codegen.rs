@@ -11,7 +11,7 @@ const QUERY_SOURCE_BLOB: &str = "c2fb29983bb33229d5cf60729cd3d1e37b9b00ca";
 // This shared module is also compiled by build.rs, which uses only Fixture.
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TableKind {
+pub enum TableKind<'a> {
     /// Accept only the provenance fields and ABI of the original query program.
     Query,
     /// Synthetic test data: never attribute this table to the original Lean source.
@@ -20,6 +20,13 @@ pub enum TableKind {
     OriginalBinaryAdd,
     OriginalQueryParity,
     OriginalTypeBit,
+    /// A manifest-attested source declaration, not self-attested input bytes.
+    Catalog {
+        name: &'a str,
+        blob: &'a str,
+        /// Registers, stacks, labels, entry, input port and output port.
+        abi: (usize, usize, usize, usize, usize, usize),
+    },
 }
 
 fn decimal(s: &str) -> Result<usize, String> {
@@ -126,6 +133,7 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
         TableKind::OriginalBinaryAdd => "binary-add",
         TableKind::OriginalQueryParity => "query-parity",
         TableKind::OriginalTypeBit => "type-bit",
+        TableKind::Catalog { name, .. } => name,
     };
     let expected_pin = match kind {
         TableKind::Query => format!("PIN|query|{SOURCE_COMMIT}|{QUERY_SOURCE_BLOB}"),
@@ -138,6 +146,9 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
         }
         TableKind::OriginalTypeBit => {
             format!("PIN|type-bit|{SOURCE_COMMIT}|4e020c828e458b4420179da94c3451bea653a7b9")
+        }
+        TableKind::Catalog { name, blob, .. } => {
+            format!("PIN|{name}|{SOURCE_COMMIT}|{blob}")
         }
     };
     if rows[0] != expected_pin {
@@ -169,12 +180,18 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
         TableKind::OriginalQueryParity => Some((3, 1, 0, 0, Some(4))),
         TableKind::OriginalTypeBit => Some((3, 2, 1, 1, Some(7))),
         TableKind::Fixture => None,
+        TableKind::Catalog { abi, .. } => Some((abi.0, abi.1, abi.4, abi.5, Some(abi.2))),
     };
     if let Some((er, es, ei, eo, el)) = expected_abi
         && ((r, s, input, output) != (er, es, ei, eo)
             || el.is_some_and(|expected_labels| expected_labels != labels))
     {
         return Err("pinned source machine ABI mismatch".into());
+    }
+    if let TableKind::Catalog { abi, .. } = kind
+        && entry != abi.3
+    {
+        return Err("source declaration entry mismatch".into());
     }
     if rows.len() != labels + 3 || rows[labels + 2] != format!("END|{name}|{labels}") {
         return Err("missing, excess, or incorrect table records".into());
@@ -202,7 +219,7 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
     writeln!(output_rs, "pub const INPUT_STACK: usize = {input};").unwrap();
     writeln!(output_rs, "pub const OUTPUT_STACK: usize = {output};").unwrap();
     writeln!(output_rs, "pub const LABELS: usize = {labels};").unwrap();
-    output_rs.push_str("#[allow(clippy::assign_op_pattern)]\n");
+    output_rs.push_str("#[allow(clippy::assign_op_pattern)]\n#[allow(unused_mut)]\n");
     writeln!(output_rs, "pub fn run(config: &mut lean_eth_reference::bit_program::Config<{r}, {s}>, limits: lean_eth_reference::bit_program::RunLimits) -> Result<lean_eth_reference::bit_program::RunStats, lean_eth_reference::Error> {{").unwrap();
     output_rs.push_str(
         "    use lean_eth_reference::Error;\n\

@@ -169,6 +169,10 @@ enum BlockKind<const R: usize, const S: usize> {
     Skip,
     Atom(Atom),
     Call(Arc<DeferredProgram<R, S>>),
+    Repeat {
+        count: usize,
+        body: Arc<Block<R, S>>,
+    },
     Seq(Arc<Block<R, S>>, Arc<Block<R, S>>),
     If {
         test: usize,
@@ -211,6 +215,21 @@ impl<const R: usize, const S: usize> Block<R, S> {
             size: program.labels,
             kind: BlockKind::Call(program),
         })
+    }
+
+    /// Preserve n source sequential copies with one stored shared node.
+    pub fn repeat(count: usize, body: Arc<Self>) -> Result<Arc<Self>, Error> {
+        if count == 0 || body.size == 0 {
+            return Ok(Self::skip());
+        }
+        if count == 1 {
+            return Ok(body);
+        }
+        let size = count.checked_mul(body.size).ok_or(Error::Overflow)?;
+        Ok(Arc::new(Self {
+            size,
+            kind: BlockKind::Repeat { count, body },
+        }))
     }
 
     pub fn seq(first: Arc<Self>, second: Arc<Self>) -> Result<Arc<Self>, Error> {
@@ -260,6 +279,19 @@ impl<const R: usize, const S: usize> Block<R, S> {
             BlockKind::Skip => Ok(exit),
             BlockKind::Atom(_) | BlockKind::If { .. } | BlockKind::While { .. } => Ok(base),
             BlockKind::Call(program) => base.checked_add(program.entry).ok_or(Error::Overflow),
+            BlockKind::Repeat { count, body } => {
+                if *count == 0 || body.size == 0 {
+                    return Ok(exit);
+                }
+                // Any nonempty block enters at a source site, independent of its exit.
+                let following = if *count > 1 {
+                    let next_base = base.checked_add(body.size).ok_or(Error::Overflow)?;
+                    body.entry_at(next_base, exit)?
+                } else {
+                    exit
+                };
+                body.entry_at(base, following)
+            }
             BlockKind::Seq(first, second) => {
                 let mid = base.checked_add(first.size).ok_or(Error::Overflow)?;
                 first.entry_at(base, second.entry_at(mid, exit)?)
@@ -280,6 +312,21 @@ impl<const R: usize, const S: usize> Block<R, S> {
             BlockKind::Call(program) => {
                 let original = program.instruction_at(pc - base)?;
                 original.relocate(base, exit)
+            }
+            BlockKind::Repeat { count, body } => {
+                let iteration = (pc - base) / body.size;
+                if iteration >= *count {
+                    return Err(Error::Invalid("repeat index outside source body".into()));
+                }
+                let offset = iteration.checked_mul(body.size).ok_or(Error::Overflow)?;
+                let iteration_base = base.checked_add(offset).ok_or(Error::Overflow)?;
+                let following = if iteration + 1 < *count {
+                    let next_base = iteration_base.checked_add(body.size).ok_or(Error::Overflow)?;
+                    body.entry_at(next_base, exit)?
+                } else {
+                    exit
+                };
+                body.instruction_at(iteration_base, following, pc)
             }
             BlockKind::Seq(first, second) => {
                 let mid = base.checked_add(first.size).ok_or(Error::Overflow)?;

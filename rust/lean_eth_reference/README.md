@@ -2,7 +2,18 @@
 
 This crate implements selected executable components from the pinned
 [`openai/math` Lean development](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
-It contains **three CLI programs** with different correctness claims.
+It provides a unified **clap** CLI with three commands and retains the old binary names for compatibility. The commands have different correctness claims.
+
+## Unified CLI
+
+```sh
+cargo run --locked --bin eth -- --help
+cargo run --locked --bin eth -- frontend --help
+cargo run --locked --bin eth -- terminal-count --help
+cargo run --locked --bin eth -- oracle --help
+```
+
+Every command takes an optional DIMACS input file, using `-` or an omitted argument for stdin. `frontend` and `terminal-count` have positive `--max-steps` and `--max-stack-bits` caps. `oracle` accepts `--max-variables` up to 20. The result format remains the existing script-friendly text, and failures produce no success record on stdout. The old standalone binaries delegate to the same execution code.
 
 ## Source-defined physical frontend
 
@@ -65,7 +76,7 @@ for the reconstructed first-parent study sequence.
 ## Local Rust checks
 
 The root `rust-toolchain.toml` pins **Rust 1.99.1** and the root `Cargo.lock`
-is the canonical workspace lockfile. The crate has no third-party Cargo dependencies.
+is the canonical workspace lockfile. The crate uses the maintained `clap` parser for the CLI; `Cargo.lock` pins all dependencies.
 The following checks work from either this directory or the repository root:
 
 ```sh

@@ -5,6 +5,9 @@ edition = "2024"
 license = "MIT AND Apache-2.0"
 description = "Source-pinned Rust port of OpenAI Lean ETH finite semantics and BitProgram instructions"
 
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+
 [lib]
 name = "lean_eth_reference"
 path = "src/lib.rs"

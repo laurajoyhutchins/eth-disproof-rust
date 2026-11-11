@@ -7,6 +7,18 @@ It is **not** an independent proof of ETH's negation. In particular, the full
 native counting path, an independently executed Lean/Rust differential, and the
 claimed asymptotic resource bounds are not established on `main`.
 
+## Run the unified clap CLI
+
+The `eth` command separates physical source execution from the bounded exponential oracle:
+
+```sh
+cargo run --locked -p lean-eth-reference --bin eth -- --help
+printf 'p cnf 3 0\n' | cargo run --locked -p lean-eth-reference --bin eth -- terminal-count
+printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --locked -p lean-eth-reference --bin eth -- oracle
+```
+
+Subcommands: `frontend`, `terminal-count`, and `oracle`. Each accepts an optional DIMACS path or `-` for standard input. Source-machine commands expose explicit positive resource caps. The old three binary names remain compatibility entry points; see the [CLI guide](rust/lean_eth_reference/README.md).
+
 ## Run the source-defined frontend
 
 From the repository root, the checked-in `rust-toolchain.toml` pins **Rust 1.99.1**:

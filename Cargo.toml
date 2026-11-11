@@ -1,0 +1,3 @@
+[workspace]
+members = ["rust/lean_eth_reference"]
+resolver = "3"

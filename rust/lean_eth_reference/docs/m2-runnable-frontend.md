@@ -16,7 +16,7 @@ The CLI prints `status=frontend-completed`, actual source instruction count, pea
 
 `--max-steps N` and `--max-stack-bits N` configure refusal limits. Malformed DIMACS and exceeded budgets result in a nonzero exit code and no success output.
 
-## Verified locally
+## Historical local verification (pre-merge)
 
 Restored Rust **1.99.1**, offline standalone v0.16.0 crate with reconstructed source-native M2 dependencies:
 - `cargo test --offline --locked --all-targets`: **148 passed**, debug.
@@ -28,4 +28,4 @@ Restored Rust **1.99.1**, offline standalone v0.16.0 crate with reconstructed so
 
 ## Verification boundaries
 
-The standalone local verification predates the complete GitHub branch integration and does not independently validate its exact head. The public GitHub Actions `rust` job is the exact-head acceptance gate for this restacked branch; do not substitute local test counts or earlier green commits for the latest GitHub commit. Original Lean/Mathlib differential traces, primitive TM2 accounting and end-to-end ETH theorem remain unverified. The real nonterminal high-query path, native leaf, disjoint DFS and noncomputable finite fallback are still unsupported. This runnable frontend never invokes the crate's separate enumerating SAT oracle and never fabricates a #SAT answer.
+The frontend was merged to `main` in [PR #151](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/151). The local measurements above belong to its original development checkout, not an ongoing benchmark or evidence for later commits. Validate the **exact commit** using the public Rust CI and the [accepted evidence matrix](evidence.md). Original Lean/Mathlib differential parity, primitive TM2 accounting and the end-to-end theorem remain unverified. The real nonterminal high-query path, native leaf, disjoint DFS and noncomputable finite fallback are still unsupported. This frontend does not call the separate enumerating SAT oracle and never fabricates a #SAT answer.

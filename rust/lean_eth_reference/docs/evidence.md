@@ -10,11 +10,12 @@ hash is not the same thing as executing the original Lean code.
 | --- | --- | --- | --- |
 | Bounded semantic #SAT oracle | `cargo run --bin lean-eth-reference`; Rust unit tests | Finite CNF parsing and small-instance counts via bounded enumeration | The source-defined Lean counting algorithm or its complexity bound |
 | Source-defined native frontend | `cargo run --bin eth-frontend`; `docs/m2-runnable-frontend.md`; native frontend tests | Physical Rust `BitProgram` execution of the pinned `Native.frontendCommand` for supported inputs; preserves/checks specified ports | Any #SAT answer, independent Lean state parity, or full native counter |
+| Source-defined terminal-family count | `cargo run --bin eth-terminal-count`; `src/native_terminal_count.rs` and terminal tests; merged [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154) | Physical source frontend, classification, a separately identified primitive count-port adapter and answer for supported terminal CNFs; unsupported nonterminal CNFs refuse | General #SAT, independently executed original-Lean parity or a TM2 resource theorem |
 | Selected native machine fragments | `src/native_*.rs`, `src/remaining.rs` and their tests | Source-correlated Rust instruction behavior and boundary/refusal tests | Composition into the entire original algorithm |
 | Generated literal machine tables | Merged [code generation PR #150](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/150) | Deterministic Rust generation from 61 pinned original Lean literal program tables | Full closed `QueryStreamProgram` export, independent Lean runtime differential, or nonterminal counting |
 | Source identity | `reference/source-manifest.json` | A catalogue of source Git revision and recorded blob IDs; tests validate local pin *format and coverage* | Independent byte-for-byte verification of those blobs or semantic equivalence |
 | Original Lean execution | See draft [query exporter PR #145](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/145) | Progress on restoring pinned Lean/Mathlib belongs to that PR, not to an accepted `main` conformance gate | A completed original source query or a Lean/Rust differential run on `main` |
-| Full machine differential | Draft [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154) and stacked hosted-Lean gate [#156](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/156) | Proposed full-state comparison and source-execution workflow | A successful original-Lean trace receipt and differential comparison accepted on `main` |
+| Full machine differential | On `main`, comparator and profiler regression tests from merged [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154); draft original-Lean execution gate [#156](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/156) | Strict comparison and profiling tooling accepts correctly formatted independently generated traces; the harness rejects malformed data | A successful independently executed original-Lean state trace receipt accepted on `main` |
 | Nonterminal source-native #SAT count | `src/remaining.rs`; [counting gate #100](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/100) | Unfinished stages must refuse, not substitute the bounded semantic oracle | One accepted end-to-end nonterminal count |
 | Primitive TM2 refinement and complexity | [resource gate #110](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/110) | Outstanding mathematical obligations are explicitly identified | A TM2 step/tape bound or an ETH theorem established by Rust execution |
 
@@ -25,7 +26,7 @@ measurements, not a proof of asymptotic bit complexity.
 
 ## Reproduce what currently runs
 
-From `rust/lean_eth_reference` with Rust 1.99.1:
+From the repository root with the pinned Rust 1.99.1 toolchain:
 
 ```sh
 cargo fmt --all -- --check
@@ -34,11 +35,15 @@ cargo clippy --locked --offline --all-targets -- -D warnings
 
 # The native physical frontend. This does not count solutions.
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
-  cargo run --quiet --locked --offline --bin eth-frontend
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-frontend
+
+# Supported terminal-family source-native count (zero clauses: 2^3).
+printf 'p cnf 3 0\n' | \
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-terminal-count
 
 # Separate bounded, exponential correctness oracle. This counts solutions.
 printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
-  cargo run --quiet --locked --offline --bin lean-eth-reference
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin lean-eth-reference
 ```
 
 The [Rust Actions workflow](../../../.github/workflows/rust.yml) runs on PRs,

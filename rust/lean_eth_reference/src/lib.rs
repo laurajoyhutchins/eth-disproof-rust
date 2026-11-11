@@ -691,6 +691,7 @@ pub mod native_difference_pairs;
 pub mod native_signature_tuple;
 pub mod native_head_scatter;
 pub mod native_head_support;
+pub mod native_head_selection;
 
 /// Source-defined physical suspended-frame protocol for signature tuple DFS.
 pub mod native_signature_frames;

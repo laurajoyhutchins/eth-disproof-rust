@@ -25,7 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("unexpected extra argument".into());
     }
     let input: PathBuf = input.into();
-    if output == input || (output.exists() && fs::canonicalize(&output)? == fs::canonicalize(&input)?) {
+    if output == input
+        || (output.exists() && fs::canonicalize(&output)? == fs::canonicalize(&input)?)
+    {
         return Err("cannot overwrite the source table".into());
     }
     // Refuse unexpectedly large materializations before allocating String.

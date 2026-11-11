@@ -86,9 +86,12 @@ def main() -> None:
     try:
         with tempfile.NamedTemporaryFile(dir=target.parent, suffix=".partial", delete=False) as output:
             temporary = Path(output.name)
+            environment = os.environ.copy()
+            environment["M1_MAX_LABELS"] = str(args.max_labels)
             result = subprocess.run(
-                ["lake", "env", "lean", "--run", str(PROBE), str(args.max_labels)],
+                ["lake", "env", "lean", str(PROBE)],
                 cwd=LAKE, stdout=output, stderr=subprocess.PIPE, text=True,
+                env=environment,
             )
         if result.returncode != 0:
             raise RuntimeError(f"actual Lean exporter failed (exit {result.returncode}): {result.stderr}")

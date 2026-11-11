@@ -50,13 +50,20 @@ def valid_cached(folder: Path, rec: dict) -> bool:
             return False
         if not pins.get("lean", "").startswith("Lean (version 4.34.1,"):
             return False
-        return (receipt["source_commit"] == SOURCE_SHA
+        abi = validate_table(raw.decode("ascii"), rec, 8192)
+        expected_abi = receipt["abi"]
+        if abi != (expected_abi["registers"], expected_abi["stacks"],
+                   expected_abi["labels"], expected_abi["entry"],
+                   expected_abi["input"], expected_abi["output"]):
+            return False
+        return (receipt["id"] == rec["id"]
+                and receipt["module"] == rec["module"]
+                and receipt["source_commit"] == SOURCE_SHA
                 and receipt["source_git_blob"] == rec["git_blob"]
                 and receipt["declaration"] == rec["fqn"]
                 and receipt["status"] == "EXPORTED_FROM_PINNED_LEAN"
                 and receipt["sha256"] == hashlib.sha256(raw).hexdigest()
-                and receipt["bytes"] == len(raw)
-                and bool(validate_table(raw.decode("ascii"), rec, 8192)))
+                and receipt["bytes"] == len(raw))
     except (OSError, KeyError, ValueError, TypeError, UnicodeError):
         return False
 

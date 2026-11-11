@@ -34,7 +34,12 @@ MAX_PROGRAM_BYTES = 32_000_000
 
 def run(*argv: str, cwd: Path, timeout: int = 30) -> str:
     result = subprocess.run(argv, cwd=cwd, text=True, capture_output=True,
-                            timeout=timeout, check=True)
+                            timeout=timeout)
+    if result.returncode:
+        raise ValueError(
+            f"command {argv!r} exited {result.returncode}; "
+            f"stdout={result.stdout[-1200:]!r}; stderr={result.stderr[-1200:]!r}"
+        )
     return result.stdout.strip()
 
 
@@ -151,7 +156,10 @@ def export_one(record: dict[str,str], lake: Path, dest: Path,
                               capture_output=True,text=True,timeout=timeout,
                               env={**os.environ,'ORIGINAL_MAX_LABELS':str(max_labels)})
         if result.returncode:
-            raise ValueError('Lean elaboration refused: '+(result.stderr or result.stdout)[-600:])
+            raise ValueError(
+                f'Lean elaboration exited {result.returncode}; '
+                f'stdout={result.stdout[-1200:]!r}; stderr={result.stderr[-1200:]!r}'
+            )
         raw=result.stdout
         abi=validate_table(raw,record,max_labels)
         table_path=dest/f'{name}.table'

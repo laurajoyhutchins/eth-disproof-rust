@@ -172,3 +172,140 @@ fn all_twelve_lean_instruction_constructors_preserve_source_boundaries() {
         },
         Instr::Branch {
             test: 0,
+            yes: 1,
+            no: 1,
+        },
+        Instr::Push {
+            stack: 1,
+            src: 2,
+            next: 1,
+        },
+        Instr::Peek {
+            stack: 1,
+            value: 0,
+            present: 1,
+            next: 1,
+        },
+        Instr::Pop {
+            stack: 1,
+            value: 0,
+            present: 1,
+            next: 1,
+        },
+    ];
+    for instruction in operations {
+        for input in [vec![], vec![false], vec![true, false]] {
+            for scratch in [vec![], vec![false], vec![true, false]] {
+                let p =
+                    Program::<3, 2>::new(0, 1, 0, vec![instruction.clone(), Instr::Halt]).unwrap();
+                let mut cfg = p.initial(input.clone());
+                cfg.stacks[1].extend(scratch.clone());
+                cfg.regs = [false, true, true];
+                execute(&p, cfg);
+            }
+        }
+    }
+}
+
+#[test]
+fn budget_refusal_is_atomic_and_does_not_claim_a_completed_result() {
+    let p = Program::<3, 2>::new(
+        0,
+        1,
+        0,
+        vec![
+            Instr::Push {
+                stack: 1,
+                src: 0,
+                next: 1,
+            },
+            Instr::Halt,
+        ],
+    )
+    .unwrap();
+    let original = p.initial([]);
+    for limit in [
+        PrimitiveLimits {
+            max_source_steps: 1,
+            ..PrimitiveLimits::default()
+        },
+        PrimitiveLimits {
+            max_primitive_steps: 4,
+            ..PrimitiveLimits::default()
+        },
+        PrimitiveLimits {
+            max_visited_cells: 1,
+            ..PrimitiveLimits::default()
+        },
+        PrimitiveLimits {
+            max_encoded_bits: 1,
+            ..PrimitiveLimits::default()
+        },
+    ] {
+        let mut candidate = original.clone();
+        assert!(matches!(
+            run_primitive(&p, &mut candidate, limit),
+            Err(Error::Capacity(_))
+        ));
+        assert_eq!(candidate, original);
+    }
+}
+
+#[test]
+fn single_stack_code_uses_raw_one_bit_input_without_width_two_work_stack() {
+    let p = Program::<2, 1>::new(
+        0,
+        0,
+        0,
+        vec![
+            Instr::Push {
+                stack: 0,
+                src: 1,
+                next: 1,
+            },
+            Instr::Halt,
+        ],
+    )
+    .unwrap();
+    let (_, cost) = execute(&p, p.initial([true, false]));
+    assert_eq!(cost.source_step_overhead_bound, 14); // (4*1+3) * 2
+    assert_eq!(cost.primitive_steps, 16); // push width 1: 7 + goto 5 + halt 4
+}
+
+#[test]
+fn actual_source_defined_branch_program_has_primitive_trace_correspondence() {
+    use lean_eth_reference::native_high::branch_program;
+    let p = branch_program().unwrap();
+    for input in [
+        vec![],
+        vec![false],
+        vec![true],
+        vec![false, false],
+        vec![true, false, true],
+        vec![true, true, true, false],
+    ] {
+        let (_, stats) = execute(&p, p.initial(input));
+        assert!(stats.source_steps > 0);
+        assert!(stats.tm2_microsteps >= stats.source_steps);
+        assert!(stats.primitive_steps >= stats.tm2_microsteps);
+    }
+}
+
+#[test]
+fn nonterminating_program_refuses_instead_of_reporting_cost() {
+    let p = Program::<2, 2>::new(0, 1, 0, vec![Instr::Goto { next: 0 }]).unwrap();
+    let original = p.initial([true]);
+    let mut attempt = original.clone();
+    assert!(matches!(
+        run_primitive(
+            &p,
+            &mut attempt,
+            PrimitiveLimits {
+                max_source_steps: 8,
+                ..PrimitiveLimits::default()
+            }
+        ),
+        Err(Error::Capacity(_))
+    ));
+    assert_eq!(attempt, original);
+}

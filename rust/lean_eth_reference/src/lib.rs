@@ -694,6 +694,14 @@ pub mod native_normalization_primitives;
 pub mod native_literal_dedup;
 /// Literal cleanup across framed clauses on original 13x11 machine.
 pub mod native_literal_cleanup;
+/// Source-defined preserving unary-polarity complement query.
+pub mod native_negated_query;
+/// Physical complementary-literal search inside one encoded clause.
+pub mod native_tautology_core;
+/// Original nested formula-wide tautology filter and record-order restoration.
+pub mod native_tautology_filter;
+/// Exact source prefix: physical clause-wise literal cleanup then tautology removal.
+pub mod native_normalization_prefix;
 /// Source-fixed unary header reader and binary length initializer.
 pub mod native_frontend_header;
 pub mod native_terminal;

@@ -75,6 +75,10 @@ def probe_source(record: dict[str,str]) -> str:
     # Only exact compiler input source is interpolated, not arbitrary executable
     # Lean code or host-provided callback expressions.
     return (f"import {record['module']}\n" + source + '\n'
+            # Retain Lean's deterministic heartbeat accounting, but give
+            # compiled source programs more than the interactive default.
+            # The subprocess wall-clock limit remains authoritative.
+            "set_option maxHeartbeats 2000000\n"
             f"#export_original_program {record['fqn']} \"{record['id']}\" \"{record['git_blob']}\"\n")
 
 

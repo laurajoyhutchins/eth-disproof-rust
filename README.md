@@ -1,70 +1,40 @@
-# Exact Sudoku and counting experiments
+# Rust port of the OpenAI ETH Lean program
 
-An executable study of exact generalized-Sudoku counting, recursive tensor
-contraction, and related #SAT constructions. **No worst-case subexponential
-algorithm for generalized Sudoku has been proved here.** An exact count is a
-correctness result for a supported input, not a running-time theorem.
+This branch contains the Rust implementation and its source-conformance
+infrastructure. The pre-existing Python/Cython Sudoku solver, counting
+experiments, benchmarks, proofs-in-progress, and their history live on
+[the `python/sudoku-research` branch](../../tree/python/sudoku-research).
 
-## The objects
+## Implementation
 
-| Object | Code | Mathematical role |
-| --- | --- | --- |
-| `Puzzle` / `CNFFormula` | `sudoku/three_cnf.py`, `eth/cnf.py` | Input and count semantics |
-| `Padic`, jets and `Network` | `core/` | Exact coefficient rings and tensor graphs |
-| `ContractionEngine` | `contraction/`, `elimination/`, `recovery/` | Recursive contraction, modes and coefficient recovery |
-| Candidate obligations | `sudoku/state.py` | Shared row/column/box exact-cover representation |
-| Frontier counters | `sudoku/frontier.py`, `sudoku/components.py`, `sudoku/separators.py` | Exact dynamic programming and conditional factorization |
-| Symmetry counters | `sudoku/symmetry.py`, `sudoku/suffix_graph.py` | Certified finite-group and hypergraph reductions |
-| Decision diagrams | `sudoku/weighted_zdd.py`, `sudoku/hybrid.py` | Exact weighted state-map compression |
-| ETH reference | `eth/` | CNF reductions, separation, interpolation and explicit admission |
+The Rust crate is at [`rust/lean_eth_reference/`](rust/lean_eth_reference/).
+It ports executable finite semantics and selected source-defined BitProgram
+components from [`openai/math` at `4eaee87548250b2682affda7d05d947c05554bae`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
 
-The modules implement **distinct algorithms** with distinct resource models;
-there is no claim that they are interchangeable solvers or collectively imply
-a subexponential bound.
-
-See the [solver architecture and evidence map](docs/system-map.md) for the
-integrated algorithm families, reproducible experiments, PR lineage, and
-remaining proof obligations.
-
-## Reproduce the claims
-
-```bash
-python -m pip install -e '.[test]'
-python -m pytest -q -m checkpoint    # Pure Python; optional backends may skip
-python -m pytest -q -m integration   # Slower cross-component comparisons
+```sh
+cd rust/lean_eth_reference
+cargo fmt --all -- --check
+cargo test --locked --offline --all-targets
+cargo clippy --locked --offline --all-targets -- -D warnings
 ```
 
-Optional independent backends are intentionally separate:
+`.github/workflows/rust.yml` workflow also targets this crate, without
+running the Python/Cython solver suite.
 
-```bash
-python -m pip install -e '.[test,native,flint-oracle,sat-oracle,math-audit]'
-python build_native.py
-python scripts/verify.py checkpoint --require-backend flint --require-backend ganak --require-backend native
-```
+**Scope:** This is an incomplete Lean-to-Rust port, not a proven ETH disproof,
+a complete native counting program, or a verified complexity theorem.
+Some finite machines execute; remaining stages explicitly refuse or are
+unimplemented. Genuine pinned-Lean/Rust differential verification is
+still required. See the crate's implementation notes and test cases.
 
-For the mathematical arguments see [Sudoku state algebra](docs/sudoku.md),
-[CNF and interpolation](docs/eth.md), [recursive contraction](docs/mathematics.md),
-and [open proof obligations](docs/claims.md). Run `git log --reverse --format='%h %s'`
-to read the repository in conceptual order. Commits were **constructed from the
-finished source tree** to make dependencies explainable, not to recreate the
-chronology of experimentation.
+The `.lean` fixtures and small Python comparison scripts *inside the Rust
+crate* are conformance tooling, not the former Python Sudoku implementation.
 
-**Licensing:** no redistribution license has been selected. See [licensing](docs/licensing.md).
+## Branches
 
-## Run a complete bounded CNF reference
+- `main`: Rust implementation and Rust-specific verification.
+- `python/sudoku-research`: intact pre-split Python/Cython research tree,
+  tests, benchmarks, configuration, and historical commits.
 
-For a tiny executable path through disjoint leaves, count-preserving
-preprocessing, certified measurements, separated Taylor sums and Hermite
-recovery:
-
-```bash
-python -m scripts.eth_reference
-python -m scripts.eth_reference --dimacs example.cnf --output evidence.json
-python -m pytest -q tests/eth/test_end_to_end_pipeline.py
-```
-
-This is an **experimental finite-parameter reference**, not the manuscript's
-large-parameter theorem instantiation. It uses an explicitly recorded
-two-assignment base case only for at most one active variable, never a
-general brute-force or Ganak fallback. If any branch exceeds its budgets,
-the entire count refuses. See [ETH end-to-end semantics](docs/eth.md).
+Open Python/Cython pull requests should target the research branch; Rust port
+pull requests should target `main`.

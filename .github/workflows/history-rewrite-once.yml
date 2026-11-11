@@ -28,9 +28,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
-      REWRITE_EXPECTED_HEAD: \${{ inputs.expected_head }}
-      REWRITE_MODE: \${{ inputs.mode }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REWRITE_EXPECTED_HEAD: ${{ inputs.expected_head }}
+      REWRITE_MODE: ${{ inputs.mode }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,7 +57,7 @@ jobs:
         with:
           name: eth-pre-rewrite-recovery
           path: |
-            \${{ runner.temp }}/eth-before.bundle
-            \${{ runner.temp }}/eth-refs-before.txt
+            ${{ runner.temp }}/eth-before.bundle
+            ${{ runner.temp }}/eth-refs-before.txt
           retention-days: 1
           if-no-files-found: ignore

@@ -375,6 +375,46 @@ pub const STAGES: &[Stage] = &[
         requires: &["bit_machine"],
     },
     Stage {
+        id: "normalization_polarity",
+        source_file: "SubexpNormalizeProgram.lean",
+        lean_symbol: "SubexpNormalizeProgram.negateProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "normalization_record_reverse",
+        source_file: "SubexpNormalizeProgram.lean",
+        lean_symbol: "SubexpNormalizeProgram.reverseRecordsProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["encoded_record_membership"],
+    },
+    Stage {
+        id: "normalization_literal_dedup",
+        source_file: "ExecLiteralDedupProgram.lean",
+        lean_symbol: "ExecLiteralDedupProgram.dedupProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_record_reverse", "encoded_record_membership"],
+    },
+    Stage {
+        id: "normalization_literal_cleanup",
+        source_file: "ExecCleanLiteralsProgram.lean",
+        lean_symbol: "ExecCleanLiteralsProgram.cleanProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_literal_dedup"],
+    },
+    Stage {
+        id: "normalization_full",
+        source_file: "SubexpNormalizationProgram.lean",
+        lean_symbol: "SubexpNormalizationProgram.program",
+        status: Status::Stub,
+        machine: Machine::Local,
+        requires: &["normalization_literal_cleanup", "normalization_polarity"],
+    },
+    Stage {
         id: "frontend_header",
         source_file: "SqrtLogSpace/NativeProgram.lean",
         lean_symbol: "Native.headerCommand",
@@ -396,7 +436,7 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "Native.frontendCommand",
         status: Status::Stub,
         machine: Machine::Outer,
-        requires: &["frontend_header", "frontend_tail"],
+        requires: &["frontend_header", "normalization_full", "frontend_tail"],
     },
     Stage {
         id: "cutoff_scan",
@@ -635,6 +675,23 @@ pub mod outer {
     /// Actual source-linked 19-label unary parser and binary length stage.
     pub fn frontend_header() -> Result<Cmd<80, 1220>, Error> {
         crate::native_frontend_header::header_command()
+    }
+    /// Source finite polarity-bit reversal for a single unary literal code.
+    pub fn negate_literal() -> Result<Program<2, 2>, Error> {
+        crate::native_normalization_primitives::negate_literal_program()
+    }
+    /// Source finite record-order reversal, before lifting to any bank.
+    pub fn reverse_records() -> Result<Program<3, 4>, Error> {
+        crate::native_normalization_primitives::reverse_records_program()
+    }
+    /// Full source finite literal deduplication within one framed clause.
+    pub fn dedup_literals() -> Result<Program<10, 8>, Error> {
+        crate::native_literal_dedup::dedup_program()
+    }
+    /// Source finite clause-wise literal cleanup on original 13x11 machine.
+    /// This is not tautology removal, clause dedup or superset absorption.
+    pub fn clean_literals() -> Result<Program<13, 11>, Error> {
+        crate::native_literal_cleanup::clean_program()
     }
     /// Source-preserving body placement (1218 -> 265), not a CNF normalizer.
     pub fn place_body() -> Result<Cmd<80, 1220>, Error> {

@@ -428,7 +428,7 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "SubexpNormalizationPrefixProgram.program",
         status: Status::Executable,
         machine: Machine::Local,
-        requires: &["normalization_prefix"],
+        requires: &["normalization_literal_cleanup", "normalization_tautology_filter"],
     },
     Stage {
         id: "normalization_full",
@@ -436,7 +436,7 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "SubexpNormalizationProgram.program",
         status: Status::Stub,
         machine: Machine::Local,
-        requires: &["normalization_literal_cleanup", "normalization_tautology_filter"],
+        requires: &["normalization_prefix"],
     },
     Stage {
         id: "frontend_header",

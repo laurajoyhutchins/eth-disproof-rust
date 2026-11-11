@@ -1,6 +1,10 @@
 name: Rust ETH port
 
 on:
+  push:
+    branches:
+      - main
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -21,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Check the submitted source commit, including stacked PRs.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Install pinned Rust toolchain
         run: |

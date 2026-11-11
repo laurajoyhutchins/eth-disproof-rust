@@ -24,7 +24,7 @@ cargo test --locked --offline --all-targets
 cargo clippy --locked --offline --all-targets -- -D warnings
 ```
 
-The [Rust GitHub workflow](.github/workflows/rust.yml) is manually dispatched, and [Cloud Build configuration](cloudbuild.rust.yaml) is checked in separately. Neither test path establishes equivalence with the original Lean execution.
+The [Rust GitHub Actions workflow](.github/workflows/rust.yml) runs on pull requests, pushes to `main`, and manual dispatch. Passing these Rust checks does not establish equivalence with the original Lean execution.
 
 ## What has been implemented?
 

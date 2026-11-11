@@ -1,5 +1,5 @@
-//! Complete source ExecClauseFiltersProgram.selfFilterProgram mode on 15x16.
-//! Uses preserving real relation scanner, selected framing, and record reversal.
+//! Complete source `ExecClauseFiltersProgram.selfFilterProgram mode` on 15x16.
+//! Uses preserving real relation scanner and original emit + reverse routines.
 use crate::Error;
 use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_clause_dedup::filter_callback;
@@ -12,26 +12,47 @@ pub fn filter_scan(mode: Mode) -> Result<Cmd<15, 16>, Error> {
     let reader = Cmd::Call(frame_program()?.lift::<15, 16>([0, 1], [13, 15])?);
     let advance = Cmd::ite(
         14,
-        Cmd::Atom(Atom::Set { dst: 0, value: false }),
-        Cmd::Atom(Atom::Pop { stack: 13, value: 0, present: 1 }),
+        Cmd::Atom(Atom::Set {
+            dst: 0,
+            value: false,
+        }),
+        Cmd::Atom(Atom::Pop {
+            stack: 13,
+            value: 0,
+            present: 1,
+        }),
     );
     Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set { dst: 14, value: false }),
+        Cmd::Atom(Atom::Set {
+            dst: 14,
+            value: false,
+        }),
         Cmd::seq(
-            Cmd::Atom(Atom::Pop { stack: 13, value: 0, present: 1 }),
-            Cmd::while_(0, Cmd::seq(reader, Cmd::seq(filter_callback(mode)?, advance))),
+            Cmd::Atom(Atom::Pop {
+                stack: 13,
+                value: 0,
+                present: 1,
+            }),
+            Cmd::while_(
+                0,
+                Cmd::seq(reader, Cmd::seq(filter_callback(mode)?, advance)),
+            ),
         ),
     ))
 }
 fn push_false(stack: usize) -> Cmd<15, 16> {
     Cmd::seq(
-        Cmd::Atom(Atom::Set { dst: 0, value: false }),
+        Cmd::Atom(Atom::Set {
+            dst: 0,
+            value: false,
+        }),
         Cmd::Atom(Atom::Push { stack, src: 0 }),
     )
 }
 
-/// Physical copy master 13->12, scan all records with fixed predicate mode,
-/// clear master and restore clause order. No host subset checks.
+/// Source full fixed-master self-filter: preserving copy, physical predicate,
+/// clear master and restore order. The only data-dependent control is the
+/// original finite machine's conditional and while instructions.
 pub fn self_filter_command(mode: Mode) -> Result<Cmd<15, 16>, Error> {
     Ok(Cmd::seq(
         Cmd::Call(copy_program(13, 12, 9, 0, 1)?),

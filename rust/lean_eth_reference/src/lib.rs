@@ -680,3 +680,6 @@ pub mod native_flatten;
 
 /// Source-defined fixed-width H-cache normalization and signed flattening.
 pub mod native_cache_normalize;
+
+/// Physical source ABI import/export around the pending signature-head local matrix.
+pub mod native_loader_frames;

@@ -51,6 +51,7 @@ class Counters:
     packet_checkpoint_coordinates:int=0
     packet_checkpoint_peak_coordinates:int=0
     packet_checkpoint_count:int=0
+    packet_degree_zero_certificates:int=0
     zero_support_attempts:int=0
     zero_support_certificates:int=0
     zero_support_unsupported:int=0

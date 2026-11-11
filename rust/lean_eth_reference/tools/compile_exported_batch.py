@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-from export_compiled_batch import validate_table, SOURCE_SHA, MATHLIB_SHA
+from export_compiled_batch import SOURCE_SHA, MATHLIB_SHA, verified_receipt
 
 
 def compile_batch(tables: Path, generated: Path, crate_root: Path, rust_crate: Path,
@@ -38,13 +38,12 @@ def compile_batch(tables: Path, generated: Path, crate_root: Path, rust_crate: P
         receipt=json.loads((tables/(name+'.receipt.json')).read_text())
         if receipt!=record:
             raise ValueError('batch receipt does not match individual receipt')
-        raw=source.read_bytes()
-        if hashlib.sha256(raw).hexdigest()!=record['sha256'] or len(raw)!=record['bytes']:
-            raise ValueError(f'original table hash/length mismatch: {name}')
-        abi=validate_table(raw.decode('ascii'),{'id':name,'git_blob':blob},max_labels)
-        expected=record['abi']
-        if abi!=(expected['registers'],expected['stacks'],expected['labels'],expected['entry'],expected['input'],expected['output']):
-            raise ValueError(f'Lean table physical machine ABI changed: {name}')
+        # Require the same source, toolchain, ABI and exporter fingerprint
+        # as the resumable compiler; raw tables and PIN lines are insufficient.
+        origin = {'id': name, 'module': record['module'],
+                  'fqn': record['declaration'], 'git_blob': blob}
+        if verified_receipt(tables, origin, max_labels, pins) != record:
+            raise ValueError(f'stale or invalid original Lean receipt: {name}')
         rust=generated/(name+'.rs')
         result=subprocess.run(['cargo','run','--quiet','--locked','--offline',
                    '--manifest-path',str(rust_crate/'Cargo.toml'),

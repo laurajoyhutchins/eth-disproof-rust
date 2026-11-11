@@ -93,3 +93,29 @@ python3 tools/compile_exported_batch.py \
   reduction refusal is an honest result. Smaller subprogram success does not
   establish a nonexponential #SAT counter, a primitive TM2 bound, or the ETH
   theorem.
+
+## Resumable local entry point (experimental)
+
+From the repository root, after restoring the pinned original OpenAI source
+and Lean 4.34.1/Mathlib project:
+
+```sh
+python3 rust/lean_eth_reference/tools/lean_rust.py list
+python3 rust/lean_eth_reference/tools/lean_rust.py export PROGRAM_ID
+python3 rust/lean_eth_reference/tools/lean_rust.py generate PROGRAM_ID
+python3 rust/lean_eth_reference/tools/lean_rust.py build PROGRAM_ID
+python3 rust/lean_eth_reference/tools/lean_rust.py status PROGRAM_ID
+```
+
+Use `--upstream`, `--lake-root` and `--output-dir` before the subcommand
+to override local paths. The default output is `.lean-rust/`, keyed by pinned
+source identity and declaration. The driver reuses a cached table only after
+checking the source Git blob, receipt, SHA-256, and canonical instruction ABI.
+A failed export does not produce a success receipt. Generation still invokes
+the strict receipt-checking compiler. `build --verify` deliberately refuses:
+independent Lean/Rust machine-state differential verification has **not** yet
+been connected to this entry point. Do not interpret typechecking as parity.
+
+This initial entry point is Python orchestration around existing Python/Lean
+tools. A Rust clap front end may replace its user interface without duplicating
+the exporter or source-table validator.

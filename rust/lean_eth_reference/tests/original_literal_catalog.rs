@@ -140,14 +140,14 @@ fn check<const R: usize, const S: usize>(
 fn every_generated_original_source_program_matches_reference_machine() {
     let text = include_str!("../tools/fixtures/original/all-literal.bundle");
     let mut tables: Vec<String> = text.split("\n\n").map(str::to_string).collect();
-    assert_eq!(tables.len(), 59, "source program count");
+    assert_eq!(tables.len(), 61, "source program count");
     let (_, first) = tables[0].split_once('\n').unwrap();
     tables[0] = first.to_string();
     let last_index = tables.len() - 1;
     let (last, suffix) = tables[last_index]
         .split_once("\nEND_ORIGINAL_LEAN_LITERAL_BUNDLE|")
         .unwrap();
-    assert_eq!(suffix.trim(), "59");
+    assert_eq!(suffix.trim(), "61");
     tables[last_index] = last.to_string();
     check::<8, 3>(&tables[0], catalog::source_0::run);
     check::<8, 6>(&tables[1], catalog::source_1::run);
@@ -202,10 +202,12 @@ fn every_generated_original_source_program_matches_reference_machine() {
     check::<8, 2>(&tables[50], catalog::source_50::run);
     check::<2, 2>(&tables[51], catalog::source_51::run);
     check::<3, 3>(&tables[52], catalog::source_52::run);
-    check::<2, 3>(&tables[53], catalog::source_53::run);
-    check::<2, 2>(&tables[54], catalog::source_54::run);
-    check::<3, 3>(&tables[55], catalog::source_55::run);
-    check::<8, 3>(&tables[56], catalog::source_56::run);
-    check::<3, 5>(&tables[57], catalog::source_57::run);
-    check::<2, 2>(&tables[58], catalog::source_58::run);
+    check::<3, 7>(&tables[53], catalog::source_53::run);
+    check::<2, 3>(&tables[54], catalog::source_54::run);
+    check::<2, 2>(&tables[55], catalog::source_55::run);
+    check::<3, 3>(&tables[56], catalog::source_56::run);
+    check::<3, 3>(&tables[57], catalog::source_57::run);
+    check::<8, 3>(&tables[58], catalog::source_58::run);
+    check::<3, 5>(&tables[59], catalog::source_59::run);
+    check::<2, 2>(&tables[60], catalog::source_60::run);
 }

@@ -17,17 +17,23 @@ about the ETH proof or TM2 microstep resource bounds.
 git checkout lean/upstream-reference
 git submodule update --init upstream/openai-math
 # First restore and verify the pinned Lean 4.34.1/Mathlib build cache.
+python3 instrumentation/source_inventory.py   # static source index; no Lean needed
 python3 instrumentation/capture.py plan
 python3 instrumentation/capture.py capture
 python3 instrumentation/capture.py verify
 ```
+
+The source inventory records every source module, SHA-256, imported module,
+and lexical declaration location under `SubexponentialSAT`. Its declaration
+list is a navigation aid, not an elaborated symbol table.
 
 The capture script uses `lake env lean --run` in the upstream `lean/` project;
 compiled imports are reused when the pinned `.olean` cache is complete.
 No `lake update` or `lake build OAI` is performed by the capture runner.
 The upstream source commit, source-tree hash, toolchain pin, Lean version,
 Lake manifest hash, each probe hash, invocation, result status, output hashes,
-per-stage coverage, elapsed time and process RSS peak are recorded. Each
+per-stage coverage, source instruction/opcode counts, visited labels, peak
+Boolean stack storage, elapsed time and process RSS peak are recorded. Each
 stage writes gzipped stdout, stderr, and a metadata JSON checkpoint atomically.
 `index.json` is updated after each successful stage. The `lean-captures/`
 output directory is ignored by Git and can be archived in immutable storage.

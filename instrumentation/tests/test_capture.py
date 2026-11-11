@@ -38,6 +38,9 @@ class CaptureTests(unittest.TestCase):
         coverage = cap.validate(self.stage, self.trace)
         self.assertEqual(coverage["cases"], ["empty"])
         self.assertEqual(coverage["lines"], 7)
+        stats = cap.machine_metrics(self.trace)["empty"]
+        self.assertEqual(stats["opcode_counts"], {"goto": 1, "halt": 1})
+        self.assertEqual(stats["instructions_executed"], 2)
 
     def test_reject_nonterminating_and_partial_trace(self):
         for broken in (self.trace.replace(b"halted", b"fuel_exhausted"),

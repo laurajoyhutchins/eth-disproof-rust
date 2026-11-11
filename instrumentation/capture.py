@@ -172,6 +172,39 @@ def validate(stage: Stage, raw: bytes) -> dict[str, Any]:
     return {"lines": len(lines), "cases": sorted(seen)}
 
 
+
+def machine_metrics(raw: bytes) -> dict[str, Any]:
+    """Derived source-instruction metrics; never confuse them with TM2 cost."""
+    results: dict[str, dict[str, Any]] = {}
+    for line in raw.decode("utf-8").splitlines():
+        fields = line.split("|")
+        kind, case = fields[:2]
+        if kind == "PROGRAM":
+            results[case] = {"register_ports": int(fields[2]), "stack_ports": int(fields[3]),
+                             "instruction_labels": int(fields[4]), "instructions_executed": 0,
+                             "visited_labels": [], "opcode_counts": {},
+                             "peak_live_stack_bits": 0, "peak_nonempty_stacks": 0,
+                             "peak_stack_word_bits": 0, "final_registers": "", "final_stacks": ""}
+        elif kind in ("INITIAL", "STEP", "END"):
+            row = results[case]
+            stack_image = fields[-1]
+            words = [w.split(":", 1)[1] for w in stack_image.split(";") if w]
+            row["peak_live_stack_bits"] = max(row["peak_live_stack_bits"], sum(map(len, words)))
+            row["peak_nonempty_stacks"] = max(row["peak_nonempty_stacks"], len(words))
+            row["peak_stack_word_bits"] = max(row["peak_stack_word_bits"], max(map(len, words), default=0))
+            if kind == "STEP":
+                row["instructions_executed"] += 1
+                label = int(fields[3])
+                if label not in row["visited_labels"]:
+                    row["visited_labels"].append(label)
+                opname = fields[4].split(":", 1)[0]
+                row["opcode_counts"][opname] = row["opcode_counts"].get(opname, 0) + 1
+            if kind == "END":
+                row["final_registers"] = fields[-2]
+                row["final_stacks"] = fields[-1]
+    return results
+
+
 def atomic_write(path: Path, payload: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".tmp-", delete=False) as f:
@@ -217,6 +250,9 @@ def check_record(out: Path, name: str, expected_fingerprint: str) -> dict[str, A
         raise ValueError(f"{name}: stderr integrity failure")
     if record["coverage"] != validate(STAGES[name], payload):
         raise ValueError(f"{name}: changed/incomplete coverage")
+    derived = machine_metrics(payload) if STAGES[name].kind == "machine" else None
+    if record.get("machine_metrics") != derived:
+        raise ValueError(f"{name}: derived machine metrics do not match")
     return record
 
 
@@ -266,6 +302,7 @@ def capture(out: Path, names: list[str], environment: dict[str, str], fuel: int,
                   "args": args, "cwd": "upstream/openai-math/lean",
                   "stdout_sha256": digest(p.stdout), "stdout_gzip_sha256": digest(compressed),
                   "stderr_sha256": digest(p.stderr), "coverage": coverage,
+                  "machine_metrics": machine_metrics(p.stdout) if stage.kind == "machine" else None,
                   "wall_nanoseconds": nanos, "exit_code": p.returncode,
                   "max_rss_kb_children_peak": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss}
         # Checkpoint is written LAST, once both streams have been durably written.

@@ -689,3 +689,5 @@ pub mod native_difference_pairs;
 
 /// Physical source-defined attained-signature controller and level initializer.
 pub mod native_signature_tuple;
+pub mod native_head_scatter;
+pub mod native_head_support;

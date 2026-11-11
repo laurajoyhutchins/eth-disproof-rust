@@ -47,6 +47,8 @@ def main() -> None:
     parser.add_argument("--lean", required=True, type=Path)
     parser.add_argument("--rust", required=True, type=Path)
     args = parser.parse_args()
+    if args.lean.resolve() == args.rust.resolve():
+        raise ValueError("Lean and Rust inputs must be distinct files")
     lean = parse(args.lean)
     rust = parse(args.rust)
     for key in sorted(EXPECTED):

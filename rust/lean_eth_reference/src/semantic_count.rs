@@ -1,7 +1,7 @@
 //! Finite sparse-disjoint counting reference for the Lean semantic model.
 //! Its bounded enumerating leaf remains exponential and is not the native ETH machine.
 
-use crate::{Clause, Cnf, Error};
+use crate::{Clause, Cnf, Error, encode_list, encode_nat};
 use std::collections::VecDeque;
 
 /// `DisjointBranch.selected` and `petals`, preserving raw Finset semantics.

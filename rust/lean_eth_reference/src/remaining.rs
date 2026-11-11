@@ -7,7 +7,7 @@ use crate::Error;
 use crate::bit_program::{Cmd, Program};
 
 mod registry;
-pub use registry::{Machine, Stage, Status, SOURCE_COMMIT, STAGES};
+pub use registry::{Machine, SOURCE_COMMIT, STAGES, Stage, Status};
 
 fn unavailable<T>(symbol: &'static str) -> Result<T, Error> {
     Err(Error::NotImplemented(symbol))

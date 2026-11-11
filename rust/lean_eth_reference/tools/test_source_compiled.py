@@ -36,8 +36,9 @@ class SourceDiscoveryTests(unittest.TestCase):
     def test_workflow_regex_selects_seven_original_programs(self):
         workflow=(pathlib.Path(__file__).resolve().parents[3] /
                   '.github/workflows/original-compiled-batch.yml').read_text()
-        line=next(line for line in workflow.splitlines() if '--name-regex ' in line)
-        pattern=line.split("--name-regex '",1)[1].split("'",1)[0]
+        line=next(line for line in workflow.splitlines()
+                  if "default: '(SqrtLog" in line)
+        pattern=line.split("default: '",1)[1].rsplit("'",1)[0]
         selected=[c for c in discover(ROOT,True)['candidates']
                   if __import__('re').search(pattern,c['fqn'])]
         self.assertEqual(len(selected),7)

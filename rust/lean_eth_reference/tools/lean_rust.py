@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 from extract_compiled_catalog import discover
-from export_compiled_batch import SOURCE_SHA, MATHLIB_SHA
+from export_compiled_batch import SOURCE_SHA, MATHLIB_SHA, validate_table, blob_hash
 
 TOOLS = Path(__file__).resolve().parent
 REPO = TOOLS.parents[2]
@@ -45,7 +45,8 @@ def valid_cached(folder: Path, rec: dict) -> bool:
                 and receipt["declaration"] == rec["fqn"]
                 and receipt["status"] == "EXPORTED_FROM_PINNED_LEAN"
                 and receipt["sha256"] == hashlib.sha256(raw).hexdigest()
-                and receipt["bytes"] == len(raw))
+                and receipt["bytes"] == len(raw)
+                and bool(validate_table(raw.decode("ascii"), rec, 8192)))
     except (OSError, KeyError, ValueError, TypeError):
         return False
 
@@ -77,6 +78,9 @@ def main() -> int:
             print(r["id"], r["fqn"])
         return 0
     rec = resolve(inventory, a.program)
+    source_file = a.upstream / rec["file"]
+    if blob_hash(source_file.read_bytes()) != rec["git_blob"]:
+        raise ValueError("pinned original Lean source blob changed")
     folder = a.output_dir / identity(rec)
     tables = folder / "tables"
     generated = folder / "rust"

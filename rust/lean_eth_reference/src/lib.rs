@@ -683,3 +683,6 @@ pub mod native_cache_normalize;
 
 /// Physical source ABI import/export around the pending signature-head local matrix.
 pub mod native_loader_frames;
+
+/// Source-defined pruned difference-pair streaming controller.
+pub mod native_difference_pairs;

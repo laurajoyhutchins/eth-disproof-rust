@@ -6,7 +6,7 @@ set -euo pipefail
 CRATE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 REPOSITORY="$(cd -- "$CRATE/../.." && pwd)"
 UPSTREAM=""
-OUT="$CRATE/target/lean-differential"
+OUT="$REPOSITORY/target/lean-differential"
 SUITE=full
 SOURCE_SHA=4eaee87548250b2682affda7d05d947c05554bae
 MATHLIB_SHA=d13f23b723b8a846827a245b89c10fc7d3f11612
@@ -107,12 +107,12 @@ for part in "${suites[@]}"; do
   # Delete stale files so failed commands cannot leave an apparently passing pair.
   rm -f -- "$OUT/$part.lean.trace" "$OUT/$part.rust.trace" "$OUT/$part.pass"
   (cd "$UPSTREAM/lean" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean --run "$CRATE/reference/$lean") > "$OUT/$part.lean.trace"
-  "$CRATE/target/debug/$bin" > "$OUT/$part.rust.trace"
+  "$REPOSITORY/target/debug/$bin" > "$OUT/$part.rust.trace"
   python3 "$CRATE/scripts/$compare" --lean "$OUT/$part.lean.trace" --rust "$OUT/$part.rust.trace"
   if [[ "$part" == full ]]; then
     # Independent state comparison must pass before extra profiling.
     rm -f -- "$OUT/full.rust.ops.csv" "$OUT/full.profile.json"
-    "$CRATE/target/debug/profile-full-machine" > "$OUT/full.rust.ops.csv"
+    "$REPOSITORY/target/debug/profile-full-machine" > "$OUT/full.rust.ops.csv"
     python3 "$CRATE/scripts/profile-full-machine-traces.py" \
       --lean "$OUT/full.lean.trace" --rust "$OUT/full.rust.trace" \
       --rust-metrics "$OUT/full.rust.ops.csv" --output "$OUT/full.profile.json"

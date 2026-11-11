@@ -158,7 +158,7 @@ fn local_manifest_parser_rejects_wrong_names_duplicates_and_invalid_shas() {
 
 #[test]
 fn source_machine_dimensions_are_enforced_at_compile_time() {
-    let _: fn() -> Result<Program<40, 768>, Error> = remaining::query::signature_bootstrap;
+    let _: fn() -> Result<Program<16, 768>, Error> = remaining::query::signature_bootstrap;
     let _: fn() -> Result<Cmd<40, 768>, Error> = remaining::high_query::preparation_low;
     let _: fn() -> Result<Cmd<40, 896>, Error> = remaining::high_query::preparation;
     let _: fn(usize) -> Result<Program<40, 896>, Error> = remaining::leaf::local_program;
@@ -172,10 +172,8 @@ fn source_machine_dimensions_are_enforced_at_compile_time() {
 #[test]
 fn unfinished_query_stages_return_the_exact_source_identity() {
     use remaining::query as q;
-    assert_refuses(
-        q::signature_bootstrap(),
-        "SignatureHeadLoader.bootstrapProgram",
-    );
+    let bootstrap = q::signature_bootstrap().unwrap();
+    assert_eq!((bootstrap.input_stack(), bootstrap.output_stack()), (307, 647));
     assert_refuses(q::pair_expand(), "PairNativeSetup.expandCaller");
     assert_refuses(q::signature_loader(), "SignatureTupleLoader.loadHead");
     assert_refuses(q::query_visitor(), "QueryVisitorProgram.visitor");

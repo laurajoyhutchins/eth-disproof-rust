@@ -107,3 +107,75 @@ pub fn setup_caller_command() -> Result<Cmd<40, 896>, Error> {
 pub fn setup_caller_program() -> Result<Program<40, 896>, Error> {
     setup_caller_command()?.compiled(338, 832)
 }
+
+// Reuse the one existing source-defined restriction table, rather than
+// maintaining a second copy of this finite program in the pair adapter.
+pub use crate::native_query_prefix::{restriction_command, restriction_program};
+
+/// The physical `SubexpSetupStorage.prepare` for one fill. Both input words
+/// are preserving-copied into the now-empty scratch bank after the source's
+/// nine work-register resets.
+fn prepare_fill(is_e: bool) -> Result<Cmd<16, 896>, Error> {
+    let input = if is_e { 834 } else { 835 };
+    Ok(Cmd::seq(
+        clear_many(&[329])?,
+        Cmd::seq(
+            clear_many(&SCRATCH)?,
+            Cmd::seq(reset_work(), Cmd::seq(copy(338, 325)?, copy(input, 327)?)),
+        ),
+    ))
+}
+
+/// Source `SubexpSetupStorage.finish`: overwrite the destination, preserving
+/// copy from scratch 328 through empty temporary 329, clear all five work
+/// stacks, and reset source work registers 0..8.
+fn finish_fill(is_e: bool) -> Result<Cmd<16, 896>, Error> {
+    let output = if is_e { 858 } else { 857 };
+    Ok(Cmd::seq(
+        clear_many(&[output])?,
+        Cmd::seq(
+            copy(328, output)?,
+            Cmd::seq(clear_many(&SCRATCH)?, reset_work()),
+        ),
+    ))
+}
+
+/// `PairNativeSetup.fillCommand isE`: the fully paid isolation boundary.
+/// Incoming high/fixed and free-mask words are on source stacks 338 and
+/// 834/835 respectively, preserved by the call. Scratch 325..329 returns
+/// empty; only selected output 858 (E) or 857 (U) is overwritten.
+pub fn fill_command(is_e: bool) -> Result<Cmd<16, 896>, Error> {
+    Ok(Cmd::seq(
+        prepare_fill(is_e)?,
+        Cmd::seq(
+            Cmd::Call(restriction_program()?.lift::<16, 896>([0, 1, 2, 3], [325, 326, 327, 328])?),
+            finish_fill(is_e)?,
+        ),
+    ))
+}
+
+/// `PairNativeSetup.expandCommand`, E followed by U. Input mask 338 and
+/// both residual assignment words 834/835 are source-preserved.
+pub fn expand_command() -> Result<Cmd<16, 896>, Error> {
+    Ok(Cmd::seq(fill_command(true)?, fill_command(false)?))
+}
+
+pub fn expand_program() -> Result<Program<16, 896>, Error> {
+    expand_command()?.compiled(338, 857)
+}
+
+/// Literal source `PairNativeSetup.expandCaller`: a single lifted call of the
+/// complete compiled 16×896 program, with the low 16 registers embedded at
+/// their identical indexes in the 40×896 caller.
+pub fn expand_caller_command() -> Result<Cmd<40, 896>, Error> {
+    Ok(Cmd::Call(expand_program()?.lift::<40, 896>(
+        std::array::from_fn(|i| i),
+        std::array::from_fn(|i| i),
+    )?))
+}
+
+/// Runnable wrapper of the exact caller command. The extra terminal halt
+/// belongs to this standalone test harness, not `expandCaller` itself.
+pub fn expand_caller_program() -> Result<Program<40, 896>, Error> {
+    expand_caller_command()?.compiled(338, 857)
+}

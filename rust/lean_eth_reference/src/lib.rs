@@ -684,6 +684,8 @@ pub mod native_negated_query;
 pub mod native_tautology_core;
 /// Original nested formula-wide tautology filter and record-order restoration.
 pub mod native_tautology_filter;
+/// Exact source prefix: physical clause-wise literal cleanup then tautology removal.
+pub mod native_normalization_prefix;
 /// Source-fixed unary header reader and binary length initializer.
 pub mod native_frontend_header;
 pub mod native_terminal;

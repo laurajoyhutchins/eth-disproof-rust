@@ -14,6 +14,9 @@ from ..core.lazy_coefficients import NestedCoords
 from .children import ChildComponent
 from .packets import EvaluationContext
 from .zero_support import certify_zero
+from .packet_degree import (
+    PacketDegreeZero, impossible_packet_target_degree, packet_target_row_capacity,
+)
 if TYPE_CHECKING:
     from .engine import ContractionEngine
 
@@ -40,6 +43,7 @@ class ChildEvaluator:
             )
             contractor._frames[depth] = workspace
         self._workspace = workspace
+        self._row_capacity: dict[tuple[int, int], int] | None = None
 
     def evaluate(self, group: int, assignment: Sequence[int], *,
                  mode_indices: Sequence[int] | None = None,
@@ -51,6 +55,37 @@ class ChildEvaluator:
             selected_modes=self.modes
         else:
             selected_modes=[self.modes[j] for j in mode_indices]
+        if len(selected_modes) != len(assignment):
+            raise ValueError("one multiplicity is required per selected mode")
+        # A packet's target coefficient of total degree d has at most one
+        # target-variable contribution per retained Y-row. Certify d>rows
+        # *before* allocating any child Network, prepared PacketEntry,
+        # native leaf, or coefficient dictionary.
+        degree_witness: PacketDegreeZero | None = None
+        if any(mode.target == group and beta > 0
+               for mode, beta in zip(selected_modes, assignment)):
+            if self._row_capacity is None:
+                self._row_capacity = packet_target_row_capacity(
+                    self.net, self.packing, self.coordinate,
+                )
+            degree_witness = impossible_packet_target_degree(
+                selected_modes, assignment, group=group,
+                row_capacity=self._row_capacity, component=component,
+            )
+        if degree_witness is not None:
+            c.stats.packet_degree_zero_certificates += 1
+            charge("packet_degree_zero_certificates")
+            if trace is not None:
+                trace.observe(
+                    operation="packet_degree_zero_certificate",
+                    topology=(degree_witness.packet_id, degree_witness.group,
+                              degree_witness.available_rows),
+                    exact_input=(id(self.net), id(self.packing), id(self.ring),
+                                 self.coordinate, group, component,
+                                 tuple(selected_modes), tuple(assignment), self.t, self.z),
+                    started_ns=started, output=self.ring.zero,
+                )
+            return self.ring.zero
         with (c.cost_ledger.phase("child_construction") if c.cost_ledger is not None
               else nullcontext()):
             if c.config.recursion.child_plans:

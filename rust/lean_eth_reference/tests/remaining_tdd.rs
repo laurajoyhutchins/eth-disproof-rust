@@ -24,7 +24,7 @@ fn graph() -> HashMap<&'static str, &'static Stage> {
 #[test]
 fn registry_is_source_pinned_unique_and_topologically_sorted() {
     assert_eq!(remaining::SOURCE_COMMIT, LEAN_COMMIT);
-    assert_eq!(remaining::STAGES.len(), 42);
+    assert_eq!(remaining::STAGES.len(), 43);
     let mut seen = HashSet::new();
     for stage in remaining::STAGES {
         assert!(seen.insert(stage.id), "duplicated stage {}", stage.id);
@@ -173,15 +173,26 @@ fn source_machine_dimensions_are_enforced_at_compile_time() {
 fn unfinished_query_stages_return_the_exact_source_identity() {
     use remaining::query as q;
     let bootstrap = q::signature_bootstrap().unwrap();
-    assert_eq!(
-        (bootstrap.input_stack(), bootstrap.output_stack()),
-        (307, 647)
+    assert_eq!((bootstrap.input_stack(), bootstrap.output_stack()), (307, 647));
+    assert!(
+        !q::pair_expand()
+            .unwrap()
+            .compiled(338, 857)
+            .unwrap()
+            .code()
+            .is_empty()
     );
-    assert_refuses(q::pair_expand(), "PairNativeSetup.expandCaller");
     assert_refuses(q::signature_loader(), "SignatureTupleLoader.loadHead");
     assert_refuses(q::query_visitor(), "QueryVisitorProgram.visitor");
     assert_refuses(q::signature_tuple(), "SignatureTupleComplete.command");
-    assert_refuses(q::pair_start(), "QueryExecution.PairStart.command");
+    assert!(
+        !q::pair_start()
+            .unwrap()
+            .compiled(834, 857)
+            .unwrap()
+            .code()
+            .is_empty()
+    );
     assert_refuses(q::pair_dfs(), "QueryStreamProgram.pairs");
     assert_refuses(q::pair_commit(), "QueryAssembler.commitPair");
     assert_refuses(q::node_append(), "NodeAppendSpace.command");

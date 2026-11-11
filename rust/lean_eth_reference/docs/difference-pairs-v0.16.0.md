@@ -20,3 +20,43 @@ Given unary `n` on stack 832 and unary `J` on 833, the controller visits the str
 Tests compare execution to a *separate recursive reference*, not another implementation of the same controller. They cover strict budgets including zero and >n, complete visit order, guards, working-stack restoration, callback register clobbering, 512 levels with `J=1`, bounded-instruction refusal, and setup + expansion on every mask up to six ambient coordinates. The independent oracle lists words **only in tests**. Production command construction uses a fixed-depth instruction table independent of `n`, `J`, or the number of emitted pairs.
 
 The full runtime of the DFS can be exponential in `n`, and a successful local Rust trace does not establish imported-Lean differential execution or the paper's stronger complexity result. Machine limits refuse rather than asserting an unverified completion.
+
+
+## Milestone-one public stage reconciliation (#102)
+
+The public `remaining::query` entry points distinguish **already executable**
+finite instructions from **unported production callbacks**:
+
+| API | Registry stage | Evidence/contract |
+|---|---|---|
+| `pair_expand()` | `pair_expand`: executable | Compiles `PairNativeSetup.expandCaller` to `Cmd<40,896>` |
+| `pair_start()` | `pair_start`: executable | Dictionary clear followed by physical E/U expansion |
+| `pair_dfs_controller(callback)` | `pair_dfs_controller`: executable | Generic `DifferencePairsProgram.command` with a physically compiled caller-supplied command |
+| `pair_dfs()` | `pair_dfs`: stub | **Refuses** until `QueryStreamProgram.pairs` has the real signature-tuple and signed-commit callback |
+
+The source manifest now pins the original
+`SqrtLogSpace/DifferencePairsProgram.lean` blob
+`0ffbcd1bfd8ed16e12e017c892bd7d92b59689ce` at
+`openai/math@4eaee87548250b2682affda7d05d947c05554bae`.
+The unported signed numerical callback remains assigned to #103, and
+node/query reconstruction to #104. Neither is promoted by this change.
+
+`tests/m1_pair_registry.rs` covers public API table identity; physical
+dictionary reset and mask expansion on dirty scratch; protected stacks and
+registers; strict-pair visit counts for n=0, n=2 and n=3 at J=0,1,2;
+and nonhalting capacity refusal. The independent count fixture for J=2 is
+`1 + 2*n` (empty E or one selected coordinate with U absent/present).
+The real pair-controller tests separately cover the full recursive visit
+order and depth 512.
+
+**Verification scope:** The touched production dependencies
+(`bit_program.rs`, `native_pair_setup.rs`,
+`native_difference_pairs.rs`) matched the GitHub blob hashes and compiled
+locally against a standalone v0.16 snapshot. Its full debug test suite,
+the five new public-boundary tests (debug and release), formatting and strict
+Clippy passed using offline Rust 1.99.1. Because the standalone archive
+predates `remaining.rs`, the local verification added a *temporary registry
+shim* matching these new APIs, **not included in the PR**. Therefore the
+full exact combined GitHub head has **not** been compiled. Imported-Lean
+differential execution also remains unverified. This is integration hygiene,
+not an independent Lean refinement or asymptotic proof.

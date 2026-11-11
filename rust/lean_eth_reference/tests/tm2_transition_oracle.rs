@@ -208,3 +208,36 @@ fn trace_limit_refuses_atomically() {
     ).unwrap();
     assert_eq!(events.len() as u64, stats.primitive_steps);
 }
+
+#[test]
+fn structured_loop_and_expanded_call_match_direct_controller() {
+    use lean_eth_reference::bit_program::{Atom, Cmd};
+    let child = Program::<3, 2>::new(0, 1, 0, vec![
+        Instr::Peek { stack: 1, value: 1, present: 2, next: 1 },
+        Instr::Halt,
+    ]).unwrap();
+    let command = Cmd::seq(
+        Cmd::Atom(Atom::Set { dst: 0, value: true }),
+        Cmd::seq(
+            Cmd::while_(0, Cmd::seq(
+                Cmd::Atom(Atom::Push { stack: 1, src: 0 }),
+                Cmd::Atom(Atom::Set { dst: 0, value: false }),
+            )),
+            Cmd::Call(child),
+        ),
+    );
+    let program = command.compiled(0, 1).unwrap();
+    compare(&program, program.initial([true, false, true]));
+}
+
+#[test]
+fn one_tape_uses_raw_width_one_encoding() {
+    let p = Program::<2, 1>::new(0, 0, 0, vec![
+        Instr::Pop { stack: 0, value: 0, present: 1, next: 1 },
+        Instr::Push { stack: 0, src: 0, next: 2 },
+        Instr::Halt,
+    ]).unwrap();
+    for word in [vec![], vec![false], vec![true, false]] {
+        compare(&p, p.initial(word));
+    }
+}

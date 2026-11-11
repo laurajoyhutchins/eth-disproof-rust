@@ -41,6 +41,7 @@ jobs:
           set -euo pipefail
           python3 -m compileall -q rust/lean_eth_reference/tools
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_source_compiled.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py' -v
 
       - name: Checkout exact original OpenAI SAT source
         shell: bash

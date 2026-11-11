@@ -1,0 +1,89 @@
+"""Offline structural graph validity tests, independent of pinned Lean availability."""
+import hashlib
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+from verify_source_graph import (
+    SOURCE_SHA, Node, parse_instr, parse_node, generate_test,
+    parse_golden, validate_and_generate,
+)
+
+
+class GraphContracts(unittest.TestCase):
+    def test_simple_sequence_exact_physical_layout(self):
+        cmd = {'kind':'seq',
+               'first':{'kind':'atom','opcode':'set:0:1'},
+               'second':{'kind':'while','test':0,
+                         'body':{'kind':'atom','opcode':'set:0:0'}}}
+        root=parse_node(cmd,2,2,[8192])
+        self.assertEqual(root.size,3)
+        self.assertEqual(root.entry(1,0),1)
+        self.assertEqual(root.instr(1,0,1),('set',(0,1,2)))
+        self.assertEqual(root.instr(1,0,2),('branch',(0,3,0)))
+        self.assertEqual(root.instr(1,0,3),('set',(0,0,2)))
+
+    def test_source_call_relocates_halt_and_every_branch(self):
+        program={'r':2,'s':2,'labels':3,'input':0,'output':1,'entry':2,
+                 'code':['halt','goto:0','set:0:1:1']}
+        root=parse_node({'kind':'seq','first':{'kind':'call','program':program},
+                         'second':{'kind':'atom','opcode':'set:1:1'}},2,2,[8192])
+        self.assertEqual(root.size,4)
+        self.assertEqual(root.entry(1,0),3)
+        self.assertEqual(root.instr(1,0,1),('goto',(4,)))
+        self.assertEqual(root.instr(1,0,2),('goto',(1,)))
+        self.assertEqual(root.instr(1,0,3),('set',(0,1,2)))
+        self.assertEqual(root.instr(1,0,4),('set',(1,1,0)))
+
+    def test_unknown_constructor_and_bad_indices_refuse(self):
+        for cmd in [
+            {'kind':'semantic_sat_oracle'},
+            {'kind':'atom','opcode':'push:2:0'},
+            {'kind':'if','test':2,'yes':{'kind':'skip'},'no':{'kind':'skip'}},
+            {'kind':'while','test':0,'body':{'kind':'unsupported'}},
+            {'kind':'seq','first':{'kind':'skip'},'second':{'kind':'skip'},'extra':'ignored'},
+            {'kind':'call','program':{'r':2,'s':2,'labels':2,'entry':0,
+                                      'input':0,'output':1,'code':['halt']}},
+        ]:
+            with self.subTest(cmd=cmd), self.assertRaises(ValueError):
+                parse_node(cmd,2,2,[8192])
+        for bad in ['set:00:1:0','set:0:5:0','goto:-1','halt:0','peek:0:0:1:5']:
+            with self.subTest(instr=bad), self.assertRaises(ValueError):
+                parse_instr(bad,2,2,2)
+
+    def test_pin_hash_and_exact_program_equality(self):
+        ident='small_0'
+        blob='1'*40
+        raw=(f'PIN|{ident}|{SOURCE_SHA}|{blob}\n'
+             f'PROGRAM|{ident}|2|2|2|1|0|1\n'
+             f'CODE|{ident}|0|halt\n'
+             f'CODE|{ident}|1|set:0:1:0\n'
+             f'END|{ident}|2\n').encode()
+        with tempfile.TemporaryDirectory() as scratch:
+            root=Path(scratch)
+            golden=root/'golden';golden.mkdir()
+            (golden/(ident+'.table')).write_bytes(raw)
+            manifest={ident:{'source_blob':blob,'sha256':hashlib.sha256(raw).hexdigest(),
+                             'declaration':'OAI.Algorithms.SubexponentialSAT.T.small'}}
+            (golden/'manifest.json').write_text(json.dumps(manifest))
+            graph={'kind':'original-structured-source-v1', 'source_commit':SOURCE_SHA,
+                   'source_blob':blob, 'declaration':manifest[ident]['declaration'],
+                   'id':ident,'abi':{'r':2,'s':2,'labels':2,'input':0,'output':1},
+                   'command':{'kind':'atom','opcode':'set:0:1'}}
+            inp=root/'graph.json'
+            inp.write_text(json.dumps(graph)+'\n')
+            receipt=validate_and_generate(inp,golden,root/'out',root,False)
+            self.assertEqual(receipt['physical_instructions_compared'],2)
+            self.assertTrue((root/'out'/(ident+'.rs')).exists())
+            graph['command']['opcode']='set:0:0'
+            inp.write_text(json.dumps(graph)+'\n')
+            with self.assertRaisesRegex(ValueError,'physical instruction mismatch'):
+                validate_and_generate(inp,golden,root/'out',root,False)
+            graph['command']['opcode']='set:0:1'
+            inp.write_text(json.dumps(graph)+'\n')
+            (golden/(ident+'.table')).write_bytes(raw.replace(b'set:0:1:0',b'set:0:0:0'))
+            with self.assertRaisesRegex(ValueError,'hash mismatch'):
+                validate_and_generate(inp,golden,root/'out',root,False)
+
+if __name__=='__main__':unittest.main()

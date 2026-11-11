@@ -176,8 +176,9 @@ def parse_golden(raw:bytes,expected_id:str,source_blob:str):
 
 def rust_instr(ins,atom=False):
     name,values=ins
+    if name == 'halt' and not atom:
+        return 'Instr::Halt'
     fields=(ATOM_FIELDS if atom else FIELDS)[name]
-    rust_values=['true' if x else 'false' if x==0 else str(x) for x in []]
     values=[('true' if value else 'false') if field=='value' else str(value)
             for field,value in zip(fields,values)]
     return f"{'Atom' if atom else 'Instr'}::{RUST_NAMES[name]}" + (

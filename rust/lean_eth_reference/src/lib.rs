@@ -741,3 +741,6 @@ mod canonical_clause_tests {
 
 /// Experimental symbolic representation of the source power word.
 pub mod deferred_power;
+
+/// Experimental valuation-based pruning for tensor contraction modes.
+pub mod valuation_modes;

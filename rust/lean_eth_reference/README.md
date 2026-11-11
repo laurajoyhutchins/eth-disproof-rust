@@ -46,10 +46,12 @@ execution of the proposed fast algorithm.
 
 | Location | Responsibility |
 | --- | --- |
-| `src/bit_program.rs` | Source-correlated register/stack interpreter and program combinators |
+| `src/bit_program.rs` | Literal source-instruction machine state and interpreter |
+| `src/bit_program/structured.rs` | Structured `Atom`/`Cmd` combinators and finite-table compiler, re-exported under `bit_program` |
 | `src/native_frontend.rs`, `src/native_*.rs` | Source-defined executable frontend and other selected machine fragments |
 | `src/remaining.rs` | Dependency spine and explicit unsupported/refusal boundaries |
-| `src/lib.rs` | Finite CNF semantics, encodings and bounded semantic counting |
+| `src/lib.rs` | Canonical finite CNF representation, Lean encoding and DIMACS parsing |
+| `src/semantic_count.rs` | Explicitly exponential bounded oracle and disjoint semantic reference model, re-exported from the crate root |
 | `tests/` | Rust behavior, invariant and refusal tests |
 | `reference/source-manifest.json` | Pinned upstream source inventory; not Lean/Rust equivalence evidence |
 

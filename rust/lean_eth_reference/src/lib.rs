@@ -744,3 +744,6 @@ pub mod deferred_power;
 
 /// Experimental valuation-based pruning for tensor contraction modes.
 pub mod valuation_modes;
+
+/// Experimental source-geometry valuation certificates.
+pub mod valuation_witness;

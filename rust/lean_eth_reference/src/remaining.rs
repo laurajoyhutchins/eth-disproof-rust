@@ -428,7 +428,10 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "SubexpTautologyFilterProgram.program",
         status: Status::Executable,
         machine: Machine::Local,
-        requires: &["normalization_tautology_core", "normalization_record_reverse"],
+        requires: &[
+            "normalization_tautology_core",
+            "normalization_record_reverse",
+        ],
     },
     Stage {
         id: "normalization_prefix",
@@ -436,7 +439,10 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "SubexpNormalizationPrefixProgram.program",
         status: Status::Executable,
         machine: Machine::Local,
-        requires: &["normalization_literal_cleanup", "normalization_tautology_filter"],
+        requires: &[
+            "normalization_literal_cleanup",
+            "normalization_tautology_filter",
+        ],
     },
     Stage {
         id: "normalization_subset",
@@ -476,7 +482,10 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "ExecClauseDedupProgram.program",
         status: Status::Executable,
         machine: Machine::Local,
-        requires: &["normalization_preserving_relation_scan", "normalization_record_reverse"],
+        requires: &[
+            "normalization_preserving_relation_scan",
+            "normalization_record_reverse",
+        ],
     },
     Stage {
         id: "normalization_strict_subset_filter",
@@ -484,7 +493,10 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "ExecClauseFiltersProgram.selfFilterProgram",
         status: Status::Executable,
         machine: Machine::Local,
-        requires: &["normalization_preserving_relation_scan", "normalization_record_reverse"],
+        requires: &[
+            "normalization_preserving_relation_scan",
+            "normalization_record_reverse",
+        ],
     },
     Stage {
         id: "normalization_full",
@@ -492,7 +504,11 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "SubexpNormalizationProgram.program",
         status: Status::Executable,
         machine: Machine::Local,
-        requires: &["normalization_prefix", "normalization_clause_dedup", "normalization_strict_subset_filter"],
+        requires: &[
+            "normalization_prefix",
+            "normalization_clause_dedup",
+            "normalization_strict_subset_filter",
+        ],
     },
     Stage {
         id: "frontend_normalization",

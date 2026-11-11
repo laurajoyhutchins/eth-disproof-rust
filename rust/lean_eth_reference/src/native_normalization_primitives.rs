@@ -14,23 +14,86 @@ use crate::native_record_membership::frame_program;
 /// 8*(c/2)+10+c%2 source steps, including halt, and preserves the suffix.
 pub fn negate_literal_program() -> Result<Program<2, 2>, Error> {
     use Instr as I;
-    Program::new(0, 1, 0, vec![
-        I::Set { dst: 0, value: false, next: 1 },
-        I::Push { stack: 1, src: 0, next: 2 },
-        I::Pop { stack: 0, value: 0, present: 1, next: 3 },
-        I::Branch { test: 1, yes: 4, no: 12 },
-        I::Branch { test: 0, yes: 5, no: 10 },
-        I::Pop { stack: 0, value: 0, present: 1, next: 6 },
-        I::Branch { test: 1, yes: 7, no: 12 },
-        I::Branch { test: 0, yes: 8, no: 12 },
-        I::Push { stack: 1, src: 0, next: 9 },
-        I::Push { stack: 1, src: 0, next: 2 },
-        I::Set { dst: 0, value: true, next: 11 },
-        I::Push { stack: 1, src: 0, next: 12 },
-        I::Set { dst: 0, value: false, next: 13 },
-        I::Set { dst: 1, value: false, next: 14 },
-        I::Halt,
-    ])
+    Program::new(
+        0,
+        1,
+        0,
+        vec![
+            I::Set {
+                dst: 0,
+                value: false,
+                next: 1,
+            },
+            I::Push {
+                stack: 1,
+                src: 0,
+                next: 2,
+            },
+            I::Pop {
+                stack: 0,
+                value: 0,
+                present: 1,
+                next: 3,
+            },
+            I::Branch {
+                test: 1,
+                yes: 4,
+                no: 12,
+            },
+            I::Branch {
+                test: 0,
+                yes: 5,
+                no: 10,
+            },
+            I::Pop {
+                stack: 0,
+                value: 0,
+                present: 1,
+                next: 6,
+            },
+            I::Branch {
+                test: 1,
+                yes: 7,
+                no: 12,
+            },
+            I::Branch {
+                test: 0,
+                yes: 8,
+                no: 12,
+            },
+            I::Push {
+                stack: 1,
+                src: 0,
+                next: 9,
+            },
+            I::Push {
+                stack: 1,
+                src: 0,
+                next: 2,
+            },
+            I::Set {
+                dst: 0,
+                value: true,
+                next: 11,
+            },
+            I::Push {
+                stack: 1,
+                src: 0,
+                next: 12,
+            },
+            I::Set {
+                dst: 0,
+                value: false,
+                next: 13,
+            },
+            I::Set {
+                dst: 1,
+                value: false,
+                next: 14,
+            },
+            I::Halt,
+        ],
+    )
 }
 
 /// SubexpNormalizeProgram.emitRecordProgram: the unchanged source 17-label
@@ -42,7 +105,12 @@ pub fn emit_record_program() -> Result<Program<3, 4>, Error> {
     let mut code = Vec::with_capacity(17);
     for instruction in parser.code() {
         let relocated = match *instruction {
-            Instr::Pop { stack, value, present, next } => Instr::Pop {
+            Instr::Pop {
+                stack,
+                value,
+                present,
+                next,
+            } => Instr::Pop {
                 stack: if stack == 1 { 3 } else { stack },
                 value,
                 present,
@@ -60,15 +128,52 @@ pub fn emit_record_program() -> Result<Program<3, 4>, Error> {
         code.push(relocated);
     }
     code.extend([
-        Instr::Set { dst: 0, value: false, next: 8 },
-        Instr::Push { stack: 2, src: 0, next: 9 },
-        Instr::Pop { stack: 3, value: 0, present: 1, next: 10 },
-        Instr::Branch { test: 1, yes: 11, no: 14 },
-        Instr::Push { stack: 2, src: 0, next: 12 },
-        Instr::Set { dst: 0, value: true, next: 13 },
-        Instr::Push { stack: 2, src: 0, next: 9 },
-        Instr::Set { dst: 0, value: true, next: 15 },
-        Instr::Push { stack: 2, src: 0, next: 16 },
+        Instr::Set {
+            dst: 0,
+            value: false,
+            next: 8,
+        },
+        Instr::Push {
+            stack: 2,
+            src: 0,
+            next: 9,
+        },
+        Instr::Pop {
+            stack: 3,
+            value: 0,
+            present: 1,
+            next: 10,
+        },
+        Instr::Branch {
+            test: 1,
+            yes: 11,
+            no: 14,
+        },
+        Instr::Push {
+            stack: 2,
+            src: 0,
+            next: 12,
+        },
+        Instr::Set {
+            dst: 0,
+            value: true,
+            next: 13,
+        },
+        Instr::Push {
+            stack: 2,
+            src: 0,
+            next: 9,
+        },
+        Instr::Set {
+            dst: 0,
+            value: true,
+            next: 15,
+        },
+        Instr::Push {
+            stack: 2,
+            src: 0,
+            next: 16,
+        },
         Instr::Halt,
     ]);
     Program::new(3, 2, 7, code)
@@ -83,10 +188,19 @@ pub fn emit_if_selected_command() -> Result<Cmd<3, 4>, Error> {
         Cmd::Call(clear_program(3, 0, 1)?),
     );
     let reset = Cmd::seq(
-        Cmd::Atom(Atom::Set { dst: 0, value: false }),
+        Cmd::Atom(Atom::Set {
+            dst: 0,
+            value: false,
+        }),
         Cmd::seq(
-            Cmd::Atom(Atom::Set { dst: 1, value: true }),
-            Cmd::Atom(Atom::Set { dst: 2, value: false }),
+            Cmd::Atom(Atom::Set {
+                dst: 1,
+                value: true,
+            }),
+            Cmd::Atom(Atom::Set {
+                dst: 2,
+                value: false,
+            }),
         ),
     );
     Ok(Cmd::seq(route, reset))
@@ -98,19 +212,36 @@ pub fn emit_if_selected_command() -> Result<Cmd<3, 4>, Error> {
 pub fn reverse_records_command() -> Result<Cmd<3, 4>, Error> {
     let reader = Cmd::Call(frame_program()?.lift::<3, 4>([0, 1], [0, 3])?);
     let emit_every = Cmd::seq(
-        Cmd::Atom(Atom::Set { dst: 2, value: true }),
+        Cmd::Atom(Atom::Set {
+            dst: 2,
+            value: true,
+        }),
         emit_if_selected_command()?,
     );
     let advance = Cmd::ite(
         2,
-        Cmd::Atom(Atom::Set { dst: 0, value: false }),
-        Cmd::Atom(Atom::Pop { stack: 0, value: 0, present: 1 }),
+        Cmd::Atom(Atom::Set {
+            dst: 0,
+            value: false,
+        }),
+        Cmd::Atom(Atom::Pop {
+            stack: 0,
+            value: 0,
+            present: 1,
+        }),
     );
     let body = Cmd::seq(reader, Cmd::seq(emit_every, advance));
     Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set { dst: 2, value: false }),
+        Cmd::Atom(Atom::Set {
+            dst: 2,
+            value: false,
+        }),
         Cmd::seq(
-            Cmd::Atom(Atom::Pop { stack: 0, value: 0, present: 1 }),
+            Cmd::Atom(Atom::Pop {
+                stack: 0,
+                value: 0,
+                present: 1,
+            }),
             Cmd::while_(0, body),
         ),
     ))

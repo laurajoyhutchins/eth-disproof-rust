@@ -44,3 +44,70 @@ On the retained lean_eth_reference v0.21.0 local source snapshot, with the exper
 - Strict query mode rejected the same synthetic table without --fixture and produced no output artifact.
 
 **Scope of evidence:** this compilation was on a retained v0.21.0 local source snapshot, not a fresh complete checkout of the current GitHub branch against main. No GitHub exact-head CI status or genuine imported original Lean execution was available at the time of recording.
+
+## Source-derived Rust, not just synthetic fixtures (2026-11-10)
+
+The following *original* executable declarations were extracted from the pinned
+`openai/math@4eaee87548250b2682affda7d05d947c05554bae` source snapshot:
+
+| Program | Original Git blob | Registers × stacks × labels | Executable Rust |
+| --- | --- | --- | --- |
+| `BinaryPrograms.Add.program` | `ab8a858c2466aa3879087f825802aa76c7aa768f` | 8×3×13 | Cargo-generated `original_binary-add.rs` |
+| `QueryProgram.parityProgram` | `7a2535f7c479463a5f5ed8a30a33192aad1b063e` | 3×1×4 | Cargo-generated `original_query-parity.rs` |
+| `TypeBitProgram.program` | `4e020c828e458b4420179da94c3451bea653a7b9` | 3×2×7 | Cargo-generated `original_type-bit.rs` |
+
+The pinned-source extractor `tools/extract_original_lean_tables.py` verifies each
+**entire original Lean file's Git blob hash**, the declaration, the machine ABI,
+its ordered literal instructions, and label count. It refuses arbitrary Lean
+expressions or unsupported computation rather than inventing the result.
+`build.rs` verifies the table's pin, ABI and instruction indices, and compiles
+direct Rust machine steps. No runtime instruction interpreter is called by these
+generated functions.
+
+To regenerate from a checkout containing the pinned original source:
+
+```sh
+python3 tools/extract_original_lean_tables.py \
+  --upstream /path/to/openai-math \
+  --output-dir tools/fixtures/original
+
+cargo fmt --all -- --check
+cargo test --locked --offline --all-targets
+cargo test --locked --offline --release --test original_lean_codegen
+cargo clippy --locked --offline --all-targets -- -D warnings
+```
+
+Hashes of the canonical source tables:
+
+- `binary-add.table`: SHA-256 `278285aea7db76bc61c87effdab8730b89d6523c9d95327452dd4bf45a11bad6`
+- `query-parity.table`: SHA-256 `55b6224683cfc84b2a4439c267b855576511a882cffa65abeb423656bcf00856`
+- `type-bit.table`: SHA-256 `80361c4c5531a1bca45b98bf5e654ca3b72d40e76dba9a3e3d6264a7af5e51f2`
+
+### What was actually executed
+
+Restored the SHA-256-verified Lean **4.34.1** binary from the user's archived
+toolchain. The three exact source declarations were inserted into a *standalone*
+Lean verification harness with the original `Instr` and `Program` definitions;
+the only changes needed for the standalone import-free harness were replacing
+Mathlib's finite-vector notation with the equivalent exhaustive `Fin` match
+and omitting the unavailable `Fintype` deriving clause. **Lean compiled and
+executed the actual declarations**, and all three emitted tables compared
+byte-for-byte with the independent pinned-source extractor.
+
+Rust **1.99.1** was restored and the source-generated code was compiled on the
+retained v0.21.0 reference-crate snapshot. `cargo fmt`, complete offline locked
+all-target tests, and strict Clippy passed; four additional generated-original
+tests passed in debug, and the release test passed. The binary addition test
+checks all 16,384 pairs `0..127 × 0..127` against independent integer addition;
+the parity test checks both initial parity values on every word of length
+0–8; the indexed-bit test checks both in-range and out-of-range access and
+stack cleanup. Resource-refusal behavior is also exercised.
+
+**Evidence limits:** The standalone Lean harness is not an imported, built
+original OpenAI theorem environment. The full `QueryStreamProgram.program`
+still depends on the missing complete Mathlib/OAI compiled closure, includes
+`noncomputable` declarations, and may require an infeasibly large finite
+table. No full query or native counter has been extracted or run. The complete
+GitHub PR checkout still requires its own exact-head CI result. Do not count
+these source-defined subprogram tests as a Lean/Rust refinement proof or ETH
+time/space result.

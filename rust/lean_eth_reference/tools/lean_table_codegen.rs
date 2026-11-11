@@ -16,6 +16,10 @@ pub enum TableKind {
     Query,
     /// Synthetic test data: never attribute this table to the original Lean source.
     Fixture,
+    /// Literal fixed-control programs in the pinned original Lean source.
+    OriginalBinaryAdd,
+    OriginalQueryParity,
+    OriginalTypeBit,
 }
 
 fn decimal(s: &str) -> Result<usize, String> {
@@ -119,10 +123,22 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
     let name = match kind {
         TableKind::Query => "query",
         TableKind::Fixture => "fixture",
+        TableKind::OriginalBinaryAdd => "binary-add",
+        TableKind::OriginalQueryParity => "query-parity",
+        TableKind::OriginalTypeBit => "type-bit",
     };
     let expected_pin = match kind {
         TableKind::Query => format!("PIN|query|{SOURCE_COMMIT}|{QUERY_SOURCE_BLOB}"),
         TableKind::Fixture => "PIN|fixture|synthetic".to_string(),
+        TableKind::OriginalBinaryAdd => format!(
+            "PIN|binary-add|{SOURCE_COMMIT}|ab8a858c2466aa3879087f825802aa76c7aa768f"
+        ),
+        TableKind::OriginalQueryParity => format!(
+            "PIN|query-parity|{SOURCE_COMMIT}|7a2535f7c479463a5f5ed8a30a33192aad1b063e"
+        ),
+        TableKind::OriginalTypeBit => format!(
+            "PIN|type-bit|{SOURCE_COMMIT}|4e020c828e458b4420179da94c3451bea653a7b9"
+        ),
     };
     if rows[0] != expected_pin {
         return Err("table provenance/pin mismatch".into());
@@ -147,8 +163,18 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
     {
         return Err("invalid dimensions, ports, entry or label budget".into());
     }
-    if kind == TableKind::Query && (r, s, input, output) != (40, 896, 330, 323) {
-        return Err("query ABI mismatch".into());
+    let expected_abi = match kind {
+        TableKind::Query => Some((40, 896, 330, 323, None)),
+        TableKind::OriginalBinaryAdd => Some((8, 3, 0, 2, Some(13))),
+        TableKind::OriginalQueryParity => Some((3, 1, 0, 0, Some(4))),
+        TableKind::OriginalTypeBit => Some((3, 2, 1, 1, Some(7))),
+        TableKind::Fixture => None,
+    };
+    if let Some((er, es, ei, eo, el)) = expected_abi
+        && ((r, s, input, output) != (er, es, ei, eo)
+            || el.is_some_and(|expected_labels| expected_labels != labels))
+    {
+        return Err("pinned source machine ABI mismatch".into());
     }
     if rows.len() != labels + 3 || rows[labels + 2] != format!("END|{name}|{labels}") {
         return Err("missing, excess, or incorrect table records".into());
@@ -176,6 +202,7 @@ pub fn generate(table: &str, kind: TableKind, max_labels: usize) -> Result<Strin
     writeln!(output_rs, "pub const INPUT_STACK: usize = {input};").unwrap();
     writeln!(output_rs, "pub const OUTPUT_STACK: usize = {output};").unwrap();
     writeln!(output_rs, "pub const LABELS: usize = {labels};").unwrap();
+    output_rs.push_str("#[allow(clippy::assign_op_pattern)]\n");
     writeln!(output_rs, "pub fn run(config: &mut lean_eth_reference::bit_program::Config<{r}, {s}>, limits: lean_eth_reference::bit_program::RunLimits) -> Result<lean_eth_reference::bit_program::RunStats, lean_eth_reference::Error> {{").unwrap();
     output_rs.push_str(
         "    use lean_eth_reference::Error;\n\
@@ -243,5 +270,16 @@ mod tests {
             .is_err()
         );
         assert!(generate(&format!("{TINY}\n"), TableKind::Fixture, 100).is_err());
+        let originals = [
+            (include_str!("fixtures/original/binary-add.table"), TableKind::OriginalBinaryAdd),
+            (include_str!("fixtures/original/query-parity.table"), TableKind::OriginalQueryParity),
+            (include_str!("fixtures/original/type-bit.table"), TableKind::OriginalTypeBit),
+        ];
+        for (original, kind) in originals {
+            let result = generate(original, kind, 100).unwrap();
+            assert_eq!(result, generate(original, kind, 100).unwrap());
+            assert!(generate(original, TableKind::Fixture, 100).is_err());
+            assert!(generate(TINY, kind, 100).is_err());
+        }
     }
 }

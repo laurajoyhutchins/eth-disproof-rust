@@ -674,3 +674,6 @@ pub mod native_bootstrap;
 pub mod native_integer_cache;
 
 pub mod native_cache_iteration;
+
+/// Source-refined fixed-width flattening and executable integer cache.
+pub mod native_flatten;

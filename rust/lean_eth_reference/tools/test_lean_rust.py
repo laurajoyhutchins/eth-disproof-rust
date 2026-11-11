@@ -3,8 +3,9 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import sys
 import unittest
-from lean_rust import identity, resolve, valid_cached
+from lean_rust import identity, resolve, valid_cached, execute
 from export_compiled_batch import SOURCE_SHA, MATHLIB_SHA
 
 REC = {"id":"example_0","fqn":"OAI.Algorithms.SubexponentialSAT.Example.program",
@@ -21,6 +22,17 @@ class DriverTests(unittest.TestCase):
             resolve([REC,REC],REC["id"])
         with self.assertRaises(ValueError):
             resolve([REC],"missing")
+
+    def test_failure_bundle_preserves_output_and_exit_code(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder=Path(temp)
+            with self.assertRaises(RuntimeError):
+                execute([sys.executable, "-c", "print('DIAGNOSTIC'); raise SystemExit(7)"],
+                        stage="test", folder=folder)
+            report=json.loads((folder/"test.json").read_text())
+            self.assertEqual(report["exit_code"],7)
+            self.assertIn("DIAGNOSTIC",(folder/"test.log").read_text())
+            self.assertEqual(report["command"][0],sys.executable)
 
     def test_cached_receipt_requires_matching_original_bytes(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -1,0 +1,91 @@
+name: Pinned Lean primitive machine traces
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  primitive-trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    env:
+      UPSTREAM_COMMIT: 4eaee87548250b2682affda7d05d947c05554bae
+      MATHLIB_COMMIT: d13f23b723b8a846827a245b89c10fc7d3f11612
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned upstream Lean source
+        uses: actions/checkout@v4
+        with:
+          repository: openai/math
+          ref: 4eaee87548250b2682affda7d05d947c05554bae
+          path: upstream
+          filter: blob:none
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            lean/OAI/Algorithms/SubexponentialSAT
+            lean/lean-toolchain
+            lean/lakefile.lean
+            lean/lake-manifest.json
+      - name: Validate exact upstream source and toolchain pins
+        run: |
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_COMMIT"
+          grep -Fx 'leanprover/lean4:v4.34.1' upstream/lean/lean-toolchain
+          grep -F "$MATHLIB_COMMIT" upstream/lean/lake-manifest.json
+      - name: Install Lean 4.34.1
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --no-modify-path --default-toolchain leanprover/lean4:v4.34.1
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Create Mathlib-only pinned Lake overlay
+        run: |
+          mkdir -p lean-overlay
+          cp upstream/lean/lean-toolchain lean-overlay/lean-toolchain
+          ln -s "$GITHUB_WORKSPACE/upstream/lean/OAI" lean-overlay/OAI
+          cat > lean-overlay/lakefile.lean <<'EOF'
+          import Lake
+          open Lake DSL
+          package OAI where
+            leanOptions := #[⟨`autoImplicit, false⟩]
+          require mathlib from git
+            "https://github.com/leanprover-community/mathlib4.git" @ "d13f23b723b8a846827a245b89c10fc7d3f11612"
+          @[default_target] lean_lib OAI
+          EOF
+      - name: Restore revision-pinned partial Lean build
+        uses: actions/cache/restore@v4
+        with:
+          path: lean-overlay/.lake/build
+          key: lean-bitprogram-v1-${{ env.UPSTREAM_COMMIT }}-${{ env.MATHLIB_COMMIT }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            lean-bitprogram-v1-${{ env.UPSTREAM_COMMIT }}-${{ env.MATHLIB_COMMIT }}-
+      - name: Compile actual normalization and terminal leaf BitPrograms
+        run: |
+          mkdir -p artifacts
+          cd lean-overlay
+          lake update
+          lake exe cache get
+          # Stop *before* the job limit, leaving time to save partial OAI build
+          # products. An incomplete build fails closed; rerun from the cache.
+          timeout --kill-after=15s 780s lake build OAI.Algorithms.SubexponentialSAT.SubexpNormalizationProgram OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.NativeTerminal
+          set -o pipefail
+          timeout --kill-after=10s 120s lake env lean --run ../reference/lean_primitive_trace.lean | tee ../artifacts/lean-primitive-trace.txt
+      - name: Save partial pinned Lean build even when compile fails or stops
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: lean-overlay/.lake/build
+          key: lean-bitprogram-v1-${{ env.UPSTREAM_COMMIT }}-${{ env.MATHLIB_COMMIT }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check primitive trace against independent Python expected bytes
+        run: |
+          python -m pip install -e '.[test]'
+          python -m scripts.compare_lean_primitive --input artifacts/lean-primitive-trace.txt
+          python -m pytest -q tests/eth/test_lean_primitive_trace_contract.py
+      - name: Preserve source-executed primitive trace evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lean-bitprogram-primitive-trace
+          path: artifacts/
+          if-no-files-found: warn

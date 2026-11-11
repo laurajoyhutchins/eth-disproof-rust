@@ -97,7 +97,8 @@ fn symbol_table(prefix: &str, labels: usize) -> BTreeMap<String, usize> {
             continue;
         };
         if let (Ok(n), Ok(v)) = (num(domain.trim()), num(val.trim()))
-            && n == labels && v < labels
+            && n == labels
+            && v < labels
             && let Some(name) = left.split_whitespace().nth(1)
         {
             symbols.insert(name.to_string(), v);

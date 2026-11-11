@@ -15,8 +15,8 @@
 
 use crate::Error;
 use crate::bit_program::{Atom, Cmd, Instr, Program};
-use crate::native_high::{clear_program, copy_program};
 use crate::native_flatten::integer_cache_program;
+use crate::native_high::{clear_program, copy_program};
 
 const TEMPORARY: usize = 659;
 const WORK_BASE: usize = 340;

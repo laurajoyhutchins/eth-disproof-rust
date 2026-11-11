@@ -93,7 +93,7 @@ jobs:
             --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
             --output-dir "$RUNNER_TEMP/original-compiled" \
             --query-closure \
-            --name-regex '(SqrtLog\\.Setup\\.(computeLProgram|logSuccProgram)|SqrtLogSpace\\.DisjointReuse\\.SparseFrontierProgram\\.(pushProgram|initFrontierProgram|popProgram|popIfPresentProgram|pushPairProgram))' \
+            --name-regex '(SqrtLog\.Setup\.(computeLProgram|logSuccProgram)|SqrtLogSpace\.DisjointReuse\.SparseFrontierProgram\.(pushProgram|initFrontierProgram|popProgram|popIfPresentProgram|pushPairProgram))' \
             --limit 7 --max-labels 4096 --timeout-seconds 240
 
       - name: Save successfully built original Lean dependencies

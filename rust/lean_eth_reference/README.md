@@ -350,3 +350,47 @@ composed**, and no imported-source Lean/Rust differential, outer query
 execution, TM2 resource refinement, or ETH theorem is claimed. Historical
 status descriptions in prior version sections describe their respective
 versions, not the current implementation.
+
+## Fixed-width H-cache flattening (follow-on to v0.11.0)
+
+`src/native_cache_normalize.rs` ports the **actual** 12-label
+`ModularRingPrograms.normalizeProgram` and
+`LayoutBinomialProgram.normalizeComponent`, including clearing excess
+little-endian input beyond a runtime-specified width. It also compiles the
+actual `flatParse`, `flatPositive`, `flatNegative`, `flatRow`,
+`flatFinish`, and complete 8×19 `LayoutBinomialProgram.flatProgram`.
+The source's framed signed-pair parser, nested calls, and stack ports are
+executed, not replaced with a Rust bulk-vector calculation.
+
+`tests/native_cache_normalize.rs` includes exhaustive input words and widths
+up to eight bits, exact finite instruction-count checks for the normalization
+component, long-word truncation, preservation of the opaque modulus,
+incomplete-execution refusal, and hundreds of real framed-row flattening cases.
+These four tests and the baseline v0.8 suite were executed locally with
+Rust 1.99.1 in debug and release, formatting and strict Clippy clean.
+**The current v0.11 tree was not fully rebuilt in that VM.**
+
+This exposes a reusable, executable `flatProgram`. It is **not yet wired**
+to `LayoutProgramScalar.hFlatProgram` or
+`LayoutProgram.IntegerCache.program`. The full bootstrap, Lean differential
+execution, and ETH running-time/space claims remain unverified.
+
+## v0.13.0: complete source-defined node bootstrap
+
+The Rust `SignatureHeadLoader.bootstrapProgram` now composes four finite
+machine commands: `initializeAddress`, `countRows`, `initializeCache`,
+and `retainCache`. The integer cache is computed from unary height/order/width
+input at physical stacks 139/138/140, with a fixed 8×24 callee in the
+340..363 work bank. Outputs 640..643 and retained 710..712 have been
+checked against the source-defined framing and coefficient recurrence.
+The exact `QueryStreamProgram.bootstrapNode` register offset 24 and stack
+offset 128 are also executable.
+
+Local Rust 1.99.1 validation: 97 tests in the source-only v0.13.0 archive;
+the GitHub change additionally includes four focused integration tests.
+Debug and release tests, formatting, and strict Clippy passed locally.
+These are Rust machine tests, not Lean/Rust imported-source differential
+traces. Correct coefficient values require the Lean width precondition
+`width.length >= 1 + 2 * height.length * R.length`. The program does
+not verify that precondition. Query-node pair expansion and query finish
+are not yet closed, nor is the ETH theorem proved by this Rust code.

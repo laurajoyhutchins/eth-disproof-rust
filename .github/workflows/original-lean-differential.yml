@@ -1,0 +1,108 @@
+name: Original Lean vs Rust state differential
+
+on:
+  pull_request:
+    paths:
+      - 'instrumentation/lean-env/**'
+      - 'rust/lean_eth_reference/reference/lean_full_machine_trace.lean'
+      - 'rust/lean_eth_reference/src/bin/lean-full-machine-trace.rs'
+      - 'rust/lean_eth_reference/scripts/compare-full-machine-trace.py'
+      - '.github/workflows/original-lean-differential.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-state-parity-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-parity:
+    name: original Lean and Rust complete-state comparison
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      SOURCE_BLOB: c2fb29983bb33229d5cf60729cd3d1e37b9b00ca
+      MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      LEAN_ROOT: instrumentation/lean-env
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Fetch immutable original OpenAI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth 1 --filter=blob:none origin "$SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git -C upstream/openai-math rev-parse HEAD:lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryStreamProgram.lean)" = "$SOURCE_BLOB"
+          test -z "$(git -C upstream/openai-math status --porcelain --untracked-files=no)"
+          ln -s "$GITHUB_WORKSPACE/upstream/openai-math/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Install Lean 4.34.1 and pinned official Mathlib cache
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Prove pinned Mathlib import and original source checkout
+        working-directory: instrumentation/lean-env
+        shell: bash
+        run: |
+          set -euo pipefail
+          lake env lean --version | grep -F 'Lean (version 4.34.1'
+          test "$(git -C .lake/packages/mathlib rev-parse HEAD)" = "$MATHLIB_SHA"
+          test -z "$(git -C .lake/packages/mathlib status --porcelain --untracked-files=no)"
+          lake env lean SmokeMathlib.lean
+
+      - name: Execute independent original Lean and Rust physical traces
+        working-directory: instrumentation/lean-env
+        shell: bash
+        run: |
+          set -euo pipefail
+          lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SqrtLog.HighIncidenceProgramBranches
+          TRACE_DIR="${RUNNER_TEMP}/source-physical-traces"
+          mkdir -p "$TRACE_DIR"
+          lake env lean --run "$GITHUB_WORKSPACE/rust/lean_eth_reference/reference/lean_full_machine_trace.lean" > "$TRACE_DIR/lean.trace"
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+          rustc --version | grep -F 'rustc 1.99.1'
+          cargo run --quiet --locked --offline --manifest-path "$GITHUB_WORKSPACE/rust/lean_eth_reference/Cargo.toml" --bin lean-full-machine-trace > "$TRACE_DIR/rust.trace"
+          python3 "$GITHUB_WORKSPACE/rust/lean_eth_reference/scripts/compare-full-machine-trace.py" \
+            --lean "$TRACE_DIR/lean.trace" --rust "$TRACE_DIR/rust.trace"
+          (
+            cd "$TRACE_DIR"
+            sha256sum lean.trace rust.trace > traces.sha256
+            printf 'openai_commit=%s\nmathlib_commit=%s\nlean_version=4.34.1\nrust_version=1.99.1\n' \
+              "$SOURCE_SHA" "$MATHLIB_SHA" > provenance.txt
+          )
+          echo "IMPORTED_ORIGINAL_LEAN_RUST_FULL_STATE_DIFFERENTIAL=PASS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve both independent traces and source pins
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-lean-rust-traces-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/source-physical-traces/lean.trace
+            ${{ runner.temp }}/source-physical-traces/rust.trace
+            ${{ runner.temp }}/source-physical-traces/traces.sha256
+            ${{ runner.temp }}/source-physical-traces/provenance.txt
+          if-no-files-found: error
+          retention-days: 14

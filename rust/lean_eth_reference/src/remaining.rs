@@ -311,12 +311,20 @@ pub const STAGES: &[Stage] = &[
         requires: &["terminal_dispatch"],
     },
     Stage {
+        id: "ambient_header",
+        source_file: "SqrtLogSpace/NativeFrontend.lean",
+        lean_symbol: "Native.ambientCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["bit_machine"],
+    },
+    Stage {
         id: "frontend",
         source_file: "SqrtLogSpace/NativeFrontend.lean",
         lean_symbol: "Native.frontendCommand",
         status: Status::Stub,
         machine: Machine::Outer,
-        requires: &["bit_machine"],
+        requires: &["ambient_header"],
     },
     Stage {
         id: "cutoff_scan",
@@ -354,9 +362,9 @@ pub const STAGES: &[Stage] = &[
         id: "answer_suffix",
         source_file: "SqrtLogSpace/NativeProgram.lean",
         lean_symbol: "Native.answerCommand",
-        status: Status::Stub,
+        status: Status::Executable,
         machine: Machine::Outer,
-        requires: &["outer_dfs"],
+        requires: &["bit_machine"],
     },
     Stage {
         id: "outer_command",
@@ -503,6 +511,10 @@ pub mod outer {
     pub fn cutoff_scan(cutoff: usize) -> Result<Program<80, 1220>, Error> {
         crate::finite_fallback::cutoff_program(cutoff)
     }
+    /// Source-defined physical header extraction only; not a complete frontend.
+    pub fn ambient_header() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_ambient::ambient_command()
+    }
     outer_stub!(frontend, "Native.frontendCommand");
     pub fn finite_fallback(_cutoff: usize, _large: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("FiniteFallback.dispatchCommand (noncomputable lookup)")
@@ -513,7 +525,11 @@ pub mod outer {
     pub fn dfs(_k: usize, _leaf: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("DFSCountProgram.command")
     }
-    outer_stub!(answer_suffix, "Native.answerCommand");
+    /// Complete source-defined physical full-word positivity suffix.
+    /// This does not compute the count or make the outer DFS executable.
+    pub fn answer_suffix() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_answer::answer_command()
+    }
     pub fn outer_command(_k: usize, _leaf: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("Native.outerCommand")
     }

@@ -6,7 +6,7 @@ license = "MIT AND Apache-2.0"
 description = "Source-pinned Rust port of OpenAI Lean ETH finite semantics and BitProgram instructions"
 
 [dependencies]
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "=4.6.7", features = ["derive", "wrap_help", "cargo"] }
 
 [lib]
 name = "lean_eth_reference"

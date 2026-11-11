@@ -6,6 +6,8 @@ on:
       - 'rust/lean_eth_reference/tools/export_source_graph.lean'
       - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
       - 'rust/lean_eth_reference/tools/verify_source_graph.py'
+      - 'rust/lean_eth_reference/tools/lean_physical_differential.py'
+      - 'rust/lean_eth_reference/tools/test_lean_physical_differential.py'
       - 'rust/lean_eth_reference/tools/*compiled*.py'
       - '.github/workflows/original-source-graph.yml'
 
@@ -42,6 +44,7 @@ jobs:
           python3 -m compileall -q rust/lean_eth_reference/tools
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_source_compiled.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_physical_differential.py' -v
 
       - name: Checkout exact original OpenAI SAT source
         shell: bash
@@ -103,6 +106,20 @@ jobs:
           (base/'manifest.json').write_text(json.dumps(manifest,sort_keys=True,indent=2)+'\n')
           PY
 
+      # The reference here is original BitProgram.execInstr extracted verbatim
+      # under pinned source identity. It deliberately does not claim that the
+      # complete OAI module was imported or that command-graph parity passed.
+      - name: Independently compare original Lean instruction semantics with Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/lean_physical_differential.py \
+            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+            --golden-dir "$RUNNER_TEMP/source-tables" \
+            --output-dir "$RUNNER_TEMP/source-physical" \
+            --rust-crate rust/lean_eth_reference --timeout-seconds 240
+          echo 'ORIGINAL_BITPROGRAM_LEAN_RUST_TRANSITIONS=MATCH' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Export original Lean command constructors and verify generated Rust
         shell: bash
         run: |
@@ -131,5 +148,6 @@ jobs:
           path: |
             ${{ runner.temp }}/source-tables/
             ${{ runner.temp }}/source-graph/
+            ${{ runner.temp }}/source-physical/
           if-no-files-found: warn
           retention-days: 14

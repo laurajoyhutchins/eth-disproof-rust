@@ -702,6 +702,19 @@ pub mod native_tautology_core;
 pub mod native_tautology_filter;
 /// Exact source prefix: physical clause-wise literal cleanup then tautology removal.
 pub mod native_normalization_prefix;
+
+/// Source physical clause subset and dual-direction relation kernel.
+pub mod native_clause_relations;
+/// Three-mode encoded formula relation scanner.
+pub mod native_clause_relation_scan;
+/// Preserving equivalence scans and last-occurrence clause deduplication.
+pub mod native_clause_dedup;
+/// Source fixed-master strict-subset filtering of clause records.
+pub mod native_clause_filter;
+/// Complete source-defined CNF normalization command on 15x16 machine.
+pub mod native_normalization_full;
+/// Original 80x1220 lift of the source-normalizing 15x16 machine.
+pub mod native_outer_normalization;
 /// Source-fixed unary header reader and binary length initializer.
 pub mod native_frontend_header;
 pub mod native_terminal;

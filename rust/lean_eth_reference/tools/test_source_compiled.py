@@ -33,6 +33,15 @@ class SourceDiscoveryTests(unittest.TestCase):
         }
         self.assertEqual({x['fqn'] for x in candidates if x['fqn'] in targets},targets)
 
+    def test_workflow_regex_selects_seven_original_programs(self):
+        workflow=(pathlib.Path(__file__).resolve().parents[3] /
+                  '.github/workflows/original-compiled-batch.yml').read_text()
+        line=next(line for line in workflow.splitlines() if '--name-regex ' in line)
+        pattern=line.split("--name-regex '",1)[1].split("'",1)[0]
+        selected=[c for c in discover(ROOT,True)['candidates']
+                  if __import__('re').search(pattern,c['fqn'])]
+        self.assertEqual(len(selected),7)
+
     def test_refuses_spoofed_program_names(self):
         rec={'module':'OAI.Algorithms.SubexponentialSAT.Foo','fqn':'OAI.Algorithms.SubexponentialSAT.Foo.program',
              'id':'foo_program_0','git_blob':'a'*40}

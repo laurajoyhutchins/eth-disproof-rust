@@ -1,40 +1,18 @@
-# Rust port of the OpenAI ETH Lean program
+# Pinned original Lean source
 
-This branch contains the Rust implementation and its source-conformance
-infrastructure. The pre-existing Python/Cython Sudoku solver, counting
-experiments, benchmarks, proofs-in-progress, and their history live on
-[the `python/sudoku-research` branch](../../tree/python/sudoku-research).
+This branch is the **immutable upstream-source reference** for the literal Rust port maintained on `main`.
 
-## Implementation
+- Original repository: https://github.com/openai/math
+- Exact source commit: `4eaee87548250b2682affda7d05d947c05554bae`
+- Relevant source root: `upstream/openai-math/lean/OAI/Algorithms/SubexponentialSAT/`
+- This is an upstream **Git submodule**, not a rewritten or translated source copy. OpenAI's upstream source and its licensing remain unchanged.
 
-The Rust crate is at [`rust/lean_eth_reference/`](rust/lean_eth_reference/).
-It ports executable finite semantics and selected source-defined BitProgram
-components from [`openai/math` at `4eaee87548250b2682affda7d05d947c05554bae`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
+To inspect the source after checking out this branch:
 
 ```sh
-cd rust/lean_eth_reference
-cargo fmt --all -- --check
-cargo test --locked --offline --all-targets
-cargo clippy --locked --offline --all-targets -- -D warnings
+git submodule update --init upstream/openai-math
 ```
 
-`.github/workflows/rust.yml` workflow also targets this crate, without
-running the Python/Cython solver suite.
+A branch diff against Rust is **not** a completeness proof: filenames and symbol boundaries need not correspond one-to-one, and implementing a Lean definition does not imply Lean/Rust differential equivalence or preservation of primitive resource bounds. Track source symbols and coverage status in the Rust port separately: absent, stubbed, source-literal executable, tested against native Rust model, or directly checked against imported upstream Lean. Treat theorem obligations and full-machine behavior as independent tracks. Never erase upstream Lean definitions when ported.
 
-**Scope:** This is an incomplete Lean-to-Rust port, not a proven ETH disproof,
-a complete native counting program, or a verified complexity theorem.
-Some finite machines execute; remaining stages explicitly refuse or are
-unimplemented. Genuine pinned-Lean/Rust differential verification is
-still required. See the crate's implementation notes and test cases.
-
-The `.lean` fixtures and small Python comparison scripts *inside the Rust
-crate* are conformance tooling, not the former Python Sudoku implementation.
-
-## Branches
-
-- `main`: Rust implementation and Rust-specific verification.
-- `python/sudoku-research`: intact pre-split Python/Cython research tree,
-  tests, benchmarks, configuration, and historical commits.
-
-Open Python/Cython pull requests should target the research branch; Rust port
-pull requests should target `main`.
+The pin is intentional. To advance the upstream revision, create a separately reviewed provenance commit rather than silently following upstream HEAD.

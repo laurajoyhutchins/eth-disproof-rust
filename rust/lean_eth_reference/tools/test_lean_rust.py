@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from lean_rust import identity, resolve, valid_cached
-from export_compiled_batch import SOURCE_SHA
+from export_compiled_batch import SOURCE_SHA, MATHLIB_SHA
 
 REC = {"id":"example_0","fqn":"OAI.Algorithms.SubexponentialSAT.Example.program",
        "git_blob":"a"*40}
@@ -35,8 +35,16 @@ class DriverTests(unittest.TestCase):
                      "declaration":REC["fqn"],"status":"EXPORTED_FROM_PINNED_LEAN",
                      "sha256":hashlib.sha256(raw).hexdigest(),"bytes":len(raw)}
             (folder/"example_0.receipt.json").write_text(json.dumps(receipt))
+            batch={"kind":"original-source-program-export", "exported":[receipt],
+                   "pins":{"source_commit":SOURCE_SHA, "mathlib_commit":MATHLIB_SHA,
+                           "lean":"Lean (version 4.34.1, x86_64-linux-gnu)"}}
+            (folder/"batch-report.json").write_text(json.dumps(batch))
             self.assertTrue(valid_cached(folder,REC))
             (folder/"example_0.table").write_bytes(b"tampered")
+            self.assertFalse(valid_cached(folder,REC))
+            (folder/"example_0.table").write_bytes(raw)
+            batch["pins"]["mathlib_commit"]="b"*40
+            (folder/"batch-report.json").write_text(json.dumps(batch))
             self.assertFalse(valid_cached(folder,REC))
 
 if __name__=="__main__":

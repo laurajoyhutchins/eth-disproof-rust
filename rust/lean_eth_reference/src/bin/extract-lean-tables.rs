@@ -96,12 +96,11 @@ fn symbol_table(prefix: &str, labels: usize) -> BTreeMap<String, usize> {
         let Some((domain, val)) = right.split_once(":=") else {
             continue;
         };
-        if let (Ok(n), Ok(v)) = (num(domain.trim()), num(val.trim())) {
-            if n == labels && v < labels {
-                if let Some(name) = left.split_whitespace().nth(1) {
-                    symbols.insert(name.to_string(), v);
-                }
-            }
+        if let (Ok(n), Ok(v)) = (num(domain.trim()), num(val.trim()))
+            && n == labels && v < labels
+            && let Some(name) = left.split_whitespace().nth(1)
+        {
+            symbols.insert(name.to_string(), v);
         }
     }
     symbols
@@ -429,8 +428,7 @@ fn extract(root: &Path) -> Result<(Vec<Extracted>, Vec<String>)> {
             .with_extension("")
             .to_string_lossy()
             .replace('\\', "/")
-            .replace('/', "_")
-            .replace('.', "_")
+            .replace(['/', '.'], "_")
             .to_lowercase();
         match declarations(&source) {
             Ok((decls, source_failures)) => {

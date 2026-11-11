@@ -25,5 +25,6 @@ overwrite = 7 * len(211) + 8     # port 34 is cleared beforehand
 compiled_program = clear + bootstrap + overwrite + 1
 ```
 
+Local Rust 1.99.1 standalone v0.19 source snapshot: 6 new tests passed debug and release, all-target suite passed, `cargo fmt --all --check` and strict offline Clippy passed. GitHub Actions checks and imported-original Lean differential evidence remain separate acceptance gates.
 
 **Still outstanding:** `QueryAssembler.pairUpdate`, `clearPair` after the update, production `SignatureTupleComplete.command`, `QueryStreamProgram.pairs` with real signed callback, and full query reconstruction. Do not mark those executable just because `preparePair` is.

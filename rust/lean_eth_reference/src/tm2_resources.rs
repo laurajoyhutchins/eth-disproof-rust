@@ -1,9 +1,9 @@
 //! Direct executable primitive tape transition evaluator for the pinned Lean
-//! BitProgramCompile -> StackAdapter -> StackCompiler -> StackMachine path.
+//! `BitProgramCompile -> StackAdapter -> StackCompiler -> StackMachine` path.
 //!
 //! Source: openai/math@4eaee87548250b2682affda7d05d947c05554bae.
 //! This is finite evidence, NOT a translation of Lean's proof certificate.
-//! BitProgram.run counts source instructions, not the primitive transitions
+//! `BitProgram.run` counts source instructions, not the primitive transitions
 //! counted below. Heap allocations and arbitrary-precision bit costs are not
 //! modelled by these counters.
 
@@ -33,11 +33,11 @@ impl Default for PrimitiveLimits {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct PrimitiveStats {
-    /// Number of complete BitProgram.step transitions.
+    /// Number of complete `BitProgram.step` transitions.
     pub source_steps: u64,
-    /// Actual executed TM2.Stmt constructors (not statementSize bound).
+    /// Actual executed `TM2.Stmt` constructors (not statementSize bound).
     pub tm2_microsteps: u64,
-    /// Transitions of the source's StackCompiler.controller.
+    /// Transitions of the source's `StackCompiler.controller`.
     pub primitive_steps: u64,
     pub head_moves: u64,
     pub writes: u64,
@@ -45,12 +45,13 @@ pub struct PrimitiveStats {
     pub visited_cells: usize,
     pub peak_live_stack_bits: usize,
     pub peak_encoded_bits: usize,
-    /// StackAdapter.overhead for this finite program, a per-source-step bound.
+    /// `StackAdapter.overhead` for this finite program, a per-source-step bound.
     pub source_step_overhead_bound: u64,
 }
 
-/// One executed primitive controller transition. A blank is None, while
-/// Some(false) is a physically written zero. Heads use per-tape coordinates.
+/// One *executed* primitive controller transition. A blank cell is `None`;
+/// `Some(false)` is a physically written zero, not a blank. Head coordinates
+/// are per-tape and relative to the input configuration, not physical RAM.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PrimitiveAction {
     Write(Option<bool>),
@@ -73,7 +74,7 @@ pub struct PrimitiveEvent {
 
 #[derive(Clone, Debug)]
 struct Tape {
-    /// A some false is a real, nonblank cell. Absence is Lean's none.
+    /// A `some false` is a real, nonblank cell. Absence is Lean's `none`.
     cells: BTreeMap<i64, bool>,
     head: i64,
     visited: BTreeSet<i64>,
@@ -127,11 +128,17 @@ fn primitive_step(
     tape_index: usize,
     ctx: &mut Accounting<'_, '_>,
 ) -> Result<(), Error> {
-    if ctx.trace.as_ref().is_some_and(|v| v.len() >= ctx.max_trace_events) {
+    if ctx
+        .trace
+        .as_ref()
+        .is_some_and(|v| v.len() >= ctx.max_trace_events)
+    {
         return Err(Error::Capacity("primitive trace event budget".into()));
     }
     if ctx.stats.primitive_steps >= ctx.limits.max_primitive_steps {
-        return Err(Error::Capacity("primitive TM tape-transition budget".into()));
+        return Err(Error::Capacity(
+            "primitive TM tape-transition budget".into(),
+        ));
     }
     tape.touch(ctx.stats, ctx.limits)?;
     let head_before = tape.head;
@@ -169,7 +176,11 @@ fn primitive_step(
             cell_after: tape.read(),
         });
     }
-    ctx.stats.primitive_steps = ctx.stats.primitive_steps.checked_add(1).ok_or(Error::Overflow)?;
+    ctx.stats.primitive_steps = ctx
+        .stats
+        .primitive_steps
+        .checked_add(1)
+        .ok_or(Error::Overflow)?;
     Ok(())
 }
 
@@ -178,8 +189,8 @@ fn width(port: usize, input: usize) -> usize {
 }
 
 // Boolean is enumerated as false=0/true=1. For non-input tapes, the
-// StackEncoding.codeOfEquiv 2-bit chunk is [false, value], with first
-// coordinate most significant in the recursively defined chunkEquiv.
+// `StackEncoding.codeOfEquiv` 2-bit chunk is [false, value], with first
+// coordinate most significant in the recursively defined `chunkEquiv`.
 fn block(port: usize, input: usize, bit: bool) -> Vec<bool> {
     if port == input {
         vec![bit]
@@ -367,7 +378,7 @@ fn execute_micro<const R: usize, const S: usize>(
     let w = width(port, p.input_stack());
     let tape = &mut tapes[port];
 
-    // Ready -> reading: one write bit (including blank bit) transition.
+    // Ready -> reading: one `write bit` (including blank bit) transition.
     let unchanged = tape.read();
     primitive_step(tape, Action::Write(unchanged), port, ctx)?;
     let mut register_bits = Vec::with_capacity(w);
@@ -446,11 +457,15 @@ fn execute_micro<const R: usize, const S: usize>(
         let unchanged = tape.read();
         primitive_step(tape, Action::Write(unchanged), port, ctx)?;
     }
-    ctx.stats.tm2_microsteps = ctx.stats.tm2_microsteps.checked_add(1).ok_or(Error::Overflow)?;
+    ctx.stats.tm2_microsteps = ctx
+        .stats
+        .tm2_microsteps
+        .checked_add(1)
+        .ok_or(Error::Overflow)?;
     Ok(())
 }
 
-/// Execute the primitive-bit compiler and independently check every completed
+/// Execute the primitive-bit compiler *and* independently check every completed
 /// BitProgram instruction boundary. The caller's config is committed only on
 /// success: budget exhaustion and mismatches leave it unchanged.
 ///
@@ -465,8 +480,9 @@ pub fn run_primitive<const R: usize, const S: usize>(
     run_primitive_inner(p, config, limits, None, 0)
 }
 
-/// Return all primitive transition events for bounded, small fixtures. No
-/// partial trace escapes on refusal; the input config is unchanged on error.
+/// Produce complete transition-level evidence for *small, bounded* fixtures.
+/// On refusal, the input configuration remains unchanged and no trace escapes.
+/// The explicit event cap avoids collecting arbitrarily large runs in RAM.
 pub fn run_primitive_traced<const R: usize, const S: usize>(
     p: &Program<R, S>,
     config: &mut Config<R, S>,

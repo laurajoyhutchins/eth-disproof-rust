@@ -1,0 +1,63 @@
+name: Python packet-degree correctness
+
+on:
+  push:
+    branches:
+      - optimization/packet-degree-zero-before-child-20261109
+      - python/sudoku-research
+    paths:
+      - 'src/non_exponential_sudoku/contraction/**'
+      - 'src/non_exponential_sudoku/core/**'
+      - 'src/non_exponential_sudoku/runtime/**'
+      - 'tests/unit/test_packet_degree_zero.py'
+      - 'tests/unit/test_child_zero_support.py'
+      - 'tests/unit/test_mode_valuation_pruning.py'
+      - '.github/workflows/python-packet-degree.yml'
+  pull_request:
+    branches:
+      - python/sudoku-research
+    paths:
+      - 'src/non_exponential_sudoku/contraction/**'
+      - 'src/non_exponential_sudoku/core/**'
+      - 'src/non_exponential_sudoku/runtime/**'
+      - 'tests/unit/test_packet_degree_zero.py'
+      - 'tests/unit/test_child_zero_support.py'
+      - 'tests/unit/test_mode_valuation_pruning.py'
+      - '.github/workflows/python-packet-degree.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: packet-degree-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-checkpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install pure Python test dependencies
+        run: python -m pip install -e '.[test]'
+      - name: Verify zero-degree certificates against exact child behavior
+        run: |
+          python -m pytest -q \
+            tests/unit/test_packet_degree_zero.py \
+            tests/unit/test_child_zero_support.py \
+            tests/unit/test_mode_valuation_pruning.py \
+            -m checkpoint \
+            --junitxml=packet-degree-junit.xml
+      - name: Retain exact-head JUnit test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packet-degree-junit-${{ github.sha }}
+          path: packet-degree-junit.xml
+          if-no-files-found: warn
+          retention-days: 7

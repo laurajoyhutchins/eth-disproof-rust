@@ -1,13 +1,21 @@
-# Source-defined attained-signature tuple frames (v0.17.0)
+# Source-defined attained-signature frame protocol (v0.17.0)
 
-Pinned source: openai/math@4eaee87548250b2682affda7d05d947c05554bae, SqrtLogSpace/SignatureTupleProgram.lean and SignatureTupleNative.lean.
+Pinned Lean reference: `openai/math@4eaee87548250b2682affda7d05d947c05554bae`, `SqrtLogSpace/SignatureTupleProgram.lean` and `SqrtLogSpace/SignatureTupleNative.lean`.
 
-This implements the original eight-label pushFrameProgram and the seven-label frame parser through actual lifted machine calls; physical cursor save/restore; representative frame record/drop; level descent/ascent; root presence test; transient-head clearing; and the predecessor fresh-latch initializer.
+The new `native_signature_frames.rs` implements the **physical stack instructions** for `pushFrameProgram`, `suspendCommand`, `resumeCommand`, `pushWordCommand`, `popWordCommand`, `saveCursorCommand`, `restoreCursorCommand`, `recordRepresentativeCommand`, `dropRepresentativeCommand`, `descendLevelCommand`, `ascendLevelCommand`, `testParentCommand`, `leaveHeadCommand`, and `initializeFreshCommand`.
 
-The frame writer costs exactly 5*n+5 machine instructions and prepends Encoding.frame(word.reverse), including a real delimiter for empty words. The source's 836..847 tuple bank and 36..39 controller-register ABI are reused from native_signature_tuple rather than redeclared. No recursive host tuple enumerator or semantic callback is used.
+- Twelve tuple stacks are 836 through 847; controller flags are registers 36 through 39. Suspended frames are stored on 836 and representative frames on 837.
+- The eight-label `pushFrameProgram` pushes a real delimiter for empty words and costs exactly `5*n+5` executed instructions. Its frame encoding is `Encoding.frame (word.reverse)`. A source `ParserProgram.frameProgram` call decodes the same frame.
+- `saveCursorCommand` pushes candidate stack 838, then remaining stack 843, onto frame stack 836. `restoreCursorCommand` reverses that precise order. Tests validate nested existing frame suffixes and both empty and nonempty words.
+- `recordRepresentativeCommand` copies the candidate to scratch 840, pushes an encoded frame to 837, and clears 840. `dropRepresentativeCommand` consumes one frame and leaves 840 empty.
+- `descendLevelCommand`/`ascendLevelCommand` physically update unary stacks 842 and 845. The parent guard checks frame *presence*, not whether the top bit is true.
+- `leaveHeadCommand` clears precisely [838,839,840,841,843,844,846,847], keeping controller cursor, frame and address ports.
+- All operations compile through `BitProgram` finite instructions with explicit `RunLimits`. No host-side stack mutation is part of the generated program.
 
-Independent Rust tests cover bit-level framing, nested empty/nonempty words, representative preservation, unary levels, protected ports, and bounded execution.
+## Verification
 
-Local standalone v0.17.0 archive: 128 passing tests in debug and release and strict fmt/Clippy. The committed incremental file tests are a focused subset of those local checks. The combined GitHub PR has not yet been freshly compiled.
+11 focused tests, including exhaustive short masks, empty delimiters, nested frame restoration, representative preservation, level round trips, dirty-latch reset, protected-port preservation, and bounded-resource refusal. Standalone v0.17.0: 128 tests passed in debug and release, `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` passed using the offline Rust 1.99.1 toolchain.
 
-Still unimplemented: SignatureTupleLoader.loadHead, AttainedSignatureProgram.Rescan.candidateProgram, QueryVisitorProgram.visitor, and full SignatureTupleComplete.command. Imported-source Lean/Rust differential trace verification remains outstanding.
+## Explicit remaining boundary
+
+This is **not** the complete `SignatureTupleComplete.command`. The physical loader (`SignatureTupleLoader.loadHead`), full `AttainedSignatureProgram.Rescan.candidateProgram` predicate, and `QueryVisitorProgram.visitor` must still be assembled with these primitives and tested with imported Lean traces. The complete GitHub branch, including concurrent changes, has not yet been run as a single local checkout.

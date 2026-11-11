@@ -407,12 +407,50 @@ pub const STAGES: &[Stage] = &[
         requires: &["normalization_literal_dedup"],
     },
     Stage {
+        id: "normalization_negated_query",
+        source_file: "SubexpNegatedQueryProgram.lean",
+        lean_symbol: "SubexpNegatedQueryProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_polarity"],
+    },
+    Stage {
+        id: "normalization_tautology_core",
+        source_file: "SubexpTautologyProgram.lean",
+        lean_symbol: "SubexpTautologyProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_negated_query", "encoded_record_membership"],
+    },
+    Stage {
+        id: "normalization_tautology_filter",
+        source_file: "SubexpTautologyFilterProgram.lean",
+        lean_symbol: "SubexpTautologyFilterProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &[
+            "normalization_tautology_core",
+            "normalization_record_reverse",
+        ],
+    },
+    Stage {
+        id: "normalization_prefix",
+        source_file: "SubexpNormalizationPrefixProgram.lean",
+        lean_symbol: "SubexpNormalizationPrefixProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &[
+            "normalization_literal_cleanup",
+            "normalization_tautology_filter",
+        ],
+    },
+    Stage {
         id: "normalization_full",
         source_file: "SubexpNormalizationProgram.lean",
         lean_symbol: "SubexpNormalizationProgram.program",
         status: Status::Stub,
         machine: Machine::Local,
-        requires: &["normalization_literal_cleanup", "normalization_polarity"],
+        requires: &["normalization_prefix"],
     },
     Stage {
         id: "frontend_header",
@@ -692,6 +730,24 @@ pub mod outer {
     /// This is not tautology removal, clause dedup or superset absorption.
     pub fn clean_literals() -> Result<Program<13, 11>, Error> {
         crate::native_literal_cleanup::clean_program()
+    }
+    /// Preserving reversed unary-polarity query with source 2x4 machine.
+    pub fn negated_query() -> Result<Program<2, 4>, Error> {
+        crate::native_negated_query::program()
+    }
+    /// Physical complementary-literal scanner on the original 10x8 bank.
+    pub fn tautology_clause() -> Result<Program<10, 8>, Error> {
+        crate::native_tautology_core::program()
+    }
+    /// Original formula-wide tautology filter on 13x11 source bank.
+    /// Neither clause deduplication nor strict subset filtering is performed.
+    pub fn tautology_filter() -> Result<Program<13, 11>, Error> {
+        crate::native_tautology_filter::program()
+    }
+    /// Executable source prefix: literal cleanup then tautology filtering.
+    /// Does not perform the later clause absorption or full frontend.
+    pub fn normalization_prefix() -> Result<Program<13, 11>, Error> {
+        crate::native_normalization_prefix::program()
     }
     /// Source-preserving body placement (1218 -> 265), not a CNF normalizer.
     pub fn place_body() -> Result<Cmd<80, 1220>, Error> {

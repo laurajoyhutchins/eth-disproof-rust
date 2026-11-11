@@ -179,7 +179,7 @@ def rust_instr(ins,atom=False):
     if name == 'halt' and not atom:
         return 'Instr::Halt'
     fields=(ATOM_FIELDS if atom else FIELDS)[name]
-    values=[('true' if value else 'false') if field=='value' else str(value)
+    values=[('true' if value else 'false') if name == 'set' and field == 'value' else str(value)
             for field,value in zip(fields,values)]
     return f"{'Atom' if atom else 'Instr'}::{RUST_NAMES[name]}" + (
         f" {{ {', '.join(f'{field}: {value}' for field,value in zip(fields,values))} }}" if fields else '')

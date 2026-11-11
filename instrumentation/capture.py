@@ -23,7 +23,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM = ROOT / "upstream/openai-math"
-LEAN_ROOT = UPSTREAM / "lean"
+LEAN_ROOT = Path(os.environ.get("LEAN_CAPTURE_PROJECT", str(UPSTREAM / "lean"))).resolve()
 PIN = "4eaee87548250b2682affda7d05d947c05554bae"
 VERSION = "leanprover/lean4:v4.34.1"
 SCHEMA = 1
@@ -82,6 +82,19 @@ def checked_process(args: list[str], cwd: Path) -> str:
 def source_environment() -> dict[str, str]:
     if not (UPSTREAM / ".git").exists():
         raise RuntimeError("Upstream submodule not initialized. Run git submodule update --init upstream/openai-math")
+    # An alternate Lake workspace is useful for building only the imported
+    # source closure. It must import the original checked-out OAI tree, not a
+    # copied or modified implementation.
+    if LEAN_ROOT != (UPSTREAM / "lean").resolve():
+        if (LEAN_ROOT / "OAI").resolve() != (UPSTREAM / "lean" / "OAI").resolve():
+            raise RuntimeError("Alternate Lean workspace must link the pinned original OAI source")
+    if not (LEAN_ROOT / "lakefile.lean").is_file():
+        raise RuntimeError(f"No Lake project at {LEAN_ROOT}")
+    mathlib = LEAN_ROOT / ".lake/packages/mathlib"
+    if mathlib.exists():
+        revision = checked_process(["git", "rev-parse", "HEAD"], mathlib)
+        if revision != "d13f23b723b8a846827a245b89c10fc7d3f11612":
+            raise RuntimeError(f"Unpinned Mathlib dependency: {revision}")
     head = checked_process(["git", "rev-parse", "HEAD"], UPSTREAM)
     if head != PIN:
         raise RuntimeError(f"Wrong original Lean source: expected {PIN}, got {head}")

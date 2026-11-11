@@ -155,9 +155,9 @@ impl<const R: usize, const S: usize> PairPorts<R, S> {
     }
 }
 
-/// `QueryStreamProgram.pairPorts`: regs 35–39, stacks 832–835.
+/// `QueryStreamProgram.pairPorts`: regs 0–4 (`Fin.castAddEmb 35`), stacks 832–835.
 pub fn query_pair_ports() -> PairPorts<40, 896> {
-    PairPorts::new([35, 36, 37, 38, 39], [832, 833, 834, 835])
+    PairPorts::new([0, 1, 2, 3, 4], [832, 833, 834, 835])
         .expect("source-defined pair ports are injective")
 }
 

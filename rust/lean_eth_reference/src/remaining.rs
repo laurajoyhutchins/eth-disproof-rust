@@ -303,12 +303,60 @@ pub const STAGES: &[Stage] = &[
         requires: &["leaf_local"],
     },
     Stage {
+        id: "encoded_membership_callback",
+        source_file: "ExecCNFMembership.lean",
+        lean_symbol: "ExecCNFMembership.callback",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "encoded_record_membership",
+        source_file: "ExecCNFMembership.lean",
+        lean_symbol: "ExecCNFMembership.rawMembershipProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["encoded_membership_callback"],
+    },
+    Stage {
+        id: "terminal_power",
+        source_file: "SqrtLogSpace/NativeTerminal.lean",
+        lean_symbol: "NativeTerminal.power",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "terminal_zero",
+        source_file: "SqrtLogSpace/NativeTerminal.lean",
+        lean_symbol: "NativeTerminal.zero",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "terminal_classifier",
+        source_file: "SqrtLogSpace/NativeTerminal.lean",
+        lean_symbol: "NativeTerminal.classifier",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["encoded_record_membership"],
+    },
+    Stage {
+        id: "terminal_ready",
+        source_file: "SqrtLogSpace/NativeTerminal.lean",
+        lean_symbol: "NativeTerminal.readyCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["terminal_classifier", "terminal_power", "terminal_zero"],
+    },
+    Stage {
         id: "terminal_dispatch",
         source_file: "SqrtLogSpace/NativeLeafDispatch.lean",
         lean_symbol: "NativeLeafDispatch.command",
-        status: Status::Stub,
+        status: Status::Partial,
         machine: Machine::Outer,
-        requires: &["leaf_execution"],
+        requires: &["terminal_ready", "leaf_execution"],
     },
     Stage {
         id: "leaf_command",
@@ -319,10 +367,186 @@ pub const STAGES: &[Stage] = &[
         requires: &["terminal_dispatch"],
     },
     Stage {
+        id: "ambient_header",
+        source_file: "SqrtLogSpace/NativeFrontend.lean",
+        lean_symbol: "Native.ambientCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "normalization_polarity",
+        source_file: "SubexpNormalizeProgram.lean",
+        lean_symbol: "SubexpNormalizeProgram.negateProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "normalization_record_reverse",
+        source_file: "SubexpNormalizeProgram.lean",
+        lean_symbol: "SubexpNormalizeProgram.reverseRecordsProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["encoded_record_membership"],
+    },
+    Stage {
+        id: "normalization_literal_dedup",
+        source_file: "ExecLiteralDedupProgram.lean",
+        lean_symbol: "ExecLiteralDedupProgram.dedupProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_record_reverse", "encoded_record_membership"],
+    },
+    Stage {
+        id: "normalization_literal_cleanup",
+        source_file: "ExecCleanLiteralsProgram.lean",
+        lean_symbol: "ExecCleanLiteralsProgram.cleanProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_literal_dedup"],
+    },
+    Stage {
+        id: "normalization_negated_query",
+        source_file: "SubexpNegatedQueryProgram.lean",
+        lean_symbol: "SubexpNegatedQueryProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_polarity"],
+    },
+    Stage {
+        id: "normalization_tautology_core",
+        source_file: "SubexpTautologyProgram.lean",
+        lean_symbol: "SubexpTautologyProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_negated_query", "encoded_record_membership"],
+    },
+    Stage {
+        id: "normalization_tautology_filter",
+        source_file: "SubexpTautologyFilterProgram.lean",
+        lean_symbol: "SubexpTautologyFilterProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &[
+            "normalization_tautology_core",
+            "normalization_record_reverse",
+        ],
+    },
+    Stage {
+        id: "normalization_prefix",
+        source_file: "SubexpNormalizationPrefixProgram.lean",
+        lean_symbol: "SubexpNormalizationPrefixProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &[
+            "normalization_literal_cleanup",
+            "normalization_tautology_filter",
+        ],
+    },
+    Stage {
+        id: "normalization_subset",
+        source_file: "ExecCNFSubset.lean",
+        lean_symbol: "ExecCNFSubset.subsetProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["encoded_record_membership"],
+    },
+    Stage {
+        id: "normalization_clause_relations",
+        source_file: "ExecClauseRelationsProgram.lean",
+        lean_symbol: "ExecClauseRelationsProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_subset"],
+    },
+    Stage {
+        id: "normalization_clause_relation_scan",
+        source_file: "ExecClauseRelationScan.lean",
+        lean_symbol: "ExecClauseRelationScan.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_clause_relations"],
+    },
+    Stage {
+        id: "normalization_preserving_relation_scan",
+        source_file: "ExecClauseRelationScanPreserve.lean",
+        lean_symbol: "ExecClauseRelationScan.Preserving.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &["normalization_clause_relation_scan"],
+    },
+    Stage {
+        id: "normalization_clause_dedup",
+        source_file: "ExecClauseDedupProgram.lean",
+        lean_symbol: "ExecClauseDedupProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &[
+            "normalization_preserving_relation_scan",
+            "normalization_record_reverse",
+        ],
+    },
+    Stage {
+        id: "normalization_strict_subset_filter",
+        source_file: "ExecClauseSelfFilterProgram.lean",
+        lean_symbol: "ExecClauseFiltersProgram.selfFilterProgram",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &[
+            "normalization_preserving_relation_scan",
+            "normalization_record_reverse",
+        ],
+    },
+    Stage {
+        id: "normalization_full",
+        source_file: "SubexpNormalizationProgram.lean",
+        lean_symbol: "SubexpNormalizationProgram.program",
+        status: Status::Executable,
+        machine: Machine::Local,
+        requires: &[
+            "normalization_prefix",
+            "normalization_clause_dedup",
+            "normalization_strict_subset_filter",
+        ],
+    },
+    Stage {
+        id: "frontend_normalization",
+        source_file: "SqrtLogSpace/NativeFrontend.lean",
+        lean_symbol: "Native.normalizationCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["normalization_full"],
+    },
+    Stage {
+        id: "frontend_header",
+        source_file: "SqrtLogSpace/NativeProgram.lean",
+        lean_symbol: "Native.headerCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["bit_machine"],
+    },
+    Stage {
+        id: "frontend_tail",
+        source_file: "SqrtLogSpace/NativeFrontend.lean",
+        lean_symbol: "Native.placeBodyCommand; Native.ambientCommand",
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["ambient_header"],
+    },
+    Stage {
         id: "frontend",
         source_file: "SqrtLogSpace/NativeFrontend.lean",
         lean_symbol: "Native.frontendCommand",
-        status: Status::Stub,
+        status: Status::Executable,
+        machine: Machine::Outer,
+        requires: &["frontend_header", "frontend_normalization", "frontend_tail"],
+    },
+    Stage {
+        id: "cutoff_scan",
+        source_file: "SqrtLogSpace/FiniteFallback.lean",
+        lean_symbol: "FiniteFallback.cutoffCommand",
+        status: Status::Executable,
         machine: Machine::Outer,
         requires: &["bit_machine"],
     },
@@ -332,7 +556,7 @@ pub const STAGES: &[Stage] = &[
         lean_symbol: "FiniteFallback.dispatchCommand",
         status: Status::Noncomputable,
         machine: Machine::Outer,
-        requires: &["frontend"],
+        requires: &["frontend", "cutoff_scan"],
     },
     Stage {
         id: "outer_setup",
@@ -354,9 +578,9 @@ pub const STAGES: &[Stage] = &[
         id: "answer_suffix",
         source_file: "SqrtLogSpace/NativeProgram.lean",
         lean_symbol: "Native.answerCommand",
-        status: Status::Stub,
+        status: Status::Executable,
         machine: Machine::Outer,
-        requires: &["outer_dfs"],
+        requires: &["bit_machine"],
     },
     Stage {
         id: "outer_command",
@@ -407,13 +631,6 @@ fn unavailable<T>(symbol: &'static str) -> Result<T, Error> {
 macro_rules! local_stub {
     ($name:ident, $symbol:literal) => {
         pub fn $name() -> Result<Cmd<40, 896>, Error> {
-            unavailable($symbol)
-        }
-    };
-}
-macro_rules! outer_stub {
-    ($name:ident, $symbol:literal) => {
-        pub fn $name() -> Result<Cmd<80, 1220>, Error> {
             unavailable($symbol)
         }
     };
@@ -501,8 +718,35 @@ pub mod leaf {
     pub fn execution(_local_command: Cmd<40, 896>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("NativeLeafExecution.command")
     }
-    pub fn terminal_dispatch(_nonterminal: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
-        unavailable("NativeLeafDispatch.command")
+    /// Source-defined seven-register, five-stack payload equality callback.
+    /// This is NOT the full encoded-record membership search or terminal classifier.
+    pub fn membership_callback() -> Result<Cmd<7, 5>, Error> {
+        crate::native_membership::membership_callback_command()
+    }
+    /// Actual complete source encoded-list membership machine, not a SAT oracle.
+    pub fn encoded_membership() -> Result<Program<7, 5>, Error> {
+        crate::native_record_membership::raw_membership_program()
+    }
+    /// Actual lifted terminal classifier; only canonical encoded input is supported.
+    pub fn terminal_classifier() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_terminal_classifier::terminal_classifier_command()
+    }
+    /// Actual source-ready terminal paths; the nonterminal leaf is still unsupported.
+    pub fn terminal_ready() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_terminal_classifier::ready_command()
+    }
+    /// Actual source-native terminal power after the caller proves F is empty.
+    pub fn terminal_power() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_terminal::terminal_power_command()
+    }
+    /// Actual source-native zero after the caller proves an empty clause.
+    pub fn terminal_zero() -> Result<Cmd<80, 1220>, Error> {
+        Ok(crate::native_terminal::terminal_zero_command())
+    }
+    /// Real source NativeLeafDispatch.command with a supplied physical leaf.
+    /// This does not furnish the missing nonterminal NativeLeafProgram.
+    pub fn terminal_dispatch(nonterminal: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
+        crate::native_leaf_dispatch::command(nonterminal)
     }
     pub fn command(_k: usize) -> Result<Cmd<80, 1220>, Error> {
         unavailable("NativeLeafProgram.command")
@@ -516,7 +760,110 @@ pub mod leaf {
 /// FiniteFallback's source-chosen lookup table has no constructive Rust data.
 pub mod outer {
     use super::*;
-    outer_stub!(frontend, "Native.frontendCommand");
+    /// Executable Lean FiniteFallback.cutoffCommand before dispatch.
+    /// The bounded counting table and the outer entry remain unsupported.
+    pub fn cutoff_scan(cutoff: usize) -> Result<Program<80, 1220>, Error> {
+        crate::finite_fallback::cutoff_program(cutoff)
+    }
+    /// Source-defined physical header extraction only; not a complete frontend.
+    pub fn ambient_header() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_ambient::ambient_command()
+    }
+    /// Actual source-linked 19-label unary parser and binary length stage.
+    pub fn frontend_header() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_frontend_header::header_command()
+    }
+    /// Source finite polarity-bit reversal for a single unary literal code.
+    pub fn negate_literal() -> Result<Program<2, 2>, Error> {
+        crate::native_normalization_primitives::negate_literal_program()
+    }
+    /// Source finite record-order reversal, before lifting to any bank.
+    pub fn reverse_records() -> Result<Program<3, 4>, Error> {
+        crate::native_normalization_primitives::reverse_records_program()
+    }
+    /// Full source finite literal deduplication within one framed clause.
+    pub fn dedup_literals() -> Result<Program<10, 8>, Error> {
+        crate::native_literal_dedup::dedup_program()
+    }
+    /// Source finite clause-wise literal cleanup on original 13x11 machine.
+    /// This is not tautology removal, clause dedup or superset absorption.
+    pub fn clean_literals() -> Result<Program<13, 11>, Error> {
+        crate::native_literal_cleanup::clean_program()
+    }
+    /// Preserving reversed unary-polarity query with source 2x4 machine.
+    pub fn negated_query() -> Result<Program<2, 4>, Error> {
+        crate::native_negated_query::program()
+    }
+    /// Physical complementary-literal scanner on the original 10x8 bank.
+    pub fn tautology_clause() -> Result<Program<10, 8>, Error> {
+        crate::native_tautology_core::program()
+    }
+    /// Original formula-wide tautology filter on 13x11 source bank.
+    /// Neither clause deduplication nor strict subset filtering is performed.
+    pub fn tautology_filter() -> Result<Program<13, 11>, Error> {
+        crate::native_tautology_filter::program()
+    }
+    /// Executable source prefix: literal cleanup then tautology filtering.
+    /// Does not perform the later clause absorption or full frontend.
+    pub fn normalization_prefix() -> Result<Program<13, 11>, Error> {
+        crate::native_normalization_prefix::program()
+    }
+    /// Actual source finite clause subset machine on 10x8 bit ports.
+    pub fn subset_clause() -> Result<Program<10, 8>, Error> {
+        crate::native_clause_relations::subset_program()
+    }
+    /// Both directional physical subset checks, 12x10 machine.
+    pub fn clause_relations() -> Result<Program<12, 10>, Error> {
+        crate::native_clause_relations::relation_program()
+    }
+    /// Three-mode source record scan on encoded formula, 15x12.
+    pub fn relation_scan(
+        mode: crate::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 12>, Error> {
+        crate::native_clause_relation_scan::program(mode)
+    }
+    /// Source physical preserving scanner on 15x13 work bank.
+    pub fn preserving_relation_scan(
+        mode: crate::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 13>, Error> {
+        crate::native_clause_dedup::preserving_scan_program(mode)
+    }
+    /// Last-equivalent-clause selection with original source order.
+    pub fn dedup_clauses() -> Result<Program<15, 16>, Error> {
+        crate::native_clause_dedup::program()
+    }
+    /// Strict-subset physical self-filter, 15x16.
+    pub fn filter_supersets() -> Result<Program<15, 16>, Error> {
+        crate::native_clause_filter::self_filter_program(
+            crate::native_clause_relation_scan::Mode::StrictSubset,
+        )
+    }
+    /// Complete source normalization: literal cleanup, tautology filter,
+    /// clause deduplication and strict-subset absorption. Not a SAT oracle.
+    pub fn normalization_full() -> Result<Program<15, 16>, Error> {
+        crate::native_normalization_full::program()
+    }
+    /// Physically execute full normalized-body transformation in Native's
+    /// 80x1220 ABI, preserving original input stack 256 and binary header 267.
+    pub fn frontend_normalization() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_outer_normalization::command()
+    }
+    /// Source-preserving body placement (1218 -> 265), not a CNF normalizer.
+    pub fn place_body() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_frontend_tail::place_body_command()
+    }
+    /// The two final source-native frontend operations. Header and
+    /// normalization must have already executed on the real machine.
+    pub fn frontend_tail() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_frontend_tail::frontend_tail_command()
+    }
+    /// Full source-defined Native.frontendCommand. Input: canonical
+    /// Encoding.encodeCNF on stack 256 with all work stacks initially empty.
+    /// Output: normalized body 265, unary ambient 258, binary dimension 267,
+    /// original encoded input preserved on 256. No #SAT count is produced.
+    pub fn frontend() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_frontend::command()
+    }
     pub fn finite_fallback(_cutoff: usize, _large: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("FiniteFallback.dispatchCommand (noncomputable lookup)")
     }
@@ -526,7 +873,11 @@ pub mod outer {
     pub fn dfs(_k: usize, _leaf: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("DFSCountProgram.command")
     }
-    outer_stub!(answer_suffix, "Native.answerCommand");
+    /// Complete source-defined physical full-word positivity suffix.
+    /// This does not compute the count or make the outer DFS executable.
+    pub fn answer_suffix() -> Result<Cmd<80, 1220>, Error> {
+        crate::native_answer::answer_command()
+    }
     pub fn outer_command(_k: usize, _leaf: Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> {
         unavailable("Native.outerCommand")
     }

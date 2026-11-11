@@ -37,7 +37,17 @@ fn dependency_spine_is_ordered_and_machine_bounds_are_declared() {
         remaining::SOURCE_COMMIT,
         "4eaee87548250b2682affda7d05d947c05554bae"
     );
-    assert_eq!(remaining::STAGES.len(), 43);
+    // Stage count is intentionally not fixed: the dependency graph checks
+    // uniqueness, source identity, topological order and final proof boundary.
+    for id in [
+        "normalization_polarity",
+        "normalization_record_reverse",
+        "normalization_literal_dedup",
+        "normalization_literal_cleanup",
+        "normalization_full",
+    ] {
+        assert!(known.contains(id), "missing source stage: {id}");
+    }
     assert_eq!(remaining::STAGES.last().unwrap().id, "final_theorem");
 }
 
@@ -72,7 +82,9 @@ fn unported_query_and_leaf_commands_refuse_all_parameters() {
     refused(leaf::local_command(0));
     refused(leaf::local_program(3));
     refused(leaf::execution(Cmd::Skip));
-    refused(leaf::terminal_dispatch(Cmd::Skip));
+    // The source generic dispatcher is now executable, but the actual
+    // nonterminal leaf remains explicitly unavailable.
+    leaf::terminal_dispatch(Cmd::Skip).expect("source generic dispatch must compile");
     refused(leaf::command(3));
     refused(leaf::program(3));
 }
@@ -80,12 +92,14 @@ fn unported_query_and_leaf_commands_refuse_all_parameters() {
 #[test]
 fn outer_count_and_primitive_do_not_fall_back_to_semantic_enumeration() {
     use remaining::{outer, primitive};
-    refused(outer::frontend());
+    outer::frontend().expect("complete source Native frontend must construct");
     refused(outer::finite_fallback(0, Cmd::Skip));
     refused(outer::finite_fallback(usize::MAX, Cmd::Skip));
     refused(outer::setup(2));
     refused(outer::dfs(2, Cmd::Skip));
-    refused(outer::answer_suffix());
+    // The physical full-word positivity suffix is executable; it does not
+    // compute a CNF count by itself.
+    outer::answer_suffix().expect("source positivity suffix must compile");
     refused(outer::outer_command(2, Cmd::Skip));
     refused(outer::entry(0, Cmd::Skip));
     refused(outer::counting_program(100, 2, Cmd::Skip));

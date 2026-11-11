@@ -678,10 +678,58 @@ pub mod bit_program;
 pub mod native_high;
 pub mod native_tuple;
 
+pub mod finite_fallback;
+pub mod native_ambient;
+pub mod native_answer;
+/// Source-defined post-normalization body placement and ambient header suffix.
+pub mod native_frontend_tail;
 pub mod native_layout;
 pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;
+
+/// Literal cleanup across framed clauses on original 13x11 machine.
+pub mod native_literal_cleanup;
+/// Actual nested literal deduplication on source 10x8 machine.
+pub mod native_literal_dedup;
+/// Source-defined preserving unary-polarity complement query.
+pub mod native_negated_query;
+/// Exact source prefix: physical clause-wise literal cleanup then tautology removal.
+pub mod native_normalization_prefix;
+/// Source-native finite unary polarity, frame writer and record reversal.
+pub mod native_normalization_primitives;
+/// Physical complementary-literal search inside one encoded clause.
+pub mod native_tautology_core;
+/// Original nested formula-wide tautology filter and record-order restoration.
+pub mod native_tautology_filter;
+
+/// Preserving equivalence scans and last-occurrence clause deduplication.
+pub mod native_clause_dedup;
+/// Source fixed-master strict-subset filtering of clause records.
+pub mod native_clause_filter;
+/// Three-mode encoded formula relation scanner.
+pub mod native_clause_relation_scan;
+/// Source physical clause subset and dual-direction relation kernel.
+pub mod native_clause_relations;
+/// Complete original physical Native.frontendCommand on the 80x1220 machine.
+pub mod native_frontend;
+/// Source-fixed unary header reader and binary length initializer.
+pub mod native_frontend_header;
+pub mod native_membership;
+/// Complete source-defined CNF normalization command on 15x16 machine.
+pub mod native_normalization_full;
+/// Original 80x1220 lift of the source-normalizing 15x16 machine.
+pub mod native_outer_normalization;
+pub mod native_terminal;
+
+/// Exact framed-record iteration and fixed-control membership program.
+pub mod native_record_membership;
+
+/// Source physical terminal classification and guarded 80x1220 output.
+pub mod native_terminal_classifier;
+
+/// Source-defined generic terminal/nonterminal branch dispatcher; no leaf oracle.
+pub mod native_leaf_dispatch;
 
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;

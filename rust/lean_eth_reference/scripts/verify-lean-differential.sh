@@ -93,11 +93,11 @@ esac
 for part in "${suites[@]}"; do
   case "$part" in
     full) lean=lean_full_machine_trace.lean; bin=lean-full-machine-trace; compare=compare-full-machine-trace.py; modules=(SqrtLog.HighIncidenceProgramBranches) ;;
-    high) lean=lean_native_high_trace.lean; bin=native-high-trace; compare=compare-native-high-trace.py; modules=(SqrtLog.HighIncidenceProgramBranches SqrtLogSpace.HighCountSeed) ;;
-    tuple) lean=lean_native_tuple_trace.lean; bin=native-tuple-trace; compare=compare-native-tuple-trace.py; modules=(ExecCNFTupleOdometer ExecCNFTupleEnumeration) ;;
-    layout) lean=lean_native_layout_pair_trace.lean; bin=native-layout-pair-trace; compare=compare-native-layout-pair-trace.py; modules=(SqrtLogSpace.NativeLayoutLoad SqrtLogSpace.PairNativeSetup) ;;
-    nodes) lean=lean_native_nodes_trace.lean; bin=native-nodes-trace; compare=compare-native-nodes-trace.py; modules=(SqrtLogSpace.QueryAssembler SqrtLogSpace.QueryNodeFinish) ;;
-    query) lean=lean_native_query_prefix_trace.lean; bin=native-query-prefix-trace; compare=compare-native-query-prefix-trace.py; modules=(SqrtLogSpace.HighQueryAdapter) ;;
+    high) lean=lean_native_high_trace.lean; bin=native-high-trace; modules=(SqrtLog.HighIncidenceProgramBranches SqrtLogSpace.HighCountSeed) ;;
+    tuple) lean=lean_native_tuple_trace.lean; bin=native-tuple-trace; modules=(ExecCNFTupleOdometer ExecCNFTupleEnumeration) ;;
+    layout) lean=lean_native_layout_pair_trace.lean; bin=native-layout-pair-trace; modules=(SqrtLogSpace.NativeLayoutLoad SqrtLogSpace.PairNativeSetup) ;;
+    nodes) lean=lean_native_nodes_trace.lean; bin=native-nodes-trace; modules=(SqrtLogSpace.QueryAssembler SqrtLogSpace.QueryNodeFinish) ;;
+    query) lean=lean_native_query_prefix_trace.lean; bin=native-query-prefix-trace; modules=(SqrtLogSpace.HighQueryAdapter) ;;
   esac
   # Rebuild imported target modules from the pinned source so stale OAI .olean
   # files from a different revision cannot masquerade as upstream code.
@@ -108,7 +108,14 @@ for part in "${suites[@]}"; do
   rm -f -- "$OUT/$part.lean.trace" "$OUT/$part.rust.trace" "$OUT/$part.pass"
   (cd "$UPSTREAM/lean" && env -u LEAN_PATH -u LEAN_SRC_PATH lake env lean --run "$CRATE/reference/$lean") > "$OUT/$part.lean.trace"
   "$REPOSITORY/target/debug/$bin" > "$OUT/$part.rust.trace"
-  python3 "$CRATE/scripts/$compare" --lean "$OUT/$part.lean.trace" --rust "$OUT/$part.rust.trace"
+  if [[ "$part" == full ]]; then
+    # The full-state Python parser remains shared with the resource profiler.
+    python3 "$CRATE/scripts/$compare" --lean "$OUT/$part.lean.trace" --rust "$OUT/$part.rust.trace"
+  else
+    # One Rust validator for all five source-specific snapshot schemas.
+    "$REPOSITORY/target/debug/compare-traces" --suite "$part" \
+      --lean "$OUT/$part.lean.trace" --rust "$OUT/$part.rust.trace"
+  fi
   if [[ "$part" == full ]]; then
     # Independent state comparison must pass before extra profiling.
     rm -f -- "$OUT/full.rust.ops.csv" "$OUT/full.profile.json"

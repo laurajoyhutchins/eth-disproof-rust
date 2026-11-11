@@ -298,7 +298,7 @@ fn native_metrics(path: &Path, profiles: &BTreeMap<String, Profile>) -> Fallible
         }
         let mut fields = ACCOUNTS
             .iter()
-            .map(|k| format!("{}:{}", quote(k), totals[k]))
+            .map(|k| format!("{}:{}", quote(k), totals[*k]))
             .collect::<Vec<_>>();
         fields.push(format!(
             "\"by_opcode\":{{{}}}",

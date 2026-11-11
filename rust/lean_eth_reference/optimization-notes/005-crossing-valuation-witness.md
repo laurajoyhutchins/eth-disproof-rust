@@ -1,5 +1,7 @@
 # Optimization experiment 005: certify crossing weights from actual geometry
 
+> **Read experiment 006 before using these weights for pruning.** This note certifies one row's coefficient, not a whole mode variable. A mode is shared across all its contributing target rows; its safe weight is the minimum row weight. In dense packets the extra geometry-specific improvement can disappear entirely.
+
 **Status:** isolated, locally tested mathematical witness. Not yet connected
 to the manuscript's real packet traversal or recursive contraction.
 

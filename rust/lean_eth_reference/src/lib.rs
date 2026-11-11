@@ -747,3 +747,6 @@ pub mod valuation_modes;
 
 /// Experimental source-geometry valuation certificates.
 pub mod valuation_witness;
+
+/// Conditional whole-mode (rather than single-row) valuation certificates.
+pub mod valuation_mode_certificate;

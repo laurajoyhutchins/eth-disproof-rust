@@ -76,9 +76,27 @@ pub fn count_tuples(
     if precision == 0 {
         return Ok(0);
     }
+    count_explicit_weights(&weights(modes, policy)?, precision)
+}
+
+/// Count tuples with externally certified positive mode weights. The source
+/// interpreter is unaffected; this is only the same checked generating-
+/// function recurrence reused for conditional whole-mode certificates.
+pub fn count_explicit_weights(weights: &[usize], precision: usize) -> Result<u128, Error> {
+    if weights.contains(&0) {
+        return Err(Error::Invalid("mode weight must be positive".into()));
+    }
+    if precision > MAX_PRECISION || weights.len() > MAX_MODES {
+        return Err(Error::Capacity(
+            "experimental mode counting envelope".into(),
+        ));
+    }
+    if precision == 0 {
+        return Ok(0);
+    }
     let mut by_degree = vec![0u128; precision];
     by_degree[0] = 1;
-    for weight in weights(modes, policy)? {
+    for &weight in weights {
         for d in weight..precision {
             by_degree[d] = by_degree[d]
                 .checked_add(by_degree[d - weight])

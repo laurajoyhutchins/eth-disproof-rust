@@ -8,6 +8,8 @@ use std::fmt::Write;
 const SOURCE_COMMIT: &str = "4eaee87548250b2682affda7d05d947c05554bae";
 const QUERY_SOURCE_BLOB: &str = "c2fb29983bb33229d5cf60729cd3d1e37b9b00ca";
 
+// This shared module is also compiled by build.rs, which uses only Fixture.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TableKind {
     /// Accept only the provenance fields and ABI of the original query program.

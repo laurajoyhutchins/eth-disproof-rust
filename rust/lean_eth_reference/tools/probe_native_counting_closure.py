@@ -65,7 +65,7 @@ def phase_imports(phase: str) -> str:
     modules = [module]
     if phase in {"dfs", "outer", "complete"}:
         modules.append(MODULE_LEAF)
-    return "".join(f"import {m}\\n" for m in dict.fromkeys(modules))
+    return "".join(f"import {m}\n" for m in dict.fromkeys(modules))
 
 
 def wrapper_for(phase: str, width: int, cutoff: int) -> tuple[str, tuple[int, ...]]:
@@ -76,8 +76,7 @@ def wrapper_for(phase: str, width: int, cutoff: int) -> tuple[str, tuple[int, ..
     expression, r, s, inp, out, _module = PHASES[phase]
     expression = expression.format(k=width, cutoff=cutoff)
     wrapper = (
-        f"import {MODULE_OUTER}\n"
-        f"import {MODULE_LEAF}\n"
+        phase_imports(phase)
         f"namespace {PREFIX}.CountingProbe\n"
         f"open {PREFIX}\n"
         "open BitProgram StructuredCalls\n"
@@ -131,7 +130,7 @@ def source_for(wrapper: str, phase: str, source_blob: str, max_labels: int) -> s
     # before the synthetic wrapper and export invocation.
     definitions = wrapper.split(f"namespace {PREFIX}.CountingProbe", 1)[1]
     return (
-        f"import {MODULE_OUTER}\nimport {MODULE_LEAF}\n"
+        phase_imports(phase)
         + LEAN.read_text()
         + f"\nnamespace {PREFIX}.CountingProbe" + definitions
         + "\nset_option maxHeartbeats 2000000\n"

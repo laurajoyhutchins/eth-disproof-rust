@@ -142,7 +142,10 @@ def run(a) -> dict:
     upstream, lake_root = a.upstream.resolve(), a.lake_root.resolve()
     pins = ensure_pinned(upstream, lake_root)
     insist(a.max_labels >= 1 and a.max_labels <= 8192, "invalid finite callee limit")
-    phases = list(PHASES) if a.phase == "all" else [a.phase]
+    requested = a.phase if isinstance(a.phase, list) else [a.phase]
+    phases = list(PHASES) if "all" in requested else requested
+    insist(len(phases) == len(set(phases)) and all(x in PHASES for x in phases),
+           "duplicate or unknown counting phases")
     a.output_dir.mkdir(parents=True, exist_ok=True)
     report_path = a.output_dir / "counting-closure-report.json"
     report_path.unlink(missing_ok=True)
@@ -159,7 +162,8 @@ def run(a) -> dict:
         }, sort_keys=True, indent=2) + "\n")
 
     checkpoint()
-    previous_module = None
+    prepared_modules: set[str] = set()
+    failed_modules: dict[str, str] = {}
     for phase in phases:
         _expr, _r, _s, _in, _out, module = PHASES[phase]
         source_relative = "lean/" + module.replace(".", "/") + ".lean"
@@ -172,16 +176,55 @@ def run(a) -> dict:
                 probe = Path(tmp) / "CountingProbe.lean"
                 probe.write_text(source_for(wrapper, phase, blob, a.max_labels),
                                  encoding="utf-8")
-                if module != previous_module:
-                    build = subprocess.run(
-                        ["lake", "-K", "maxJobs=2", "build", module],
-                        cwd=lake_root, capture_output=True, text=True,
-                        timeout=a.timeout_seconds,
-                    )
-                    if build.returncode:
-                        raise RuntimeError("Lean original source module build: " +
-                                           (build.stdout + build.stderr)[-3000:])
-                    previous_module = module
+                # A single invocation shares successful module builds and
+                # remembers unsuccessful ones: a timed-out dependency must not
+                # be rebuilt independently for every counting stage.
+                modules = list(dict.fromkeys([module] +
+                    ([MODULE_LEAF] if phase in {"dfs", "outer", "complete"} else [])))
+                for dependency in modules:
+                    if dependency in failed_modules:
+                        raise RuntimeError(
+                            f"DEPENDENCY_NOT_READY {dependency}: {failed_modules[dependency]}")
+                    if dependency in prepared_modules:
+                        continue
+                    # Explicit --no-build separates source export from the
+                    # expensive original .olean prerequisite. No guessed graph
+                    # status may be reported when the import was not built.
+                    if getattr(a, "no_build", False):
+                        artifact = lake_root / ".lake/build/lib/lean" / (
+                            dependency.replace(".", "/") + ".olean")
+                        if not artifact.is_file():
+                            failed_modules[dependency] = "original .olean missing (no-build)"
+                            raise RuntimeError(
+                                f"DEPENDENCY_NOT_READY {dependency}: original .olean missing")
+                    else:
+                        argv = ["lake", "-K", "maxJobs=2", "build", dependency]
+                        try:
+                            build = subprocess.run(
+                                argv, cwd=lake_root, capture_output=True, text=True,
+                                timeout=getattr(a, "build_timeout_seconds", a.timeout_seconds),
+                            )
+                        except subprocess.TimeoutExpired as exc:
+                            summary = (
+                                (exc.stdout or b"")[-3000:] +
+                                b"\\n" + (exc.stderr or b"")[-3000:]
+                            ).decode("utf-8", errors="replace") if isinstance(
+                                exc.stdout, bytes) or isinstance(exc.stderr, bytes) else (
+                                str(exc.stdout or "")[-3000:] + "\\n" +
+                                str(exc.stderr or "")[-3000:])
+                            failed_modules[dependency] = "build timeout"
+                            atomic_write(a.output_dir / (
+                                phase + ".build.log"), summary + "\\n")
+                            raise RuntimeError(
+                                f"DEPENDENCY_BUILD_TIMEOUT {dependency}: {summary[-1000:]}")
+                        summary = build.stdout[-6000:] + "\\n" + build.stderr[-6000:]
+                        atomic_write(a.output_dir / (phase + ".build.log"),
+                                     summary + "\\n")
+                        if build.returncode:
+                            failed_modules[dependency] = "build failed"
+                            raise RuntimeError(
+                                f"DEPENDENCY_BUILD_FAILED {dependency}: {summary[-2500:]}")
+                    prepared_modules.add(dependency)
                 result = subprocess.run(
                     ["lake", "env", "lean", str(probe)],
                     cwd=lake_root, capture_output=True, text=True,
@@ -221,14 +264,22 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     for key in ("upstream", "lake-root", "output-dir"):
         p.add_argument("--" + key, type=Path, required=True)
-    p.add_argument("--phase", choices=["all", *PHASES], default="all")
+    p.add_argument("--phase", choices=["all", *PHASES], action="append",
+                   default=None, help="repeat to probe ordered stages in one shared build")
     p.add_argument("--width", type=int, default=3)
     p.add_argument("--cutoff", type=int, default=20)
     p.add_argument("--max-labels", type=int, default=4096)
-    p.add_argument("--timeout-seconds", type=int, default=240)
+    p.add_argument("--timeout-seconds", type=int, default=240,
+                   help="per-stage Lean graph export budget")
+    p.add_argument("--build-timeout-seconds", type=int, default=900,
+                   help="one-time budget per required original Lean module")
+    p.add_argument("--no-build", action="store_true",
+                   help="probe only when original module .olean prerequisites exist")
     a = p.parse_args()
-    if not (10 <= a.timeout_seconds <= 1200):
-        p.error("invalid Lean probe timeout")
+    a.phase = a.phase or ["all"]
+    if not (10 <= a.timeout_seconds <= 1200 and
+            10 <= a.build_timeout_seconds <= 1800):
+        p.error("invalid Lean compilation budget")
     run(a)
 
 

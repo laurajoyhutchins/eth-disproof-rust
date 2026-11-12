@@ -103,6 +103,44 @@ Lean trace for the terminal counter composition itself, then extend the
 source-native path to **one real nonterminal formula** before claiming a
 general counter.
 
+## Formal transfer boundary: original Lean program versus Rust process
+
+[Draft primitive-identity proof #178](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/178)
+extends the source-indexed Lean graph agreement of #170/#171. For a
+`StructuredCalls.Cmd` `c`, a certified graph with the source input/output
+ports, original entry, and **all** source instructions yields equality of
+`BitProgram.Program` objects. Applying
+`SqrtLogSpace.GuardedCompiler.primitive` to equal programs gives the
+**same abstract primitive TM2 machine**. Once kernel-checked at an exact
+revision, this allows original Lean trace/time/visited-space theorems to
+transfer to that certified **Lean** graph by rewriting, with no empirical
+extrapolation.
+
+The statement is intentionally not a Rust resource theorem:
+
+- **Lean source proof:** bounds `locatedStep` transitions of the abstract
+  `GuardedCompiler.primitive` and `visitedSpace` at **every execution
+  prefix**, subject to the original theorem's hypotheses.
+- **Rust source-machine correspondence:** requires the full source command
+  exported and kernel-certified, then verified that the native JSON decoder,
+  deferred instruction lookup, all ports and traces implement the certified
+  physical program on the stated domain. Current selected-program checks do
+  not prove this universally.
+- **Rust performance:** `Instant` durations, allocations, capacity and
+  process memory are observations of a host implementation, not bounds on
+  the abstract TM2 and not a proof of the ETH asymptotic rate. A slow Rust
+  emulator does not contradict a fast formal machine, and a fast Rust emulator
+  does not establish the formal complexity theorem.
+
+The original `SqrtLogSpace/Final.lean:compiled_exact_count_and_sat` theorem
+has both an `n ≤ cutoff` **noncomputable finite table** branch and an
+`n > cutoff` large-machine branch. The current executable Rust policy
+remains to refuse the former and to support the latter **only after** the
+source-defined native counter and its correctness tests run. See
+[`m2-finite-fallback-decision.md`](m2-finite-fallback-decision.md).
+Full-domain executable equality cannot be asserted while the source-selected
+finite table has no certified constructive representation.
+
 ## Live instrumented Rust per-stage profile (no Lean assertion)
 
 ```sh

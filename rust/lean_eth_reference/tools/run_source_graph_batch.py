@@ -93,8 +93,10 @@ def main():
                     cwd=a.lake_root,capture_output=True,text=True,
                     timeout=a.timeout_seconds)
                 if proof.returncode or proof.stdout.strip():
+                    atomic_write(certdir/(record['id']+'.diagnostics.txt'),
+                        proof.stdout+'\n'+proof.stderr)
                     raise ValueError('Lean kernel source-graph certificate failed: '+
-                        proof.stderr[-3000:]+proof.stdout[-3000:])
+                        proof.stdout[:2400]+proof.stderr[:2400])
                 cert_receipt['status']='LEAN_KERNEL_CERTIFIED_PHYSICAL_PROGRAM'
                 cert_receipt['lean_version']=pin['lean']
                 atomic_write(certdir/(record['id']+'.receipt.json'),

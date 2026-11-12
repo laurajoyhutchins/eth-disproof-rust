@@ -214,7 +214,12 @@ def rust_instr(ins,atom=False):
 
 
 class RustGenerator:
-    def __init__(self,r,s): self.r,self.s,self.lines,self.n=r,s,[],0
+    def __init__(self,r,s):
+        self.r,self.s,self.lines,self.n=r,s,[],0
+        # Identical source call programs are immutable Arc-backed leaves.
+        # Cache the complete ABI and physical table, never a display name.
+        self.callees: dict[tuple, str] = {}
+
     def emit(self,node:Node):
         children=[self.emit(ch) for ch in node.children]
         name=f'n{self.n}';self.n+=1
@@ -225,9 +230,17 @@ class RustGenerator:
             case 'if':expr=f"Block::ite({node.args['test']}, {children[0]}, {children[1]})?"
             case 'while':expr=f"Block::while_({node.args['test']}, {children[0]})?"
             case 'call':
-                instr=', '.join(rust_instr(row) for row in node.table)
-                expr=(f'Block::call(DeferredProgram::table(Program::<{self.r},{self.s}>::new('
-                      f"{node.args['input']}, {node.args['output']}, {node.args['entry']}, vec![{instr}])?))")
+                key=(node.args['input'],node.args['output'],node.args['entry'],node.table)
+                callee=self.callees.get(key)
+                if callee is None:
+                    callee=f'table_{len(self.callees)}'
+                    instr=', '.join(rust_instr(row) for row in node.table)
+                    self.lines.append(
+                        f'    let {callee} = DeferredProgram::table(Program::<{self.r},{self.s}>::new('
+                        f"{node.args['input']}, {node.args['output']}, {node.args['entry']}, vec![{instr}])?);"
+                    )
+                    self.callees[key]=callee
+                expr=f'Block::call({callee}.clone())'
             case _:raise ValueError('unhandled source node')
         self.lines.append(f'    let {name} = {expr};')
         return name

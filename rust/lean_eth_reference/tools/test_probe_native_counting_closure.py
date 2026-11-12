@@ -124,5 +124,80 @@ class CountingPhaseContracts(unittest.TestCase):
             self.assertIn("finite callee", report["refused"][0]["detail"])
 
 
+    def test_build_timeout_blocks_downstream_without_rebuilding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            upstream, lake, output = root / "original", root / "lean", root / "out"
+            module = PHASES["marked-query"][-1]
+            source = upstream / ("lean/" + module.replace(".", "/") + ".lean")
+            source.parent.mkdir(parents=True)
+            source.write_text("-- original source placeholder\n")
+            lake.mkdir()
+            calls = []
+            a = types.SimpleNamespace(
+                upstream=upstream, lake_root=lake, output_dir=output,
+                width=3, cutoff=20, max_labels=4096,
+                timeout_seconds=30, build_timeout_seconds=200,
+                phase=["marked-query", "leaf", "outer", "complete"],
+                no_build=False,
+            )
+            def slow_build(argv, **kwargs):
+                calls.append(argv)
+                raise __import__("subprocess").TimeoutExpired(
+                    argv, kwargs["timeout"], output=b"building original OAI\n",
+                    stderr=b"source closure incomplete\n",
+                )
+            with patch("probe_native_counting_closure.ensure_pinned", return_value={}), \
+                 patch("probe_native_counting_closure.subprocess.run",
+                       side_effect=slow_build):
+                with self.assertRaises(SystemExit):
+                    run(a)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0][-1], module)
+            report = json.loads((output / "counting-closure-report.json").read_text())
+            self.assertEqual(report["attempted"], 1)
+            self.assertEqual(report["refused"][0]["phase"], "marked-query")
+            self.assertIn("DEPENDENCY_BUILD_TIMEOUT",
+                          report["refused"][0]["detail"])
+            self.assertEqual(report["not_attempted"], ["leaf", "outer", "complete"])
+            self.assertIn("source closure incomplete",
+                          (output / "marked-query.build.log").read_text())
+            self.assertFalse(report["complete_counting_verified"])
+
+    def test_no_build_refuses_uncompiled_original_module_before_export(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            upstream, lake, output = root / "original", root / "lean", root / "out"
+            module = PHASES["marked-query"][-1]
+            source = upstream / ("lean/" + module.replace(".", "/") + ".lean")
+            source.parent.mkdir(parents=True)
+            source.write_text("-- source placeholder\n")
+            lake.mkdir()
+            a = types.SimpleNamespace(
+                upstream=upstream, lake_root=lake, output_dir=output,
+                width=3, cutoff=20, max_labels=4096,
+                timeout_seconds=30, phase=["marked-query", "leaf"], no_build=True,
+            )
+            with patch("probe_native_counting_closure.ensure_pinned", return_value={}), \
+                 patch("probe_native_counting_closure.subprocess.run") as mock_run:
+                with self.assertRaises(SystemExit):
+                    run(a)
+                mock_run.assert_not_called()
+            report = json.loads((output / "counting-closure-report.json").read_text())
+            self.assertEqual(report["not_attempted"], ["leaf"])
+            self.assertIn("original .olean missing", report["refused"][0]["detail"])
+
+    def test_imports_are_stage_scoped(self):
+        from probe_native_counting_closure import phase_imports
+        marked = phase_imports("marked-query")
+        self.assertIn("import " + PHASES["marked-query"][-1], marked)
+        self.assertNotIn("NativeOuter", marked)
+        self.assertNotIn("NativeLeafProgram", marked)
+        complete = phase_imports("complete")
+        self.assertIn("import " + PHASES["complete"][-1], complete)
+        self.assertIn("import " + PHASES["leaf"][-1], complete)
+
+
+
 if __name__ == "__main__":
     unittest.main()

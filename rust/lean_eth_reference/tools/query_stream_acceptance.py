@@ -154,7 +154,7 @@ def compile_query(args):
             fail("generated-rust-compile", tested.stderr[-6000:]+tested.stdout[-3000:])
 
     evidence = {"status": "SOURCE_GRAPH_COMPILED_IN_RUST",
-                "declaration": DECLARATION, "source_commit": pin["original_source"],
+                "declaration": DECLARATION, "source_commit": pin["source_commit"],
                 "source_blob": blob, "graph_sha256": hashlib.sha256(raw).hexdigest(),
                 "generated_rust_sha256": hashlib.sha256(code.encode()).hexdigest(),
                 "physical_labels": abi[2], "entry": abi[3], "nodes_bounded": MAX_NODES,

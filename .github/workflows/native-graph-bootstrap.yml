@@ -1,0 +1,49 @@
+name: Native Rust graph bootstrap
+
+on:
+  pull_request:
+    paths:
+      - 'rust/lean_eth_reference/src/bit_program/source_json.rs'
+      - 'rust/lean_eth_reference/tests/native_source_graph.rs'
+      - 'rust/lean_eth_reference/Cargo.toml'
+      - '.github/workflows/native-graph-bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-locked-native-graph:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.99.1
+      - name: Generate dependency lock and format native decoder
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          cargo fetch --locked
+          cargo fmt --all
+      - name: Compile and test native decoder
+        run: |
+          set -euo pipefail
+          cargo test --locked --offline --all-targets
+          cargo clippy --locked --offline --all-targets -- -D warnings
+      - name: Preserve pinned Cargo lock and formatted source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-graph-bootstrap-${{ github.event.pull_request.head.sha || github.sha }}
+          retention-days: 7
+          path: |
+            Cargo.lock
+            rust/lean_eth_reference/src/bit_program.rs
+            rust/lean_eth_reference/src/bit_program/source_json.rs
+            rust/lean_eth_reference/tests/native_source_graph.rs

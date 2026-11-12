@@ -134,6 +134,9 @@ jobs:
             --rust-crate rust/lean_eth_reference --timeout-seconds 240
           echo 'ORIGINAL_BITPROGRAM_LEAN_RUST_TRANSITIONS=MATCH' >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Restore Rust dependencies for certified source-graph execution
+        run: cargo fetch --locked
+
       - name: Kernel-certify original Lean graph bytes, then generate and verify Rust
         shell: bash
         run: |

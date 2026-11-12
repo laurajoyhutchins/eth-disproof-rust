@@ -125,7 +125,7 @@ class GraphContracts(unittest.TestCase):
             self.assertEqual(published,accepted)
             self.assertEqual(published['generated_rust_sha256'],
                              hashlib.sha256(rust_path.read_bytes()).hexdigest())
-            self.assertTrue(receipt_path.read_bytes().endswith(b'\\n'))
+            self.assertTrue(receipt_path.read_bytes().endswith(b'\n'))
             graph['command']['opcode']='set:0:0'
             inp.write_text(json.dumps(graph)+'\n')
             with self.assertRaisesRegex(ValueError,'physical instruction mismatch'):

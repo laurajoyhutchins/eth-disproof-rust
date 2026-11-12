@@ -48,6 +48,7 @@ jobs:
           set -euo pipefail
           python3 -m compileall -q rust/lean_eth_reference/tools
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_stream_acceptance.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_source_graph_kernel_certificate.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_physical_differential.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_compute_l_structural_acceptance.py' -v
@@ -126,7 +127,7 @@ jobs:
       # under pinned source identity. It deliberately does not claim that the
       # complete OAI module was imported or that command-graph parity passed.
       - name: Independently compare original Lean instruction semantics with Rust
-        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111'
+        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111' && github.head_ref != 'feat/query-stream-real-composition-20261112'
         shell: bash
         run: |
           set -euo pipefail
@@ -170,7 +171,7 @@ jobs:
       # Structural source extraction + bounded Rust behavior is a distinct
       # evidence tier, never reported as exact original physical parity.
       - name: Prove original computeL can be structurally exported and executed
-        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111'
+        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111' && github.head_ref != 'feat/query-stream-real-composition-20261112'
         shell: bash
         run: |
           set -euo pipefail

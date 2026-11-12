@@ -7,6 +7,7 @@
 //!
 //! The byte limit, Serde recursion limit and source dimensional caps are
 //! intentional fail-closed restrictions, not semantic replacements.
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde::Deserialize;
@@ -205,9 +206,12 @@ fn parse_instr<const R: usize, const S: usize>(
     })
 }
 
+type CalleeKey = (usize, usize, usize, usize, Vec<String>);
+
 fn lower<const R: usize, const S: usize>(
     command: Command,
     remaining: &mut usize,
+    callees: &mut HashMap<CalleeKey, Arc<DeferredProgram<R, S>>>,
 ) -> Result<Arc<Block<R, S>>, Error> {
     if *remaining == 0 {
         return Err(Error::Capacity("source graph node budget".into()));
@@ -222,19 +226,27 @@ fn lower<const R: usize, const S: usize>(
             {
                 return Err(invalid("invalid source callee dimensions"));
             }
+            // Preserve the original complete callee identity: never share
+            // source tables just because their displayed opcode rows match.
+            let key = (p.labels, p.input, p.output, p.entry, p.code.clone());
+            if let Some(existing) = callees.get(&key) {
+                return Ok(Block::call(Arc::clone(existing)));
+            }
             let table = p.code.iter()
                 .map(|op| parse_instr::<R, S>(op, p.labels))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(Block::call(DeferredProgram::table(
+            let program = DeferredProgram::table(
                 Program::<R, S>::new(p.input, p.output, p.entry, table)?
-            )))
+            );
+            callees.insert(key, Arc::clone(&program));
+            Ok(Block::call(program))
         }
         Command::Seq { first, second } =>
-            Block::seq(lower::<R, S>(*first, remaining)?, lower::<R, S>(*second, remaining)?),
+            Block::seq(lower::<R, S>(*first, remaining, callees)?, lower::<R, S>(*second, remaining, callees)?),
         Command::If { test, yes, no } =>
-            Block::ite(test, lower::<R, S>(*yes, remaining)?, lower::<R, S>(*no, remaining)?),
+            Block::ite(test, lower::<R, S>(*yes, remaining, callees)?, lower::<R, S>(*no, remaining, callees)?),
         Command::While { test, body } =>
-            Block::while_(test, lower::<R, S>(*body, remaining)?),
+            Block::while_(test, lower::<R, S>(*body, remaining, callees)?),
     }
 }
 
@@ -283,11 +295,43 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
             return Err(invalid("source machine dimensions outside supported ABI"));
         }
         let mut budget = MAX_NODES;
-        let block = lower::<R, S>(source.command, &mut budget)?;
+        let mut callees = HashMap::new();
+        let block = lower::<R, S>(source.command, &mut budget, &mut callees)?;
         let program = DeferredProgram::composed(abi.input, abi.output, block)?;
         if program.labels() != abi.labels {
             return Err(invalid("source graph site count differs from original Lean ABI"));
         }
         Ok(program)
+    }
+}
+
+
+#[cfg(test)]
+mod native_interning_tests {
+    use super::*;
+
+    fn callee(output: usize) -> Command {
+        Command::Call {
+            program: Callee {
+                r: 2, s: 2, labels: 2, entry: 1, input: 0, output,
+                code: vec!["halt".into(), "goto:0".into()],
+            },
+        }
+    }
+
+    #[test]
+    fn identical_callee_table_is_shared_and_distinct_abi_is_not() {
+        let repeated = Command::Seq {
+            first: Box::new(callee(1)),
+            second: Box::new(Command::Seq {
+                first: Box::new(callee(1)), second: Box::new(callee(0)),
+            }),
+        };
+        let mut remaining = MAX_NODES;
+        let mut cache = HashMap::new();
+        let block = lower::<2, 2>(repeated, &mut remaining, &mut cache).unwrap();
+        assert_eq!(cache.len(), 2);
+        assert_eq!(block.size(), 6);
+        assert_eq!(remaining, MAX_NODES - 5);
     }
 }

@@ -24,7 +24,7 @@ from export_compiled_batch import ensure_pinned, atomic_write
 from extract_compiled_catalog import blob_hash, discover
 from run_source_graph_batch import source as probe_source
 from verify_source_graph import (
-    SOURCE_SHA, MAX_NODES, RustGenerator,
+    SOURCE_SHA, MAX_NODES,
     closed_keys, parse_node, insist,
 )
 
@@ -68,16 +68,20 @@ def structural_summary(raw: str, record: dict) -> tuple[dict, object]:
             'node_count':sum(kinds.values()),'node_kinds':dict(kinds)},root
 
 
-def rust_test(root) -> str:
-    gen=RustGenerator(3,3)
-    name=gen.emit(root)
+def rust_test(raw:str, record:dict)->str:
+    """Execute the original source graph bytes through Rust's native JSON loader."""
+    digest=hashlib.sha256(raw.encode()).hexdigest()
     return '\n'.join([
         'use std::sync::Arc;',
-        'use lean_eth_reference::bit_program::{Block, DeferredProgram, Program, Instr, RunLimits};',
+        'use lean_eth_reference::bit_program::{DeferredProgram, SourceGraphBinding, RunLimits};',
         'use lean_eth_reference::Error;',
         'fn original() -> Result<Arc<DeferredProgram<3,3>>, Error> {',
-        *gen.lines,
-        f'    DeferredProgram::composed(0, 0, {name})',
+        '    DeferredProgram::from_original_source_json(include_bytes!("source.json"), SourceGraphBinding {',
+        f'        id: {json.dumps(record["id"])},',
+        f'        declaration: {json.dumps(record["fqn"])},',
+        f'        source_blob: {json.dumps(record["git_blob"])},',
+        f'        graph_sha256: "{digest}",',
+        '    })',
         '}',
         '#[test]',
         'fn compute_l_original_structural_backend_executes() {',
@@ -120,12 +124,13 @@ def run(upstream:Path,lake:Path,rust_crate:Path,dest:Path,timeout:int):
         execute('lake','-K','maxJobs=2','build',record['module'])
         raw=execute('lake','env','lean',str(probe))
         summary,root=structural_summary(raw,record)
-        rust=rust_test(root)
+        rust=rust_test(raw,record)
         crate=work/'rust-check'
         (crate/'tests').mkdir(parents=True)
         (crate/'src').mkdir(parents=True)
         (crate/'src/lib.rs').write_text('// Original source structural acceptance\n')
         (crate/'tests/compute_l.rs').write_text(rust)
+        (crate/'tests/source.json').write_text(raw)
         (crate/'Cargo.toml').write_text(isolated_cargo_manifest('original-compute-l-check', rust_crate))
         execute('cargo','test','--offline','--manifest-path',str(crate/'Cargo.toml'),'--tests')
         dest.mkdir(parents=True,exist_ok=True)

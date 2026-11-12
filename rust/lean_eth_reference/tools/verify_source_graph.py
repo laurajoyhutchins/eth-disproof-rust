@@ -187,37 +187,25 @@ def rust_instr(ins,atom=False):
         f" {{ {', '.join(f'{field}: {value}' for field,value in zip(fields,values))} }}" if fields else '')
 
 
-class RustGenerator:
-    def __init__(self,r,s): self.r,self.s,self.lines,self.n=r,s,[],0
-    def emit(self,node:Node):
-        children=[self.emit(ch) for ch in node.children]
-        name=f'n{self.n}';self.n+=1
-        match node.kind:
-            case 'skip':expr=f'Block::<{self.r},{self.s}>::skip()'
-            case 'atom':expr=f"Block::<{self.r},{self.s}>::atom({rust_instr(node.args['opcode'],True)})?"
-            case 'seq':expr=f'Block::seq({children[0]}, {children[1]})?'
-            case 'if':expr=f"Block::ite({node.args['test']}, {children[0]}, {children[1]})?"
-            case 'while':expr=f"Block::while_({node.args['test']}, {children[0]})?"
-            case 'call':
-                instr=', '.join(rust_instr(row) for row in node.table)
-                expr=(f'Block::call(DeferredProgram::table(Program::<{self.r},{self.s}>::new('
-                      f"{node.args['input']}, {node.args['output']}, {node.args['entry']}, vec![{instr}])?))")
-            case _:raise ValueError('unhandled source node')
-        self.lines.append(f'    let {name} = {expr};')
-        return name
+def generate_test(source:dict,root:Node,golden:list,abi:tuple[int,...],
+                  graph_sha256:str)->str:
+    """Rust only loads exact original JSON; Python no longer constructs Rust blocks.
 
-
-def generate_test(source:dict,root:Node,golden:list,abi:tuple[int,...])->str:
+    The independent golden Lean table is used solely as an acceptance oracle.
+    The native Rust parser owns opcode interpretation, dimensions and calls.
+    """
     r,s,l,entry,inp,out=abi
-    emitter=RustGenerator(r,s)
-    root_name=emitter.emit(root)
     table=', '.join(rust_instr(row) for row in golden)
     lines=[
         'use std::sync::Arc;',
-        'use lean_eth_reference::bit_program::{Atom, Block, DeferredProgram, Instr, Program, RunLimits};',
+        'use lean_eth_reference::bit_program::{DeferredProgram, Instr, Program, RunLimits, SourceGraphBinding};',
         f'fn build() -> Result<Arc<DeferredProgram<{r},{s}>>, lean_eth_reference::Error> {{',
-        *emitter.lines,
-        f'    DeferredProgram::composed({inp}, {out}, {root_name})',
+        '    DeferredProgram::from_original_source_json(include_bytes!("source.json"), SourceGraphBinding {',
+        f'        id: {json.dumps(source["id"])},',
+        f'        declaration: {json.dumps(source["declaration"])},',
+        f'        source_blob: {json.dumps(source["source_blob"])},',
+        f'        graph_sha256: "{graph_sha256}",',
+        '    })',
         '}',
         '#[test]',
         'fn original_lean_physical_layout_and_bounded_states() {',
@@ -284,12 +272,13 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     emitted=[('halt',())]+[root.instr(1,0,pc) for pc in range(1,l)]
     for i,(got,expected) in enumerate(zip(emitted,rows)):
         insist(got==expected,f'exact source physical instruction mismatch at {name}[{i}]: {fmt(got)} vs {fmt(expected)}')
-    body=generate_test(parsed,root,rows,canonical)
+    body=generate_test(parsed,root,rows,canonical,hashlib.sha256(original).hexdigest())
     receipt={'source_commit':SOURCE_SHA,'source_blob':parsed['source_blob'],
              'declaration':parsed['declaration'],'id':name,
              'graph_sha256':hashlib.sha256(original).hexdigest(),
              'golden_table_sha256':expect['sha256'],
-             'generated_rust_sha256':hashlib.sha256(body.encode()).hexdigest(),
+             'rust_acceptance_test_sha256':hashlib.sha256(body.encode()).hexdigest(),
+             'rust_loader':'original-structured-source-v1/serde-native',
              'physical_instructions_compared':l,'status':'EXACT_SOURCE_PHYSICAL_PARITY'}
     # Generated Rust and the success receipt are staged separately from the
     # published output. Publish only after the optional Cargo verification
@@ -304,6 +293,7 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
             (project/'src').mkdir(parents=True,exist_ok=True)
             (project/'src/lib.rs').write_text('// No semantic SAT oracle\n')
             (project/'tests/source.rs').write_text(body)
+            (project/'tests/source.json').write_bytes(original)
             (project/'Cargo.toml').write_text(isolated_cargo_manifest('original_graph_check', crate))
             result=subprocess.run(['cargo','test','--offline','--manifest-path',str(project/'Cargo.toml')],
                                   capture_output=True,text=True,timeout=240)
@@ -313,7 +303,7 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
         staged_receipt.write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
         staged_rust.replace(dest/(name+'.rs'))
         staged_receipt.replace(receipt_path)
-    print(f'SOURCE_GRAPH_EXACT {name} labels={l} nodes_probed={MAX_NODES} rust_sha256={receipt["generated_rust_sha256"]}',flush=True)
+    print(f'SOURCE_GRAPH_EXACT {name} labels={l} nodes_probed={MAX_NODES} rust_test_sha256={receipt["rust_acceptance_test_sha256"]}',flush=True)
     return receipt
 
 

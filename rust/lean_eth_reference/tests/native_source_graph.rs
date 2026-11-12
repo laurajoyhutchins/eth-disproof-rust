@@ -206,8 +206,10 @@ fn linked_original_source_relocates_heterogeneous_ports_and_halt_returns() {
     // A linked source has four physical labels, plus the caller's halt label.
     // The two child programs have different register dimensions; the embedding
     // must remap every register and stack while retaining actual source steps.
-    let left = r#"{"r":2,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","set:0:1:0"]}"#;
-    let right = r#"{"r":3,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","copy:2:1:0"]}"#;
+    let left =
+        r#"{"r":2,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","set:0:1:0"]}"#;
+    let right =
+        r#"{"r":3,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","copy:2:1:0"]}"#;
     let cmd = format!(
         r#"{{"kind":"call","program":{{"kind":"link_into","r":4,"s":2,"left":{left},"right":{right},"left_registers":[1,3],"left_stacks":[0],"right_registers":[2,0,3],"right_stacks":[1]}}}}"#
     );
@@ -218,40 +220,60 @@ fn linked_original_source_relocates_heterogeneous_ports_and_halt_returns() {
     assert_eq!(imported.instruction_at(1).unwrap(), Instr::Goto { next: 4 });
     assert_eq!(
         imported.instruction_at(2).unwrap(),
-        Instr::Set { dst: 1, value: true, next: 1 }
+        Instr::Set {
+            dst: 1,
+            value: true,
+            next: 1
+        }
     );
     assert_eq!(imported.instruction_at(3).unwrap(), Instr::Goto { next: 0 });
     assert_eq!(
         imported.instruction_at(4).unwrap(),
-        Instr::Copy { dst: 3, src: 0, next: 3 }
+        Instr::Copy {
+            dst: 3,
+            src: 0,
+            next: 3
+        }
     );
 }
 
 #[test]
 fn native_lift_and_link_are_physical_on_demand_not_source_table_substitutions() {
     let table = r#"{"r":2,"s":1,"labels":3,"entry":2,"input":0,"output":0,"code":["halt","push:0:1:0","set:0:1:1"]}"#;
-    let lifted = format!(
-        r#"{{"kind":"lift","r":4,"s":2,"registers":[3,1],"stacks":[1],"source":{table}}}"#
-    );
-    let imported = import::<4, 2>(&wrap(&format!(
-        r#"{{"kind":"call","program":{lifted}}}"#
-    ), 4, 4, 2)).unwrap();
+    let lifted =
+        format!(r#"{{"kind":"lift","r":4,"s":2,"registers":[3,1],"stacks":[1],"source":{table}}}"#);
+    let imported = import::<4, 2>(&wrap(
+        &format!(r#"{{"kind":"call","program":{lifted}}}"#),
+        4,
+        4,
+        2,
+    ))
+    .unwrap();
     assert_eq!(imported.entry(), 3);
     assert_eq!(imported.instruction_at(1).unwrap(), Instr::Goto { next: 0 });
     assert_eq!(
         imported.instruction_at(2).unwrap(),
-        Instr::Push { stack: 1, src: 1, next: 1 }
+        Instr::Push {
+            stack: 1,
+            src: 1,
+            next: 1
+        }
     );
     assert_eq!(
         imported.instruction_at(3).unwrap(),
-        Instr::Set { dst: 3, value: true, next: 2 }
+        Instr::Set {
+            dst: 3,
+            value: true,
+            next: 2
+        }
     );
 
-    let left = r#"{"r":2,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","goto:0"]}"#;
-    let right = r#"{"r":2,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","set:1:1:0"]}"#;
-    let linked = format!(
-        r#"{{"kind":"call","program":{{"kind":"link","left":{left},"right":{right}}}}}"#
-    );
+    let left =
+        r#"{"r":2,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","goto:0"]}"#;
+    let right =
+        r#"{"r":2,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","set:1:1:0"]}"#;
+    let linked =
+        format!(r#"{{"kind":"call","program":{{"kind":"link","left":{left},"right":{right}}}}}"#);
     let graph = import::<2, 1>(&wrap(&linked, 5, 2, 1)).unwrap();
     assert_eq!(graph.entry(), 2);
     assert_eq!(graph.instruction_at(1).unwrap(), Instr::Goto { next: 4 });
@@ -259,22 +281,35 @@ fn native_lift_and_link_are_physical_on_demand_not_source_table_substitutions() 
     assert_eq!(graph.instruction_at(3).unwrap(), Instr::Goto { next: 0 });
     assert_eq!(
         graph.instruction_at(4).unwrap(),
-        Instr::Set { dst: 1, value: true, next: 3 }
+        Instr::Set {
+            dst: 1,
+            value: true,
+            next: 3
+        }
     );
 }
 
 #[test]
 fn native_linked_source_refuses_noninjective_maps_wrong_dimensions_and_unknowns() {
-    let table = r#"{"r":2,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","goto:0"]}"#;
+    let table =
+        r#"{"r":2,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","goto:0"]}"#;
     let invalid = [
         format!(r#"{{"kind":"lift","r":3,"s":1,"registers":[1,1],"stacks":[0],"source":{table}}}"#),
         format!(r#"{{"kind":"lift","r":3,"s":1,"registers":[1,3],"stacks":[0],"source":{table}}}"#),
         format!(r#"{{"kind":"lift","r":3,"s":1,"registers":[1],"stacks":[0],"source":{table}}}"#),
-        format!(r#"{{"kind":"lift","r":3,"s":1,"registers":[1,2],"stacks":[0,0],"source":{table}}}"#),
-        format!(r#"{{"kind":"link","left":{table},"right":{{"r":3,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","goto:0"]}}}}"#),
-        format!(r#"{{"kind":"link_into","r":3,"s":1,"left":{table},"right":{table},"left_registers":[0,1],"left_stacks":[0],"right_registers":[2,2],"right_stacks":[0]}}"#),
+        format!(
+            r#"{{"kind":"lift","r":3,"s":1,"registers":[1,2],"stacks":[0,0],"source":{table}}}"#
+        ),
+        format!(
+            r#"{{"kind":"link","left":{table},"right":{{"r":3,"s":1,"labels":2,"entry":1,"input":0,"output":0,"code":["halt","goto:0"]}}}}"#
+        ),
+        format!(
+            r#"{{"kind":"link_into","r":3,"s":1,"left":{table},"right":{table},"left_registers":[0,1],"left_stacks":[0],"right_registers":[2,2],"right_stacks":[0]}}"#
+        ),
         format!(r#"{{"kind":"unverified_oracle","source":{table}}}"#),
-        format!(r#"{{"kind":"lift","r":3,"s":1,"registers":[0,1],"stacks":[0],"source":{table},"unexpected":true}}"#),
+        format!(
+            r#"{{"kind":"lift","r":3,"s":1,"registers":[0,1],"stacks":[0],"source":{table},"unexpected":true}}"#
+        ),
     ];
     for program in invalid {
         let cmd = format!(r#"{{"kind":"call","program":{program}}}"#);

@@ -43,6 +43,32 @@ MAX_INPUT_BYTES=4*1024*1024
 def insist(test: bool, message: str):
     if not test: raise ValueError(message)
 
+def parse_source_graph_json(raw: bytes) -> dict[str, Any]:
+    """One strict parser for both the Lean certificate and Rust generator.
+
+    The exact raw bytes remain the receipt identity. Reject ambiguous JSON
+    before either compiler stage can interpret it differently.
+    """
+    insist(0 < len(raw) <= MAX_INPUT_BYTES and raw.endswith(b'\n') and
+           raw.count(b'\n') == 1 and raw.isascii(),
+           'noncanonical Lean source graph line')
+
+    def unique_fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        fields: dict[str, Any] = {}
+        for key, value in pairs:
+            insist(key not in fields, 'duplicate JSON object field')
+            fields[key] = value
+        return fields
+
+    def refuse_nonfinite(value: str):
+        raise ValueError(f'nonstandard JSON constant: {value}')
+
+    value = json.loads(raw, object_pairs_hook=unique_fields,
+                       parse_constant=refuse_nonfinite)
+    insist(type(value) is dict, 'source graph must be a JSON object')
+    return value
+
+
 
 def number(value: Any, maximum: int, field: str) -> int:
     insist(type(value) is int and 0 <= value <= maximum, f'invalid finite {field}')
@@ -236,8 +262,7 @@ def generate_test(source:dict,root:Node,golden:list,abi:tuple[int,...],
 def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, cargo:bool) ->dict:
     insist(src.stat().st_size<=MAX_INPUT_BYTES,'source graph exceeds total byte bound')
     original=src.read_bytes()
-    insist(original.endswith(b'\n') and original.count(b'\n')==1,'noncanonical Lean graph stdout')
-    parsed=json.loads(original)
+    parsed=parse_source_graph_json(original)
     closed_keys(parsed,{'kind','source_commit','source_blob','declaration','id','abi','command'})
     insist(parsed['kind']=='original-structured-source-v1','wrong graph protocol')
     insist(parsed['source_commit']==SOURCE_SHA,'source commit mismatch')

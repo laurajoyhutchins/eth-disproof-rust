@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from verify_source_graph import (
     SOURCE_SHA, Node, parse_instr, parse_node, generate_test, rust_instr,
-    parse_golden, validate_and_generate,
+    parse_golden, parse_source_graph_json, validate_and_generate,
 )
 
 
@@ -68,6 +68,34 @@ class GraphContracts(unittest.TestCase):
         for bad in ['set:00:1:0','set:0:5:0','goto:-1','halt:0','peek:0:0:1:5']:
             with self.subTest(instr=bad), self.assertRaises(ValueError):
                 parse_instr(bad,2,2,2)
+
+    def test_rust_acceptance_uses_the_original_source_json_not_python_ast_emission(self):
+        program={'kind':'atom','opcode':'set:0:1'}
+        root=parse_node(program,2,2,[8192])
+        metadata={'id':'original_0','declaration':'OAI.Algorithms.SubexponentialSAT.Example.target',
+                  'source_blob':'1'*40}
+        test=generate_test(metadata,root,[('halt',()),('set',(0,1,0))],(2,2,2,1,0,0),'f'*64)
+        self.assertIn('from_original_source_json(include_bytes!("source.json")',test)
+        self.assertNotIn('Block::atom(',test)
+        self.assertNotIn('Block::call(',test)
+        self.assertIn('graph_sha256: "'+'f'*64+'"',test)
+
+    def test_generator_rejects_ambiguous_serialized_graphs(self):
+        # These must match the kernel-certificate input requirements.
+        malformed = [
+            b'{"id":"first","id":"second"}\n',
+            b'{"command":{"kind":"atom","kind":"skip"}}\n',
+            b'{"value":NaN}\n',
+            b'{"value":Infinity}\n',
+            b'[]\n',
+            b'{"value":1}\n{"value":2}\n',
+            b'{"value":1}',
+            '{"value":"μ"}\n'.encode('utf-8'),
+        ]
+        for raw in malformed:
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                parse_source_graph_json(raw)
+        self.assertEqual(parse_source_graph_json(b'{"value":1}\n'), {'value': 1})
 
     def test_pin_hash_and_exact_program_equality(self):
         ident='small_0'

@@ -76,7 +76,9 @@ def inspect_graph(raw: bytes, source_blob: str):
     return graph, root
 
 
-def rust_binary(root, width: int = 3) -> str:
+def rust_binary(root, width: int = 3, cutoff: int = 20) -> str:
+    if not (2 <= width <= 8 and 0 <= cutoff <= 128):
+        raise ValueError('unsafe count compilation parameters')
     gen = RustGenerator(R, S)
     name = gen.emit(root)
     return '\n'.join([
@@ -110,6 +112,12 @@ def rust_binary(root, width: int = 3) -> str:
         '    let mut text = String::new();',
         '    io::stdin().read_to_string(&mut text).map_err(|e| e.to_string())?;',
         '    let cnf = parse_dimacs(&text).map_err(|e| e.to_string())?;',
+        # The source's small branch is a preselected, noncomputable finite
+        # scanner table. Never execute it or substitute a host #SAT oracle.
+        # This is only the selected cutoff, NOT a proof of Final.lean's cutoff.
+        f'    if cnf.variables() <= {cutoff} {{',
+        f'        return Err("unsupported noncomputable finite fallback: n <= {cutoff}".into());',
+        '    }',
         f'    if cnf.clauses().iter().any(|clause| clause.literals().len() > {width}) {{',
         '        return Err("formula exceeds compiled clause-width bound".into());',
         '    }',
@@ -198,7 +206,7 @@ def compile_counting(a):
             run_command(['lake', 'env', 'lean', str(proof)],
                         cwd=lake_root, timeout=a.timeout_seconds)
             cert_status = 'LEAN_KERNEL_CERTIFIED_SOURCE_DERIVED_COUNT'
-        generated = rust_binary(root, a.width)
+        generated = rust_binary(root, a.width, a.cutoff)
         crate = work / 'crate'
         (crate / 'src').mkdir(parents=True)
         (crate / 'src/main.rs').write_text(generated, encoding='utf-8')

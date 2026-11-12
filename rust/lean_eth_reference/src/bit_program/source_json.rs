@@ -20,7 +20,11 @@ use crate::Error;
 const SOURCE_COMMIT: &str = "4eaee87548250b2682affda7d05d947c05554bae";
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 const MAX_NODES: usize = 8192;
-const MAX_LABELS: usize = 50_000;
+// The composed graph is resolved on demand; this is a numeric address bound,
+// not a table allocation. Serialized bytes/nodes and finite leaf labels remain
+// independently capped, so expanding the symbolic address range does not
+// authorize materializing a billion-entry physical table.
+const MAX_LABELS: usize = 1_000_000_000;
 const MAX_CALL_LABELS: usize = 4096;
 
 /// Expected source identity and digest, obtained from a separate,

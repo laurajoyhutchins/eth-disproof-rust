@@ -311,6 +311,15 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         self.entry
     }
 
+    /// Exact physical source ABI port indices.
+    pub fn input_stack(&self) -> usize {
+        self.input_stack
+    }
+
+    pub fn output_stack(&self) -> usize {
+        self.output_stack
+    }
+
     pub fn initial(&self, input: impl IntoIterator<Item = bool>) -> Config<R, S> {
         let mut config = Config {
             pc: Some(self.entry),

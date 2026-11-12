@@ -72,6 +72,9 @@ def read_source_graph(path: Path, record: dict[str, str]):
 
 def certificate_source(path: Path, record: dict[str, str]) -> tuple[str, dict[str, Any]]:
     raw, _graph, root, (r, s, l, entry, inp, out) = read_source_graph(path, record)
+    # The finite kernel certificate reifies every physical label. Never let
+    # a large on-demand graph silently cause a billion-site proof allocation.
+    insist(l <= 4096, "finite kernel certificate exceeds bounded label budget")
     # Exactly these rows, and no independent golden table, are used to build
     # the candidate that Lean must compare with its own original definition.
     rows = [('halt', ())] + [root.instr(1, 0, pc) for pc in range(1, l)]

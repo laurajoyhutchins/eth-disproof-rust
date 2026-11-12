@@ -429,16 +429,27 @@ enum NativeBlockKind {
     Atom(Atom),
     Call(Arc<NativeSource>),
     Seq(Arc<NativeBlock>, Arc<NativeBlock>),
-    If { test: usize, yes: Arc<NativeBlock>, no: Arc<NativeBlock> },
-    While { test: usize, body: Arc<NativeBlock> },
+    If {
+        test: usize,
+        yes: Arc<NativeBlock>,
+        no: Arc<NativeBlock>,
+    },
+    While {
+        test: usize,
+        body: Arc<NativeBlock>,
+    },
 }
 
 impl NativeBlock {
     fn entry_at(&self, base: usize, exit: usize) -> Result<usize, Error> {
         match &self.kind {
             NativeBlockKind::Skip => Ok(exit),
-            NativeBlockKind::Atom(_) | NativeBlockKind::If { .. } | NativeBlockKind::While { .. } => Ok(base),
-            NativeBlockKind::Call(program) => base.checked_add(program.entry).ok_or(Error::Overflow),
+            NativeBlockKind::Atom(_)
+            | NativeBlockKind::If { .. }
+            | NativeBlockKind::While { .. } => Ok(base),
+            NativeBlockKind::Call(program) => {
+                base.checked_add(program.entry).ok_or(Error::Overflow)
+            }
             NativeBlockKind::Seq(first, second) => {
                 let mid = base.checked_add(first.size).ok_or(Error::Overflow)?;
                 first.entry_at(base, second.entry_at(mid, exit)?)
@@ -449,12 +460,16 @@ impl NativeBlock {
     fn instruction_at(&self, base: usize, exit: usize, pc: usize) -> Result<Instr, Error> {
         let end = base.checked_add(self.size).ok_or(Error::Overflow)?;
         if pc < base || pc >= end {
-            return Err(invalid("nested structured source site outside physical block"));
+            return Err(invalid(
+                "nested structured source site outside physical block",
+            ));
         }
         match &self.kind {
             NativeBlockKind::Skip => Err(invalid("empty nested source block has no instruction")),
             NativeBlockKind::Atom(atom) => Ok(atom.instr(exit)),
-            NativeBlockKind::Call(program) => program.instruction_at(pc - base)?.relocate(base, exit),
+            NativeBlockKind::Call(program) => {
+                program.instruction_at(pc - base)?.relocate(base, exit)
+            }
             NativeBlockKind::Seq(first, second) => {
                 let mid = base.checked_add(first.size).ok_or(Error::Overflow)?;
                 if pc < mid {
@@ -507,9 +522,7 @@ fn lower_native_block(
     *remaining -= 1;
     let (size, kind) = match command {
         Command::Skip => (0, NativeBlockKind::Skip),
-        Command::Atom { opcode } => (
-            1, NativeBlockKind::Atom(parse_source_atom(&opcode, r, s)?),
-        ),
+        Command::Atom { opcode } => (1, NativeBlockKind::Atom(parse_source_atom(&opcode, r, s)?)),
         Command::Call { program } => {
             let source = lower_linked_program(program, remaining, depth + 1)?;
             if (source.r, source.s) != (r, s) {
@@ -524,22 +537,31 @@ fn lower_native_block(
             (size, NativeBlockKind::Seq(first, second))
         }
         Command::If { test, yes, no } => {
-            if test >= r { return Err(invalid("nested source branch register out of range")); }
+            if test >= r {
+                return Err(invalid("nested source branch register out of range"));
+            }
             let yes = lower_native_block(*yes, r, s, remaining, depth + 1)?;
             let no = lower_native_block(*no, r, s, remaining, depth + 1)?;
-            let size = yes.size.checked_add(no.size).and_then(|v| v.checked_add(1))
+            let size = yes
+                .size
+                .checked_add(no.size)
+                .and_then(|v| v.checked_add(1))
                 .ok_or(Error::Overflow)?;
             (size, NativeBlockKind::If { test, yes, no })
         }
         Command::While { test, body } => {
-            if test >= r { return Err(invalid("nested source while register out of range")); }
+            if test >= r {
+                return Err(invalid("nested source while register out of range"));
+            }
             let body = lower_native_block(*body, r, s, remaining, depth + 1)?;
             let size = body.size.checked_add(1).ok_or(Error::Overflow)?;
             (size, NativeBlockKind::While { test, body })
         }
     };
     if size >= MAX_LABELS {
-        return Err(Error::Capacity("nested composed source exceeds physical site budget".into()));
+        return Err(Error::Capacity(
+            "nested composed source exceeds physical site budget".into(),
+        ));
     }
     Ok(Arc::new(NativeBlock { size, kind }))
 }
@@ -650,22 +672,39 @@ fn lower_linked_program(
                 body: NativeBody::Table(code),
             })
         }
-        ProgramTree::Linked(LinkedProgram::Composed { r, s, input, output, command }) => {
+        ProgramTree::Linked(LinkedProgram::Composed {
+            r,
+            s,
+            input,
+            output,
+            command,
+        }) => {
             source_dimensions(r, s)?;
             if input >= s || output >= s {
-                return Err(invalid("nested composed source ports outside source dimensions"));
+                return Err(invalid(
+                    "nested composed source ports outside source dimensions",
+                ));
             }
             let block = lower_native_block(*command, r, s, remaining, depth + 1)?;
             let labels = block.size.checked_add(1).ok_or(Error::Overflow)?;
             if labels > MAX_LABELS {
-                return Err(Error::Capacity("nested composed source labels out of range".into()));
+                return Err(Error::Capacity(
+                    "nested composed source labels out of range".into(),
+                ));
             }
             let entry = block.entry_at(1, 0)?;
             if entry >= labels {
-                return Err(invalid("nested composed source entry outside physical labels"));
+                return Err(invalid(
+                    "nested composed source entry outside physical labels",
+                ));
             }
             Ok(NativeSource {
-                r, s, labels, entry, input, output,
+                r,
+                s,
+                labels,
+                entry,
+                input,
+                output,
                 body: NativeBody::Composed(block),
             })
         }

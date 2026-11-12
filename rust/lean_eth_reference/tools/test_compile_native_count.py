@@ -51,6 +51,8 @@ class WholeCountingCompilationTests(unittest.TestCase):
         self.assertIn("state.stacks[1216]", compiled)
         self.assertIn("count_word_decimal", compiled)
         self.assertIn("source_instructions=", compiled)
+        self.assertIn("clause.literals().len() > 3", compiled)
+        self.assertIn("formula exceeds compiled clause-width bound", compiled)
         self.assertNotIn("count_terminal(", compiled)
         self.assertNotIn(".count_sat(", compiled)
 

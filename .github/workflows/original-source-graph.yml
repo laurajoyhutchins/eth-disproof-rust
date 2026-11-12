@@ -261,7 +261,7 @@ jobs:
               --output-dir "$RUNNER_TEMP/counting-closure" \
               --phase marked-query --phase leaf --phase outer --phase complete \
               --width 3 --cutoff 20 --max-labels 4096 \
-              --build-timeout-seconds 900 --timeout-seconds 180; then
+              --build-timeout-seconds 540 --timeout-seconds 180; then
             echo 'COUNTING_CLOSURE=STRUCTURALLY_EXPORTED_NOT_YET_CERTIFIED' >> "$GITHUB_STEP_SUMMARY"
           else
             echo 'COUNTING_CLOSURE=REFUSED_INSPECT_ARTIFACTS' >> "$GITHUB_STEP_SUMMARY"

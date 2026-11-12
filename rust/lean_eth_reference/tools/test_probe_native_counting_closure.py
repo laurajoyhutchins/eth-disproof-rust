@@ -47,7 +47,8 @@ class CountingPhaseContracts(unittest.TestCase):
             with self.subTest(phase=phase):
                 wrapper, abi = wrapper_for(phase, 3, 20)
                 self.assertEqual(abi, ports)
-                self.assertIn("noncomputable def program", wrapper)
+                declaration = "largeOnlyProgram" if phase == "large-domain" else "program"
+                self.assertIn("noncomputable def " + declaration, wrapper)
                 self.assertIn("compiled (", wrapper)
                 self.assertNotIn("SAT.count", wrapper)
                 result = inspect(phase, stage_graph(phase), BLOB, 3, 20)

@@ -80,9 +80,11 @@ operand/port/label bounds, and lowered physical sites; immutable equal callees
 are interned by full ABI and instructions. `Atom`, `Skip`, `Seq`, `If`,
 `While`, and finite `Call` are accepted. `Repeat` is an internal Rust
 compositional optimization but not yet an independently emitted JSON node.
-`Lift`, `Link`, `Fold`, and arbitrary-width addresses remain outside this
-**integrated** source graph format. Separate experimental linking work is not
-part of this verified compiler acceptance. Unsupported forms must refuse.
+`Lift` and `Link` (including heterogeneous `link_into`) are now decoded into
+bounded on-demand physical source views by the **same native Rust loader**.
+The loader checks the exact source SHA-256 binding, typed port dimensions,
+injective maps, source opcode bounds, and caller relocation. `Fold` and
+unbounded integer addresses remain unsupported and refuse.
 
 ### Physical layout matters
 
@@ -241,14 +243,26 @@ last category to be empty in that closure, physical and semantic
 differential gates to pass, and the true end-to-end computation to run.
 Theorem declarations remain Lean-checked, not blindly translated.
 
-### Pending typed ProgramLinking source integration (PR #175)
+### Native ProgramLinking source integration (PR #175)
 
-The staged implementation contains original Lean `ProgramLinking.liftProgram`,
-`link`, and `linkInto` source-graph extraction, bounded port-map validation,
-and corresponding `DeferredProgram` linking operations. These additions are
-**not yet native-loader acceptance**: the source JSON loader merged in #174
-still supports bounded tables and structured commands, not linked-program
-node variants. The older Python generator remains a compatibility test path
-until the linked nodes are implemented in that one native loader and verified
-against the pinned Lean original. No source-only linking graph is accepted as
-a full #SAT result.
+The single native Rust `DeferredProgram::from_original_source_json` loader
+now recognizes original `ProgramLinking.liftProgram`, `link`, and
+`linkInto` nodes, including different left/right finite dimensions. It
+resolves physical instructions *on demand*, using the existing native
+port-relocation and label-shift operations. It does not construct or execute
+Python-generated Rust blocks. The Python graph parser remains an independent
+structural verifier and Lean-table comparator, **not a Rust compiler**.
+
+The serialized graph is SHA-256 and declaration bound. Its total byte and
+node budgets remain strict, and individual finite tables are capped at 4,096
+labels. The native executor's 1,000,000,000-label **symbolic address cap** is
+not permission to materialize a large table or an assertion of resource
+feasibility. Unsupported constructors, ill-typed or non-injective mappings,
+and overflow refuse explicitly. Original Lean kernel certification of each
+specific exported graph remains a separate requirement.
+
+The first exact-source and native acceptance [passed at an earlier restacked
+head](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43325069177).
+Final-head source acceptance and the complete original query/DFS/counting
+execution must pass independently before the entire Lean-to-Rust port can be
+called verified.

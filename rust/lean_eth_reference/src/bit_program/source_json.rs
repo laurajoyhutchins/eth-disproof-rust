@@ -365,14 +365,19 @@ impl PhysicalSource for NativeSource {
         }
         match &self.body {
             NativeBody::Table(code) => Ok(code[pc].clone()),
-            NativeBody::Lift { source, registers, stacks } => {
-                relocate_ports(source.instruction_at(pc)?, registers, stacks)
-            }
+            NativeBody::Lift {
+                source,
+                registers,
+                stacks,
+            } => relocate_ports(source.instruction_at(pc)?, registers, stacks),
             NativeBody::Link { left, right } if pc < left.labels => {
                 let original = left.instruction_at(pc)?;
                 if matches!(original, Instr::Halt) {
                     Ok(Instr::Goto {
-                        next: left.labels.checked_add(right.entry).ok_or(Error::Overflow)?,
+                        next: left
+                            .labels
+                            .checked_add(right.entry)
+                            .ok_or(Error::Overflow)?,
                     })
                 } else {
                     Ok(original)
@@ -392,7 +397,9 @@ impl PhysicalSource for NativeSource {
 
 fn source_dimensions(r: usize, s: usize) -> Result<(), Error> {
     if r == 0 || r > 256 || s == 0 || s > 4096 {
-        return Err(invalid("linked source port dimensions outside supported Fin"));
+        return Err(invalid(
+            "linked source port dimensions outside supported Fin",
+        ));
     }
     Ok(())
 }
@@ -413,26 +420,45 @@ fn lift_source(
     let input = stacks[source.input];
     let output = stacks[source.output];
     Ok(NativeSource {
-        r, s, labels: source.labels, entry: source.entry, input, output,
+        r,
+        s,
+        labels: source.labels,
+        entry: source.entry,
+        input,
+        output,
         body: NativeBody::Lift {
-            source: Arc::new(source), registers, stacks,
+            source: Arc::new(source),
+            registers,
+            stacks,
         },
     })
 }
 
 fn link_sources(left: NativeSource, right: NativeSource) -> Result<NativeSource, Error> {
     if (left.r, left.s) != (right.r, right.s) {
-        return Err(invalid("linked program children have different target dimensions"));
+        return Err(invalid(
+            "linked program children have different target dimensions",
+        ));
     }
-    let labels = left.labels.checked_add(right.labels).ok_or(Error::Overflow)?;
+    let labels = left
+        .labels
+        .checked_add(right.labels)
+        .ok_or(Error::Overflow)?;
     if labels > MAX_LABELS {
-        return Err(Error::Capacity("linked source exceeds physical label budget".into()));
+        return Err(Error::Capacity(
+            "linked source exceeds physical label budget".into(),
+        ));
     }
     Ok(NativeSource {
-        r: left.r, s: left.s, labels, entry: left.entry,
-        input: left.input, output: right.output,
+        r: left.r,
+        s: left.s,
+        labels,
+        entry: left.entry,
+        input: left.input,
+        output: right.output,
         body: NativeBody::Link {
-            left: Arc::new(left), right: Arc::new(right),
+            left: Arc::new(left),
+            right: Arc::new(right),
         },
     })
 }
@@ -443,28 +469,44 @@ fn lower_linked_program(
     depth: usize,
 ) -> Result<NativeSource, Error> {
     if *remaining == 0 || depth > 128 {
-        return Err(Error::Capacity("linked source recursion or node budget".into()));
+        return Err(Error::Capacity(
+            "linked source recursion or node budget".into(),
+        ));
     }
     *remaining -= 1;
     match tree {
         ProgramTree::Table(p) => {
             source_dimensions(p.r, p.s)?;
-            if p.labels == 0 || p.labels > MAX_CALL_LABELS
-                || p.entry >= p.labels || p.input >= p.s || p.output >= p.s
+            if p.labels == 0
+                || p.labels > MAX_CALL_LABELS
+                || p.entry >= p.labels
+                || p.input >= p.s
+                || p.output >= p.s
                 || p.code.len() != p.labels
             {
                 return Err(invalid("invalid finite linked source table ABI"));
             }
-            let code = p.code.iter()
+            let code = p
+                .code
+                .iter()
                 .map(|op| parse_physical_instr(op, p.r, p.s, p.labels))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(NativeSource {
-                r: p.r, s: p.s, labels: p.labels, entry: p.entry,
-                input: p.input, output: p.output, body: NativeBody::Table(code),
+                r: p.r,
+                s: p.s,
+                labels: p.labels,
+                entry: p.entry,
+                input: p.input,
+                output: p.output,
+                body: NativeBody::Table(code),
             })
         }
         ProgramTree::Linked(LinkedProgram::Lift {
-            r, s, registers, stacks, source,
+            r,
+            s,
+            registers,
+            stacks,
+            source,
         }) => {
             let child = lower_linked_program(*source, remaining, depth + 1)?;
             lift_source(child, r, s, registers, stacks)
@@ -475,8 +517,14 @@ fn lower_linked_program(
             link_sources(left, right)
         }
         ProgramTree::Linked(LinkedProgram::LinkInto {
-            r, s, left, right, left_registers, left_stacks,
-            right_registers, right_stacks,
+            r,
+            s,
+            left,
+            right,
+            left_registers,
+            left_stacks,
+            right_registers,
+            right_stacks,
         }) => {
             let left = lower_linked_program(*left, remaining, depth + 1)?;
             let right = lower_linked_program(*right, remaining, depth + 1)?;
@@ -501,13 +549,17 @@ fn lower<const R: usize, const S: usize>(
     match command {
         Command::Skip => Ok(Block::skip()),
         Command::Atom { opcode } => Block::atom(parse_atom::<R, S>(&opcode)?),
-        Command::Call { program: ProgramTree::Table(p) } => {
+        Command::Call {
+            program: ProgramTree::Table(p),
+        } => {
             if p.r != R
                 || p.s != S
                 || p.labels == 0
                 || p.labels > MAX_CALL_LABELS
                 || p.code.len() != p.labels
-                || p.entry >= p.labels || p.input >= S || p.output >= S
+                || p.entry >= p.labels
+                || p.input >= S
+                || p.output >= S
             {
                 return Err(invalid("invalid source callee dimensions"));
             }
@@ -515,22 +567,29 @@ fn lower<const R: usize, const S: usize>(
             if let Some(existing) = callees.get(&key) {
                 return Ok(Block::call(Arc::clone(existing)));
             }
-            let table = p.code.iter()
+            let table = p
+                .code
+                .iter()
                 .map(|op| parse_physical_instr(op, R, S, p.labels))
                 .collect::<Result<Vec<_>, _>>()?;
-            let program = DeferredProgram::table(
-                Program::<R, S>::new(p.input, p.output, p.entry, table)?,
-            );
+            let program =
+                DeferredProgram::table(Program::<R, S>::new(p.input, p.output, p.entry, table)?);
             callees.insert(key, Arc::clone(&program));
             Ok(Block::call(program))
         }
         Command::Call { program } => {
             let source = lower_linked_program(program, remaining, 0)?;
             if (source.r, source.s) != (R, S) {
-                return Err(invalid("linked callee differs from enclosing source port dimensions"));
+                return Err(invalid(
+                    "linked callee differs from enclosing source port dimensions",
+                ));
             }
             let program = DeferredProgram::<R, S>::source_program(
-                source.input, source.output, source.entry, source.labels, Arc::new(source),
+                source.input,
+                source.output,
+                source.entry,
+                source.labels,
+                Arc::new(source),
             )?;
             Ok(Block::call(program))
         }

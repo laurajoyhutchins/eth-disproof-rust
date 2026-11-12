@@ -110,7 +110,12 @@ def certificate_source(path: Path, record: dict[str, str]) -> tuple[str, dict[st
         f'    step candidate cfg = step {record["fqn"]} cfg := by',
         '  change cfg.pc.map (fun pc => execInstr (candidate.code pc) cfg) =',
         f'    cfg.pc.map (fun pc => execInstr ({record["fqn"]}.code pc) cfg)',
-        '  simpa only [all_code_eq]',
+        '  have hfun :',
+        f'      (fun pc : Fin {l} => execInstr (candidate.code pc) cfg) =',
+        f'      (fun pc : Fin {l} => execInstr ({record["fqn"]}.code pc) cfg) := by',
+        '    funext pc',
+        '    exact congrArg (fun instr => execInstr instr cfg) (all_code_eq pc)',
+        '  exact congrArg (fun f => cfg.pc.map f) hfun',
         'end OriginalSourceGraphKernelCertificate',
         '',
     ])

@@ -107,20 +107,26 @@ class ProgramNode:
     """Exact bounded physical source, represented without flattening links."""
 
     def __init__(self, kind, r, s, labels, entry, inp, out,
-                 rows=(), children=(), maps=()):
+                 rows=(), children=(), maps=(), command=None):
         self.kind, self.r, self.s, self.labels = kind, r, s, labels
         self.entry, self.input, self.output = entry, inp, out
         self.rows, self.children, self.maps = rows, children, maps
+        self.command = command
 
     def key(self):
         return (self.kind, self.r, self.s, self.labels, self.entry,
                 self.input, self.output, self.rows,
-                tuple(child.key() for child in self.children), self.maps)
+                tuple(child.key() for child in self.children), self.maps,
+                # Interning by node identity is conservative: distinct
+                # elaborated commands cannot alias solely by an ABI or name.
+                self.command)
 
     def instruction(self, pc: int):
         insist(0 <= pc < self.labels, 'linked source label out of range')
         if self.kind == 'table':
             return self.rows[pc]
+        if self.kind == 'composed':
+            return ('halt', ()) if pc == 0 else self.command.instr(1, 0, pc)
         if self.kind == 'lift':
             return mapped_instr(self.children[0].instruction(pc),
                                 self.maps[0], self.maps[1])
@@ -187,6 +193,21 @@ def parse_program(value: Any, remaining: list[int], depth: int = 0) -> ProgramNo
         insist(type(code) is list and len(code) == labels, 'incomplete linked leaf table')
         rows = tuple(parse_instr(row, r, s, labels) for row in code)
         return ProgramNode(kind, r, s, labels, entry, inp, out, rows=rows)
+
+    if kind == 'composed':
+        closed_keys(value, {'kind', 'r', 's', 'input', 'output', 'command'})
+        r = number(value['r'], 256, 'composed registers')
+        s = number(value['s'], 4096, 'composed stacks')
+        insist(r > 0 and s > 0, 'empty composed program dimensions')
+        inp = number(value['input'], s, 'composed input')
+        out = number(value['output'], s, 'composed output')
+        insist(inp < s and out < s, 'composed ports outside source dimensions')
+        command = parse_node(value['command'], r, s, remaining, depth + 1)
+        labels = command.size + 1
+        insist(labels <= MAX_SOURCE_LABELS, 'composed callee exceeds source labels')
+        entry = command.entry(1, 0)
+        insist(entry < labels, 'composed callee entry outside source labels')
+        return ProgramNode(kind, r, s, labels, entry, inp, out, command=command)
 
     if kind == 'lift':
         closed_keys(value, {'kind', 'r', 's', 'registers', 'stacks', 'source'})
@@ -354,6 +375,10 @@ class RustGenerator:
             instr=', '.join(rust_instr(row) for row in program.rows)
             expr=(f'DeferredProgram::table(Program::<{program.r},{program.s}>::new('
                   f'{program.input}, {program.output}, {program.entry}, vec![{instr}])?)')
+        elif program.kind=='composed':
+            command=self.emit(program.command,program.r,program.s)
+            expr=(f'DeferredProgram::<{program.r},{program.s}>::composed('
+                  f'{program.input}, {program.output}, {command})?')
         elif program.kind=='lift':
             registers,stacks=program.maps
             expr=(f'DeferredProgram::<{program.r},{program.s}>::lift('
@@ -370,12 +395,14 @@ class RustGenerator:
         self.lines.append(f'    let {name} = {expr};')
         return name
 
-    def emit(self,node:Node):
-        children=[self.emit(ch) for ch in node.children]
+    def emit(self,node:Node,r=None,s=None):
+        r=self.r if r is None else r
+        s=self.s if s is None else s
+        children=[self.emit(ch,r,s) for ch in node.children]
         name=f'n{self.n}';self.n+=1
         match node.kind:
-            case 'skip':expr=f'Block::<{self.r},{self.s}>::skip()'
-            case 'atom':expr=f"Block::<{self.r},{self.s}>::atom({rust_instr(node.args['opcode'],True)})?"
+            case 'skip':expr=f'Block::<{r},{s}>::skip()'
+            case 'atom':expr=f"Block::<{r},{s}>::atom({rust_instr(node.args['opcode'],True)})?"
             case 'seq':expr=f'Block::seq({children[0]}, {children[1]})?'
             case 'if':expr=f"Block::ite({node.args['test']}, {children[0]}, {children[1]})?"
             case 'while':expr=f"Block::while_({node.args['test']}, {children[0]})?"

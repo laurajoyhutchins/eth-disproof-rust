@@ -186,6 +186,18 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
         ("left", ← programGraph left maxLabels (fuel - 1)),
         ("right", ← programGraph right maxLabels (fuel - 1))
       ]
+    -- Large source-defined compiled callees are preserved as commands, never
+    -- expanded into a Fin-indexed physical table. Small callees retain the
+    -- separately verified table path for stable finite fixtures.
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled &&
+        a.size == 5 && labels > 4096 then
+      return Json.mkObj [
+        ("kind", toJson "composed"),
+        ("r", toJson r), ("s", toJson s),
+        ("input", toJson (← fin a[3]!)),
+        ("output", toJson (← fin a[4]!)),
+        ("command", ← structured a[2]! maxLabels 512)
+      ]
     if n == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link &&
         a.size >= 2 then
       return Json.mkObj [
@@ -203,12 +215,14 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
         | .const head _ =>
           if head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram ||
              head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.linkInto ||
-             head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link then
+             head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link ||
+             (head == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled &&
+              labels > 4096) then
             return (← programGraph v.value maxLabels (fuel - 1))
         | _ => pure ()
       | _ => pure ()
-    boundedTable p maxLabels
-  | _ => boundedTable p maxLabels
+    boundedTable p (min maxLabels 4096)
+  | _ => boundedTable p (min maxLabels 4096)
 
 private partial def structured (e : Expr) (maxLabels fuel : Nat) : MetaM Json := do
   if fuel == 0 then throwError "source command nesting exceeded 512 nodes"

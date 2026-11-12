@@ -19,7 +19,6 @@ def run_bounded(
     cwd: Path,
     timeout: float,
     env: dict[str, str] | None = None,
-    grace_seconds: float = 3.0,
 ) -> subprocess.CompletedProcess[str]:
     """Run a command in its own POSIX session and reap its children on timeout.
 
@@ -39,21 +38,15 @@ def run_bounded(
         try:
             stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            # A completed Lake parent may still have children holding output
-            # descriptors. Kill the session's entire process group, not merely
-            # the parent, and wait before exposing the filesystem to caching.
+            # A failed or timed-out build is never accepted. Hard-stop the
+            # whole process group, not just Lake's PID. A graceful-only signal
+            # can leave detached-output children writing .olean files while
+            # actions/cache reads the directory.
             try:
-                os.killpg(process.pid, signal.SIGTERM)
+                os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-            try:
-                stdout, stderr = process.communicate(timeout=grace_seconds)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                stdout, stderr = process.communicate()
+            stdout, stderr = process.communicate()
             raise subprocess.TimeoutExpired(
                 argv, timeout, output=stdout, stderr=stderr
             ) from None

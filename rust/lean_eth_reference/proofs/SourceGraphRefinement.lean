@@ -309,7 +309,7 @@ theorem SourceGraph.entry_correct {r s : ℕ}
   | ite test yes no ihy ihn =>
       intro l embed exit
       rfl
-  | while test body ih =>
+  | «while» test body ih =>
       intro l embed exit
       rfl
 
@@ -363,7 +363,7 @@ theorem SourceGraph.code_correct {r s : ℕ}
               change code no (fun q => embed (some (.inr q))) exit x =
                 StructuredCalls.code _ (fun q => embed (some (.inr q))) exit x
               exact ihn (fun q => embed (some (.inr q))) exit x
-  | while test body ih =>
+  | «while» test body ih =>
       intro l embed exit q
       cases q with
       | none =>

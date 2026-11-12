@@ -91,6 +91,32 @@ class GraphContracts(unittest.TestCase):
         self.assertNotEqual(a.key(), b.key())
         self.assertEqual(a.instruction(1), b.instruction(1))
 
+    def test_large_compiled_callee_preserves_physical_sites_without_host_codegen(self):
+        callee = {'kind':'composed','r':2,'s':2,'input':0,'output':1,
+                  'command':{'kind':'seq',
+                             'first':{'kind':'atom','opcode':'set:0:1'},
+                             'second':{'kind':'atom','opcode':'push:1:0'}}}
+        parsed = parse_program(callee,[8192])
+        self.assertEqual((parsed.labels,parsed.entry,parsed.input,parsed.output),
+                         (3,1,0,1))
+        self.assertEqual([parsed.instruction(pc) for pc in range(3)],
+                         [('halt',()),('set',(0,1,2)),('push',(1,0,0))])
+        source = parse_node({'kind':'call','program':callee},2,2,[8192])
+        self.assertEqual(source.entry(1,0),2)
+        self.assertEqual([source.instr(1,0,pc) for pc in range(1,4)],
+                         [('goto',(0,)),('set',(0,1,3)),('push',(1,0,1))])
+
+    def test_composed_callee_rejects_wrong_ports_and_unknown_commands(self):
+        baseline={'kind':'composed','r':2,'s':2,'input':0,'output':1,
+                  'command':{'kind':'atom','opcode':'set:0:1'}}
+        for bad in [
+            {**baseline,'input':2},
+            {**baseline,'command':{'kind':'sat_oracle'}},
+            {**baseline,'extra':'ignored'},
+        ]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                parse_program(bad,[8192])
+
     def test_lift_remaps_all_twelve_original_physical_opcodes(self):
         program={'r':4,'s':3,'labels':12,'entry':1,'input':0,'output':2,
                  'code':['halt','goto:11','set:0:1:3','copy:1:2:4',

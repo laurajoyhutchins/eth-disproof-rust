@@ -6,12 +6,14 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from temporary_rust_crate import isolated_cargo_manifest
 
 from compile_native_count import (
     FQN, IDENTITY, INPUT, OUTPUT, LARGE_FQN, LARGE_IDENTITY, MODULE,
-    SOURCE_SHA, inspect_graph, large_only_wrapper, lean_wrapper, rust_binary,
+    SOURCE_SHA, compile_counting, inspect_graph, large_only_wrapper, lean_wrapper, rust_binary,
 )
 
 BLOB = "a" * 40
@@ -105,6 +107,53 @@ class WholeCountingCompilationTests(unittest.TestCase):
         self.assertNotIn("count_terminal(", compiled)
         self.assertNotIn(".count_sat(", compiled)
 
+    def test_reused_exact_graph_skips_lean_build_and_refuses_wrong_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            upstream = root / "upstream"
+            lake = root / "lake"
+            rust_crate = Path(__file__).resolve().parents[1]
+            source = upstream / "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeOuter.lean"
+            source.parent.mkdir(parents=True)
+            source.write_text("-- pinned test fixture\n")
+            lake.mkdir()
+            preexport = root / "source.graph.json"
+            preexport.write_bytes(graph({"kind": "atom", "opcode": "set:0:1"},
+                                        mode="large-domain"))
+            a = SimpleNamespace(upstream=upstream, lake_root=lake,
+                                rust_crate=rust_crate, output_dir=root/"out",
+                                width=3, cutoff=20, timeout_seconds=120,
+                                require_certificate=False, entry_mode="large-domain",
+                                source_graph=preexport)
+            calls = []
+            def cargo_only(args, **kwargs):
+                calls.append(args)
+                if args[0] != "cargo":
+                    raise AssertionError("reused graph must not rebuild original Lean")
+                binary = Path(args[args.index("--manifest-path") + 1]).parent / "target/release/eth_native_count"
+                binary.parent.mkdir(parents=True)
+                binary.write_bytes(b"stub-generated-executable")
+                return ""
+            with patch('compile_native_count.ensure_pinned', return_value={}), \
+                 patch('compile_native_count.blob_hash', return_value=BLOB), \
+                 patch('compile_native_count.run_command', side_effect=cargo_only):
+                result = compile_counting(a)
+            self.assertEqual(result["entry_mode"], "large-domain")
+            self.assertEqual(result["source_graph_sha256"],
+                             __import__("hashlib").sha256(preexport.read_bytes()).hexdigest())
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0][0], "cargo")
+            self.assertTrue((a.output_dir/"count.receipt.json").is_file())
+            # The exact same bytes cannot be mistaken for the canonical
+            # complete-source declaration or for a graph from a wrong commit.
+            a.entry_mode = 'full'
+            with patch('compile_native_count.ensure_pinned', return_value={}), \
+                 patch('compile_native_count.blob_hash', return_value=BLOB), \
+                 patch('compile_native_count.run_command', side_effect=cargo_only):
+                with self.assertRaises(ValueError):
+                    compile_counting(a)
+            self.assertFalse((a.output_dir/"count.receipt.json").exists())
+            self.assertEqual(len(calls), 1)
     def test_codegen_refuses_unsafe_cutoffs(self):
         _, root = inspect_graph(graph({"kind": "skip"}, labels=1), BLOB)
         for width, cutoff in [(1, 20), (9, 20), (3, -1), (3, 129)]:

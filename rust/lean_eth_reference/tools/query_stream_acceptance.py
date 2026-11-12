@@ -111,15 +111,15 @@ def compile_query(args):
         fail("source-pin", error)
 
     try:
-        built = subprocess.run(["lake", "-K", "maxJobs=2", "build", MODULE],
+        built = subprocess.run(["lake", "-K", f"maxJobs={args.max_jobs}", "build", MODULE],
                                cwd=args.lake_root, capture_output=True, text=True,
-                               timeout=args.timeout_seconds)
+                               timeout=args.build_timeout_seconds)
     except subprocess.TimeoutExpired as error:
         def diagnostic(value):
             return value.decode("utf8", errors="replace") if isinstance(value, bytes) else (value or "")
         atomic_write(output/"original-build.log",
                      diagnostic(error.stdout)+"\n"+diagnostic(error.stderr))
-        fail("source-build-timeout", f"pinned module build exceeded {args.timeout_seconds} seconds; "
+        fail("source-build-timeout", f"pinned module build exceeded {args.build_timeout_seconds} seconds; "
              "reusable successful Lean object files must be restored from the exact-version cache")
     atomic_write(output/"original-build.log", built.stdout+"\n"+built.stderr)
     if built.returncode:
@@ -183,11 +183,17 @@ def main():
     parser.add_argument("--lake-root", required=True, type=Path)
     parser.add_argument("--rust-crate", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
-    parser.add_argument("--timeout-seconds", type=int, default=1800)
+    parser.add_argument("--timeout-seconds", type=int, default=1200)
+    parser.add_argument("--build-timeout-seconds", type=int, default=3600)
+    parser.add_argument("--max-jobs", type=int, default=4)
     parser.add_argument("--max-source-labels", type=int, default=1000000000)
     args = parser.parse_args()
     if not 60 <= args.timeout_seconds <= 3600:
         parser.error("timeout must be 60..3600 seconds")
+    if not 60 <= args.build_timeout_seconds <= 7200:
+        parser.error("build timeout must be 60..7200 seconds")
+    if not 1 <= args.max_jobs <= 8:
+        parser.error("Lean parallel jobs must be 1..8")
     if not 1 <= args.max_source_labels <= 1000000000:
         parser.error("symbolic root labels must be 1..1000000000; finite table leaves remain <=4096")
     compile_query(args)

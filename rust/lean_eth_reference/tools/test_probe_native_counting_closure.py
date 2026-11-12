@@ -39,28 +39,23 @@ def stage_graph(phase: str, width=3, cutoff=20, code=None, labels=2) -> bytes:
 class CountingPhaseContracts(unittest.TestCase):
     @unittest.skipUnless(os.name == "posix", "POSIX process groups required")
     def test_timed_out_lake_like_parent_cannot_leave_live_cache_writers(self):
-        # A child inheriting Lake's process group attempts to change an
-        # artifact after the parent timeout. The file must remain absent.
+        # A shell child inheriting Lake's group attempts to change an artifact
+        # after the parent's timeout. The process group must be hard-killed.
+        # Use POSIX sh rather than Python startup to make this test quick.
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             marker = root / "late-olean"
-            child = (
-                "from pathlib import Path; import sys, time; "
-                "time.sleep(0.45); Path(sys.argv[1]).write_text('leaked')"
-            )
-            parent = (
-                "import subprocess, sys, time; "
-                "subprocess.Popen([sys.executable, '-c', sys.argv[1], sys.argv[2]]); "
-                "print('child started', flush=True); time.sleep(10)"
+            shell = (
+                '(sleep 0.5; printf leaked > "$1") & '
+                'printf "child started\\n"; sleep 10'
             )
             with self.assertRaises(subprocess.TimeoutExpired) as captured:
                 run_bounded(
-                    [sys.executable, "-c", parent, child, str(marker)],
+                    ["sh", "-c", shell, "sh", str(marker)],
                     cwd=root, timeout=0.15,
                 )
-            stdout = captured.exception.stdout or b""
-            self.assertIn(b"child started", stdout)
-            time.sleep(0.55)
+            self.assertIn(b"child started", captured.exception.stdout or b"")
+            time.sleep(0.7)
             self.assertFalse(marker.exists(), "orphan process modified cached output")
 
     def test_each_source_stage_is_physical_with_proper_ports(self):

@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from verify_source_graph import (
-    SOURCE_SHA, Node, RustGenerator, parse_instr, parse_node, parse_program, generate_test, rust_instr,
+    SOURCE_SHA, Node, parse_instr, parse_node, parse_program, generate_test, rust_instr,
     parse_golden, parse_source_graph_json, validate_and_generate,
 )
 
@@ -69,33 +69,27 @@ class GraphContracts(unittest.TestCase):
             with self.subTest(instr=bad), self.assertRaises(ValueError):
                 parse_instr(bad,2,2,2)
 
-    def test_repeated_identical_call_shares_a_single_rust_table(self):
+    def test_repeated_source_calls_keep_exact_physical_site_layout(self):
         program = {'r':2,'s':2,'labels':3,'input':0,'output':1,'entry':2,
                    'code':['halt','goto:0','set:0:1:1']}
         call = {'kind':'call','program':program}
         command = {'kind':'seq','first':call,'second':
                    {'kind':'seq','first':call,'second':call}}
         root = parse_node(command,2,2,[8192])
-        generated = RustGenerator(2,2)
-        generated.emit(root)
-        body = '\n'.join(generated.lines)
-        self.assertEqual(body.count('DeferredProgram::table('),1)
-        self.assertEqual(body.count('Block::call(table_0.clone())'),3)
-        self.assertIn('let table_0 =',body)
+        self.assertEqual(root.size,9)
+        self.assertEqual(root.entry(1,0),3)
+        self.assertEqual(root.instr(1,0,3),('set',(0,1,2)))
+        self.assertEqual(root.instr(1,0,6),('set',(0,1,5)))
+        self.assertEqual(root.instr(1,0,9),('set',(0,1,8)))
 
-    def test_call_interning_uses_complete_abi_not_only_instruction_bytes(self):
+    def test_program_identity_includes_ports_not_only_instruction_bytes(self):
         program = {'r':2,'s':2,'labels':2,'input':0,'output':1,'entry':1,
                    'code':['halt','goto:0']}
         changed = {**program, 'output':0}
-        root = parse_node({'kind':'seq',
-                           'first':{'kind':'call','program':program},
-                           'second':{'kind':'call','program':changed}},2,2,[8192])
-        generated = RustGenerator(2,2)
-        generated.emit(root)
-        body = '\n'.join(generated.lines)
-        self.assertEqual(body.count('DeferredProgram::table('),2)
-        self.assertEqual(body.count('Block::call(table_0.clone())'),1)
-        self.assertEqual(body.count('Block::call(table_1.clone())'),1)
+        a = parse_program(program,[8192])
+        b = parse_program(changed,[8192])
+        self.assertNotEqual(a.key(), b.key())
+        self.assertEqual(a.instruction(1), b.instruction(1))
 
     def test_lift_remaps_all_twelve_original_physical_opcodes(self):
         program={'r':4,'s':3,'labels':12,'entry':1,'input':0,'output':2,
@@ -115,7 +109,7 @@ class GraphContracts(unittest.TestCase):
             ('peek',(4,0,3,11)), ('pop',(1,1,0,0)),
         ])
 
-    def test_linked_lean_physical_layout_and_rust_generation(self):
+    def test_linked_lean_physical_layout_and_source_graph(self):
         left = {'r':2,'s':2,'labels':3,'entry':2,'input':0,'output':1,
                 'code':['halt','goto:0','set:0:1:1']}
         right = {'r':2,'s':2,'labels':2,'entry':1,'input':0,'output':1,
@@ -130,13 +124,6 @@ class GraphContracts(unittest.TestCase):
             ('goto',(5,)), ('goto',(1,)), ('set',(2,1,2)),
             ('goto',(0,)), ('push',(1,2,4)),
         ])
-        emitted=RustGenerator(3,4)
-        emitted.emit(root)
-        rust='\n'.join(emitted.lines)
-        self.assertIn('DeferredProgram::<2,2>::link(',rust)
-        self.assertIn('DeferredProgram::<3,4>::lift(',rust)
-        self.assertEqual(rust.count('DeferredProgram::table('),2)
-        self.assertIn('Block::call(table_',rust)
 
     def test_link_into_distinct_physical_port_dimensions(self):
         left = {'r':2,'s':1,'labels':2,'entry':1,'input':0,'output':0,
@@ -155,9 +142,6 @@ class GraphContracts(unittest.TestCase):
             ('goto',(4,)), ('set',(2,1,1)), ('goto',(0,)),
             ('push',(2,1,3)),
         ])
-        gen=RustGenerator(3,4)
-        gen.emit(root)
-        self.assertIn('DeferredProgram::<3,4>::link_into(', '\n'.join(gen.lines))
 
     def test_linked_graph_invalid_map_or_dimensions_refuse(self):
         table = {'r':2,'s':2,'labels':2,'entry':1,'input':0,'output':1,

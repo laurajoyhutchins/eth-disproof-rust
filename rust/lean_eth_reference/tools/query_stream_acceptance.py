@@ -94,7 +94,7 @@ def generate_rust_query_test(root, abi):
 def generate_rust_query_binary(root, abi):
     # Share the exact emitted source constructors with the acceptance test.
     # Nothing here changes or simulates the pinned original program.
-    preamble, separator, _test = generate_rust_query_test(root, abi).partition("#[test]\\n")
+    preamble, separator, _test = generate_rust_query_test(root, abi).partition("#[test]")
     insist(bool(separator), "missing generated Rust query function")
     return preamble + (HERE/"query_stream_entrypoint.rs").read_text(encoding="utf8")
 

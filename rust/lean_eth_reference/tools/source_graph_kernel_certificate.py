@@ -106,7 +106,7 @@ def certificate_source(path: Path, record: dict[str, str]) -> tuple[str, dict[st
         f'private theorem entry_eq : candidate.entry = {record["fqn"]}.entry := by decide',
         f'private theorem all_code_eq (pc : Fin {l}) :',
         f'    candidate.code pc = {record["fqn"]}.code pc := by',
-        '  fin_cases pc <;> first | rfl | decide',
+        '  fin_cases pc <;> rfl',
         f'private theorem all_steps_eq (cfg : Cfg {r} {s} {l}) :',
         f'    step candidate cfg = step {record["fqn"]} cfg := by',
         '  change cfg.pc.map (fun pc => execInstr (candidate.code pc) cfg) =',

@@ -52,6 +52,22 @@ PHASES = {
 }
 
 
+def phase_imports(phase: str) -> str:
+    """Import only the compiled module closure required for the selected stage.
+
+    Importing NativeOuter for a query-only probe would require building the
+    entire later DFS closure and can falsely report a missing .olean as a
+    failure of the marked-query command itself.
+    """
+    if phase not in PHASES:
+        raise ValueError(f"unknown source counting phase: {phase}")
+    module = PHASES[phase][-1]
+    modules = [module]
+    if phase in {"dfs", "outer", "complete"}:
+        modules.append(MODULE_LEAF)
+    return "".join(f"import {m}\\n" for m in dict.fromkeys(modules))
+
+
 def wrapper_for(phase: str, width: int, cutoff: int) -> tuple[str, tuple[int, ...]]:
     if phase not in PHASES:
         raise ValueError(f"unknown source counting phase: {phase}")

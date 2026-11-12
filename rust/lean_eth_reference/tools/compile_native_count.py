@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 
 from export_compiled_batch import atomic_write, ensure_pinned
-from extract_compiled_catalog import blob_hash, discover
+from extract_compiled_catalog import blob_hash
 from run_source_graph_batch import LEAN
 from source_graph_kernel_certificate import certificate_source
 from temporary_rust_crate import isolated_cargo_manifest
@@ -150,8 +150,6 @@ def compile_counting(a):
     upstream, lake_root, rust_crate = (p.resolve() for p in
                                       (a.upstream, a.lake_root, a.rust_crate))
     pin = ensure_pinned(upstream, lake_root)
-    records = [r for r in discover(upstream, True)['candidates']
-               if r['module'] == MODULE]
     # Source identity is the immutable original NativeOuter module, not the
     # synthetic wrapper. The pinned repository fixes all imported dependencies.
     source_path = upstream / 'lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeOuter.lean'
@@ -159,11 +157,7 @@ def compile_counting(a):
     insist(source_path.is_file() and len(original_blob) == 40, 'original NativeOuter missing')
     wrapper = lean_wrapper(a.width, a.cutoff)
     definitions = wrapper.split('namespace OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.CountingExecutable', 1)[1]
-    source = (wrapper + '\n' + LEAN.read_text() +
-              '\nset_option maxHeartbeats 2000000\n' +
-              f'#export_original_source_graph {FQN} "{IDENTITY}" "{original_blob}"\n')
-    # Exporter imports need to precede the wrapper declaration; the exporter
-    # itself imports Lean, StructuredCalls and ProgramLinking.
+    # Exporter imports precede the synthetic original-expression wrapper.
     source = (f'import {MODULE}\nimport {LEAF}\n' +
               LEAN.read_text() + '\n' +
               'namespace OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.CountingExecutable' +

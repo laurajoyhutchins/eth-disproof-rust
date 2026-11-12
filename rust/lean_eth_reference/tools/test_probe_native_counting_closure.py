@@ -199,5 +199,45 @@ class CountingPhaseContracts(unittest.TestCase):
 
 
 
+    def test_two_queries_share_one_successful_original_module_build(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            upstream, lake, output = root / "original", root / "lean", root / "out"
+            module = PHASES["marked-query"][-1]
+            source = upstream / ("lean/" + module.replace(".", "/") + ".lean")
+            source.parent.mkdir(parents=True)
+            source.write_text("-- pinned fixture source\n")
+            lake.mkdir()
+            calls = []
+            a = types.SimpleNamespace(
+                upstream=upstream, lake_root=lake, output_dir=output,
+                width=3, cutoff=20, max_labels=4096,
+                timeout_seconds=30, build_timeout_seconds=60,
+                phase=["marked-query", "accepted-query"], no_build=False,
+            )
+            def fake_run(argv, **kwargs):
+                calls.append(argv)
+                if "build" in argv:
+                    return types.SimpleNamespace(
+                        returncode=0, stdout="build complete", stderr="")
+                probe_text = Path(argv[-1]).read_text()
+                phase = "marked-query" if '"marked-query"' in probe_text else "accepted-query"
+                return types.SimpleNamespace(
+                    returncode=0, stdout=stage_graph(phase).decode(), stderr="")
+            with patch("probe_native_counting_closure.ensure_pinned", return_value={}), \
+                 patch("probe_native_counting_closure.blob_hash", return_value=BLOB), \
+                 patch("probe_native_counting_closure.subprocess.run",
+                       side_effect=fake_run):
+                result = run(a)
+            self.assertEqual(len([argv for argv in calls if "build" in argv]), 1)
+            self.assertEqual(len(result["accepted"]), 2)
+            self.assertEqual(result["refused"], [])
+            report = json.loads((output / "counting-closure-report.json").read_text())
+            self.assertEqual(report["attempted"], 2)
+            self.assertEqual(report["not_attempted"], [])
+            self.assertFalse(report["complete_counting_verified"])
+
+
+
 if __name__ == "__main__":
     unittest.main()

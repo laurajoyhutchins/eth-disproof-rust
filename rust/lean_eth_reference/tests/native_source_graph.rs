@@ -335,23 +335,36 @@ fn nested_original_compiled_callee_keeps_halt_branch_and_mapped_stack_sites() {
     assert_eq!(source.instruction_at(1).unwrap(), Instr::Goto { next: 0 });
     assert_eq!(
         source.instruction_at(2).unwrap(),
-        Instr::Set { dst: 2, value: true, next: 3 }
+        Instr::Set {
+            dst: 2,
+            value: true,
+            next: 3
+        }
     );
     assert_eq!(
         source.instruction_at(3).unwrap(),
-        Instr::Push { stack: 1, src: 2, next: 1 }
+        Instr::Push {
+            stack: 1,
+            src: 2,
+            next: 1
+        }
     );
     let mut state = source.initial([]);
-    let stats = source.run(
-        &mut state,
-        lean_eth_reference::bit_program::RunLimits {
-            max_steps: 10,
-            max_stack_bits: 10,
-        },
-    ).unwrap();
+    let stats = source
+        .run(
+            &mut state,
+            lean_eth_reference::bit_program::RunLimits {
+                max_steps: 10,
+                max_stack_bits: 10,
+            },
+        )
+        .unwrap();
     assert_eq!(stats.instructions, 4);
     assert!(state.pc.is_none());
-    assert_eq!(state.stacks[1].iter().copied().collect::<Vec<_>>(), vec![true]);
+    assert_eq!(
+        state.stacks[1].iter().copied().collect::<Vec<_>>(),
+        vec![true]
+    );
 }
 
 #[test]

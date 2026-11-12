@@ -319,3 +319,52 @@ fn native_linked_source_refuses_noninjective_maps_wrong_dimensions_and_unknowns(
         );
     }
 }
+
+#[test]
+fn nested_original_compiled_callee_keeps_halt_branch_and_mapped_stack_sites() {
+    // A compiled source callee is not a preselected finite table: its
+    // StructuredCalls command is interpreted on demand inside the native graph.
+    let compiled = r#"{"kind":"composed","r":2,"s":1,"input":0,"output":0,"command":{"kind":"seq","first":{"kind":"atom","opcode":"set:0:1"},"second":{"kind":"atom","opcode":"push:0:0"}}}"#;
+    let lifted = format!(
+        r#"{{"kind":"lift","r":3,"s":2,"registers":[2,0],"stacks":[1],"source":{compiled}}}"#
+    );
+    let command = format!(r#"{{"kind":"call","program":{lifted}}}"#);
+    let source = import::<3, 2>(&wrap(&command, 4, 3, 2)).unwrap();
+    assert_eq!(source.entry(), 2);
+    assert_eq!(source.instruction_at(0).unwrap(), Instr::Halt);
+    assert_eq!(source.instruction_at(1).unwrap(), Instr::Goto { next: 0 });
+    assert_eq!(
+        source.instruction_at(2).unwrap(),
+        Instr::Set { dst: 2, value: true, next: 3 }
+    );
+    assert_eq!(
+        source.instruction_at(3).unwrap(),
+        Instr::Push { stack: 1, src: 2, next: 1 }
+    );
+    let mut state = source.initial([]);
+    let stats = source.run(
+        &mut state,
+        lean_eth_reference::bit_program::RunLimits {
+            max_steps: 10,
+            max_stack_bits: 10,
+        },
+    ).unwrap();
+    assert_eq!(stats.instructions, 4);
+    assert!(state.pc.is_none());
+    assert_eq!(state.stacks[1].iter().copied().collect::<Vec<_>>(), vec![true]);
+}
+
+#[test]
+fn malformed_nested_source_compiled_commands_refuse() {
+    let bad = [
+        r#"{"kind":"composed","r":2,"s":1,"input":1,"output":0,"command":{"kind":"skip"}}"#,
+        r#"{"kind":"composed","r":2,"s":1,"input":0,"output":0,"command":{"kind":"host_sat_oracle"}}"#,
+        r#"{"kind":"composed","r":2,"s":1,"input":0,"output":0,"command":{"kind":"atom","opcode":"set:2:1"}}"#,
+        r#"{"kind":"composed","r":2,"s":1,"input":0,"output":0,"command":{"kind":"if","test":2,"yes":{"kind":"skip"},"no":{"kind":"skip"}}}"#,
+        r#"{"kind":"composed","r":2,"s":1,"input":0,"output":0,"command":{"kind":"skip"},"unexpected":1}"#,
+    ];
+    for raw in bad {
+        let command = format!(r#"{{"kind":"call","program":{raw}}}"#);
+        assert!(import::<2, 1>(&wrap(&command, 2, 2, 1)).is_err(), "{raw}");
+    }
+}

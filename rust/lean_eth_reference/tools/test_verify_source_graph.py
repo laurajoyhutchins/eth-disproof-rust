@@ -97,6 +97,72 @@ class GraphContracts(unittest.TestCase):
         self.assertEqual(body.count('Block::call(table_0.clone())'),1)
         self.assertEqual(body.count('Block::call(table_1.clone())'),1)
 
+    def test_linked_lean_physical_layout_and_rust_generation(self):
+        left = {'r':2,'s':2,'labels':3,'entry':2,'input':0,'output':1,
+                'code':['halt','goto:0','set:0:1:1']}
+        right = {'r':2,'s':2,'labels':2,'entry':1,'input':0,'output':1,
+                 'code':['halt','push:1:0:0']}
+        linked = {'kind':'link','left':left,'right':right}
+        lifted = {'kind':'lift','r':3,'s':4,'registers':[2,0],
+                  'stacks':[3,1],'source':linked}
+        root = parse_node({'kind':'call','program':lifted},3,4,[8192])
+        self.assertEqual(root.size,5)
+        self.assertEqual(root.entry(1,0),3)
+        self.assertEqual([root.instr(1,0,pc) for pc in range(1,6)], [
+            ('goto',(5,)), ('goto',(1,)), ('set',(2,1,2)),
+            ('goto',(0,)), ('push',(1,2,4)),
+        ])
+        emitted=RustGenerator(3,4)
+        emitted.emit(root)
+        rust='\n'.join(emitted.lines)
+        self.assertIn('DeferredProgram::<2,2>::link(',rust)
+        self.assertIn('DeferredProgram::<3,4>::lift(',rust)
+        self.assertEqual(rust.count('DeferredProgram::table('),2)
+        self.assertIn('Block::call(table_',rust)
+
+    def test_link_into_distinct_physical_port_dimensions(self):
+        left = {'r':2,'s':1,'labels':2,'entry':1,'input':0,'output':0,
+                'code':['halt','set:0:1:0']}
+        right = {'r':1,'s':2,'labels':2,'entry':1,'input':0,'output':1,
+                 'code':['halt','push:1:0:0']}
+        link = {'kind':'link_into','r':3,'s':4,
+                'left':left,'right':right,
+                'left_registers':[2,0],'left_stacks':[3],
+                'right_registers':[1],'right_stacks':[0,2]}
+        root = parse_node({'kind':'call','program':link},3,4,[8192])
+        self.assertEqual(root.args['input'],3)
+        self.assertEqual(root.args['output'],2)
+        self.assertEqual(root.entry(1,0),2)
+        self.assertEqual([root.instr(1,0,pc) for pc in range(1,5)], [
+            ('goto',(4,)), ('set',(2,1,1)), ('goto',(0,)),
+            ('push',(2,1,3)),
+        ])
+        gen=RustGenerator(3,4)
+        gen.emit(root)
+        self.assertIn('DeferredProgram::<3,4>::link_into(', '\n'.join(gen.lines))
+
+    def test_linked_graph_invalid_map_or_dimensions_refuse(self):
+        table = {'r':2,'s':2,'labels':2,'entry':1,'input':0,'output':1,
+                 'code':['halt','set:0:1:0']}
+        for bad in [
+            {'kind':'lift','r':3,'s':3,'registers':[0,0],
+             'stacks':[0,1],'source':table},
+            {'kind':'lift','r':3,'s':3,'registers':[0,3],
+             'stacks':[0,1],'source':table},
+            {'kind':'lift','r':3,'s':3,'registers':[0],
+             'stacks':[0,1],'source':table},
+            {'kind':'lift','r':3,'s':3,'registers':[0,1],
+             'stacks':[0,0],'source':table},
+            {'kind':'link','left':table,'right':{**table,'r':3,'code':['halt','set:0:1:0']}},
+            {'kind':'link_into','r':3,'s':3,'left':table,'right':table,
+             'left_registers':[0,1],'left_stacks':[0,1],
+             'right_registers':[0,1],'right_stacks':[1,1]},
+            {'kind':'table','r':2,'s':2,'labels':2,'entry':1,'input':0,'output':1,
+             'code':['halt','set:0:1:0']},
+        ]:
+            with self.subTest(bad=bad),self.assertRaises(ValueError):
+                parse_node({'kind':'call','program':bad},3,3,[8192])
+
     def test_generator_rejects_ambiguous_serialized_graphs(self):
         # These must match the kernel-certificate input requirements.
         malformed = [

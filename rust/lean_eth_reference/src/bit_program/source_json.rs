@@ -124,12 +124,42 @@ fn parse_operands<'a>(
     let signature = match name {
         "halt" if !atom => "",
         "goto" if !atom => "l",
-        "set" => if atom { "rb" } else { "rbl" },
-        "copy" | "not" => if atom { "rr" } else { "rrl" },
-        "and" | "or" | "xor" => if atom { "rrr" } else { "rrrl" },
+        "set" => {
+            if atom {
+                "rb"
+            } else {
+                "rbl"
+            }
+        }
+        "copy" | "not" => {
+            if atom {
+                "rr"
+            } else {
+                "rrl"
+            }
+        }
+        "and" | "or" | "xor" => {
+            if atom {
+                "rrr"
+            } else {
+                "rrrl"
+            }
+        }
         "branch" if !atom => "rll",
-        "push" => if atom { "sr" } else { "srl" },
-        "peek" | "pop" => if atom { "srr" } else { "srrl" },
+        "push" => {
+            if atom {
+                "sr"
+            } else {
+                "srl"
+            }
+        }
+        "peek" | "pop" => {
+            if atom {
+                "srr"
+            } else {
+                "srrl"
+            }
+        }
         _ => return Err(invalid("unknown source opcode")),
     };
     let texts = fields.collect::<Vec<_>>();
@@ -153,18 +183,46 @@ fn parse_operands<'a>(
 fn parse_atom<const R: usize, const S: usize>(opcode: &str) -> Result<Atom, Error> {
     let (op, vals) = parse_operands(opcode, true, R, S, 1)?;
     Ok(match (op, vals.as_slice()) {
-        ("set", [dst, value]) => Atom::Set { dst: *dst, value: *value == 1 },
-        ("copy", [dst, src]) => Atom::Copy { dst: *dst, src: *src },
-        ("not", [dst, src]) => Atom::Not { dst: *dst, src: *src },
-        ("and", [dst, left, right]) => Atom::And { dst: *dst, left: *left, right: *right },
-        ("or", [dst, left, right]) => Atom::Or { dst: *dst, left: *left, right: *right },
-        ("xor", [dst, left, right]) => Atom::Xor { dst: *dst, left: *left, right: *right },
-        ("push", [stack, src]) => Atom::Push { stack: *stack, src: *src },
+        ("set", [dst, value]) => Atom::Set {
+            dst: *dst,
+            value: *value == 1,
+        },
+        ("copy", [dst, src]) => Atom::Copy {
+            dst: *dst,
+            src: *src,
+        },
+        ("not", [dst, src]) => Atom::Not {
+            dst: *dst,
+            src: *src,
+        },
+        ("and", [dst, left, right]) => Atom::And {
+            dst: *dst,
+            left: *left,
+            right: *right,
+        },
+        ("or", [dst, left, right]) => Atom::Or {
+            dst: *dst,
+            left: *left,
+            right: *right,
+        },
+        ("xor", [dst, left, right]) => Atom::Xor {
+            dst: *dst,
+            left: *left,
+            right: *right,
+        },
+        ("push", [stack, src]) => Atom::Push {
+            stack: *stack,
+            src: *src,
+        },
         ("peek", [stack, value, present]) => Atom::Peek {
-            stack: *stack, value: *value, present: *present,
+            stack: *stack,
+            value: *value,
+            present: *present,
         },
         ("pop", [stack, value, present]) => Atom::Pop {
-            stack: *stack, value: *value, present: *present,
+            stack: *stack,
+            value: *value,
+            present: *present,
         },
         _ => return Err(invalid("invalid atom operand pattern")),
     })
@@ -179,28 +237,59 @@ fn parse_instr<const R: usize, const S: usize>(
         ("halt", []) => Instr::Halt,
         ("goto", [next]) => Instr::Goto { next: *next },
         ("set", [dst, value, next]) => Instr::Set {
-            dst: *dst, value: *value == 1, next: *next,
+            dst: *dst,
+            value: *value == 1,
+            next: *next,
         },
-        ("copy", [dst, src, next]) => Instr::Copy { dst: *dst, src: *src, next: *next },
-        ("not", [dst, src, next]) => Instr::Not { dst: *dst, src: *src, next: *next },
+        ("copy", [dst, src, next]) => Instr::Copy {
+            dst: *dst,
+            src: *src,
+            next: *next,
+        },
+        ("not", [dst, src, next]) => Instr::Not {
+            dst: *dst,
+            src: *src,
+            next: *next,
+        },
         ("and", [dst, left, right, next]) => Instr::And {
-            dst: *dst, left: *left, right: *right, next: *next,
+            dst: *dst,
+            left: *left,
+            right: *right,
+            next: *next,
         },
         ("or", [dst, left, right, next]) => Instr::Or {
-            dst: *dst, left: *left, right: *right, next: *next,
+            dst: *dst,
+            left: *left,
+            right: *right,
+            next: *next,
         },
         ("xor", [dst, left, right, next]) => Instr::Xor {
-            dst: *dst, left: *left, right: *right, next: *next,
+            dst: *dst,
+            left: *left,
+            right: *right,
+            next: *next,
         },
-        ("branch", [test, yes, no]) => Instr::Branch { test: *test, yes: *yes, no: *no },
+        ("branch", [test, yes, no]) => Instr::Branch {
+            test: *test,
+            yes: *yes,
+            no: *no,
+        },
         ("push", [stack, src, next]) => Instr::Push {
-            stack: *stack, src: *src, next: *next,
+            stack: *stack,
+            src: *src,
+            next: *next,
         },
         ("peek", [stack, value, present, next]) => Instr::Peek {
-            stack: *stack, value: *value, present: *present, next: *next,
+            stack: *stack,
+            value: *value,
+            present: *present,
+            next: *next,
         },
         ("pop", [stack, value, present, next]) => Instr::Pop {
-            stack: *stack, value: *value, present: *present, next: *next,
+            stack: *stack,
+            value: *value,
+            present: *present,
+            next: *next,
         },
         _ => return Err(invalid("invalid instruction operand pattern")),
     })
@@ -221,8 +310,12 @@ fn lower<const R: usize, const S: usize>(
         Command::Skip => Ok(Block::skip()),
         Command::Atom { opcode } => Block::atom(parse_atom::<R, S>(&opcode)?),
         Command::Call { program: p } => {
-            if p.r != R || p.s != S || p.labels == 0 || p.labels > MAX_CALL_LABELS
-                || p.code.len() != p.labels || p.entry >= p.labels
+            if p.r != R
+                || p.s != S
+                || p.labels == 0
+                || p.labels > MAX_CALL_LABELS
+                || p.code.len() != p.labels
+                || p.entry >= p.labels
             {
                 return Err(invalid("invalid source callee dimensions"));
             }
@@ -232,21 +325,28 @@ fn lower<const R: usize, const S: usize>(
             if let Some(existing) = callees.get(&key) {
                 return Ok(Block::call(Arc::clone(existing)));
             }
-            let table = p.code.iter()
+            let table = p
+                .code
+                .iter()
                 .map(|op| parse_instr::<R, S>(op, p.labels))
                 .collect::<Result<Vec<_>, _>>()?;
-            let program = DeferredProgram::table(
-                Program::<R, S>::new(p.input, p.output, p.entry, table)?
-            );
+            let program =
+                DeferredProgram::table(Program::<R, S>::new(p.input, p.output, p.entry, table)?);
             callees.insert(key, Arc::clone(&program));
             Ok(Block::call(program))
         }
-        Command::Seq { first, second } =>
-            Block::seq(lower::<R, S>(*first, remaining, callees)?, lower::<R, S>(*second, remaining, callees)?),
-        Command::If { test, yes, no } =>
-            Block::ite(test, lower::<R, S>(*yes, remaining, callees)?, lower::<R, S>(*no, remaining, callees)?),
-        Command::While { test, body } =>
-            Block::while_(test, lower::<R, S>(*body, remaining, callees)?),
+        Command::Seq { first, second } => Block::seq(
+            lower::<R, S>(*first, remaining, callees)?,
+            lower::<R, S>(*second, remaining, callees)?,
+        ),
+        Command::If { test, yes, no } => Block::ite(
+            test,
+            lower::<R, S>(*yes, remaining, callees)?,
+            lower::<R, S>(*no, remaining, callees)?,
+        ),
+        Command::While { test, body } => {
+            Block::while_(test, lower::<R, S>(*body, remaining, callees)?)
+        }
     }
 }
 
@@ -260,20 +360,28 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         bytes: &[u8],
         expected: SourceGraphBinding<'_>,
     ) -> Result<Arc<Self>, Error> {
-        if bytes.is_empty() || bytes.len() > MAX_BYTES || bytes.last() != Some(&b'\n')
+        if bytes.is_empty()
+            || bytes.len() > MAX_BYTES
+            || bytes.last() != Some(&b'\n')
             || bytes.iter().filter(|&&b| b == b'\n').count() != 1
-            || bytes.contains(&b'\r') || !bytes.is_ascii()
+            || bytes.contains(&b'\r')
+            || !bytes.is_ascii()
         {
             return Err(invalid("source graph must be one bounded ASCII JSON line"));
         }
-        if expected.graph_sha256.len() != 64 ||
-            !expected.graph_sha256.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        if expected.graph_sha256.len() != 64
+            || !expected
+                .graph_sha256
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         {
             return Err(invalid("certificate digest must be lowercase hex SHA-256"));
         }
         let computed = format!("{:x}", Sha256::digest(bytes));
         if computed != expected.graph_sha256 {
-            return Err(invalid("graph SHA-256 differs from Lean certificate binding"));
+            return Err(invalid(
+                "graph SHA-256 differs from Lean certificate binding",
+            ));
         }
         let source: SerializedGraph = serde_json::from_slice(bytes)
             .map_err(|e| Error::Invalid(format!("source graph JSON schema: {e}")))?;
@@ -283,14 +391,26 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
             || source.declaration != expected.declaration
             || source.source_blob != expected.source_blob
             || source.source_blob.len() != 40
-            || !source.source_blob.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            || !source
+                .source_blob
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         {
-            return Err(invalid("source declaration/blob does not match trusted binding"));
+            return Err(invalid(
+                "source declaration/blob does not match trusted binding",
+            ));
         }
         let abi = source.abi;
-        if R == 0 || R > 256 || S == 0 || S > 4096
-            || abi.r != R || abi.s != S || abi.labels == 0 || abi.labels > MAX_LABELS
-            || abi.input >= S || abi.output >= S
+        if R == 0
+            || R > 256
+            || S == 0
+            || S > 4096
+            || abi.r != R
+            || abi.s != S
+            || abi.labels == 0
+            || abi.labels > MAX_LABELS
+            || abi.input >= S
+            || abi.output >= S
         {
             return Err(invalid("source machine dimensions outside supported ABI"));
         }
@@ -299,12 +419,13 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         let block = lower::<R, S>(source.command, &mut budget, &mut callees)?;
         let program = DeferredProgram::composed(abi.input, abi.output, block)?;
         if program.labels() != abi.labels {
-            return Err(invalid("source graph site count differs from original Lean ABI"));
+            return Err(invalid(
+                "source graph site count differs from original Lean ABI",
+            ));
         }
         Ok(program)
     }
 }
-
 
 #[cfg(test)]
 mod native_interning_tests {
@@ -313,7 +434,12 @@ mod native_interning_tests {
     fn callee(output: usize) -> Command {
         Command::Call {
             program: Callee {
-                r: 2, s: 2, labels: 2, entry: 1, input: 0, output,
+                r: 2,
+                s: 2,
+                labels: 2,
+                entry: 1,
+                input: 0,
+                output,
                 code: vec!["halt".into(), "goto:0".into()],
             },
         }
@@ -324,7 +450,8 @@ mod native_interning_tests {
         let repeated = Command::Seq {
             first: Box::new(callee(1)),
             second: Box::new(Command::Seq {
-                first: Box::new(callee(1)), second: Box::new(callee(0)),
+                first: Box::new(callee(1)),
+                second: Box::new(callee(0)),
             }),
         };
         let mut remaining = MAX_NODES;

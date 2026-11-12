@@ -148,6 +148,12 @@ def run_command(args, *, cwd: Path, timeout: int, env=None):
 
 
 def compile_counting(a):
+    # Invalidate stale results before a new attempt. A failed new build must
+    # never leave an old executable or success receipt appearing current.
+    a.output_dir.mkdir(parents=True, exist_ok=True)
+    for name in ('eth-count', 'count.graph.json', 'eth-count.generated.rs',
+                 'count.receipt.json'):
+        (a.output_dir / name).unlink(missing_ok=True)
     upstream, lake_root, rust_crate = (p.resolve() for p in
                                       (a.upstream, a.lake_root, a.rust_crate))
     pin = ensure_pinned(upstream, lake_root)
@@ -220,10 +226,8 @@ def compile_counting(a):
                 'no whole-program count correctness proof transferred to Rust',
             ],
         }
-        a.output_dir.mkdir(parents=True, exist_ok=True)
-        # Never expose a partial/failed executable or a success receipt.
+        # Publish the success receipt last; failures never produce one.
         path = a.output_dir / 'eth-count'
-        path.unlink(missing_ok=True)
         shutil.copy2(executable, path)
         path.chmod(0o755)
         atomic_write(a.output_dir / 'count.graph.json', raw.decode('ascii'))

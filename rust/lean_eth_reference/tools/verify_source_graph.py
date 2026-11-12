@@ -335,58 +335,6 @@ def rust_instr(ins,atom=False):
         f" {{ {', '.join(f'{field}: {value}' for field,value in zip(fields,values))} }}" if fields else '')
 
 
-class RustGenerator:
-    def __init__(self,r,s):
-        self.r,self.s,self.lines,self.n=r,s,[],0
-        # Identical source call programs are immutable Arc-backed leaves.
-        # Cache the complete ABI and physical table, never a display name.
-        self.callees: dict[tuple, str] = {}
-
-    def emit_program(self, program: ProgramNode) -> str:
-        key=program.key()
-        existing=self.callees.get(key)
-        if existing is not None:
-            return existing
-        children=[self.emit_program(child) for child in program.children]
-        name=f'table_{len(self.callees)}'
-        self.callees[key]=name
-        if program.kind=='table':
-            instr=', '.join(rust_instr(row) for row in program.rows)
-            expr=(f'DeferredProgram::table(Program::<{program.r},{program.s}>::new('
-                  f'{program.input}, {program.output}, {program.entry}, vec![{instr}])?)')
-        elif program.kind=='lift':
-            registers,stacks=program.maps
-            expr=(f'DeferredProgram::<{program.r},{program.s}>::lift('
-                  f'{children[0]}.clone(), {list(registers)!r}, {list(stacks)!r})?')
-        elif program.kind=='link':
-            expr=(f'DeferredProgram::<{program.r},{program.s}>::link('
-                  f'{children[0]}.clone(), {children[1]}.clone())?')
-        elif program.kind=='link_into':
-            maps=', '.join(str(list(m)) for m in program.maps)
-            expr=(f'DeferredProgram::<{program.r},{program.s}>::link_into('
-                  f'{children[0]}.clone(), {children[1]}.clone(), {maps})?')
-        else:
-            raise ValueError('unsupported source program node')
-        self.lines.append(f'    let {name} = {expr};')
-        return name
-
-    def emit(self,node:Node):
-        children=[self.emit(ch) for ch in node.children]
-        name=f'n{self.n}';self.n+=1
-        match node.kind:
-            case 'skip':expr=f'Block::<{self.r},{self.s}>::skip()'
-            case 'atom':expr=f"Block::<{self.r},{self.s}>::atom({rust_instr(node.args['opcode'],True)})?"
-            case 'seq':expr=f'Block::seq({children[0]}, {children[1]})?'
-            case 'if':expr=f"Block::ite({node.args['test']}, {children[0]}, {children[1]})?"
-            case 'while':expr=f"Block::while_({node.args['test']}, {children[0]})?"
-            case 'call':
-                callee=self.emit_program(node.table)
-                expr=f'Block::call({callee}.clone())'
-            case _:raise ValueError('unhandled source node')
-        self.lines.append(f'    let {name} = {expr};')
-        return name
-
-
 def generate_test(source:dict,root:Node,golden:list,abi:tuple[int,...],
                   graph_sha256:str)->str:
     """Rust only loads exact original JSON; Python no longer constructs Rust blocks.

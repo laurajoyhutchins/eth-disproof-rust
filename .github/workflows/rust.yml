@@ -32,5 +32,7 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Exact Rust tests
         run: cargo test --locked --offline --all-targets
+      - name: Source-graph compiler contract tests (offline)
+        run: python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

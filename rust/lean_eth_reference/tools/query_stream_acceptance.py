@@ -144,7 +144,8 @@ def compile_query(args):
         exported = subprocess.run(["lake", "env", "lean", str(src)],
                                   cwd=args.lake_root,
                                   env={**os.environ, "ORIGINAL_MAX_LABELS":
-                                       str(args.max_source_labels)},
+                                       str(args.max_source_labels),
+                                       "ORIGINAL_SOURCE_GRAPH_TRACE": "1"},
                                   capture_output=True, text=True,
                                   timeout=args.timeout_seconds)
         atomic_write(output/"original-export.log", exported.stdout+"\n"+exported.stderr)

@@ -118,6 +118,23 @@ class WholeCountingCompilationTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Usage: eth-count", result.stdout)
 
+            # Exercise the emitted Rust binary itself, not only its text.
+            # A nonterminal 3-variable formula below cutoff must refuse
+            # before any synthetic or source machine graph can run.
+            refused = subprocess.run(
+                ["cargo", "run", "--offline", "--quiet", "--manifest-path",
+                 str(project / "Cargo.toml"), "--"],
+                input="p cnf 3 2\\n1 2 0\\n1 3 0\\n",
+                cwd=project, env=env, text=True, capture_output=True, timeout=120,
+                check=False,
+            )
+            self.assertEqual(refused.returncode, 2, refused.stderr)
+            self.assertEqual(refused.stdout, "")
+            self.assertIn(
+                "unsupported noncomputable finite fallback: n <= 20",
+                refused.stderr,
+            )
+
     def test_duplicate_keys_are_not_silently_accepted(self):
         source = graph({"kind": "skip"}, labels=1)
         duplicate = source.replace(b'"output":1216', b'"output":1216,"output":1216')

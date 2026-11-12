@@ -104,6 +104,17 @@ class QueryStreamCompilationContract(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "source identity"):
                     validate_query_source(serialized(bad), BLOB)
 
+    def test_export_diagnostics_never_contaminate_certified_json(self):
+        # Instrumentation is stderr-only. It must not introduce a second JSON
+        # line or alter the SHA-256-bound source graph stdout protocol.
+        exporter = (Path(__file__).parent / "export_source_graph.lean").read_text()
+        runner = (Path(__file__).parent / "query_stream_acceptance.py").read_text()
+        self.assertIn("ORIGINAL_SOURCE_GRAPH_TRACE", runner)
+        self.assertIn("SOURCE_GRAPH_PHASE=structured-command", exporter)
+        self.assertIn("IO.eprintln", exporter)
+        self.assertEqual(exporter.count("IO.println graph.compress"), 1)
+        self.assertNotIn('IO.println "SOURCE_GRAPH_PHASE=', exporter)
+
     def test_unsupported_instructions_refuse_instead_of_falling_back(self):
         bad = query_graph()
         bad["command"]["first"] = {"kind": "host_count_oracle"}

@@ -55,7 +55,8 @@ flag also requires Lean to check that every source instruction and physical
 transition matches the imported original program. Without this flag the
 receipt explicitly states that the compilation is uncertified.
 
-The executable reads DIMACS CNF on standard input. It reports the exact
+The executable reads DIMACS CNF on standard input and rejects clauses wider
+than the compiled parameter `k`. It reports the machine's resulting
 physical count word as a decimal integer, the positivity bit, instructions
 executed and peak live bit-stack cells. It refuses unrecognized source
 instructions, invalid port maps, malformed graphs, unsupported source
@@ -71,6 +72,10 @@ python3 -m unittest discover \
   -s rust/lean_eth_reference/tools \
   -p test_compile_native_count.py -v
 ```
+
+The chosen `--cutoff 20` is a compile parameter, **not** evidence that 20
+is the particular existential cutoff constructed by `Final.lean`.
+That correspondence remains a separate Lean proof obligation.
 
 The success criteria for this integration are stronger than those tests:
 1. The original full declaration must elaborate in Lean under pinned source,

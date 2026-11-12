@@ -43,8 +43,8 @@ golden-answer replacement, or a successful independent differential test.
 
 ```sh
 cd rust/lean_eth_reference
-printf 'p cnf 3 0\n' | cargo run --locked --offline --bin eth-terminal-count
-printf 'p cnf 3 1\n0\n' | cargo run --locked --offline --bin eth-terminal-count
+printf 'p cnf 3 0\n' | cargo run --locked --offline --bin eth -- terminal-count
+printf 'p cnf 3 1\n0\n' | cargo run --locked --offline --bin eth -- terminal-count
 ```
 
 For terminal normalized CNFs, the native Rust port executes three **source

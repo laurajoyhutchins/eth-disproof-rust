@@ -7,7 +7,7 @@
 ```sh
 cd rust/lean_eth_reference
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' |
-  cargo run --offline --locked --bin eth-frontend
+  cargo run --offline --locked --bin eth -- frontend
 ```
 
 The executable parses DIMACS, encodes the original canonical `Encoding.encodeCNF` word, then executes the **physical** Rust BitProgram frontend. Source input stack 256 is preserved, stack 258 contains unary ambient n, stack 267 contains little-endian binary n, and stack 265 contains the normalized CNF body. Stack 263 is **empty**: this frontend does not count SAT assignments. All scratch stacks are empty at completion.

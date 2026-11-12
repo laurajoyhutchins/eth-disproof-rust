@@ -1,14 +1,15 @@
 [package]
 name = "lean-eth-reference"
+default-run = "eth"
 version = "0.16.0"
 edition = "2024"
 license = "MIT AND Apache-2.0"
 description = "Source-pinned Rust port of OpenAI Lean ETH finite semantics and BitProgram instructions"
 
+[dependencies]
+clap = { version = "=4.6.7", features = ["derive", "wrap_help", "cargo"] }
+
 [lib]
 name = "lean_eth_reference"
 path = "src/lib.rs"
 
-[[bin]]
-name = "lean-eth-reference"
-path = "src/main.rs"

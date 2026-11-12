@@ -12,6 +12,8 @@
 //! bit-complexity claim is transferred. The finite fallback in upstream
 //! `FiniteFallback.lean` is noncomputable and is not implemented here.
 
+pub mod cli;
+
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

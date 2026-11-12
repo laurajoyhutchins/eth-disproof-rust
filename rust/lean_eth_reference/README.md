@@ -2,14 +2,25 @@
 
 This crate implements selected executable components from the pinned
 [`openai/math` Lean development](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
-It contains **three CLI programs** with different correctness claims.
+It provides one **clap** CLI with three commands, each with a different correctness claim. The legacy executable wrappers have been retired.
+
+## Unified CLI
+
+```sh
+cargo run --locked --bin eth -- --help
+cargo run --locked --bin eth -- frontend --help
+cargo run --locked --bin eth -- terminal-count --help
+cargo run --locked --bin eth -- oracle --help
+```
+
+Every command takes an optional DIMACS input file, using `-` or an omitted argument for stdin. `frontend` and `terminal-count` have positive `--max-steps` and `--max-stack-bits` caps. `oracle` accepts `--max-variables` up to 20. The result format remains the existing script-friendly text, and failures produce no success record on stdout. All three commands use the same `eth` binary; the former standalone wrappers have been removed.
 
 ## Source-defined physical frontend
 
 ```sh
 cd rust/lean_eth_reference
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
-  cargo run --locked --offline --bin eth-frontend
+  cargo run --locked --offline --bin eth -- frontend
 ```
 
 This executes the source-correlated `Native.frontendCommand` as a Rust
@@ -22,7 +33,7 @@ It does **not** compute #SAT. See [the physical ABI and example](docs/m2-runnabl
 
 ```sh
 printf 'p cnf 3 0\n' | \
-  cargo run --locked --offline --bin eth-terminal-count
+  cargo run --locked --offline --bin eth -- terminal-count
 ```
 
 The terminal-family path executes the physical frontend and terminal stages
@@ -35,7 +46,7 @@ source-native #SAT algorithm or an original Lean differential result.
 
 ```sh
 printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
-  cargo run --locked --offline --bin lean-eth-reference
+  cargo run --locked --offline --bin eth -- oracle
 ```
 
 This produces `count=5` using a bounded exponential enumeration leaf.
@@ -65,7 +76,7 @@ for the reconstructed first-parent study sequence.
 ## Local Rust checks
 
 The root `rust-toolchain.toml` pins **Rust 1.99.1** and the root `Cargo.lock`
-is the canonical workspace lockfile. The crate has no third-party Cargo dependencies.
+is the canonical workspace lockfile. The crate uses the maintained `clap` parser for the CLI; `Cargo.lock` pins all dependencies.
 The following checks work from either this directory or the repository root:
 
 ```sh

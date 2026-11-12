@@ -84,6 +84,14 @@ enum ProgramTree {
 #[derive(Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 enum LinkedProgram {
+    #[serde(rename = "composed")]
+    Composed {
+        r: usize,
+        s: usize,
+        input: usize,
+        output: usize,
+        command: Box<Command>,
+    },
     #[serde(rename = "lift")]
     Lift {
         r: usize,
@@ -223,8 +231,8 @@ fn parse_operands(
     Ok((name, args))
 }
 
-fn parse_atom<const R: usize, const S: usize>(opcode: &str) -> Result<Atom, Error> {
-    let (op, vals) = parse_operands(opcode, true, R, S, 1)?;
+fn parse_source_atom(opcode: &str, r: usize, s: usize) -> Result<Atom, Error> {
+    let (op, vals) = parse_operands(opcode, true, r, s, 1)?;
     Ok(match (op, vals.as_slice()) {
         ("set", [dst, value]) => Atom::Set {
             dst: *dst,
@@ -269,6 +277,10 @@ fn parse_atom<const R: usize, const S: usize>(opcode: &str) -> Result<Atom, Erro
         },
         _ => return Err(invalid("invalid atom operand pattern")),
     })
+}
+
+fn parse_atom<const R: usize, const S: usize>(opcode: &str) -> Result<Atom, Error> {
+    parse_source_atom(opcode, R, S)
 }
 
 fn parse_physical_instr(opcode: &str, r: usize, s: usize, labels: usize) -> Result<Instr, Error> {
@@ -351,6 +363,7 @@ struct NativeSource {
 #[derive(Debug)]
 enum NativeBody {
     Table(Vec<Instr>),
+    Composed(Arc<NativeBlock>),
     Lift {
         source: Arc<NativeSource>,
         registers: Vec<usize>,
@@ -369,6 +382,8 @@ impl PhysicalSource for NativeSource {
         }
         match &self.body {
             NativeBody::Table(code) => Ok(code[pc].clone()),
+            NativeBody::Composed(block) if pc == 0 => Ok(Instr::Halt),
+            NativeBody::Composed(block) => block.instruction_at(1, 0, pc),
             NativeBody::Lift {
                 source,
                 registers,
@@ -397,6 +412,136 @@ impl PhysicalSource for NativeSource {
             }
         }
     }
+}
+
+/// Dynamic finite dimensions are checked once at decode. The exact same
+/// Block site semantics are used for nested source-defined compiled callees:
+/// label zero is halt; calls relocate halt to their continuation.
+#[derive(Debug)]
+struct NativeBlock {
+    size: usize,
+    kind: NativeBlockKind,
+}
+
+#[derive(Debug)]
+enum NativeBlockKind {
+    Skip,
+    Atom(Atom),
+    Call(Arc<NativeSource>),
+    Seq(Arc<NativeBlock>, Arc<NativeBlock>),
+    If { test: usize, yes: Arc<NativeBlock>, no: Arc<NativeBlock> },
+    While { test: usize, body: Arc<NativeBlock> },
+}
+
+impl NativeBlock {
+    fn entry_at(&self, base: usize, exit: usize) -> Result<usize, Error> {
+        match &self.kind {
+            NativeBlockKind::Skip => Ok(exit),
+            NativeBlockKind::Atom(_) | NativeBlockKind::If { .. } | NativeBlockKind::While { .. } => Ok(base),
+            NativeBlockKind::Call(program) => base.checked_add(program.entry).ok_or(Error::Overflow),
+            NativeBlockKind::Seq(first, second) => {
+                let mid = base.checked_add(first.size).ok_or(Error::Overflow)?;
+                first.entry_at(base, second.entry_at(mid, exit)?)
+            }
+        }
+    }
+
+    fn instruction_at(&self, base: usize, exit: usize, pc: usize) -> Result<Instr, Error> {
+        let end = base.checked_add(self.size).ok_or(Error::Overflow)?;
+        if pc < base || pc >= end {
+            return Err(invalid("nested structured source site outside physical block"));
+        }
+        match &self.kind {
+            NativeBlockKind::Skip => Err(invalid("empty nested source block has no instruction")),
+            NativeBlockKind::Atom(atom) => Ok(atom.instr(exit)),
+            NativeBlockKind::Call(program) => program.instruction_at(pc - base)?.relocate(base, exit),
+            NativeBlockKind::Seq(first, second) => {
+                let mid = base.checked_add(first.size).ok_or(Error::Overflow)?;
+                if pc < mid {
+                    first.instruction_at(base, second.entry_at(mid, exit)?, pc)
+                } else {
+                    second.instruction_at(mid, exit, pc)
+                }
+            }
+            NativeBlockKind::If { test, yes, no } => {
+                let first = base.checked_add(1).ok_or(Error::Overflow)?;
+                let second = first.checked_add(yes.size).ok_or(Error::Overflow)?;
+                if pc == base {
+                    Ok(Instr::Branch {
+                        test: *test,
+                        yes: yes.entry_at(first, exit)?,
+                        no: no.entry_at(second, exit)?,
+                    })
+                } else if pc < second {
+                    yes.instruction_at(first, exit, pc)
+                } else {
+                    no.instruction_at(second, exit, pc)
+                }
+            }
+            NativeBlockKind::While { test, body } => {
+                let first = base.checked_add(1).ok_or(Error::Overflow)?;
+                if pc == base {
+                    Ok(Instr::Branch {
+                        test: *test,
+                        yes: body.entry_at(first, base)?,
+                        no: exit,
+                    })
+                } else {
+                    body.instruction_at(first, base, pc)
+                }
+            }
+        }
+    }
+}
+
+fn lower_native_block(
+    command: Command,
+    r: usize,
+    s: usize,
+    remaining: &mut usize,
+    depth: usize,
+) -> Result<Arc<NativeBlock>, Error> {
+    if *remaining == 0 || depth > 128 {
+        return Err(Error::Capacity("nested composed source node budget".into()));
+    }
+    *remaining -= 1;
+    let (size, kind) = match command {
+        Command::Skip => (0, NativeBlockKind::Skip),
+        Command::Atom { opcode } => (
+            1, NativeBlockKind::Atom(parse_source_atom(&opcode, r, s)?),
+        ),
+        Command::Call { program } => {
+            let source = lower_linked_program(program, remaining, depth + 1)?;
+            if (source.r, source.s) != (r, s) {
+                return Err(invalid("nested source call has wrong physical dimensions"));
+            }
+            (source.labels, NativeBlockKind::Call(Arc::new(source)))
+        }
+        Command::Seq { first, second } => {
+            let first = lower_native_block(*first, r, s, remaining, depth + 1)?;
+            let second = lower_native_block(*second, r, s, remaining, depth + 1)?;
+            let size = first.size.checked_add(second.size).ok_or(Error::Overflow)?;
+            (size, NativeBlockKind::Seq(first, second))
+        }
+        Command::If { test, yes, no } => {
+            if test >= r { return Err(invalid("nested source branch register out of range")); }
+            let yes = lower_native_block(*yes, r, s, remaining, depth + 1)?;
+            let no = lower_native_block(*no, r, s, remaining, depth + 1)?;
+            let size = yes.size.checked_add(no.size).and_then(|v| v.checked_add(1))
+                .ok_or(Error::Overflow)?;
+            (size, NativeBlockKind::If { test, yes, no })
+        }
+        Command::While { test, body } => {
+            if test >= r { return Err(invalid("nested source while register out of range")); }
+            let body = lower_native_block(*body, r, s, remaining, depth + 1)?;
+            let size = body.size.checked_add(1).ok_or(Error::Overflow)?;
+            (size, NativeBlockKind::While { test, body })
+        }
+    };
+    if size >= MAX_LABELS {
+        return Err(Error::Capacity("nested composed source exceeds physical site budget".into()));
+    }
+    Ok(Arc::new(NativeBlock { size, kind }))
 }
 
 fn source_dimensions(r: usize, s: usize) -> Result<(), Error> {
@@ -503,6 +648,25 @@ fn lower_linked_program(
                 input: p.input,
                 output: p.output,
                 body: NativeBody::Table(code),
+            })
+        }
+        ProgramTree::Linked(LinkedProgram::Composed { r, s, input, output, command }) => {
+            source_dimensions(r, s)?;
+            if input >= s || output >= s {
+                return Err(invalid("nested composed source ports outside source dimensions"));
+            }
+            let block = lower_native_block(*command, r, s, remaining, depth + 1)?;
+            let labels = block.size.checked_add(1).ok_or(Error::Overflow)?;
+            if labels > MAX_LABELS {
+                return Err(Error::Capacity("nested composed source labels out of range".into()));
+            }
+            let entry = block.entry_at(1, 0)?;
+            if entry >= labels {
+                return Err(invalid("nested composed source entry outside physical labels"));
+            }
+            Ok(NativeSource {
+                r, s, labels, entry, input, output,
+                body: NativeBody::Composed(block),
             })
         }
         ProgramTree::Linked(LinkedProgram::Lift {

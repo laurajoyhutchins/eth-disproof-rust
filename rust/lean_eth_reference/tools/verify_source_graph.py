@@ -36,7 +36,7 @@ FIELDS = {'goto':['next'],'set':['dst','value','next'],
 ATOM_FIELDS={name:fields[:-1] for name,fields in FIELDS.items() if name in ATOMS}
 MAX_NODES=8192
 MAX_TABLE_LABELS=4096
-MAX_SOURCE_LABELS=50000
+MAX_SOURCE_LABELS=1000000000
 MAX_INPUT_BYTES=4*1024*1024
 
 

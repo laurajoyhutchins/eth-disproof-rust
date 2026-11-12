@@ -110,16 +110,27 @@ def compile_query(args):
     except (ValueError, OSError) as error:
         fail("source-pin", error)
 
-    built = subprocess.run(["lake", "-K", "maxJobs=2", "build", MODULE],
-                           cwd=args.lake_root, capture_output=True, text=True,
-                           timeout=args.timeout_seconds)
+    try:
+        built = subprocess.run(["lake", "-K", "maxJobs=2", "build", MODULE],
+                               cwd=args.lake_root, capture_output=True, text=True,
+                               timeout=args.timeout_seconds)
+    except subprocess.TimeoutExpired as error:
+        def diagnostic(value):
+            return value.decode("utf8", errors="replace") if isinstance(value, bytes) else (value or "")
+        atomic_write(output/"original-build.log",
+                     diagnostic(error.stdout)+"\n"+diagnostic(error.stderr))
+        fail("source-build-timeout", f"pinned module build exceeded {args.timeout_seconds} seconds; "
+             "reusable successful Lean object files must be restored from the exact-version cache")
     atomic_write(output/"original-build.log", built.stdout+"\n"+built.stderr)
     if built.returncode:
         fail("source-build", built.stderr[-4000:]+built.stdout[-2000:])
 
     with tempfile.TemporaryDirectory(prefix="original-query-stream-") as temp:
         src = Path(temp)/"QueryStreamExport.lean"
-        src.write_text(source(record), encoding="utf8")
+        query_source = source(record).replace(
+            "set_option maxHeartbeats 2000000\\n",
+            "set_option maxHeartbeats 8000000\\nset_option maxRecDepth 8192\\n")
+        src.write_text(query_source, encoding="utf8")
         # Bound the real command, never turn a failure into a truncated graph.
         exported = subprocess.run(["lake", "env", "lean", str(src)],
                                   cwd=args.lake_root,
@@ -172,13 +183,13 @@ def main():
     parser.add_argument("--lake-root", required=True, type=Path)
     parser.add_argument("--rust-crate", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
-    parser.add_argument("--timeout-seconds", type=int, default=900)
-    parser.add_argument("--max-source-labels", type=int, default=8192)
+    parser.add_argument("--timeout-seconds", type=int, default=1800)
+    parser.add_argument("--max-source-labels", type=int, default=1000000000)
     args = parser.parse_args()
-    if not 60 <= args.timeout_seconds <= 1800:
-        parser.error("timeout must be 60..1800 seconds")
-    if not 1 <= args.max_source_labels <= 8192:
-        parser.error("original finite root size bound currently 1..8192")
+    if not 60 <= args.timeout_seconds <= 3600:
+        parser.error("timeout must be 60..3600 seconds")
+    if not 1 <= args.max_source_labels <= 1000000000:
+        parser.error("symbolic root labels must be 1..1000000000; finite table leaves remain <=4096")
     compile_query(args)
 
 

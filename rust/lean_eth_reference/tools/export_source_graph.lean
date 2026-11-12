@@ -290,8 +290,8 @@ elab_rules : command
       (fun c => c.isDigit || (c >= 'a' && c <= 'f')) do
       throwError "invalid source Git blob"
     let maxLabels := ((← liftIO <| IO.getEnv "ORIGINAL_MAX_LABELS").getD "4096").toNat?.getD 0
-    if maxLabels == 0 || maxLabels > 8192 then
-      throwError "ORIGINAL_MAX_LABELS must be 1..8192"
+    if maxLabels == 0 || maxLabels > 1000000000 then
+      throwError "ORIGINAL_MAX_LABELS must be 1..1000000000 (finite table leaves capped at 4096)"
     let body ← liftTermElabM do
       let info ← getConstInfo programName
       match info with

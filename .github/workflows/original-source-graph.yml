@@ -147,7 +147,7 @@ jobs:
               --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
               --output-dir "$RUNNER_TEMP/source-graph" \
               --rust-crate rust/lean_eth_reference \
-              --timeout-seconds 900 --max-source-labels 8192
+              --timeout-seconds 1800 --max-source-labels 1000000000
           elif [[ "$GITHUB_HEAD_REF" == 'test/lean-linking-source-acceptance-20261111' ]]; then
             python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
               --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \

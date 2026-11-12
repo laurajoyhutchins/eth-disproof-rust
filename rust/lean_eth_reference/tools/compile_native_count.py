@@ -30,6 +30,8 @@ MODULE = 'OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.NativeOuter'
 LEAF = 'OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.NativeLeafProgram'
 FQN = 'OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.CountingExecutable.program'
 IDENTITY = 'native_complete_counting'
+LARGE_FQN = 'OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.CountingExecutable.largeOnlyProgram'
+LARGE_IDENTITY = 'native_large_domain_counting'
 R, S, INPUT, OUTPUT = 80, 1220, 256, 1216
 
 
@@ -52,15 +54,79 @@ def lean_wrapper(k: int, cutoff: int) -> str:
     )
 
 
-def inspect_graph(raw: bytes, source_blob: str):
+
+def large_only_wrapper(k: int, cutoff: int) -> str:
+    """Compile the source-defined large branch with the original cutoff scan.
+
+    The large branch of FiniteFallback.dispatchCommand is structurally the
+    original outerCommand. Only the unexecutable small *yes* arm is replaced
+    by skip; the emitted Rust binary refuses n<=cutoff before execution.
+    A Lean lemma below proves the two branches have identical data-state
+    execution under the original false cutoff flag. The physical label
+    tables intentionally differ, so this is not a full program-code identity.
+    """
+    if not (2 <= k <= 8 and 0 <= cutoff <= 128):
+        raise ValueError('unsafe count compilation parameters')
+    return (
+        f'import {MODULE}\n'
+        f'import {LEAF}\n'
+        'namespace OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.CountingExecutable\n'
+        'open OAI.Algorithms.SubexponentialSAT.SqrtLogSpace\n'
+        'open BitProgram StructuredCalls\n'
+        '-- Source-defined large-input path with its real cutoff scanner.\n'
+        '-- The unexecutable finite fallback is explicitly unsupported.\n'
+        'noncomputable def largeOnlyProgram :=\n'
+        '  compiled (.seq Native.frontendCommand\n'
+        f'    (.seq (FiniteFallback.cutoffCommand {cutoff})\n'
+        '      (.ite 75 (.base .skip)\n'
+        f'        (Native.outerCommand {k} (NativeLeafProgram.command {k})))))\n'
+        '    ABI.countStack ABI.answerStack\n'
+        '\n'
+        '-- This is a data-state refinement for the false cutoff branch,\n'
+        '-- not equality of absolute machine labels or a counting theorem.\n'
+        'theorem largeOnlyBranch_execution_eq_original\n'
+        '    (B : Nat) (large : Cmd 80 1220) (a b c d : State 80 1220)\n'
+        '    (tf tc tl : Nat)\n'
+        '    (hf : Eval Native.frontendCommand tf a b)\n'
+        '    (hc : Eval (FiniteFallback.cutoffCommand B) tc b c)\n'
+        '    (hfalse : c.regs 75 = false)\n'
+        '    (hl : Eval large tl c d) :\n'
+        '    Eval (Native.entryCommand B large) (tf + (tc + (tl + 1))) a d ∧\n'
+        '    Eval (.seq Native.frontendCommand\n'
+        '      (.seq (FiniteFallback.cutoffCommand B)\n'
+        '        (.ite 75 (.base .skip) large)))\n'
+        '      (tf + (tc + (tl + 1))) a d := by\n'
+        '  constructor\n'
+        '  · change Eval (.seq Native.frontendCommand\n'
+        '      (.seq (FiniteFallback.cutoffCommand B)\n'
+        '        (.ite 75 (FiniteFallback.framedCommand B) large)))\n'
+        '      (tf + (tc + (tl + 1))) a d\n'
+        '    exact hf.seq (hc.seq\n'
+        '      (hl.ite_false (yes := FiniteFallback.framedCommand B) hfalse))\n'
+        '  · exact hf.seq (hc.seq\n'
+        '      (hl.ite_false (yes := .base .skip) hfalse))\n'
+        'end OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.CountingExecutable\n'
+    )
+
+
+def mode_identity(mode: str) -> tuple[str, str]:
+    if mode == 'full':
+        return FQN, IDENTITY
+    if mode == 'large-domain':
+        return LARGE_FQN, LARGE_IDENTITY
+    raise ValueError('unknown source counting entry mode')
+
+
+def inspect_graph(raw: bytes, source_blob: str, *, mode: str = 'full'):
+    fqn, identity = mode_identity(mode)
     graph = parse_source_graph_json(raw)
     closed_keys(graph, {'kind', 'source_commit', 'source_blob', 'declaration',
                         'id', 'abi', 'command'})
     insist(graph['kind'] == 'original-structured-source-v1', 'wrong graph protocol')
     insist(graph['source_commit'] == SOURCE_SHA and
            graph['source_blob'] == source_blob and
-           graph['declaration'] == FQN and graph['id'] == IDENTITY,
-           'graph is not the pinned complete counting declaration')
+           graph['declaration'] == fqn and graph['id'] == identity,
+           'graph is not the pinned selected original counting declaration')
     abi = graph['abi']
     closed_keys(abi, {'r', 's', 'labels', 'input', 'output'})
     r = number(abi['r'], 256, 'r')
@@ -76,7 +142,9 @@ def inspect_graph(raw: bytes, source_blob: str):
     return graph, root
 
 
-def rust_binary(root, width: int = 3, cutoff: int = 20) -> str:
+def rust_binary(root, width: int = 3, cutoff: int = 20,
+                *, mode: str = 'full') -> str:
+    mode_identity(mode)
     if not (2 <= width <= 8 and 0 <= cutoff <= 128):
         raise ValueError('unsafe count compilation parameters')
     gen = RustGenerator(R, S)
@@ -131,7 +199,7 @@ def rust_binary(root, width: int = 3, cutoff: int = 20) -> str:
         '    if answer.len() != 1 || answer[0] != count.iter().any(|&bit| bit) {',
         '        return Err("source count/positivity outputs disagree".into());',
         '    }',
-        '    println!("status=physical-count-complete");',
+        '    println!("status=physical-' + ('large-domain-' if mode == 'large-domain' else '') + 'count-complete");',
         '    println!("count={}", count_word_decimal(&count));',
         '    println!("answer={}", u8::from(answer[0]));',
         '    println!("source_instructions={}", stats.instructions);',
@@ -173,7 +241,10 @@ def compile_counting(a):
     source_path = upstream / 'lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/NativeOuter.lean'
     original_blob = blob_hash(source_path.read_bytes())
     insist(source_path.is_file() and len(original_blob) == 40, 'original NativeOuter missing')
-    wrapper = lean_wrapper(a.width, a.cutoff)
+    mode = getattr(a, 'entry_mode', 'full')
+    fqn, identity = mode_identity(mode)
+    wrapper = (lean_wrapper(a.width, a.cutoff) if mode == 'full'
+               else large_only_wrapper(a.width, a.cutoff))
     definitions = wrapper.split('namespace OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.CountingExecutable', 1)[1]
     # Exporter imports precede the synthetic original-expression wrapper.
     source = (f'import {MODULE}\nimport {LEAF}\n' +
@@ -181,7 +252,7 @@ def compile_counting(a):
               'namespace OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.CountingExecutable' +
               definitions +
               '\nset_option maxHeartbeats 2000000\n' +
-              f'#export_original_source_graph {FQN} "{IDENTITY}" "{original_blob}"\n')
+              f'#export_original_source_graph {fqn} "{identity}" "{original_blob}"\n')
     with tempfile.TemporaryDirectory(prefix='native-count-', dir=lake_root) as scratch:
         work = Path(scratch)
         probe = work / 'SourceCounting.lean'
@@ -191,9 +262,9 @@ def compile_counting(a):
         raw = run_command(['lake', 'env', 'lean', str(probe)],
                           cwd=lake_root, timeout=a.timeout_seconds,
                           env={**os.environ, 'ORIGINAL_MAX_LABELS': '8192'}).encode('ascii')
-        graph, root = inspect_graph(raw, original_blob)
+        graph, root = inspect_graph(raw, original_blob, mode=mode)
         (work / 'count.graph.json').write_bytes(raw)
-        record = {'id': IDENTITY, 'fqn': FQN, 'module': MODULE, 'git_blob': original_blob}
+        record = {'id': identity, 'fqn': fqn, 'module': MODULE, 'git_blob': original_blob}
         cert_status = 'NOT_KERNEL_CERTIFIED'
         if a.require_certificate:
             certificate, receipt = certificate_source(work / 'count.graph.json', record)
@@ -206,7 +277,7 @@ def compile_counting(a):
             run_command(['lake', 'env', 'lean', str(proof)],
                         cwd=lake_root, timeout=a.timeout_seconds)
             cert_status = 'LEAN_KERNEL_CERTIFIED_SOURCE_DERIVED_COUNT'
-        generated = rust_binary(root, a.width, a.cutoff)
+        generated = rust_binary(root, a.width, a.cutoff, mode=mode)
         crate = work / 'crate'
         (crate / 'src').mkdir(parents=True)
         (crate / 'src/main.rs').write_text(generated, encoding='utf-8')
@@ -223,7 +294,8 @@ def compile_counting(a):
             'certificate_status': cert_status,
             'source_commit': SOURCE_SHA,
             'source_blob': original_blob,
-            'declaration': FQN,
+            'declaration': fqn,
+            'entry_mode': mode,
             'source_derived_wrapper_sha256': hashlib.sha256(wrapper.encode()).hexdigest(),
             'source_graph_sha256': hashlib.sha256(raw).hexdigest(),
             'generated_rust_sha256': hashlib.sha256(generated.encode()).hexdigest(),
@@ -236,6 +308,9 @@ def compile_counting(a):
                 'no whole-program count correctness proof transferred to Rust',
                 'selected cutoff is not established as the existential cutoff in original Final.lean',
                 'source instruction counts are not primitive TM2 costs or complexity bounds',
+                'the runtime refuses inputs at or below the selected cutoff',
+            ] + (['large-domain command is not byte-identical to original entryCommand; only false-cutoff branch has source-level data-state refinement']
+                 if mode == 'large-domain' else []) + [
             ] + ([] if a.require_certificate else [
                 'synthetic wrapper source graph not separately Lean-kernel certified',
             ]),
@@ -257,6 +332,8 @@ def main():
         p.add_argument('--' + name, required=True, type=Path)
     p.add_argument('--width', type=int, default=3)
     p.add_argument('--cutoff', type=int, default=20)
+    p.add_argument('--entry-mode', choices=['full', 'large-domain'],
+                   default='full', help='large-domain excludes the source noncomputable finite fallback and refuses n<=cutoff')
     p.add_argument('--timeout-seconds', type=int, default=1200)
     p.add_argument('--require-certificate', action='store_true')
     a = p.parse_args()

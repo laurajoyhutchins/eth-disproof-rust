@@ -87,6 +87,17 @@ class CountingPhaseContracts(unittest.TestCase):
         with self.assertRaises(ValueError):
             wrapper_for("complete", 1, 20)
 
+    def test_source_graph_total_labels_have_separate_finite_callee_limit(self):
+        from run_source_graph_batch import LEAN
+        from verify_source_graph import MAX_SOURCE_LABELS
+        self.assertEqual(MAX_SOURCE_LABELS, 50_000)
+        exporter = LEAN.read_text()
+        self.assertIn('private def maxSourceLabels : Nat := 50000', exporter)
+        self.assertIn('labels > maxSourceLabels', exporter)
+        self.assertIn('l > maxSourceLabels', exporter)
+        # Finite leaf materialization remains bounded independently.
+        self.assertIn("l > maxLabels", exporter)
+        self.assertIn("ORIGINAL_MAX_LABELS must be 1..8192", exporter)
     def test_generated_probe_uses_the_one_original_source_graph_exporter(self):
         for phase in PHASES:
             wrapper, _ = wrapper_for(phase, 3, 20)

@@ -158,13 +158,17 @@ def run(a) -> dict:
             "width": a.width, "cutoff": a.cutoff,
             "accepted": accepted, "refused": refused, "requested": phases,
             "attempted": len(accepted) + len(refused),
+            "not_attempted": phases[len(accepted) + len(refused):],
             "complete_counting_verified": False,
         }, sort_keys=True, indent=2) + "\n")
 
     checkpoint()
     prepared_modules: set[str] = set()
     failed_modules: dict[str, str] = {}
+    build_blocked = False
     for phase in phases:
+        if build_blocked:
+            break
         _expr, _r, _s, _in, _out, module = PHASES[phase]
         source_relative = "lean/" + module.replace(".", "/") + ".lean"
         source_file = upstream / source_relative
@@ -205,21 +209,22 @@ def run(a) -> dict:
                                 timeout=getattr(a, "build_timeout_seconds", a.timeout_seconds),
                             )
                         except subprocess.TimeoutExpired as exc:
-                            summary = (
-                                (exc.stdout or b"")[-3000:] +
-                                b"\\n" + (exc.stderr or b"")[-3000:]
-                            ).decode("utf-8", errors="replace") if isinstance(
-                                exc.stdout, bytes) or isinstance(exc.stderr, bytes) else (
-                                str(exc.stdout or "")[-3000:] + "\\n" +
-                                str(exc.stderr or "")[-3000:])
+                            # subprocess.TimeoutExpired may retain bytes even
+                            # with text=True. Preserve the last actual Lean
+                            # diagnostics instead of the Python exception alone.
+                            def tail(value) -> str:
+                                if isinstance(value, bytes):
+                                    return value[-6000:].decode("utf-8", errors="replace")
+                                return str(value or "")[-6000:]
+                            summary = tail(exc.stdout) + "\n" + tail(exc.stderr)
                             failed_modules[dependency] = "build timeout"
-                            atomic_write(a.output_dir / (
-                                phase + ".build.log"), summary + "\\n")
+                            atomic_write(a.output_dir / (phase + ".build.log"),
+                                         summary + "\n")
                             raise RuntimeError(
                                 f"DEPENDENCY_BUILD_TIMEOUT {dependency}: {summary[-1000:]}")
-                        summary = build.stdout[-6000:] + "\\n" + build.stderr[-6000:]
+                        summary = build.stdout[-6000:] + "\n" + build.stderr[-6000:]
                         atomic_write(a.output_dir / (phase + ".build.log"),
-                                     summary + "\\n")
+                                     summary + "\n")
                         if build.returncode:
                             failed_modules[dependency] = "build failed"
                             raise RuntimeError(
@@ -253,6 +258,11 @@ def run(a) -> dict:
             })
             print("SOURCE_COUNTING_PHASE_REFUSED", phase,
                   type(exc).__name__, str(exc)[-300:], flush=True)
+            # A dependent phase cannot be distinguished from this failed
+            # prerequisite until the source module is built. Do not burn
+            # the runner budget trying the same unfinished closure again.
+            if str(exc).startswith(("DEPENDENCY_BUILD_", "DEPENDENCY_NOT_READY")):
+                build_blocked = True
         checkpoint()
     if refused:
         raise SystemExit(f"counting closure incomplete: {len(accepted)} accepted,"

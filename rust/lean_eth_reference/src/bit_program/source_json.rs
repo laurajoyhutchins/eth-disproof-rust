@@ -13,6 +13,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+use super::deferred::{PhysicalSource, check_injective_map, relocate_ports};
 use super::{Atom, Block, DeferredProgram, Instr, Program};
 use crate::Error;
 
@@ -67,6 +68,44 @@ struct Callee {
     code: Vec<String>,
 }
 
+/// Nested linked programs have source-specific finite dimensions. Unlike a
+/// flattened table, each node is decoded and executed on demand in Rust.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ProgramTree {
+    Table(Callee),
+    Linked(LinkedProgram),
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+enum LinkedProgram {
+    #[serde(rename = "lift")]
+    Lift {
+        r: usize,
+        s: usize,
+        registers: Vec<usize>,
+        stacks: Vec<usize>,
+        source: Box<ProgramTree>,
+    },
+    #[serde(rename = "link")]
+    Link {
+        left: Box<ProgramTree>,
+        right: Box<ProgramTree>,
+    },
+    #[serde(rename = "link_into")]
+    LinkInto {
+        r: usize,
+        s: usize,
+        left: Box<ProgramTree>,
+        right: Box<ProgramTree>,
+        left_registers: Vec<usize>,
+        left_stacks: Vec<usize>,
+        right_registers: Vec<usize>,
+        right_stacks: Vec<usize>,
+    },
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 enum Command {
@@ -75,7 +114,7 @@ enum Command {
     #[serde(rename = "atom")]
     Atom { opcode: String },
     #[serde(rename = "call")]
-    Call { program: Callee },
+    Call { program: ProgramTree },
     #[serde(rename = "seq")]
     Seq {
         first: Box<Command>,
@@ -228,11 +267,8 @@ fn parse_atom<const R: usize, const S: usize>(opcode: &str) -> Result<Atom, Erro
     })
 }
 
-fn parse_instr<const R: usize, const S: usize>(
-    opcode: &str,
-    labels: usize,
-) -> Result<Instr, Error> {
-    let (op, v) = parse_operands(opcode, false, R, S, labels)?;
+fn parse_physical_instr(opcode: &str, r: usize, s: usize, labels: usize) -> Result<Instr, Error> {
+    let (op, v) = parse_operands(opcode, false, r, s, labels)?;
     Ok(match (op, v.as_slice()) {
         ("halt", []) => Instr::Halt,
         ("goto", [next]) => Instr::Goto { next: *next },
@@ -295,6 +331,162 @@ fn parse_instr<const R: usize, const S: usize>(
     })
 }
 
+/// A dimension-erased *physical* program, distinct from a host-level SAT
+/// operation. All nodes retain exact label spaces and instructions.
+#[derive(Debug)]
+struct NativeSource {
+    r: usize,
+    s: usize,
+    labels: usize,
+    entry: usize,
+    input: usize,
+    output: usize,
+    body: NativeBody,
+}
+
+#[derive(Debug)]
+enum NativeBody {
+    Table(Vec<Instr>),
+    Lift {
+        source: Arc<NativeSource>,
+        registers: Vec<usize>,
+        stacks: Vec<usize>,
+    },
+    Link {
+        left: Arc<NativeSource>,
+        right: Arc<NativeSource>,
+    },
+}
+
+impl PhysicalSource for NativeSource {
+    fn instruction_at(&self, pc: usize) -> Result<Instr, Error> {
+        if pc >= self.labels {
+            return Err(invalid("linked callee physical address out of range"));
+        }
+        match &self.body {
+            NativeBody::Table(code) => Ok(code[pc].clone()),
+            NativeBody::Lift { source, registers, stacks } => {
+                relocate_ports(source.instruction_at(pc)?, registers, stacks)
+            }
+            NativeBody::Link { left, right } if pc < left.labels => {
+                let original = left.instruction_at(pc)?;
+                if matches!(original, Instr::Halt) {
+                    Ok(Instr::Goto {
+                        next: left.labels.checked_add(right.entry).ok_or(Error::Overflow)?,
+                    })
+                } else {
+                    Ok(original)
+                }
+            }
+            NativeBody::Link { left, right } => {
+                let original = right.instruction_at(pc - left.labels)?;
+                if matches!(original, Instr::Halt) {
+                    Ok(Instr::Halt)
+                } else {
+                    original.relocate(left.labels, 0)
+                }
+            }
+        }
+    }
+}
+
+fn source_dimensions(r: usize, s: usize) -> Result<(), Error> {
+    if r == 0 || r > 256 || s == 0 || s > 4096 {
+        return Err(invalid("linked source port dimensions outside supported Fin"));
+    }
+    Ok(())
+}
+
+fn lift_source(
+    source: NativeSource,
+    r: usize,
+    s: usize,
+    registers: Vec<usize>,
+    stacks: Vec<usize>,
+) -> Result<NativeSource, Error> {
+    source_dimensions(r, s)?;
+    if registers.len() != source.r || stacks.len() != source.s {
+        return Err(invalid("linked source embedding domain has wrong size"));
+    }
+    check_injective_map(&registers, r, "register")?;
+    check_injective_map(&stacks, s, "stack")?;
+    let input = stacks[source.input];
+    let output = stacks[source.output];
+    Ok(NativeSource {
+        r, s, labels: source.labels, entry: source.entry, input, output,
+        body: NativeBody::Lift {
+            source: Arc::new(source), registers, stacks,
+        },
+    })
+}
+
+fn link_sources(left: NativeSource, right: NativeSource) -> Result<NativeSource, Error> {
+    if (left.r, left.s) != (right.r, right.s) {
+        return Err(invalid("linked program children have different target dimensions"));
+    }
+    let labels = left.labels.checked_add(right.labels).ok_or(Error::Overflow)?;
+    if labels > MAX_LABELS {
+        return Err(Error::Capacity("linked source exceeds physical label budget".into()));
+    }
+    Ok(NativeSource {
+        r: left.r, s: left.s, labels, entry: left.entry,
+        input: left.input, output: right.output,
+        body: NativeBody::Link {
+            left: Arc::new(left), right: Arc::new(right),
+        },
+    })
+}
+
+fn lower_linked_program(
+    tree: ProgramTree,
+    remaining: &mut usize,
+    depth: usize,
+) -> Result<NativeSource, Error> {
+    if *remaining == 0 || depth > 128 {
+        return Err(Error::Capacity("linked source recursion or node budget".into()));
+    }
+    *remaining -= 1;
+    match tree {
+        ProgramTree::Table(p) => {
+            source_dimensions(p.r, p.s)?;
+            if p.labels == 0 || p.labels > MAX_CALL_LABELS
+                || p.entry >= p.labels || p.input >= p.s || p.output >= p.s
+                || p.code.len() != p.labels
+            {
+                return Err(invalid("invalid finite linked source table ABI"));
+            }
+            let code = p.code.iter()
+                .map(|op| parse_physical_instr(op, p.r, p.s, p.labels))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(NativeSource {
+                r: p.r, s: p.s, labels: p.labels, entry: p.entry,
+                input: p.input, output: p.output, body: NativeBody::Table(code),
+            })
+        }
+        ProgramTree::Linked(LinkedProgram::Lift {
+            r, s, registers, stacks, source,
+        }) => {
+            let child = lower_linked_program(*source, remaining, depth + 1)?;
+            lift_source(child, r, s, registers, stacks)
+        }
+        ProgramTree::Linked(LinkedProgram::Link { left, right }) => {
+            let left = lower_linked_program(*left, remaining, depth + 1)?;
+            let right = lower_linked_program(*right, remaining, depth + 1)?;
+            link_sources(left, right)
+        }
+        ProgramTree::Linked(LinkedProgram::LinkInto {
+            r, s, left, right, left_registers, left_stacks,
+            right_registers, right_stacks,
+        }) => {
+            let left = lower_linked_program(*left, remaining, depth + 1)?;
+            let right = lower_linked_program(*right, remaining, depth + 1)?;
+            let left = lift_source(left, r, s, left_registers, left_stacks)?;
+            let right = lift_source(right, r, s, right_registers, right_stacks)?;
+            link_sources(left, right)
+        }
+    }
+}
+
 type CalleeKey = (usize, usize, usize, usize, Vec<String>);
 
 fn lower<const R: usize, const S: usize>(
@@ -309,30 +501,37 @@ fn lower<const R: usize, const S: usize>(
     match command {
         Command::Skip => Ok(Block::skip()),
         Command::Atom { opcode } => Block::atom(parse_atom::<R, S>(&opcode)?),
-        Command::Call { program: p } => {
+        Command::Call { program: ProgramTree::Table(p) } => {
             if p.r != R
                 || p.s != S
                 || p.labels == 0
                 || p.labels > MAX_CALL_LABELS
                 || p.code.len() != p.labels
-                || p.entry >= p.labels
+                || p.entry >= p.labels || p.input >= S || p.output >= S
             {
                 return Err(invalid("invalid source callee dimensions"));
             }
-            // Preserve the original complete callee identity: never share
-            // source tables just because their displayed opcode rows match.
             let key = (p.labels, p.input, p.output, p.entry, p.code.clone());
             if let Some(existing) = callees.get(&key) {
                 return Ok(Block::call(Arc::clone(existing)));
             }
-            let table = p
-                .code
-                .iter()
-                .map(|op| parse_instr::<R, S>(op, p.labels))
+            let table = p.code.iter()
+                .map(|op| parse_physical_instr(op, R, S, p.labels))
                 .collect::<Result<Vec<_>, _>>()?;
-            let program =
-                DeferredProgram::table(Program::<R, S>::new(p.input, p.output, p.entry, table)?);
+            let program = DeferredProgram::table(
+                Program::<R, S>::new(p.input, p.output, p.entry, table)?,
+            );
             callees.insert(key, Arc::clone(&program));
+            Ok(Block::call(program))
+        }
+        Command::Call { program } => {
+            let source = lower_linked_program(program, remaining, 0)?;
+            if (source.r, source.s) != (R, S) {
+                return Err(invalid("linked callee differs from enclosing source port dimensions"));
+            }
+            let program = DeferredProgram::<R, S>::source_program(
+                source.input, source.output, source.entry, source.labels, Arc::new(source),
+            )?;
             Ok(Block::call(program))
         }
         Command::Seq { first, second } => Block::seq(
@@ -433,7 +632,7 @@ mod native_interning_tests {
 
     fn callee(output: usize) -> Command {
         Command::Call {
-            program: Callee {
+            program: ProgramTree::Table(Callee {
                 r: 2,
                 s: 2,
                 labels: 2,
@@ -441,7 +640,7 @@ mod native_interning_tests {
                 input: 0,
                 output,
                 code: vec!["halt".into(), "goto:0".into()],
-            },
+            }),
         }
     }
 

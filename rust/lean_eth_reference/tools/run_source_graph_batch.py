@@ -43,7 +43,7 @@ def verify_original_linking_fixtures(a, pin: dict, catalog: dict) -> None:
     structurally exported, kernel-certified, generated Rust.
     """
     original = next((record for record in catalog['candidates']
-                     if record['fqn'].endswith('SetupPrimitives.logSuccProgram')), None)
+                     if record['fqn'].endswith('SqrtLog.Setup.logSuccProgram')), None)
     if original is None:
         raise ValueError('missing source-pinned logSuccProgram for link fixtures')
     if blob_hash((a.upstream/original['file']).read_bytes()) != original['git_blob']:

@@ -302,7 +302,7 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
             project=stage/'crate'
             (project/'tests').mkdir(parents=True,exist_ok=True)
             (project/'src').mkdir(parents=True,exist_ok=True)
-            (project/'src/lib.rs').write_text('// No semantic SAT oracle\\n')
+            (project/'src/lib.rs').write_text('// No semantic SAT oracle\n')
             (project/'tests/source.rs').write_text(body)
             (project/'Cargo.toml').write_text(isolated_cargo_manifest('original_graph_check', crate))
             result=subprocess.run(['cargo','test','--offline','--manifest-path',str(project/'Cargo.toml')],
@@ -310,7 +310,7 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
             if result.returncode:
                 raise RuntimeError('generated graph Rust test failed: '+result.stderr[-3000:]+' '+result.stdout[-1000:])
         staged_receipt=stage/(name+'.receipt.json')
-        staged_receipt.write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\\n')
+        staged_receipt.write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
         staged_rust.replace(dest/(name+'.rs'))
         staged_receipt.replace(receipt_path)
     print(f'SOURCE_GRAPH_EXACT {name} labels={l} nodes_probed={MAX_NODES} rust_sha256={receipt["generated_rust_sha256"]}',flush=True)

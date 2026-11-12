@@ -24,7 +24,11 @@ impl<const R: usize, const S: usize> PhysicalSource for DeferredProgram<R, S> {
 
 /// Original ProgramLinking.relocateInstr data-port portion, covering every
 /// source opcode. The label map is identity for a lift.
-pub(super) fn relocate_ports(instr: Instr, registers: &[usize], stacks: &[usize]) -> Result<Instr, Error> {
+pub(super) fn relocate_ports(
+    instr: Instr,
+    registers: &[usize],
+    stacks: &[usize],
+) -> Result<Instr, Error> {
     let reg = |i: usize| {
         registers
             .get(i)
@@ -127,7 +131,11 @@ pub(super) fn relocate_ports(instr: Instr, registers: &[usize], stacks: &[usize]
     })
 }
 
-pub(super) fn check_injective_map(map: &[usize], dimension: usize, port: &str) -> Result<(), Error> {
+pub(super) fn check_injective_map(
+    map: &[usize],
+    dimension: usize,
+    port: &str,
+) -> Result<(), Error> {
     let mut seen = vec![false; dimension];
     for &to in map {
         let Some(used) = seen.get_mut(to) else {
@@ -194,7 +202,9 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         source: Arc<dyn PhysicalSource>,
     ) -> Result<Arc<Self>, Error> {
         if labels == 0 || input_stack >= S || output_stack >= S || entry >= labels {
-            return Err(Error::Invalid("linked source program ABI outside target".into()));
+            return Err(Error::Invalid(
+                "linked source program ABI outside target".into(),
+            ));
         }
         Ok(Arc::new(Self {
             input_stack,

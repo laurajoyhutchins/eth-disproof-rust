@@ -82,7 +82,7 @@ class CountingPhaseContracts(unittest.TestCase):
         for phase in PHASES:
             wrapper, _ = wrapper_for(phase, 3, 20)
             src = source_for(wrapper, phase, BLOB, 4096)
-            self.assertEqual(src.count("#export_original_source_graph "), 1)
+            self.assertEqual(src.count("#export_original_source_graph " + WRAPPER_NAME + " "), 1)
             self.assertIn(WRAPPER_NAME, src)
             self.assertIn(BLOB, src)
             self.assertIn("import OAI.Algorithms.SubexponentialSAT.StructuredCalls", src)

@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from verify_source_graph import (
-    SOURCE_SHA, Node, RustGenerator, parse_instr, parse_node, generate_test, rust_instr,
+    SOURCE_SHA, Node, RustGenerator, parse_instr, parse_node, parse_program, generate_test, rust_instr,
     parse_golden, parse_source_graph_json, validate_and_generate,
 )
 
@@ -96,6 +96,24 @@ class GraphContracts(unittest.TestCase):
         self.assertEqual(body.count('DeferredProgram::table('),2)
         self.assertEqual(body.count('Block::call(table_0.clone())'),1)
         self.assertEqual(body.count('Block::call(table_1.clone())'),1)
+
+    def test_lift_remaps_all_twelve_original_physical_opcodes(self):
+        program={'r':4,'s':3,'labels':12,'entry':1,'input':0,'output':2,
+                 'code':['halt','goto:11','set:0:1:3','copy:1:2:4',
+                         'not:3:1:5','and:0:1:2:6','or:2:3:1:7',
+                         'xor:1:0:3:8','branch:2:9:10','push:1:0:11',
+                         'peek:0:3:2:11','pop:2:1:3:0']}
+        lifted={'kind':'lift','r':6,'s':5,'registers':[5,1,3,0],
+                'stacks':[4,2,1],'source':program}
+        parsed=parse_program(lifted,[8192])
+        self.assertEqual((parsed.entry,parsed.input,parsed.output),(1,4,1))
+        self.assertEqual([parsed.instruction(pc) for pc in range(12)],[
+            ('halt',()), ('goto',(11,)), ('set',(5,1,3)),
+            ('copy',(1,3,4)), ('not',(0,1,5)), ('and',(5,1,3,6)),
+            ('or',(3,0,1,7)), ('xor',(1,5,0,8)),
+            ('branch',(3,9,10)), ('push',(2,5,11)),
+            ('peek',(4,0,3,11)), ('pop',(1,1,0,0)),
+        ])
 
     def test_linked_lean_physical_layout_and_rust_generation(self):
         left = {'r':2,'s':2,'labels':3,'entry':2,'input':0,'output':1,

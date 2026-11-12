@@ -124,7 +124,7 @@ class WholeCountingCompilationTests(unittest.TestCase):
             refused = subprocess.run(
                 ["cargo", "run", "--offline", "--quiet", "--manifest-path",
                  str(project / "Cargo.toml"), "--"],
-                input="p cnf 3 2\\n1 2 0\\n1 3 0\\n",
+                input="p cnf 3 2\n1 2 0\n1 3 0\n",
                 cwd=project, env=env, text=True, capture_output=True, timeout=120,
                 check=False,
             )

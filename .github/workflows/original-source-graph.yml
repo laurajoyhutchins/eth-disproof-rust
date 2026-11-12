@@ -5,6 +5,8 @@ on:
     paths:
       - 'rust/lean_eth_reference/tools/export_source_graph.lean'
       - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
+      - 'rust/lean_eth_reference/tools/source_graph_kernel_certificate.py'
+      - 'rust/lean_eth_reference/tools/test_source_graph_kernel_certificate.py'
       - 'rust/lean_eth_reference/tools/verify_source_graph.py'
       - 'rust/lean_eth_reference/tools/lean_physical_differential.py'
       - 'rust/lean_eth_reference/tools/test_lean_physical_differential.py'
@@ -24,7 +26,7 @@ concurrency:
 
 jobs:
   source-graph-acceptance:
-    if: github.event_name == 'pull_request' && github.event.pull_request.number == 168
+    if: github.event_name == 'pull_request' && (github.event.pull_request.number == 168 || github.head_ref == 'proof/serialized-graph-certificate-20261111')
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -45,6 +47,7 @@ jobs:
           set -euo pipefail
           python3 -m compileall -q rust/lean_eth_reference/tools
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_source_graph_kernel_certificate.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_physical_differential.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_compute_l_structural_acceptance.py' -v
 
@@ -131,7 +134,7 @@ jobs:
             --rust-crate rust/lean_eth_reference --timeout-seconds 240
           echo 'ORIGINAL_BITPROGRAM_LEAN_RUST_TRANSITIONS=MATCH' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Export original Lean command constructors and verify generated Rust
+      - name: Kernel-certify original Lean graph bytes, then generate and verify Rust
         shell: bash
         run: |
           set -euo pipefail
@@ -141,7 +144,7 @@ jobs:
             --output-dir "$RUNNER_TEMP/source-graph" \
             --rust-crate rust/lean_eth_reference \
             --name-regex "$PROGRAM_REGEX" --limit 6 --timeout-seconds 240
-          echo 'ORIGINAL_LEAN_SOURCE_GRAPH=PHYSICAL_TABLE_PARITY_AND_BOUNDED_RUST' >> "$GITHUB_STEP_SUMMARY"
+          echo 'ORIGINAL_LEAN_SOURCE_GRAPH=KERNEL_CODE_CERTIFICATES_AND_BOUNDED_RUST_PARITY' >> "$GITHUB_STEP_SUMMARY"
 
       # This probe is independent of the six bounded original physical tables:
       # prior flat Lean materialization of computeL exceeded its heartbeat cap.

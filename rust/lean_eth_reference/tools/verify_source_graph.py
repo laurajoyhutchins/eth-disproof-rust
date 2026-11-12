@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 from typing import Any
 
 SOURCE_SHA = '4eaee87548250b2682affda7d05d947c05554bae'
@@ -254,6 +255,12 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     insist(parsed['source_commit']==SOURCE_SHA,'source commit mismatch')
     insist(re.fullmatch('[0-9a-f]{40}',parsed['source_blob']),'source blob malformed')
     insist(re.fullmatch('[a-z0-9_-]{1,255}',parsed['id']),'program ID malformed')
+    name=parsed['id']
+    # A new attempt supersedes any previous success for this program. An invalid
+    # graph or a failed Cargo test must never leave a success receipt behind.
+    dest.mkdir(parents=True,exist_ok=True)
+    receipt_path=dest/(name+'.receipt.json')
+    receipt_path.unlink(missing_ok=True)
     abi=parsed['abi'];closed_keys(abi,{'r','s','labels','input','output'})
     r=number(abi['r'],256,'r');s=number(abi['s'],4096,'s')
     l=number(abi['labels'],MAX_SOURCE_LABELS,'labels');insist(r>0 and s>0 and l>0,'empty ABI')
@@ -263,7 +270,6 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     insist(root.size+1==l,'derived source label count differs from Lean type')
     entry=root.entry(1,0)
     insist(0<=entry<l,'source graph entry outside labels')
-    name=parsed['id']
     gold_path=golden_dir/(name+'.table')
     insist(gold_path.is_file(),'not one of the six pinned golden programs')
     hashes=json.loads((golden_dir/'manifest.json').read_text())
@@ -278,28 +284,35 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     emitted=[('halt',())]+[root.instr(1,0,pc) for pc in range(1,l)]
     for i,(got,expected) in enumerate(zip(emitted,rows)):
         insist(got==expected,f'exact source physical instruction mismatch at {name}[{i}]: {fmt(got)} vs {fmt(expected)}')
-    dest.mkdir(parents=True,exist_ok=True)
     body=generate_test(parsed,root,rows,canonical)
-    output=dest/(name+'.rs')
-    output.write_text(body)
     receipt={'source_commit':SOURCE_SHA,'source_blob':parsed['source_blob'],
              'declaration':parsed['declaration'],'id':name,
              'graph_sha256':hashlib.sha256(original).hexdigest(),
              'golden_table_sha256':expect['sha256'],
              'generated_rust_sha256':hashlib.sha256(body.encode()).hexdigest(),
              'physical_instructions_compared':l,'status':'EXACT_SOURCE_PHYSICAL_PARITY'}
-    (dest/(name+'.receipt.json')).write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
-    if cargo:
-        project=dest/('crate-'+name)
-        (project/'tests').mkdir(parents=True,exist_ok=True)
-        (project/'src').mkdir(parents=True,exist_ok=True)
-        (project/'src/lib.rs').write_text('// No semantic SAT oracle\n')
-        (project/'tests/source.rs').write_text(body)
-        (project/'Cargo.toml').write_text(isolated_cargo_manifest('original_graph_check', crate))
-        result=subprocess.run(['cargo','test','--offline','--manifest-path',str(project/'Cargo.toml')],
-                              capture_output=True,text=True,timeout=240)
-        if result.returncode:
-            raise RuntimeError('generated graph Rust test failed: '+result.stderr[-3000:]+' '+result.stdout[-1000:])
+    # Generated Rust and the success receipt are staged separately from the
+    # published output. Publish only after the optional Cargo verification
+    # completes. A receipt is always published last.
+    with tempfile.TemporaryDirectory(prefix=f'.{name}-',dir=dest) as scratch:
+        stage=Path(scratch)
+        staged_rust=stage/(name+'.rs')
+        staged_rust.write_text(body)
+        if cargo:
+            project=stage/'crate'
+            (project/'tests').mkdir(parents=True,exist_ok=True)
+            (project/'src').mkdir(parents=True,exist_ok=True)
+            (project/'src/lib.rs').write_text('// No semantic SAT oracle\\n')
+            (project/'tests/source.rs').write_text(body)
+            (project/'Cargo.toml').write_text(isolated_cargo_manifest('original_graph_check', crate))
+            result=subprocess.run(['cargo','test','--offline','--manifest-path',str(project/'Cargo.toml')],
+                                  capture_output=True,text=True,timeout=240)
+            if result.returncode:
+                raise RuntimeError('generated graph Rust test failed: '+result.stderr[-3000:]+' '+result.stdout[-1000:])
+        staged_receipt=stage/(name+'.receipt.json')
+        staged_receipt.write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\\n')
+        staged_rust.replace(dest/(name+'.rs'))
+        staged_receipt.replace(receipt_path)
     print(f'SOURCE_GRAPH_EXACT {name} labels={l} nodes_probed={MAX_NODES} rust_sha256={receipt["generated_rust_sha256"]}',flush=True)
     return receipt
 

@@ -151,7 +151,7 @@ class GraphContracts(unittest.TestCase):
                 accepted=validate_and_generate(inp,golden,root/'out',root,True)
             published=json.loads(receipt_path.read_text())
             self.assertEqual(published,accepted)
-            self.assertEqual(published['generated_rust_sha256'],
+            self.assertEqual(published['rust_acceptance_test_sha256'],
                              hashlib.sha256(rust_path.read_bytes()).hexdigest())
             self.assertTrue(receipt_path.read_bytes().endswith(b'\n'))
             graph['command']['opcode']='set:0:0'

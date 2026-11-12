@@ -50,6 +50,14 @@ def verify_original_linking_fixtures(a, pin: dict, catalog: dict) -> None:
         raise ValueError('linked fixture callee source Git blob mismatch')
     fqn=original['fqn']
     module=original['module']
+    # The lean/Mathlib restore does not build original OpenAI modules.
+    # Build only the one imported callee, not the whole six-program batch.
+    built=subprocess.run(['lake','-K','maxJobs=2','build',module],
+                         cwd=a.lake_root,capture_output=True,text=True,
+                         timeout=a.timeout_seconds)
+    if built.returncode:
+        raise ValueError('original linking fixture module build failed: '+
+                         built.stdout[-2500:]+built.stderr[-2500:])
     fixture_module='OAI.Algorithms.SubexponentialSAT.LinkCompilerFixture'
     definitions=f"""namespace {fixture_module}
 noncomputable def lifted :=

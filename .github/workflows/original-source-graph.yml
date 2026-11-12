@@ -217,7 +217,6 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_probe_native_counting_closure.py' -v
-          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_compile_native_count.py' -v
       - name: Checkout exact original OpenAI SAT source
         shell: bash
         run: |

@@ -1,6 +1,13 @@
 """Cheap TDD checks for the original Lean -> one Rust counting executable seam."""
 import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 import unittest
+
+from temporary_rust_crate import isolated_cargo_manifest
 
 from compile_native_count import (
     FQN, IDENTITY, INPUT, OUTPUT, MODULE, SOURCE_SHA, inspect_graph,
@@ -71,6 +78,31 @@ class WholeCountingCompilationTests(unittest.TestCase):
             with self.subTest(payload=bad[:80]):
                 with self.assertRaises((ValueError, KeyError)):
                     inspect_graph(bad, BLOB)
+
+    @unittest.skipUnless(shutil.which("cargo"), "Rust toolchain not available")
+    def test_generated_entrypoint_compiles_and_exposes_help(self):
+        # Compile emitted Rust, rather than merely checking generated text.
+        # This is a small synthetic *codegen smoke*, not full source acceptance.
+        _, root = inspect_graph(graph({"kind": "atom", "opcode": "set:0:1"}), BLOB)
+        rust_crate = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory(prefix="source-count-codegen-") as tmp:
+            project = Path(tmp)
+            (project / "src").mkdir()
+            (project / "src" / "main.rs").write_text(rust_binary(root), encoding="utf-8")
+            (project / "Cargo.toml").write_text(
+                isolated_cargo_manifest("native_count_codegen_smoke", rust_crate),
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env.setdefault("CARGO_TARGET_DIR", str(rust_crate.parents[1] / "target"))
+            result = subprocess.run(
+                ["cargo", "run", "--offline", "--quiet", "--manifest-path",
+                 str(project / "Cargo.toml"), "--", "--help"],
+                cwd=project, env=env, text=True, capture_output=True, timeout=120,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Usage: eth-count", result.stdout)
 
     def test_duplicate_keys_are_not_silently_accepted(self):
         source = graph({"kind": "skip"}, labels=1)

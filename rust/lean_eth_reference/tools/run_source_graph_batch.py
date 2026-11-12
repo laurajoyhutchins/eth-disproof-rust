@@ -43,7 +43,7 @@ def verify_original_linking_fixtures(a, pin: dict, catalog: dict) -> None:
     structurally exported, kernel-certified, generated Rust.
     """
     original = next((record for record in catalog['candidates']
-                     if record['fqn'].endswith('SqrtLog.Setup.logSuccProgram')), None)
+                     if record['fqn'].endswith('SetupPrimitives.logSuccProgram')), None)
     if original is None:
         raise ValueError('missing source-pinned logSuccProgram for link fixtures')
     if blob_hash((a.upstream/original['file']).read_bytes()) != original['git_blob']:
@@ -158,10 +158,17 @@ def main():
     p.add_argument('--limit',type=int,default=6)
     p.add_argument('--no-cargo',action='store_true')
     p.add_argument('--linking-fixtures',action='store_true')
+    p.add_argument('--linking-fixtures-only',action='store_true')
     a=p.parse_args()
     assert 5<=a.timeout_seconds<=1200 and 1<=a.limit<=6
     pin=ensure_pinned(a.upstream,a.lake_root)
     catalog=discover(a.upstream,True)
+    if a.linking_fixtures_only:
+        if not a.linking_fixtures:
+            raise ValueError('--linking-fixtures-only requires --linking-fixtures')
+        a.output_dir.mkdir(parents=True,exist_ok=True)
+        verify_original_linking_fixtures(a,pin,catalog)
+        return
     pattern=re.compile(a.name_regex)
     manifest=json.loads((a.golden_dir/'manifest.json').read_text())
     chosen=[x for x in catalog['candidates'] if pattern.search(x['fqn']) and x['id'] in manifest][:a.limit]

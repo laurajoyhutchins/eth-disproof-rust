@@ -60,8 +60,22 @@ class WholeCountingCompilationTests(unittest.TestCase):
         self.assertIn("source_instructions=", compiled)
         self.assertIn("clause.literals().len() > 3", compiled)
         self.assertIn("formula exceeds compiled clause-width bound", compiled)
+        self.assertIn("if cnf.variables() <= 20 {", compiled)
+        self.assertIn("unsupported noncomputable finite fallback: n <= 20", compiled)
+        # Parameter-specific refusal is compiled into the executable. A
+        # selected cutoff is not asserted to be the original theorem cutoff.
+        variant = rust_binary(root, width=3, cutoff=2)
+        self.assertIn("if cnf.variables() <= 2 {", variant)
+        self.assertNotIn("n <= 20", variant)
         self.assertNotIn("count_terminal(", compiled)
         self.assertNotIn(".count_sat(", compiled)
+
+    def test_codegen_refuses_unsafe_cutoffs(self):
+        _, root = inspect_graph(graph({"kind": "skip"}, labels=1), BLOB)
+        for width, cutoff in [(1, 20), (9, 20), (3, -1), (3, 129)]:
+            with self.subTest(width=width, cutoff=cutoff):
+                with self.assertRaises(ValueError):
+                    rust_binary(root, width=width, cutoff=cutoff)
 
     def test_bad_abi_or_identity_must_refuse(self):
         tampered = [

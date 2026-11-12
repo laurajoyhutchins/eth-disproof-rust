@@ -224,10 +224,13 @@ def compile_counting(a):
             'width': a.width, 'cutoff': a.cutoff,
             'input_stack': INPUT, 'count_stack': INPUT, 'answer_stack': OUTPUT,
             'resource_basis': 'physical BitProgram instructions; not TM2 microsteps',
-            'limitations': [] if a.require_certificate else [
-                'synthetic wrapper source graph not separately Lean-kernel certified',
+            'limitations': [
                 'no whole-program count correctness proof transferred to Rust',
-            ],
+                'selected cutoff is not established as the existential cutoff in original Final.lean',
+                'source instruction counts are not primitive TM2 costs or complexity bounds',
+            ] + ([] if a.require_certificate else [
+                'synthetic wrapper source graph not separately Lean-kernel certified',
+            ]),
         }
         # Publish the success receipt last; failures never produce one.
         path = a.output_dir / 'eth-count'

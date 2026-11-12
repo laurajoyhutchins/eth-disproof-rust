@@ -10,20 +10,22 @@ import unittest
 from temporary_rust_crate import isolated_cargo_manifest
 
 from compile_native_count import (
-    FQN, IDENTITY, INPUT, OUTPUT, MODULE, SOURCE_SHA, inspect_graph,
-    lean_wrapper, rust_binary,
+    FQN, IDENTITY, INPUT, OUTPUT, LARGE_FQN, LARGE_IDENTITY, MODULE,
+    SOURCE_SHA, inspect_graph, large_only_wrapper, lean_wrapper, rust_binary,
 )
 
 BLOB = "a" * 40
 
 
-def graph(command, labels=2, input_stack=INPUT, output_stack=OUTPUT):
+def graph(command, labels=2, input_stack=INPUT, output_stack=OUTPUT,
+          mode='full'):
+    fqn, identity = (FQN, IDENTITY) if mode == 'full' else (LARGE_FQN, LARGE_IDENTITY)
     return (json.dumps({
         "kind": "original-structured-source-v1",
         "source_commit": SOURCE_SHA,
         "source_blob": BLOB,
-        "declaration": FQN,
-        "id": IDENTITY,
+        "declaration": fqn,
+        "id": identity,
         "abi": {"r": 80, "s": 1220, "labels": labels,
                 "input": input_stack, "output": output_stack},
         "command": command,
@@ -40,11 +42,44 @@ class WholeCountingCompilationTests(unittest.TestCase):
         self.assertNotIn("SAT.count", source)
         self.assertEqual(lean_wrapper(3, 20), source)
 
+    def test_large_domain_retains_original_cutoff_and_runnable_branch(self):
+        source = large_only_wrapper(3, 20)
+        program = source.split("-- This is a data-state refinement", 1)[0]
+        self.assertIn("Native.frontendCommand", program)
+        self.assertIn("FiniteFallback.cutoffCommand 20", program)
+        self.assertIn(".ite 75 (.base .skip)", program)
+        self.assertIn("Native.outerCommand 3 (NativeLeafProgram.command 3)", program)
+        self.assertNotIn("FiniteFallback.framedCommand", program)
+        self.assertNotIn("SAT.count", program)
+        # Conditional Lean source theorem, not a host assumption of global
+        # equivalence: original false-cutoff branch runs the same state effect.
+        self.assertIn("largeOnlyBranch_execution_eq_original", source)
+        self.assertIn("hfalse : c.regs 75 = false", source)
+        self.assertIn("Native.entryCommand B large", source)
+        self.assertIn("FiniteFallback.framedCommand B", source)
+
+        raw = graph({"kind": "atom", "opcode": "set:0:1"},
+                    mode="large-domain")
+        _, root = inspect_graph(raw, BLOB, mode="large-domain")
+        generated = rust_binary(root, mode="large-domain")
+        self.assertIn("status=physical-large-domain-count-complete", generated)
+        self.assertIn("if cnf.variables() <= 20 {", generated)
+        self.assertNotIn("count_terminal(", generated)
+        with self.assertRaises(ValueError):
+            inspect_graph(raw, BLOB, mode="full")
+        with self.assertRaises(ValueError):
+            inspect_graph(graph({"kind": "skip"}, labels=1),
+                          BLOB, mode="large-domain")
+        with self.assertRaises(ValueError):
+            rust_binary(root, mode="oracle")
+
     def test_reject_invalid_parameters(self):
         for k, cutoff in [(1, 20), (9, 20), (3, -1), (3, 129)]:
             with self.subTest(k=k, cutoff=cutoff):
                 with self.assertRaises(ValueError):
                     lean_wrapper(k, cutoff)
+                with self.assertRaises(ValueError):
+                    large_only_wrapper(k, cutoff)
 
     def test_full_machine_abi_and_synthetic_instruction_graph(self):
         g, root = inspect_graph(

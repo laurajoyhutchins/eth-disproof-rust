@@ -7,7 +7,8 @@ import unittest
 from unittest.mock import patch
 
 from probe_native_counting_closure import (
-    PHASES, PREFIX, WRAPPER_NAME, inspect, run, source_for, wrapper_for,
+    PHASES, PREFIX, WRAPPER_NAME, LARGE_FQN, LARGE_IDENTITY,
+    inspect, run, source_for, wrapper_for,
 )
 from verify_source_graph import SOURCE_SHA
 
@@ -16,10 +17,12 @@ BLOB = "a" * 40
 
 def stage_graph(phase: str, width=3, cutoff=20, code=None, labels=2) -> bytes:
     _, (r, s, inp, out) = wrapper_for(phase, width, cutoff)
+    declaration = LARGE_FQN if phase == "large-domain" else WRAPPER_NAME
+    identity = LARGE_IDENTITY if phase == "large-domain" else phase
     return (json.dumps({
         "kind": "original-structured-source-v1",
         "source_commit": SOURCE_SHA,
-        "source_blob": BLOB, "declaration": WRAPPER_NAME, "id": phase,
+        "source_blob": BLOB, "declaration": declaration, "id": identity,
         "abi": {"r": r, "s": s, "labels": labels,
                 "input": inp, "output": out},
         "command": code if code is not None else
@@ -37,6 +40,7 @@ class CountingPhaseContracts(unittest.TestCase):
             "dfs": (80, 1220, 256, 256),
             "outer": (80, 1220, 256, 1216),
             "complete": (80, 1220, 256, 1216),
+            "large-domain": (80, 1220, 256, 1216),
         }
         self.assertEqual(set(PHASES), set(expected))
         for phase, ports in expected.items():
@@ -61,6 +65,10 @@ class CountingPhaseContracts(unittest.TestCase):
         self.assertIn("NativeLeafProgram.command 3", code)
         code, _ = wrapper_for("marked-query", 3, 20)
         self.assertIn("HighQueryProgram.marked 3", code)
+        large, _ = wrapper_for("large-domain", 3, 20)
+        self.assertIn("Native.outerCommand 3 (NativeLeafProgram.command 3)", large)
+        self.assertIn("FiniteFallback.cutoffCommand 20", large)
+        self.assertNotIn("FiniteFallback.framedCommand 20", large)
 
     def test_invalid_graphs_or_stage_identity_refuse(self):
         for phase in PHASES:
@@ -82,8 +90,9 @@ class CountingPhaseContracts(unittest.TestCase):
         for phase in PHASES:
             wrapper, _ = wrapper_for(phase, 3, 20)
             src = source_for(wrapper, phase, BLOB, 4096)
-            self.assertEqual(src.count("#export_original_source_graph " + WRAPPER_NAME + " "), 1)
-            self.assertIn(WRAPPER_NAME, src)
+            decl = LARGE_FQN if phase == "large-domain" else WRAPPER_NAME
+            self.assertEqual(src.count("#export_original_source_graph " + decl + " "), 1)
+            self.assertIn(decl, src)
             self.assertIn(BLOB, src)
             self.assertIn("import OAI.Algorithms.SubexponentialSAT.StructuredCalls", src)
             self.assertNotIn("def SAT.count", src)
@@ -193,6 +202,7 @@ class CountingPhaseContracts(unittest.TestCase):
         self.assertIn("import " + PHASES["marked-query"][-1], marked)
         self.assertNotIn("NativeOuter", marked)
         self.assertNotIn("NativeLeafProgram", marked)
+        self.assertEqual(phase_imports("large-domain"), phase_imports("complete"))
         complete = phase_imports("complete")
         self.assertIn("import " + PHASES["complete"][-1], complete)
         self.assertIn("import " + PHASES["leaf"][-1], complete)

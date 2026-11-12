@@ -77,7 +77,7 @@ def wrapper_for(phase: str, width: int, cutoff: int) -> tuple[str, tuple[int, ..
     expression = expression.format(k=width, cutoff=cutoff)
     wrapper = (
         phase_imports(phase)
-        f"namespace {PREFIX}.CountingProbe\n"
+        + f"namespace {PREFIX}.CountingProbe\n"
         f"open {PREFIX}\n"
         "open BitProgram StructuredCalls\n"
         "-- Source-derived diagnostic, NOT a new counting implementation.\n"

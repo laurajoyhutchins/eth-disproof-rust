@@ -200,3 +200,265 @@ theorem WholeAgreement.eval_halt_trace {r s : ℕ} {c : StructuredCalls.Cmd r s}
   exact targetTrace
 
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement
+
+
+/-!
+## Proof-producing structural source-graph lowering
+
+A \`SourceGraph c\` carries a source-command index in its type. It cannot
+silently replace a call, branch, loop guard, or callee program with a different
+one. Its instruction lookup and entry function are defined *independently* of
+\`StructuredCalls.code\` and \`StructuredCalls.entry\`, then related by induction.
+
+This is a source-side semantic representation for a proof-carrying compiler.
+It is not a proof that an arbitrary JSON document or generated Rust binary
+faithfully serializes the source-indexed graph. The serialization boundary
+must be separately checked or proved.
+-/
+
+namespace OAI.Algorithms.SubexponentialSAT.LeanRustRefinement
+
+open BitProgram
+
+/-- An independently interpreted source-indexed graph. A source declaration
+determines the constructor and its original, fully typed operands. -/
+inductive SourceGraph {r s : ℕ} :
+    StructuredCalls.Cmd r s → Type where
+  | base (c : StructuredProgram.Cmd r s) : SourceGraph (.base c)
+  | call {labels : ℕ} (callee : Program r s labels) : SourceGraph (.call callee)
+  | seq {first second : StructuredCalls.Cmd r s}
+      (a : SourceGraph first) (b : SourceGraph second) :
+      SourceGraph (.seq first second)
+  | ite {yes no : StructuredCalls.Cmd r s} (test : Fin r)
+      (a : SourceGraph yes) (b : SourceGraph no) :
+      SourceGraph (.ite test yes no)
+  | while {body : StructuredCalls.Cmd r s} (test : Fin r)
+      (a : SourceGraph body) : SourceGraph (.while test body)
+
+/-- Construct the graph by structural recursion over the *elaborated* source. -/
+def SourceGraph.lower {r s : ℕ} :
+    (c : StructuredCalls.Cmd r s) → SourceGraph c
+  | .base c => .base c
+  | .call p => .call p
+  | .seq first second => .seq (lower first) (lower second)
+  | .ite test yes no => .ite test (lower yes) (lower no)
+  | .while test body => .while test (lower body)
+
+/-- Interpret graph entry independently of the original source compiler. -/
+def SourceGraph.entry {r s l : ℕ} {c : StructuredCalls.Cmd r s}
+    (g : SourceGraph c) (embed : StructuredCalls.Site c → Fin l)
+    (exit : Fin l) : Fin l :=
+  match g with
+  | .base c => StructuredProgram.entry c embed exit
+  | .call p => embed p.entry
+  | .seq first second =>
+      entry first (embed ∘ Sum.inl)
+        (entry second (embed ∘ Sum.inr) exit)
+  | .ite _ _ _ => embed none
+  | .while _ _ => embed none
+
+/-- Graph code lookup is lazy: it does not allocate the full finite table.
+Calls relocate their *original instructions*, including halt-to-return. -/
+def SourceGraph.code {r s l : ℕ} {c : StructuredCalls.Cmd r s}
+    (g : SourceGraph c) (embed : StructuredCalls.Site c → Fin l)
+    (exit : Fin l) : StructuredCalls.Site c → Instr r s l :=
+  match g with
+  | .base c => StructuredProgram.code c embed exit
+  | .call p => fun q =>
+      ProgramLinking.relocateInstr id id embed (some exit) (p.code q)
+  | .seq first second => fun q =>
+      match q with
+      | .inl x => code first (embed ∘ Sum.inl)
+          (entry second (embed ∘ Sum.inr) exit) x
+      | .inr x => code second (embed ∘ Sum.inr) exit x
+  | .ite test yes no => fun q =>
+      match q with
+      | none => .branch test
+          (entry yes (fun x => embed (some (.inl x))) exit)
+          (entry no (fun x => embed (some (.inr x))) exit)
+      | some (.inl x) =>
+          code yes (fun x => embed (some (.inl x))) exit x
+      | some (.inr x) =>
+          code no (fun x => embed (some (.inr x))) exit x
+  | .while test body => fun q =>
+      match q with
+      | none =>
+          .branch test (entry body (embed ∘ some) (embed none)) exit
+      | some x => code body (embed ∘ some) (embed none) x
+
+/-- Entry correspondence holds for *any* embedding and exit address. -/
+theorem SourceGraph.entry_correct {r s : ℕ}
+    {c : StructuredCalls.Cmd r s} (g : SourceGraph c) :
+    ∀ {l : ℕ} (embed : StructuredCalls.Site c → Fin l) (exit : Fin l),
+      entry g embed exit = StructuredCalls.entry c embed exit := by
+  induction g with
+  | base c =>
+      intro l embed exit
+      rfl
+  | call p =>
+      intro l embed exit
+      rfl
+  | seq first second ihf ihs =>
+      intro l embed exit
+      change
+        entry first (embed ∘ Sum.inl)
+          (entry second (embed ∘ Sum.inr) exit) =
+        StructuredCalls.entry _ (embed ∘ Sum.inl)
+          (StructuredCalls.entry _ (embed ∘ Sum.inr) exit)
+      rw [ihs, ihf]
+  | ite test yes no ihy ihn =>
+      intro l embed exit
+      rfl
+  | while test body ih =>
+      intro l embed exit
+      rfl
+
+/-- Every graph instruction is the original source instruction, for *all*
+sites and arbitrary embeddings, including relocated calls and loop back-edges. -/
+theorem SourceGraph.code_correct {r s : ℕ}
+    {c : StructuredCalls.Cmd r s} (g : SourceGraph c) :
+    ∀ {l : ℕ} (embed : StructuredCalls.Site c → Fin l)
+      (exit : Fin l) (q : StructuredCalls.Site c),
+      code g embed exit q = StructuredCalls.code c embed exit q := by
+  induction g with
+  | base c =>
+      intro l embed exit q
+      rfl
+  | call p =>
+      intro l embed exit q
+      rfl
+  | seq first second ihf ihs =>
+      intro l embed exit q
+      cases q with
+      | inl x =>
+          change code first (embed ∘ Sum.inl)
+              (entry second (embed ∘ Sum.inr) exit) x =
+            StructuredCalls.code _ (embed ∘ Sum.inl)
+              (StructuredCalls.entry _ (embed ∘ Sum.inr) exit) x
+          rw [entry_correct second]
+          exact ihf (embed ∘ Sum.inl)
+            (StructuredCalls.entry _ (embed ∘ Sum.inr) exit) x
+      | inr x =>
+          change code second (embed ∘ Sum.inr) exit x =
+            StructuredCalls.code _ (embed ∘ Sum.inr) exit x
+          exact ihs (embed ∘ Sum.inr) exit x
+  | ite test yes no ihy ihn =>
+      intro l embed exit q
+      cases q with
+      | none =>
+          change Instr.branch test
+              (entry yes (fun x => embed (some (.inl x))) exit)
+              (entry no (fun x => embed (some (.inr x))) exit) =
+            Instr.branch test
+              (StructuredCalls.entry _ (fun x => embed (some (.inl x))) exit)
+              (StructuredCalls.entry _ (fun x => embed (some (.inr x))) exit)
+          rw [entry_correct yes, entry_correct no]
+      | some branch =>
+          cases branch with
+          | inl x =>
+              change code yes (fun q => embed (some (.inl q))) exit x =
+                StructuredCalls.code _ (fun q => embed (some (.inl q))) exit x
+              exact ihy (fun q => embed (some (.inl q))) exit x
+          | inr x =>
+              change code no (fun q => embed (some (.inr q))) exit x =
+                StructuredCalls.code _ (fun q => embed (some (.inr q))) exit x
+              exact ihn (fun q => embed (some (.inr q))) exit x
+  | while test body ih =>
+      intro l embed exit q
+      cases q with
+      | none =>
+          change Instr.branch test
+              (entry body (embed ∘ some) (embed none)) exit =
+            Instr.branch test
+              (StructuredCalls.entry _ (embed ∘ some) (embed none)) exit
+          rw [entry_correct body]
+      | some x =>
+          change code body (embed ∘ some) (embed none) x =
+            StructuredCalls.code _ (embed ∘ some) (embed none) x
+          exact ih (embed ∘ some) (embed none) x
+
+/-- On-demand physical program from the graph, indexed by original source
+labels. Uses the proved source label equivalence, not a flat array. -/
+def SourceGraph.physical {r s : ℕ} {c : StructuredCalls.Cmd r s}
+    (g : SourceGraph c) (input output : Fin s) :
+    Program r s (StructuredCalls.size c + 1) where
+  inputStack := input
+  outputStack := output
+  entry := entry g (StructuredCalls.siteAddress c) (StructuredCalls.exitAddress c)
+  code label := match (StructuredCalls.labelEquiv c).symm label with
+    | none => .halt
+    | some q => code g (StructuredCalls.siteAddress c)
+        (StructuredCalls.exitAddress c) q
+
+theorem SourceGraph.physical_site {r s : ℕ}
+    {c : StructuredCalls.Cmd r s} (g : SourceGraph c)
+    (input output : Fin s) (q : StructuredCalls.Site c) :
+    (physical g input output).code (StructuredCalls.siteAddress c q) =
+      code g (StructuredCalls.siteAddress c)
+        (StructuredCalls.exitAddress c) q := by
+  change (match (StructuredCalls.labelEquiv c).symm
+      ((StructuredCalls.labelEquiv c) (some q)) with
+      | none => Instr.halt
+      | some q => code g (StructuredCalls.siteAddress c)
+          (StructuredCalls.exitAddress c) q) = _
+  rw [Equiv.symm_apply_apply]
+
+theorem SourceGraph.physical_exit {r s : ℕ}
+    {c : StructuredCalls.Cmd r s} (g : SourceGraph c)
+    (input output : Fin s) :
+    (physical g input output).code (StructuredCalls.exitAddress c) =
+      Instr.halt := by
+  change (match (StructuredCalls.labelEquiv c).symm
+      ((StructuredCalls.labelEquiv c) none) with
+      | none => Instr.halt
+      | some q => code g (StructuredCalls.siteAddress c)
+          (StructuredCalls.exitAddress c) q) = _
+  rw [Equiv.symm_apply_apply]
+
+/-- Structural induction automatically discharges all local site obligations
+and obtains the previous PR's whole-program refinement certificate. -/
+theorem SourceGraph.agrees {r s : ℕ}
+    {c : StructuredCalls.Cmd r s} (g : SourceGraph c)
+    (input output : Fin s) :
+    WholeAgreement c (physical g input output) input output := by
+  refine ⟨rfl, rfl, ?_, ?_, ?_⟩
+  · exact entry_correct g (StructuredCalls.siteAddress c)
+      (StructuredCalls.exitAddress c)
+  · intro q
+    calc
+      (physical g input output).code (StructuredCalls.siteAddress c q) =
+          code g (StructuredCalls.siteAddress c)
+            (StructuredCalls.exitAddress c) q :=
+        physical_site g input output q
+      _ = StructuredCalls.code c (StructuredCalls.siteAddress c)
+          (StructuredCalls.exitAddress c) q :=
+        code_correct g (StructuredCalls.siteAddress c)
+          (StructuredCalls.exitAddress c) q
+  · exact physical_exit g input output
+
+/-- Every source command now has an automatically verified graph compilation.
+There is no enumerated size bound and no unproved code equality hypothesis. -/
+theorem SourceGraph.lower_agrees {r s : ℕ} (c : StructuredCalls.Cmd r s)
+    (input output : Fin s) :
+    WholeAgreement c (physical (lower c) input output) input output :=
+  agrees (lower c) input output
+
+/-- Strong equivalence for all execution lengths and all physical states. -/
+theorem SourceGraph.trace_iff {r s : ℕ}
+    {c : StructuredCalls.Cmd r s} (g : SourceGraph c)
+    (input output : Fin s) {n : ℕ}
+    {a b : Cfg r s (StructuredCalls.size c + 1)} :
+    BitProgram.Trace (physical g input output) n a b ↔
+      BitProgram.Trace (StructuredCalls.compiled c input output) n a b :=
+  (agrees g input output).trace_iff
+
+/-- Existing source-level correctness proof transfers to the graph execution. -/
+theorem SourceGraph.eval_halt_trace {r s : ℕ}
+    {c : StructuredCalls.Cmd r s} (g : SourceGraph c)
+    (input output : Fin s) {n : ℕ} {a b : StructuredCalls.State r s}
+    (he : StructuredCalls.Eval c n a b) :
+    BitProgram.Trace (physical g input output) (n + 1)
+      (a.withPC (some (physical g input output).entry)) (b.withPC none) :=
+  (agrees g input output).eval_halt_trace he
+
+end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

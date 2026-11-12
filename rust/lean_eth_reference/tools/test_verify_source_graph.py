@@ -221,6 +221,9 @@ class GraphContracts(unittest.TestCase):
             inp.write_text(json.dumps(graph)+'\n')
             receipt=validate_and_generate(inp,golden,root/'out',root,False)
             self.assertEqual(receipt['physical_instructions_compared'],2)
+            self.assertEqual(receipt['rust_loader'], 'original-structured-source-v1/serde-native')
+            self.assertIn('from_original_source_json(include_bytes!("source.json")',
+                          (root/'out'/(ident+'.rs')).read_text())
             self.assertTrue((root/'out'/(ident+'.rs')).exists())
             # A failed Rust compile invalidates an earlier successful receipt.
             rust_path=root/'out'/(ident+'.rs')
@@ -252,7 +255,7 @@ class GraphContracts(unittest.TestCase):
                 accepted=validate_and_generate(inp,golden,root/'out',root,True)
             published=json.loads(receipt_path.read_text())
             self.assertEqual(published,accepted)
-            self.assertEqual(published['generated_rust_sha256'],
+            self.assertEqual(published['rust_acceptance_test_sha256'],
                              hashlib.sha256(rust_path.read_bytes()).hexdigest())
             self.assertTrue(receipt_path.read_bytes().endswith(b'\n'))
             graph['command']['opcode']='set:0:0'

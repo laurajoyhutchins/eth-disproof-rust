@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 from export_compiled_batch import ensure_pinned, atomic_write
 from extract_compiled_catalog import discover, blob_hash
-from verify_source_graph import validate_and_generate
+from verify_source_graph import validate_and_generate, parse_source_graph_json
 from source_graph_kernel_certificate import certificate_source
 
 HERE=Path(__file__).resolve().parent
@@ -106,6 +106,12 @@ end {fixture_module}
                             f'END|{fid}|'.encode()+raw.splitlines()[1].split(b'|')[4]+b'\n'):
                         raise ValueError(f'{fid} independent Lean table malformed')
                     (gold/(fid+'.table')).write_bytes(raw)
+            graph=parse_source_graph_json((dir/(fid+'.json')).read_bytes())
+            expected={'lifted':'lift','linked':'link','linkedInto':'link_into'}[short]
+            command=graph['command']
+            if command.get('kind')!='call' or command['program'].get('kind')!=expected:
+                raise ValueError(
+                    f'{fid} source did not preserve ProgramLinking.{expected} as a graph node')
             table_bytes=(gold/(fid+'.table')).read_bytes()
             gold_manifest[fid]={'declaration':record['fqn'],
                                 'source_blob':record['git_blob'],

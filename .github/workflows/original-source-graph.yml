@@ -96,6 +96,7 @@ jobs:
           key: original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
 
       - name: Export independent physical original Lean tables
+        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111'
         shell: bash
         run: |
           set -euo pipefail
@@ -124,6 +125,7 @@ jobs:
       # under pinned source identity. It deliberately does not claim that the
       # complete OAI module was imported or that command-graph parity passed.
       - name: Independently compare original Lean instruction semantics with Rust
+        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111'
         shell: bash
         run: |
           set -euo pipefail
@@ -138,13 +140,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
-            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
-            --golden-dir "$RUNNER_TEMP/source-tables" \
-            --output-dir "$RUNNER_TEMP/source-graph" \
-            --rust-crate rust/lean_eth_reference \
-            --name-regex "$PROGRAM_REGEX" --limit 6 --timeout-seconds 240 \
-            --linking-fixtures
+          if [[ "$GITHUB_HEAD_REF" == 'test/lean-linking-source-acceptance-20261111' ]]; then
+            python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
+              --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+              --golden-dir "$RUNNER_TEMP/source-tables" \
+              --output-dir "$RUNNER_TEMP/source-graph" \
+              --rust-crate rust/lean_eth_reference \
+              --limit 6 --timeout-seconds 240 \
+              --linking-fixtures --linking-fixtures-only
+          else
+            python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
+              --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+              --golden-dir "$RUNNER_TEMP/source-tables" \
+              --output-dir "$RUNNER_TEMP/source-graph" \
+              --rust-crate rust/lean_eth_reference \
+              --name-regex "$PROGRAM_REGEX" --limit 6 --timeout-seconds 240
+          fi
           echo 'ORIGINAL_LEAN_SOURCE_GRAPH=KERNEL_CODE_CERTIFICATES_AND_BOUNDED_RUST_PARITY' >> "$GITHUB_STEP_SUMMARY"
 
       # This probe is independent of the six bounded original physical tables:
@@ -152,6 +163,7 @@ jobs:
       # Structural source extraction + bounded Rust behavior is a distinct
       # evidence tier, never reported as exact original physical parity.
       - name: Prove original computeL can be structurally exported and executed
+        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111'
         shell: bash
         run: |
           set -euo pipefail

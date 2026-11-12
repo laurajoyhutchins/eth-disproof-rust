@@ -17,7 +17,7 @@ fn check(cnf: Cnf, expected: &str, positive: bool) {
     assert!(count.stages.iter().all(|stats| stats.instructions > 0));
     assert_eq!(
         count.total_instructions,
-        count.stages.iter().map(|s| s.instructions).sum()
+        count.stages.iter().map(|s| s.instructions).sum::<u64>()
     );
     assert!(count.peak_stack_bits >= cnf.encode_lean().len());
 }

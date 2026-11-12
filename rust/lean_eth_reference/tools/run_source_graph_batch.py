@@ -17,6 +17,7 @@ import tempfile
 from export_compiled_batch import ensure_pinned, atomic_write
 from extract_compiled_catalog import discover, blob_hash
 from verify_source_graph import validate_and_generate
+from source_graph_kernel_certificate import certificate_source
 
 HERE=Path(__file__).resolve().parent
 LEAN=HERE/'export_source_graph.lean'
@@ -79,7 +80,30 @@ def main():
                     raise ValueError('source graph elaboration failed: '+result.stderr[-2500:]+result.stdout[-2000:])
                 path=a.output_dir/(record['id']+'.json')
                 atomic_write(path,result.stdout)
+                # Fail closed before generating executable Rust: the candidate
+                # instructions come from the *serialized graph*, not golden
+                # tables. Lean proves full physical-code equality against its
+                # independently imported original declaration.
+                certificate, cert_receipt = certificate_source(path,record)
+                certdir=a.output_dir/'certificates'
+                certdir.mkdir(parents=True,exist_ok=True)
+                certpath=certdir/(record['id']+'.lean')
+                atomic_write(certpath,certificate)
+                proof=subprocess.run(['lake','env','lean',str(certpath)],
+                    cwd=a.lake_root,capture_output=True,text=True,
+                    timeout=a.timeout_seconds)
+                if proof.returncode or proof.stdout.strip():
+                    raise ValueError('Lean kernel source-graph certificate failed: '+
+                        proof.stderr[-3000:]+proof.stdout[-3000:])
+                cert_receipt['status']='LEAN_KERNEL_CERTIFIED_PHYSICAL_PROGRAM'
+                cert_receipt['lean_version']=pin['lean']
+                atomic_write(certdir/(record['id']+'.receipt.json'),
+                    json.dumps(cert_receipt,sort_keys=True,indent=2)+'\n')
                 accepted=validate_and_generate(path,a.golden_dir,a.output_dir/'rust',a.rust_crate,not a.no_cargo)
+                if accepted['graph_sha256'] != cert_receipt['source_graph_sha256']:
+                    raise ValueError('graph bytes changed between Lean certificate and Rust generation')
+                accepted['kernel_certificate_sha256']=cert_receipt['certificate_sha256']
+                accepted['kernel_certificate_status']=cert_receipt['status']
                 results.append(accepted)
                 print('ACCEPTED',record['id'],accepted['physical_instructions_compared'],flush=True)
         except (ValueError,subprocess.TimeoutExpired,RuntimeError,OSError) as exc:
@@ -88,6 +112,6 @@ def main():
         checkpoint()
     if refused or len(results)!=len(chosen):
         raise SystemExit(f'source graph parity incomplete: accepted={len(results)}, refused={len(refused)}')
-    print(f'SOURCE_GRAPH_COMPLETE {len(results)} originally-elaborated graphs: physical table + bounded Rust parity; independent Lean step trace not established')
+    print(f'SOURCE_GRAPH_COMPLETE {len(results)} Lean-kernel-certified original-source graphs: all physical code + bounded Rust parity; native Rust equivalence is tested, not formally proved')
 
 if __name__=='__main__':main()

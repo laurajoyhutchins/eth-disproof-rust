@@ -382,7 +382,7 @@ impl PhysicalSource for NativeSource {
         }
         match &self.body {
             NativeBody::Table(code) => Ok(code[pc].clone()),
-            NativeBody::Composed(block) if pc == 0 => Ok(Instr::Halt),
+            NativeBody::Composed(_) if pc == 0 => Ok(Instr::Halt),
             NativeBody::Composed(block) => block.instruction_at(1, 0, pc),
             NativeBody::Lift {
                 source,

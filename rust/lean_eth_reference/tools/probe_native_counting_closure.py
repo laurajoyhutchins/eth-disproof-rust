@@ -19,6 +19,7 @@ import tempfile
 from export_compiled_batch import atomic_write, ensure_pinned
 from extract_compiled_catalog import blob_hash
 from run_source_graph_batch import LEAN
+from compile_native_count import large_only_wrapper, LARGE_FQN, LARGE_IDENTITY
 from verify_source_graph import (
     MAX_NODES, MAX_SOURCE_LABELS, SOURCE_SHA, closed_keys, insist, number,
     parse_node, parse_source_graph_json,
@@ -49,6 +50,8 @@ PHASES = {
         f"Native.entryCommand {{cutoff}} (Native.outerCommand {{k}} "
         f"(NativeLeafProgram.command {{k}}))",
         80, 1220, 256, 1216, MODULE_OUTER),
+    "large-domain": ("source-refined-original-large-domain",
+                     80, 1220, 256, 1216, MODULE_OUTER),
 }
 
 
@@ -63,7 +66,7 @@ def phase_imports(phase: str) -> str:
         raise ValueError(f"unknown source counting phase: {phase}")
     module = PHASES[phase][-1]
     modules = [module]
-    if phase in {"dfs", "outer", "complete"}:
+    if phase in {"dfs", "outer", "complete", "large-domain"}:
         modules.append(MODULE_LEAF)
     return "".join(f"import {m}\n" for m in dict.fromkeys(modules))
 
@@ -73,6 +76,8 @@ def wrapper_for(phase: str, width: int, cutoff: int) -> tuple[str, tuple[int, ..
         raise ValueError(f"unknown source counting phase: {phase}")
     if not (2 <= width <= 8 and 0 <= cutoff <= 128):
         raise ValueError("unsupported source counting parameter")
+    if phase == "large-domain":
+        return large_only_wrapper(width, cutoff), (80, 1220, 256, 1216)
     expression, r, s, inp, out, _module = PHASES[phase]
     expression = expression.format(k=width, cutoff=cutoff)
     wrapper = (
@@ -93,9 +98,11 @@ def inspect(phase: str, raw: bytes, blob: str, width: int, cutoff: int) -> dict:
     closed_keys(graph, {"kind", "source_commit", "source_blob", "declaration",
                         "id", "abi", "command"})
     insist(graph["kind"] == "original-structured-source-v1", "wrong graph protocol")
+    expected_name = LARGE_FQN if phase == "large-domain" else WRAPPER_NAME
+    expected_id = LARGE_IDENTITY if phase == "large-domain" else phase
     insist(graph["source_commit"] == SOURCE_SHA and
            graph["source_blob"] == blob and
-           graph["declaration"] == WRAPPER_NAME and graph["id"] == phase,
+           graph["declaration"] == expected_name and graph["id"] == expected_id,
            "source graph identity mismatch")
     _, expected = wrapper_for(phase, width, cutoff)
     abi = graph["abi"]
@@ -126,15 +133,18 @@ def inspect(phase: str, raw: bytes, blob: str, width: int, cutoff: int) -> dict:
 
 
 def source_for(wrapper: str, phase: str, source_blob: str, max_labels: int) -> str:
-    # The exporter defines a Lean syntax command, so its imports must occur
-    # before the synthetic wrapper and export invocation.
-    definitions = wrapper.split(f"namespace {PREFIX}.CountingProbe", 1)[1]
+    # One graph exporter and one source-derived program wrapper for each stage.
+    namespace = (PREFIX + ".CountingExecutable" if phase == "large-domain"
+                 else PREFIX + ".CountingProbe")
+    fqn = LARGE_FQN if phase == "large-domain" else WRAPPER_NAME
+    identity = LARGE_IDENTITY if phase == "large-domain" else phase
+    definitions = wrapper.split("namespace " + namespace, 1)[1]
     return (
         phase_imports(phase)
         + LEAN.read_text()
-        + f"\nnamespace {PREFIX}.CountingProbe" + definitions
+        + "\nnamespace " + namespace + definitions
         + "\nset_option maxHeartbeats 2000000\n"
-        + f'#export_original_source_graph {WRAPPER_NAME} "{phase}" "{source_blob}"\n'
+        + f'#export_original_source_graph {fqn} "{identity}" "{source_blob}"\n'
     )
 
 
@@ -184,7 +194,7 @@ def run(a) -> dict:
                 # remembers unsuccessful ones: a timed-out dependency must not
                 # be rebuilt independently for every counting stage.
                 modules = list(dict.fromkeys([module] +
-                    ([MODULE_LEAF] if phase in {"dfs", "outer", "complete"} else [])))
+                    ([MODULE_LEAF] if phase in {"dfs", "outer", "complete", "large-domain"} else [])))
                 for dependency in modules:
                     if dependency in failed_modules:
                         raise RuntimeError(

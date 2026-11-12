@@ -109,13 +109,13 @@ fn finite(raw: &str, bound: usize) -> Result<usize, Error> {
     Ok(n)
 }
 
-fn parse_operands<'a>(
-    opcode: &'a str,
+fn parse_operands(
+    opcode: &str,
     atom: bool,
     r: usize,
     s: usize,
     labels: usize,
-) -> Result<(&'a str, Vec<usize>), Error> {
+) -> Result<(&str, Vec<usize>), Error> {
     if opcode.len() >= 80 || !opcode.is_ascii() {
         return Err(invalid("noncanonical opcode"));
     }

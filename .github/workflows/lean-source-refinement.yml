@@ -54,7 +54,7 @@ jobs:
         with:
           path: instrumentation/lean-env/.lake/build
           key: original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
-      - name: Typecheck constructor and unbounded physical trace refinement
+      - name: Typecheck physical identity and primitive TM2 refinement
         shell: bash
         run: |
           set -euo pipefail
@@ -65,7 +65,7 @@ jobs:
           fi
           (
             cd instrumentation/lean-env
-            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/SourceGraphRefinement.lean"
           )
           echo 'LEAN_SOURCE_GRAPH_REFINEMENT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"

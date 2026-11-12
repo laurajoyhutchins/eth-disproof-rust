@@ -1,4 +1,5 @@
 import OAI.Algorithms.SubexponentialSAT.StructuredCalls
+import OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler
 
 /-!
 # Physical refinement for a generated compositional machine
@@ -123,6 +124,45 @@ theorem WholeAgreement.code_eq {r s : ℕ} {c : StructuredCalls.Cmd r s}
   | some site =>
       simpa only [StructuredCalls.siteAddress, StructuredCalls.compiled_site]
         using h.sites site
+
+/-- Exact agreement of ports, entry and *every* physical instruction gives
+equality of the complete Lean bit program. No sampled states are involved. -/
+private theorem program_eq_of_fields {r s l : ℕ} (p q : Program r s l)
+    (hinput : p.inputStack = q.inputStack)
+    (houtput : p.outputStack = q.outputStack)
+    (hentry : p.entry = q.entry)
+    (hcode : ∀ label, p.code label = q.code label) : p = q := by
+  cases p with
+  | mk pi po pe pc =>
+    cases q with
+    | mk qi qo qe qc =>
+      dsimp at hinput houtput hentry hcode
+      cases hinput
+      cases houtput
+      cases hentry
+      have htable : pc = qc := funext hcode
+      cases htable
+      rfl
+
+/-- A certificate identifies the *entire* Lean source physical program,
+not merely its bounded output or a selection of transitions. -/
+theorem WholeAgreement.program_eq {r s : ℕ} {c : StructuredCalls.Cmd r s}
+    {p : Program r s (StructuredCalls.size c + 1)}
+    {input output : Fin s} (h : WholeAgreement c p input output) :
+    p = StructuredCalls.compiled c input output :=
+  program_eq_of_fields p _ h.input_port h.output_port h.source_entry h.code_eq
+
+/-- Therefore the abstract primitive TM2 machine is exactly the original
+Lean primitive machine. Its proven trace, running-time, and visited-space
+statements transfer by rewriting. This does *not* model Rust CPU time, heap
+usage, or prove that a Rust decoder implements the certified program. -/
+theorem WholeAgreement.primitive_eq {r s : ℕ} {c : StructuredCalls.Cmd r s}
+    {p : Program r s (StructuredCalls.size c + 1)}
+    {input output : Fin s} (h : WholeAgreement c p input output) :
+    SqrtLogSpace.GuardedCompiler.primitive p =
+      SqrtLogSpace.GuardedCompiler.primitive
+        (StructuredCalls.compiled c input output) := by
+  rw [h.program_eq]
 
 /-- All physical transitions agree, including those from interior labels. -/
 theorem step_eq_of_code {r s l : ℕ} {p q : Program r s l}
@@ -442,6 +482,26 @@ theorem SourceGraph.lower_agrees {r s : ℕ} (c : StructuredCalls.Cmd r s)
     (input output : Fin s) :
     WholeAgreement c (physical (lower c) input output) input output :=
   agrees (lower c) input output
+
+/-- The source-indexed graph gives the same abstract primitive TM2
+machine as the original compiled source, for arbitrary command sizes. -/
+theorem SourceGraph.primitive_eq {r s : ℕ}
+    {c : StructuredCalls.Cmd r s} (g : SourceGraph c)
+    (input output : Fin s) :
+    SqrtLogSpace.GuardedCompiler.primitive (physical g input output) =
+      SqrtLogSpace.GuardedCompiler.primitive
+        (StructuredCalls.compiled c input output) :=
+  (agrees g input output).primitive_eq
+
+/-- In particular the canonical lowering has this property for every
+StructuredCalls command, without a finite fixture bound. -/
+theorem SourceGraph.lower_primitive_eq {r s : ℕ}
+    (c : StructuredCalls.Cmd r s) (input output : Fin s) :
+    SqrtLogSpace.GuardedCompiler.primitive
+        (physical (lower c) input output) =
+      SqrtLogSpace.GuardedCompiler.primitive
+        (StructuredCalls.compiled c input output) :=
+  primitive_eq (lower c) input output
 
 /-- Strong equivalence for all execution lengths and all physical states. -/
 theorem SourceGraph.trace_iff {r s : ℕ}

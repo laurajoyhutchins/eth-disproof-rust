@@ -1,6 +1,11 @@
 # Compiling the original Lean ETH program to Rust without flattening it
 
-Status: design and measured vertical slice, **not** an end-to-end port.
+Status (2026-11-12): **verified source-graph compiler vertical slice**, not an end-to-end ETH counting port.
+The complete original QueryStream program is not executable in Rust; the finite Lean
+kernel certificates do not constitute a universal proof of native Rust runtime
+correctness. The native JSON graph loader is the **only** source-graph execution
+path; Python is retained for Lean export orchestration, test generation, and
+independent acceptance evidence, not for emitting `Block` constructors.
 
 ## Scope and preservation contract
 
@@ -67,12 +72,17 @@ The next graph node forms, in implementation order:
 | `Repeat`, `Fold` | Proven fixed combinator generators | Same order/size/entry as Lean recursion, without expansion |
 | `CodeAt` | Residual pure `Fin l → Instr` term | Must yield exact physical instruction or typed refusal |
 
-The current Rust vertical slice implements the first four rows for equal
-register/stack dimensions, including shared subprogram graphs, plus a checked
-`Repeat` node verified against explicit source `Seq` expansion. It **does not**
-yet implement `Lift`, `Link`, `Fold`, a genuine Lean graph producer, or
-arbitrary-precision label sizes. This is deliberately
-explicit so an unsupported case cannot masquerade as a successful port.
+The source-elaborated Lean graph producer now exports a bounded, source-bound
+`original-structured-source-v1` JSON graph for the supported
+`StructuredCalls.compiled` closure. The native Rust loader validates the
+complete schema, source identifiers, expected certified SHA-256, finite
+operand/port/label bounds, and lowered physical sites; immutable equal callees
+are interned by full ABI and instructions. `Atom`, `Skip`, `Seq`, `If`,
+`While`, and finite `Call` are accepted. `Repeat` is an internal Rust
+compositional optimization but not yet an independently emitted JSON node.
+`Lift`, `Link`, `Fold`, and arbitrary-width addresses remain outside this
+**integrated** source graph format. Separate experimental linking work is not
+part of this verified compiler acceptance. Unsupported forms must refuse.
 
 ### Physical layout matters
 
@@ -91,6 +101,24 @@ reconcile it before the generalized generated source is accepted.
 
 Do not conflate source BitProgram steps with the primitive TM2 overhead or
 machine bit-complexity. Keep separate measurements and explicit maps.
+
+## Verified acceptance boundary
+
+The original pinned Lean source and Lean 4.34.1/Mathlib were independently
+used to verify six finite source-derived graphs, spanning **143 exact physical
+labels**, with machine-checked equal entry, ports, all instructions and
+one-step transitions for arbitrary source configurations. Independent
+Lean/Rust physical tests matched **8,989 bounded complete-state transitions**.
+The original `SqrtLog.Setup.computeLProgram` (212 labels, 37 graph nodes)
+was exported structurally and executed in Rust for bounded inputs, without
+an independently proved full physical table. See GitHub Actions
+`original-source-graph` workflow for live, exact-head receipts, not
+unversioned status assertions.
+
+A matching JSON SHA-256 is **not** an authorization by itself: callers must
+bind the digest to an independently checked Lean kernel certificate. Rust's
+decoder and physical executor remain supported by finite differential tests,
+not a universal machine-checked correspondence.
 
 ## Lean producer
 

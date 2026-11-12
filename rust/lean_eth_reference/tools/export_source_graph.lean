@@ -135,6 +135,7 @@ Preserve original ProgramLinking constructors as a typed graph instead of
 reducing their entire `Fin labels → Instr` code to a table. Unknown cases
 still use the existing bounded finite-leaf exporter.
 -/
+mutual
 private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json := do
   if fuel == 0 then throwError "source program linking exceeds recursion bound"
   let tp ← inferType p
@@ -272,6 +273,8 @@ where
           ("body", ← basic a[3]! maxLabels (fuel - 1))]
       throwError m!"unsupported StructuredProgram command: {n}"
     | _ => throwError m!"source StructuredProgram command is not a constructor: {v}"
+
+end
 
 syntax (name := exportOriginalSourceGraph)
   "#export_original_source_graph " ident str str : command

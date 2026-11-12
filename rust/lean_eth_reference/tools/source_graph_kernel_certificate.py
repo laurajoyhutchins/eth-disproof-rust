@@ -103,7 +103,7 @@ def certificate_source(path: Path, record: dict[str, str]) -> tuple[str, dict[st
         f'  ] : Array (Instr {r} {s} {l}))[pc.val]\' (by simpa using pc.isLt)',
         f'private theorem input_eq : candidate.inputStack = {record["fqn"]}.inputStack := by decide',
         f'private theorem output_eq : candidate.outputStack = {record["fqn"]}.outputStack := by decide',
-        f'private theorem entry_eq : candidate.entry = {record["fqn"]}.entry := by decide',
+        f'private theorem entry_eq : candidate.entry = {record["fqn"]}.entry := by rfl',
         f'private theorem all_code_eq (pc : Fin {l}) :',
         f'    candidate.code pc = {record["fqn"]}.code pc := by',
         '  fin_cases pc <;> rfl',

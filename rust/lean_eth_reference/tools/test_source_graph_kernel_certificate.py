@@ -36,6 +36,8 @@ class KernelCertificateContracts(unittest.TestCase):
             self.assertIn('funext pc', lean)
             self.assertIn('congrArg (fun f => cfg.pc.map f) hfun', lean)
             self.assertIn('fin_cases pc <;> rfl', lean)
+            self.assertIn('private theorem entry_eq', lean)
+            self.assertIn('.entry := by rfl', lean)
             self.assertNotIn('first | rfl | decide', lean)
             self.assertIn('set_option linter.unnecessarySimpa false', lean)
             self.assertIn('Instr.halt,', lean)

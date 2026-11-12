@@ -157,6 +157,7 @@ def compile_query(args):
             _graph, root, abi = validate_query_source(raw, blob)
         except (ValueError, KeyError, TypeError) as error:
             fail("source-graph-validation", error)
+        r, s, labels, entry, inp, out = abi
         code = generate_rust_query_test(root, abi)
         project = Path(temp)/"crate"
         (project/"src").mkdir(parents=True)

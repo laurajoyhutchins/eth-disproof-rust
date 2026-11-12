@@ -67,12 +67,33 @@ The next graph node forms, in implementation order:
 | `Repeat`, `Fold` | Proven fixed combinator generators | Same order/size/entry as Lean recursion, without expansion |
 | `CodeAt` | Residual pure `Fin l → Instr` term | Must yield exact physical instruction or typed refusal |
 
-The current Rust vertical slice implements the first four rows for equal
-register/stack dimensions, including shared subprogram graphs, plus a checked
-`Repeat` node verified against explicit source `Seq` expansion. It **does not**
-yet implement `Lift`, `Link`, `Fold`, a genuine Lean graph producer, or
-arbitrary-precision label sizes. This is deliberately
-explicit so an unsupported case cannot masquerade as a successful port.
+The initial #167 Rust vertical slice implemented the first four rows and a
+checked `Repeat` node. PR #169 then implemented source-faithful, on-demand
+`DeferredProgram::lift`, `link`, and `link_into` across distinct finite port
+dimensions. The #168/#172 source graph exporter and finite Lean certificates
+cover the selected original composed programs.
+
+**Current linking extension (PR #175):** A `call.program` can now describe a
+bounded table or typed `lift`, `link`, or `link_into` node. The pinned Lean
+exporter reflects the original `ProgramLinking` constants and closed finite
+port maps *before* reducing program code; the existing strict graph validator
+derives physical labels, input/output ports, and instructions recursively. It
+rejects duplicate/out-of-range port maps, mismatched dimensions, unknown
+constructors, and oversized graphs. Rust codegen emits the existing deferred
+constructors, with identical immutable subprograms shared by exact graph key.
+
+The separately stacked #176 acceptance exercises each linking constructor with
+source-derived programs built from a real pinned OpenAI finite callee, comparing
+a second original Lean physical-table export, kernel code/step certificates,
+and generated Rust. The sidecar programs are **not themselves original OpenAI
+declarations**, and their checks must not be presented as completion of the
+full `QueryStreamProgram.program` closure. This feature is only accepted after
+its exact-head source acceptance succeeds.
+
+Still unsupported: general source folds and residual code-at expressions,
+unbounded symbolic labels, arbitrary parameterized declarations, and complete
+native #SAT compilation. Unsupported constructions must refuse, never fall
+back to a host SAT solver.
 
 ### Physical layout matters
 

@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from verify_source_graph import (
-    SOURCE_SHA, Node, parse_instr, parse_node, generate_test, rust_instr,
+    SOURCE_SHA, Node, RustGenerator, parse_instr, parse_node, generate_test, rust_instr,
     parse_golden, parse_source_graph_json, validate_and_generate,
 )
 
@@ -68,6 +68,34 @@ class GraphContracts(unittest.TestCase):
         for bad in ['set:00:1:0','set:0:5:0','goto:-1','halt:0','peek:0:0:1:5']:
             with self.subTest(instr=bad), self.assertRaises(ValueError):
                 parse_instr(bad,2,2,2)
+
+    def test_repeated_identical_call_shares_a_single_rust_table(self):
+        program = {'r':2,'s':2,'labels':3,'input':0,'output':1,'entry':2,
+                   'code':['halt','goto:0','set:0:1:1']}
+        call = {'kind':'call','program':program}
+        command = {'kind':'seq','first':call,'second':
+                   {'kind':'seq','first':call,'second':call}}
+        root = parse_node(command,2,2,[8192])
+        generated = RustGenerator(2,2)
+        generated.emit(root)
+        body = '\n'.join(generated.lines)
+        self.assertEqual(body.count('DeferredProgram::table('),1)
+        self.assertEqual(body.count('Block::call(table_0.clone())'),3)
+        self.assertIn('let table_0 =',body)
+
+    def test_call_interning_uses_complete_abi_not_only_instruction_bytes(self):
+        program = {'r':2,'s':2,'labels':2,'input':0,'output':1,'entry':1,
+                   'code':['halt','goto:0']}
+        changed = {**program, 'output':0}
+        root = parse_node({'kind':'seq',
+                           'first':{'kind':'call','program':program},
+                           'second':{'kind':'call','program':changed}},2,2,[8192])
+        generated = RustGenerator(2,2)
+        generated.emit(root)
+        body = '\n'.join(generated.lines)
+        self.assertEqual(body.count('DeferredProgram::table('),2)
+        self.assertEqual(body.count('Block::call(table_0.clone())'),1)
+        self.assertEqual(body.count('Block::call(table_1.clone())'),1)
 
     def test_generator_rejects_ambiguous_serialized_graphs(self):
         # These must match the kernel-certificate input requirements.

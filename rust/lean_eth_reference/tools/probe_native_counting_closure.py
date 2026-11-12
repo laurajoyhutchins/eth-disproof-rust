@@ -16,6 +16,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
+from bounded_process import run_bounded
 from export_compiled_batch import atomic_write, ensure_pinned
 from extract_compiled_catalog import blob_hash
 from run_source_graph_batch import LEAN
@@ -214,8 +215,8 @@ def run(a) -> dict:
                     else:
                         argv = ["lake", "-K", "maxJobs=2", "build", dependency]
                         try:
-                            build = subprocess.run(
-                                argv, cwd=lake_root, capture_output=True, text=True,
+                            build = run_bounded(
+                                argv, cwd=lake_root,
                                 timeout=getattr(a, "build_timeout_seconds", a.timeout_seconds),
                             )
                         except subprocess.TimeoutExpired as exc:
@@ -240,9 +241,9 @@ def run(a) -> dict:
                             raise RuntimeError(
                                 f"DEPENDENCY_BUILD_FAILED {dependency}: {summary[-2500:]}")
                     prepared_modules.add(dependency)
-                result = subprocess.run(
+                result = run_bounded(
                     ["lake", "env", "lean", str(probe)],
-                    cwd=lake_root, capture_output=True, text=True,
+                    cwd=lake_root,
                     env={**os.environ, "ORIGINAL_MAX_LABELS": str(a.max_labels)},
                     timeout=a.timeout_seconds,
                 )

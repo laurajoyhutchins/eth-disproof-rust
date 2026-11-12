@@ -1,12 +1,20 @@
 """Fail-closed contracts for compiling the original, four-stage query command."""
 import json
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 from query_stream_acceptance import (
     DECLARATION, IDENTIFIER, validate_query_source, generate_rust_query_test,
+    generate_rust_query_binary,
 )
 
+from temporary_rust_crate import isolated_cargo_manifest
+
 SOURCE_SHA = "4eaee87548250b2682affda7d05d947c05554bae"
+CRATE = Path(__file__).resolve().parents[1]
 BLOB = "a" * 40
 
 
@@ -40,6 +48,37 @@ class QueryStreamCompilationContract(unittest.TestCase):
         self.assertIn("assert_eq!(p.labels(), 4)", rust)
         self.assertEqual(rust.count("Block::seq("), 2)
         self.assertNotIn("sat_oracle", rust.lower())
+
+    @unittest.skipUnless(shutil.which("cargo"), "Rust compiler unavailable")
+    def test_native_query_entrypoint_compiles_and_refuses_bounded_run(self):
+        # Tests the real generated Rust backend with a tiny synthetic graph.
+        # It does not claim that the original giant QueryStream has built.
+        _graph, root, abi = validate_query_source(serialized(query_graph()), BLOB)
+        binary_source = generate_rust_query_binary(root, abi)
+        self.assertIn("fn main()", binary_source)
+        self.assertIn('command == "run-bits"', binary_source)
+        with tempfile.TemporaryDirectory(prefix="query-stream-rust-smoke-") as temp:
+            project = Path(temp)
+            (project/"src").mkdir()
+            (project/"src/main.rs").write_text(binary_source)
+            (project/"Cargo.toml").write_text(
+                isolated_cargo_manifest("query_stream_smoke", CRATE))
+            cmd = ["cargo", "run", "--offline", "--quiet",
+                   "--manifest-path", str(project/"Cargo.toml"), "--"]
+            run = subprocess.run(cmd + ["abi"], capture_output=True,
+                                 text=True, timeout=180)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            self.assertEqual(run.stdout.strip(),
+                             "registers=40 stacks=896 labels=4 entry=1 input=330 output=323")
+            binary = project/"target/debug/query_stream_smoke"
+            instruction = subprocess.run([str(binary), "instruction", "0"],
+                                         capture_output=True, text=True, timeout=15)
+            self.assertEqual(instruction.returncode, 0, instruction.stderr)
+            self.assertEqual(instruction.stdout.strip(), "Halt")
+            refused = subprocess.run([str(binary), "run-bits", "0", "0", "10"],
+                                     capture_output=True, text=True, timeout=15)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertNotIn("HALT", refused.stdout)
 
     def test_no_partial_graph_masquerades_as_complete_query(self):
         bad = query_graph()

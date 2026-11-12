@@ -63,6 +63,48 @@ instructions, invalid port maps, malformed graphs, unsupported source
 structures and exceeded execution budgets instead of returning a fabricated
 result. The output is not a TM2 primitive trace or worst-case bit bound.
 
+## Large-domain source-refined entrypoint
+
+The canonical mode above preserves the entire original `entryCommand`, including
+the enormous noncomputable small-input finite table. Since the generated Rust
+executable **already refuses** every `n <= cutoff` input, forcing the compiler
+to materialize that unreachable branch is unnecessary for an explicitly
+restricted large-input executable.
+
+Use the same source graph exporter, physical instruction compiler, and Rust runtime:
+
+```sh
+python3 rust/lean_eth_reference/tools/compile_native_count.py \
+  --upstream upstream/openai-math \
+  --lake-root instrumentation/lean-env \
+  --rust-crate rust/lean_eth_reference \
+  --output-dir /tmp/eth-count-large \
+  --entry-mode large-domain --width 3 --cutoff 20 \
+  --require-certificate
+```
+
+The source expression is the original `frontendCommand`, the original
+`FiniteFallback.cutoffCommand` scanner, and a branch on the same register 75.
+Its false arm is exactly the original
+`Native.outerCommand k (NativeLeafProgram.command k)`. Its true arm is a `skip`
+that is unreachable for supported input because the Rust CLI refuses
+`n <= cutoff` **before constructing or running the machine**.
+
+The wrapper includes a conditional Lean state-refinement lemma
+`largeOnlyBranch_execution_eq_original`: given original frontend and cutoff
+executions, a false cutoff flag, and execution of the original outer command,
+both entries reach the same data state in the same number of source steps.
+This is **not** equality of their absolute physical addresses and **not**
+whole-program count correctness. The lemma is not claimed verified until
+the pinned original Lean environment elaborates this wrapper.
+
+A successful receipt records `entry_mode=large-domain` and a distinct
+declaration identity. The executable emits `physical-large-domain-count-complete`
+only after physical execution and consistency checks. It does not fabricate
+answers for unsupported small inputs. The complete mode remains the canonical
+original source export target; the large-only mode removes the unneeded
+noncomputable small branch, not any source-defined query or counting machinery.
+
 ## Acceptance, not just compilation
 
 The lightweight TDD suite is:

@@ -128,8 +128,8 @@ def compile_query(args):
     with tempfile.TemporaryDirectory(prefix="original-query-stream-") as temp:
         src = Path(temp)/"QueryStreamExport.lean"
         query_source = source(record).replace(
-            "set_option maxHeartbeats 2000000\\n",
-            "set_option maxHeartbeats 8000000\\nset_option maxRecDepth 8192\\n")
+            "set_option maxHeartbeats 2000000\n",
+            "set_option maxHeartbeats 8000000\nset_option maxRecDepth 8192\n")
         src.write_text(query_source, encoding="utf8")
         # Bound the real command, never turn a failure into a truncated graph.
         exported = subprocess.run(["lake", "env", "lean", str(src)],

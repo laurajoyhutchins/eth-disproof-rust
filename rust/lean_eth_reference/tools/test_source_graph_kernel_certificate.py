@@ -33,6 +33,7 @@ class KernelCertificateContracts(unittest.TestCase):
             self.assertEqual(receipt['physical_labels'], 3)
             self.assertEqual(receipt['source_graph_sha256'], hashlib.sha256(encoded).hexdigest())
             self.assertIn('private theorem all_steps_eq', lean)
+            self.assertIn('simpa only [all_code_eq]', lean)
             self.assertIn('fin_cases pc <;> decide', lean)
             self.assertIn('Instr.halt,', lean)
             self.assertIn('Instr.set (0 : Fin 2) true (2 : Fin 3)', lean)

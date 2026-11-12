@@ -58,7 +58,7 @@ fn all_original_physical_opcodes_parse_with_typed_indices() {
     let graph = import::<3, 3>(&wrap(&cmd, 13, 3, 3)).unwrap();
     assert_eq!(graph.labels(), 13);
     assert_eq!(graph.instruction_at(1).unwrap(), Instr::Goto { next: 0 });
-    assert_eq!(graph.instruction_at(4).unwrap(), Instr::Set { dst: 2, value: true, next: 1 });
+    assert_eq!(graph.instruction_at(3).unwrap(), Instr::Set { dst: 2, value: true, next: 1 });
     assert_eq!(graph.instruction_at(11).unwrap(), Instr::Peek {
         stack: 1, value: 2, present: 0, next: 1,
     });

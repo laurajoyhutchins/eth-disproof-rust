@@ -240,3 +240,15 @@ entrypoints is classified **native-from-IR**, **verified fallback**, or
 last category to be empty in that closure, physical and semantic
 differential gates to pass, and the true end-to-end computation to run.
 Theorem declarations remain Lean-checked, not blindly translated.
+
+### Pending typed ProgramLinking source integration (PR #175)
+
+The staged implementation contains original Lean `ProgramLinking.liftProgram`,
+`link`, and `linkInto` source-graph extraction, bounded port-map validation,
+and corresponding `DeferredProgram` linking operations. These additions are
+**not yet native-loader acceptance**: the source JSON loader merged in #174
+still supports bounded tables and structured commands, not linked-program
+node variants. The older Python generator remains a compatibility test path
+until the linked nodes are implemented in that one native loader and verified
+against the pinned Lean original. No source-only linking graph is accepted as
+a full #SAT result.

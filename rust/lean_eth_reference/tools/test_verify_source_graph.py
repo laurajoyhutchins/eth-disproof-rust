@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from verify_source_graph import (
-    SOURCE_SHA, Node, parse_instr, parse_node, generate_test, rust_instr,
+    SOURCE_SHA, Node, RustGenerator, parse_instr, parse_node, parse_program, generate_test, rust_instr,
     parse_golden, parse_source_graph_json, validate_and_generate,
 )
 
@@ -69,16 +69,117 @@ class GraphContracts(unittest.TestCase):
             with self.subTest(instr=bad), self.assertRaises(ValueError):
                 parse_instr(bad,2,2,2)
 
-    def test_rust_acceptance_uses_the_original_source_json_not_python_ast_emission(self):
-        program={'kind':'atom','opcode':'set:0:1'}
-        root=parse_node(program,2,2,[8192])
-        metadata={'id':'original_0','declaration':'OAI.Algorithms.SubexponentialSAT.Example.target',
-                  'source_blob':'1'*40}
-        test=generate_test(metadata,root,[('halt',()),('set',(0,1,0))],(2,2,2,1,0,0),'f'*64)
-        self.assertIn('from_original_source_json(include_bytes!("source.json")',test)
-        self.assertNotIn('Block::atom(',test)
-        self.assertNotIn('Block::call(',test)
-        self.assertIn('graph_sha256: "'+'f'*64+'"',test)
+    def test_repeated_identical_call_shares_a_single_rust_table(self):
+        program = {'r':2,'s':2,'labels':3,'input':0,'output':1,'entry':2,
+                   'code':['halt','goto:0','set:0:1:1']}
+        call = {'kind':'call','program':program}
+        command = {'kind':'seq','first':call,'second':
+                   {'kind':'seq','first':call,'second':call}}
+        root = parse_node(command,2,2,[8192])
+        generated = RustGenerator(2,2)
+        generated.emit(root)
+        body = '\n'.join(generated.lines)
+        self.assertEqual(body.count('DeferredProgram::table('),1)
+        self.assertEqual(body.count('Block::call(table_0.clone())'),3)
+        self.assertIn('let table_0 =',body)
+
+    def test_call_interning_uses_complete_abi_not_only_instruction_bytes(self):
+        program = {'r':2,'s':2,'labels':2,'input':0,'output':1,'entry':1,
+                   'code':['halt','goto:0']}
+        changed = {**program, 'output':0}
+        root = parse_node({'kind':'seq',
+                           'first':{'kind':'call','program':program},
+                           'second':{'kind':'call','program':changed}},2,2,[8192])
+        generated = RustGenerator(2,2)
+        generated.emit(root)
+        body = '\n'.join(generated.lines)
+        self.assertEqual(body.count('DeferredProgram::table('),2)
+        self.assertEqual(body.count('Block::call(table_0.clone())'),1)
+        self.assertEqual(body.count('Block::call(table_1.clone())'),1)
+
+    def test_lift_remaps_all_twelve_original_physical_opcodes(self):
+        program={'r':4,'s':3,'labels':12,'entry':1,'input':0,'output':2,
+                 'code':['halt','goto:11','set:0:1:3','copy:1:2:4',
+                         'not:3:1:5','and:0:1:2:6','or:2:3:1:7',
+                         'xor:1:0:3:8','branch:2:9:10','push:1:0:11',
+                         'peek:0:3:2:11','pop:2:1:3:0']}
+        lifted={'kind':'lift','r':6,'s':5,'registers':[5,1,3,0],
+                'stacks':[4,2,1],'source':program}
+        parsed=parse_program(lifted,[8192])
+        self.assertEqual((parsed.entry,parsed.input,parsed.output),(1,4,1))
+        self.assertEqual([parsed.instruction(pc) for pc in range(12)],[
+            ('halt',()), ('goto',(11,)), ('set',(5,1,3)),
+            ('copy',(1,3,4)), ('not',(0,1,5)), ('and',(5,1,3,6)),
+            ('or',(3,0,1,7)), ('xor',(1,5,0,8)),
+            ('branch',(3,9,10)), ('push',(2,5,11)),
+            ('peek',(4,0,3,11)), ('pop',(1,1,0,0)),
+        ])
+
+    def test_linked_lean_physical_layout_and_rust_generation(self):
+        left = {'r':2,'s':2,'labels':3,'entry':2,'input':0,'output':1,
+                'code':['halt','goto:0','set:0:1:1']}
+        right = {'r':2,'s':2,'labels':2,'entry':1,'input':0,'output':1,
+                 'code':['halt','push:1:0:0']}
+        linked = {'kind':'link','left':left,'right':right}
+        lifted = {'kind':'lift','r':3,'s':4,'registers':[2,0],
+                  'stacks':[3,1],'source':linked}
+        root = parse_node({'kind':'call','program':lifted},3,4,[8192])
+        self.assertEqual(root.size,5)
+        self.assertEqual(root.entry(1,0),3)
+        self.assertEqual([root.instr(1,0,pc) for pc in range(1,6)], [
+            ('goto',(5,)), ('goto',(1,)), ('set',(2,1,2)),
+            ('goto',(0,)), ('push',(1,2,4)),
+        ])
+        emitted=RustGenerator(3,4)
+        emitted.emit(root)
+        rust='\n'.join(emitted.lines)
+        self.assertIn('DeferredProgram::<2,2>::link(',rust)
+        self.assertIn('DeferredProgram::<3,4>::lift(',rust)
+        self.assertEqual(rust.count('DeferredProgram::table('),2)
+        self.assertIn('Block::call(table_',rust)
+
+    def test_link_into_distinct_physical_port_dimensions(self):
+        left = {'r':2,'s':1,'labels':2,'entry':1,'input':0,'output':0,
+                'code':['halt','set:0:1:0']}
+        right = {'r':1,'s':2,'labels':2,'entry':1,'input':0,'output':1,
+                 'code':['halt','push:1:0:0']}
+        link = {'kind':'link_into','r':3,'s':4,
+                'left':left,'right':right,
+                'left_registers':[2,0],'left_stacks':[3],
+                'right_registers':[1],'right_stacks':[0,2]}
+        root = parse_node({'kind':'call','program':link},3,4,[8192])
+        self.assertEqual(root.args['input'],3)
+        self.assertEqual(root.args['output'],2)
+        self.assertEqual(root.entry(1,0),2)
+        self.assertEqual([root.instr(1,0,pc) for pc in range(1,5)], [
+            ('goto',(4,)), ('set',(2,1,1)), ('goto',(0,)),
+            ('push',(2,1,3)),
+        ])
+        gen=RustGenerator(3,4)
+        gen.emit(root)
+        self.assertIn('DeferredProgram::<3,4>::link_into(', '\n'.join(gen.lines))
+
+    def test_linked_graph_invalid_map_or_dimensions_refuse(self):
+        table = {'r':2,'s':2,'labels':2,'entry':1,'input':0,'output':1,
+                 'code':['halt','set:0:1:0']}
+        for bad in [
+            {'kind':'lift','r':3,'s':3,'registers':[0,0],
+             'stacks':[0,1],'source':table},
+            {'kind':'lift','r':3,'s':3,'registers':[0,3],
+             'stacks':[0,1],'source':table},
+            {'kind':'lift','r':3,'s':3,'registers':[0],
+             'stacks':[0,1],'source':table},
+            {'kind':'lift','r':3,'s':3,'registers':[0,1],
+             'stacks':[0,0],'source':table},
+            {'kind':'link','left':table,'right':{**table,'r':3,'code':['halt','set:0:1:0']}},
+            {'kind':'link_into','r':3,'s':3,'left':table,'right':table,
+             'left_registers':[0,1],'left_stacks':[0,1],
+             'right_registers':[0,1],'right_stacks':[1,1]},
+            {'kind':'table','r':2,'s':2,'labels':2,'entry':1,'input':0,'output':1,
+             'code':['halt','set:0:1:0']},
+        ]:
+            with self.subTest(bad=bad),self.assertRaises(ValueError):
+                parse_node({'kind':'call','program':bad},3,3,[8192])
 
     def test_generator_rejects_ambiguous_serialized_graphs(self):
         # These must match the kernel-certificate input requirements.
@@ -151,7 +252,7 @@ class GraphContracts(unittest.TestCase):
                 accepted=validate_and_generate(inp,golden,root/'out',root,True)
             published=json.loads(receipt_path.read_text())
             self.assertEqual(published,accepted)
-            self.assertEqual(published['rust_acceptance_test_sha256'],
+            self.assertEqual(published['generated_rust_sha256'],
                              hashlib.sha256(rust_path.read_bytes()).hexdigest())
             self.assertTrue(receipt_path.read_bytes().endswith(b'\n'))
             graph['command']['opcode']='set:0:0'

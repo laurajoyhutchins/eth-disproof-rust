@@ -102,6 +102,131 @@ def relocated(op: tuple[str, tuple[int,...]], base: int, exit: int):
     return (name,(*vals[:-1],base+vals[-1]))
 
 
+
+class ProgramNode:
+    """Exact bounded physical source, represented without flattening links."""
+
+    def __init__(self, kind, r, s, labels, entry, inp, out,
+                 rows=(), children=(), maps=()):
+        self.kind, self.r, self.s, self.labels = kind, r, s, labels
+        self.entry, self.input, self.output = entry, inp, out
+        self.rows, self.children, self.maps = rows, children, maps
+
+    def key(self):
+        return (self.kind, self.r, self.s, self.labels, self.entry,
+                self.input, self.output, self.rows,
+                tuple(child.key() for child in self.children), self.maps)
+
+    def instruction(self, pc: int):
+        insist(0 <= pc < self.labels, 'linked source label out of range')
+        if self.kind == 'table':
+            return self.rows[pc]
+        if self.kind == 'lift':
+            return mapped_instr(self.children[0].instruction(pc),
+                                self.maps[0], self.maps[1])
+        if self.kind in ('link', 'link_into'):
+            left, right = self.children
+            if pc < left.labels:
+                rmap, smap = self.maps[0:2] if self.kind == 'link_into' else (
+                    tuple(range(self.r)), tuple(range(self.s)))
+                op = mapped_instr(left.instruction(pc), rmap, smap)
+                return shifted_instr(op, 0, left.labels + right.entry)
+            rmap, smap = self.maps[2:4] if self.kind == 'link_into' else (
+                tuple(range(self.r)), tuple(range(self.s)))
+            op = mapped_instr(right.instruction(pc - left.labels), rmap, smap)
+            return shifted_instr(op, left.labels, None)
+        raise ValueError(f'unsupported linked source kind: {self.kind}')
+
+
+def mapped_instr(op, registers: tuple[int, ...], stacks: tuple[int, ...]):
+    name, operands = op
+    spec = KINDS[name]
+    vals = tuple(registers[n] if t == 'r' else
+                 stacks[n] if t == 's' else n
+                 for n, t in zip(operands, spec))
+    return name, vals
+
+
+def shifted_instr(op, base: int, return_pc: int | None):
+    name, vals = op
+    if name == 'halt':
+        return ('halt', ()) if return_pc is None else ('goto', (return_pc,))
+    if name == 'goto':
+        return name, (base + vals[0],)
+    if name == 'branch':
+        return name, (vals[0], base + vals[1], base + vals[2])
+    return name, (*vals[:-1], base + vals[-1])
+
+
+def parse_finite_map(value: Any, source: int, target: int, port: str):
+    insist(type(value) is list and len(value) == source,
+           f'{port} map domain size mismatch')
+    mapped = tuple(number(x, target, f'{port} map') for x in value)
+    insist(all(x < target for x in mapped) and len(set(mapped)) == len(mapped),
+           f'{port} map not an injective finite embedding')
+    return mapped
+
+
+def parse_program(value: Any, remaining: list[int], depth: int = 0) -> ProgramNode:
+    insist(depth <= 128 and remaining[0] > 0,
+           'linked program graph exceeds recursion or node bound')
+    remaining[0] -= 1
+    insist(type(value) is dict, 'source program must be an object')
+    kind = value.get('kind', 'table')
+    if kind == 'table':
+        closed_keys(value, {'r', 's', 'labels', 'entry', 'input', 'output', 'code'})
+        r = number(value['r'], 256, 'source registers')
+        s = number(value['s'], 4096, 'source stacks')
+        labels = number(value['labels'], MAX_TABLE_LABELS, 'source labels')
+        insist(r > 0 and s > 0 and labels > 0, 'empty linked program dimensions')
+        entry = number(value['entry'], labels, 'source entry')
+        inp = number(value['input'], s, 'source input')
+        out = number(value['output'], s, 'source output')
+        insist(entry < labels and inp < s and out < s, 'source physical ABI out of range')
+        code = value['code']
+        insist(type(code) is list and len(code) == labels, 'incomplete linked leaf table')
+        rows = tuple(parse_instr(row, r, s, labels) for row in code)
+        return ProgramNode(kind, r, s, labels, entry, inp, out, rows=rows)
+
+    if kind == 'lift':
+        closed_keys(value, {'kind', 'r', 's', 'registers', 'stacks', 'source'})
+        source = parse_program(value['source'], remaining, depth + 1)
+        r = number(value['r'], 256, 'ambient registers')
+        s = number(value['s'], 4096, 'ambient stacks')
+        insist(r > 0 and s > 0, 'empty ambient dimensions')
+        registers = parse_finite_map(value['registers'], source.r, r, 'register')
+        stacks = parse_finite_map(value['stacks'], source.s, s, 'stack')
+        return ProgramNode(kind, r, s, source.labels, source.entry,
+                           stacks[source.input], stacks[source.output],
+                           children=(source,), maps=(registers, stacks))
+
+    if kind in ('link', 'link_into'):
+        expected = {'kind', 'left', 'right'} if kind == 'link' else {
+            'kind', 'r', 's', 'left', 'right', 'left_registers', 'left_stacks',
+            'right_registers', 'right_stacks'}
+        closed_keys(value, expected)
+        left = parse_program(value['left'], remaining, depth + 1)
+        right = parse_program(value['right'], remaining, depth + 1)
+        labels = left.labels + right.labels
+        insist(labels <= MAX_SOURCE_LABELS, 'linked source exceeds bounded labels')
+        if kind == 'link':
+            insist((left.r, left.s) == (right.r, right.s),
+                   'source link requires equal port dimensions')
+            return ProgramNode(kind, left.r, left.s, labels, left.entry,
+                               left.input, right.output, children=(left, right))
+        r = number(value['r'], 256, 'ambient registers')
+        s = number(value['s'], 4096, 'ambient stacks')
+        insist(r > 0 and s > 0, 'empty linked ambient dimensions')
+        maps = (
+            parse_finite_map(value['left_registers'], left.r, r, 'left register'),
+            parse_finite_map(value['left_stacks'], left.s, s, 'left stack'),
+            parse_finite_map(value['right_registers'], right.r, r, 'right register'),
+            parse_finite_map(value['right_stacks'], right.s, s, 'right stack'))
+        return ProgramNode(kind, r, s, labels, left.entry,
+                           maps[1][left.input], maps[3][right.output],
+                           children=(left, right), maps=maps)
+    raise ValueError(f'unsupported original program constructor: {kind}')
+
 class Node:
     def __init__(self, kind: str, size: int, children=(), args=None, table=None):
         self.kind,self.size,self.children,self.args,self.table=kind,size,children,args or {},table
@@ -118,7 +243,7 @@ class Node:
     def instr(self,base:int,exit:int,pc:int):
         insist(base<=pc<base+self.size,'source node address out of range')
         if self.kind=='atom':return (*self.args['opcode'][0:1],(*self.args['opcode'][1],exit))
-        if self.kind=='call':return relocated(self.table[pc-base],base,exit)
+        if self.kind=='call':return relocated(self.table.instruction(pc-base),base,exit)
         if self.kind=='seq':
             a,b=self.children
             mid=base+a.size
@@ -152,14 +277,11 @@ def parse_node(node: Any,r:int,s:int,remaining:list[int],depth=0)->Node:
         return Node(k,1,args={'opcode':op})
     if k=='call':
         closed_keys(node,{'kind','program'})
-        p=node['program'];closed_keys(p,{'r','s','labels','entry','input','output','code'})
-        insist(number(p['r'],256,'r')==r and number(p['s'],4096,'s')==s,'call dimensions differ from source')
-        labels=number(p['labels'],MAX_TABLE_LABELS,'call labels');insist(labels>0,'empty source table')
-        entry=number(p['entry'],labels,'call entry');insist(entry<labels,'callee entry out of range')
-        insist(number(p['input'],s,'input')<s and number(p['output'],s,'output')<s,'callee port out of range')
-        insist(isinstance(p['code'],list) and len(p['code'])==labels,'incomplete source call table')
-        rows=tuple(parse_instr(op,r,s,labels) for op in p['code'])
-        return Node(k,labels,args={'entry':entry,'input':p['input'],'output':p['output']},table=rows)
+        program=parse_program(node['program'], remaining, depth+1)
+        insist((program.r, program.s)==(r,s), 'call dimensions differ from source')
+        return Node(k,program.labels,
+                    args={'entry':program.entry,'input':program.input,'output':program.output},
+                    table=program)
     if k=='seq':
         closed_keys(node,{'kind','first','second'})
         a=parse_node(node['first'],r,s,remaining,depth+1)
@@ -213,25 +335,69 @@ def rust_instr(ins,atom=False):
         f" {{ {', '.join(f'{field}: {value}' for field,value in zip(fields,values))} }}" if fields else '')
 
 
-def generate_test(source:dict,root:Node,golden:list,abi:tuple[int,...],
-                  graph_sha256:str)->str:
-    """Rust only loads exact original JSON; Python no longer constructs Rust blocks.
+class RustGenerator:
+    def __init__(self,r,s):
+        self.r,self.s,self.lines,self.n=r,s,[],0
+        # Identical source call programs are immutable Arc-backed leaves.
+        # Cache the complete ABI and physical table, never a display name.
+        self.callees: dict[tuple, str] = {}
 
-    The independent golden Lean table is used solely as an acceptance oracle.
-    The native Rust parser owns opcode interpretation, dimensions and calls.
-    """
+    def emit_program(self, program: ProgramNode) -> str:
+        key=program.key()
+        existing=self.callees.get(key)
+        if existing is not None:
+            return existing
+        children=[self.emit_program(child) for child in program.children]
+        name=f'table_{len(self.callees)}'
+        self.callees[key]=name
+        if program.kind=='table':
+            instr=', '.join(rust_instr(row) for row in program.rows)
+            expr=(f'DeferredProgram::table(Program::<{program.r},{program.s}>::new('
+                  f'{program.input}, {program.output}, {program.entry}, vec![{instr}])?)')
+        elif program.kind=='lift':
+            registers,stacks=program.maps
+            expr=(f'DeferredProgram::<{program.r},{program.s}>::lift('
+                  f'{children[0]}.clone(), {list(registers)!r}, {list(stacks)!r})?')
+        elif program.kind=='link':
+            expr=(f'DeferredProgram::<{program.r},{program.s}>::link('
+                  f'{children[0]}.clone(), {children[1]}.clone())?')
+        elif program.kind=='link_into':
+            maps=', '.join(str(list(m)) for m in program.maps)
+            expr=(f'DeferredProgram::<{program.r},{program.s}>::link_into('
+                  f'{children[0]}.clone(), {children[1]}.clone(), {maps})?')
+        else:
+            raise ValueError('unsupported source program node')
+        self.lines.append(f'    let {name} = {expr};')
+        return name
+
+    def emit(self,node:Node):
+        children=[self.emit(ch) for ch in node.children]
+        name=f'n{self.n}';self.n+=1
+        match node.kind:
+            case 'skip':expr=f'Block::<{self.r},{self.s}>::skip()'
+            case 'atom':expr=f"Block::<{self.r},{self.s}>::atom({rust_instr(node.args['opcode'],True)})?"
+            case 'seq':expr=f'Block::seq({children[0]}, {children[1]})?'
+            case 'if':expr=f"Block::ite({node.args['test']}, {children[0]}, {children[1]})?"
+            case 'while':expr=f"Block::while_({node.args['test']}, {children[0]})?"
+            case 'call':
+                callee=self.emit_program(node.table)
+                expr=f'Block::call({callee}.clone())'
+            case _:raise ValueError('unhandled source node')
+        self.lines.append(f'    let {name} = {expr};')
+        return name
+
+
+def generate_test(source:dict,root:Node,golden:list,abi:tuple[int,...])->str:
     r,s,l,entry,inp,out=abi
+    emitter=RustGenerator(r,s)
+    root_name=emitter.emit(root)
     table=', '.join(rust_instr(row) for row in golden)
     lines=[
         'use std::sync::Arc;',
-        'use lean_eth_reference::bit_program::{DeferredProgram, Instr, Program, RunLimits, SourceGraphBinding};',
+        'use lean_eth_reference::bit_program::{Atom, Block, DeferredProgram, Instr, Program, RunLimits};',
         f'fn build() -> Result<Arc<DeferredProgram<{r},{s}>>, lean_eth_reference::Error> {{',
-        '    DeferredProgram::from_original_source_json(include_bytes!("source.json"), SourceGraphBinding {',
-        f'        id: {json.dumps(source["id"])},',
-        f'        declaration: {json.dumps(source["declaration"])},',
-        f'        source_blob: {json.dumps(source["source_blob"])},',
-        f'        graph_sha256: "{graph_sha256}",',
-        '    })',
+        *emitter.lines,
+        f'    DeferredProgram::composed({inp}, {out}, {root_name})',
         '}',
         '#[test]',
         'fn original_lean_physical_layout_and_bounded_states() {',
@@ -297,13 +463,12 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     emitted=[('halt',())]+[root.instr(1,0,pc) for pc in range(1,l)]
     for i,(got,expected) in enumerate(zip(emitted,rows)):
         insist(got==expected,f'exact source physical instruction mismatch at {name}[{i}]: {fmt(got)} vs {fmt(expected)}')
-    body=generate_test(parsed,root,rows,canonical,hashlib.sha256(original).hexdigest())
+    body=generate_test(parsed,root,rows,canonical)
     receipt={'source_commit':SOURCE_SHA,'source_blob':parsed['source_blob'],
              'declaration':parsed['declaration'],'id':name,
              'graph_sha256':hashlib.sha256(original).hexdigest(),
              'golden_table_sha256':expect['sha256'],
-             'rust_acceptance_test_sha256':hashlib.sha256(body.encode()).hexdigest(),
-             'rust_loader':'original-structured-source-v1/serde-native',
+             'generated_rust_sha256':hashlib.sha256(body.encode()).hexdigest(),
              'physical_instructions_compared':l,'status':'EXACT_SOURCE_PHYSICAL_PARITY'}
     # Generated Rust and the success receipt are staged separately from the
     # published output. Publish only after the optional Cargo verification
@@ -318,7 +483,6 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
             (project/'src').mkdir(parents=True,exist_ok=True)
             (project/'src/lib.rs').write_text('// No semantic SAT oracle\n')
             (project/'tests/source.rs').write_text(body)
-            (project/'tests/source.json').write_bytes(original)
             (project/'Cargo.toml').write_text(isolated_cargo_manifest('original_graph_check', crate))
             result=subprocess.run(['cargo','test','--offline','--manifest-path',str(project/'Cargo.toml')],
                                   capture_output=True,text=True,timeout=240)
@@ -328,7 +492,7 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
         staged_receipt.write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
         staged_rust.replace(dest/(name+'.rs'))
         staged_receipt.replace(receipt_path)
-    print(f'SOURCE_GRAPH_EXACT {name} labels={l} nodes_probed={MAX_NODES} rust_test_sha256={receipt["rust_acceptance_test_sha256"]}',flush=True)
+    print(f'SOURCE_GRAPH_EXACT {name} labels={l} nodes_probed={MAX_NODES} rust_sha256={receipt["generated_rust_sha256"]}',flush=True)
     return receipt
 
 

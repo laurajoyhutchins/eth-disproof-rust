@@ -10,14 +10,13 @@ not a universal proof of the Python translator or of native Rust execution.
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 import re
 from typing import Any
 
-from verify_source_graph import (SOURCE_SHA, MAX_INPUT_BYTES, MAX_NODES,
-                                 MAX_SOURCE_LABELS, closed_keys, insist,
-                                 number, parse_node)
+from verify_source_graph import (SOURCE_SHA, MAX_NODES, MAX_SOURCE_LABELS,
+                                 closed_keys, insist, number, parse_node,
+                                 parse_source_graph_json)
 
 SOURCE_NAME = re.compile(r'OAI\.Algorithms\.SubexponentialSAT(?:\.[A-Za-z_]\w*)+')
 HEX40 = re.compile(r'[0-9a-f]{40}')
@@ -50,15 +49,7 @@ def read_source_graph(path: Path, record: dict[str, str]):
     insist(bool(SOURCE_NAME.fullmatch(record['module'])) and
            bool(SOURCE_NAME.fullmatch(record['fqn'])), 'invalid pinned Lean name')
     raw = path.read_bytes()
-    insist(0 < len(raw) <= MAX_INPUT_BYTES and raw.endswith(b'\n') and
-           raw.count(b'\n') == 1 and raw.isascii(), 'noncanonical Lean source graph line')
-    def strict_object(pairs):
-        result: dict[str, Any] = {}
-        for key, value in pairs:
-            insist(key not in result, 'duplicate JSON object field')
-            result[key] = value
-        return result
-    parsed = json.loads(raw, object_pairs_hook=strict_object)
+    parsed = parse_source_graph_json(raw)
     closed_keys(parsed, {'kind', 'source_commit', 'source_blob', 'declaration', 'id', 'abi', 'command'})
     insist(parsed['kind'] == 'original-structured-source-v1' and
            parsed['source_commit'] == SOURCE_SHA and

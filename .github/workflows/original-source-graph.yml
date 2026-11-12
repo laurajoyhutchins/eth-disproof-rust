@@ -259,7 +259,7 @@ jobs:
           if python3 rust/lean_eth_reference/tools/probe_native_counting_closure.py \
               --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
               --output-dir "$RUNNER_TEMP/counting-closure" \
-              --phase marked-query --phase leaf --phase outer --phase complete \
+              --phase marked-query --phase leaf --phase outer --phase large-domain \
               --width 3 --cutoff 20 --max-labels 4096 \
               --build-timeout-seconds 540 --timeout-seconds 180; then
             echo 'COUNTING_CLOSURE=STRUCTURALLY_EXPORTED_NOT_YET_CERTIFIED' >> "$GITHUB_STEP_SUMMARY"
@@ -269,6 +269,32 @@ jobs:
               | tail -80 >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+      - name: Compile exact exported large-domain graph into Rust executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/compile_native_count.py \
+            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+            --rust-crate rust/lean_eth_reference \
+            --output-dir "$RUNNER_TEMP/compiled-large-count" \
+            --source-graph "$RUNNER_TEMP/counting-closure/large-domain.graph.json" \
+            --entry-mode large-domain --width 3 --cutoff 20 \
+            --require-certificate --timeout-seconds 600
+          test -s "$RUNNER_TEMP/compiled-large-count/eth-count"
+          echo "LARGE_DOMAIN=PHYSICAL_RUST_BINARY_COMPILED_AND_KERNEL_CERTIFIED_NOT_YET_COUNT_TESTED" >> "$GITHUB_STEP_SUMMARY"
+      - name: Test source Rust counter refuses unsupported finite fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="$RUNNER_TEMP/compiled-large-count/eth-count"
+          set +e
+          printf "p cnf 1 1\n1 0\n" | "$binary" > "$RUNNER_TEMP/finite.stdout" 2> "$RUNNER_TEMP/finite.stderr"
+          result="$?"
+          set -e
+          test "$result" -eq 2
+          test ! -s "$RUNNER_TEMP/finite.stdout"
+          grep -Fq "unsupported noncomputable finite fallback" "$RUNNER_TEMP/finite.stderr"
+          echo "LARGE_DOMAIN=SMALL_INPUT_EXPLICIT_REFUSAL_VERIFIED" >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve incremental original Lean module build artifacts in cache
         if: always()
         continue-on-error: true
@@ -281,6 +307,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: native-counting-closure-${{ github.event.pull_request.head.sha }}
-          path: ${{ runner.temp }}/counting-closure/
+          path: |
+            ${{ runner.temp }}/counting-closure/
+            ${{ runner.temp }}/compiled-large-count/
           if-no-files-found: warn
           retention-days: 14

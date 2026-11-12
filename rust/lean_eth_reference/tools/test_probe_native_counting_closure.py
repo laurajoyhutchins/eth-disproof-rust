@@ -56,7 +56,7 @@ class CountingPhaseContracts(unittest.TestCase):
             with self.assertRaises(subprocess.TimeoutExpired) as captured:
                 run_bounded(
                     [sys.executable, "-c", parent, child, str(marker)],
-                    cwd=root, timeout=0.15, grace_seconds=0.15,
+                    cwd=root, timeout=0.15,
                 )
             stdout = captured.exception.stdout or b""
             self.assertIn(b"child started", stdout)

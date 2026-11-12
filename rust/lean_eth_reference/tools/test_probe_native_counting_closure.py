@@ -1,16 +1,15 @@
 """Bounded offline contracts for the original counting phase diagnostic."""
-from pathlib import Path
-import os
-import subprocess
-import sys
-import time
-
-from bounded_process import run_bounded
 import json
+import os
+from pathlib import Path
+import subprocess
 import tempfile
+import time
 import types
 import unittest
 from unittest.mock import patch
+
+from bounded_process import run_bounded
 
 from probe_native_counting_closure import (
     PHASES, PREFIX, WRAPPER_NAME, LARGE_FQN, LARGE_IDENTITY,
@@ -37,6 +36,17 @@ def stage_graph(phase: str, width=3, cutoff=20, code=None, labels=2) -> bytes:
 
 
 class CountingPhaseContracts(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups required")
+    def test_completed_bounded_process_preserves_lean_logs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            completed = run_bounded(
+                ["sh", "-c", 'printf ready; printf warning >&2'],
+                cwd=Path(tmp), timeout=3,
+            )
+            self.assertEqual(completed.returncode, 0)
+            self.assertEqual(completed.stdout, "ready")
+            self.assertEqual(completed.stderr, "warning")
+
     @unittest.skipUnless(os.name == "posix", "POSIX process groups required")
     def test_timed_out_lake_like_parent_cannot_leave_live_cache_writers(self):
         # A shell child inheriting Lake's group attempts to change an artifact

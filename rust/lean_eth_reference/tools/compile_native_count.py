@@ -310,8 +310,7 @@ def compile_counting(a):
                 'source instruction counts are not primitive TM2 costs or complexity bounds',
                 'the runtime refuses inputs at or below the selected cutoff',
             ] + (['large-domain command is not byte-identical to original entryCommand; only false-cutoff branch has source-level data-state refinement']
-                 if mode == 'large-domain' else []) + [
-            ] + ([] if a.require_certificate else [
+                 if mode == 'large-domain' else []) + ([] if a.require_certificate else [
                 'synthetic wrapper source graph not separately Lean-kernel certified',
             ]),
         }

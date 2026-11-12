@@ -641,6 +641,8 @@ pub struct RunStats {
 }
 
 mod deferred;
+mod source_json;
 mod structured;
 pub use deferred::{Block, DeferredProgram};
+pub use source_json::SourceGraphBinding;
 pub use structured::{Atom, Cmd};

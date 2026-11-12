@@ -257,11 +257,19 @@ def compile_counting(a):
         work = Path(scratch)
         probe = work / 'SourceCounting.lean'
         probe.write_text(source, encoding='utf-8')
-        run_command(['lake', '-K', 'maxJobs=2', 'build', MODULE, LEAF],
-                    cwd=lake_root, timeout=a.timeout_seconds)
-        raw = run_command(['lake', 'env', 'lean', str(probe)],
-                          cwd=lake_root, timeout=a.timeout_seconds,
-                          env={**os.environ, 'ORIGINAL_MAX_LABELS': '8192'}).encode('ascii')
+        if getattr(a, 'source_graph', None) is None:
+            # Cold builds can exceed the source-export budget. Consumers of
+            # the pinned graph probe may reuse its exact serialized result.
+            run_command(['lake', '-K', 'maxJobs=2', 'build', MODULE, LEAF],
+                        cwd=lake_root, timeout=a.timeout_seconds)
+            raw = run_command(['lake', 'env', 'lean', str(probe)],
+                              cwd=lake_root, timeout=a.timeout_seconds,
+                              env={**os.environ, 'ORIGINAL_MAX_LABELS': '8192'}).encode('ascii')
+        else:
+            raw = a.source_graph.resolve().read_bytes()
+        # Strictly check the full mode-specific declaration, source commit,
+        # original Git blob, physical ABI and every serialized node. This is
+        # necessary even when a graph came from a previous CI step.
         graph, root = inspect_graph(raw, original_blob, mode=mode)
         (work / 'count.graph.json').write_bytes(raw)
         record = {'id': identity, 'fqn': fqn, 'module': MODULE, 'git_blob': original_blob}
@@ -335,6 +343,8 @@ def main():
                    default='full', help='large-domain excludes the source noncomputable finite fallback and refuses n<=cutoff')
     p.add_argument('--timeout-seconds', type=int, default=1200)
     p.add_argument('--require-certificate', action='store_true')
+    p.add_argument('--source-graph', type=Path,
+                   help='reuse a previously exported exact pinned Lean graph instead of rebuilding')
     a = p.parse_args()
     if not (30 <= a.timeout_seconds <= 7200):
         p.error('timeout must be 30..7200 seconds')

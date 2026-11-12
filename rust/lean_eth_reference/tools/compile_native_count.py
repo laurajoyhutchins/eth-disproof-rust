@@ -76,7 +76,7 @@ def inspect_graph(raw: bytes, source_blob: str):
     return graph, root
 
 
-def rust_binary(root) -> str:
+def rust_binary(root, width: int = 3) -> str:
     gen = RustGenerator(R, S)
     name = gen.emit(root)
     return '\n'.join([
@@ -110,6 +110,9 @@ def rust_binary(root) -> str:
         '    let mut text = String::new();',
         '    io::stdin().read_to_string(&mut text).map_err(|e| e.to_string())?;',
         '    let cnf = parse_dimacs(&text).map_err(|e| e.to_string())?;',
+        f'    if cnf.clauses().iter().any(|clause| clause.literals().len() > {width}) {{',
+        '        return Err("formula exceeds compiled clause-width bound".into());',
+        '    }',
         '    let program = original().map_err(|e| e.to_string())?;',
         '    let bits = cnf.encode_lean();',
         '    let mut state = program.initial(bits.bytes().map(|b| b == b\'1\'));',
@@ -195,7 +198,7 @@ def compile_counting(a):
             run_command(['lake', 'env', 'lean', str(proof)],
                         cwd=lake_root, timeout=a.timeout_seconds)
             cert_status = 'LEAN_KERNEL_CERTIFIED_SOURCE_DERIVED_COUNT'
-        generated = rust_binary(root)
+        generated = rust_binary(root, a.width)
         crate = work / 'crate'
         (crate / 'src').mkdir(parents=True)
         (crate / 'src/main.rs').write_text(generated, encoding='utf-8')

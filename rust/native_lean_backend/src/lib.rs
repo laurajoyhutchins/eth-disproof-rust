@@ -368,7 +368,7 @@ impl Reader {
                     // ret(Arg)
                     writeln!(
                         code,
-                        "    return {};",
+                        "    {}",
                         Self::arg(Self::field(x, 0)?, env, ret_ty)?
                     )
                     .unwrap();

@@ -71,12 +71,11 @@ class QueryAotContract(unittest.TestCase):
             # This parent forks a child that tries to publish late output after
             # the process group has timed out. A kill of the parent PID only
             # would let the child continue writing.
-            script = (
-                "import subprocess,sys,time\n"
-                "subprocess.Popen([sys.executable,'-c',"
-                "'import time; time.sleep(1.6); open(%r,\"w\").write(\"bad\")'])\n"
-                "time.sleep(10)\n"
-            ) % str(marker)
+            child_code = (f"import time; time.sleep(1.6); "
+                          f"open({str(marker)!r}, 'w').write('bad')")
+            script = (f"import subprocess,sys,time\n"
+                      f"subprocess.Popen([sys.executable, '-c', {child_code!r}])\n"
+                      f"time.sleep(10)\n")
             with self.assertRaises(TimeoutError):
                 run_bounded([sys.executable, "-c", script], root, 1)
             time.sleep(0.8)

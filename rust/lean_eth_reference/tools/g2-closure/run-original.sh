@@ -70,6 +70,8 @@ jq -n \
   --arg toolchain "leanprover/lean4:v4.34.1" \
   --arg lean_version "$lean_version" \
   --arg inventory_sha256 "$inventory_hash" \
+  --arg producer_sha256 "$producer_hash" \
+  --arg compiler_revision "$compiler_revision" \
   '{
     format: "eth-original-inventory-receipt-v1",
     source_commit: $source_commit,

@@ -24,14 +24,25 @@ This producer refuses free/metavariables, unresolved universe metavariables, non
 
 ## Run the real Lean tests
 
-From the repository root, with a real Lean 4.34.1 or 4.35.0 binary:
+The original Lean producer remains `tools/lean-ir-smoke/ResidualGraph.lean`.
+The smoke harness has been ported to a **Rust integration test**, including
+symbolic sharing, bounded beta/zeta reduction, large `Nat.rec` preservation,
+universe polymorphism and three refusal cases. Supply an actual Lean binary:
 
 ```sh
-cd rust/lean_eth_reference/tools/lean-ir-smoke
-LEAN_BIN=/path/to/lean python3 -m unittest test_residual_graph.py -v
+LEAN_BIN=/path/to/lean cargo test --locked --test lean_residual_real
 ```
 
-The test suite compiles the Lean producer with the selected actual toolchain and runs seven real Lean fixtures, not a simulated backend. In this VM, **seven of seven passed on Lean 4.34.1 and separately seven of seven on Lean 4.35.0**. This is source-compatibility evidence for the isolated producer only.
+Without `LEAN_BIN` the optional real-Lean test does not execute; a normal
+Cargo CI pass must not be described as real Lean differential evidence.
+The previous isolated Lean 4.34.1 and 4.35.0 runs were performed before this
+migration. The source semantics and Rust contract still require independent
+physical-machine verification.
+
+For checked-out projects, the `eth-compiler compile --backend residual-expr`
+command invokes Lean and then validates the emitted graph against the same
+Rust contract used by the compiler-IR path. See
+[two-path acceptance contract](two-path-acceptance-contract.md).
 
 For a simple interactive probe, first compile `ResidualGraph.lean` to `ResidualGraph.olean` in the Lean module path. In another module, import `ResidualGraph` and the source module, then use:
 

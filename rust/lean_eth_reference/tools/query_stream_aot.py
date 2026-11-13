@@ -204,6 +204,10 @@ def main():
     if not (60 <= args.timeout <= 3600 and 60 <= args.build_timeout <= 7200
             and 1 <= args.max_jobs <= 8 and 1 <= args.max_source_labels <= 1_000_000_000):
         parser.error("invalid bounded Lean build/export parameters")
+    args.lake_root = args.lake_root.resolve()
+    args.rust_crate = args.rust_crate.resolve()
+    args.upstream = args.upstream.resolve()
+    args.output_dir = args.output_dir.resolve()
     compile_query(args)
 
 

@@ -40,5 +40,7 @@ jobs:
         run: python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_ir_backend.py'
       - name: Shared two-path acceptance contracts (offline)
         run: python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_codegen_contract.py'
+      - name: Shared two-path routing and refusal (offline)
+        run: python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_two_path_codegen.py'
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

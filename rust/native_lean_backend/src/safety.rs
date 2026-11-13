@@ -162,27 +162,23 @@ mod tests {
 
     #[test]
     fn publication_rejects_unsafe_paths_and_preserves_existing_source() {
-        let base = std::env::temp_dir().join(format!(
-            "lean-native-publish-test-{}-{}",
+        let base = std::path::PathBuf::from(format!(
+            ".lean-native-publish-test-{}-{}",
             std::process::id(),
             super::NEXT_TEMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         fs::create_dir(&base).unwrap();
         let path = base.join("generated.rs");
         // Absolute paths are never accepted.
-        assert!(publish(path.to_str().unwrap(), "fn main() {}").is_err());
+        let absolute = std::env::current_dir().unwrap().join(&path);
+        assert!(publish(absolute.to_str().unwrap(), "fn main() {}").is_err());
         assert!(publish("../escape.rs", "x").is_err());
         assert!(publish("anything.txt", "x").is_err());
-        let old_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&base).unwrap();
-        fs::write("generated.rs", "existing").unwrap();
-        assert!(publish("generated.rs", &"x".repeat(super::MAX_OUTPUT_BYTES + 1)).is_err());
-        assert_eq!(fs::read_to_string("generated.rs").unwrap(), "existing");
-        publish("generated.rs", "replacement").unwrap();
-        assert_eq!(fs::read_to_string("generated.rs").unwrap(), "replacement");
-        // No shared cwd is changed by production code; this test is serialized
-        // against itself by the test harness's single invocation on this crate.
-        std::env::set_current_dir(old_dir).unwrap();
+        fs::write(&path, "existing").unwrap();
+        assert!(publish(path.to_str().unwrap(), &"x".repeat(super::MAX_OUTPUT_BYTES + 1)).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "existing");
+        publish(path.to_str().unwrap(), "replacement").unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "replacement");
         fs::remove_dir_all(base).unwrap();
     }
 }

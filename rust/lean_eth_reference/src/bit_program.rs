@@ -78,7 +78,7 @@ pub enum Instr {
 impl Instr {
     /// `ProgramLinking.relocateInstr` with identity register/stack maps.
     /// A subroutine's halt becomes a jump to the caller's continuation.
-    fn relocate(&self, base: usize, return_to: usize) -> Result<Self, Error> {
+    pub fn relocate(&self, base: usize, return_to: usize) -> Result<Self, Error> {
         let offset = |label: usize| label.checked_add(base).ok_or(Error::Overflow);
         Ok(match *self {
             Self::Halt => Self::Goto { next: return_to },
@@ -465,80 +465,7 @@ impl<const R: usize, const S: usize> Program<R, S> {
                 self.code.len()
             ))
         })?;
-        match *instr {
-            Instr::Halt => config.pc = None,
-            Instr::Goto { next } => config.pc = Some(next),
-            Instr::Set { dst, value, next } => {
-                config.regs[dst] = value;
-                config.pc = Some(next)
-            }
-            Instr::Copy { dst, src, next } => {
-                config.regs[dst] = config.regs[src];
-                config.pc = Some(next)
-            }
-            Instr::Not { dst, src, next } => {
-                config.regs[dst] = !config.regs[src];
-                config.pc = Some(next)
-            }
-            Instr::And {
-                dst,
-                left,
-                right,
-                next,
-            } => {
-                config.regs[dst] = config.regs[left] && config.regs[right];
-                config.pc = Some(next)
-            }
-            Instr::Or {
-                dst,
-                left,
-                right,
-                next,
-            } => {
-                config.regs[dst] = config.regs[left] || config.regs[right];
-                config.pc = Some(next)
-            }
-            Instr::Xor {
-                dst,
-                left,
-                right,
-                next,
-            } => {
-                config.regs[dst] = config.regs[left] ^ config.regs[right];
-                config.pc = Some(next)
-            }
-            Instr::Branch { test, yes, no } => {
-                config.pc = Some(if config.regs[test] { yes } else { no })
-            }
-            Instr::Push { stack, src, next } => {
-                config.stacks[stack].push_front(config.regs[src]);
-                config.pc = Some(next)
-            }
-            Instr::Peek {
-                stack,
-                value,
-                present,
-                next,
-            } => {
-                read_registers(
-                    &mut config.regs,
-                    value,
-                    present,
-                    config.stacks[stack].front().copied(),
-                );
-                config.pc = Some(next);
-            }
-            Instr::Pop {
-                stack,
-                value,
-                present,
-                next,
-            } => {
-                let top = config.stacks[stack].pop_front();
-                read_registers(&mut config.regs, value, present, top);
-                config.pc = Some(next);
-            }
-        }
+        execute_instr(instr, config);
         Ok(true)
     }
 
@@ -584,6 +511,84 @@ impl<const R: usize, const S: usize> Program<R, S> {
             stats.peak_stack_bits = stats.peak_stack_bits.max(live_bits);
         }
         Ok(stats)
+    }
+}
+
+/// Single physical source instruction, shared by the flat and deferred executors.
+fn execute_instr<const R: usize, const S: usize>(instr: &Instr, config: &mut Config<R, S>) {
+    match *instr {
+        Instr::Halt => config.pc = None,
+        Instr::Goto { next } => config.pc = Some(next),
+        Instr::Set { dst, value, next } => {
+            config.regs[dst] = value;
+            config.pc = Some(next)
+        }
+        Instr::Copy { dst, src, next } => {
+            config.regs[dst] = config.regs[src];
+            config.pc = Some(next)
+        }
+        Instr::Not { dst, src, next } => {
+            config.regs[dst] = !config.regs[src];
+            config.pc = Some(next)
+        }
+        Instr::And {
+            dst,
+            left,
+            right,
+            next,
+        } => {
+            config.regs[dst] = config.regs[left] && config.regs[right];
+            config.pc = Some(next)
+        }
+        Instr::Or {
+            dst,
+            left,
+            right,
+            next,
+        } => {
+            config.regs[dst] = config.regs[left] || config.regs[right];
+            config.pc = Some(next)
+        }
+        Instr::Xor {
+            dst,
+            left,
+            right,
+            next,
+        } => {
+            config.regs[dst] = config.regs[left] ^ config.regs[right];
+            config.pc = Some(next)
+        }
+        Instr::Branch { test, yes, no } => {
+            config.pc = Some(if config.regs[test] { yes } else { no })
+        }
+        Instr::Push { stack, src, next } => {
+            config.stacks[stack].push_front(config.regs[src]);
+            config.pc = Some(next)
+        }
+        Instr::Peek {
+            stack,
+            value,
+            present,
+            next,
+        } => {
+            read_registers(
+                &mut config.regs,
+                value,
+                present,
+                config.stacks[stack].front().copied(),
+            );
+            config.pc = Some(next);
+        }
+        Instr::Pop {
+            stack,
+            value,
+            present,
+            next,
+        } => {
+            let top = config.stacks[stack].pop_front();
+            read_registers(&mut config.regs, value, present, top);
+            config.pc = Some(next);
+        }
     }
 }
 
@@ -635,5 +640,9 @@ pub struct RunStats {
     pub peak_stack_bits: usize,
 }
 
+mod deferred;
+mod source_json;
 mod structured;
+pub use deferred::{Block, DeferredProgram, relocate_ports, run_with_instruction_at};
+pub use source_json::{SourceGraphBinding, emit_original_source_rust};
 pub use structured::{Atom, Cmd};

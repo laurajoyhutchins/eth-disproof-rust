@@ -2,14 +2,15 @@ name: Rust ETH port
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Keep the latest PR checkpoint, but never cancel verification of a main commit.
+# Cancel superseded PR checkpoints; retain every pushed main commit receipt.
 concurrency:
   group: rust-eth-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -18,18 +19,21 @@ jobs:
   rust:
     name: rust
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
-      # PRs test the proposed merge, not an isolated branch head.
       - uses: actions/checkout@v4
         with:
+          # Preserve exact-head evidence; merge-commit tests are a separate obligation.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      # rust-toolchain.toml pins Rust, rustfmt and Clippy. rustup installs it on demand.
-      - name: Formatting
-        run: cargo fmt --all -- --check
-      - name: Fetch locked dependencies
+      # rust-toolchain.toml pins Rust 1.99.1, rustfmt and Clippy.
+      - name: Restore locked crate dependencies
         run: cargo fetch --locked
+      - name: Formatting (workspace)
+        run: cargo fmt --all -- --check
       - name: Exact Rust tests
-        run: cargo test --locked --offline --workspace --all-targets
+        run: cargo test --locked --offline --all-targets
+      - name: Source-graph compiler contract tests (offline)
+        run: python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
       - name: Strict Clippy
-        run: cargo clippy --locked --offline --workspace --all-targets -- -D warnings
+        run: cargo clippy --locked --offline --all-targets -- -D warnings

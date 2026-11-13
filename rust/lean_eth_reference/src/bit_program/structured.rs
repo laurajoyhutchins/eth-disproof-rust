@@ -50,7 +50,7 @@ pub enum Atom {
     },
 }
 impl Atom {
-    fn instr(&self, next: usize) -> Instr {
+    pub(super) fn instr(&self, next: usize) -> Instr {
         match *self {
             Self::Set { dst, value } => Instr::Set { dst, value, next },
             Self::Copy { dst, src } => Instr::Copy { dst, src, next },

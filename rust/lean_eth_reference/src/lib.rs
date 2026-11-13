@@ -411,6 +411,7 @@ pub fn parse_dimacs(text: &str) -> Result<Cnf, Error> {
 }
 
 pub mod bit_program;
+pub mod lean_codegen;
 pub mod native_high;
 pub mod native_tuple;
 
@@ -420,6 +421,8 @@ pub mod native_answer;
 /// Source-defined post-normalization body placement and ambient header suffix.
 pub mod native_frontend_tail;
 pub mod native_layout;
+pub mod native_node_append;
+pub mod native_node_readout;
 pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;
@@ -526,3 +529,36 @@ mod canonical_clause_tests {
         );
     }
 }
+
+/// Source-defined signature head-factor construction.
+pub mod native_head_factors;
+
+/// Source-defined signature head selection.
+pub mod native_head_selection;
+
+/// Source-linked signed integer arithmetic.
+pub mod native_signed_arithmetic;
+
+/// Source-linked signed matrix preprocessing.
+pub mod native_matrix_preprocess;
+
+/// Source-linked canonical signature synthesis.
+pub mod native_signature;
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_frames;
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_generator;
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_rescan;
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_key;
+
+/// Source-pinned attained-signature stage.
+pub mod native_signature_arithmetic;
+
+/// Source-defined full predecessor rescan and finite tuple probe.
+pub mod native_signature_candidate;

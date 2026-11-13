@@ -12,10 +12,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: lean-extraction-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
   original-source:
     runs-on: ubuntu-24.04
@@ -23,12 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      # Cargo honors the root rust-toolchain.toml pin.
       - name: Fetch only original Lean source at exact pinned revision
         env:
           SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
         run: |
-          set -euo pipefail
           git init "$RUNNER_TEMP/original-math"
           git -C "$RUNNER_TEMP/original-math" remote add origin https://github.com/openai/math.git
           git -C "$RUNNER_TEMP/original-math" sparse-checkout init --cone
@@ -36,7 +33,7 @@ jobs:
           git -C "$RUNNER_TEMP/original-math" fetch --depth=1 --filter=blob:none origin "$SOURCE_SHA"
           git -C "$RUNNER_TEMP/original-math" checkout --detach FETCH_HEAD
           test "$(git -C "$RUNNER_TEMP/original-math" rev-parse HEAD)" = "$SOURCE_SHA"
-      - name: Fetch locked dependencies
+      - name: Restore locked Cargo dependencies
         run: cargo fetch --locked
       - name: Check all literal tables against original pinned bytes
         run: |

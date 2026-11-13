@@ -11,8 +11,8 @@ A pull request should answer four concrete questions:
    implementation based on? See the [source manifest](rust/lean_eth_reference/reference/source-manifest.json).
 2. **Execution:** Is the change an instruction-level source port, a host Rust
    semantic helper, a separate optimization, or a proof-only argument?
-3. **Evidence:** Which tests were run, against which **exact tested commit**,
-   with what commands and outputs? For Lean parity, actually execute the pinned
+3. **Evidence:** Which tests were run on the **exact PR head**, with what
+   commands and outputs? For Lean parity, actually execute the pinned
    original Lean implementation and compare all state transitions and halting,
    rather than replaying committed golden fixtures or a second Rust oracle.
 4. **Limitations:** What remains unsupported? An absent native stage must
@@ -25,42 +25,52 @@ and new mathematical conjectures without separately testing each claim.
 Follow the [PR template](.github/PULL_REQUEST_TEMPLATE.md) and
 [execution/evidence matrix](rust/lean_eth_reference/docs/evidence.md).
 
-## Fast Rust checkpoint
+## One Lean-to-Rust compiler path
 
-From the repository root, the checked-in `rust-toolchain.toml` selects
-Rust **1.99.1**, including rustfmt and Clippy:
+Maintain the existing source-grounded, compositional exporter and Rust backend;
+do not introduce a parallel `lean-rs` generator, runtime, or verification path.
+When incorporating ideas from other Lean compilers:
+
+- Let pinned Lean elaboration establish the typed source, rather than parsing
+  Lean surface syntax in Rust or guessing source definitions by name.
+- Preserve each exported declaration's original Lean name, source revision,
+  dependencies, and deterministic generation receipt.
+- Report skipped or unsupported definitions with explicit reasons, and refuse
+  missing executable dependencies instead of generating placeholder behavior.
+- Keep normal Cargo builds and tests independent of a live Lean toolchain;
+  source extraction and independent Lean trace checks have explicit gates.
+- Attribute copied or adapted implementation code with its upstream path,
+  revision and license; see [NOTICE](NOTICE) for design references.
+
+These are compiler acceptance requirements, not claims that all features have
+already been implemented or that end-to-end Lean/Rust parity is established.
+
+## Run local checks
+
+From the repository root, `rust-toolchain.toml` pins Rust **1.99.1**
+with rustfmt and Clippy:
 
 ```sh
 cargo fetch --locked
 cargo fmt --all -- --check
-cargo test --locked --offline --workspace --all-targets
-cargo clippy --locked --offline --workspace --all-targets -- -D warnings
+cargo test --locked --offline --all-targets
+python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
+cargo clippy --locked --offline --all-targets -- -D warnings
 ```
 
-`cargo fetch --locked` obtains any missing locked dependencies once; subsequent
-offline checks do not download crates. Keep these checks together. Do not
-introduce parallel compilation jobs or a remote build service for this small
-workspace without measured evidence that it helps.
+The workspace reuses locked dependencies (including `serde`, `serde_json`
+and `sha2`); use `cargo fetch --locked` before offline tests. The
+[public Rust workflow](.github/workflows/rust.yml) runs on pull requests,
+pushes to `main`, and manual dispatch. Check the actual head SHA and run
+conclusion; a previous green run is not evidence for a subsequent commit.
 
-The [Rust workflow](.github/workflows/rust.yml) runs on pull requests,
-pushes to `main`, and manual dispatch. On PRs GitHub checks out the
-proposed merge commit; record both the tested merge SHA and the PR head SHA
-when reporting evidence. For **exact PR-head** evidence, run the commands
-directly against that head, not against the synthetic merge commit. A green
-run on an earlier commit is never evidence for a later commit.
+PR checks intentionally run on the submitted **head SHA**, not a synthetic
+merge commit. Verify integration on the post-merge `main` SHA separately,
+and never claim that a source-graph test fixture proves original Lean parity.
 
-## Independent source verification
-
-The [pinned Lean literal extractor](.github/workflows/lean-extraction.yml)
-runs only when extraction code or fixtures change, or when manually dispatched.
-It fetches the original source at a pinned revision and verifies generated
-literal tables. It does **not** run the full original Lean semantics.
-
-A green Rust workflow validates Rust formatting, tests and linting, **not**
-original Lean semantics, native TM2 refinement or the theorem. Expensive
-original-Lean execution and independent Lean/Rust differential checks must
-remain separate, with successful evidence recorded on the relevant source
-revision before claiming parity.
+A green Rust workflow validates Rust formatting/tests/lints, **not** the
+original Lean semantics, native TM2 refinement or the theorem. Original Lean
+execution and mathematical resource accounting require separate evidence.
 
 For a bug report, supply the affected commit, Rust toolchain, smallest
 reproducing input (DIMACS when applicable), expected vs actual state/output,

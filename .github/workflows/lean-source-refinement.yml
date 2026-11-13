@@ -1,0 +1,71 @@
+name: Formal Lean source-graph refinement
+
+on:
+  pull_request:
+    paths:
+      - 'rust/lean_eth_reference/proofs/SourceGraphRefinement.lean'
+      - '.github/workflows/lean-source-refinement.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-source-refinement-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lean-refinement:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Checkout pinned original OpenAI Lean source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth 1 --filter=blob:none origin 4eaee87548250b2682affda7d05d947c05554bae
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = 4eaee87548250b2682affda7d05d947c05554bae
+          test -z "$(git -C upstream/openai-math status --porcelain --untracked-files=no)"
+          ln -s "$GITHUB_WORKSPACE/upstream/openai-math/lean/OAI" instrumentation/lean-env/OAI
+      - name: Restore Lean 4.34.1 and pinned Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Restore compiled original Lean module cache
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
+      - name: Typecheck physical identity and primitive TM2 refinement
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
+          if grep -nE '\b(sorry|admit)\b' rust/lean_eth_reference/proofs/SourceGraphRefinement.lean; then
+            echo 'Proof contains unresolved admission' >&2
+            exit 1
+          fi
+          (
+            cd instrumentation/lean-env
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler
+            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/SourceGraphRefinement.lean"
+          )
+          echo 'LEAN_SOURCE_GRAPH_REFINEMENT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"

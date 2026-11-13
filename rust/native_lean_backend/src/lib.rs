@@ -527,7 +527,10 @@ impl Reader {
                 return Err(format!("duplicate IR declaration in closure: {name}"));
             }
         }
-        let mut pending = exports.iter().map(|(root, _)| root.clone()).collect::<Vec<_>>();
+        let mut pending = exports
+            .iter()
+            .map(|(root, _)| root.clone())
+            .collect::<Vec<_>>();
         let mut visited = BTreeSet::<String>::new();
         let mut closure = BTreeMap::<String, Obj>::new();
         let mut signatures = FunctionTable::new();
@@ -538,8 +541,9 @@ impl Reader {
             if visited.len() > 2048 {
                 return Err("native declaration closure exceeds 2048 functions".into());
             }
-            let decl = *definitions.get(&name).ok_or_else(||
-                format!("dependency {name} has no compiled IR in this module; no external fallback"))?;
+            let decl = *definitions.get(&name).ok_or_else(|| {
+                format!("dependency {name} has no compiled IR in this module; no external fallback")
+            })?;
             let sig = Self::signature(decl).map_err(|e| format!("{name}: {e}"))?;
             let mut called = BTreeSet::new();
             Self::body_calls(Self::field(decl, 3)?, &mut called)
@@ -553,7 +557,9 @@ impl Reader {
             closure.insert(name, decl);
         }
 
-        let internal_names = closure.keys().map(|name| internal_name(name))
+        let internal_names = closure
+            .keys()
+            .map(|name| internal_name(name))
             .collect::<BTreeSet<_>>();
         for (root, public_name) in exports {
             if internal_names.contains(public_name) {
@@ -561,7 +567,9 @@ impl Reader {
                     "{root}: public export {public_name} collides with an internal Lean symbol"
                 ));
             }
-            let decl = *closure.get(root).ok_or_else(|| format!("missing public root {root}"))?;
+            let decl = *closure
+                .get(root)
+                .ok_or_else(|| format!("missing public root {root}"))?;
             // Validate Rust identifiers and every reachable body before publication.
             Self::emit_function(decl, public_name, Some(&signatures))
                 .map_err(|e| format!("{root}: {e}"))?;
@@ -571,15 +579,16 @@ impl Reader {
             "// Native in-process Lean IR closure; no JSON or Lean runtime dependency.\n",
         );
         for (name, decl) in &closure {
-            result.push_str(&Self::emit_function(
-                *decl,
-                &internal_name(name),
-                Some(&signatures),
-            ).map_err(|e| format!("{name}: {e}"))?);
+            result.push_str(
+                &Self::emit_function(*decl, &internal_name(name), Some(&signatures))
+                    .map_err(|e| format!("{name}: {e}"))?,
+            );
             result.push('\n');
         }
         for (root, public_name) in exports {
-            let sig = signatures.get(root).ok_or_else(|| format!("missing signature {root}"))?;
+            let sig = signatures
+                .get(root)
+                .ok_or_else(|| format!("missing signature {root}"))?;
             write!(result, "pub fn {public_name}(").unwrap();
             for (i, ty) in sig.params.iter().enumerate() {
                 if i > 0 {
@@ -604,7 +613,6 @@ impl Reader {
         }
         Ok(result)
     }
-
 }
 
 // Duplicate exports and aliases are errors, never silently shadowed.

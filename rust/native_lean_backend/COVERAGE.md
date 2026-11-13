@@ -69,3 +69,20 @@ separate ETH symbolic/physical semantics obligations remain open.
   indirect applications, closures, join points, and general runtime types
   remain unsupported. Recursive functions with supported bodies compile, but
   no guarantee of stack safety or tail-call optimization is claimed.
+
+
+## Native response and publication contract (G1 hardening)
+
+The compiler now reports supported-IR refusals as a JSON object following
+the `ERROR\n` prefix. Fields: `status`, `declaration`, `construct`, `reason`.
+A native C ABI host-runtime probe verifies small tagged scalars, a two-field
+constructor, and Lean String operations before lowering. Rust codegen has an
+explicit per-body traversal/time budget and a 4 MiB output cap. Output paths
+are validated and staged adjacent to the destination for atomic rename.
+
+A generated supported root may be packaged into a standalone Cargo library
+with `scripts/package_crate.sh`, then built/tested without Lean runtime
+environment variables. This does not yet implement compiler-native
+multi-root crate generation. See [SAFETY.md](SAFETY.md) for the full trust
+boundary and remaining checklist items 21–30. In particular, a comprehensive
+automatically-derived conformance matrix is still open.

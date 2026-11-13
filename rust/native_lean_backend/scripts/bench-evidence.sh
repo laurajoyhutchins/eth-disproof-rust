@@ -29,7 +29,7 @@ lean -o examples/PropertyDef.olean examples/PropertyDef.lean
   echo "lean_c_input=PropertyDef.lean_full_source_module"
   echo "comparison_status=INCOMPLETE_PHASES_DIFFER_NO_JSON_SOURCE_GRAPH_EQUIVALENT"
   echo "file_system_cache=UNCONTROLLED;fresh_process_each_trial"
-  echo "runtime_equivalence=PROVED_BY_SEPARATE_LEAN_RUST_FIXTURES_NOT_MEASURED_FOR_C"
+  echo "runtime_equivalence=TESTED_ON_FINITE_LEAN_RUST_FIXTURES_NOT_MEASURED_FOR_C"
   echo "timing_unit=seconds;rss_unit=KiB;size_unit=bytes"
 } > artifacts/bench-native/manifest.txt
 

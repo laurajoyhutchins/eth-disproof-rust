@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from run_two_path_codegen import main
+from run_two_path_codegen import main, runtime_version as unpatched_runtime_version
 from test_lean_codegen_contract import ir_report, residual
 
 
@@ -28,6 +28,10 @@ class RunnerTests(unittest.TestCase):
                                            text=True).strip()
         self.artifact = self.repo / 'result.bin'
         self.receipt = self.repo / 'receipt.json'
+        version_patch = patch('run_two_path_codegen.runtime_version',
+                              return_value='Lean (version 4.35.0, test)')
+        version_patch.start()
+        self.addCleanup(version_patch.stop)
         self.args = ['--backend', 'compiler-ir', '--lake-root', str(self.repo),
                      '--module', 'Demo', '--root', 'Demo.double', '--source-repo', str(self.repo),
                      '--source-path', 'Demo.lean', '--source-revision', self.rev,
@@ -65,6 +69,13 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(main(self.args), 2)
         self.assertFalse(self.receipt.exists())
         self.assertFalse(self.artifact.exists())
+
+    def test_actual_version_mismatch_refuses(self):
+        with patch('run_two_path_codegen.subprocess.run') as actual:
+            actual.return_value.returncode = 0
+            actual.return_value.stdout = 'Lean (version 4.34.1, test)'
+            with self.assertRaisesRegex(ValueError, 'version does not match'):
+                unpatched_runtime_version(self.repo, 'leanprover/lean4:v4.35.0', 30)
 
     def test_symbolic_route_uses_same_contract(self):
         params = self.args.copy()

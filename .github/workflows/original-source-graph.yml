@@ -200,8 +200,8 @@ jobs:
             --output-dir "$RUNNER_TEMP/named-repeat-proof" \
             --rust-crate rust/lean_eth_reference \
             --timeout-seconds 240 --linking-fixtures --linking-fixtures-only \
-            --fixture-names namedRepeatRoot
-          echo 'NAMED_NAT_REC=STRUCTURAL_REPEAT_AND_ALL_LABELS_CERTIFIED' >> "$GITHUB_STEP_SUMMARY"
+            --fixture-names namedRepeatRoot namedLiftRoot
+          echo 'NAMED_COMMAND_ALIASES=REPEAT_AND_LIFT_ALL_LABELS_CERTIFIED' >> "$GITHUB_STEP_SUMMARY"
 
       # This probe is independent of the six bounded original physical tables:
       # prior flat Lean materialization of computeL exceeded its heartbeat cap.

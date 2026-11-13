@@ -54,7 +54,10 @@ fn main() {
     let contract = fs::read_to_string("ir-coverage-classification.tsv")
         .expect("pinned IR constructor coverage classification is required");
     let mut count = 0;
-    for line in contract.lines().filter(|line| !line.is_empty() && !line.starts_with('#')) {
+    for line in contract
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+    {
         let cells: Vec<_> = line.split('\t').collect();
         assert_eq!(cells.len(), 5, "malformed pinned IR coverage row: {line}");
         let full_name = cells[0];
@@ -66,7 +69,10 @@ fn main() {
         match cells[2] {
             "implemented_bounded" => {
                 assert!(
-                    matches!(family, "Decl" | "IRType" | "Arg" | "LitVal" | "Expr" | "Alt" | "FnBody"),
+                    matches!(
+                        family,
+                        "Decl" | "IRType" | "Arg" | "LitVal" | "Expr" | "Alt" | "FnBody"
+                    ),
                     "unrecognized IR family {family}"
                 );
                 writeln!(&mut tags, "    (\"{family}\", {tag}),").unwrap();

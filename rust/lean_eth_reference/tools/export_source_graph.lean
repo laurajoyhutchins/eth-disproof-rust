@@ -11,6 +11,11 @@ The wrapper pins git source, Lean, and Mathlib before this command executes.
 namespace OriginalSourceGraph
 open Lean Meta Elab Command
 
+/-- Structured command/link composition need not be a small flat table.
+Only *leaf* tables are bounded by ORIGINAL_MAX_LABELS (1..8192).
+The full source graph is separately bounded to match the Rust validator. -/
+private def maxSourceLabels : Nat := 50000
+
 private def number (e : Expr) : MetaM Nat := do
   let e ← whnf e
   match e with
@@ -146,7 +151,7 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
   let s ← number args[1]!
   let labels ← number args[2]!
   if r == 0 || s == 0 || labels == 0 || r > 256 ||
-      s > 4096 || labels > maxLabels then
+      s > 4096 || labels > maxSourceLabels then
     throwError m!"source linked program dimensions unsupported: {r} {s} {labels}"
   match p.getAppFn with
   | .const n _ =>
@@ -370,7 +375,7 @@ elab_rules : command
       let r ← number a[0]!
       let s ← number a[1]!
       let l ← number a[2]!
-      if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
+      if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxSourceLabels then
         throwError m!"source machine out of bounded test dimensions: {r} {s} {l}"
       -- A compiled command and a linked physical Program are both legitimate
       -- top-level entrypoints. Preserve their exact source label spaces; never

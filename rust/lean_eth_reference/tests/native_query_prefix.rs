@@ -237,9 +237,11 @@ fn high_loop_executes_the_physical_query_prefix_for_every_assignment() {
         .unwrap()
         .compiled(789, 703)
         .unwrap();
-    // `ExecCNFTupleEnumeration`: start label 0, guard label 1, callback
-    // begins at 2; the actual odometer follows callback's final instruction.
-    let after_prefix = 2 + callback_size;
+    // Source StructuredCalls.compiled reserves label 0 for halt:
+    // the initializer is 1, the guard is 2 and the callback begins at 3.
+    // Count a completed callback at the next physical instruction,
+    // immediately before the real odometer advances.
+    let after_prefix = 3 + callback_size;
     for width in 0..=4 {
         for mask_rank in 0..(1 << width) {
             let mask = mask_from_rank(width, mask_rank);

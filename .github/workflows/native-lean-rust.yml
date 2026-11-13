@@ -66,11 +66,13 @@ jobs:
             ./scripts/check.sh
             bash ./scripts/check-evidence.sh
             bash ./scripts/check-imported-probes.sh
+            bash ./scripts/check-bundle.sh
           )
           # Keep the exact-head provenance and all generated-code hashes in the job log.
           cat rust/native_lean_backend/artifacts/native-smoke-receipt.txt
           cat rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
           cat rust/native_lean_backend/artifacts/imported-probes/receipt.txt
+          cat rust/native_lean_backend/artifacts/native-compiler-bundle-receipt.txt
           {
             echo 'NATIVE_LEAN_G0=REAL_IN_PROCESS_FFI_AND_GENERATED_RUST'
             echo 'Lean=4.34.1'
@@ -90,4 +92,5 @@ jobs:
             rust/native_lean_backend/artifacts/native-smoke-receipt.txt
             rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
             rust/native_lean_backend/artifacts/imported-probes/*
+            rust/native_lean_backend/artifacts/native-compiler-bundle-*.txt
             rust/native_lean_backend/artifacts/bench-native/*.txt

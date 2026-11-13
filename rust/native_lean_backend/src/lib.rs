@@ -3,6 +3,7 @@
 //! This entry point receives `Lean.IR.Decl` *directly* as a borrowed Lean object.
 //! It does not serialize or clone the IR. Only an explicitly accepted subset is
 //! lowered; unknown instructions and types are errors, never substitutions.
+use std::collections::BTreeMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::fmt::Write;
 
@@ -108,9 +109,22 @@ impl Reader {
         }
         Err("unsupported VarId runtime representation".into())
     }
-    unsafe fn arg(x: Obj) -> Result<String, String> {
+    unsafe fn arg(
+        x: Obj,
+        env: &BTreeMap<usize, &'static str>,
+        expected: &str,
+    ) -> Result<String, String> {
         match Self::tag(x)? {
-            0 => Ok(format!("x_{}", Self::var(Self::field(x, 0)?)?)),
+            0 => {
+                let id = Self::var(Self::field(x, 0)?)?;
+                let found = env
+                    .get(&id)
+                    .ok_or_else(|| format!("unknown input variable x_{id}"))?;
+                if *found != expected {
+                    return Err(format!("x_{id}: expected {expected}, got {found}"));
+                }
+                Ok(format!("x_{id}"))
+            }
             1 => Err("erased value used as runtime operand".into()),
             t => Err(format!("unknown Arg constructor {t}")),
         }
@@ -118,71 +132,198 @@ impl Reader {
     unsafe fn ty(x: Obj) -> Result<&'static str, String> {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
         match Self::tag(x)? {
+            1 => Ok("u8"),
+            2 => Ok("u16"),
             3 => Ok("u32"),
             4 => Ok("u64"),
             5 => Ok("usize"),
             t => Err(format!(
-                "IR type tag {t} unsupported (currently u32/u64/usize only)"
+                "IR type tag {t} unsupported (supported u8/u16/u32/u64/usize)"
             )),
         }
     }
-    unsafe fn lit(x: Obj) -> Result<String, String> {
+    unsafe fn lit(x: Obj, ty: &str) -> Result<String, String> {
         match Self::tag(x)? {
-            0 => Ok(Self::nat(Self::field(x, 0)?)?.to_string()),
+            0 => {
+                let n = Self::nat(Self::field(x, 0)?)?;
+                let max = match ty {
+                    "u8" => u8::MAX as usize,
+                    "u16" => u16::MAX as usize,
+                    "u32" => u32::MAX as usize,
+                    "u64" => usize::MAX, // Pinned Linux x86-64 Lean ABI.
+                    "usize" => usize::MAX,
+                    _ => return Err(format!("literal type {ty} unsupported")),
+                };
+                if n > max {
+                    return Err(format!("literal {n} exceeds type {ty}"));
+                }
+                Ok(format!("{n}{ty}"))
+            }
             t => Err(format!("literal constructor {t} unsupported")),
         }
     }
-    unsafe fn expr(x: Obj, var_ty: &str) -> Result<String, String> {
+    unsafe fn expr(
+        x: Obj,
+        var_ty: &str,
+        env: &BTreeMap<usize, &'static str>,
+    ) -> Result<String, String> {
         match Self::tag(x)? {
             6 => {
-                // fap
+                // fap, preserving the exact known primitive semantics.
                 let name = Self::name(Self::field(x, 0)?, 0)?;
                 let args = Self::array(Self::field(x, 1)?)?;
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
-                let op = match (name.as_str(), var_ty) {
-                    ("UInt64.add", "u64") | ("UInt32.add", "u32") | ("USize.add", "usize") => {
-                        "wrapping_add"
+                let (op, comparison) = match name.as_str() {
+                    "UInt8.add" | "UInt16.add" | "UInt32.add" | "UInt64.add" | "USize.add" => {
+                        ("wrapping_add", false)
                     }
-                    ("UInt64.sub", "u64") | ("UInt32.sub", "u32") | ("USize.sub", "usize") => {
-                        "wrapping_sub"
+                    "UInt8.sub" | "UInt16.sub" | "UInt32.sub" | "UInt64.sub" | "USize.sub" => {
+                        ("wrapping_sub", false)
                     }
-                    ("UInt64.mul", "u64") | ("UInt32.mul", "u32") | ("USize.mul", "usize") => {
-                        "wrapping_mul"
+                    "UInt8.mul" | "UInt16.mul" | "UInt32.mul" | "UInt64.mul" | "USize.mul" => {
+                        ("wrapping_mul", false)
                     }
-                    _ => return Err(format!("unrecognized or mismatched call: {name}")),
+                    "UInt8.decEq" | "UInt16.decEq" | "UInt32.decEq" | "UInt64.decEq"
+                    | "USize.decEq" => ("==", true),
+                    "UInt8.decLt" | "UInt16.decLt" | "UInt32.decLt" | "UInt64.decLt"
+                    | "USize.decLt" => ("<", true),
+                    "UInt8.decLe" | "UInt16.decLe" | "UInt32.decLe" | "UInt64.decLe"
+                    | "USize.decLe" => ("<=", true),
+                    _ => return Err(format!("unrecognized primitive call: {name}")),
                 };
-                Ok(format!(
-                    "{}.{}({})",
-                    Self::arg(args[0])?,
-                    op,
-                    Self::arg(args[1])?
-                ))
+                let expected_ty = match name.split('.').next() {
+                    Some("UInt8") => "u8",
+                    Some("UInt16") => "u16",
+                    Some("UInt32") => "u32",
+                    Some("UInt64") => "u64",
+                    Some("USize") => "usize",
+                    _ => return Err(format!("invalid primitive namespace: {name}")),
+                };
+                let lhs = Self::arg(args[0], env, expected_ty)?;
+                let rhs = Self::arg(args[1], env, expected_ty)?;
+                if comparison {
+                    if var_ty != "u8" {
+                        return Err(format!("{name}: comparison must produce u8, got {var_ty}"));
+                    }
+                    Ok(format!("u8::from({lhs} {op} {rhs})"))
+                } else {
+                    if var_ty != expected_ty {
+                        return Err(format!(
+                            "{name}: result type mismatch: expected {expected_ty}, got {var_ty}"
+                        ));
+                    }
+                    Ok(format!("{lhs}.{op}({rhs})"))
+                }
             }
-            11 => Ok(Self::lit(Self::field(x, 0)?)?),
+            11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
             t => Err(format!("IR expression constructor {t} unsupported")),
         }
     }
-    unsafe fn body(mut x: Obj, code: &mut String) -> Result<(), String> {
-        let mut count = 0;
+
+    // Only Boolean pattern matches are supported. Lean represents Bool as
+    // UInt8 at this compiler stage. Never interpret a different inductive
+    // datatype's constructor index as a Boolean branch.
+    unsafe fn boolean_case(
+        x: Obj,
+        code: &mut String,
+        depth: usize,
+        count: &mut usize,
+        env: &mut BTreeMap<usize, &'static str>,
+        ret_ty: &str,
+    ) -> Result<(), String> {
+        // Lean 4.34.1 IR uses the *storage type* name UInt8 here,
+        // not the source Bool name. Validate Bool constructor names below.
+        if Self::name(Self::field(x, 0)?, 0)? != "UInt8" {
+            return Err("case on a non-UInt8 representation is unsupported".into());
+        }
+        if Self::ty(Self::field(x, 2)?)? != "u8" {
+            return Err("Bool case must have UInt8 scrutinee".into());
+        }
+        let scrutinee = Self::var(Self::field(x, 1)?)?;
+        if env.get(&scrutinee) != Some(&"u8") {
+            return Err("Bool scrutinee variable is not UInt8".into());
+        }
+        let alts = Self::array(Self::field(x, 3)?)?;
+        if alts.len() != 2 {
+            return Err("Bool case requires exactly two constructor alternatives".into());
+        }
+        let mut seen = [false; 2];
+        writeln!(code, "    match x_{scrutinee} {{").unwrap();
+        for alt in alts {
+            if Self::tag(alt)? != 0 {
+                return Err("Bool default case is not yet supported".into());
+            }
+            let info = Self::field(alt, 0)?;
+            let name = Self::name(Self::field(info, 0)?, 0)?;
+            let cidx = Self::nat(Self::field(info, 1)?)?;
+            let expected = match cidx {
+                0 => "Bool.false",
+                1 => "Bool.true",
+                _ => return Err(format!("invalid Bool constructor index {cidx}")),
+            };
+            if name != expected || seen[cidx] {
+                return Err(format!("invalid or repeated Bool alternative {name}"));
+            }
+            seen[cidx] = true;
+            writeln!(code, "        {cidx} => {{").unwrap();
+            Self::body(Self::field(alt, 1)?, code, depth + 1, count, env, ret_ty)?;
+            writeln!(code, "        }}").unwrap();
+        }
+        if !seen.into_iter().all(|b| b) {
+            return Err("incomplete Bool alternatives".into());
+        }
+        writeln!(
+            code,
+            "        _ => unreachable!(\"invalid Lean Bool tag\"),"
+        )
+        .unwrap();
+        writeln!(code, "    }}").unwrap();
+        Ok(())
+    }
+
+    unsafe fn body(
+        mut x: Obj,
+        code: &mut String,
+        depth: usize,
+        count: &mut usize,
+        env: &mut BTreeMap<usize, &'static str>,
+        ret_ty: &str,
+    ) -> Result<(), String> {
+        if depth > 128 {
+            return Err("IR control-flow nesting limit".into());
+        }
         loop {
-            count += 1;
-            if count > 1_000_000 {
-                return Err("body instruction limit".into());
+            *count += 1;
+            if *count > 100_000 {
+                return Err("IR instruction limit exceeded".into());
             }
             match Self::tag(x)? {
                 0 => {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
-                    let value = Self::expr(Self::field(x, 2)?, ty)?;
+                    let value = Self::expr(Self::field(x, 2)?, ty, env)?;
+                    if env.insert(name, ty).is_some() {
+                        return Err(format!("variable x_{name} defined more than once"));
+                    }
                     writeln!(code, "    let x_{name}: {ty} = {value};").unwrap();
                     x = Self::field(x, 3)?;
                 }
+                9 => {
+                    // case(tid, scrutinee, type, alts)
+                    Self::boolean_case(x, code, depth, count, env, ret_ty)?;
+                    return Ok(());
+                }
                 10 => {
                     // ret(Arg)
-                    writeln!(code, "    {}", Self::arg(Self::field(x, 0)?)?).unwrap();
+                    writeln!(
+                        code,
+                        "    return {};",
+                        Self::arg(Self::field(x, 0)?, env, ret_ty)?
+                    )
+                    .unwrap();
                     return Ok(());
                 }
                 t => return Err(format!("IR body constructor {t} unsupported")),
@@ -216,6 +357,7 @@ impl Reader {
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
+        let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
         write!(result, "pub fn {rust_name}(").unwrap();
@@ -225,10 +367,13 @@ impl Reader {
             }
             let var = Self::var(Self::field(*param, 0)?)?;
             let ty = Self::ty(Self::field(*param, 1)?)?;
+            if env.insert(var, ty).is_some() {
+                return Err(format!("duplicate parameter x_{var}"));
+            }
             write!(result, "x_{var}: {ty}").unwrap();
         }
         writeln!(result, ") -> {ret} {{").unwrap();
-        Self::body(body, &mut result)?;
+        Self::body(body, &mut result, 0, &mut 0, &mut env, ret)?;
         result.push_str("}\n");
         Ok(result)
     }

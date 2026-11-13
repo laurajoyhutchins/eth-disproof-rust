@@ -29,10 +29,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      - name: Restore pinned Rust 1.99.1
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.99.1
+
       - name: Restore exact Lean 4.34.1 toolchain
         uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
         with:
-          lake-package-directory: instrumentation/lean-env
+          lake-package-directory: rust/native_lean_backend
           auto-config: false
           use-github-cache: false
           use-mathlib-cache: false
@@ -45,16 +50,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LEAN_BINARY="$(cd instrumentation/lean-env && elan which lean)"
+          LEAN_BINARY="$(cd rust/native_lean_backend && elan which lean)"
           export LEAN_PREFIX="$(dirname "$(dirname "$LEAN_BINARY")")"
           test -f "$LEAN_PREFIX/include/lean/lean.h"
-          test "$(cat instrumentation/lean-env/lean-toolchain)" = 'leanprover/lean4:v4.34.1'
+          test "$(cat rust/native_lean_backend/lean-toolchain)" = 'leanprover/lean4:v4.34.1'
           echo "PR_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
           "$LEAN_PREFIX/bin/lean" --version
           cargo --version
           rustc --version
           (
             cd rust/native_lean_backend
+            lake build
             ./scripts/check.sh
           )
           {

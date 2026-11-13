@@ -4,6 +4,23 @@ fn main() {
     println!("cargo:rerun-if-env-changed=LEAN_PREFIX");
     let prefix =
         env::var_os("LEAN_PREFIX").expect("LEAN_PREFIX must point to pinned Lean distribution");
+    let lean = PathBuf::from(&prefix).join("bin/lean");
+    let version = Command::new(&lean)
+        .arg("--version")
+        .output()
+        .expect("run exact Lean 4.34.1 compiler");
+    let version_text = String::from_utf8_lossy(&version.stdout);
+    assert!(
+        version.status.success()
+            && version_text.contains("version 4.34.1,")
+            && version_text.contains("5045d0056413266e57c625dcd7c365b10e377c52"),
+        "native ABI requires Lean 4.34.1 commit 5045d005: found {version_text}"
+    );
+    assert!(
+        env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("x86_64")
+            && env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux"),
+        "native backend v0.1 has been audited only on Linux x86-64"
+    );
     let out = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
     let obj = out.join("abi.o");
     let archive = out.join("libnative_lean_abi.a");

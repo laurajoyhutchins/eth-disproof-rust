@@ -20,6 +20,19 @@ def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   else
     throwError "Rust native backend returned an invalid response for {root}"
 
+/-- Do not publish partial Rust source on FFI failures or interrupted writes.
+    The final rename is atomic when source and destination share a filesystem.
+    Cross-filesystem moves refuse instead of falling back to a non-atomic copy. -/
+def writeAtomically (dst : System.FilePath) (code : String) : IO Unit := do
+  let (handle, temp) ← IO.FS.createTempFile
+  try
+    handle.putStr code
+    handle.flush
+    IO.FS.rename temp dst
+  catch err =>
+    try IO.FS.removeFile temp catch _ => pure ()
+    throw err
+
 end NativeRust
 
 open Lean Elab Command
@@ -31,6 +44,6 @@ def elabNativeRustCmd : CommandElab := fun stx => do
   match stx with
   | `(#native_rust $root:ident as $rustName:str to $outFile:str) =>
     let code ← liftCoreM <| NativeRust.compile root.getId rustName.getString
-    liftIO <| IO.FS.writeFile outFile.getString code
+    liftIO <| NativeRust.writeAtomically outFile.getString code
     logInfo m!"Native Rust backend emitted {rustName.getString} from {root.getId}"
   | _ => throwUnsupportedSyntax

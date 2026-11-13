@@ -30,10 +30,13 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 ```
 
 `check.sh` builds a Rust shared library; builds `NativeRust.olean`; loads it into
-Lean's interpreter; invokes a real Lean compilation for five declarations;
+Lean's interpreter; invokes a real Lean compilation for **15 declarations**;
 writes Rust files through `#native_rust`; compiles and runs the standalone Rust
-program with `rustc`; checks overflow; checks three refusal cases; and runs
-`cargo test`, formatting, and strict Clippy.
+program with `rustc`; runs **1,600 assertions** against independently evaluated
+Lean results; verifies fail-closed command behavior without modifying existing
+outputs; and runs `cargo test`, formatting, and strict Clippy. `lake build`
+also builds the Lean module without any Mathlib dependency. The dedicated
+GitHub workflow runs these gates only for changes to this backend.
 
 Use the command in a Lean file after importing `NativeRust`:
 
@@ -50,27 +53,33 @@ algorithms.
 
 ## Precise coverage
 
-**Implemented and exercised:** functions over `UInt32`, `UInt64`, or `USize`
-(with the initial example suite exercising `UInt64`), scalar numeric literals
-representable as small Lean `Nat`, `UInt*.add`, `.sub`, `.mul`, parameters,
-straight-line local assignments, and return. Fixed-width arithmetic uses
-`wrapping_*`, matching those Lean operations.
+**Implemented and exercised:** functions over `UInt8`, `UInt16`, `UInt32`,
+`UInt64`, or `USize`; scalar numeric literals representable as small Lean
+`Nat`; `UInt*.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` primitives, parameters,
+straight-line local assignments, returns, and Boolean cases whose two arms
+have exact `Bool.false`/`Bool.true` constructor identities. Integer arithmetic uses
+`wrapping_*`; Lean `Bool` results use the IR's `u8` convention (0/1).
 
-**Not implemented:** general Lean/Rust compilation; `Nat` big integers; Bool
-or branches; recursion, closures, cases, join points, arrays, structures;
-transitive dependency closure; external primitives; and noncomputable
-expressions without compiler IR. The current generated functions are checked
-on examples but there is not yet a general semantic refinement theorem.
+**Not implemented:** general Lean/Rust compilation; arbitrary-precision
+`Nat`; recursion, closures, non-Boolean cases, join points, arrays,
+structures, transitive dependency closure, general external primitives, and
+noncomputable expressions without compiler IR. The generated functions are
+checked on examples, but there is not yet a general semantic refinement theorem.
 
 The backend returns `ERROR` for missing types, instructions, operations and
 unsupported shapes. Lean fails the command before publishing accepted output.
-The source path in `#native_rust` is a caller-supplied destination.
+The source path in `#native_rust` is a caller-supplied destination; the
+command publishes code through an atomic rename and leaves prior output
+unchanged on failures. Cross-filesystem rename errors refuse instead of
+falling back to partial copying. See [COVERAGE.md](COVERAGE.md) for the
+versioned IR coverage contract and exact test boundaries.
 
 ## Security and maintenance boundary
 
 - ABI layouts and constructor tags are pinned to `Lean.Compiler.IR.Basic` in
-  Lean **4.34.1**. Upgrading Lean requires auditing these exact layouts and
-  rerunning the real integration tests. This is not a stable cross-version FFI.
+  Lean **4.34.1** at commit `5045d005`. The build script checks the exact
+  version and commit and rejects non-Linux-x86-64 targets. Upgrading Lean
+  requires auditing these layouts and rerunning the real integration tests. This is not a stable cross-version FFI.
 - The shim accesses borrowed Lean objects synchronously. It does not retain
   pointers or mutate Lean's heap. Rust catches ordinary panics and reports
   failures, but memory safety depends on the exact Lean ABI; run this code in

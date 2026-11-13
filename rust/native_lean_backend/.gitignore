@@ -4,3 +4,8 @@
 /examples/generated_*.rs
 /examples/run.rs
 /examples/native-test
+/.lake/
+/artifacts/
+/examples/generated_differential.rs
+/examples/rejected.rs
+/examples/rejected.log

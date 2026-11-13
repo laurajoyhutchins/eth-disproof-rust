@@ -31,7 +31,7 @@ cd rust/lean_eth_reference/tools/lean-ir-smoke
 LEAN_BIN=/path/to/lean python3 -m unittest test_residual_graph.py -v
 ```
 
-The test suite compiles the Lean producer with the selected actual toolchain and runs six real Lean fixtures, not a simulated backend. In this VM, **six of six passed on Lean 4.34.1 and separately six of six on Lean 4.35.0**. This is source-compatibility evidence for the isolated producer only.
+The test suite compiles the Lean producer with the selected actual toolchain and runs seven real Lean fixtures, not a simulated backend. In this VM, **seven of seven passed on Lean 4.34.1 and separately seven of seven on Lean 4.35.0**. This is source-compatibility evidence for the isolated producer only.
 
 For a simple interactive probe, first compile `ResidualGraph.lean` to `ResidualGraph.olean` in the Lean module path. In another module, import `ResidualGraph` and the source module, then use:
 

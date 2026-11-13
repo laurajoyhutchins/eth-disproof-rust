@@ -858,7 +858,8 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 
 #[cfg(test)]
 mod tests {
-    use super::internal_name;
+    use super::{internal_name, primitive_spec, PRIMITIVE_REGISTRY};
+    use std::collections::BTreeSet;
     #[test]
     fn closure_symbol_mangling_is_injective_on_ascii_names() {
         assert_ne!(internal_name("X.ab"), internal_name("X.a_b"));

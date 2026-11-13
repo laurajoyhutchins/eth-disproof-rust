@@ -16,7 +16,8 @@ import subprocess
 import tempfile
 from export_compiled_batch import ensure_pinned, atomic_write
 from extract_compiled_catalog import discover, blob_hash
-from verify_source_graph import validate_and_generate, parse_source_graph_json
+from verify_source_graph import (validate_and_generate, parse_source_graph_json,
+                                 parse_golden, rust_instr)
 from source_graph_kernel_certificate import certificate_source
 
 HERE=Path(__file__).resolve().parent
@@ -204,6 +205,48 @@ end {fixture_module}
 
 
 
+def verify_receipt_native_build(a, record: dict, graph: Path,
+                                certificate: Path, receipt: Path) -> dict:
+    """Smoke the public receipt-driven CLI on one genuinely certified original.
+
+    Do not substitute a locally fabricated kernel receipt: this is called
+    only *after* the original Lean certificate has been kernel-checked and
+    the independent table has matched the source graph.
+    """
+    with tempfile.TemporaryDirectory(prefix='original-native-receipt-') as scratch:
+        output=Path(scratch)/'native'
+        result=subprocess.run(
+            ['cargo','run','--locked','--offline','--quiet',
+             '--manifest-path',str(a.rust_crate/'Cargo.toml'),
+             '--bin','original-source-build','--',
+             str(graph),str(receipt),str(certificate),str(output)],
+            capture_output=True,text=True,timeout=a.timeout_seconds)
+        if result.returncode:
+            raise ValueError('receipt-bound AOT native build failed: '+
+                             result.stderr[-2500:])
+        binary=output/'target/debug/original_lean_aot'
+        if not binary.is_file():
+            raise ValueError('receipt-bound native build produced no executable')
+        report=json.loads((output/'build.receipt.json').read_text())
+        golden=(a.golden_dir/(record['id']+'.table')).read_bytes()
+        _, rows=parse_golden(golden,record['id'],record['git_blob'])
+        if (report.get('status')!='GENERATED_AND_NATIVE_BUILT' or
+                report.get('id')!=record['id'] or
+                report.get('physical_labels')!=len(rows)):
+            raise ValueError('native build receipt disagrees with original Lean table')
+        for pc, instruction in enumerate(rows):
+            check=subprocess.run([str(binary),'lookup',str(pc)],
+                                 capture_output=True,text=True,timeout=15)
+            if check.returncode or check.stdout.strip()!=rust_instr(instruction).removeprefix('Instr::'):
+                raise ValueError(f'certified native binary differs at original label {pc}: '+
+                                 check.stdout[-200:]+check.stderr[-200:])
+        # Preserve a bounded proof artifact, not the generated Cargo target directory.
+        atomic_write(a.output_dir/'receipt-native-build.json',
+                     json.dumps(report,indent=2,sort_keys=True)+'\n')
+        print('ORIGINAL_RECEIPT_NATIVE_BUILD_EXACT',record['id'],len(rows),flush=True)
+        return report
+
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--upstream',required=True,type=Path)
@@ -234,6 +277,8 @@ def main():
     chosen=[x for x in catalog['candidates'] if pattern.search(x['fqn']) and x['id'] in manifest][:a.limit]
     if not chosen:raise SystemExit('no pinned original-source targets present in golden manifest')
     a.output_dir.mkdir(parents=True,exist_ok=True)
+    # Never let a previous successful binary receipt survive a new attempt.
+    (a.output_dir/'receipt-native-build.json').unlink(missing_ok=True)
     results=[];refused=[]
     def checkpoint():
         atomic_write(a.output_dir/'report.json',json.dumps({
@@ -287,6 +332,14 @@ def main():
                     raise ValueError('graph bytes changed between Lean certificate and Rust generation')
                 accepted['kernel_certificate_sha256']=cert_receipt['certificate_sha256']
                 accepted['kernel_certificate_status']=cert_receipt['status']
+                if not results and not a.no_cargo:
+                    native=verify_receipt_native_build(
+                        a,record,path,certpath,certdir/(record['id']+'.receipt.json'))
+                    # Hash the exact published JSON bytes, not a separately
+                    # serialized representation of the in-memory receipt.
+                    published=a.output_dir/'receipt-native-build.json'
+                    accepted['receipt_native_build_sha256']=hashlib.sha256(
+                        published.read_bytes()).hexdigest()
                 results.append(accepted)
                 print('ACCEPTED',record['id'],accepted['physical_instructions_compared'],flush=True)
         except (ValueError,subprocess.TimeoutExpired,RuntimeError,OSError) as exc:

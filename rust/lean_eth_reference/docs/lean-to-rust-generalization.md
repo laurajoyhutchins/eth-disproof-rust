@@ -58,7 +58,8 @@ cargo run --locked --offline --bin original-source-build -- \
 ```
 
 The command checks the pinned Lean 4.34.1/source commit, the completed kernel
-receipt status, exact graph SHA-256, exact certificate SHA-256, source identity,
+receipt status, pinned full `lean --version` string (not an abbreviated
+version), exact graph SHA-256, exact certificate SHA-256, source identity,
 ABI and physical label count. It emits the same structural Rust as
 `original-source-codegen`, writes `src/main.rs`, a Cargo manifest with a local
 path dependency on the canonical Rust machine library, a pinned toolchain,
@@ -74,6 +75,13 @@ Lean kernel run. The builder validates that all supplied artifacts agree with
 each other; anyone can forge mutually consistent files. The generated project
 also retains a local path dependency on the original crate, so it is not
 self-contained after moving away from the compiler checkout.
+
+The original-Lean acceptance workflow now additionally builds **one**
+certificate-checked original program through this public command, compares
+all its native physical instructions with the separately exported Lean table,
+and retains a bounded native build receipt. The rest of the selected programs
+still receive the existing AOT-codegen parity checks. This does not establish
+a proof of the entire native runtime or the original ETH counting pipeline.
 
 The generated executable remains a *source-physical* BitProgram machine, not
 the complete ETH #SAT counting executable or primitive TM2 resource theorem.

@@ -55,7 +55,7 @@ impl Fixture {
         fs::write(&graph, &graph_data).unwrap();
         let evidence = json!({
             "status":"LEAN_KERNEL_CERTIFIED_SOURCE_DERIVED_FIXTURE",
-            "lean_version":"4.34.1",
+            "lean_version":"Lean (version 4.34.1, synthetic test toolchain)",
             "source_commit":SOURCE_COMMIT,
             "source_blob":BLOB,
             "id":"synthetic_build",

@@ -683,13 +683,17 @@ pub fn validate(
     }))
 }
 
+pub struct IrVersions<'a> {
+    pub toolchain: &'a str,
+    pub lean: &'a str,
+    pub backend: &'a str,
+    pub generator: &'a str,
+}
+
 pub fn ir_report(
     module: &str,
     roots: &[String],
-    toolchain: &str,
-    version: &str,
-    backend_version: &str,
-    generator: &str,
+    versions: IrVersions<'_>,
     source: &[u8],
     summary: Value,
 ) -> Value {
@@ -700,10 +704,10 @@ pub fn ir_report(
         "format": "lean-compiler-ir-backend-probe-v1",
         "module": module, "roots": sorted,
         "status": "generated-unverified",
-        "lean_toolchain": toolchain,
-        "lean_version": version,
-        "backend_version": backend_version,
-        "generator_version": generator,
+        "lean_toolchain": versions.toolchain,
+        "lean_version": versions.lean,
+        "backend_version": versions.backend,
+        "generator_version": versions.generator,
         "generated_sha256": digest(source),
         "generated_bytes": source.len(),
         "semantic_verification": "not-established",
@@ -788,10 +792,12 @@ mod tests {
         let report = ir_report(
             "Demo",
             &["Demo.double".into()],
-            &source.lean_toolchain,
-            "Lean (version 4.35.0, test)",
-            "leanfran 0.6.0",
-            "4",
+            IrVersions {
+                toolchain: &source.lean_toolchain,
+                lean: "Lean (version 4.35.0, test)",
+                backend: "leanfran 0.6.0",
+                generator: "4",
+            },
             code,
             summary,
         );

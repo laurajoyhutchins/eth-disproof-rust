@@ -227,6 +227,18 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
 
 private partial def structured (e : Expr) (maxLabels fuel : Nat) : MetaM Json := do
   if fuel == 0 then throwError "source command nesting exceeded 512 nodes"
+  -- Unwrap closed, named source definitions *one syntactic layer at a time*.
+  -- Calling whnf on a named Nat.rec first would eagerly unfold its iterations,
+  -- losing the exact constant-size Repeat representation. A name that resolves
+  -- to an opaque axiom or an unsupported expression still fails closed.
+  if e.getAppArgs.isEmpty then
+    match e.getAppFn with
+    | .const name _ =>
+      match (← getConstInfo name) with
+      | .defnInfo info =>
+        return (← structured info.value maxLabels (fuel - 1))
+      | _ => pure ()
+    | _ => pure ()
   -- Inspect the *elaborated* recursor before whnf expands all repetitions.
   -- Accept only Nat.rec skip (fun _ previous => seq previous fixed) count,
   -- or its right-associated mirror. A different step or a state-dependent

@@ -1,4 +1,4 @@
-ORIGINAL_LEAN_LITERAL_BUNDLE|1|4eaee87548250b2682affda7d05d947c05554bae|61
+ORIGINAL_LEAN_LITERAL_BUNDLE|1|4eaee87548250b2682affda7d05d947c05554bae|65
 PIN|binaryprograms_program_0|4eaee87548250b2682affda7d05d947c05554bae|ab8a858c2466aa3879087f825802aa76c7aa768f
 PROGRAM|binaryprograms_program_0|8|3|13|0|0|2
 CODE|binaryprograms_program_0|0|pop:0:1:3:1
@@ -182,6 +182,32 @@ PROGRAM|modulardivisionprograms_resetborrowprogram_0|8|7|2|0|0|0
 CODE|modulardivisionprograms_resetborrowprogram_0|0|set:0:0:1
 CODE|modulardivisionprograms_resetborrowprogram_0|1|halt
 END|modulardivisionprograms_resetborrowprogram_0|2
+
+PIN|modularprograms_subtractprogram_1|4eaee87548250b2682affda7d05d947c05554bae|44ca7c01017e106affae6227a288d4797a339eb7
+PROGRAM|modularprograms_subtractprogram_1|8|3|13|0|0|2
+CODE|modularprograms_subtractprogram_1|0|pop:0:1:3:1
+CODE|modularprograms_subtractprogram_1|1|branch:3:2:12
+CODE|modularprograms_subtractprogram_1|2|pop:1:2:4:3
+CODE|modularprograms_subtractprogram_1|3|xor:5:1:2:4
+CODE|modularprograms_subtractprogram_1|4|xor:6:5:0:5
+CODE|modularprograms_subtractprogram_1|5|not:7:1:6
+CODE|modularprograms_subtractprogram_1|6|and:7:7:2:7
+CODE|modularprograms_subtractprogram_1|7|not:5:5:8
+CODE|modularprograms_subtractprogram_1|8|and:5:5:0:9
+CODE|modularprograms_subtractprogram_1|9|xor:0:7:5:10
+CODE|modularprograms_subtractprogram_1|10|push:2:6:11
+CODE|modularprograms_subtractprogram_1|11|goto:0
+CODE|modularprograms_subtractprogram_1|12|halt
+END|modularprograms_subtractprogram_1|13
+
+PIN|modularprograms_paddingprogram_2|4eaee87548250b2682affda7d05d947c05554bae|44ca7c01017e106affae6227a288d4797a339eb7
+PROGRAM|modularprograms_paddingprogram_2|8|3|5|0|0|2
+CODE|modularprograms_paddingprogram_2|0|pop:0:1:3:1
+CODE|modularprograms_paddingprogram_2|1|branch:3:2:4
+CODE|modularprograms_paddingprogram_2|2|pop:1:2:4:3
+CODE|modularprograms_paddingprogram_2|3|push:2:2:0
+CODE|modularprograms_paddingprogram_2|4|halt
+END|modularprograms_paddingprogram_2|5
 
 PIN|modularprograms_selectdifferenceprogram_0|4eaee87548250b2682affda7d05d947c05554bae|44ca7c01017e106affae6227a288d4797a339eb7
 PROGRAM|modularprograms_selectdifferenceprogram_0|8|5|10|0|0|0
@@ -581,6 +607,19 @@ CODE|subexpclauserowprogram_program_0|6|push:2:0:2
 CODE|subexpclauserowprogram_program_0|7|halt
 END|subexpclauserowprogram_program_0|8
 
+PIN|subexpdenseprogram_program_0|4eaee87548250b2682affda7d05d947c05554bae|88e280f9203544e0e1ec7b4773b4da5b43143169
+PROGRAM|subexpdenseprogram_program_0|3|3|9|0|0|1
+CODE|subexpdenseprogram_program_0|0|set:2:1:1
+CODE|subexpdenseprogram_program_0|1|pop:0:0:1:2
+CODE|subexpdenseprogram_program_0|2|branch:1:3:5
+CODE|subexpdenseprogram_program_0|3|push:2:0:4
+CODE|subexpdenseprogram_program_0|4|push:1:2:1
+CODE|subexpdenseprogram_program_0|5|pop:2:0:1:6
+CODE|subexpdenseprogram_program_0|6|branch:1:7:8
+CODE|subexpdenseprogram_program_0|7|push:0:0:5
+CODE|subexpdenseprogram_program_0|8|halt
+END|subexpdenseprogram_program_0|9
+
 PIN|subexpexponentgather_skipprogram_0|4eaee87548250b2682affda7d05d947c05554bae|d9d0bb4b2c0feac84db989334dcc118283aa330c
 PROGRAM|subexpexponentgather_skipprogram_0|3|7|5|0|1|1
 CODE|subexpexponentgather_skipprogram_0|0|pop:2:0:1:1
@@ -842,6 +881,13 @@ CODE|subexppostfixcontrol_program_0|18|halt
 CODE|subexppostfixcontrol_program_0|19|halt
 END|subexppostfixcontrol_program_0|20
 
+PIN|subexppostfixinterpreter_bootprogram_0|4eaee87548250b2682affda7d05d947c05554bae|5e25d9b8d30907e9761e4b23bf25602229e15436
+PROGRAM|subexppostfixinterpreter_bootprogram_0|3|4|3|0|0|2
+CODE|subexppostfixinterpreter_bootprogram_0|0|set:0:0:1
+CODE|subexppostfixinterpreter_bootprogram_0|1|push:2:0:2
+CODE|subexppostfixinterpreter_bootprogram_0|2|halt
+END|subexppostfixinterpreter_bootprogram_0|3
+
 PIN|subexppredecessorprogram_predecessorprogram_0|4eaee87548250b2682affda7d05d947c05554bae|67d3436f29ef81d0f64e384894b418e4b42db6fe
 PROGRAM|subexppredecessorprogram_predecessorprogram_0|8|3|9|0|0|2
 CODE|subexppredecessorprogram_predecessorprogram_0|0|set:0:1:1
@@ -882,4 +928,4 @@ CODE|subexpsunflowerprogram_program_0|10|set:0:0:11
 CODE|subexpsunflowerprogram_program_0|11|set:1:0:12
 CODE|subexpsunflowerprogram_program_0|12|halt
 END|subexpsunflowerprogram_program_0|13
-END_ORIGINAL_LEAN_LITERAL_BUNDLE|61
+END_ORIGINAL_LEAN_LITERAL_BUNDLE|65

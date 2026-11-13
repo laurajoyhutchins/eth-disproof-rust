@@ -19,6 +19,15 @@ scripts/verify-lean-differential.sh --lean-repo /path/to/pinned/openai-math --su
 scripts/verify-lean-differential.sh --lean-repo /path/to/pinned/openai-math --suite all
 ```
 
+The five snapshot suites (`high`, `tuple`, `layout`, `nodes`, `query`) use one
+native Rust `compare-traces` executable with suite-specific mandatory keys,
+field counts and physical-word checks. The full-state comparison, physical
+resource profiling, and SHA-256 receipt generation now use the Rust
+`full-machine-evidence` executable. They have strict negative tests under
+`cargo test --all-targets`. Neither comparator authenticates a trace file:
+only fresh independent execution of the pinned Lean producer establishes
+its provenance.
+
 The wrapper refuses non-pinned sources, wrong Lean/Rust versions, missing
 Mathlib, a failed real `import Mathlib`, non-halting traces, and mismatched
 physical states. It removes stale receipts before running. The `full` gate
@@ -83,7 +92,7 @@ not live heap bytes. Timings include probe overhead.
 
 ```sh
 cargo test --locked --offline --all-targets
-python3 -m unittest discover -s scripts -p 'test_*.py'
+cargo test --locked --offline --all-targets --bin full-machine-evidence --bin compare-traces
 ```
 
 The seeded physical-machine tests cover all 12 opcodes, empty/nonempty

@@ -25,6 +25,26 @@ and new mathematical conjectures without separately testing each claim.
 Follow the [PR template](.github/PULL_REQUEST_TEMPLATE.md) and
 [execution/evidence matrix](rust/lean_eth_reference/docs/evidence.md).
 
+## One Lean-to-Rust compiler path
+
+Maintain the existing source-grounded, compositional exporter and Rust backend;
+do not introduce a parallel `lean-rs` generator, runtime, or verification path.
+When incorporating ideas from other Lean compilers:
+
+- Let pinned Lean elaboration establish the typed source, rather than parsing
+  Lean surface syntax in Rust or guessing source definitions by name.
+- Preserve each exported declaration's original Lean name, source revision,
+  dependencies, and deterministic generation receipt.
+- Report skipped or unsupported definitions with explicit reasons, and refuse
+  missing executable dependencies instead of generating placeholder behavior.
+- Keep normal Cargo builds and tests independent of a live Lean toolchain;
+  source extraction and independent Lean trace checks have explicit gates.
+- Attribute copied or adapted implementation code with its upstream path,
+  revision and license; see [NOTICE](NOTICE) for design references.
+
+These are compiler acceptance requirements, not claims that all features have
+already been implemented or that end-to-end Lean/Rust parity is established.
+
 ## Run local checks
 
 From `rust/lean_eth_reference` using Rust **1.99.1**:

@@ -19,9 +19,6 @@ jobs:
     name: rust
     runs-on: ubuntu-24.04
     timeout-minutes: 12
-    defaults:
-      run:
-        working-directory: rust/lean_eth_reference
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,11 +28,13 @@ jobs:
         run: |
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
           rustup default 1.99.1
-      - name: Formatting
+      - name: Restore locked crate dependencies
+        run: cargo fetch --locked
+      - name: Formatting (workspace)
         run: cargo fmt --all -- --check
       - name: Exact Rust tests
         run: cargo test --locked --offline --all-targets
-      - name: Source-machine trace and profiling regressions
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Source-graph compiler contract tests (offline)
+        run: python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

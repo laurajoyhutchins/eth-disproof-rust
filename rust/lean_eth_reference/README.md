@@ -2,7 +2,7 @@
 
 This crate implements selected executable components from the pinned
 [`openai/math` Lean development](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
-It contains **two separate CLI programs** with different correctness claims.
+It contains **three CLI programs** with different correctness claims.
 
 ## Source-defined physical frontend
 
@@ -17,6 +17,19 @@ This executes the source-correlated `Native.frontendCommand` as a Rust
 input, ambient header and normalized formula body, together with source
 instruction count and peak live stack bits. The answer port remains empty.
 It does **not** compute #SAT. See [the physical ABI and example](docs/m2-runnable-frontend.md).
+
+## Supported source-native terminal counting
+
+```sh
+printf 'p cnf 3 0\n' | \
+  cargo run --locked --offline --bin eth-terminal-count
+```
+
+The terminal-family path executes the physical frontend and terminal stages
+and produces the count for supported trivially classified formulas (for this
+example, `2^3 = 8`). It refuses nonterminal CNFs. Its count-port adapter is
+explicitly identified in the implementation; this is **not** a complete
+source-native #SAT algorithm or an original Lean differential result.
 
 ## Bounded semantic counting oracle
 
@@ -33,14 +46,17 @@ execution of the proposed fast algorithm.
 
 | Location | Responsibility |
 | --- | --- |
-| `src/bit_program.rs` | Source-correlated register/stack interpreter and program combinators |
+| `src/bit_program.rs` | Literal source-instruction machine state and interpreter |
+| `src/bit_program/structured.rs` | Structured `Atom`/`Cmd` combinators and finite-table compiler, re-exported under `bit_program` |
 | `src/native_frontend.rs`, `src/native_*.rs` | Source-defined executable frontend and other selected machine fragments |
 | `src/remaining.rs` | Dependency spine and explicit unsupported/refusal boundaries |
-| `src/lib.rs` | Finite CNF semantics, encodings and bounded semantic counting |
+| `src/lib.rs` | Canonical finite CNF representation, Lean encoding and DIMACS parsing |
+| `src/semantic_count.rs` | Explicitly exponential bounded oracle and disjoint semantic reference model, re-exported from the crate root |
 | `tests/` | Rust behavior, invariant and refusal tests |
 | `reference/source-manifest.json` | Pinned upstream source inventory; not Lean/Rust equivalence evidence |
 
-The [single evidence matrix](docs/evidence.md) gives the accepted execution
+The [documentation index](docs/README.md) distinguishes current contracts from
+historical port notes. The [single evidence matrix](docs/evidence.md) gives the accepted execution
 claims, reproduction steps, outstanding Lean/Rust comparison, and separate
 TM2 accounting obligations. Read [remaining stages](docs/remaining-lean-port.md)
 for the dependency graph, [the signed-signature pipeline](docs/signed-signature-pipeline.md) for its separate source-primitive slice, and [the history guide](docs/reading-the-history.md)
@@ -48,7 +64,9 @@ for the reconstructed first-parent study sequence.
 
 ## Local Rust checks
 
-Install Rust **1.99.1**. The crate has no third-party Cargo dependencies.
+The root `rust-toolchain.toml` pins **Rust 1.99.1** and the root `Cargo.lock`
+is the canonical workspace lockfile. The crate has no third-party Cargo dependencies.
+The following checks work from either this directory or the repository root:
 
 ```sh
 cargo fmt --all -- --check

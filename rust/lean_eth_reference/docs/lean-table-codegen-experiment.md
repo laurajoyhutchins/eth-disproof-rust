@@ -56,7 +56,7 @@ The following *original* executable declarations were extracted from the pinned
 | `QueryProgram.parityProgram` | `7a2535f7c479463a5f5ed8a30a33192aad1b063e` | 3×1×4 | Cargo-generated `original_query-parity.rs` |
 | `TypeBitProgram.program` | `4e020c828e458b4420179da94c3451bea653a7b9` | 3×2×7 | Cargo-generated `original_type-bit.rs` |
 
-The pinned-source extractor `tools/extract_original_lean_tables.py` verifies each
+The pinned-source extractor `src/bin/extract-lean-tables.rs` verifies each
 **entire original Lean file's Git blob hash**, the declaration, the machine ABI,
 its ordered literal instructions, and label count. It refuses arbitrary Lean
 expressions or unsupported computation rather than inventing the result.
@@ -67,9 +67,9 @@ generated functions.
 To regenerate from a checkout containing the pinned original source:
 
 ```sh
-python3 tools/extract_original_lean_tables.py \
+cargo run --locked --offline --bin extract-lean-tables -- \
   --upstream /path/to/openai-math \
-  --output-dir tools/fixtures/original
+  --output-dir tools/fixtures/original --legacy
 
 cargo fmt --all -- --check
 cargo test --locked --offline --all-targets
@@ -138,7 +138,7 @@ instruction tables are in `tools/fixtures/original/all-literal.bundle`.
   source-control-flow exceptions formerly unsupported) were independently
   checked against the GitHub contents at the exact original commit; every
   recorded blob matched.
-- `tools/extract_all_literal.py --check` re-derives and compares the canonical
+- `src/bin/extract-lean-tables.rs --check` re-derives and compares the canonical
   manifest and bundle from an original source checkout.
 - Cargo `build.rs` checks the source pins, dimensions, labels, entries,
   ports and every finite instruction record before generating
@@ -160,7 +160,7 @@ Command to independently rebuild the catalog from authentic source:
 
 ```sh
 cd rust/lean_eth_reference
-python3 tools/extract_all_literal.py \
+cargo run --locked --offline --bin extract-lean-tables -- \
     --upstream /path/to/original/openai-math \
     --output-dir tools/fixtures/original --check
 cargo test --offline --locked --test original_literal_catalog
@@ -172,3 +172,5 @@ The original full query exporter remains blocked on an import-capable Lean
 4.34.1 + pinned Mathlib runtime and may still exceed finite table/codegen
 budget. A full native SAT count, genuine imported-source parity and ETH
 complexity claims are not established here.
+
+The Rust scanner accepts only literal vectors, finite label matches, and finite conditional tables, reusing the Rust code generator to reject invalid machine control indices. The bundled tests exercise these formats and refusals. They do **not** substitute for a fresh `--check` against the complete pinned original Lean checkout.

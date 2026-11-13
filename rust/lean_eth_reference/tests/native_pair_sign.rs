@@ -226,8 +226,8 @@ fn source_tuple_dfs_calls_pair_sign_only_as_a_test_stage_not_numeric_commit() {
     let mut d = program.initial([true, true]);
     put(&mut d, 833, &[true, true]); // n=2, J=2 => E=0 or singleton
     run(&program, &mut d);
-    assert_eq!(got(&d, 848), []);
-    assert_eq!(got(&d, 849), []);
+    assert!(got(&d, 848).is_empty());
+    assert!(got(&d, 849).is_empty());
     assert!(got(&d, 834).is_empty());
     assert!(got(&d, 835).is_empty());
 }

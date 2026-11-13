@@ -78,7 +78,7 @@ pub enum Instr {
 impl Instr {
     /// `ProgramLinking.relocateInstr` with identity register/stack maps.
     /// A subroutine's halt becomes a jump to the caller's continuation.
-    fn relocate(&self, base: usize, return_to: usize) -> Result<Self, Error> {
+    pub fn relocate(&self, base: usize, return_to: usize) -> Result<Self, Error> {
         let offset = |label: usize| label.checked_add(base).ok_or(Error::Overflow);
         Ok(match *self {
             Self::Halt => Self::Goto { next: return_to },
@@ -643,6 +643,6 @@ pub struct RunStats {
 mod deferred;
 mod source_json;
 mod structured;
-pub use deferred::{Block, DeferredProgram};
-pub use source_json::SourceGraphBinding;
+pub use deferred::{Block, DeferredProgram, relocate_ports, run_with_instruction_at};
+pub use source_json::{SourceGraphBinding, emit_original_source_rust};
 pub use structured::{Atom, Cmd};

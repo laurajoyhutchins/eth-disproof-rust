@@ -72,17 +72,23 @@ The next graph node forms, in implementation order:
 | `Repeat`, `Fold` | Proven fixed combinator generators | Same order/size/entry as Lean recursion, without expansion |
 | `CodeAt` | Residual pure `Fin l → Instr` term | Must yield exact physical instruction or typed refusal |
 
-The source-elaborated Lean graph producer now exports a bounded, source-bound
-`original-structured-source-v1` JSON graph for the supported
-`StructuredCalls.compiled` closure. The native Rust loader validates the
+The source-elaborated Lean graph producer exports bounded, source-bound
+`original-structured-source-v1` command roots and
+`original-linked-source-v1` physical-program roots. The latter preserves a
+direct `ProgramLinking.liftProgram`, `link` or `linkInto` without inserting
+an artificial call site. Both use the same native Rust source-graph decoder.
+This new root protocol has synthetic physical-layout and refusal tests; pinned
+original-Lean source-root acceptance remains a separate verification gate. The native Rust loader validates the
 complete schema, source identifiers, expected certified SHA-256, finite
 operand/port/label bounds, and lowered physical sites; immutable equal callees
 are interned by full ABI and instructions. `Atom`, `Skip`, `Seq`, `If`,
 `While`, and finite `Call` are accepted. `Repeat` is an internal Rust
 compositional optimization but not yet an independently emitted JSON node.
-`Lift`, `Link`, `Fold`, and arbitrary-width addresses remain outside this
-**integrated** source graph format. Separate experimental linking work is not
-part of this verified compiler acceptance. Unsupported forms must refuse.
+`Lift` and `Link` (including heterogeneous `link_into`) are now decoded into
+bounded on-demand physical source views by the **same native Rust loader**.
+The loader checks the exact source SHA-256 binding, typed port dimensions,
+injective maps, source opcode bounds, and caller relocation. `Fold` and
+unbounded integer addresses remain unsupported and refuse.
 
 ### Physical layout matters
 
@@ -240,3 +246,27 @@ entrypoints is classified **native-from-IR**, **verified fallback**, or
 last category to be empty in that closure, physical and semantic
 differential gates to pass, and the true end-to-end computation to run.
 Theorem declarations remain Lean-checked, not blindly translated.
+
+### Native ProgramLinking source integration (PR #175)
+
+The single native Rust `DeferredProgram::from_original_source_json` loader
+now recognizes original `ProgramLinking.liftProgram`, `link`, and
+`linkInto` nodes, including different left/right finite dimensions. It
+resolves physical instructions *on demand*, using the existing native
+port-relocation and label-shift operations. It does not construct or execute
+Python-generated Rust blocks. The Python graph parser remains an independent
+structural verifier and Lean-table comparator, **not a Rust compiler**.
+
+The serialized graph is SHA-256 and declaration bound. Its total byte and
+node budgets remain strict, and individual finite tables are capped at 4,096
+labels. The native executor's 1,000,000,000-label **symbolic address cap** is
+not permission to materialize a large table or an assertion of resource
+feasibility. Unsupported constructors, ill-typed or non-injective mappings,
+and overflow refuse explicitly. Original Lean kernel certification of each
+specific exported graph remains a separate requirement.
+
+The first exact-source and native acceptance [passed at an earlier restacked
+head](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43325069177).
+Final-head source acceptance and the complete original query/DFS/counting
+execution must pass independently before the entire Lean-to-Rust port can be
+called verified.

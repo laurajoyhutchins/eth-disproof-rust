@@ -1,5 +1,6 @@
 import Lean
 import OAI.Algorithms.SubexponentialSAT.StructuredCalls
+import OAI.Algorithms.SubexponentialSAT.ProgramLinking
 
 /-!
 Emit a typed, source-elaborated StructuredCalls graph. Only a bounded Call
@@ -116,6 +117,114 @@ private def boundedTable (p : Expr) (maxLabels : Nat) : MetaM Json := do
     ("output", toJson output), ("code", toJson rows)
   ]
 
+private def sourcePortMap (f : Expr) (domain ambient : Nat) : MetaM (Array Nat) := do
+  let mut ports : Array Nat := #[]
+  for i in [:domain] do
+    let bound := mkNatLit domain
+    let index := mkNatLit i
+    let proof ← mkDecideProof (← mkAppM ``LT.lt #[index, bound])
+    let port := mkAppN (mkConst ``Fin.mk []) #[bound, index, proof]
+    let target ← fin (mkApp f port)
+    if target >= ambient || ports.contains target then
+      throwError m!"non-injective or out-of-range source port map at {i}: {target}"
+    ports := ports.push target
+  return ports
+
+/-!
+Preserve original ProgramLinking constructors as a typed graph instead of
+reducing their entire `Fin labels → Instr` code to a table. Unknown cases
+still use the existing bounded finite-leaf exporter.
+-/
+mutual
+private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json := do
+  if fuel == 0 then throwError "source program linking exceeds recursion bound"
+  let tp ← inferType p
+  let args := tp.getAppArgs
+  if args.size != 3 then
+    throwError m!"source callee is not a closed BitProgram.Program: {tp}"
+  let r ← number args[0]!
+  let s ← number args[1]!
+  let labels ← number args[2]!
+  if r == 0 || s == 0 || labels == 0 || r > 256 ||
+      s > 4096 || labels > maxLabels then
+    throwError m!"source linked program dimensions unsupported: {r} {s} {labels}"
+  match p.getAppFn with
+  | .const n _ =>
+    let a := p.getAppArgs
+    if n == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram &&
+        a.size >= 3 then
+      let source := a[a.size - 3]!
+      let srcArgs := (← inferType source).getAppArgs
+      if srcArgs.size != 3 then throwError "invalid source lift program type"
+      let sr ← number srcArgs[0]!
+      let ss ← number srcArgs[1]!
+      return Json.mkObj [
+        ("kind", toJson "lift"),
+        ("r", toJson r), ("s", toJson s),
+        ("registers", toJson (← sourcePortMap a[a.size - 2]! sr r)),
+        ("stacks", toJson (← sourcePortMap a[a.size - 1]! ss s)),
+        ("source", ← programGraph source maxLabels (fuel - 1))
+      ]
+    if n == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.linkInto &&
+        a.size >= 6 then
+      let left := a[a.size - 6]!
+      let right := a[a.size - 5]!
+      let leftArgs := (← inferType left).getAppArgs
+      let rightArgs := (← inferType right).getAppArgs
+      if leftArgs.size != 3 || rightArgs.size != 3 then
+        throwError "invalid source linkInto child types"
+      let lr ← number leftArgs[0]!
+      let ls ← number leftArgs[1]!
+      let rr ← number rightArgs[0]!
+      let rs ← number rightArgs[1]!
+      return Json.mkObj [
+        ("kind", toJson "link_into"),
+        ("r", toJson r), ("s", toJson s),
+        ("left_registers", toJson (← sourcePortMap a[a.size - 4]! lr r)),
+        ("left_stacks", toJson (← sourcePortMap a[a.size - 3]! ls s)),
+        ("right_registers", toJson (← sourcePortMap a[a.size - 2]! rr r)),
+        ("right_stacks", toJson (← sourcePortMap a[a.size - 1]! rs s)),
+        ("left", ← programGraph left maxLabels (fuel - 1)),
+        ("right", ← programGraph right maxLabels (fuel - 1))
+      ]
+    -- Large source-defined compiled callees are preserved as commands, never
+    -- expanded into a Fin-indexed physical table. Small callees retain the
+    -- separately verified table path for stable finite fixtures.
+    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled &&
+        a.size == 5 && labels > 4096 then
+      return Json.mkObj [
+        ("kind", toJson "composed"),
+        ("r", toJson r), ("s", toJson s),
+        ("input", toJson (← fin a[3]!)),
+        ("output", toJson (← fin a[4]!)),
+        ("command", ← structured a[2]! maxLabels 512)
+      ]
+    if n == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link &&
+        a.size >= 2 then
+      return Json.mkObj [
+        ("kind", toJson "link"),
+        ("left", ← programGraph a[a.size - 2]! maxLabels (fuel - 1)),
+        ("right", ← programGraph a[a.size - 1]! maxLabels (fuel - 1))
+      ]
+    -- Only unfold a closed named program when its definition visibly
+    -- contains a linking constructor. Other named programs remain bounded
+    -- source tables, retaining the previous exact behavior.
+    if a.isEmpty then
+      match (← getConstInfo n) with
+      | .defnInfo v =>
+        match v.value.getAppFn with
+        | .const head _ =>
+          if head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram ||
+             head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.linkInto ||
+             head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link ||
+             (head == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled &&
+              labels > 4096) then
+            return (← programGraph v.value maxLabels (fuel - 1))
+        | _ => pure ()
+      | _ => pure ()
+    boundedTable p (min maxLabels 4096)
+  | _ => boundedTable p (min maxLabels 4096)
+
 private partial def structured (e : Expr) (maxLabels fuel : Nat) : MetaM Json := do
   if fuel == 0 then throwError "source command nesting exceeded 512 nodes"
   let v ← whnf e
@@ -126,7 +235,7 @@ private partial def structured (e : Expr) (maxLabels fuel : Nat) : MetaM Json :=
       return (← basic a[2]! maxLabels (fuel - 1))
     if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call then
       return Json.mkObj [("kind", toJson "call"),
-        ("program", ← boundedTable a[3]! maxLabels)]
+        ("program", ← programGraph a[3]! maxLabels 64)]
     if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq then
       return Json.mkObj [("kind", toJson "seq"),
         ("first", ← structured a[2]! maxLabels (fuel - 1)),
@@ -165,6 +274,8 @@ where
       throwError m!"unsupported StructuredProgram command: {n}"
     | _ => throwError m!"source StructuredProgram command is not a constructor: {v}"
 
+end
+
 syntax (name := exportOriginalSourceGraph)
   "#export_original_source_graph " ident str str : command
 
@@ -178,14 +289,25 @@ elab_rules : command
     unless sourceBlob.length == 40 && sourceBlob.toList.all
       (fun c => c.isDigit || (c >= 'a' && c <= 'f')) do
       throwError "invalid source Git blob"
+    -- Progress markers go only to stderr. The accepted stdout remains one
+    -- canonical source JSON line, suitable for byte-bound certification.
+    -- Enable on the expensive full-query export to locate a metaprogramming
+    -- recursion failure without weakening any source or graph check.
+    let diagnose := (← liftIO <| IO.getEnv "ORIGINAL_SOURCE_GRAPH_TRACE") == some "1"
+    if diagnose then
+      liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=source-identity-checked"
     let maxLabels := ((← liftIO <| IO.getEnv "ORIGINAL_MAX_LABELS").getD "4096").toNat?.getD 0
-    if maxLabels == 0 || maxLabels > 8192 then
-      throwError "ORIGINAL_MAX_LABELS must be 1..8192"
+    if maxLabels == 0 || maxLabels > 1000000000 then
+      throwError "ORIGINAL_MAX_LABELS must be 1..1000000000 (finite table leaves capped at 4096)"
+    if diagnose then
+      liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=resolve-original-definition"
     let body ← liftTermElabM do
       let info ← getConstInfo programName
       match info with
       | .defnInfo v => return v.value
       | _ => throwError m!"source program is not a definitional constant: {programName}"
+    if diagnose then
+      liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=infer-original-type"
     let graph ← liftTermElabM do
       let tp ← inferType (mkConst programName)
       let a := tp.getAppArgs
@@ -195,27 +317,40 @@ elab_rules : command
       let l ← number a[2]!
       if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
         throwError m!"source machine out of bounded test dimensions: {r} {s} {l}"
-      match body.getAppFn with
-      | .const n _ =>
-        if n != ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled then
-          throwError m!"not a direct compiled StructuredCalls command: {n}"
-        let args := body.getAppArgs
-        if args.size != 5 then
-          throwError m!"unexpected compiled command arity {args.size}"
-        let input ← fin args[3]!
-        let output ← fin args[4]!
-        let command ← structured args[2]! maxLabels 512
-        return Json.mkObj [
-          ("kind", toJson "original-structured-source-v1"),
-          ("source_commit", toJson "4eaee87548250b2682affda7d05d947c05554bae"),
-          ("source_blob", toJson sourceBlob),
-          ("declaration", toJson (toString programName)),
-          ("id", toJson label),
-          ("abi", Json.mkObj [("r", toJson r), ("s", toJson s),
-            ("labels", toJson l), ("input", toJson input), ("output", toJson output)]),
-          ("command", command)
-        ]
-      | _ => throwError m!"source compilation root remains opaque: {body}"
+      -- A compiled command and a linked physical Program are both legitimate
+      -- top-level entrypoints. Preserve their exact source label spaces; never
+      -- wrap a linked root in an extra Cmd.call (which adds a halt site).
+      let (kind, field, value) ←
+        match body.getAppFn with
+        | .const n _ =>
+          if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled then
+            let args := body.getAppArgs
+            if args.size != 5 then
+              throwError m!"unexpected compiled command arity {args.size}"
+            let command ← structured args[2]! maxLabels 512
+            pure ("original-structured-source-v1", "command", command)
+          else
+            let program ← programGraph (mkConst programName) maxLabels 64
+            pure ("original-linked-source-v1", "program", program)
+        | _ =>
+          let program ← programGraph (mkConst programName) maxLabels 64
+          pure ("original-linked-source-v1", "program", program)
+      let input ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 0
+        (mkConst programName))
+      let output ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 1
+        (mkConst programName))
+      return Json.mkObj [
+        ("kind", toJson kind),
+        ("source_commit", toJson "4eaee87548250b2682affda7d05d947c05554bae"),
+        ("source_blob", toJson sourceBlob),
+        ("declaration", toJson (toString programName)),
+        ("id", toJson label),
+        ("abi", Json.mkObj [("r", toJson r), ("s", toJson s),
+          ("labels", toJson l), ("input", toJson input), ("output", toJson output)]),
+        (field, value)
+      ]
+    if diagnose then
+      liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=emit-complete-source-graph"
     liftIO <| IO.println graph.compress
 
 end OriginalSourceGraph

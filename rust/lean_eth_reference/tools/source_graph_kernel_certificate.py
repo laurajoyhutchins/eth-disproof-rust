@@ -16,7 +16,7 @@ from typing import Any
 
 from verify_source_graph import (SOURCE_SHA, MAX_NODES, MAX_SOURCE_LABELS,
                                  closed_keys, insist, number, parse_node,
-                                 parse_source_graph_json)
+                                 parse_program, parse_source_graph_json)
 
 SOURCE_NAME = re.compile(r'OAI\.Algorithms\.SubexponentialSAT(?:\.[A-Za-z_]\w*)+')
 HEX40 = re.compile(r'[0-9a-f]{40}')
@@ -50,9 +50,12 @@ def read_source_graph(path: Path, record: dict[str, str]):
            bool(SOURCE_NAME.fullmatch(record['fqn'])), 'invalid pinned Lean name')
     raw = path.read_bytes()
     parsed = parse_source_graph_json(raw)
-    closed_keys(parsed, {'kind', 'source_commit', 'source_blob', 'declaration', 'id', 'abi', 'command'})
-    insist(parsed['kind'] == 'original-structured-source-v1' and
-           parsed['source_commit'] == SOURCE_SHA and
+    kind = parsed['kind']
+    insist(kind in ('original-structured-source-v1', 'original-linked-source-v1'),
+           'unsupported source graph root protocol')
+    root_field = 'command' if kind == 'original-structured-source-v1' else 'program'
+    closed_keys(parsed, {'kind', 'source_commit', 'source_blob', 'declaration', 'id', 'abi', root_field})
+    insist(parsed['source_commit'] == SOURCE_SHA and
            parsed['source_blob'] == record['git_blob'] and
            parsed['declaration'] == record['fqn'] and
            parsed['id'] == record['id'], 'source identity differs from pinned declaration')
@@ -64,17 +67,29 @@ def read_source_graph(path: Path, record: dict[str, str]):
     inp = number(abi['input'], s, 'input')
     out = number(abi['output'], s, 'output')
     insist(r > 0 and s > 0 and l > 0 and inp < s and out < s, 'invalid source graph ABI')
-    root = parse_node(parsed['command'], r, s, [MAX_NODES])
-    entry = root.entry(1, 0)
-    insist(root.size + 1 == l and 0 <= entry < l, 'graph dimensions/entry inconsistent')
+    if kind == 'original-structured-source-v1':
+        root = parse_node(parsed['command'], r, s, [MAX_NODES])
+        entry = root.entry(1, 0)
+        insist(root.size + 1 == l, 'structured root label count differs from source')
+    else:
+        root = parse_program(parsed['program'], [MAX_NODES])
+        entry = root.entry
+        insist((root.r, root.s, root.labels, root.input, root.output) ==
+               (r, s, l, inp, out), 'linked root ABI differs from elaborated source')
+    insist(0 <= entry < l, 'graph dimensions/entry inconsistent')
     return raw, parsed, root, (r, s, l, entry, inp, out)
 
 
 def certificate_source(path: Path, record: dict[str, str]) -> tuple[str, dict[str, Any]]:
     raw, _graph, root, (r, s, l, entry, inp, out) = read_source_graph(path, record)
+    # The finite kernel certificate reifies every physical label. Never let
+    # a large on-demand graph silently cause a billion-site proof allocation.
+    insist(l <= 4096, "finite kernel certificate exceeds bounded label budget")
     # Exactly these rows, and no independent golden table, are used to build
     # the candidate that Lean must compare with its own original definition.
-    rows = [('halt', ())] + [root.instr(1, 0, pc) for pc in range(1, l)]
+    rows = ([('halt', ())] + [root.instr(1, 0, pc) for pc in range(1, l)]
+            if _graph['kind'] == 'original-structured-source-v1'
+            else [root.instruction(pc) for pc in range(l)])
     content = '\n'.join([
         f'import {record["module"]}',
         '',

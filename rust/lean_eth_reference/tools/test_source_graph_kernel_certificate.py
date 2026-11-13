@@ -44,6 +44,38 @@ class KernelCertificateContracts(unittest.TestCase):
             self.assertIn('Instr.set (0 : Fin 2) true (2 : Fin 3)', lean)
             self.assertIn('Instr.pop (1 : Fin 2) (0 : Fin 2) (1 : Fin 2) (0 : Fin 3)', lean)
 
+    def test_direct_linked_root_certificate_has_no_extra_halt_site(self):
+        original = graph()
+        left = {'r': 2, 's': 2, 'labels': 2, 'entry': 1,
+                'input': 0, 'output': 0,
+                'code': ['halt', 'set:0:1:0']}
+        right = {'r': 2, 's': 2, 'labels': 2, 'entry': 1,
+                 'input': 0, 'output': 1,
+                 'code': ['halt', 'not:0:0:0']}
+        root = {
+            **{key: value for key, value in original.items() if key != 'command'},
+            'kind': 'original-linked-source-v1',
+            'abi': {'r': 2, 's': 2, 'labels': 4, 'input': 0, 'output': 1},
+            'program': {'kind': 'link', 'left': left, 'right': right},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory) / 'linked.json'
+            p.write_bytes(json.dumps(root).encode() + b'\n')
+            lean, receipt = certificate_source(p, RECORD)
+            self.assertEqual(receipt['physical_labels'], 4)
+            self.assertIn('Instr.goto (3 : Fin 4)', lean)
+            self.assertIn('Instr.not', lean.replace('Instr.bnot', 'Instr.not'))
+            self.assertEqual(lean.count('    Instr.halt,'), 1)
+            for update in [
+                {'abi': {**root['abi'], 'labels': 5}},
+                {'abi': {**root['abi'], 'output': 0}},
+                {'command': {'kind': 'skip'}},
+            ]:
+                invalid = {**root, **update}
+                p.write_bytes(json.dumps(invalid).encode() + b'\n')
+                with self.subTest(update=update), self.assertRaises(ValueError):
+                    certificate_source(p, RECORD)
+
     def test_tampered_source_identity_or_shape_refused(self):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory) / 'source.json'

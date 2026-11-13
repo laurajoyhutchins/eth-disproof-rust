@@ -12,7 +12,7 @@ use crate::Error;
 
 /// Source instruction view hides only the callee's *finite dimensions*, not
 /// its instructions or any machine steps. A lifted program stays on demand.
-trait PhysicalSource: std::fmt::Debug + Send + Sync {
+pub(super) trait PhysicalSource: std::fmt::Debug + Send + Sync {
     fn instruction_at(&self, pc: usize) -> Result<Instr, Error>;
 }
 
@@ -24,7 +24,11 @@ impl<const R: usize, const S: usize> PhysicalSource for DeferredProgram<R, S> {
 
 /// Original ProgramLinking.relocateInstr data-port portion, covering every
 /// source opcode. The label map is identity for a lift.
-fn relocate_ports(instr: Instr, registers: &[usize], stacks: &[usize]) -> Result<Instr, Error> {
+pub(super) fn relocate_ports(
+    instr: Instr,
+    registers: &[usize],
+    stacks: &[usize],
+) -> Result<Instr, Error> {
     let reg = |i: usize| {
         registers
             .get(i)
@@ -127,7 +131,11 @@ fn relocate_ports(instr: Instr, registers: &[usize], stacks: &[usize]) -> Result
     })
 }
 
-fn check_injective_map(map: &[usize], dimension: usize, port: &str) -> Result<(), Error> {
+pub(super) fn check_injective_map(
+    map: &[usize],
+    dimension: usize,
+    port: &str,
+) -> Result<(), Error> {
     let mut seen = vec![false; dimension];
     for &to in map {
         let Some(used) = seen.get_mut(to) else {
@@ -147,6 +155,7 @@ fn check_injective_map(map: &[usize], dimension: usize, port: &str) -> Result<()
 enum Body<const R: usize, const S: usize> {
     Table(Program<R, S>),
     Composed(Arc<Block<R, S>>),
+    Source(Arc<dyn PhysicalSource>),
     Lift {
         source: Arc<dyn PhysicalSource>,
         registers: Vec<usize>,
@@ -180,6 +189,30 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
             labels: program.code().len(),
             body: Body::Table(program),
         })
+    }
+
+    /// The single native source-graph decoder builds typed, on-demand linked
+    /// physical instruction views. This does not flatten or reinterpret calls.
+    /// The decoder independently checks all source dimensions and port maps.
+    pub(super) fn source_program(
+        input_stack: usize,
+        output_stack: usize,
+        entry: usize,
+        labels: usize,
+        source: Arc<dyn PhysicalSource>,
+    ) -> Result<Arc<Self>, Error> {
+        if labels == 0 || input_stack >= S || output_stack >= S || entry >= labels {
+            return Err(Error::Invalid(
+                "linked source program ABI outside target".into(),
+            ));
+        }
+        Ok(Arc::new(Self {
+            input_stack,
+            output_stack,
+            entry,
+            labels,
+            body: Body::Source(source),
+        }))
     }
 
     /// Original ProgramLinking.liftProgram, without materializing the source
@@ -278,6 +311,15 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         self.entry
     }
 
+    /// Exact physical source ABI port indices.
+    pub fn input_stack(&self) -> usize {
+        self.input_stack
+    }
+
+    pub fn output_stack(&self) -> usize {
+        self.output_stack
+    }
+
     pub fn initial(&self, input: impl IntoIterator<Item = bool>) -> Config<R, S> {
         let mut config = Config {
             pc: Some(self.entry),
@@ -299,6 +341,7 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         }
         match &self.body {
             Body::Table(program) => Ok(program.code()[pc].clone()),
+            Body::Source(source) => source.instruction_at(pc),
             Body::Composed(_) if pc == 0 => Ok(Instr::Halt),
             Body::Composed(block) => block.instruction_at(1, 0, pc),
             Body::Lift {

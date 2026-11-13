@@ -36,7 +36,7 @@ FIELDS = {'goto':['next'],'set':['dst','value','next'],
 ATOM_FIELDS={name:fields[:-1] for name,fields in FIELDS.items() if name in ATOMS}
 MAX_NODES=8192
 MAX_TABLE_LABELS=4096
-MAX_SOURCE_LABELS=50000
+MAX_SOURCE_LABELS=1000000000
 MAX_INPUT_BYTES=4*1024*1024
 
 
@@ -102,6 +102,150 @@ def relocated(op: tuple[str, tuple[int,...]], base: int, exit: int):
     return (name,(*vals[:-1],base+vals[-1]))
 
 
+
+class ProgramNode:
+    """Exact bounded physical source, represented without flattening links."""
+
+    def __init__(self, kind, r, s, labels, entry, inp, out,
+                 rows=(), children=(), maps=(), command=None):
+        self.kind, self.r, self.s, self.labels = kind, r, s, labels
+        self.entry, self.input, self.output = entry, inp, out
+        self.rows, self.children, self.maps = rows, children, maps
+        self.command = command
+
+    def key(self):
+        return (self.kind, self.r, self.s, self.labels, self.entry,
+                self.input, self.output, self.rows,
+                tuple(child.key() for child in self.children), self.maps,
+                self.command)
+
+    def instruction(self, pc: int):
+        insist(0 <= pc < self.labels, 'linked source label out of range')
+        if self.kind == 'table':
+            return self.rows[pc]
+        if self.kind == 'composed':
+            return ('halt', ()) if pc == 0 else self.command.instr(1, 0, pc)
+        if self.kind == 'lift':
+            return mapped_instr(self.children[0].instruction(pc),
+                                self.maps[0], self.maps[1])
+        if self.kind in ('link', 'link_into'):
+            left, right = self.children
+            if pc < left.labels:
+                rmap, smap = self.maps[0:2] if self.kind == 'link_into' else (
+                    tuple(range(self.r)), tuple(range(self.s)))
+                op = mapped_instr(left.instruction(pc), rmap, smap)
+                return shifted_instr(op, 0, left.labels + right.entry)
+            rmap, smap = self.maps[2:4] if self.kind == 'link_into' else (
+                tuple(range(self.r)), tuple(range(self.s)))
+            op = mapped_instr(right.instruction(pc - left.labels), rmap, smap)
+            return shifted_instr(op, left.labels, None)
+        raise ValueError(f'unsupported linked source kind: {self.kind}')
+
+
+def mapped_instr(op, registers: tuple[int, ...], stacks: tuple[int, ...]):
+    name, operands = op
+    spec = KINDS[name]
+    vals = tuple(registers[n] if t == 'r' else
+                 stacks[n] if t == 's' else n
+                 for n, t in zip(operands, spec))
+    return name, vals
+
+
+def shifted_instr(op, base: int, return_pc: int | None):
+    name, vals = op
+    if name == 'halt':
+        return ('halt', ()) if return_pc is None else ('goto', (return_pc,))
+    if name == 'goto':
+        return name, (base + vals[0],)
+    if name == 'branch':
+        return name, (vals[0], base + vals[1], base + vals[2])
+    return name, (*vals[:-1], base + vals[-1])
+
+
+def parse_finite_map(value: Any, source: int, target: int, port: str):
+    insist(type(value) is list and len(value) == source,
+           f'{port} map domain size mismatch')
+    mapped = tuple(number(x, target, f'{port} map') for x in value)
+    insist(all(x < target for x in mapped) and len(set(mapped)) == len(mapped),
+           f'{port} map not an injective finite embedding')
+    return mapped
+
+
+def parse_program(value: Any, remaining: list[int], depth: int = 0) -> ProgramNode:
+    insist(depth <= 128 and remaining[0] > 0,
+           'linked program graph exceeds recursion or node bound')
+    remaining[0] -= 1
+    insist(type(value) is dict, 'source program must be an object')
+    kind = value.get('kind', 'table')
+    if kind == 'table':
+        closed_keys(value, {'r', 's', 'labels', 'entry', 'input', 'output', 'code'})
+        r = number(value['r'], 256, 'source registers')
+        s = number(value['s'], 4096, 'source stacks')
+        labels = number(value['labels'], MAX_TABLE_LABELS, 'source labels')
+        insist(r > 0 and s > 0 and labels > 0, 'empty linked program dimensions')
+        entry = number(value['entry'], labels, 'source entry')
+        inp = number(value['input'], s, 'source input')
+        out = number(value['output'], s, 'source output')
+        insist(entry < labels and inp < s and out < s, 'source physical ABI out of range')
+        code = value['code']
+        insist(type(code) is list and len(code) == labels, 'incomplete linked leaf table')
+        rows = tuple(parse_instr(row, r, s, labels) for row in code)
+        return ProgramNode(kind, r, s, labels, entry, inp, out, rows=rows)
+
+    if kind == 'composed':
+        closed_keys(value, {'kind', 'r', 's', 'input', 'output', 'command'})
+        r = number(value['r'], 256, 'composed registers')
+        s = number(value['s'], 4096, 'composed stacks')
+        insist(r > 0 and s > 0, 'empty composed program dimensions')
+        inp = number(value['input'], s, 'composed input')
+        out = number(value['output'], s, 'composed output')
+        insist(inp < s and out < s, 'composed ports outside source dimensions')
+        command = parse_node(value['command'], r, s, remaining, depth + 1)
+        labels = command.size + 1
+        insist(labels <= MAX_SOURCE_LABELS, 'composed callee exceeds source labels')
+        entry = command.entry(1, 0)
+        insist(entry < labels, 'composed callee entry outside source labels')
+        return ProgramNode(kind, r, s, labels, entry, inp, out, command=command)
+
+    if kind == 'lift':
+        closed_keys(value, {'kind', 'r', 's', 'registers', 'stacks', 'source'})
+        source = parse_program(value['source'], remaining, depth + 1)
+        r = number(value['r'], 256, 'ambient registers')
+        s = number(value['s'], 4096, 'ambient stacks')
+        insist(r > 0 and s > 0, 'empty ambient dimensions')
+        registers = parse_finite_map(value['registers'], source.r, r, 'register')
+        stacks = parse_finite_map(value['stacks'], source.s, s, 'stack')
+        return ProgramNode(kind, r, s, source.labels, source.entry,
+                           stacks[source.input], stacks[source.output],
+                           children=(source,), maps=(registers, stacks))
+
+    if kind in ('link', 'link_into'):
+        expected = {'kind', 'left', 'right'} if kind == 'link' else {
+            'kind', 'r', 's', 'left', 'right', 'left_registers', 'left_stacks',
+            'right_registers', 'right_stacks'}
+        closed_keys(value, expected)
+        left = parse_program(value['left'], remaining, depth + 1)
+        right = parse_program(value['right'], remaining, depth + 1)
+        labels = left.labels + right.labels
+        insist(labels <= MAX_SOURCE_LABELS, 'linked source exceeds bounded labels')
+        if kind == 'link':
+            insist((left.r, left.s) == (right.r, right.s),
+                   'source link requires equal port dimensions')
+            return ProgramNode(kind, left.r, left.s, labels, left.entry,
+                               left.input, right.output, children=(left, right))
+        r = number(value['r'], 256, 'ambient registers')
+        s = number(value['s'], 4096, 'ambient stacks')
+        insist(r > 0 and s > 0, 'empty linked ambient dimensions')
+        maps = (
+            parse_finite_map(value['left_registers'], left.r, r, 'left register'),
+            parse_finite_map(value['left_stacks'], left.s, s, 'left stack'),
+            parse_finite_map(value['right_registers'], right.r, r, 'right register'),
+            parse_finite_map(value['right_stacks'], right.s, s, 'right stack'))
+        return ProgramNode(kind, r, s, labels, left.entry,
+                           maps[1][left.input], maps[3][right.output],
+                           children=(left, right), maps=maps)
+    raise ValueError(f'unsupported original program constructor: {kind}')
+
 class Node:
     def __init__(self, kind: str, size: int, children=(), args=None, table=None):
         self.kind,self.size,self.children,self.args,self.table=kind,size,children,args or {},table
@@ -118,7 +262,7 @@ class Node:
     def instr(self,base:int,exit:int,pc:int):
         insist(base<=pc<base+self.size,'source node address out of range')
         if self.kind=='atom':return (*self.args['opcode'][0:1],(*self.args['opcode'][1],exit))
-        if self.kind=='call':return relocated(self.table[pc-base],base,exit)
+        if self.kind=='call':return relocated(self.table.instruction(pc-base),base,exit)
         if self.kind=='seq':
             a,b=self.children
             mid=base+a.size
@@ -152,14 +296,11 @@ def parse_node(node: Any,r:int,s:int,remaining:list[int],depth=0)->Node:
         return Node(k,1,args={'opcode':op})
     if k=='call':
         closed_keys(node,{'kind','program'})
-        p=node['program'];closed_keys(p,{'r','s','labels','entry','input','output','code'})
-        insist(number(p['r'],256,'r')==r and number(p['s'],4096,'s')==s,'call dimensions differ from source')
-        labels=number(p['labels'],MAX_TABLE_LABELS,'call labels');insist(labels>0,'empty source table')
-        entry=number(p['entry'],labels,'call entry');insist(entry<labels,'callee entry out of range')
-        insist(number(p['input'],s,'input')<s and number(p['output'],s,'output')<s,'callee port out of range')
-        insist(isinstance(p['code'],list) and len(p['code'])==labels,'incomplete source call table')
-        rows=tuple(parse_instr(op,r,s,labels) for op in p['code'])
-        return Node(k,labels,args={'entry':entry,'input':p['input'],'output':p['output']},table=rows)
+        program=parse_program(node['program'], remaining, depth+1)
+        insist((program.r, program.s)==(r,s), 'call dimensions differ from source')
+        return Node(k,program.labels,
+                    args={'entry':program.entry,'input':program.input,'output':program.output},
+                    table=program)
     if k=='seq':
         closed_keys(node,{'kind','first','second'})
         a=parse_node(node['first'],r,s,remaining,depth+1)
@@ -263,8 +404,11 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     insist(src.stat().st_size<=MAX_INPUT_BYTES,'source graph exceeds total byte bound')
     original=src.read_bytes()
     parsed=parse_source_graph_json(original)
-    closed_keys(parsed,{'kind','source_commit','source_blob','declaration','id','abi','command'})
-    insist(parsed['kind']=='original-structured-source-v1','wrong graph protocol')
+    kind=parsed['kind']
+    insist(kind in ('original-structured-source-v1','original-linked-source-v1'),
+           'wrong graph protocol')
+    root_field='command' if kind=='original-structured-source-v1' else 'program'
+    closed_keys(parsed,{'kind','source_commit','source_blob','declaration','id','abi',root_field})
     insist(parsed['source_commit']==SOURCE_SHA,'source commit mismatch')
     insist(re.fullmatch('[0-9a-f]{40}',parsed['source_blob']),'source blob malformed')
     insist(re.fullmatch('[a-z0-9_-]{1,255}',parsed['id']),'program ID malformed')
@@ -279,9 +423,17 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     l=number(abi['labels'],MAX_SOURCE_LABELS,'labels');insist(r>0 and s>0 and l>0,'empty ABI')
     inp=number(abi['input'],s,'input');out=number(abi['output'],s,'output')
     insist(inp<s and out<s,'port out of range')
-    root=parse_node(parsed['command'],r,s,[MAX_NODES])
-    insist(root.size+1==l,'derived source label count differs from Lean type')
-    entry=root.entry(1,0)
+    if kind=='original-structured-source-v1':
+        root=parse_node(parsed['command'],r,s,[MAX_NODES])
+        insist(root.size+1==l,'derived source label count differs from Lean type')
+        entry=root.entry(1,0)
+        emitted=[('halt',())]+[root.instr(1,0,pc) for pc in range(1,l)]
+    else:
+        root=parse_program(parsed['program'],[MAX_NODES])
+        insist((root.r,root.s,root.labels,root.input,root.output)==
+               (r,s,l,inp,out),'linked root ABI differs from original source type')
+        entry=root.entry
+        emitted=[root.instruction(pc) for pc in range(l)]
     insist(0<=entry<l,'source graph entry outside labels')
     gold_path=golden_dir/(name+'.table')
     insist(gold_path.is_file(),'not one of the six pinned golden programs')
@@ -294,7 +446,6 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     insist(hashlib.sha256(raw).hexdigest()==expect['sha256'],'golden source table hash mismatch')
     canonical,rows=parse_golden(raw,name,parsed['source_blob'])
     insist((r,s,l,entry,inp,out)==canonical,'graph program ABI differs from original physical table')
-    emitted=[('halt',())]+[root.instr(1,0,pc) for pc in range(1,l)]
     for i,(got,expected) in enumerate(zip(emitted,rows)):
         insist(got==expected,f'exact source physical instruction mismatch at {name}[{i}]: {fmt(got)} vs {fmt(expected)}')
     body=generate_test(parsed,root,rows,canonical,hashlib.sha256(original).hexdigest())
@@ -303,7 +454,7 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
              'graph_sha256':hashlib.sha256(original).hexdigest(),
              'golden_table_sha256':expect['sha256'],
              'rust_acceptance_test_sha256':hashlib.sha256(body.encode()).hexdigest(),
-             'rust_loader':'original-structured-source-v1/serde-native',
+             'rust_loader':f'{kind}/serde-native',
              'physical_instructions_compared':l,'status':'EXACT_SOURCE_PHYSICAL_PARITY'}
     # Generated Rust and the success receipt are staged separately from the
     # published output. Publish only after the optional Cargo verification

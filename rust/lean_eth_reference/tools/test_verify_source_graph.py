@@ -82,6 +82,51 @@ class GraphContracts(unittest.TestCase):
         self.assertEqual(root.instr(1,0,6),('set',(0,1,5)))
         self.assertEqual(root.instr(1,0,9),('set',(0,1,8)))
 
+    def test_source_repeat_matches_eager_sequence_for_all_physical_sites(self):
+        # No invocation of a host-level semantic oracle: the comparison is
+        # between the physical lowering of ordinary seq and a shared repeat.
+        nested={'kind':'seq',
+                'first':{'kind':'if','test':0,
+                         'yes':{'kind':'atom','opcode':'set:1:1'},
+                         'no':{'kind':'skip'}},
+                'second':{'kind':'atom','opcode':'not:0:0'}}
+        for count in range(9):
+            expanded={'kind':'skip'}
+            for _ in range(count):
+                expanded={'kind':'seq','first':expanded,'second':nested}
+            repeated={'kind':'repeat','count':count,'body':nested}
+            expected=parse_node(expanded,2,2,[8192])
+            observed=parse_node(repeated,2,2,[8192])
+            self.assertEqual(expected.size,observed.size)
+            self.assertEqual(expected.entry(1,0),observed.entry(1,0))
+            for pc in range(1,1+observed.size):
+                self.assertEqual(expected.instr(1,0,pc),observed.instr(1,0,pc),
+                                 f'count={count}, pc={pc}')
+
+    def test_large_repeat_does_not_materialize_label_table(self):
+        root=parse_node({'kind':'repeat','count':500000000,
+                         'body':{'kind':'atom','opcode':'not:0:0'}},2,2,[8192])
+        self.assertEqual(root.size,500000000)
+        self.assertEqual(root.entry(1,0),1)
+        self.assertEqual(root.instr(1,0,250000000),('not',(0,0,250000001)))
+        self.assertEqual(root.instr(1,0,500000000),('not',(0,0,0)))
+
+    def test_repeat_malformed_and_overflow_refuse(self):
+        for cmd in [
+            {'kind':'repeat','count':-1,'body':{'kind':'skip'}},
+            {'kind':'repeat','count':True,'body':{'kind':'skip'}},
+            {'kind':'repeat','count':1000000000,
+             'body':{'kind':'atom','opcode':'set:0:1'}},
+            {'kind':'repeat','count':500000001,
+             'body':{'kind':'seq',
+                     'first':{'kind':'atom','opcode':'set:0:1'},
+                     'second':{'kind':'atom','opcode':'set:1:0'}}},
+            {'kind':'repeat','count':2,'body':{'kind':'unknown'}},
+            {'kind':'repeat','count':2,'body':{'kind':'skip'},'extra':'ignored'},
+        ]:
+            with self.subTest(cmd=cmd),self.assertRaises(ValueError):
+                parse_node(cmd,2,2,[8192])
+
     def test_program_identity_includes_ports_not_only_instruction_bytes(self):
         program = {'r':2,'s':2,'labels':2,'input':0,'output':1,'entry':1,
                    'code':['halt','goto:0']}

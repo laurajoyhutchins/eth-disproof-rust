@@ -254,6 +254,12 @@ class Node:
         if self.kind=='skip':return exit
         if self.kind in ('atom','if','while'):return base
         if self.kind=='call':return base+self.args['entry']
+        if self.kind=='repeat':
+            (body,)=self.children
+            count=self.args['count']
+            if count==0 or body.size==0:return exit
+            next_pc=body.entry(base+body.size,exit) if count>1 else exit
+            return body.entry(base,next_pc)
         if self.kind=='seq':
             a,b=self.children
             return a.entry(base,b.entry(base+a.size,exit))
@@ -263,6 +269,14 @@ class Node:
         insist(base<=pc<base+self.size,'source node address out of range')
         if self.kind=='atom':return (*self.args['opcode'][0:1],(*self.args['opcode'][1],exit))
         if self.kind=='call':return relocated(self.table.instruction(pc-base),base,exit)
+        if self.kind=='repeat':
+            (body,)=self.children
+            insist(body.size>0, 'empty repeat has no physical instruction')
+            index=(pc-base)//body.size
+            insist(index<self.args['count'],'repeat physical index outside count')
+            first=base+index*body.size
+            next_pc=body.entry(first+body.size,exit) if index+1<self.args['count'] else exit
+            return body.instr(first,next_pc,pc)
         if self.kind=='seq':
             a,b=self.children
             mid=base+a.size
@@ -301,6 +315,13 @@ def parse_node(node: Any,r:int,s:int,remaining:list[int],depth=0)->Node:
         return Node(k,program.labels,
                     args={'entry':program.entry,'input':program.input,'output':program.output},
                     table=program)
+    if k=='repeat':
+        closed_keys(node,{'kind','count','body'})
+        count=number(node['count'],MAX_SOURCE_LABELS,'repeat count')
+        body=parse_node(node['body'],r,s,remaining,depth+1)
+        size=body.size*count
+        insist(size<MAX_SOURCE_LABELS,'repeat source labels exceed bound')
+        return Node(k,size,(body,),{'count':count})
     if k=='seq':
         closed_keys(node,{'kind','first','second'})
         a=parse_node(node['first'],r,s,remaining,depth+1)

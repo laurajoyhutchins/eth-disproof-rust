@@ -421,6 +421,8 @@ pub mod native_answer;
 /// Source-defined post-normalization body placement and ambient header suffix.
 pub mod native_frontend_tail;
 pub mod native_layout;
+pub mod native_node_append;
+pub mod native_node_readout;
 pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;

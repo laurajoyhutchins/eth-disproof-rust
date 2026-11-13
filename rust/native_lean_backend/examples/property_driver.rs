@@ -45,3 +45,27 @@ fn main() {
     }
     println!("PASS: {checked} independent Lean/Rust property cases; seeds 0..127; 8 deterministic shrink candidates/seed");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_seeded_original_lean_outputs_match_generated_rust() {
+        assert_eq!(CASES.len(), 1024);
+        for &(seed, fuel, x, expected, step) in CASES {
+            assert_eq!(
+                property_hop(fuel, x),
+                expected,
+                "Lean oracle discrepancy for seed={seed}, fuel={fuel}, x={x}, shrink={step}"
+            );
+        }
+    }
+
+    #[test]
+    fn boundaries_and_end_of_seed_series_are_present() {
+        assert!(CASES.iter().any(|row| row.0 == 0 && row.2 == 0));
+        assert!(CASES.iter().any(|row| row.0 == 127));
+        assert!(CASES.iter().any(|row| row.2 == u64::MAX));
+    }
+}

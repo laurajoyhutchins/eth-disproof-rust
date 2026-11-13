@@ -1,0 +1,7 @@
+PIN|query-parity|4eaee87548250b2682affda7d05d947c05554bae|7a2535f7c479463a5f5ed8a30a33192aad1b063e
+PROGRAM|query-parity|3|1|4|0|0|0
+CODE|query-parity|0|pop:0:0:1:1
+CODE|query-parity|1|branch:1:2:3
+CODE|query-parity|2|xor:2:2:0:0
+CODE|query-parity|3|halt
+END|query-parity|4

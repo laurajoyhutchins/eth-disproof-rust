@@ -19,3 +19,20 @@ derived from upstream Apache-2.0 material. The Rust crate's SPDX expression is
 "MIT AND Apache-2.0".
 
 This is independent research work and is not an official OpenAI distribution.
+
+Lean-to-Rust compiler design reference (ideas, not imported code)
+---------------------------------------------------------------
+conao3/lean-rs: https://github.com/conao3/lean-rs
+Reference release: v0.3.0 (2026-11-09)
+License: Apache License, Version 2.0
+
+The compiler design review draws on lean-rs's use of elaborated Lean compiler
+representations, source-identifiable generated Rust, reproducible generated
+modules, explicit reporting of unsupported exports, and Cargo builds that do
+not require Lean at runtime. These ideas are adapted to this repository's
+single source-grounded, compositional compiler and its original Lean
+BitProgram instruction and trace-preservation requirements.
+
+No lean-rs source code is imported by this attribution change, and no second
+compiler/backend is maintained. If code is copied or adapted later, record its
+exact upstream path and revision and retain applicable Apache-2.0 notices.

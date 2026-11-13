@@ -1,6 +1,6 @@
 [package]
 name = "lean-eth-reference"
-version = "0.22.0"
+version = "0.16.0"
 edition = "2024"
 license = "MIT AND Apache-2.0"
 description = "Source-pinned Rust port of OpenAI Lean ETH finite semantics and BitProgram instructions"
@@ -12,3 +12,8 @@ path = "src/lib.rs"
 [[bin]]
 name = "lean-eth-reference"
 path = "src/main.rs"
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+sha2 = "=0.10.9"

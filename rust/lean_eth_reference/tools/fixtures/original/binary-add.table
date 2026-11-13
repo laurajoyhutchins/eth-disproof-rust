@@ -1,0 +1,16 @@
+PIN|binary-add|4eaee87548250b2682affda7d05d947c05554bae|ab8a858c2466aa3879087f825802aa76c7aa768f
+PROGRAM|binary-add|8|3|13|0|0|2
+CODE|binary-add|0|pop:0:1:3:1
+CODE|binary-add|1|pop:1:2:4:2
+CODE|binary-add|2|branch:3:4:3
+CODE|binary-add|3|branch:4:4:10
+CODE|binary-add|4|xor:5:1:2:5
+CODE|binary-add|5|and:6:1:2:6
+CODE|binary-add|6|and:7:5:0:7
+CODE|binary-add|7|xor:1:5:0:8
+CODE|binary-add|8|xor:0:6:7:9
+CODE|binary-add|9|push:2:1:0
+CODE|binary-add|10|branch:0:11:12
+CODE|binary-add|11|push:2:0:12
+CODE|binary-add|12|halt
+END|binary-add|13

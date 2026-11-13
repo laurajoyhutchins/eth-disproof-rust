@@ -69,6 +69,16 @@ end Shared
         # Sharing is represented by repeated node references, not copied Expr trees.
         pairs = [(n.get('fn'), n.get('arg')) for n in d['nodes'] if n['tag'] == 'app']
         self.assertEqual(len(pairs), len(set(pairs)))
+        # A nontrivial shared application is referenced by multiple parents.
+        references = {}
+        for node in d['nodes']:
+            for field in ('fn', 'arg', 'type', 'body', 'value'):
+                if type(node.get(field)) is int and node['tag'] not in {'nat', 'string'}:
+                    child = node[field]
+                    references[child] = references.get(child, 0) + 1
+        self.assertTrue(any(
+            count > 1 and d['nodes'][i]['tag'] == 'app'
+            for i, count in references.items()))
         self.assertLess(d['node_count'], 40)
 
     def test_bounded_beta_zeta(self):

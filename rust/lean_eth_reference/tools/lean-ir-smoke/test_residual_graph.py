@@ -114,6 +114,15 @@ end TheoremTest
         self.assertFalse(any(line.startswith('{') for line in out.stdout.splitlines()))
         self.assertIn('not a definition', out.stdout + out.stderr)
 
+    def test_polymorphic_universe(self):
+        d = self.accepted('Polymorphic', '''
+namespace Polymorphic
+noncomputable def root.{u} (α : Sort u) (x : α) : α := x
+end Polymorphic
+#export_residual_graph Polymorphic.root
+''')
+        self.assertIn('param', str(d['nodes']))
+
     def test_unknown_root_refuses(self):
         out = self.export('Unknown', '#export_residual_graph NoSuchDefinition.ever')
         self.assertNotEqual(out.returncode, 0)

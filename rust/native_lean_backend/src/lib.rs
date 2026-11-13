@@ -6,6 +6,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::fmt::Write;
+use std::time::{Duration, Instant};
+
+mod safety;
 
 #[repr(C)]
 pub struct LeanObject {
@@ -13,6 +16,7 @@ pub struct LeanObject {
 }
 type Obj = *const LeanObject;
 extern "C" {
+    fn lr_abi_probe() -> i32;
     fn lr_is_scalar(x: Obj) -> i32;
     fn lr_scalar_value(x: Obj) -> usize;
     fn lr_is_ctor(x: Obj) -> i32;
@@ -271,6 +275,7 @@ impl Reader {
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
         functions: Option<&FunctionTable>,
+        started: &Instant,
     ) -> Result<(), String> {
         // Lean 4.34.1 IR uses the *storage type* name UInt8 here,
         // not the source Bool name. Validate Bool constructor names below.
@@ -315,6 +320,7 @@ impl Reader {
                 env,
                 ret_ty,
                 functions,
+                started,
             )?;
             writeln!(code, "        }}").unwrap();
         }
@@ -338,6 +344,7 @@ impl Reader {
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
         functions: Option<&FunctionTable>,
+        started: &Instant,
     ) -> Result<(), String> {
         if depth > 128 {
             return Err("IR control-flow nesting limit".into());
@@ -346,6 +353,12 @@ impl Reader {
             *count += 1;
             if *count > 100_000 {
                 return Err("IR instruction limit exceeded".into());
+            }
+            if code.len() > safety::MAX_OUTPUT_BYTES {
+                return Err("generated Rust output byte limit exceeded".into());
+            }
+            if started.elapsed() > Duration::from_secs(10) {
+                return Err("IR code generation time budget exceeded".into());
             }
             match Self::tag(x)? {
                 0 => {
@@ -361,7 +374,7 @@ impl Reader {
                 }
                 9 => {
                     // case(tid, scrutinee, type, alts)
-                    Self::boolean_case(x, code, depth, count, env, ret_ty, functions)?;
+                    Self::boolean_case(x, code, depth, count, env, ret_ty, functions, started)?;
                     return Ok(());
                 }
                 10 => {
@@ -379,7 +392,12 @@ impl Reader {
         }
     }
     unsafe fn emit(decl: Obj, rust_name: Obj) -> Result<String, String> {
+        if lr_abi_probe() == 0 {
+            return Err("Lean C ABI runtime probe failed".into());
+        }
+        let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
         Self::emit_function(decl, &Self::string(rust_name)?, None)
+            .map_err(|e| format!("declaration={declared_name}; {e}"))
     }
 
     unsafe fn emit_function(
@@ -428,8 +446,12 @@ impl Reader {
             write!(result, "x_{var}: {ty}").unwrap();
         }
         writeln!(result, ") -> {ret} {{").unwrap();
-        Self::body(body, &mut result, 0, &mut 0, &mut env, ret, functions)?;
+        let started = Instant::now();
+        Self::body(body, &mut result, 0, &mut 0, &mut env, ret, functions, &started)?;
         result.push_str("}\n");
+        if result.len() > safety::MAX_OUTPUT_BYTES {
+            return Err("generated Rust output byte limit exceeded".into());
+        }
         Ok(result)
     }
 }
@@ -464,10 +486,14 @@ impl Reader {
     unsafe fn body_calls(x: Obj, calls: &mut BTreeSet<String>) -> Result<(), String> {
         let mut pending = vec![x];
         let mut count = 0;
+        let started = Instant::now();
         while let Some(body) = pending.pop() {
             count += 1;
             if count > 100_000 {
                 return Err("dependency IR traversal exceeded 100000 instructions".into());
+            }
+            if started.elapsed() > Duration::from_secs(10) {
+                return Err("dependency IR traversal time budget exceeded".into());
             }
             match Self::tag(body)? {
                 0 => {
@@ -498,6 +524,10 @@ impl Reader {
     }
 
     unsafe fn emit_module(decls: Obj, root: Obj, public_name: Obj) -> Result<String, String> {
+        if lr_abi_probe() == 0 {
+            return Err("Lean C ABI runtime probe failed".into());
+        }
+        let started = Instant::now();
         let root = Self::string(root)?;
         let public_name = Self::string(public_name)?;
         // Public name is validated by the same strict emitter before publishing.
@@ -520,11 +550,15 @@ impl Reader {
             if visited.len() > 2048 {
                 return Err("native declaration closure exceeds 2048 functions".into());
             }
+            if started.elapsed() > Duration::from_secs(15) {
+                return Err("declaration closure code generation time budget exceeded".into());
+            }
             let decl = *definitions.get(&name).ok_or_else(||
-                format!("dependency {name} has no compiled IR in the current module; no external fallback"))?;
-            let sig = Self::signature(decl).map_err(|e| format!("{name}: {e}"))?;
+                format!("declaration={name}; dependency {name} has no compiled IR in the current module; no external fallback"))?;
+            let sig = Self::signature(decl).map_err(|e| format!("declaration={name}; {e}"))?;
             let mut called = BTreeSet::new();
-            Self::body_calls(Self::field(decl, 3)?, &mut called)?;
+            Self::body_calls(Self::field(decl, 3)?, &mut called)
+                .map_err(|e| format!("declaration={name}; {e}"))?;
             for callee in called {
                 if !is_primitive(&callee) {
                     pending.push(callee);
@@ -540,12 +574,18 @@ impl Reader {
             "// Native in-process Lean IR closure; no JSON or Lean runtime dependency.\n",
         );
         for (name, decl) in &closure {
+            if started.elapsed() > Duration::from_secs(15) {
+                return Err("declaration closure code generation time budget exceeded".into());
+            }
             result.push_str(&Self::emit_function(
                 *decl,
                 &internal_name(name),
                 Some(&signatures),
-            )?);
+            ).map_err(|e| format!("declaration={name}; {e}"))?);
             result.push('\n');
+            if result.len() > safety::MAX_OUTPUT_BYTES {
+                return Err("generated Rust closure output byte limit exceeded".into());
+            }
         }
         // Keep the existing external API for a single public root while
         // exposing all internal callees using stable, collision-free names.
@@ -578,7 +618,10 @@ impl Reader {
             *closure.get(&root).unwrap(),
             &public_name,
             Some(&signatures),
-        )?;
+        ).map_err(|e| format!("declaration={root}; {e}"))?;
+        if result.len() > safety::MAX_OUTPUT_BYTES {
+            return Err("generated Rust closure output byte limit exceeded".into());
+        }
         Ok(result)
     }
 }
@@ -622,8 +665,8 @@ fn is_primitive(name: &str) -> bool {
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit_module(decls, root, public_name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     let text = text.replace('\0', "\\0");
     let cstr = CString::new(text).expect("replaced NUL");
@@ -658,14 +701,52 @@ pub unsafe extern "C" fn l_NativeRust_emitModule___boxed(
 unsafe fn reply(decl: Obj, name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit(decl, name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     // Lean strings do not contain NUL bytes. Sanitizing inputs prevents interior
     // NUL from causing an FFI panic; diagnostics remain safely in the error channel.
     let text = text.replace('\0', "\\0");
     let cstr = CString::new(text).expect("replaced NUL");
     lean_mk_string(cstr.as_ptr())
+}
+
+unsafe fn reply_publish(path: Obj, source: Obj) -> *mut c_void {
+    let report = match std::panic::catch_unwind(|| {
+        let path = Reader::string(path)?;
+        let source = Reader::string(source)?;
+        safety::publish(&path, &source)
+    }) {
+        Ok(Ok(())) => "OK\npublished".to_string(),
+        Ok(Err(e)) => safety::refusal("output", &e),
+        Err(_) => safety::refusal("output", "publisher panic (no output accepted)"),
+    };
+    let report = report.replace('\0', "\\0");
+    let encoded = CString::new(report).expect("NUL sanitized");
+    lean_mk_string(encoded.as_ptr())
+}
+
+/// # Safety
+/// Borrowed path and source must be live Lean Strings from the pinned runtime.
+#[no_mangle]
+pub unsafe extern "C" fn rs_publish_source(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
+}
+
+/// # Safety
+/// Interpreter alias for rs_publish_source.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_publishSource(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
+}
+
+/// # Safety
+/// Boxed interpreter alias for rs_publish_source.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_publishSource___boxed(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
 }
 
 // `rs_emit_ir` is the native compiled ABI; the l_* names let Lean's

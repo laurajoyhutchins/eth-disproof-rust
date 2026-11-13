@@ -36,17 +36,21 @@ pub(crate) fn refusal(default_declaration: &str, detail: &str) -> String {
         .strip_prefix("declaration=")
         .and_then(|s| s.split_once("; "))
         .unwrap_or((default_declaration, detail));
-    let construct = if reason.contains("IR body constructor") {
+    let construct = if reason.contains("FnBody constructor") || reason.contains("IR body constructor") {
         "FnBody"
-    } else if reason.contains("IR expression constructor") {
+    } else if reason.contains("Expr constructor") || reason.contains("IR expression constructor") {
         "Expr"
-    } else if reason.contains("IR type tag") {
+    } else if reason.contains("IRType constructor") || reason.contains("IR type tag") {
         "IRType"
     } else if reason.contains("Arg constructor") {
         "Arg"
-    } else if reason.contains("alternative") || reason.contains("Bool case") {
+    } else if reason.contains("Alt constructor") || reason.contains("alternative") || reason.contains("Bool case") {
         "Alt"
-    } else if reason.contains("primitive") || reason.contains("operands") {
+    } else if reason.contains("LitVal constructor") {
+        "LitVal"
+    } else if reason.contains("Decl constructor") {
+        "Decl"
+} else if reason.contains("primitive") || reason.contains("operands") {
         "Primitive"
     } else if reason.contains("dependency") || reason.contains("compiled IR") {
         "Dependency"

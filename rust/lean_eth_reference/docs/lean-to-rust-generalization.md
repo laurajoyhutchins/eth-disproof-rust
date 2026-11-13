@@ -112,6 +112,26 @@ reconcile it before the generalized generated source is accepted.
 Do not conflate source BitProgram steps with the primitive TM2 overhead or
 machine bit-complexity. Keep separate measurements and explicit maps.
 
+## Reproducible original-source acceptance
+
+The `Original Lean source-graph physical parity` GitHub workflow has two
+explicit suites, selected with **Run workflow** (`workflow_dispatch`), not
+by a transient branch name:
+
+- `original` (default, and the suite for compiler PRs): six pinned original
+  Lean program exports, independent physical transition differential, kernel
+  certificates, generated Rust tests, and the structural `computeL` probe.
+- `fixtures`: source-derived original-Lean `lift`, `link`, `linkInto`,
+  and fixed `Nat.rec` repetition; each is independently exported as a physical
+  Lean table, checked by the Lean kernel, and compared with generated Rust.
+  The optional `fixture_names` input selects a space-separated subset
+  (for example `repeatedRoot`); empty runs the entire fixture suite.
+
+Both suites pin the original `openai/math` commit, Lean and Mathlib. Passing
+either suite is evidence for its selected source programs, **not** a universal
+Rust runtime refinement theorem. Unknown fixture names refuse rather than
+silently running a different suite.
+
 ## Verified acceptance boundary
 
 The original pinned Lean source and Lean 4.34.1/Mathlib were independently

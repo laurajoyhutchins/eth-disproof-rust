@@ -135,6 +135,11 @@ fn strict_json<T: DeserializeOwned>(raw: &[u8]) -> Result<T> {
     serde_json::from_value(value).map_err(|e| e.to_string())
 }
 
+/// Decode a backend JSON summary without losing duplicate-key evidence.
+pub fn strict_json_value(raw: &[u8]) -> Result<Value> {
+    strict_json(raw)
+}
+
 pub fn declaration(name: &str) -> bool {
     !name.is_empty()
         && name.split('.').all(|segment| {

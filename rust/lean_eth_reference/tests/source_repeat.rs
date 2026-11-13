@@ -1,6 +1,6 @@
 //! Physical source repeat must preserve the exact original per-label machine.
- //! Counts are symbolic at compile time; a repeated instruction is never
- //! replaced with a higher-level semantic shortcut.
+//! Counts are symbolic at compile time; a repeated instruction is never
+//! replaced with a higher-level semantic shortcut.
 use lean_eth_reference::bit_program::{DeferredProgram, Instr, RunLimits, SourceGraphBinding};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -171,10 +171,12 @@ fn bogus_repeat_counts_labels_and_nested_opcodes_refuse() {
     ] {
         assert!(decode(command, 3).is_err());
     }
-    assert!(decode(
-        json!({"kind": "repeat", "count": 2,
+    assert!(
+        decode(
+            json!({"kind": "repeat", "count": 2,
                "body": {"kind": "atom", "opcode": "set:0:1"}}),
-        9,
-    )
-    .is_err());
+            9,
+        )
+        .is_err()
+    );
 }

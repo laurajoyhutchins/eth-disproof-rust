@@ -1,0 +1,241 @@
+name: Original Lean source-graph physical parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Acceptance suite: original source or source-derived fixtures'
+        type: choice
+        required: true
+        default: original
+        options:
+          - original
+          - fixtures
+      fixture_names:
+        description: 'Space-separated fixture names, empty for all (fixtures suite only)'
+        type: string
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - 'rust/lean_eth_reference/tools/export_source_graph.lean'
+      - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
+      - 'rust/lean_eth_reference/tools/source_graph_kernel_certificate.py'
+      - 'rust/lean_eth_reference/tools/test_source_graph_kernel_certificate.py'
+      - 'rust/lean_eth_reference/tools/verify_source_graph.py'
+      - 'rust/lean_eth_reference/src/bit_program/source_json.rs'
+      - 'rust/lean_eth_reference/tests/native_source_graph.rs'
+      - 'rust/lean_eth_reference/tools/lean_physical_differential.py'
+      - 'rust/lean_eth_reference/tools/test_lean_physical_differential.py'
+      - 'rust/lean_eth_reference/tools/compute_l_structural_acceptance.py'
+      - 'rust/lean_eth_reference/tools/test_compute_l_structural_acceptance.py'
+      - 'rust/lean_eth_reference/tools/*compiled*.py'
+      - '.github/workflows/original-source-graph.yml'
+
+permissions:
+  contents: read
+
+# The expensive source proof runs manually or when compiler/proof inputs change.
+# Routine Rust changes do not trigger it. The job has read-only permissions.
+concurrency:
+  group: original-source-graph-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-graph-acceptance:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      PINNED_ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+      LEAN_ROOT: instrumentation/lean-env
+      PROGRAM_REGEX: 'SqrtLog.Setup.logSuccProgram|SparseFrontierProgram.(pushProgram|initFrontierProgram|popProgram|popIfPresentProgram|pushPairProgram)'
+      SOURCE_SUITE: ${{ inputs.suite || 'original' }}
+      FIXTURE_NAMES: ${{ inputs.fixture_names || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Check offline Python graph tools and refusal tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q rust/lean_eth_reference/tools
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_source_graph_kernel_certificate.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_physical_differential.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_compute_l_structural_acceptance.py' -v
+
+      - name: Checkout exact original OpenAI SAT source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth 1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test -z "$(git -C upstream/openai-math status --porcelain --untracked-files=no)"
+          ln -s "$PINNED_ORIGINAL_SOURCE/lean/OAI" "$LEAN_ROOT/OAI"
+
+      # The discovery tests read the pinned OpenAI source tree; they cannot
+      # run before its sparse checkout. Do not replace absent source with an
+      # empty discovery index or silently skip these tests.
+      - name: Validate pinned original source discovery and selector
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_source_compiled.py' -v
+
+      - name: Restore pinned Lean 4.34.1 and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Restore compiled original Lean dependency cache
+        id: oai-cache
+        continue-on-error: true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
+
+      - name: Export independent physical original Lean tables
+        if: env.SOURCE_SUITE != 'fixtures'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C "$LEAN_ROOT/.lake/packages/mathlib" rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+          python3 rust/lean_eth_reference/tools/export_compiled_batch.py \
+            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+            --output-dir "$RUNNER_TEMP/source-tables" --query-closure \
+            --name-regex "$PROGRAM_REGEX" --limit 6 \
+            --max-labels 4096 --timeout-seconds 240
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          base=Path(__import__('os').environ['RUNNER_TEMP'])/'source-tables'
+          report=json.loads((base/'batch-report.json').read_text())
+          if len(report['exported']) != 6 or report['refused']:
+              raise SystemExit('six independent Lean source tables required')
+          manifest={r['id']:{
+              'declaration':r['declaration'],
+              'source_blob':r['source_git_blob'],
+              'sha256':r['sha256']
+          } for r in report['exported']}
+          (base/'manifest.json').write_text(json.dumps(manifest,sort_keys=True,indent=2)+'\n')
+          PY
+
+      # The reference here is original BitProgram.execInstr extracted verbatim
+      # under pinned source identity. It deliberately does not claim that the
+      # complete OAI module was imported or that command-graph parity passed.
+      - name: Restore locked Rust dependencies for original graph execution
+        run: cargo fetch --locked
+
+      - name: Independently compare original Lean instruction semantics with Rust
+        if: env.SOURCE_SUITE != 'fixtures'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/lean_physical_differential.py \
+            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+            --golden-dir "$RUNNER_TEMP/source-tables" \
+            --output-dir "$RUNNER_TEMP/source-physical" \
+            --rust-crate rust/lean_eth_reference --timeout-seconds 240
+          echo 'ORIGINAL_BITPROGRAM_LEAN_RUST_TRANSITIONS=MATCH' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Kernel-certify original Lean graph bytes, then generate and verify Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$SOURCE_SUITE" == "fixtures" ]]; then
+            fixture_args=()
+            if [[ -n "$FIXTURE_NAMES" ]]; then
+              read -r -a selected <<< "$FIXTURE_NAMES"
+              fixture_args=(--fixture-names "${selected[@]}")
+            fi
+            python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
+              --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+              --golden-dir "$RUNNER_TEMP/source-tables" \
+              --output-dir "$RUNNER_TEMP/source-graph" \
+              --rust-crate rust/lean_eth_reference \
+              --limit 6 --timeout-seconds 240 --linking-fixtures --linking-fixtures-only \
+              "${fixture_args[@]}"
+          else
+            python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
+              --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+              --golden-dir "$RUNNER_TEMP/source-tables" \
+              --output-dir "$RUNNER_TEMP/source-graph" \
+              --rust-crate rust/lean_eth_reference \
+              --name-regex "$PROGRAM_REGEX" --limit 6 --timeout-seconds 240
+          fi
+          echo 'ORIGINAL_LEAN_SOURCE_GRAPH=KERNEL_CODE_CERTIFICATES_AND_BOUNDED_RUST_PARITY' >> "$GITHUB_STEP_SUMMARY"
+
+      # A named constant may hide Nat.rec from the first expression node.
+      # Keep this source-to-symbolic-repeat proof beside the original-source
+      # checks: Lean independently materializes the small physical table,
+      # kernel-certifies the structural graph and Rust compares every label.
+      - name: Verify named source repetitions without eager unfolding
+        if: env.SOURCE_SUITE != 'fixtures'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
+            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+            --golden-dir "$RUNNER_TEMP/source-tables" \
+            --output-dir "$RUNNER_TEMP/named-repeat-proof" \
+            --rust-crate rust/lean_eth_reference \
+            --timeout-seconds 240 --linking-fixtures --linking-fixtures-only \
+            --fixture-names namedRepeatRoot namedLiftRoot
+          echo 'NAMED_COMMAND_ALIASES=REPEAT_AND_LIFT_ALL_LABELS_CERTIFIED' >> "$GITHUB_STEP_SUMMARY"
+
+      # This probe is independent of the six bounded original physical tables:
+      # prior flat Lean materialization of computeL exceeded its heartbeat cap.
+      # Structural source extraction + bounded Rust behavior is a distinct
+      # evidence tier, never reported as exact original physical parity.
+      - name: Prove original computeL can be structurally exported and executed
+        if: env.SOURCE_SUITE != 'fixtures'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/compute_l_structural_acceptance.py \
+            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+            --rust-crate rust/lean_eth_reference \
+            --output-dir "$RUNNER_TEMP/compute-l-graph" --timeout-seconds 240
+          echo 'ORIGINAL_COMPUTEL=SOURCE_STRUCTURAL_AND_BOUNDED_RUST_EXECUTION' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save original Lean build dependency cache
+        if: always() && steps.oai-cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
+
+      - name: Preserve source tables, graph, Rust and refusals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-lean-source-graph-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/source-tables/
+            ${{ runner.temp }}/source-graph/
+            ${{ runner.temp }}/source-physical/
+            ${{ runner.temp }}/compute-l-graph/
+            ${{ runner.temp }}/named-repeat-proof/
+          if-no-files-found: warn
+          retention-days: 14

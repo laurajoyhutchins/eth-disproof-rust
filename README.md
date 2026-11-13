@@ -1,60 +1,77 @@
-# ETH Disproof: Rust Port
+# OpenAI ETH construction: Rust execution study
 
-An independent, source-pinned Rust port of **selected executable components** of OpenAI's Lean development, [*The Exponential Time Hypothesis is False*](https://github.com/openai/math/blob/main/lean/docs/378.md).
+This repository is an independent, source-pinned Rust implementation study of
+selected executable programs in OpenAI's Lean development,
+[*The Exponential Time Hypothesis is False*](https://github.com/openai/math/blob/main/lean/docs/378.md).
+It is **not** an independent proof of ETH's negation. In particular, the full
+native counting path, an independently executed Lean/Rust differential, and the
+claimed asymptotic resource bounds are not established on `main`.
 
-The title identifies the upstream research being studied; **this repository is not an independent disproof of ETH**. It does not yet reproduce the complete source-native algorithm or validate the claimed asymptotic bounds.
+## Run the source-defined frontend
 
-## Try the current implementation
-
-Install **Rust 1.99.1**. The Rust crate has no external Cargo dependencies.
-
-```sh
-cd rust/lean_eth_reference
-cargo test --locked --offline --all-targets
-printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | cargo run --quiet --locked --offline
-```
-
-For this formula the count is **5**. The command-line example uses an **explicitly bounded exponential enumeration oracle**, not the proposed ETH algorithm. It refuses instances outside its supported limits rather than claiming a fast general-purpose SAT counter.
-
-For full local checks:
+From the repository root, the checked-in `rust-toolchain.toml` pins **Rust 1.99.1**:
 
 ```sh
-cargo fmt --all -- --check
 cargo test --locked --offline --all-targets
-cargo clippy --locked --offline --all-targets -- -D warnings
+printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-frontend
 ```
 
-The [Rust GitHub Actions workflow](.github/workflows/rust.yml) runs on pull requests, pushes to `main`, and manual dispatch. Passing these Rust checks does not establish equivalence with the original Lean execution.
+This runs the pinned `Native.frontendCommand` as a Rust finite
+register-and-stack machine. It parses and normalizes a CNF and reports the
+resulting physical stack words, instruction total and peak occupied stack bits.
+**It does not count satisfying assignments.** See the
+[frontend specification](rust/lean_eth_reference/docs/m2-runnable-frontend.md).
 
-## What has been implemented?
+For a separate, explicitly **exponential** bounded #SAT correctness oracle:
 
-| Area | Current boundary |
+```sh
+printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
+  cargo run --quiet --locked --offline -p lean-eth-reference --bin lean-eth-reference
+```
+
+That example has 5 solutions. The oracle does not execute the proposed ETH
+algorithm and refuses unsupported instance sizes.
+
+## Current scope
+
+| Accepted on `main` | Still open |
 | --- | --- |
-| CNF parsing, finite semantics, bounded counting | Executable Rust with tests |
-| Bit-program interpreter and selected native machine stages | Executable, source-correlated Rust fragments |
-| Original Lean/Mathlib execution and Lean-to-Rust differential traces | Not independently established by this repository |
-| Full source-native counting pipeline and primitive TM2 refinement | Incomplete |
-| ETH conclusion and worst-case time/space claims | Not established by Rust tests |
+| CNF parsing, encoding and bounded semantic oracle | Complete source-defined nonterminal #SAT count |
+| Rust bit-machine interpreter and runnable native frontend | Independently executed original Lean/Rust full-state differential |
+| Source-correlated instruction fragments, generated literal tables and supported terminal-family native counts | Primitive TM2 refinement and worst-case complexity argument |
 
-The implementation intentionally distinguishes executable, partial, stubbed, noncomputable, and proof-only stages. An unavailable stage must not be silently replaced with a semantic shortcut.
+The root `Cargo.toml` is the canonical workspace manifest and the root `Cargo.lock` is the sole dependency lockfile. The Rust crate remains at `rust/lean_eth_reference`; from that directory, ordinary Cargo commands also resolve the workspace.
 
-See [the Rust implementation map](rust/lean_eth_reference/README.md) and [remaining-port inventory](rust/lean_eth_reference/docs/remaining-lean-port.md) for concrete module coverage and missing work.
+The authoritative [execution and evidence matrix](rust/lean_eth_reference/docs/evidence.md)
+explains what each test actually establishes and how to reproduce it. The
+[port dependency inventory](rust/lean_eth_reference/docs/remaining-lean-port.md)
+identifies missing stages; a constructor that is still unavailable must refuse
+rather than supply a synthetic answer.
 
-## Where to look
+## Source, checks and history
 
-- [Rust crate](rust/lean_eth_reference/): interpreter, source-correlated programs, tests, and command-line example.
-- [Pinned source manifest](rust/lean_eth_reference/reference/source-manifest.json): upstream Lean source identities, rooted at [`openai/math@4eaee875`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT).
-- [Tests and reference traces](rust/lean_eth_reference/tests/): bounded Rust assertions and source-derived fixtures. Fixtures alone are **not** an imported-Lean comparison.
-- [Guided Git history](rust/lean_eth_reference/docs/reading-the-history.md): a first-parent reading sequence explaining the port's implementation boundaries.
+- [Rust crate and CLI guide](rust/lean_eth_reference/README.md)
+- [Pinned Lean source manifest](rust/lean_eth_reference/reference/source-manifest.json):
+  [`openai/math@4eaee875`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT)
+- [Rust CI](.github/workflows/rust.yml): Rust formatting, tests and strict Clippy
+  on PRs, `main` pushes and manual dispatch
+- [Study guide to the Git history](rust/lean_eth_reference/docs/reading-the-history.md):
+  the first-parent teaching sequence is explicitly reconstructed, not
+  original chronological authorship
 
-Earlier Python/Cython Sudoku experiments remain on the [`python/sudoku-research` branch](https://github.com/laurajoyhutchins/eth-disproof-rust/tree/python/sudoku-research) and are not required by this Rust crate.
+Earlier Python/Cython Sudoku research is retained on the
+[`python/sudoku-research` branch](https://github.com/laurajoyhutchins/eth-disproof-rust/tree/python/sudoku-research);
+it is not part of the default Rust executable.
 
-## Reproducibility and contributions
+## Contributing, provenance and licensing
 
-The repository pins the Rust toolchain and identifies the original Lean source revision. A complete Lean-based conformance result requires independently building and running that pinned original with its Mathlib dependencies. This has **not** been demonstrated by the tests on `main`.
+Please keep behavioral evidence distinct from source identity, native
+performance measurements and mathematical complexity proofs. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for source-linked changes and reproducible
+test requirements.
 
-Bug reports, small source-faithful port increments, and reproducible counterexamples are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Please distinguish *tested Rust behavior*, *original-Lean differential evidence*, and *mathematical proof obligations* in any claim.
-
-## Attribution and license
-
-This is independent research, **not an official OpenAI release**. Original contributions are MIT-licensed ([LICENSE](LICENSE)). Adapted upstream material also carries Apache-2.0 obligations ([LICENSE-APACHE](LICENSE-APACHE), [NOTICE](NOTICE)). The Rust crate declares `MIT AND Apache-2.0` to reflect both sets of obligations.
+This is independent research, not an official OpenAI release. Original
+contributions use the [MIT license](LICENSE); adapted upstream material has
+[Apache-2.0](LICENSE-APACHE) obligations described in [NOTICE](NOTICE). The
+Rust crate records `MIT AND Apache-2.0`.

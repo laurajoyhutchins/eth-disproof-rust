@@ -1,29 +1,66 @@
-# Remaining OpenAI Lean ETH executable path (v0.8.0 scaffold)
+# Remaining source-defined execution path
 
-Source pin: [openai/math@4eaee87548250b2682affda7d05d947c05554bae](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT). This is a **structural port scaffold**, not a theorem translation or end-to-end counting implementation.
+**Current source of truth:** [`src/remaining.rs`](../src/remaining.rs)
+declares the ordered executable dependency spine and exact Lean symbols.
+[`reference/source-manifest.json`](../reference/source-manifest.json) pins
+the upstream `openai/math@4eaee87548250b2682affda7d05d947c05554bae`
+source identity. Neither a registry entry nor a hash proves equivalence.
 
-The new `src/remaining.rs` records the **executable dependency spine** in topological order, with Lean source paths, symbols, machine dimensions, and one of five states: `Executable` (Rust-exercised prefix), `Partial`, `Stub`, `Noncomputable`, and `ProofObligation`. It does **not** claim to enumerate every auxiliary theorem file in the much larger Lean development.
+Do not treat this document as a second, manually maintained stage-status
+database. The registry is checked for unique names, ordered prerequisites,
+machine boundaries and missing source pins by Rust tests. A stage marked
+`Executable` means Rust code is exercised; it does **not** mean its original
+Lean implementation has been independently run and compared.
 
-## Next executable work
+## Completed boundary on `main`
 
-`NativeQueryPreparation.command` runs in a **40x768** low bank and is lifted by `HighQueryProgram.prepare` to **40x896**. The similarly named `SignatureHeadLoader.bootstrapProgram` is also a **40x768** program lifted into the query bank. Both boundaries are explicitly typed in the scaffold.
+The canonical DIMACS-to-bitword interface and the finite machine
+`Native.frontendCommand` are runnable in Rust. See
+[`eth-frontend`](../src/bin/eth-frontend.rs) and the
+[frontend specification](m2-runnable-frontend.md). The 80-register,
+1,220-stack frontend parses the header, normalizes the clause body and
+restores its designated ABI ports. It does not return a satisfying-assignment
+count; answer stack 263 remains empty.
 
-The actual `QueryStreamProgram.nodeBody` is `beginNode` -> `NativeLayoutLoad.command` -> `SignatureHeadLoader.bootstrapProgram` -> `PairNativeSetup.setupCaller` -> `DifferencePairsProgram.command` (with `QueryExecution.PairStart`, `SignatureTupleComplete.command`, `QueryAssembler.commitPair`) -> `QueryNodeFinish.command`. The first, second and pair *setup* portions are executable Rust. In particular, `PairNativeSetup.expandCaller`, signed pair iteration, signature tuple DFS, node coefficient append and canonical count reconstruction are **not** implemented.
+Selected high/count seed, cache, head, tuple, pair, normalization and terminal
+components are also executable as **fragments**. Their existence does not
+turn `QueryStreamProgram.command` or `Native.countingProgram` into a
+complete native path.
 
-`QueryStreamProgram.command` feeds `HighQueryProgram.marked/accepted` via real high-assignment enumeration. Those, in turn, feed `NativeLeafRun.command` (preparation, marked greedy rounds, separate accepted query). `NativeLeafProgram.localCommand k` is a **40x896** bit machine. `NativeLeafProgram.command k` lifts it into the **80x1220** outer machine via terminal dispatch and leaf-bank load/export. `Native.outerCommand` connects frontend setup, disjoint counting DFS and positivity. `Native.entryCommand` selects between the bounded fallback and this large-input path; `Native.countingProgram` compiles it. `BitProgram.tm` and `GuardedCompiler.primitive` are separate finite TM2 refinement obligations.
+## Missing dependencies, in order of significance
 
-## Invariants and stubbing policy
+1. **One real query:** finish the source-defined
+   `QueryStreamProgram.command`, including signature-head loading/visiting,
+   pair commitment, node append and count reconstruction. A host query
+   calculator or fixture is not a replacement.
+2. **High-query and leaf execution:** run the original high-query
+   prepare/marked/accepted paths, `NativeLeafPreparation.command`,
+   source-defined leaf rounds and accepted-query callback.
+3. **Native count:** compose the real leaf with disjoint
+   `DFSCountProgram.command` and `Native.outerCommand` through
+   `Native.countingProgram`. First demonstrate **one nonterminal CNF** on
+   the actual instruction machine, independently checking its count.
+4. **Fallback:** the Lean finite fallback uses a noncomputably selected
+   table. Deriving a bounded explicit table is a separate project requiring
+   source semantics and table-generation checks, not permission to invoke
+   the crate's exponential enumeration oracle silently.
+5. **Formal resource evidence:** independently execute the pinned Lean
+   source to compare machine states/transitions/halting, then separately
+   establish primitive `BitProgram.tm` and
+   `GuardedCompiler.primitive` TM2 correspondence and resource bounds.
 
-Every exported unfinished constructor returns `Err(Error::NotImplemented(source_symbol))` for every input, including zero-width cases. There is no fake `Halt`, `Skip`, zero count, bypass, unbounded count oracle, or accepted-query replacement. Machine dimensions appear in return types. Existing executable stages are left unchanged; their Rust tests **do not** establish Lean-source differential refinement. A genuine Lean import/trace comparison remains outstanding.
+The final theorem in `SqrtLogSpace/Final.lean` remains a mathematical
+proof obligation, **not** a Rust function returning a Boolean.
 
-The `FiniteFallback` program has a *noncomputably selected* table in Lean. Constructing a finite lookup from exhaustive bounded data would be a distinct implementation that needs its own explicit table-generation and source-semantics checks. Until then it fails closed. The final theorem `SqrtLogSpace/Final.lean:exact_count_and_sat` is catalogued as a proof obligation, not represented as a Rust function that returns true.
+## Failure and evidence policy
 
-Useful commands (when the verified Rust toolchain is restored):
+Unavailable constructors must fail with `Error::NotImplemented` rather
+than fabricate a halt, empty program, zero answer or successful count.
+Where the registry still denotes `Partial`, verify the actual runnable
+prefix/suffix before calling it from a larger program.
 
-```sh
-cargo fmt --check
-cargo test --offline
-cargo clippy --offline --all-targets -- -D warnings
-```
-
-The scaffold adds three integration tests for graph ordering and failure-closed behavior. It does not claim a compilation/run that has not occurred.
+Use [the central evidence matrix](evidence.md) to determine the level of
+verification currently accepted on `main`; use the original Lean source and
+the typed Rust registry when implementing the next dependency. Tests in
+`tests/remaining.rs` and `tests/remaining_tdd.rs` enforce graph boundaries
+and refusal behavior, but are not a substitute for actual source execution.

@@ -24,11 +24,7 @@ impl<const R: usize, const S: usize> PhysicalSource for DeferredProgram<R, S> {
 
 /// Original ProgramLinking.relocateInstr data-port portion, covering every
 /// source opcode. The label map is identity for a lift.
-pub fn relocate_ports(
-    instr: Instr,
-    registers: &[usize],
-    stacks: &[usize],
-) -> Result<Instr, Error> {
+pub fn relocate_ports(instr: Instr, registers: &[usize], stacks: &[usize]) -> Result<Instr, Error> {
     let reg = |i: usize| {
         registers
             .get(i)
@@ -405,7 +401,6 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
     pub fn run(&self, config: &mut Config<R, S>, limits: RunLimits) -> Result<RunStats, Error> {
         run_with_instruction_at(config, limits, |pc| self.instruction_at(pc))
     }
-
 }
 
 /// Execute the exact physical BitProgram machine against any validated instruction lookup.
@@ -419,37 +414,37 @@ pub fn run_with_instruction_at<const R: usize, const S: usize, F>(
 where
     F: FnMut(usize) -> Result<Instr, Error>,
 {
-        let mut stats = RunStats {
-            peak_stack_bits: config.stack_bits()?,
-            ..RunStats::default()
-        };
-        if stats.peak_stack_bits > limits.max_stack_bits {
-            return Err(Error::Capacity("initial bit-stack capacity".into()));
-        }
-        let mut live_bits = stats.peak_stack_bits;
-        while let Some(pc) = config.pc {
-            if stats.instructions >= limits.max_steps {
-                return Err(Error::Capacity("BitProgram instruction limit".into()));
-            }
-            let instruction = instruction_at(pc)?;
-            match instruction {
-                Instr::Push { .. } => {
-                    if live_bits >= limits.max_stack_bits {
-                        return Err(Error::Capacity("BitProgram stack-bit limit".into()));
-                    }
-                    live_bits = live_bits.checked_add(1).ok_or(Error::Overflow)?;
-                }
-                Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => {
-                    live_bits -= 1;
-                }
-                _ => {}
-            }
-            execute_instr(&instruction, config);
-            stats.instructions += 1;
-            stats.peak_stack_bits = stats.peak_stack_bits.max(live_bits);
-        }
-        Ok(stats)
+    let mut stats = RunStats {
+        peak_stack_bits: config.stack_bits()?,
+        ..RunStats::default()
+    };
+    if stats.peak_stack_bits > limits.max_stack_bits {
+        return Err(Error::Capacity("initial bit-stack capacity".into()));
     }
+    let mut live_bits = stats.peak_stack_bits;
+    while let Some(pc) = config.pc {
+        if stats.instructions >= limits.max_steps {
+            return Err(Error::Capacity("BitProgram instruction limit".into()));
+        }
+        let instruction = instruction_at(pc)?;
+        match instruction {
+            Instr::Push { .. } => {
+                if live_bits >= limits.max_stack_bits {
+                    return Err(Error::Capacity("BitProgram stack-bit limit".into()));
+                }
+                live_bits = live_bits.checked_add(1).ok_or(Error::Overflow)?;
+            }
+            Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => {
+                live_bits -= 1;
+            }
+            _ => {}
+        }
+        execute_instr(&instruction, config);
+        stats.instructions += 1;
+        stats.peak_stack_bits = stats.peak_stack_bits.max(live_bits);
+    }
+    Ok(stats)
+}
 
 #[derive(Clone, Debug)]
 enum BlockKind<const R: usize, const S: usize> {

@@ -19,7 +19,7 @@ artifacts/coverage-ledger artifacts/ir-constructors.tsv \
 
 # Independently evaluate Lean results; emit source via the live FFI compiler.
 lean --load-dynlib="$NATIVE_LIB" examples/PrimitiveMatrix.lean
-printf '# Generated functions only.\n' > examples/matrix_run.rs
+printf '// Generated functions only.\n' > examples/matrix_run.rs
 printf 'primitive\tfunction\tassertions\toracle\n' > artifacts/primitive-conformance.tsv
 count=0
 while IFS=$'\t' read -r primitive rust_type operation kind; do

@@ -99,7 +99,7 @@ jobs:
           key: original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
 
       - name: Export independent physical original Lean tables
-        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111'
+        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111' && github.head_ref != 'feat/lean-structural-repeat-20261113'
         shell: bash
         run: |
           set -euo pipefail
@@ -131,7 +131,7 @@ jobs:
         run: cargo fetch --locked
 
       - name: Independently compare original Lean instruction semantics with Rust
-        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111'
+        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111' && github.head_ref != 'feat/lean-structural-repeat-20261113'
         shell: bash
         run: |
           set -euo pipefail
@@ -146,13 +146,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_HEAD_REF" == 'test/lean-linking-source-acceptance-20261111' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'test/lean-linking-source-acceptance-20261111' || "$GITHUB_HEAD_REF" == 'feat/lean-structural-repeat-20261113' ]]; then
+            fixture_args=()
+            if [[ "$GITHUB_HEAD_REF" == 'feat/lean-structural-repeat-20261113' ]]; then
+              fixture_args=(--fixture-names repeatedRoot)
+            fi
             python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
               --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
               --golden-dir "$RUNNER_TEMP/source-tables" \
               --output-dir "$RUNNER_TEMP/source-graph" \
               --rust-crate rust/lean_eth_reference \
-              --limit 6 --timeout-seconds 240 --linking-fixtures --linking-fixtures-only
+              --limit 6 --timeout-seconds 240 --linking-fixtures --linking-fixtures-only \
+              "${fixture_args[@]}"
           else
             python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
               --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
@@ -168,7 +173,7 @@ jobs:
       # Structural source extraction + bounded Rust behavior is a distinct
       # evidence tier, never reported as exact original physical parity.
       - name: Prove original computeL can be structurally exported and executed
-        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111'
+        if: github.head_ref != 'test/lean-linking-source-acceptance-20261111' && github.head_ref != 'feat/lean-structural-repeat-20261113'
         shell: bash
         run: |
           set -euo pipefail

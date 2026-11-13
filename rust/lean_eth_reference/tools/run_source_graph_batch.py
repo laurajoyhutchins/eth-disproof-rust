@@ -81,6 +81,13 @@ noncomputable def linkedIntoRoot :=
   ProgramLinking.linkInto {fqn} {fqn}
     (Fin.castAddEmb 1) (Fin.castAddEmb 1)
     (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+-- Source-level fixed repetition. The body is a real imported Lean program,
+-- not a Rust-only synthesized table or semantic SAT shortcut.
+noncomputable def repeatedRoot :=
+  StructuredCalls.compiled
+    (Nat.rec (StructuredCalls.Cmd.base .skip)
+      (fun _ acc => StructuredCalls.Cmd.seq acc (StructuredCalls.Cmd.call {fqn}))
+      4) 0 0
 end {fixture_module}
 """
     imports=(f'import {module}\n'
@@ -94,8 +101,12 @@ end {fixture_module}
     certs.mkdir(exist_ok=True)
     gold_manifest={}
     accepted=[]
-    for short in ('lifted','linked','linkedInto',
-                  'liftedRoot','linkedRoot','linkedIntoRoot'):
+    supported=('lifted','linked','linkedInto',
+               'liftedRoot','linkedRoot','linkedIntoRoot','repeatedRoot')
+    selected=a.fixture_names or supported
+    if not selected or any(name not in supported for name in selected):
+        raise ValueError('unknown or empty original source fixture selection')
+    for short in selected:
         fid='linked_fixture_'+short.lower()
         record={'id':fid,'fqn':fixture_module+'.'+short,
                 'module':module,'git_blob':original['git_blob']}
@@ -127,8 +138,17 @@ end {fixture_module}
             graph=parse_source_graph_json((dir/(fid+'.json')).read_bytes())
             expected={'lifted':'lift','linked':'link','linkedInto':'link_into',
                       'liftedRoot':'lift','linkedRoot':'link',
-                      'linkedIntoRoot':'link_into'}[short]
-            if short.endswith('Root'):
+                      'linkedIntoRoot':'link_into'}.get(short)
+            if short=='repeatedRoot':
+                command=graph.get('command',{})
+                if (graph.get('kind')!='original-structured-source-v1' or
+                        command.get('kind')!='repeat' or command.get('count')!=4 or
+                        command.get('body',{}).get('kind')!='call'):
+                    raise ValueError(
+                        f'{fid} original Nat.rec was not preserved as an exact repeat')
+                if graph['abi']['labels']!=145:
+                    raise ValueError(f'{fid} expected 145 physical source labels')
+            elif short.endswith('Root'):
                 if (graph['kind']!='original-linked-source-v1' or
                         graph.get('program',{}).get('kind')!=expected):
                     raise ValueError(
@@ -197,6 +217,8 @@ def main():
     p.add_argument('--no-cargo',action='store_true')
     p.add_argument('--linking-fixtures',action='store_true')
     p.add_argument('--linking-fixtures-only',action='store_true')
+    p.add_argument('--fixture-names',nargs='+',default=None,
+                   help='source-derived compiler fixture names, defaults to all')
     a=p.parse_args()
     assert 5<=a.timeout_seconds<=1200 and 1<=a.limit<=6
     pin=ensure_pinned(a.upstream,a.lake_root)

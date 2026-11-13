@@ -76,6 +76,27 @@ class KernelCertificateContracts(unittest.TestCase):
                 with self.subTest(update=update), self.assertRaises(ValueError):
                     certificate_source(p, RECORD)
 
+    def test_repeat_certificate_reifies_exact_source_sites(self):
+        original=graph()
+        repeated={
+            **original,
+            'abi':{**original['abi'],'labels':5},
+            'command':{
+                'kind':'repeat','count':2,
+                'body':original['command'],
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'repeat.json'
+            raw=json.dumps(repeated).encode()+b'\n'
+            path.write_bytes(raw)
+            source,receipt=certificate_source(path,RECORD)
+            self.assertEqual(receipt['physical_labels'],5)
+            self.assertEqual(receipt['source_graph_sha256'],hashlib.sha256(raw).hexdigest())
+            self.assertIn('Instr.set (0 : Fin 2) true (2 : Fin 5)',source)
+            self.assertIn('Instr.set (0 : Fin 2) true (4 : Fin 5)',source)
+            self.assertIn('Instr.halt,',source)
+
     def test_tampered_source_identity_or_shape_refused(self):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory) / 'source.json'

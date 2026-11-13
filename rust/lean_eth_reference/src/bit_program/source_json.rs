@@ -143,6 +143,10 @@ enum Command {
     },
     #[serde(rename = "while")]
     While { test: usize, body: Box<Command> },
+    /// Exact fixed sequential repetition of one source command. This node
+    /// never changes the source's physical step/label semantics.
+    #[serde(rename = "repeat")]
+    Repeat { count: usize, body: Box<Command> },
 }
 
 fn invalid(message: &str) -> Error {
@@ -441,6 +445,10 @@ enum NativeBlockKind {
         test: usize,
         body: Arc<NativeBlock>,
     },
+    Repeat {
+        count: usize,
+        body: Arc<NativeBlock>,
+    },
 }
 
 impl NativeBlock {
@@ -456,6 +464,17 @@ impl NativeBlock {
             NativeBlockKind::Seq(first, second) => {
                 let mid = base.checked_add(first.size).ok_or(Error::Overflow)?;
                 first.entry_at(base, second.entry_at(mid, exit)?)
+            }
+            NativeBlockKind::Repeat { count, body } => {
+                if *count == 0 || body.size == 0 {
+                    return Ok(exit);
+                }
+                let next = if *count > 1 {
+                    body.entry_at(base.checked_add(body.size).ok_or(Error::Overflow)?, exit)?
+                } else {
+                    exit
+                };
+                body.entry_at(base, next)
             }
         }
     }
@@ -508,6 +527,26 @@ impl NativeBlock {
                     body.instruction_at(first, base, pc)
                 }
             }
+            NativeBlockKind::Repeat { count, body } => {
+                // Zero-sized repetitions contain no source sites, so they
+                // never reach an instruction lookup or divide by zero.
+                if *count == 0 || body.size == 0 {
+                    return Err(invalid("empty nested repeat has no physical sites"));
+                }
+                let iteration = (pc - base) / body.size;
+                if iteration >= *count {
+                    return Err(invalid("nested repeat site outside iteration count"));
+                }
+                let start = base
+                    .checked_add(iteration.checked_mul(body.size).ok_or(Error::Overflow)?)
+                    .ok_or(Error::Overflow)?;
+                let next = if iteration + 1 < *count {
+                    body.entry_at(start.checked_add(body.size).ok_or(Error::Overflow)?, exit)?
+                } else {
+                    exit
+                };
+                body.instruction_at(start, next, pc)
+            }
         }
     }
 }
@@ -559,6 +598,11 @@ fn lower_native_block(
             let body = lower_native_block(*body, r, s, remaining, depth + 1)?;
             let size = body.size.checked_add(1).ok_or(Error::Overflow)?;
             (size, NativeBlockKind::While { test, body })
+        }
+        Command::Repeat { count, body } => {
+            let body = lower_native_block(*body, r, s, remaining, depth + 1)?;
+            let size = body.size.checked_mul(count).ok_or(Error::Overflow)?;
+            (size, NativeBlockKind::Repeat { count, body })
         }
     };
     if size >= MAX_LABELS {
@@ -814,6 +858,9 @@ fn lower<const R: usize, const S: usize>(
         ),
         Command::While { test, body } => {
             Block::while_(test, lower::<R, S>(*body, remaining, callees)?)
+        }
+        Command::Repeat { count, body } => {
+            Block::repeat(count, lower::<R, S>(*body, remaining, callees)?)
         }
     }
 }

@@ -16,6 +16,7 @@ acceptance certificate.
 | [Independent differential and accounting](independent-differential-and-accounting.md) | Harness contracts and reporting for actual original Lean execution |
 | [Generic compiler-IR backend experiment](compiler-ir-backend.md) | Opt-in Lean IR-to-Rust adapter, toolchain compatibility, refusal receipts, and proof boundaries |
 | [Generic Lean core-expression residualizer](core-expr-residualizer.md) | Noncomputable source Expr DAG, bounded symbolic reduction, and shared refusal contract |
+| [Two-path codegen acceptance contract](two-path-acceptance-contract.md) | Explicit backend selection, Git/toolchain pin enforcement, shared refusal and unverified receipts |
 | [Finite fallback disposition](m2-finite-fallback-decision.md) | Why source noncomputability must not be replaced by a hidden oracle |
 | [Reading history](reading-the-history.md) | Constructed first-parent study sequence and original provenance |
 

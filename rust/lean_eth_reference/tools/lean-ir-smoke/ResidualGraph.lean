@@ -116,10 +116,9 @@ private def reduceHead (e : Expr) (fuel : Nat := 16) : Expr × Nat := Id.run do
 /-- Retain both original and conservatively reduced roots in the graph.
 The source declaration itself is unfolded once by getConstInfo. -/
 private def residualize (name : Name) (maxNodes : Nat := 10000) : MetaM Json := do
-  let original ← match (← getConstInfo name) with
-    | .defnInfo info => pure info.value
+  let (original, typ) ← match (← getConstInfo name) with
+    | .defnInfo info => pure (info.value, info.type)
     | _ => throwError m!"source root is not a definition: {name}"
-  let typ ← inferType (mkConst name)
   let sourceTyp ← inferType original
   unless (← isDefEq typ sourceTyp) do
     throwError m!"declared type does not match elaborated body: {name}"

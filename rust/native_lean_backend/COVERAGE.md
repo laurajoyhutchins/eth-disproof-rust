@@ -120,3 +120,19 @@ exact dyadic inputs including negatives and zeros.
 This is **not** unrestricted floating-point semantics. NaN/signalling,
 infinity/overflow, conversions, Float32, exception flags, unusual rounding
 modes and other operations remain outside the verified domain and refuse.
+
+## Nullary inductive / tagged-scalar subset
+
+A Lean inductive constructor with **no object, usize or scalar fields**
+can be lowered to its `IRType.tagged` constructor index, carried in Rust as
+`usize`. Generated `FnBody.case` checks constructor identity against the
+declared inductive type; branch-local values cannot leak across arms.
+`Alt.default` is supported for this tagged-scalar case. Unknown tags trap,
+rather than being silently interpreted as a different constructor.
+
+The native suite independently evaluates 384 Rust checks from original Lean
+source for a three-constructor nullary inductive. A separate field-carrying
+inductive is refused and the previous output preserved. **This is not**
+general constructor allocation, heap-backed pattern matching, closures,
+captured variables, arrays or sharing semantics; those require a separately
+specified object runtime and are still unsupported.

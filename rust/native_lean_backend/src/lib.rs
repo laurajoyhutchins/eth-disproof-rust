@@ -163,8 +163,9 @@ impl Reader {
             3 => Ok("u32"),
             4 => Ok("u64"),
             5 => Ok("usize"),
+            12 => Ok("usize"), // nullary enum/tagged constructor, never heap object
             t => Err(format!(
-                "IR type tag {t} unsupported (supported f64/u8/u16/u32/u64/usize)"
+                "IR type tag {t} unsupported (supported f64/u8/u16/u32/u64/usize/tagged-nullary)"
             )),
         }
     }
@@ -195,6 +196,29 @@ impl Reader {
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
         match Self::tag(x)? {
+            0 => {
+                // ctor(info, fields). Only nullary scalar constructors are
+                // representable without a Lean heap. No field-packing shortcut.
+                if var_ty != "usize" {
+                    return Err("heap-backed or non-tagged constructor is unsupported".into());
+                }
+                let info = Self::field(x, 0)?;
+                let fields = Self::array(Self::field(x, 1)?)?;
+                if !fields.is_empty() {
+                    return Err("constructor with fields requires an object runtime".into());
+                }
+                for field in 2..=4 {
+                    if Self::nat(Self::field(info, field)?)? != 0 {
+                        return Err("constructor with pointer/scalar layout is unsupported".into());
+                    }
+                }
+                let _name = Self::name(Self::field(info, 0)?, 0)?;
+                let index = Self::nat(Self::field(info, 1)?)?;
+                if index > 255 {
+                    return Err("constructor tag exceeds nullary enum bound".into());
+                }
+                Ok(format!("{index}usize"))
+            }
             6 => {
                 // fap, preserving the exact known primitive semantics.
                 let name = Self::name(Self::field(x, 0)?, 0)?;
@@ -329,6 +353,80 @@ impl Reader {
         Ok(())
     }
 
+    // Data-free inductives use Lean's tagged scalar representation.
+    // Deliberately reject heap-backed inductives and every unknown constructor.
+    unsafe fn tagged_case(
+        x: Obj,
+        code: &mut String,
+        depth: usize,
+        count: &mut usize,
+        env: &mut BTreeMap<usize, &'static str>,
+        ret_ty: &str,
+        ctx: LoweringContext<'_>,
+    ) -> Result<(), String> {
+        if Self::tag(Self::field(x, 2)?)? != 12 {
+            return Err("non-tagged case is unsupported".into());
+        }
+        let type_name = Self::name(Self::field(x, 0)?, 0)?;
+        let scrutinee = Self::var(Self::field(x, 1)?)?;
+        if env.get(&scrutinee) != Some(&"usize") {
+            return Err("tagged case scrutinee is not a scalar tag".into());
+        }
+        let alts = Self::array(Self::field(x, 3)?)?;
+        if alts.is_empty() || alts.len() > 256 {
+            return Err("tagged case has unsupported number of alternatives".into());
+        }
+        let mut seen = BTreeSet::new();
+        let mut default = None;
+        writeln!(code, "    match x_{scrutinee} {{").unwrap();
+        for alt in alts {
+            match Self::tag(alt)? {
+                0 => {
+                    let info = Self::field(alt, 0)?;
+                    let name = Self::name(Self::field(info, 0)?, 0)?;
+                    let prefix = format!("{type_name}.");
+                    if !name.starts_with(&prefix) || name.len() == prefix.len() {
+                        return Err(format!(
+                            "constructor {name} does not belong to tagged type {type_name}"
+                        ));
+                    }
+                    let index = Self::nat(Self::field(info, 1)?)?;
+                    if index > 255 || !seen.insert(index) {
+                        return Err(format!("invalid or repeated tagged constructor {name}"));
+                    }
+                    writeln!(code, "        {index} => {{").unwrap();
+                    let mut branch_env = env.clone();
+                    Self::body(
+                        Self::field(alt, 1)?,
+                        code,
+                        depth + 1,
+                        count,
+                        &mut branch_env,
+                        ret_ty,
+                        ctx,
+                    )?;
+                    writeln!(code, "        }}").unwrap();
+                }
+                1 => {
+                    if default.replace(Self::field(alt, 0)?).is_some() {
+                        return Err("multiple tagged default alternatives".into());
+                    }
+                }
+                t => return Err(format!("unknown tagged alternative constructor {t}")),
+            }
+        }
+        if let Some(body) = default {
+            writeln!(code, "        _ => {{").unwrap();
+            let mut branch_env = env.clone();
+            Self::body(body, code, depth + 1, count, &mut branch_env, ret_ty, ctx)?;
+            writeln!(code, "        }}").unwrap();
+        } else {
+            writeln!(code, "        _ => unreachable!(\"invalid tagged enum value\"),").unwrap();
+        }
+        writeln!(code, "    }}").unwrap();
+        Ok(())
+    }
+
     unsafe fn body(
         mut x: Obj,
         code: &mut String,
@@ -351,7 +449,11 @@ impl Reader {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
-                    let value = Self::expr(Self::field(x, 2)?, ty, env, ctx.functions)?;
+                    let expr = Self::field(x, 2)?;
+                    if Self::tag(expr)? == 0 && Self::tag(Self::field(x, 1)?)? != 12 {
+                        return Err("nullary constructor must have IRType.tagged".into());
+                    }
+                    let value = Self::expr(expr, ty, env, ctx.functions)?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }
@@ -415,7 +517,11 @@ impl Reader {
                 }
                 9 => {
                     // case(tid, scrutinee, type, alts)
-                    Self::boolean_case(x, code, depth, count, env, ret_ty, ctx)?;
+                    if Self::tag(Self::field(x, 2)?)? == 12 {
+                        Self::tagged_case(x, code, depth, count, env, ret_ty, ctx)?;
+                    } else {
+                        Self::boolean_case(x, code, depth, count, env, ret_ty, ctx)?;
+                    }
                     return Ok(());
                 }
                 11 => {

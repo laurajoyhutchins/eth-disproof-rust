@@ -162,3 +162,11 @@ subtraction and multiplication compiled to Rust `f64`, checking 384 generated
 results against original-Lean evaluations on exactly representable finite
 inputs. This is a deliberately narrow IEEE-754 subset, not generic Float,
 Float32, casting, exceptional-value or mathematical-runtime support.
+
+### Nullary tagged inductives
+
+`examples/TaggedFixture.lean` exercises Lean nullary enum constructors,
+scalar pattern matches, and returns through Rust `usize` tags. The test
+replays 384 values computed by original Lean and explicitly refuses a
+heap-backed constructor. Constructor allocation with fields, object layout,
+reference counting and indirect applications remain unsupported.

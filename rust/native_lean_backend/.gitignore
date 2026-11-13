@@ -29,3 +29,8 @@
 
 /examples/test-float
 /examples/test-float.rs
+
+/examples/test-tagged
+/examples/test-tagged.rs
+/examples/rejected_tagged_heap.rs
+/examples/RefusalTaggedHeap.log

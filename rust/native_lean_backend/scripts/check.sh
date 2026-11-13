@@ -132,6 +132,19 @@ fn main() {
 RUST
 rustc --edition=2021 -o examples/native-test examples/run.rs
 examples/native-test
+# Any inductive carrying a field requires the object runtime and must refuse.
+printf 'preserve-previous-tagged-output\n' > examples/rejected_tagged_heap.rs
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalTaggedHeap.lean > examples/RefusalTaggedHeap.log 2>&1; then
+  echo "heap-backed tagged constructor was incorrectly accepted" >&2; exit 1
+fi
+if ! grep -q "Rust native backend refused" examples/RefusalTaggedHeap.log; then
+  cat examples/RefusalTaggedHeap.log >&2
+  echo "heap-backed tagged refusal missing" >&2; exit 1
+fi
+if [[ "$(cat examples/rejected_tagged_heap.rs)" != "preserve-previous-tagged-output" ]]; then
+  echo "failed tagged refusal modified existing output" >&2; exit 1
+fi
+rm -f examples/rejected_tagged_heap.rs examples/RefusalTaggedHeap.log
 # Real Lean IR join continuations (jdecl/jmp), including captured locals.
 # Float is accepted only for three finite typed-scalar operations.
 # Test oracle results computed by original Lean Float, never by the Rust backend.
@@ -144,6 +157,17 @@ fn main() { include!("generated_float_differential.rs"); }
 RUST
 rustc --edition=2024 -o examples/test-float examples/test-float.rs
 examples/test-float
+# Nullary tagged inductive constructors and exhaustive finite pattern matches
+# must execute without representing heap-backed fields as raw Rust integers.
+lean --load-dynlib="$NATIVE_LIB" examples/TaggedFixture.lean
+cat > examples/test-tagged.rs <<'RUST'
+include!("generated_tag_rotate.rs");
+include!("generated_tag_score.rs");
+include!("generated_tag_identity.rs");
+fn main() { include!("generated_tagged_differential.rs"); }
+RUST
+rustc --edition=2024 -o examples/test-tagged examples/test-tagged.rs
+examples/test-tagged
 lean --load-dynlib="$NATIVE_LIB" examples/JoinFixture.lean
 cat > examples/test-join.rs <<'RUST'
 include!("generated_join.rs");
@@ -197,10 +221,10 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=3392"
+  echo "differential_assertions=3776"
   echo "constructor_inventory=PASS"
   echo "primitive_registry=PASS"
   echo "external_io_boundary=REFUSED"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/FloatFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
+  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/FloatFixture.lean examples/TaggedFixture.lean examples/RefusalTaggedHeap.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

@@ -50,7 +50,7 @@ pub(crate) fn refusal(default_declaration: &str, detail: &str) -> String {
         "LitVal"
     } else if reason.contains("Decl constructor") {
         "Decl"
-} else if reason.contains("primitive") || reason.contains("operands") {
+    } else if reason.contains("primitive") || reason.contains("operands") {
         "Primitive"
     } else if reason.contains("dependency") || reason.contains("compiled IR") {
         "Dependency"

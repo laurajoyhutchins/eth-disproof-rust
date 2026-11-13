@@ -15,6 +15,7 @@ acceptance certificate.
 | [Compiled query table](compiled-query-table.md) | Strict source-pinned query table importer; importing is not proof of independent source generation |
 | [Independent differential and accounting](independent-differential-and-accounting.md) | Harness contracts and reporting for actual original Lean execution |
 | [Generic compiler-IR backend experiment](compiler-ir-backend.md) | Opt-in Lean IR-to-Rust adapter, toolchain compatibility, refusal receipts, and proof boundaries |
+| [Generic Lean core-expression residualizer](core-expr-residualizer.md) | Noncomputable source Expr DAG, bounded symbolic reduction, and shared refusal contract |
 | [Finite fallback disposition](m2-finite-fallback-decision.md) | Why source noncomputability must not be replaced by a hidden oracle |
 | [Reading history](reading-the-history.md) | Constructed first-parent study sequence and original provenance |
 

@@ -1,7 +1,11 @@
 name: Original QueryStream staged Lean imports
 
 on:
-  pull_request:
+  # A trusted branch ref gives the compiled-module cache a stable scope.
+  # Pull-request merge-ref caches were saved but did not restore on rerun.
+  push:
+    branches:
+      - feat/query-aot-source-20261113
     paths:
       - 'rust/lean_eth_reference/src/bin/original-query-build.rs'
       - '.github/workflows/original-query-import.yml'
@@ -33,7 +37,7 @@ concurrency:
 jobs:
   build-one-pinned-import:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 75
     env:
       ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
       ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
@@ -96,26 +100,85 @@ jobs:
         with:
           path: instrumentation/lean-env/.lake/build
           # Immutable per-attempt key; fallback restores the latest previous
-          # compilation checkpoint on this PR's cache scope.
+          # compilation checkpoint in the trusted feature-branch cache scope.
           key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-
             original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
 
-      - name: Build and independently import one original QueryStream dependency
+      - name: Verify restored compilation checkpoint identity and size
+        shell: bash
+        env:
+          RESTORED_CACHE_KEY: ${{ steps.restore-oai.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          root="$LEAN_ROOT/.lake/build/lib/lean/OAI"
+          restored="$(find "$root" -type f -name '*.olean' 2>/dev/null | wc -l || true)"
+          echo "ORIGINAL_LEAN_CACHE_RESTORED_KEY=$RESTORED_CACHE_KEY"
+          echo "ORIGINAL_LEAN_CACHE_INITIAL_OLEANS=$restored"
+          if [[ -z "$RESTORED_CACHE_KEY" ]]; then
+            echo "WARNING: no original OAI cache available; starting from pinned Mathlib alone"
+          fi
+
+      - name: Resume original module import in bounded chunks on this runner
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/original-query-stage"
           echo "STAGE=$IMPORT_STAGE"
-          echo "PR_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
-          cargo run --locked --offline --bin original-query-build -- \
-            --upstream "$ORIGINAL_SOURCE" \
-            --lake-root "$LEAN_ROOT" \
-            --output-dir "$RUNNER_TEMP/original-query-stage" \
-            --stage "$IMPORT_STAGE" \
-            --max-jobs 4 \
-            --timeout-seconds 1200
+          echo "SOURCE_HEAD=${{ github.sha }}"
+          root="$LEAN_ROOT/.lake/build/lib/lean/OAI"
+          prior="$(find "$root" -type f -name '*.olean' 2>/dev/null | wc -l || true)"
+          accepted=0
+          # Three independent 20-minute slices share the SAME runner and .lake
+          # directory. An expired slice is not a success. A later slice must
+          # make real .olean progress or the workflow stops rather than looping.
+          for round in 1 2 3; do
+            output="$RUNNER_TEMP/original-query-stage/round-$round"
+            mkdir -p "$output"
+            echo "ORIGINAL_LEAN_ROUND_START round=$round completed_oleans=$prior"
+            if cargo run --locked --offline --bin original-query-build -- \
+              --upstream "$ORIGINAL_SOURCE" \
+              --lake-root "$LEAN_ROOT" \
+              --output-dir "$output" \
+              --stage "$IMPORT_STAGE" \
+              --max-jobs 4 \
+              --timeout-seconds 1200; then
+              test -f "$output/stage.receipt.json"
+              accepted=1
+              echo "ORIGINAL_LEAN_ROUND_SUCCEEDED round=$round"
+              break
+            fi
+            # Parse the REFUSED report, not the shell exit code or an arbitrary
+            # substring in a log. Retry ONLY the bounded timeout case.
+            if ! python3 - "$output/stage.report.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          p=Path(sys.argv[1])
+          if not p.is_file():
+              raise SystemExit("missing explicit Lean refusal report")
+          x=json.loads(p.read_text())
+          if x.get("status")!="REFUSED" or not x.get("reason","").startswith(
+                  "original Lean build/import failed with exit status: 124;"):
+              raise SystemExit("original Lean refused for a non-timeout reason: "+str(x))
+          PY
+            then
+              echo "ORIGINAL_LEAN_NON_TIMEOUT_REFUSAL round=$round" >&2
+              exit 1
+            fi
+            current="$(find "$root" -type f -name '*.olean' 2>/dev/null | wc -l || true)"
+            echo "ORIGINAL_LEAN_ROUND_PROGRESS round=$round before=$prior after=$current"
+            if (( current <= prior )); then
+              echo "ORIGINAL_LEAN_STALLED: no new .olean modules in bounded round" >&2
+              exit 1
+            fi
+            prior="$current"
+          done
+          if (( accepted != 1 )); then
+            echo "ORIGINAL_LEAN_BUDGET_EXHAUSTED: three progressing bounded rounds, no verified import" >&2
+            exit 1
+          fi
 
       # Save complete .olean dependencies even after a bounded refusal.
       # This is a compilation checkpoint, never a semantic success receipt.

@@ -50,7 +50,10 @@ jobs:
           cd rust/lean_eth_reference/tools/g2-closure
           export LEAN_PATH="$PWD"
           "$LEAN" -o G2Inventory.olean G2Inventory.lean
-          "$LEAN" Smoke.lean > "$RUNNER_TEMP/g2-inventory-smoke.jsonl"
+          if ! "$LEAN" Smoke.lean > "$RUNNER_TEMP/g2-inventory-smoke.jsonl"; then
+            cat "$RUNNER_TEMP/g2-inventory-smoke.jsonl" >&2
+            exit 2
+          fi
           jq -s -e '
             length == 3
             and all(.[]; .format == "eth-original-closure-inventory-v1"

@@ -42,7 +42,7 @@ run_cmd do
   for (family, expected) in expectedConstructors do
     let some (.inductInfo info) := env.find? family
       | throwError "Missing pinned IR inductive {family}"
-    unless info.ctors == expected do
+    unless info.ctors == expected.toList do
       throwError "Pinned IR ABI inventory mismatch for {family}: constructor order or membership changed"
     for constructor in info.ctors do
       let status := if conditionalConstructors.contains constructor then "conditional" else "refused"

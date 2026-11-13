@@ -24,6 +24,20 @@ def toolchain(lake_root: Path, expected: str) -> None:
     require(pin == expected, 'Lake toolchain differs from pinned source')
 
 
+def runtime_version(lake_root: Path, pinned: str, timeout: int) -> str:
+    try:
+        out = subprocess.run(['lake', 'env', 'lean', '--version'], cwd=lake_root,
+                             capture_output=True, text=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise Refusal(f'cannot verify actual Lean compiler version: {exc}') from exc
+    require(out.returncode == 0, 'actual Lean version command failed')
+    observed = out.stdout.strip()
+    expected = pinned.rsplit('v', 1)[-1]
+    require(bool(re.search(r'\bversion ' + re.escape(expected) + r'\b', observed)),
+            f'actual Lean version does not match pinned source: {observed}')
+    return observed
+
+
 def symbolic(args: argparse.Namespace, temp: Path, source: dict[str, str]) -> tuple[bytes, str]:
     require(len(args.root) == 1, 'symbolic path currently accepts exactly one root')
     require(args.producer is not None and args.producer.is_file(),
@@ -54,6 +68,7 @@ def run(args: argparse.Namespace) -> int:
     source = source_identity(args.source_repo, args.source_path,
                              args.source_revision, args.source_toolchain_path)
     toolchain(args.lake_root, source['lean_toolchain'])
+    actual_lean = runtime_version(args.lake_root, source['lean_toolchain'], args.timeout_seconds)
     # Generate and inspect entirely in a temporary location. Publish only after the
     # same contract accepts the exact artifact bytes and pinned Git source.
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -79,8 +94,10 @@ def run(args: argparse.Namespace) -> int:
         receipt = validate_contract(backend=args.backend, artifact=artifact,
                                     report=report, module=args.module,
                                     roots=args.root, source=source)
+        receipt['actual_lean_version'] = actual_lean
         if args.backend == 'residual-expr':
             receipt['producer_sha256'] = producer_hash
+            receipt['checks']['residual_actual_lean_version'] = 'launcher-observed'
         candidate = work / 'accepted-artifact'
         candidate.write_bytes(artifact)
         candidate_receipt = work / 'accepted-receipt'

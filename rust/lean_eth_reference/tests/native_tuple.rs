@@ -105,6 +105,9 @@ fn actual_enumerator_visits_every_assignment_and_pays_overflow() {
         .compiled(0, 0)
         .unwrap();
     assert_eq!(program.code().len(), callback.size().unwrap() + 22);
+    // Source command sites are relocated relative to the compiler's entry.
+    // In the original Lean layout the reserved physical halt label is zero.
+    let callback_entry = program.entry().checked_add(2).unwrap();
     for shape in [
         vec![],
         vec![0],
@@ -131,8 +134,8 @@ fn actual_enumerator_visits_every_assignment_and_pays_overflow() {
         let mut steps = 0;
         while state.pc.is_some() {
             assert!(steps < 10_000, "unexpected loop");
-            if state.pc == Some(2) {
-                // callback's first concrete site
+            if state.pc == Some(callback_entry) {
+                // callback's first concrete source site
                 observations.push(bits(&state, 0));
                 assert!(state.stacks[1].is_empty());
                 assert!(state.regs[2]);

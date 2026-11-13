@@ -101,8 +101,12 @@ end {fixture_module}
     certs.mkdir(exist_ok=True)
     gold_manifest={}
     accepted=[]
-    for short in ('lifted','linked','linkedInto',
-                  'liftedRoot','linkedRoot','linkedIntoRoot','repeatedRoot'):
+    supported=('lifted','linked','linkedInto',
+               'liftedRoot','linkedRoot','linkedIntoRoot','repeatedRoot')
+    selected=a.fixture_names or supported
+    if not selected or any(name not in supported for name in selected):
+        raise ValueError('unknown or empty original source fixture selection')
+    for short in selected:
         fid='linked_fixture_'+short.lower()
         record={'id':fid,'fqn':fixture_module+'.'+short,
                 'module':module,'git_blob':original['git_blob']}
@@ -213,6 +217,8 @@ def main():
     p.add_argument('--no-cargo',action='store_true')
     p.add_argument('--linking-fixtures',action='store_true')
     p.add_argument('--linking-fixtures-only',action='store_true')
+    p.add_argument('--fixture-names',nargs='+',default=None,
+                   help='source-derived compiler fixture names, defaults to all')
     a=p.parse_args()
     assert 5<=a.timeout_seconds<=1200 and 1<=a.limit<=6
     pin=ensure_pinned(a.upstream,a.lake_root)

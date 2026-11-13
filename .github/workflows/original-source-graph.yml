@@ -147,12 +147,17 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$GITHUB_HEAD_REF" == 'test/lean-linking-source-acceptance-20261111' || "$GITHUB_HEAD_REF" == 'feat/lean-structural-repeat-20261113' ]]; then
+            fixture_args=()
+            if [[ "$GITHUB_HEAD_REF" == 'feat/lean-structural-repeat-20261113' ]]; then
+              fixture_args=(--fixture-names repeatedRoot)
+            fi
             python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
               --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
               --golden-dir "$RUNNER_TEMP/source-tables" \
               --output-dir "$RUNNER_TEMP/source-graph" \
               --rust-crate rust/lean_eth_reference \
-              --limit 6 --timeout-seconds 240 --linking-fixtures --linking-fixtures-only
+              --limit 6 --timeout-seconds 240 --linking-fixtures --linking-fixtures-only \
+              "${fixture_args[@]}"
           else
             python3 rust/lean_eth_reference/tools/run_source_graph_batch.py \
               --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \

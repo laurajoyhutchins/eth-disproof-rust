@@ -41,6 +41,43 @@ alone is **not** Lean source attestation; use the separate signed/certified
 receipt workflow. Synthetic Rust-to-Rust parity tests are useful development
 evidence, but pinned original-Lean differential acceptance remains mandatory.
 
+## One-command native build from a kernel receipt
+
+For a graph and certificate emitted by the pinned original-Lean acceptance
+workflow, the Rust `original-source-build` command produces an isolated Cargo
+package and compiled executable:
+
+```sh
+cargo run --locked --offline --bin original-source-build -- \
+  /path/to/original.json \
+  /path/to/certificates/original.receipt.json \
+  /path/to/certificates/original.lean \
+  /path/to/compiled-out
+/path/to/compiled-out/target/debug/original_lean_aot lookup 0
+/path/to/compiled-out/target/debug/original_lean_aot run 101 100 1000
+```
+
+The command checks the pinned Lean 4.34.1/source commit, the completed kernel
+receipt status, exact graph SHA-256, exact certificate SHA-256, source identity,
+ABI and physical label count. It emits the same structural Rust as
+`original-source-codegen`, writes `src/main.rs`, a Cargo manifest with a local
+path dependency on the canonical Rust machine library, a pinned toolchain,
+Cargo.lock, graph and certificate inputs, and a content-hashed build receipt.
+Cargo must already have offline dependencies available. It executes an
+unlocked first build to produce the lockfile, then checks the locked build.
+
+An existing output directory is never overwritten. A failed validation or
+compilation removes its staging directory instead of publishing a partial
+successful output. **A receipt file is not an authenticated proof of a historical
+Lean check:** the user or CI must obtain it from a trusted, completed original
+Lean kernel run. The builder validates that all supplied artifacts agree with
+each other; anyone can forge mutually consistent files. The generated project
+also retains a local path dependency on the original crate, so it is not
+self-contained after moving away from the compiler checkout.
+
+The generated executable remains a *source-physical* BitProgram machine, not
+the complete ETH #SAT counting executable or primitive TM2 resource theorem.
+
 ## Scope and preservation contract
 
 The original source of truth is `openai/math@4eaee87548250b2682affda7d05d947c05554bae`

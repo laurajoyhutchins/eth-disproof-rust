@@ -1,6 +1,5 @@
 //! Lean frontend + Rust acceptance gate. Neither backend is an executable ETH proof.
-#[path = "../lean_codegen.rs"]
-mod contract;
+use lean_eth_reference::lean_codegen as contract;
 
 use contract::{Backend, Result, ensure, refuse};
 use serde_json::{Value, json};

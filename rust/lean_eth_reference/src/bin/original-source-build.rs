@@ -78,7 +78,7 @@ fn check_receipt(
     ) {
         return Err("receipt does not assert a completed original Lean kernel check".into());
     }
-    if receipt.lean_version != "4.34.1"
+    if !receipt.lean_version.starts_with("Lean (version 4.34.1,")
         || receipt.source_commit != SOURCE_COMMIT
         || !valid_sha256(&receipt.source_graph_sha256)
         || !valid_sha256(&receipt.certificate_sha256)

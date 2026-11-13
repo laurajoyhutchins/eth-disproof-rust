@@ -141,7 +141,7 @@ def elabNativeRustClosureCmd : CommandElab := fun stx => do
   | _ => throwUnsupportedSyntax
 
 /-- Generate one standalone Rust module with multiple named public functions. -/
-syntax (name := nativeRustBundleCmd) "#native_rust_bundle [" ident,* "] as [" str,* "] to " str : command
+syntax (name := nativeRustBundleCmd) "#native_rust_bundle" "[" ident,* "]" "as" "[" str,* "]" "to" str : command
 
 @[command_elab nativeRustBundleCmd]
 def elabNativeRustBundleCmd : CommandElab := fun stx => do

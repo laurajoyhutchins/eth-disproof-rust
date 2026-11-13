@@ -94,7 +94,10 @@ impl Fixture {
             !result.status.success(),
             "invalid or mismatched receipt accepted"
         );
-        assert!(!self.output.exists(), "incomplete generated binary published");
+        assert!(
+            !self.output.exists(),
+            "incomplete generated binary published"
+        );
         let entries = fs::read_dir(&self.root)
             .unwrap()
             .map(|p| p.unwrap().file_name().to_string_lossy().into_owned())
@@ -124,23 +127,26 @@ fn build_produces_native_executable_and_source_provenance() {
     let exe = fixture.output.join("target/debug/original_lean_aot");
     assert!(exe.is_file(), "compiled native Rust executable missing");
     assert!(
-        String::from_utf8(built.stdout).unwrap().trim().ends_with("original_lean_aot")
+        String::from_utf8(built.stdout)
+            .unwrap()
+            .trim()
+            .ends_with("original_lean_aot")
     );
     let source = fs::read_to_string(fixture.output.join("src/main.rs")).unwrap();
     assert!(!source.contains("serde_json"));
     assert!(source.contains("fn block_"));
     assert!(source.contains("SOURCE_GRAPH_SHA256"));
-    let report: Value = serde_json::from_slice(
-        &fs::read(fixture.output.join("build.receipt.json")).unwrap(),
-    )
-    .unwrap();
+    let report: Value =
+        serde_json::from_slice(&fs::read(fixture.output.join("build.receipt.json")).unwrap())
+            .unwrap();
     assert_eq!(report["status"], "GENERATED_AND_NATIVE_BUILT");
     assert_eq!(report["generated_rust_sha256"], sha256(source.as_bytes()));
     assert_eq!(report["binary_sha256"], sha256(&fs::read(&exe).unwrap()));
     assert_eq!(report["physical_labels"], 4);
-    assert_eq!(report["lean_certificate_sha256"], sha256(
-        &fs::read(&fixture.certificate).unwrap()
-    ));
+    assert_eq!(
+        report["lean_certificate_sha256"],
+        sha256(&fs::read(&fixture.certificate).unwrap())
+    );
     for (pc, expected) in [
         (0, "Halt"),
         (1, "Not { dst: 0, src: 0, next: 2 }"),
@@ -164,7 +170,10 @@ fn build_produces_native_executable_and_source_provenance() {
         "physical halt step was lost"
     );
     let second = fixture.cli();
-    assert!(!second.status.success(), "builder overwrote existing output");
+    assert!(
+        !second.status.success(),
+        "builder overwrote existing output"
+    );
 }
 
 #[test]

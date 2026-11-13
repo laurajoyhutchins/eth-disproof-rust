@@ -103,7 +103,10 @@ fn command_text(mut command: Command) -> Result<String, String> {
         return Err(format!(
             "command exited {}: {}",
             out.status,
-            String::from_utf8_lossy(&out.stderr).chars().take(1500).collect::<String>()
+            String::from_utf8_lossy(&out.stderr)
+                .chars()
+                .take(1500)
+                .collect::<String>()
         ));
     }
     Ok(String::from_utf8(out.stdout)
@@ -185,7 +188,10 @@ fn check_pins(opts: &Options, leaf: &str) -> Result<(String, String), String> {
     {
         return Err("original OpenAI source is modified".into());
     }
-    let original_oai = original.join("lean/OAI").canonicalize().map_err(|e| e.to_string())?;
+    let original_oai = original
+        .join("lean/OAI")
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
     let linked_oai = lake.join("OAI").canonicalize().map_err(|e| e.to_string())?;
     if original_oai != linked_oai {
         return Err("Lake environment OAI path is not the pinned original checkout".into());
@@ -234,12 +240,10 @@ fn relay(
     })
 }
 
-fn execute_logged(
-    mut cmd: Command,
-    log_path: &Path,
-    olean_root: &Path,
-) -> Result<(), String> {
-    let logfile = Arc::new(Mutex::new(File::create(log_path).map_err(|e| e.to_string())?));
+fn execute_logged(mut cmd: Command, log_path: &Path, olean_root: &Path) -> Result<(), String> {
+    let logfile = Arc::new(Mutex::new(
+        File::create(log_path).map_err(|e| e.to_string())?,
+    ));
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
     let stdout = relay(
@@ -269,8 +273,12 @@ fn execute_logged(
             last_progress = elapsed;
         }
     };
-    stdout.join().map_err(|_| "stdout relay thread panicked")??;
-    stderr.join().map_err(|_| "stderr relay thread panicked")??;
+    stdout
+        .join()
+        .map_err(|_| "stdout relay thread panicked")??;
+    stderr
+        .join()
+        .map_err(|_| "stderr relay thread panicked")??;
     if !status.success() {
         return Err(format!(
             "original Lean build/import failed with {status}; see {}",
@@ -301,7 +309,12 @@ fn execute(opts: &Options) -> Result<Value, String> {
         .args(["--signal=TERM", "--kill-after=20s"])
         .arg(format!("{}s", opts.timeout_secs))
         .arg("lake")
-        .args(["-K", &format!("maxJobs={}", opts.max_jobs), "build", &module]);
+        .args([
+            "-K",
+            &format!("maxJobs={}", opts.max_jobs),
+            "build",
+            &module,
+        ]);
     let start = Instant::now();
     execute_logged(command, &log_path, &output_root)?;
     let artifact = output_root.join(format!("{}.olean", module.replace('.', "/")));
@@ -318,7 +331,14 @@ fn execute(opts: &Options) -> Result<Value, String> {
         .current_dir(&lake)
         .env_remove("LEAN_PATH")
         .env_remove("LEAN_SRC_PATH")
-        .args(["--signal=TERM", "--kill-after=10s", "120s", "lake", "env", "lean"])
+        .args([
+            "--signal=TERM",
+            "--kill-after=10s",
+            "120s",
+            "lake",
+            "env",
+            "lean",
+        ])
         .arg(&smoke);
     execute_logged(
         import,
@@ -415,15 +435,39 @@ mod tests {
     #[test]
     fn refuses_unknown_stage_and_invalid_limits() {
         let valid = [
-            "--upstream", "/tmp/source",
-            "--lake-root", "/tmp/lake",
-            "--output-dir", "/tmp/out",
-            "--stage", "signature",
+            "--upstream",
+            "/tmp/source",
+            "--lake-root",
+            "/tmp/lake",
+            "--output-dir",
+            "/tmp/out",
+            "--stage",
+            "signature",
         ];
         assert!(options(valid.map(str::to_owned)).unwrap().is_some());
-        let invalid = ["--stage", "faked", "--upstream", "/tmp/a", "--lake-root", "/tmp/b", "--output-dir", "/tmp/c"];
+        let invalid = [
+            "--stage",
+            "faked",
+            "--upstream",
+            "/tmp/a",
+            "--lake-root",
+            "/tmp/b",
+            "--output-dir",
+            "/tmp/c",
+        ];
         assert!(options(invalid.map(str::to_owned)).is_err());
-        let limited = ["--timeout-seconds", "9", "--stage", "query", "--upstream", "/tmp/a", "--lake-root", "/tmp/b", "--output-dir", "/tmp/c"];
+        let limited = [
+            "--timeout-seconds",
+            "9",
+            "--stage",
+            "query",
+            "--upstream",
+            "/tmp/a",
+            "--lake-root",
+            "/tmp/b",
+            "--output-dir",
+            "/tmp/c",
+        ];
         assert!(options(limited.map(str::to_owned)).is_err());
     }
 }

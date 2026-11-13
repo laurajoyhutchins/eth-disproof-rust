@@ -31,8 +31,8 @@ value is a Lean tagged small `Nat` (large literals refuse).
   the native Rust backend via the pinned C ABI accessor shim.
 - Variable types, primitive namespaces and result types checked before
   emission; duplicate or unknown variables refuse.
-- Unsupported branches, runtime types, bad output identifiers, and wrong
-  primitive shapes refuse; the public Lean command must not modify a previous
+- Unsupported branches, runtime types, bad output identifiers,
+  sorry-dependent definitions, and wrong primitive shapes refuse; the public Lean command must not modify a previous
   output on refusal.
 - `scripts/check.sh` compiles 15 actual Lean declarations, generates Rust,
   compiles and executes the result, and checks **1,600 independent assertions**

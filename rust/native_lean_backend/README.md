@@ -33,8 +33,8 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 Lean's interpreter; invokes a real Lean compilation for **15 declarations**;
 writes Rust files through `#native_rust`; compiles and runs the standalone Rust
 program with `rustc`; runs **1,600 assertions** against independently evaluated
-Lean results; verifies fail-closed command behavior without modifying existing
-outputs; and runs `cargo test`, formatting, and strict Clippy. `lake build`
+Lean results; verifies fail-closed command behavior (including sorry-dependent definitions)
+without modifying existing outputs; and runs `cargo test`, formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
 GitHub workflow runs these gates only for changes to this backend.
 

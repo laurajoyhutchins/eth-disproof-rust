@@ -12,6 +12,8 @@ def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   Lean.Compiler.compile #[root]
   let some decl ← Lean.IR.findDecl root
     | throwError "No compiler IR for {root} (possibly noncomputable)"
+  if let some blame := decl.getInfo.sorryDep? then
+    throwError "Rust native backend refused {root}: dependency on sorry axiom {blame}"
   let report := emit decl rustName
   if report.startsWith "OK\n" then
     return (report.drop 3).toString

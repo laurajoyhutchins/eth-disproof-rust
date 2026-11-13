@@ -27,6 +27,20 @@ if [[ "$(cat examples/rejected.rs)" != "preserve-existing-artifact" ]]; then
   echo "failed compilation modified preexisting Rust output" >&2; exit 1
 fi
 rm -f examples/rejected.rs examples/rejected.log
+# Even an elaborated executable declaration must refuse if its source
+# depends on sorryAx. Do not publish code for untrusted proof holes.
+printf 'preserve-sorry-output\n' > examples/rejected_sorry.rs
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalSorry.lean > examples/rejected_sorry.log 2>&1; then
+  echo "sorry-dependent declaration was accepted" >&2; exit 1
+fi
+if ! grep -q "dependency on sorry axiom" examples/rejected_sorry.log; then
+  cat examples/rejected_sorry.log >&2
+  echo "missing sorry-dependency refusal" >&2; exit 1
+fi
+if [[ "$(cat examples/rejected_sorry.rs)" != "preserve-sorry-output" ]]; then
+  echo "sorry-dependent compilation changed existing output" >&2; exit 1
+fi
+rm -f examples/rejected_sorry.rs examples/rejected_sorry.log
 cat > examples/run.rs <<'RUST'
 include!("generated_add_one.rs");
 include!("generated_times_three.rs");

@@ -1,4 +1,6 @@
-import Lean
+import Lean.Compiler.Main
+import Lean.Compiler.IR.CompilerM
+import Lean.Elab.Command
 
 namespace NativeRust
 

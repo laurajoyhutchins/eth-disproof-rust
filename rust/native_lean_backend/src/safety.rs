@@ -110,7 +110,10 @@ pub(crate) fn publish(path: &str, source: &str) -> Result<(), String> {
         ));
     }
     let dst = validate_destination(path)?;
-    let parent = dst.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let parent = dst
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
     let filename = dst.file_name().unwrap().to_string_lossy();
     let mut temporary = None;
     for _ in 0..32 {
@@ -119,7 +122,11 @@ pub(crate) fn publish(path: &str, source: &str) -> Result<(), String> {
             ".{filename}.lean-native-{}-{n}.tmp",
             std::process::id()
         ));
-        match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
             Ok(file) => {
                 temporary = Some((candidate, file));
                 break;
@@ -175,7 +182,11 @@ mod tests {
         assert!(publish("../escape.rs", "x").is_err());
         assert!(publish("anything.txt", "x").is_err());
         fs::write(&path, "existing").unwrap();
-        assert!(publish(path.to_str().unwrap(), &"x".repeat(super::MAX_OUTPUT_BYTES + 1)).is_err());
+        assert!(publish(
+            path.to_str().unwrap(),
+            &"x".repeat(super::MAX_OUTPUT_BYTES + 1)
+        )
+        .is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), "existing");
         publish(path.to_str().unwrap(), "replacement").unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), "replacement");

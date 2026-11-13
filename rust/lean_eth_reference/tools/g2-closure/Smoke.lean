@@ -12,3 +12,17 @@ end InventorySmoke
 #eth_closure_inventory InventorySmoke.originalRoot
 #eth_closure_inventory InventorySmoke.opaqueRoot
 #eth_closure_inventory InventorySmoke.ordinary
+
+-- The inventory is deterministic and deliberately reports bounded truncation.
+-- Even a truncated observation must never become an ETH-ready certificate.
+run_cmd do
+  let first ← liftCoreM <| G2Inventory.inventory ``InventorySmoke.originalRoot
+  let second ← liftCoreM <| G2Inventory.inventory ``InventorySmoke.originalRoot
+  unless first.compress == second.compress do
+    throwError "G2 closure inventory is nondeterministic"
+  let bounded ← liftCoreM <| G2Inventory.inventory ``InventorySmoke.originalRoot 1
+  let json := bounded.compress
+  unless (json.splitOn "bounded-incomplete").length > 1 do
+    throwError "bounded source inventory did not expose truncation"
+  unless (json.splitOn "\\"eth_ready\\":false").length > 1 do
+    throwError "a truncated closure was incorrectly marked ETH ready"

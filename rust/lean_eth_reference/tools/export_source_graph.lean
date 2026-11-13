@@ -206,9 +206,10 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
         ("left", ← programGraph a[a.size - 2]! maxLabels (fuel - 1)),
         ("right", ← programGraph a[a.size - 1]! maxLabels (fuel - 1))
       ]
-    -- Only unfold a closed named program when its definition visibly
-    -- contains a linking constructor. Other named programs remain bounded
-    -- source tables, retaining the previous exact behavior.
+    -- Preserve closed chains of named program aliases without forcing the
+    -- physical instruction table. A chain may hide a link or a large compiled
+    -- command; peel only zero-argument source definitions, still fuel-bounded.
+    -- Ordinary concrete program bodies keep the bounded finite-table path.
     if a.isEmpty then
       match (← getConstInfo n) with
       | .defnInfo v =>
@@ -218,7 +219,8 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
              head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.linkInto ||
              head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link ||
              (head == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled &&
-              labels > 4096) then
+              labels > 4096) ||
+             (v.value.getAppArgs.isEmpty && head != n) then
             return (← programGraph v.value maxLabels (fuel - 1))
         | _ => pure ()
       | _ => pure ()

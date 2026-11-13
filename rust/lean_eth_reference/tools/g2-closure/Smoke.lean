@@ -24,5 +24,6 @@ run_cmd do
   let json := bounded.compress
   unless (json.splitOn "bounded-incomplete").length > 1 do
     throwError "bounded source inventory did not expose truncation"
-  unless (json.splitOn "\\"eth_ready\\":false").length > 1 do
-    throwError "a truncated closure was incorrectly marked ETH ready"
+  match bounded.getObjValAs? Bool "eth_ready" with
+  | .ok false => pure ()
+  | _ => throwError "a truncated closure was incorrectly marked ETH ready"

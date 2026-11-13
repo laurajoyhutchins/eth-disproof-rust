@@ -46,6 +46,7 @@ jobs:
           test "$(cat instrumentation/lean-env/lean-toolchain)" = 'leanprover/lean4:v4.34.1'
           LEAN="$(cd instrumentation/lean-env && elan which lean)"
           "$LEAN" --version
+          bash -n rust/lean_eth_reference/tools/g2-closure/run-original.sh
           cd rust/lean_eth_reference/tools/g2-closure
           export LEAN_PATH="$PWD"
           "$LEAN" -o G2Inventory.olean G2Inventory.lean

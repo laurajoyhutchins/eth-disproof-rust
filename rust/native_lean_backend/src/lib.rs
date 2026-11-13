@@ -10,6 +10,9 @@ use std::time::{Duration, Instant};
 
 mod safety;
 
+// Generated at build time from the pinned constructor classification.
+include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));
+
 #[repr(C)]
 pub struct LeanObject {
     _opaque: [u8; 0],
@@ -60,6 +63,16 @@ impl Reader {
             return Err("expected inductive constructor".into());
         }
         Ok(lr_tag(x) as usize)
+    }
+    unsafe fn checked_tag(x: Obj, family: &str) -> Result<usize, String> {
+        let tag = Self::tag(x)?;
+        if SUPPORTED_IR_TAGS.contains(&(family, tag)) {
+            Ok(tag)
+        } else {
+            Err(format!(
+                "{family} constructor tag {tag} explicitly unsupported by pinned IR coverage contract"
+            ))
+        }
     }
     unsafe fn field(x: Obj, index: usize) -> Result<Obj, String> {
         if lr_is_ctor(x) == 0 || index >= lr_field_count(x) {
@@ -140,7 +153,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         expected: &str,
     ) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "Arg")? {
             0 => {
                 let id = Self::var(Self::field(x, 0)?)?;
                 let found = env
@@ -157,7 +170,7 @@ impl Reader {
     }
     unsafe fn ty(x: Obj) -> Result<&'static str, String> {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "IRType")? {
             1 => Ok("u8"),
             2 => Ok("u16"),
             3 => Ok("u32"),
@@ -169,7 +182,7 @@ impl Reader {
         }
     }
     unsafe fn lit(x: Obj, ty: &str) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "LitVal")? {
             0 => {
                 let n = Self::nat(Self::field(x, 0)?)?;
                 let max = match ty {
@@ -194,7 +207,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "Expr")? {
             6 => {
                 // fap, preserving the exact known primitive semantics.
                 let name = Self::name(Self::field(x, 0)?, 0)?;
@@ -279,7 +292,7 @@ impl Reader {
         let mut seen = [false; 2];
         writeln!(code, "    match x_{scrutinee} {{").unwrap();
         for alt in alts {
-            if Self::tag(alt)? != 0 {
+            if Self::checked_tag(alt, "Alt")? != 0 {
                 return Err("Bool default case is not yet supported".into());
             }
             let info = Self::field(alt, 0)?;
@@ -341,7 +354,7 @@ impl Reader {
             if context.started.elapsed() > Duration::from_secs(10) {
                 return Err("IR code generation time budget exceeded".into());
             }
-            match Self::tag(x)? {
+            match Self::checked_tag(x, "FnBody")? {
                 0 => {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
@@ -386,7 +399,7 @@ impl Reader {
         rust_name: &str,
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
-        if Self::tag(decl)? != 0 {
+        if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern declaration without executable body".into());
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
@@ -452,7 +465,7 @@ fn internal_name(lean_name: &str) -> String {
 
 impl Reader {
     unsafe fn signature(decl: Obj) -> Result<Signature, String> {
-        if Self::tag(decl)? != 0 {
+        if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
         let mut params = Vec::new();
@@ -480,17 +493,17 @@ impl Reader {
             if started.elapsed() > Duration::from_secs(10) {
                 return Err("dependency IR traversal time budget exceeded".into());
             }
-            match Self::tag(body)? {
+            match Self::checked_tag(body, "FnBody")? {
                 0 => {
                     let expr = Self::field(body, 2)?;
-                    if Self::tag(expr)? == 6 {
+                    if Self::checked_tag(expr, "Expr")? == 6 {
                         calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
                     }
                     pending.push(Self::field(body, 3)?);
                 }
                 9 => {
                     for alt in Self::array(Self::field(body, 3)?)? {
-                        match Self::tag(alt)? {
+                        match Self::checked_tag(alt, "Alt")? {
                             0 => pending.push(Self::field(alt, 1)?),
                             1 => pending.push(Self::field(alt, 0)?),
                             t => return Err(format!("unknown alternative constructor {t}")),
@@ -768,6 +781,20 @@ mod tests {
         assert_ne!(internal_name("X.A"), internal_name("X.a"));
         assert!(internal_name("X.a").starts_with("lean_"));
     }
+    #[test]
+    fn source_versioned_ir_constructor_whitelist_is_enforced() {
+        use super::SUPPORTED_IR_TAGS;
+        assert!(SUPPORTED_IR_TAGS.contains(&("Decl", 0)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("Decl", 1)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 4)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 6)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("Expr", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 14);
+    }
+
     #[test]
     fn registry_is_complete_and_unambiguous() {
         use super::{primitive_spec, PRIMITIVE_REGISTRY};

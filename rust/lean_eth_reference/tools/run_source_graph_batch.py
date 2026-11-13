@@ -89,6 +89,15 @@ noncomputable def repeatedRoot :=
     (Nat.rec (StructuredCalls.Cmd.base .skip)
       (fun _ acc => StructuredCalls.Cmd.seq acc (StructuredCalls.Cmd.call {fqn}))
       4) 0 0
+-- The source recursor is no longer at the root. It must be reduced through
+-- named Lean definitions without expanding four physical copies.
+noncomputable def namedRepeatCommand :=
+  Nat.rec (StructuredCalls.Cmd.base .skip)
+    (fun _ acc => StructuredCalls.Cmd.seq acc (StructuredCalls.Cmd.call {fqn}))
+    4
+noncomputable def namedRepeatAlias := namedRepeatCommand
+noncomputable def namedRepeatRoot :=
+  StructuredCalls.compiled namedRepeatAlias 0 0
 end {fixture_module}
 """
     imports=(f'import {module}\n'
@@ -103,7 +112,7 @@ end {fixture_module}
     gold_manifest={}
     accepted=[]
     supported=('lifted','linked','linkedInto',
-               'liftedRoot','linkedRoot','linkedIntoRoot','repeatedRoot')
+               'liftedRoot','linkedRoot','linkedIntoRoot','repeatedRoot','namedRepeatRoot')
     selected=a.fixture_names or supported
     if not selected or any(name not in supported for name in selected):
         raise ValueError('unknown or empty original source fixture selection')
@@ -140,7 +149,7 @@ end {fixture_module}
             expected={'lifted':'lift','linked':'link','linkedInto':'link_into',
                       'liftedRoot':'lift','linkedRoot':'link',
                       'linkedIntoRoot':'link_into'}.get(short)
-            if short=='repeatedRoot':
+            if short in ('repeatedRoot','namedRepeatRoot'):
                 command=graph.get('command',{})
                 if (graph.get('kind')!='original-structured-source-v1' or
                         command.get('kind')!='repeat' or command.get('count')!=4 or

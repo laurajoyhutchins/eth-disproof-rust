@@ -38,6 +38,7 @@ def ir_report(code: bytes) -> bytes:
         "format": "lean-compiler-ir-backend-probe-v1", "status": "generated-unverified",
         "module": "Demo", "roots": ["Demo.double"],
         "lean_toolchain": "leanprover/lean4:v4.35.0",
+        "lean_version": "Lean (version 4.35.0, test)",
         "semantic_verification": "not-established",
         "physical_bitprogram_verification": "not-established",
         "generated_sha256": hashlib.sha256(code).hexdigest(),
@@ -56,7 +57,8 @@ class ContractTests(unittest.TestCase):
                      ("config", "user.name", "Test")):
             subprocess.run(["git", "-C", str(self.repo), *args], check=True)
         (self.repo / "Demo.lean").write_text("namespace Demo\ndef double (n : Nat) := n+n\nend Demo\n")
-        subprocess.run(["git", "-C", str(self.repo), "add", "Demo.lean"], check=True)
+        (self.repo / "lean-toolchain").write_text("leanprover/lean4:v4.35.0\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "Demo.lean", "lean-toolchain"], check=True)
         subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "pin source"], check=True)
         self.rev = subprocess.check_output(["git", "-C", str(self.repo), "rev-parse", "HEAD"], text=True).strip()
         self.source = source_identity(self.repo, "Demo.lean", self.rev)
@@ -82,7 +84,7 @@ class ContractTests(unittest.TestCase):
     def test_ir_hash_skips_and_identity_fail_closed(self):
         code = b"fn double() {}\n"
         receipt = json.loads(ir_report(code))
-        for change in ("sha", "bytes", "skip", "roots", "status", "semantic"):
+        for change in ("sha", "bytes", "skip", "roots", "status", "semantic", "toolchain"):
             with self.subTest(change=change):
                 d = json.loads(json.dumps(receipt))
                 if change == "sha": d["generated_sha256"] = "0" * 64
@@ -91,6 +93,7 @@ class ContractTests(unittest.TestCase):
                 if change == "roots": d["roots"] = ["Wrong.entry"]
                 if change == "status": d["status"] = "verified-executable"
                 if change == "semantic": d["semantic_verification"] = "verified"
+                if change == "toolchain": d["lean_toolchain"] = "leanprover/lean4:v4.34.1"
                 with self.assertRaises(Refusal):
                     self.checked("compiler-ir", code, json.dumps(d).encode())
 
@@ -119,6 +122,11 @@ class ContractTests(unittest.TestCase):
             source_identity(self.repo, "Demo.lean", self.rev)
         with self.assertRaises(Refusal):
             source_identity(self.repo, "Demo.lean", "f" * 40)
+
+    def test_mutated_source_toolchain_refuses(self):
+        (self.repo / "lean-toolchain").write_text("leanprover/lean4:v4.34.1\n")
+        with self.assertRaisesRegex(Refusal, "not pinned"):
+            source_identity(self.repo, "Demo.lean", self.rev)
 
     def test_no_stale_contract_receipt_on_refusal(self):
         artifact = self.repo / "output.json"

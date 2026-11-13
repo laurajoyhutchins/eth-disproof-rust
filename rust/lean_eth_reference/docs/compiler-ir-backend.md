@@ -25,34 +25,41 @@ refused. They cannot authorize a host-side #SAT implementation.
 
 ## Running the isolated experiment
 
-Install Lean 4.35.0, lake and leanfran 0.6.0, generator version 4.
+The two-path runner is now the native Rust `eth-compiler` binary. It uses the
+already-locked `serde`, `serde_json`, and `sha2` dependencies and standard
+Rust subprocess/filesystem APIs. It does not require Python.
 
-~~~sh
-cd rust/lean_eth_reference/tools/lean-ir-smoke
-lake build
-cd ../../../..
-python3 rust/lean_eth_reference/tools/run_lean_ir_backend.py \
-  --lake-root rust/lean_eth_reference/tools/lean-ir-smoke \
+Install Lean 4.35.0, lake, and leanfran 0.6.0 (generator version 4), then
+use an actual Git checkout containing the pinned Lean module and toolchain:
+
+```sh
+cargo run --locked --bin eth-compiler -- compile \
+  --backend compiler-ir \
+  --source-repo /path/to/lean-project \
+  --source-revision "$(git -C /path/to/lean-project rev-parse HEAD)" \
+  --source-path LeanIRSmoke.lean \
+  --lake-root /path/to/lean-project \
   --module LeanIRSmoke --root LeanIRSmoke.double \
-  --output-rs /tmp/lean-ir-smoke-generated.rs \
-  --report /tmp/lean-ir-smoke-report.json
-python3 -m unittest discover -s rust/lean_eth_reference/tools \
-  -p test_lean_ir_backend.py -v
-~~~
+  --output /tmp/lean-ir-smoke-generated.rs \
+  --receipt /tmp/lean-ir-smoke-receipt.json
+cargo test --locked --bin eth-compiler
+```
 
-The independent local test suite exercises a *mock* backend and is not a
-real Lean compilation. The real smoke experiment above requires a separate
-Lean/leanfran installation, which must pass before claiming Rust generation
-from genuine Lean compiler IR.
+The Git source checkout must contain a committed `lean-toolchain`. The
+compiler-IR path refuses a Lean 4.34.1 checkout because the currently pinned
+leanfran version requires 4.35.0; it does not upgrade the original ETH source.
 
-On success the report status is **generated-unverified** with toolchain
-identity, generator version, selected roots, backend coverage summary,
-generated source SHA-256 and explicit missing semantic/physical receipts.
-Any omitted requested root, backend skip, invalid summary, version mismatch
-or failed command yields **refused**, never partial successful output.
+The Rust integration tests exercise refusal and schema validation; they do
+**not** prove real leanfran compilation. The real smoke test still requires
+compatible installed Lean/leanfran binaries and generated code compilation.
 
-Generated Rust requires the leanfran runtime and is not yet linked to
-this ETH crate.
+A successful receipt has status **generated-unverified**, source and toolchain
+identity, generator version, declaration roots, backend coverage, generated
+SHA-256 and explicit missing semantic and physical proofs. Skipped declarations
+or mismatched versions refuse rather than producing an accepted receipt.
+
+Generated Rust requires the leanfran runtime and is not yet linked to the
+ETH crate.
 
 ## Acceptance path
 

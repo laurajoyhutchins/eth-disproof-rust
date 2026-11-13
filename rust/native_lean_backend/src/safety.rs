@@ -36,7 +36,9 @@ pub(crate) fn refusal(default_declaration: &str, detail: &str) -> String {
         .strip_prefix("declaration=")
         .and_then(|s| s.split_once("; "))
         .unwrap_or((default_declaration, detail));
-    let construct = if reason.contains("FnBody constructor") || reason.contains("IR body constructor") {
+    let construct = if reason.contains("FnBody constructor")
+        || reason.contains("IR body constructor")
+    {
         "FnBody"
     } else if reason.contains("Expr constructor") || reason.contains("IR expression constructor") {
         "Expr"
@@ -44,7 +46,10 @@ pub(crate) fn refusal(default_declaration: &str, detail: &str) -> String {
         "IRType"
     } else if reason.contains("Arg constructor") {
         "Arg"
-    } else if reason.contains("Alt constructor") || reason.contains("alternative") || reason.contains("Bool case") {
+    } else if reason.contains("Alt constructor")
+        || reason.contains("alternative")
+        || reason.contains("Bool case")
+    {
         "Alt"
     } else if reason.contains("LitVal constructor") {
         "LitVal"

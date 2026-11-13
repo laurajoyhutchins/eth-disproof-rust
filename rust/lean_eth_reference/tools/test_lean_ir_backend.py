@@ -33,7 +33,7 @@ elif args[:4] == ['env','leanfran','module','generate']:
     module = args[args.index('--module-name')+1]
     roots = args[args.index('--roots')+1:args.index('--output-file')]
     if mode != 'empty-source':
-        pathlib.Path(args[args.index('--output-file')+1]).write_text('pub fn smoke() {}\n')
+        pathlib.Path(args[args.index('--output-file')+1]).write_text('pub fn smoke() {}\\n')
     summary = {'module': module, 'functions': 2, 'externs': 0,
                'skipped': [{'name': roots[0], 'reason': 'no compiler IR'}] if mode == 'skip' else [],
                'public': [] if mode == 'missing' else

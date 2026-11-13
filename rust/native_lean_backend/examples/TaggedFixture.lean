@@ -5,6 +5,7 @@ namespace TaggedFixture
     | red
     | amber
     | green
+    deriving Inhabited
 
   def rotate : Light → Light
     | .red => .amber
@@ -35,9 +36,9 @@ run_cmd do
   for i in [:128] do
     let value := values[i % values.size]!
     let n := TaggedFixture.index value
-    text := text ++ s!"assert_eq!(tag_rotate({n}usize),{TaggedFixture.index (TaggedFixture.rotate value)}usize);\n"
-    text := text ++ s!"assert_eq!(tag_score({n}usize),{(TaggedFixture.score value).toNat}u64);\n"
-    text := text ++ s!"assert_eq!(tag_identity({n}usize),{TaggedFixture.index (TaggedFixture.identity value)}usize);\n"
+    text := text ++ s!"assert_eq!(tag_rotate({n}u8),{TaggedFixture.index (TaggedFixture.rotate value)}u8);\n"
+    text := text ++ s!"assert_eq!(tag_score({n}u8),{(TaggedFixture.score value).toNat}u64);\n"
+    text := text ++ s!"assert_eq!(tag_identity({n}u8),{TaggedFixture.index (TaggedFixture.identity value)}u8);\n"
   text := text ++ "}\n"
   liftIO <| IO.FS.writeFile "examples/generated_tagged_differential.rs" text
   logInfo "Generated 384 independently evaluated nullary enum assertions"

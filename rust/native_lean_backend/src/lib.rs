@@ -199,8 +199,8 @@ impl Reader {
             0 => {
                 // ctor(info, fields). Only nullary scalar constructors are
                 // representable without a Lean heap. No field-packing shortcut.
-                if var_ty != "usize" {
-                    return Err("heap-backed or non-tagged constructor is unsupported".into());
+                if !matches!(var_ty, "u8" | "usize") {
+                    return Err("heap-backed or non-scalar constructor is unsupported".into());
                 }
                 let info = Self::field(x, 0)?;
                 let fields = Self::array(Self::field(x, 1)?)?;
@@ -217,7 +217,7 @@ impl Reader {
                 if index > 255 {
                     return Err("constructor tag exceeds nullary enum bound".into());
                 }
-                Ok(format!("{index}usize"))
+                Ok(format!("{index}{var_ty}"))
             }
             6 => {
                 // fap, preserving the exact known primitive semantics.
@@ -353,9 +353,9 @@ impl Reader {
         Ok(())
     }
 
-    // Data-free inductives use Lean's tagged scalar representation.
-    // Deliberately reject heap-backed inductives and every unknown constructor.
-    unsafe fn tagged_case(
+    // Data-free inductives may use UInt8 or tagged scalar storage.
+    // Constructor identity, not a guessed source datatype, directs patterns.
+    unsafe fn scalar_enum_case(
         x: Obj,
         code: &mut String,
         depth: usize,
@@ -364,19 +364,22 @@ impl Reader {
         ret_ty: &str,
         ctx: LoweringContext<'_>,
     ) -> Result<(), String> {
-        if Self::tag(Self::field(x, 2)?)? != 12 {
-            return Err("non-tagged case is unsupported".into());
-        }
-        let type_name = Self::name(Self::field(x, 0)?, 0)?;
+        let repr = match Self::tag(Self::field(x, 2)?)? {
+            1 => "u8",
+            12 => "usize",
+            _ => return Err("non-scalar inductive case is unsupported".into()),
+        };
+        let _storage_type = Self::name(Self::field(x, 0)?, 0)?;
         let scrutinee = Self::var(Self::field(x, 1)?)?;
-        if env.get(&scrutinee) != Some(&"usize") {
-            return Err("tagged case scrutinee is not a scalar tag".into());
+        if env.get(&scrutinee) != Some(&repr) {
+            return Err("inductive scrutinee storage type mismatch".into());
         }
         let alts = Self::array(Self::field(x, 3)?)?;
         if alts.is_empty() || alts.len() > 256 {
             return Err("tagged case has unsupported number of alternatives".into());
         }
         let mut seen = BTreeSet::new();
+        let mut constructor_parent: Option<String> = None;
         let mut default = None;
         writeln!(code, "    match x_{scrutinee} {{").unwrap();
         for alt in alts {
@@ -384,11 +387,16 @@ impl Reader {
                 0 => {
                     let info = Self::field(alt, 0)?;
                     let name = Self::name(Self::field(info, 0)?, 0)?;
-                    let prefix = format!("{type_name}.");
-                    if !name.starts_with(&prefix) || name.len() == prefix.len() {
-                        return Err(format!(
-                            "constructor {name} does not belong to tagged type {type_name}"
-                        ));
+                    let parent = name.rsplit_once('.').map(|(p, _)| p)
+                        .ok_or_else(|| format!("unqualified inductive constructor {name}"))?;
+                    if let Some(prior) = &constructor_parent {
+                        if prior != parent {
+                            return Err(format!(
+                                "mixed inductive constructor families: {prior} and {parent}"
+                            ));
+                        }
+                    } else {
+                        constructor_parent = Some(parent.to_owned());
                     }
                     let index = Self::nat(Self::field(info, 1)?)?;
                     if index > 255 || !seen.insert(index) {
@@ -414,6 +422,9 @@ impl Reader {
                 }
                 t => return Err(format!("unknown tagged alternative constructor {t}")),
             }
+        }
+        if constructor_parent.is_none() {
+            return Err("scalar inductive case lacks constructor identity".into());
         }
         if let Some(body) = default {
             writeln!(code, "        _ => {{").unwrap();
@@ -450,8 +461,10 @@ impl Reader {
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
                     let expr = Self::field(x, 2)?;
-                    if Self::tag(expr)? == 0 && Self::tag(Self::field(x, 1)?)? != 12 {
-                        return Err("nullary constructor must have IRType.tagged".into());
+                    if Self::tag(expr)? == 0
+                        && !matches!(Self::tag(Self::field(x, 1)?)?, 1 | 12)
+                    {
+                        return Err("nullary constructor needs UInt8 or tagged scalar IRType".into());
                     }
                     let value = Self::expr(expr, ty, env, ctx.functions)?;
                     if env.insert(name, ty).is_some() {
@@ -517,10 +530,20 @@ impl Reader {
                 }
                 9 => {
                     // case(tid, scrutinee, type, alts)
-                    if Self::tag(Self::field(x, 2)?)? == 12 {
-                        Self::tagged_case(x, code, depth, count, env, ret_ty, ctx)?;
-                    } else {
+                    let alts = Self::array(Self::field(x, 3)?)?;
+                    let mut is_bool = false;
+                    for alt in &alts {
+                        if Self::tag(*alt)? == 0 {
+                            let name =
+                                Self::name(Self::field(Self::field(*alt, 0)?, 0)?, 0)?;
+                            is_bool = name == "Bool.false" || name == "Bool.true";
+                            break;
+                        }
+                    }
+                    if is_bool {
                         Self::boolean_case(x, code, depth, count, env, ret_ty, ctx)?;
+                    } else {
+                        Self::scalar_enum_case(x, code, depth, count, env, ret_ty, ctx)?;
                     }
                     return Ok(());
                 }

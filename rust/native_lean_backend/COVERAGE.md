@@ -136,3 +136,9 @@ inductive is refused and the previous output preserved. **This is not**
 general constructor allocation, heap-backed pattern matching, closures,
 captured variables, arrays or sharing semantics; those require a separately
 specified object runtime and are still unsupported.
+
+**Pinned compiler observation:** For the three-constructor fixture, Lean 4.34.1
+actually uses `IRType.uint8` storage. The lowerer therefore also handles
+nullary `UInt8`-backed inductives, using original constructor identities
+to distinguish them from Bool. No generic `usize` coercion is performed;
+the original IR storage type determines the Rust scalar type.

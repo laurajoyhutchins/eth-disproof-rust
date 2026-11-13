@@ -170,3 +170,8 @@ scalar pattern matches, and returns through Rust `usize` tags. The test
 replays 384 values computed by original Lean and explicitly refuses a
 heap-backed constructor. Constructor allocation with fields, object layout,
 reference counting and indirect applications remain unsupported.
+
+The three-constructor nullary fixture is `UInt8`-backed in the pinned Lean
+compiler, not `IRType.tagged`; both accepted scalar encodings are checked
+against the actual compiled IR. Heap-backed representations continue to
+fail closed without partial output.

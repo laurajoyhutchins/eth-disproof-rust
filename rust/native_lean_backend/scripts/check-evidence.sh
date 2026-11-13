@@ -17,7 +17,7 @@ fi
 # Original Lean (not Rust codegen) evaluates all oracle values.
 lean -o examples/PropertyDef.olean examples/PropertyDef.lean
 lean --load-dynlib="$NATIVE_LIB" examples/Property.lean
-rustc --edition=2021 -D warnings -o examples/property-test examples/property_driver.rs
+rustc --edition=2021 -D warnings -F unsafe-code -o examples/property-test examples/property_driver.rs
 examples/property-test
 examples/property-test --seed 0
 examples/property-test --seed 127
@@ -28,6 +28,8 @@ mkdir -p artifacts/standalone-evidence/src
 cp examples/generated_property.rs artifacts/standalone-evidence/src/generated_property.rs
 cp examples/generated_property_cases.rs artifacts/standalone-evidence/src/generated_property_cases.rs
 cp examples/property_driver.rs artifacts/standalone-evidence/src/main.rs
+# Enforce that the emitted self-contained Rust uses no unsafe language features.
+sed -i '1i#![forbid(unsafe_code)]' artifacts/standalone-evidence/src/main.rs
 cat > artifacts/standalone-evidence/Cargo.toml <<'CARGO'
 [package]
 name = "native_lean_compiler_generated_evidence"
@@ -37,7 +39,13 @@ edition = "2021"
 [workspace]
 CARGO
 cargo test --offline --manifest-path artifacts/standalone-evidence/Cargo.toml
+cargo test --release --offline --manifest-path artifacts/standalone-evidence/Cargo.toml
 cargo clippy --offline --manifest-path artifacts/standalone-evidence/Cargo.toml --all-targets -- -D warnings
+cargo build --release --offline --manifest-path artifacts/standalone-evidence/Cargo.toml
+if ldd artifacts/standalone-evidence/target/release/native_lean_compiler_generated_evidence | grep -i lean; then
+  echo "Generated Rust executable unexpectedly links to Lean" >&2; exit 1
+fi
+artifacts/standalone-evidence/target/release/native_lean_compiler_generated_evidence --seed 127
 
 # This PASS receipt is written only after all evidence checks succeeded.
 {
@@ -55,6 +63,8 @@ cargo clippy --offline --manifest-path artifacts/standalone-evidence/Cargo.toml 
   echo "oracle=original_Lean_compiled_definition"
   echo "shrinking=finite_precomputed_candidates_only"
   echo "runtime_dependency=none_for_generated_Cargo_program"
+  echo "memory_safety_check=forbid_unsafe_code_in_emitted_crate"
+  echo "build_modes=debug_and_release_verified"
   sha256sum NativeRust.lean examples/PropertyDef.lean examples/Property.lean \
     examples/property_driver.rs src/lib.rs native/abi.c \
     examples/generated_property.rs examples/generated_property_cases.rs \

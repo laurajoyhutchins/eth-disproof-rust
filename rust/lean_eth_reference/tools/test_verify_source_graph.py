@@ -307,7 +307,7 @@ class GraphContracts(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
 
             with patch('verify_source_graph.subprocess.run', side_effect=successful_build):
-                accepted=validate_and_generate(inp,golden,root/'out',root,True)
+                accepted=validate_and_generate(inp,golden,root/'out',root,True,aot=False)
             published=json.loads(receipt_path.read_text())
             self.assertEqual(published,accepted)
             self.assertEqual(published['rust_acceptance_test_sha256'],

@@ -47,18 +47,26 @@ already been implemented or that end-to-end Lean/Rust parity is established.
 
 ## Run local checks
 
-From `rust/lean_eth_reference` using Rust **1.99.1**:
+From the repository root, `rust-toolchain.toml` pins Rust **1.99.1**
+with rustfmt and Clippy:
 
 ```sh
+cargo fetch --locked
 cargo fmt --all -- --check
 cargo test --locked --offline --all-targets
+python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
 cargo clippy --locked --offline --all-targets -- -D warnings
 ```
 
-The crate has no external Cargo dependencies. The
+The workspace reuses locked dependencies (including `serde`, `serde_json`
+and `sha2`); use `cargo fetch --locked` before offline tests. The
 [public Rust workflow](.github/workflows/rust.yml) runs on pull requests,
 pushes to `main`, and manual dispatch. Check the actual head SHA and run
 conclusion; a previous green run is not evidence for a subsequent commit.
+
+PR checks intentionally run on the submitted **head SHA**, not a synthetic
+merge commit. Verify integration on the post-merge `main` SHA separately,
+and never claim that a source-graph test fixture proves original Lean parity.
 
 A green Rust workflow validates Rust formatting/tests/lints, **not** the
 original Lean semantics, native TM2 refinement or the theorem. Original Lean

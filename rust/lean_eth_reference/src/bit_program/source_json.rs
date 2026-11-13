@@ -47,7 +47,10 @@ struct SerializedGraph {
     declaration: String,
     id: String,
     abi: Abi,
-    command: Command,
+    // Exactly one root representation is admitted by the protocol kind.
+    // A linked root is an ordinary physical Program, not an extra Call site.
+    command: Option<Command>,
+    program: Option<ProgramTree>,
 }
 
 #[derive(Deserialize)]
@@ -850,7 +853,10 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         }
         let source: SerializedGraph = serde_json::from_slice(bytes)
             .map_err(|e| Error::Invalid(format!("source graph JSON schema: {e}")))?;
-        if source.kind != "original-structured-source-v1"
+        if !matches!(
+            source.kind.as_str(),
+            "original-structured-source-v1" | "original-linked-source-v1"
+        )
             || source.source_commit != SOURCE_COMMIT
             || source.id != expected.id
             || source.declaration != expected.declaration
@@ -880,9 +886,29 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
             return Err(invalid("source machine dimensions outside supported ABI"));
         }
         let mut budget = MAX_NODES;
-        let mut callees = HashMap::new();
-        let block = lower::<R, S>(source.command, &mut budget, &mut callees)?;
-        let program = DeferredProgram::composed(abi.input, abi.output, block)?;
+        let program = match (source.kind.as_str(), source.command, source.program) {
+            ("original-structured-source-v1", Some(command), None) => {
+                let mut callees = HashMap::new();
+                let block = lower::<R, S>(command, &mut budget, &mut callees)?;
+                DeferredProgram::composed(abi.input, abi.output, block)?
+            }
+            ("original-linked-source-v1", None, Some(tree)) => {
+                let linked = lower_linked_program(tree, &mut budget, 0)?;
+                if (linked.r, linked.s, linked.labels, linked.input, linked.output)
+                    != (R, S, abi.labels, abi.input, abi.output)
+                {
+                    return Err(invalid("linked root differs from elaborated source ABI"));
+                }
+                DeferredProgram::<R, S>::source_program(
+                    linked.input,
+                    linked.output,
+                    linked.entry,
+                    linked.labels,
+                    Arc::new(linked),
+                )?
+            }
+            _ => return Err(invalid("source graph has ambiguous or absent root")),
+        };
         if program.labels() != abi.labels {
             return Err(invalid(
                 "source graph site count differs from original Lean ABI",

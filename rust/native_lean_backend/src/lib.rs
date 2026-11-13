@@ -246,7 +246,7 @@ impl Reader {
                         if !matches!(op, "+" | "-" | "*") {
                             return Err(format!("{name}: unsupported floating operation {op}"));
                         }
-                        Ok(format!("({lhs} {op} {rhs})"))
+                        Ok(format!("{lhs} {op} {rhs}"))
                     } else {
                         Ok(format!("{lhs}.{op}({rhs})"))
                     }
@@ -907,7 +907,10 @@ mod tests {
         }
         for operation in ["add", "sub", "mul"] {
             let name = format!("Float.{operation}");
-            assert!(seen.contains(name.as_str()), "missing finite-f64 primitive: {name}");
+            assert!(
+                seen.contains(name.as_str()),
+                "missing finite-f64 primitive: {name}"
+            );
         }
         assert_eq!(seen.len(), 33);
         assert!(primitive_spec("UInt64.shiftLeft").is_none());

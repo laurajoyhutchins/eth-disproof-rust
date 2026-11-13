@@ -117,7 +117,9 @@ fn positive_usize(raw: &str) -> Result<usize, String> {
 }
 
 fn bounded_variables(raw: &str) -> Result<usize, String> {
-    let n: usize = raw.parse().map_err(|_| "expected an integer from 0 through 20")?;
+    let n: usize = raw
+        .parse()
+        .map_err(|_| "expected an integer from 0 through 20")?;
     if n > 20 {
         return Err("exponential oracle limit cannot exceed 20 variables".into());
     }
@@ -137,7 +139,9 @@ fn read_input(path: &Path) -> Result<String, String> {
 }
 
 fn bits(word: impl IntoIterator<Item = bool>) -> String {
-    word.into_iter().map(|b| if b { '1' } else { '0' }).collect()
+    word.into_iter()
+        .map(|b| if b { '1' } else { '0' })
+        .collect()
 }
 
 /// The report is returned only after the physical program halts and all
@@ -263,12 +267,9 @@ mod tests {
         assert_eq!(help.kind(), clap::error::ErrorKind::DisplayHelp);
         assert!(EthCli::try_parse_from(["eth", "frontend", "--max-steps", "0"]).is_err());
         assert!(
-            EthCli::try_parse_from(["eth", "terminal-count", "--max-stack-bits", "0"])
-                .is_err()
+            EthCli::try_parse_from(["eth", "terminal-count", "--max-stack-bits", "0"]).is_err()
         );
-        assert!(
-            EthCli::try_parse_from(["eth", "oracle", "--max-variables", "21"]).is_err()
-        );
+        assert!(EthCli::try_parse_from(["eth", "oracle", "--max-variables", "21"]).is_err());
         assert!(EthCli::try_parse_from(["eth", "unknown"]).is_err());
         assert!(EthCli::try_parse_from(["eth"]).is_err());
     }

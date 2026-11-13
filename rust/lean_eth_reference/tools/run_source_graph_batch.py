@@ -91,7 +91,7 @@ noncomputable def repeatedRoot :=
       4) 0 0
 -- The source recursor is no longer at the root. It must be reduced through
 -- named Lean definitions without expanding four physical copies.
-noncomputable def namedRepeatCommand :=
+noncomputable def namedRepeatCommand : StructuredCalls.Cmd _ _ :=
   Nat.rec (StructuredCalls.Cmd.base .skip)
     (fun _ acc => StructuredCalls.Cmd.seq acc (StructuredCalls.Cmd.call {fqn}))
     4

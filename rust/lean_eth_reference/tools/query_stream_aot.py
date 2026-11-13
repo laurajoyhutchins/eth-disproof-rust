@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -77,6 +78,8 @@ def compile_query(args):
     out.mkdir(parents=True, exist_ok=True)
     receipt = out / "query-stream.receipt.json"
     receipt.unlink(missing_ok=True)
+    published_binary = out / "query-stream"
+    published_binary.unlink(missing_ok=True)
 
     def refuse(stage: str, details: str):
         report = {"status": "REFUSED", "stage": stage, "reason": str(details)[-5000:]}
@@ -147,7 +150,8 @@ def compile_query(args):
         if built.returncode:
             refuse("native-aot-build", built.stderr[-4000:])
         binary = project / "target/debug/query_stream_native_aot"
-        insist(binary.is_file(), "built AOT binary absent")
+        if not binary.is_file():
+            refuse("native-binary-missing", "Cargo succeeded without the expected native executable")
         r, s, labels, entry, inp, outstack = abi
         # This is structural self-consistency with the exported graph.
         # Independent original Lean physical-state certification remains open.
@@ -183,8 +187,17 @@ def compile_query(args):
             "correct_count_reconstruction": False,
             "full_prepared_input_execution": False,
         }
-        atomic_write(receipt, json.dumps(summary, sort_keys=True, indent=2) + "\n")
+        # Publish the verified native executable *before* the success receipt.
+        # The receipt is the only success marker. A failed attempt clears both
+        # the previous receipt and binary before any new build is attempted.
+        staging = out / ".query-stream-partial"
+        try:
+            shutil.copyfile(binary, staging)
+            staging.replace(published_binary)
+        finally:
+            staging.unlink(missing_ok=True)
         atomic_write(out / "report.json", json.dumps(summary, sort_keys=True, indent=2) + "\n")
+        atomic_write(receipt, json.dumps(summary, sort_keys=True, indent=2) + "\n")
         atomic_write(out / "query-stream.generated.rs", source_text)
         print(f"ORIGINAL_QUERY_AOT_SOURCE_COMPILED labels={labels} nodes_budget={MAX_NODES}")
         return summary

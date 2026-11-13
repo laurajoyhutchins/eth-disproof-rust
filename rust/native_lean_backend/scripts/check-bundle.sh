@@ -59,5 +59,7 @@ fi
 
 # Check that the source in the accepted bundle matches exact original input.
 cmp examples/PropertyDef.lean "$out/PropertyDef.lean"
+cp "$out/receipt.txt" artifacts/native-compiler-bundle-receipt.txt
+cp "$out/closure.txt" artifacts/native-compiler-bundle-closure.txt
 sha256sum "$out/generated.rs" "$out/receipt.txt" "$out/closure.txt"
 echo 'PASS: atomic receipt bundle, compiled Rust, closure, no-overwrite, refusals, unsafe paths'

@@ -48,7 +48,9 @@ struct BuildReceipt<'a> {
 fn read_bounded(path: &Path, max: usize) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut file = fs::File::open(path)?;
     let mut bytes = Vec::new();
-    file.by_ref().take((max as u64) + 1).read_to_end(&mut bytes)?;
+    file.by_ref()
+        .take((max as u64) + 1)
+        .read_to_end(&mut bytes)?;
     if bytes.is_empty() || bytes.len() > max {
         return Err(format!("input {} is empty or exceeds byte budget", path.display()).into());
     }
@@ -60,7 +62,10 @@ fn sha256(bytes: &[u8]) -> String {
 }
 
 fn valid_sha256(hash: &str) -> bool {
-    hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn check_receipt(
@@ -69,8 +74,7 @@ fn check_receipt(
 ) -> Result<(), Box<dyn std::error::Error>> {
     if !matches!(
         receipt.status.as_str(),
-        "LEAN_KERNEL_CERTIFIED_PHYSICAL_PROGRAM"
-            | "LEAN_KERNEL_CERTIFIED_SOURCE_DERIVED_FIXTURE"
+        "LEAN_KERNEL_CERTIFIED_PHYSICAL_PROGRAM" | "LEAN_KERNEL_CERTIFIED_SOURCE_DERIVED_FIXTURE"
     ) {
         return Err("receipt does not assert a completed original Lean kernel check".into());
     }
@@ -173,7 +177,9 @@ fn build() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Do not publish an incomplete project or stale successful build receipt.
-    let parent = destination.parent().filter(|p| !p.as_os_str().is_empty())
+    let parent = destination
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let filename = destination
         .file_name()
@@ -215,8 +221,7 @@ fn build() -> Result<(), Box<dyn std::error::Error>> {
             cargo_lock_sha256: sha256(&lockfile),
             physical_labels: receipt.physical_labels,
             toolchain: "1.99.1",
-            verification_boundary:
-                "Receipt content and AOT build validated; independent Lean proof-run authenticity is caller responsibility",
+            verification_boundary: "Receipt content and AOT build validated; independent Lean proof-run authenticity is caller responsibility",
         };
         fs::write(
             staging.join("build.receipt.json"),
@@ -226,7 +231,10 @@ fn build() -> Result<(), Box<dyn std::error::Error>> {
             return Err("output directory appeared while building; refusing overwrite".into());
         }
         fs::rename(&staging, &destination)?;
-        println!("{}", destination.join("target/debug/original_lean_aot").display());
+        println!(
+            "{}",
+            destination.join("target/debug/original_lean_aot").display()
+        );
         Ok(())
     })();
     if result.is_err() {

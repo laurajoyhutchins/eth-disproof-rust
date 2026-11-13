@@ -38,6 +38,11 @@ struct Signature {
 
 type FunctionTable = BTreeMap<String, Signature>;
 
+struct EmitContext<'a> {
+    functions: Option<&'a FunctionTable>,
+    started: &'a Instant,
+}
+
 struct Reader;
 impl Reader {
     unsafe fn scalar(x: Obj) -> Result<usize, String> {
@@ -274,8 +279,7 @@ impl Reader {
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
-        functions: Option<&FunctionTable>,
-        started: &Instant,
+        context: &EmitContext<'_>,
     ) -> Result<(), String> {
         // Lean 4.34.1 IR uses the *storage type* name UInt8 here,
         // not the source Bool name. Validate Bool constructor names below.
@@ -319,8 +323,7 @@ impl Reader {
                 count,
                 env,
                 ret_ty,
-                functions,
-                started,
+                context,
             )?;
             writeln!(code, "        }}").unwrap();
         }
@@ -343,8 +346,7 @@ impl Reader {
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
-        functions: Option<&FunctionTable>,
-        started: &Instant,
+        context: &EmitContext<'_>,
     ) -> Result<(), String> {
         if depth > 128 {
             return Err("IR control-flow nesting limit".into());
@@ -357,7 +359,7 @@ impl Reader {
             if code.len() > safety::MAX_OUTPUT_BYTES {
                 return Err("generated Rust output byte limit exceeded".into());
             }
-            if started.elapsed() > Duration::from_secs(10) {
+            if context.started.elapsed() > Duration::from_secs(10) {
                 return Err("IR code generation time budget exceeded".into());
             }
             match Self::tag(x)? {
@@ -365,7 +367,7 @@ impl Reader {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
-                    let value = Self::expr(Self::field(x, 2)?, ty, env, functions)?;
+                    let value = Self::expr(Self::field(x, 2)?, ty, env, context.functions)?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }
@@ -374,7 +376,7 @@ impl Reader {
                 }
                 9 => {
                     // case(tid, scrutinee, type, alts)
-                    Self::boolean_case(x, code, depth, count, env, ret_ty, functions, started)?;
+                    Self::boolean_case(x, code, depth, count, env, ret_ty, context)?;
                     return Ok(());
                 }
                 10 => {
@@ -447,16 +449,11 @@ impl Reader {
         }
         writeln!(result, ") -> {ret} {{").unwrap();
         let started = Instant::now();
-        Self::body(
-            body,
-            &mut result,
-            0,
-            &mut 0,
-            &mut env,
-            ret,
+        let context = EmitContext {
             functions,
-            &started,
-        )?;
+            started: &started,
+        };
+        Self::body(body, &mut result, 0, &mut 0, &mut env, ret, &context)?;
         result.push_str("}\n");
         if result.len() > safety::MAX_OUTPUT_BYTES {
             return Err("generated Rust output byte limit exceeded".into());

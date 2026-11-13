@@ -40,19 +40,39 @@ Results are under `artifacts/bench-native/`. Repeated calls are **not** cold-cac
 
 For #193 item 36, extend this harness only after constructing a **shared supported program with identical inputs, outputs, and algorithm** across all three backends. Then measure source hash, toolchain, cold/warm definitions, process startup, compilation, intermediate bytes, execution, RSS, and refusal rates separately. If any backend cannot compile that common program, record **unsupported**, not an invented runtime comparison.
 
+## Imported standard-library probes (not three external projects)
+
+The exact pinned original Lean 4.34.1 source is exercised without hand-copying or rewriting implementations. `examples/ProbeNatGcd.lean`, `ProbeListReverse.lean`, and `ProbeStringIntercalate.lean` independently check real original Lean behavior, then attempt native in-process extraction. All three **explicitly refuse** unsupported compiled IR in [native CI 43507863090](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43507863090), commit `714524c06e8ee2b47a74957722abf052f9831e72`. Their original behavior is valid, but generated Rust does **not** exist. Precise refusals, prior-output preservation, and peak RSS/time are saved in `artifacts/imported-probes/`. This provides a reproducible negative coverage baseline. It **does not** satisfy checklist item 32's requirement for three nontrivial independent projects actually building and running.
+
+## Atomic bundle publication and build receipts
+
+`scripts/compile-bundle.sh` is a reproducible build wrapper around the existing in-process Lean compiler. It does not replace its backend or introduce serialized JSON IR. A successful invocation accepts an imported module, actual root, source file, new destination directory, and optional Rust export name:
+
+```sh
+cd rust/native_lean_backend
+# First build the backend using the pinned toolchain and scripts/check.sh.
+mkdir -p artifacts/bundles
+bash scripts/compile-bundle.sh PropertyDef Property.hop \
+  examples/PropertyDef.lean artifacts/bundles/property-hop property_hop
+```
+
+The script stages the module's original source, Lean `.olean`, a temporary command, generated Rust source, a strict `rustc -D warnings` standalone Rust library, and `closure.txt` extracted from generated IR declarations. It records the exact source/revision/toolchain, original source SHA-256, compiled module SHA-256, native ABI and backend SHA-256, native plugin SHA-256, declaration-closure hash, generated Rust hash, and emitted library hash in `receipt.txt`, then **publishes the entire directory as one atomic rename**. Existing destinations and invalid roots/output paths refuse. Failed or unsupported compilation leaves no published partial directory. `scripts/check-bundle.sh` verifies both success and negative cases on pinned CI.
+
+A receipt with `status=GENERATED_COMPILED_UNVERIFIED` means **only** that the generated standalone Rust library compiled cleanly. It is not a semantic conformance report. The original module source and generated closure are included, but transitively imported modules are **not yet exhaustively hashed**. Direct use of the low-level `#native_rust`/ `#native_rust_closure` commands does not automatically produce such a bundle; consequently checklist #39 still remains open until this becomes the standard interface and all successful builds carry the specified complete evidence.
+
 ## Checklist evidence matrix
 
 | # | Requirement | This branch | Release status |
 | --- | --- | --- | --- |
-| 31 | Randomized/property differential tests with shrinking and replay | 128 seeded vectors; 1,024 Lean-evaluated finite shrink candidates; one-seed reproduction | **Pending exact-head CI** and broader shrinking/domain coverage |
-| 32 | Three independent substantial unmodified Lean projects | No external programs in this branch; the property example is an intentionally authored fixture | **Open** |
-| 33 | Generated code: Cargo, Clippy and runtime checks | Standalone generated Cargo binary, `cargo test`, strict Clippy, and Rust executable comparisons | **Pending exact-head CI**; broader memory/runtime checks open |
+| 31 | Randomized/property differential tests with shrinking and replay | 128 seeded vectors; 1,024 Lean-evaluated finite shrink candidates; one-seed reproduction | **Verified on pinned exact-head CI 43504031394**; broader shrinking/domain coverage remains |
+| 32 | Three independent substantial unmodified Lean projects | Three original Lean stdlib declarations directly probed and explicitly refused; still no three independently built external projects | **Open** |
+| 33 | Generated code: Cargo, Clippy and runtime checks | Standalone generated Cargo binary, `cargo test`, strict Clippy, and Rust executable comparisons | **Verified for generated standalone Cargo on 43504031394**; broader memory/runtime checks open |
 | 34 | Tested vs formally proved | This ledger and explicit declarations below | **Documented**, no new theorem |
-| 35 | Exact-head CI native, unit, conformance, differential, clean generation, negative cases | Extended existing path-scoped native workflow to run `check.sh` then `check-evidence.sh`; receipts uploaded | **Pending green exact-head run**, coverage currently bounded |
+| 35 | Exact-head CI native, unit, conformance, differential, clean generation, negative cases | Extended existing path-scoped native workflow to run `check.sh` then `check-evidence.sh`; receipts uploaded | **Verified on 43504031394** for the current bounded subset |
 | 36 | Comparative cold/warm compilation, RSS, size, run performance across Lean C, JSON path and native FFI | Repeatable raw native-path instrumentation, explicit refusal to compare incomparable paths | **Open** |
 | 37 | Quantify in-process overhead reduction without mandatory JSON IR | No general speedup number; native path does not serialize IR | **Open** |
 | 38 | Public API, versions, examples, refusals, troubleshooting | README, COVERAGE and this runbook | **Partially documented**; single-invocation ergonomics/open features remain |
-| 39 | Per-build source/closure/toolchain/artifact hashes and receipts | Exact-head/source+emitted+test binary SHA-256 and toolchain info for conformance suite | **Partial**; not yet emitted for *every* compiler build |
+| 39 | Per-build source/closure/toolchain/artifact hashes and receipts | Atomic receipt-bearing build wrapper with source, compiled module, closure, native backend, toolchain and output hashes; existing direct commands remain uninstrumented | **Partial**; not yet emitted for *every* compiler build |
 | 40 | Reviewed, merged, exact-head release example and coverage | Candidate evidence branch, not a release | **Open** |
 
 ### Claim boundary

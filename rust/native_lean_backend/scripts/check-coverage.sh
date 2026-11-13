@@ -25,7 +25,8 @@ count=0
 while IFS=$'\t' read -r primitive rust_type operation kind; do
   [[ -z "$primitive" || "$primitive" == \#* ]] && continue
   suffix="${primitive##*.}"
-  function="matrix_${rust_type}_${suffix}"
+  slug="${suffix,,}"
+  function="matrix_${rust_type}_${slug}"
   source="examples/generated_${function}.rs"
   if [[ ! -f "$source" ]] || ! grep -Fq "pub fn ${function}(" "$source"; then
     echo "Supported compiler primitive lacks an emitted executable: $primitive ($source)" >&2

@@ -16,7 +16,7 @@ if [[ "$destination" = /* || "$destination" = */ || "$destination" = *'//'* || "
   echo "destination must be a simple relative directory path" >&2; exit 2
 fi
 IFS='/' read -ra components <<< "$destination"
-for part in "\${components[@]}"; do
+for part in "${components[@]}"; do
   if [[ "$part" == "." || "$part" == ".." || -z "$part" ]]; then
     echo "destination cannot contain traversal components" >&2; exit 2
   fi
@@ -32,7 +32,7 @@ if [[ ! -d "$parent" || -L "$parent" ]]; then
   echo "destination parent must be an existing non-symlink directory" >&2; exit 2
 fi
 cursor="."
-for part in "\${components[@]:0:\${#components[@]}-1}"; do
+for part in "${components[@]:0:${#components[@]}-1}"; do
   cursor="$cursor/$part"
   if [[ -L "$cursor" ]]; then
     echo "destination ancestor is a symlink: $cursor" >&2; exit 2

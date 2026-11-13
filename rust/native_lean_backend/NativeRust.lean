@@ -14,7 +14,10 @@ namespace NativeRust
 /-- Compile one executable declaration with the pinned Lean compiler and emit Rust.
     Refuses declarations missing IR, or outside the backend's strict subset. -/
 def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
-  Lean.Compiler.compile #[root]
+  -- Imported .olean modules can already carry executable compiler IR. Do
+  -- not recompile their declarations needlessly; use the exact imported IR.
+  if (← Lean.IR.findDecl root).isNone then
+    Lean.Compiler.compile #[root]
   let some decl ← Lean.IR.findDecl root
     | throwError "No compiler IR for {root} (possibly noncomputable)"
   if let some blame := decl.getInfo.sorryDep? then
@@ -63,7 +66,10 @@ private partial def callsInBody : Lean.IR.FnBody → Array Lean.Name
     Definitions in already-imported modules are retrieved by IR.findDecl. A
     missing/unsupported symbol remains a hard error in the Rust backend. -/
 def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
-  Lean.Compiler.compile #[root]
+  -- Reuse existing IR from imported modules, recompiling only when the
+  -- requested root has not yet been lowered. Missing IR still refuses.
+  if (← Lean.IR.findDecl root).isNone then
+    Lean.Compiler.compile #[root]
   let mut queue := #[root]
   let mut seen : Std.HashSet Lean.Name := {}
   let mut decls : Array Lean.IR.Decl := #[]

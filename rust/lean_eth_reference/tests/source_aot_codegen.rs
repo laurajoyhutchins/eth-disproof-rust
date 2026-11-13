@@ -98,13 +98,7 @@ fn run_binary(binary: &PathBuf, args: &[&str]) -> String {
     String::from_utf8(result.stdout).unwrap().trim().to_string()
 }
 
-fn assert_aot_matches(
-    bytes: &[u8],
-    hash: &str,
-    input: &str,
-    labels: usize,
-    max_steps: u64,
-) {
+fn assert_aot_matches(bytes: &[u8], hash: &str, input: &str, labels: usize, max_steps: u64) {
     let original = DeferredProgram::<2, 2>::from_original_source_json(bytes, binding(hash))
         .expect("source graph must decode");
     let emitted = emit_original_source_rust(bytes, binding(hash)).unwrap();

@@ -1,4 +1,5 @@
 import G2Inventory
+open Lean Elab Command
 
 namespace InventorySmoke
 axiom oracle : Nat

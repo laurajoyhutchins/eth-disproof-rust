@@ -10,10 +10,152 @@ use std::sync::Arc;
 use super::{Atom, Config, Instr, Program, RunLimits, RunStats, execute_instr};
 use crate::Error;
 
+/// Source instruction view hides only the callee's *finite dimensions*, not
+/// its instructions or any machine steps. A lifted program stays on demand.
+trait PhysicalSource: std::fmt::Debug + Send + Sync {
+    fn instruction_at(&self, pc: usize) -> Result<Instr, Error>;
+}
+
+impl<const R: usize, const S: usize> PhysicalSource for DeferredProgram<R, S> {
+    fn instruction_at(&self, pc: usize) -> Result<Instr, Error> {
+        DeferredProgram::instruction_at(self, pc)
+    }
+}
+
+/// Original ProgramLinking.relocateInstr data-port portion, covering every
+/// source opcode. The label map is identity for a lift.
+fn relocate_ports(instr: Instr, registers: &[usize], stacks: &[usize]) -> Result<Instr, Error> {
+    let reg = |i: usize| {
+        registers
+            .get(i)
+            .copied()
+            .ok_or_else(|| Error::Invalid(format!("source register {i} outside lift map")))
+    };
+    let stack = |i: usize| {
+        stacks
+            .get(i)
+            .copied()
+            .ok_or_else(|| Error::Invalid(format!("source stack {i} outside lift map")))
+    };
+    Ok(match instr {
+        Instr::Halt => Instr::Halt,
+        Instr::Goto { next } => Instr::Goto { next },
+        Instr::Set { dst, value, next } => Instr::Set {
+            dst: reg(dst)?,
+            value,
+            next,
+        },
+        Instr::Copy { dst, src, next } => Instr::Copy {
+            dst: reg(dst)?,
+            src: reg(src)?,
+            next,
+        },
+        Instr::Not { dst, src, next } => Instr::Not {
+            dst: reg(dst)?,
+            src: reg(src)?,
+            next,
+        },
+        Instr::And {
+            dst,
+            left,
+            right,
+            next,
+        } => Instr::And {
+            dst: reg(dst)?,
+            left: reg(left)?,
+            right: reg(right)?,
+            next,
+        },
+        Instr::Or {
+            dst,
+            left,
+            right,
+            next,
+        } => Instr::Or {
+            dst: reg(dst)?,
+            left: reg(left)?,
+            right: reg(right)?,
+            next,
+        },
+        Instr::Xor {
+            dst,
+            left,
+            right,
+            next,
+        } => Instr::Xor {
+            dst: reg(dst)?,
+            left: reg(left)?,
+            right: reg(right)?,
+            next,
+        },
+        Instr::Branch { test, yes, no } => Instr::Branch {
+            test: reg(test)?,
+            yes,
+            no,
+        },
+        Instr::Push {
+            stack: port,
+            src,
+            next,
+        } => Instr::Push {
+            stack: stack(port)?,
+            src: reg(src)?,
+            next,
+        },
+        Instr::Peek {
+            stack: port,
+            value,
+            present,
+            next,
+        } => Instr::Peek {
+            stack: stack(port)?,
+            value: reg(value)?,
+            present: reg(present)?,
+            next,
+        },
+        Instr::Pop {
+            stack: port,
+            value,
+            present,
+            next,
+        } => Instr::Pop {
+            stack: stack(port)?,
+            value: reg(value)?,
+            present: reg(present)?,
+            next,
+        },
+    })
+}
+
+fn check_injective_map(map: &[usize], dimension: usize, port: &str) -> Result<(), Error> {
+    let mut seen = vec![false; dimension];
+    for &to in map {
+        let Some(used) = seen.get_mut(to) else {
+            return Err(Error::Invalid(format!(
+                "{port} lift map outside target dimension"
+            )));
+        };
+        if *used {
+            return Err(Error::Invalid(format!("{port} lift map is not injective")));
+        }
+        *used = true;
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug)]
 enum Body<const R: usize, const S: usize> {
     Table(Program<R, S>),
     Composed(Arc<Block<R, S>>),
+    Lift {
+        source: Arc<dyn PhysicalSource>,
+        registers: Vec<usize>,
+        stacks: Vec<usize>,
+    },
+    Link {
+        left: Arc<DeferredProgram<R, S>>,
+        right: Arc<DeferredProgram<R, S>>,
+    },
 }
 
 /// A physical BitProgram that can resolve a label without creating the full
@@ -38,6 +180,69 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
             labels: program.code().len(),
             body: Body::Table(program),
         })
+    }
+
+    /// Original ProgramLinking.liftProgram, without materializing the source
+    /// table. Require injective finite port maps for exact framed traces.
+    pub fn lift<const SR: usize, const SS: usize>(
+        source: Arc<DeferredProgram<SR, SS>>,
+        registers: [usize; SR],
+        stacks: [usize; SS],
+    ) -> Result<Arc<Self>, Error> {
+        check_injective_map(&registers, R, "register")?;
+        check_injective_map(&stacks, S, "stack")?;
+        let input_stack = stacks[source.input_stack];
+        let output_stack = stacks[source.output_stack];
+        let entry = source.entry;
+        let labels = source.labels;
+        let source: Arc<dyn PhysicalSource> = source;
+        Ok(Arc::new(Self {
+            input_stack,
+            output_stack,
+            entry,
+            labels,
+            body: Body::Lift {
+                source,
+                registers: registers.into(),
+                stacks: stacks.into(),
+            },
+        }))
+    }
+
+    /// Original ProgramLinking.link: left halt labels become jumps to the
+    /// right entry; right halt labels remain halts, with label offset.
+    pub fn link(left: Arc<Self>, right: Arc<Self>) -> Result<Arc<Self>, Error> {
+        let labels = left
+            .labels
+            .checked_add(right.labels)
+            .ok_or(Error::Overflow)?;
+        let input_stack = left.input_stack;
+        let output_stack = right.output_stack;
+        let entry = left.entry;
+        Ok(Arc::new(Self {
+            input_stack,
+            output_stack,
+            entry,
+            labels,
+            body: Body::Link { left, right },
+        }))
+    }
+
+    /// Original ProgramLinking.linkInto with independently mapped source
+    /// registers and stacks on both sides. The two sources can have
+    /// different finite dimensions, but share one target machine.
+    pub fn link_into<const LR: usize, const LS: usize, const RR: usize, const RS: usize>(
+        left: Arc<DeferredProgram<LR, LS>>,
+        right: Arc<DeferredProgram<RR, RS>>,
+        left_registers: [usize; LR],
+        left_stacks: [usize; LS],
+        right_registers: [usize; RR],
+        right_stacks: [usize; RS],
+    ) -> Result<Arc<Self>, Error> {
+        Self::link(
+            Self::lift(left, left_registers, left_stacks)?,
+            Self::lift(right, right_registers, right_stacks)?,
+        )
     }
 
     /// Preserve every original StructuredCalls site, without flattening.
@@ -96,6 +301,30 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
             Body::Table(program) => Ok(program.code()[pc].clone()),
             Body::Composed(_) if pc == 0 => Ok(Instr::Halt),
             Body::Composed(block) => block.instruction_at(1, 0, pc),
+            Body::Lift {
+                source,
+                registers,
+                stacks,
+            } => relocate_ports(source.instruction_at(pc)?, registers, stacks),
+            Body::Link { left, right } if pc < left.labels => {
+                let original = left.instruction_at(pc)?;
+                match original {
+                    Instr::Halt => Ok(Instr::Goto {
+                        next: left
+                            .labels
+                            .checked_add(right.entry)
+                            .ok_or(Error::Overflow)?,
+                    }),
+                    instruction => Ok(instruction),
+                }
+            }
+            Body::Link { left, right } => {
+                let original = right.instruction_at(pc - left.labels)?;
+                match original {
+                    Instr::Halt => Ok(Instr::Halt),
+                    instruction => instruction.relocate(left.labels, 0),
+                }
+            }
         }
     }
 
@@ -366,5 +595,113 @@ impl<const R: usize, const S: usize> Block<R, S> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod linking_tests {
+    use super::*;
+
+    #[test]
+    fn source_link_into_preserves_ports_and_all_physical_labels() {
+        let p = DeferredProgram::table(
+            Program::<1, 1>::new(
+                0,
+                0,
+                1,
+                vec![
+                    Instr::Halt,
+                    Instr::Set {
+                        dst: 0,
+                        value: true,
+                        next: 0,
+                    },
+                ],
+            )
+            .unwrap(),
+        );
+        let q = DeferredProgram::table(
+            Program::<1, 1>::new(
+                0,
+                0,
+                1,
+                vec![
+                    Instr::Halt,
+                    Instr::Not {
+                        dst: 0,
+                        src: 0,
+                        next: 0,
+                    },
+                ],
+            )
+            .unwrap(),
+        );
+        let linked = DeferredProgram::<3, 2>::link_into(p, q, [2], [1], [2], [1]).unwrap();
+        assert_eq!(linked.labels(), 4);
+        assert_eq!(linked.entry(), 1);
+        assert_eq!(linked.instruction_at(0).unwrap(), Instr::Goto { next: 3 });
+        assert_eq!(
+            linked.instruction_at(1).unwrap(),
+            Instr::Set {
+                dst: 2,
+                value: true,
+                next: 0
+            }
+        );
+        assert_eq!(linked.instruction_at(2).unwrap(), Instr::Halt);
+        assert_eq!(
+            linked.instruction_at(3).unwrap(),
+            Instr::Not {
+                dst: 2,
+                src: 2,
+                next: 2
+            }
+        );
+        let mut state = linked.initial([]);
+        let stats = linked
+            .run(
+                &mut state,
+                RunLimits {
+                    max_steps: 10,
+                    max_stack_bits: 10,
+                },
+            )
+            .unwrap();
+        assert_eq!(stats.instructions, 4);
+        assert!(state.pc.is_none());
+        assert!(!state.regs[2]);
+    }
+
+    #[test]
+    fn lift_rejects_noninjective_and_out_of_range_maps() {
+        let p = DeferredProgram::table(Program::<2, 1>::new(0, 0, 0, vec![Instr::Halt]).unwrap());
+        assert!(DeferredProgram::<3, 2>::lift(p.clone(), [0, 0], [1]).is_err());
+        assert!(DeferredProgram::<3, 2>::lift(p, [0, 3], [1]).is_err());
+    }
+
+    #[test]
+    fn lift_does_not_flatten_large_original_composition() {
+        let atom = Block::<1, 1>::atom(Atom::Not { dst: 0, src: 0 }).unwrap();
+        let repeated = Block::repeat(1_000_000, atom).unwrap();
+        let source = DeferredProgram::<1, 1>::composed(0, 0, repeated).unwrap();
+        let lifted = DeferredProgram::<3, 2>::lift(source, [2], [1]).unwrap();
+        assert_eq!(lifted.labels(), 1_000_001);
+        assert_eq!(
+            lifted.instruction_at(500_000).unwrap(),
+            Instr::Not {
+                dst: 2,
+                src: 2,
+                next: 500_001
+            }
+        );
+        assert_eq!(
+            lifted.instruction_at(1_000_000).unwrap(),
+            Instr::Not {
+                dst: 2,
+                src: 2,
+                next: 0
+            }
+        );
+        assert_eq!(lifted.instruction_at(0).unwrap(), Instr::Halt);
     }
 }

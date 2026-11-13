@@ -865,16 +865,9 @@ fn lower<const R: usize, const S: usize>(
     }
 }
 
-impl<const R: usize, const S: usize> DeferredProgram<R, S> {
-    /// Interpret the exact serialized bytes bound by an external Lean-certificate receipt.
-    ///
-    /// The Rust parser is independent of the Python graph-to-Rust generator.
-    /// A matching hash is a *binding*, not a proof by itself; users must obtain
-    /// the expectation from a checked Lean certificate, never from untrusted JSON.
-    pub fn from_original_source_json(
-        bytes: &[u8],
-        expected: SourceGraphBinding<'_>,
-    ) -> Result<Arc<Self>, Error> {
+/// Validate the exact receipt-bound bytes before either backend sees the graph.
+/// A caller-supplied digest is not itself a Lean kernel certificate.
+fn parse_bound_graph(bytes: &[u8], expected: SourceGraphBinding<'_>) -> Result<SerializedGraph, Error> {
         if bytes.is_empty()
             || bytes.len() > MAX_BYTES
             || bytes.last() != Some(&b'\n')
@@ -917,6 +910,20 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
                 "source declaration/blob does not match trusted binding",
             ));
         }
+        Ok(source)
+}
+
+impl<const R: usize, const S: usize> DeferredProgram<R, S> {
+    /// Interpret the exact serialized bytes bound by an external Lean-certificate receipt.
+    ///
+    /// The Rust parser is independent of the Python graph-to-Rust generator.
+    /// A matching hash is a *binding*, not a proof by itself; users must obtain
+    /// the expectation from a checked Lean certificate, never from untrusted JSON.
+    pub fn from_original_source_json(
+        bytes: &[u8],
+        expected: SourceGraphBinding<'_>,
+    ) -> Result<Arc<Self>, Error> {
+        let source = parse_bound_graph(bytes, expected)?;
         let abi = source.abi;
         if R == 0
             || R > 256
@@ -968,6 +975,9 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         Ok(program)
     }
 }
+
+mod codegen;
+pub use codegen::emit_original_source_rust;
 
 #[cfg(test)]
 mod native_interning_tests {

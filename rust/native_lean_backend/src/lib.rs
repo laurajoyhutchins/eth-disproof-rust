@@ -222,32 +222,11 @@ impl Reader {
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
-                let (op, comparison) = match name.as_str() {
-                    "UInt8.add" | "UInt16.add" | "UInt32.add" | "UInt64.add" | "USize.add" => {
-                        ("wrapping_add", false)
-                    }
-                    "UInt8.sub" | "UInt16.sub" | "UInt32.sub" | "UInt64.sub" | "USize.sub" => {
-                        ("wrapping_sub", false)
-                    }
-                    "UInt8.mul" | "UInt16.mul" | "UInt32.mul" | "UInt64.mul" | "USize.mul" => {
-                        ("wrapping_mul", false)
-                    }
-                    "UInt8.decEq" | "UInt16.decEq" | "UInt32.decEq" | "UInt64.decEq"
-                    | "USize.decEq" => ("==", true),
-                    "UInt8.decLt" | "UInt16.decLt" | "UInt32.decLt" | "UInt64.decLt"
-                    | "USize.decLt" => ("<", true),
-                    "UInt8.decLe" | "UInt16.decLe" | "UInt32.decLe" | "UInt64.decLe"
-                    | "USize.decLe" => ("<=", true),
-                    _ => return Err(format!("unrecognized primitive call: {name}")),
-                };
-                let expected_ty = match name.split('.').next() {
-                    Some("UInt8") => "u8",
-                    Some("UInt16") => "u16",
-                    Some("UInt32") => "u32",
-                    Some("UInt64") => "u64",
-                    Some("USize") => "usize",
-                    _ => return Err(format!("invalid primitive namespace: {name}")),
-                };
+                let spec = primitive_spec(&name)
+                    .ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
+                let op = spec.rust_op;
+                let comparison = spec.comparison;
+                let expected_ty = spec.operand_type;
                 let lhs = Self::arg(args[0], env, expected_ty)?;
                 let rhs = Self::arg(args[1], env, expected_ty)?;
                 if comparison {
@@ -632,40 +611,39 @@ impl Reader {
     }
 }
 
+// The release coverage registry is the same table consulted by production
+// codegen and dependency-closure discovery, not a second documentation list.
+const PRIMITIVE_REGISTRY: &str = include_str!("../primitive-registry.tsv");
+
+struct PrimitiveSpec<'a> {
+    operand_type: &'a str,
+    rust_op: &'a str,
+    comparison: bool,
+}
+
+fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
+    PRIMITIVE_REGISTRY
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .find_map(|line| {
+            let mut cells = line.split('\t');
+            let id = cells.next()?;
+            let operand_type = cells.next()?;
+            let rust_op = cells.next()?;
+            let kind = cells.next()?;
+            if cells.next().is_some() || id != name {
+                return None;
+            }
+            Some(PrimitiveSpec {
+                operand_type,
+                rust_op,
+                comparison: kind == "comparison",
+            })
+        })
+}
+
 fn is_primitive(name: &str) -> bool {
-    matches!(
-        name,
-        "UInt8.add"
-            | "UInt16.add"
-            | "UInt32.add"
-            | "UInt64.add"
-            | "USize.add"
-            | "UInt8.sub"
-            | "UInt16.sub"
-            | "UInt32.sub"
-            | "UInt64.sub"
-            | "USize.sub"
-            | "UInt8.mul"
-            | "UInt16.mul"
-            | "UInt32.mul"
-            | "UInt64.mul"
-            | "USize.mul"
-            | "UInt8.decEq"
-            | "UInt16.decEq"
-            | "UInt32.decEq"
-            | "UInt64.decEq"
-            | "USize.decEq"
-            | "UInt8.decLt"
-            | "UInt16.decLt"
-            | "UInt32.decLt"
-            | "UInt64.decLt"
-            | "USize.decLt"
-            | "UInt8.decLe"
-            | "UInt16.decLe"
-            | "UInt32.decLe"
-            | "UInt64.decLe"
-            | "USize.decLe"
-    )
+    primitive_spec(name).is_some()
 }
 
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
@@ -790,6 +768,42 @@ mod tests {
         assert_ne!(internal_name("X.A"), internal_name("X.a"));
         assert!(internal_name("X.a").starts_with("lean_"));
     }
+    #[test]
+    fn registry_is_complete_and_unambiguous() {
+        use super::{primitive_spec, PRIMITIVE_REGISTRY};
+        use std::collections::BTreeSet;
+        let mut seen = BTreeSet::new();
+        for line in PRIMITIVE_REGISTRY.lines() {
+            if line.starts_with('#') || line.is_empty() {
+                continue;
+            }
+            let cells: Vec<_> = line.split('\t').collect();
+            assert_eq!(cells.len(), 4, "malformed registry line: {line}");
+            assert!(seen.insert(cells[0]), "duplicate primitive {}", cells[0]);
+            let (namespace, operation) = cells[0].split_once('.').unwrap();
+            assert!(
+                ["UInt8", "UInt16", "UInt32", "UInt64", "USize"].contains(&namespace),
+                "unsupported primitive namespace {namespace}"
+            );
+            assert!(
+                ["add", "sub", "mul", "decEq", "decLt", "decLe"].contains(&operation),
+                "unexpected primitive operation {operation}"
+            );
+            let spec = primitive_spec(cells[0]).expect("registered primitive missing");
+            assert_eq!(spec.operand_type, cells[1]);
+            assert_eq!(spec.rust_op, cells[2]);
+            assert_eq!(spec.comparison, cells[3] == "comparison");
+        }
+        for namespace in ["UInt8", "UInt16", "UInt32", "UInt64", "USize"] {
+            for operation in ["add", "sub", "mul", "decEq", "decLt", "decLe"] {
+                let id = format!("{namespace}.{operation}");
+                assert!(seen.contains(id.as_str()), "missing supported primitive {id}");
+            }
+        }
+        assert_eq!(seen.len(), 30);
+        assert!(!super::is_primitive("UInt64.shiftLeft"));
+    }
+
     #[test]
     fn permitted_rust_identacters_only() {
         for s in ["a", "a_1", "Fn2"] {

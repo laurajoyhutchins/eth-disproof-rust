@@ -797,7 +797,10 @@ mod tests {
         for namespace in ["UInt8", "UInt16", "UInt32", "UInt64", "USize"] {
             for operation in ["add", "sub", "mul", "decEq", "decLt", "decLe"] {
                 let id = format!("{namespace}.{operation}");
-                assert!(seen.contains(id.as_str()), "missing supported primitive {id}");
+                assert!(
+                    seen.contains(id.as_str()),
+                    "missing supported primitive {id}"
+                );
             }
         }
         assert_eq!(seen.len(), 30);

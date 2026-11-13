@@ -69,3 +69,20 @@ separate ETH symbolic/physical semantics obligations remain open.
   indirect applications, closures, join points, and general runtime types
   remain unsupported. Recursive functions with supported bodies compile, but
   no guarantee of stack safety or tail-call optimization is claimed.
+
+## Extension: join points and multiple public roots
+
+- The native emitter recognizes `FnBody.jdecl` and `FnBody.jmp` for **lexical,
+  non-recursive scalar joins**. It validates parameter types and jump argument
+  arity; join bodies cannot recursively reference their own join identifier.
+  Multiple Boolean arms have independent variable/type scopes.
+- `#native_rust_package [RootA.name, RootB.name] to "new/path"` emits a
+  standalone Rust Cargo **library** (not a binary), deduplicating the union of
+  reachable compiled dependencies. Public functions use each final Lean name
+  component. Identical public names are rejected before publishing.
+- The generated crate contains `[workspace]` in Cargo.toml so its build does
+  not unintentionally become a member of the generating compiler workspace.
+- Clean build: 1,984 prior closure/scalar comparisons, 256 join-point
+  comparisons, 768 Cargo-package comparisons: **3,008** total. Neither the
+  general control-flow completion gate nor general data/runtime semantics is
+  established by this subset.

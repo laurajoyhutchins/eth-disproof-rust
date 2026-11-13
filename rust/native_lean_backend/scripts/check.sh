@@ -123,6 +123,48 @@ fn main() {
 RUST
 rustc --edition=2021 -o examples/native-test examples/run.rs
 examples/native-test
+# Real Lean IR join continuations (jdecl/jmp), including captured locals.
+lean --load-dynlib="$NATIVE_LIB" examples/JoinFixture.lean
+cat > examples/test-join.rs <<'RUST'
+include!("generated_join.rs");
+include!("generated_nested_join.rs");
+fn main() { include!("generated_join_differential.rs"); }
+RUST
+rustc --edition=2024 -o examples/test-join examples/test-join.rs
+examples/test-join
+# One *standalone Cargo package*, three public roots, shared dependencies.
+rm -rf examples/native-package
+lean --load-dynlib="$NATIVE_LIB" examples/MultiRoot.lean
+cargo test --offline --manifest-path examples/native-package/Cargo.toml
+# Exactly one shared imported dependency in the emitted library.
+if [[ "$(grep -c 'Generated directly from Lean IR declaration: Library.bump' examples/native-package/src/lib.rs)" != 1 ]]; then
+  echo "multi-root emitter duplicated a shared dependency" >&2; exit 1
+fi
+package_hash_before="$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)"
+rm -rf examples/native-package
+lean --load-dynlib="$NATIVE_LIB" examples/MultiRoot.lean > /dev/null
+package_hash_after="$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)"
+if [[ "$package_hash_before" != "$package_hash_after" ]]; then
+  echo "multi-root Cargo source is not deterministic" >&2; exit 1
+fi
+for name in RefusalPackageCollision RefusalPackageUnsupported; do
+  rm -rf examples/rejected-package
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${name}.lean" > "examples/${name}.log" 2>&1; then
+    echo "invalid multi-root package was accepted: $name" >&2; exit 1
+  fi
+  if [[ -e examples/rejected-package ]] || ! grep -q 'Rust native backend refused' "examples/${name}.log"; then
+    echo "multi-root failure published partial code or lacked refusal: $name" >&2; exit 1
+  fi
+  rm -f "examples/${name}.log"
+done
+package_hash_before="$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)"
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalPackageOverwrite.lean > examples/RefusalPackageOverwrite.log 2>&1; then
+  echo "Cargo package overwrote existing destination" >&2; exit 1
+fi
+if [[ "$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)" != "$package_hash_before" ]]; then
+  echo "refused overwrite modified the published Cargo package" >&2; exit 1
+fi
+rm -f examples/RefusalPackageOverwrite.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -135,7 +177,7 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=1984"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/generated_*.rs
+  echo "differential_assertions=3008"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

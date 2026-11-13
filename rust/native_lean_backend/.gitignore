@@ -18,3 +18,9 @@
 /examples/rejected_closure.log
 /examples/rejected_sorry_closure.rs
 /examples/rejected_sorry_closure.log
+
+# Generated standalone crates, join fixtures and smoke harness files
+/examples/native-package/
+/examples/test-join
+/examples/test-join.rs
+/examples/RefusalPackage*.log

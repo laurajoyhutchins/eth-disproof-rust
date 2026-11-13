@@ -33,6 +33,14 @@ struct Signature {
 }
 
 type FunctionTable = BTreeMap<String, Signature>;
+// Lexically visible, typed IR join points. Each body has its own scope.
+type JoinTable = BTreeMap<usize, Vec<&'static str>>;
+
+#[derive(Clone, Copy)]
+struct LoweringContext<'a> {
+    functions: Option<&'a FunctionTable>,
+    joins: &'a JoinTable,
+}
 
 struct Reader;
 impl Reader {
@@ -270,7 +278,7 @@ impl Reader {
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
-        functions: Option<&FunctionTable>,
+        ctx: LoweringContext<'_>,
     ) -> Result<(), String> {
         // Lean 4.34.1 IR uses the *storage type* name UInt8 here,
         // not the source Bool name. Validate Bool constructor names below.
@@ -307,14 +315,16 @@ impl Reader {
             }
             seen[cidx] = true;
             writeln!(code, "        {cidx} => {{").unwrap();
+            // Branch-local variable definitions must never leak across arms.
+            let mut arm_env = env.clone();
             Self::body(
                 Self::field(alt, 1)?,
                 code,
                 depth + 1,
                 count,
-                env,
+                &mut arm_env,
                 ret_ty,
-                functions,
+                ctx,
             )?;
             writeln!(code, "        }}").unwrap();
         }
@@ -337,7 +347,7 @@ impl Reader {
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
-        functions: Option<&FunctionTable>,
+        ctx: LoweringContext<'_>,
     ) -> Result<(), String> {
         if depth > 128 {
             return Err("IR control-flow nesting limit".into());
@@ -352,16 +362,93 @@ impl Reader {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
-                    let value = Self::expr(Self::field(x, 2)?, ty, env, functions)?;
+                    let value = Self::expr(Self::field(x, 2)?, ty, env, ctx.functions)?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }
                     writeln!(code, "    let x_{name}: {ty} = {value};").unwrap();
                     x = Self::field(x, 3)?;
                 }
+                1 => {
+                    // jdecl(joinId, params, value, continuation): the join's
+                    // body is a typed, lexically captured Rust closure. Its
+                    // declaration is deliberately absent from its own value
+                    // scope: recursive join jumps are refused, not miscompiled.
+                    let id = Self::var(Self::field(x, 0)?)?;
+                    if ctx.joins.contains_key(&id) {
+                        return Err(format!("join point {id} shadows a visible join"));
+                    }
+                    let mut param_types = Vec::new();
+                    let mut value_env = env.clone();
+                    let mut param_code = Vec::new();
+                    for param in Self::array(Self::field(x, 1)?)? {
+                        let var = Self::var(Self::field(param, 0)?)?;
+                        let ty = Self::ty(Self::field(param, 1)?)?;
+                        if value_env.insert(var, ty).is_some() {
+                            return Err(format!(
+                                "join parameter x_{var} reused a visible variable"
+                            ));
+                        }
+                        param_code.push(format!("x_{var}: {ty}"));
+                        param_types.push(ty);
+                    }
+                    writeln!(
+                        code,
+                        "    let j_{id} = |{}| -> {ret_ty} {{",
+                        param_code.join(", ")
+                    )
+                    .unwrap();
+                    Self::body(
+                        Self::field(x, 2)?,
+                        code,
+                        depth + 1,
+                        count,
+                        &mut value_env,
+                        ret_ty,
+                        ctx,
+                    )?;
+                    writeln!(code, "    }};").unwrap();
+                    let mut scoped_joins = ctx.joins.clone();
+                    scoped_joins.insert(id, param_types);
+                    Self::body(
+                        Self::field(x, 3)?,
+                        code,
+                        depth + 1,
+                        count,
+                        env,
+                        ret_ty,
+                        LoweringContext {
+                            functions: ctx.functions,
+                            joins: &scoped_joins,
+                        },
+                    )?;
+                    return Ok(());
+                }
                 9 => {
                     // case(tid, scrutinee, type, alts)
-                    Self::boolean_case(x, code, depth, count, env, ret_ty, functions)?;
+                    Self::boolean_case(x, code, depth, count, env, ret_ty, ctx)?;
+                    return Ok(());
+                }
+                11 => {
+                    // jmp(joinId, arguments): a typed non-recursive jump
+                    // into the enclosing join point's continuation.
+                    let id = Self::var(Self::field(x, 0)?)?;
+                    let types = ctx.joins.get(&id).ok_or_else(|| {
+                        format!("unsupported or recursive jump to join point {id}")
+                    })?;
+                    let args = Self::array(Self::field(x, 1)?)?;
+                    if args.len() != types.len() {
+                        return Err(format!(
+                            "join point {id} expects {} args, got {}",
+                            types.len(),
+                            args.len()
+                        ));
+                    }
+                    let mut lowered = Vec::new();
+                    for (arg, ty) in args.into_iter().zip(types.iter()) {
+                        lowered.push(Self::arg(arg, env, ty)?);
+                    }
+                    writeln!(code, "    return j_{id}({});", lowered.join(", ")).unwrap();
                     return Ok(());
                 }
                 10 => {
@@ -428,7 +515,18 @@ impl Reader {
             write!(result, "x_{var}: {ty}").unwrap();
         }
         writeln!(result, ") -> {ret} {{").unwrap();
-        Self::body(body, &mut result, 0, &mut 0, &mut env, ret, functions)?;
+        Self::body(
+            body,
+            &mut result,
+            0,
+            &mut 0,
+            &mut env,
+            ret,
+            LoweringContext {
+                functions,
+                joins: &JoinTable::new(),
+            },
+        )?;
         result.push_str("}\n");
         Ok(result)
     }
@@ -477,6 +575,10 @@ impl Reader {
                     }
                     pending.push(Self::field(body, 3)?);
                 }
+                1 => {
+                    pending.push(Self::field(body, 2)?);
+                    pending.push(Self::field(body, 3)?);
+                }
                 9 => {
                     for alt in Self::array(Self::field(body, 3)?)? {
                         match Self::tag(alt)? {
@@ -486,7 +588,7 @@ impl Reader {
                         }
                     }
                 }
-                10 => (),
+                10 | 11 => (),
                 t => {
                     return Err(format!(
                         "dependency traversal does not support IR body constructor {t}"
@@ -500,7 +602,25 @@ impl Reader {
     unsafe fn emit_module(decls: Obj, root: Obj, public_name: Obj) -> Result<String, String> {
         let root = Self::string(root)?;
         let public_name = Self::string(public_name)?;
-        // Public name is validated by the same strict emitter before publishing.
+        Self::emit_roots(decls, vec![(root, public_name)])
+    }
+
+    unsafe fn emit_module_many(decls: Obj, roots: Obj) -> Result<String, String> {
+        let mut public_roots = Vec::new();
+        for item in Self::array(roots)? {
+            let root = Self::string(item)?;
+            // In v1 we expose the final Lean identifier as the Rust public API.
+            // Any collisions (e.g. Foo.run and Bar.run) must refuse.
+            let public = root.rsplit('.').next().unwrap_or("").to_owned();
+            public_roots.push((root, public));
+        }
+        Self::emit_roots(decls, public_roots)
+    }
+
+    unsafe fn emit_roots(decls: Obj, roots: Vec<(String, String)>) -> Result<String, String> {
+        if roots.is_empty() || roots.len() > 128 {
+            return Err("expected 1..128 public Lean root declarations".into());
+        }
         let entries = Self::array(decls)?;
         let mut definitions = BTreeMap::<String, Obj>::new();
         for decl in entries {
@@ -509,7 +629,21 @@ impl Reader {
                 return Err(format!("duplicate IR declaration in closure: {name}"));
             }
         }
-        let mut pending = vec![root.clone()];
+        let mut pending = Vec::new();
+        let mut public_names = BTreeSet::new();
+        let mut root_names = BTreeSet::new();
+        for (root, public) in &roots {
+            if !root_names.insert(root.clone()) {
+                return Err(format!("duplicate public Lean root: {root}"));
+            }
+            if !public_names.insert(public.clone()) {
+                return Err(format!("duplicate Rust public API name: {public}"));
+            }
+            if !definitions.contains_key(root) {
+                return Err(format!("requested Lean root {root} has no compiler IR"));
+            }
+            pending.push(root.clone());
+        }
         let mut visited = BTreeSet::<String>::new();
         let mut closure = BTreeMap::<String, Obj>::new();
         let mut signatures = FunctionTable::new();
@@ -533,9 +667,6 @@ impl Reader {
             signatures.insert(name.clone(), sig);
             closure.insert(name, decl);
         }
-        let root_signature = signatures
-            .get(&root)
-            .ok_or("requested root missing from closure")?;
         let mut result = String::from(
             "// Native in-process Lean IR closure; no JSON or Lean runtime dependency.\n",
         );
@@ -547,38 +678,39 @@ impl Reader {
             )?);
             result.push('\n');
         }
-        // Keep the existing external API for a single public root while
-        // exposing all internal callees using stable, collision-free names.
-        write!(result, "pub fn {public_name}(").unwrap();
-        for (i, ty) in root_signature.params.iter().enumerate() {
-            if i > 0 {
-                result.push_str(", ");
+        // Exact same dependency closure is shared by all public wrappers.
+        for (root, public_name) in roots {
+            let sig = signatures
+                .get(&root)
+                .ok_or("requested root missing from closure")?;
+            // Validate the identifier, including Rust reserved words.
+            let _ = Self::emit_function(
+                *closure.get(&root).unwrap(),
+                &public_name,
+                Some(&signatures),
+            )?;
+            write!(result, "pub fn {public_name}(").unwrap();
+            for (i, ty) in sig.params.iter().enumerate() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+                write!(result, "p_{i}: {ty}").unwrap();
             }
-            write!(result, "p_{i}: {ty}").unwrap();
-        }
-        write!(
-            result,
-            ") -> {} {{\n    {}(",
-            root_signature.result,
-            internal_name(&root)
-        )
-        .unwrap();
-        for i in 0..root_signature.params.len() {
-            if i > 0 {
-                result.push_str(", ");
+            write!(
+                result,
+                ") -> {} {{\n    {}(",
+                sig.result,
+                internal_name(&root)
+            )
+            .unwrap();
+            for i in 0..sig.params.len() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+                write!(result, "p_{i}").unwrap();
             }
-            write!(result, "p_{i}").unwrap();
+            result.push_str(")\n}\n");
         }
-        result.push_str(")\n}\n");
-        // Invalid public Rust identifiers fail at generation, not only when
-        // rustc later parses the output. Reuse existing validation via an
-        // in-memory synthetic wrapper is unnecessary: emit_function accepts
-        // an actual root declaration under the public name and validates it.
-        let _ = Self::emit_function(
-            *closure.get(&root).unwrap(),
-            &public_name,
-            Some(&signatures),
-        )?;
         Ok(result)
     }
 }
@@ -617,6 +749,43 @@ fn is_primitive(name: &str) -> bool {
             | "UInt64.decLe"
             | "USize.decLe"
     )
+}
+
+unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
+    let text = match std::panic::catch_unwind(|| Reader::emit_module_many(decls, roots)) {
+        Ok(Ok(s)) => format!("OK\n{s}"),
+        Ok(Err(e)) => format!("ERROR\n{e}"),
+        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+    };
+    lean_mk_string(
+        CString::new(text.replace('\0', "\\0"))
+            .expect("no interior NUL")
+            .as_ptr(),
+    )
+}
+
+/// # Safety
+/// Arguments are synchronously borrowed Lean 4.34.1 Array IR.Decl and Array String.
+#[no_mangle]
+pub unsafe extern "C" fn rs_emit_ir_module_many(decls: Obj, roots: Obj) -> *mut c_void {
+    reply_module_many(decls, roots)
+}
+/// # Safety
+/// Interpreter entrypoint with same Lean ABI contract as rs_emit_ir_module_many.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_emitModuleMany(decls: Obj, roots: Obj) -> *mut c_void {
+    reply_module_many(decls, roots)
+}
+/// # Safety
+/// Boxed interpreter entrypoint with same Lean ABI contract.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_emitModuleMany___boxed(
+    decls: Obj,
+    roots: Obj,
+) -> *mut c_void {
+    reply_module_many(decls, roots)
 }
 
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {

@@ -32,7 +32,8 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 `check.sh` builds a Rust shared library and `NativeRust.olean`, then loads the
 backend into Lean's interpreter. It compiles **15 isolated declarations and
 three transitive closure roots**, generates standalone Rust, and executes
-**1,984 independently evaluated Lean/Rust assertions**. It also checks
+**3,008 independently evaluated Lean/Rust assertions**, including 256 join-point
+cases and 768 multi-root Cargo library cases. It also checks
 fail-closed behavior, preserved outputs, stable output hashes, Cargo tests,
 formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
@@ -65,9 +66,20 @@ def pipeline (x : UInt64) : UInt64 := Library.bump (Library.triple x)
 The compiler reuses Lean's imported compiler IR, generates collision-free
 internal Rust names, checks signatures and calls, and refuses missing or
 unsupported dependencies. Example source and test fixtures are in
-`examples/Library.lean` and `examples/Closure.lean`. This emits a single
-Rust source module for **one root**; complete Cargo crate generation and
-multiple public roots remain future work.
+`examples/Library.lean` and `examples/Closure.lean`. This also supports a complete, standalone multi-root Cargo library:
+
+```lean
+#native_rust_package [PackageFixture.pipeline, PackageFixture.combined,
+                      PackageFixture.select] to "examples/native-package"
+```
+
+The emitted `Cargo.toml` and `src/lib.rs` include the transitive, deduplicated
+closure for all requested roots, with one public function per final Lean name
+segment. Two roots with the same public segment refuse rather than silently
+renaming or overwriting an export. The package has no external dependencies and
+is its own Cargo workspace. The destination must not already exist; a new
+package is published only after codegen succeeds. It is a **library** crate,
+not a user-friendly executable CLI yet.
 
 ## Precise coverage
 
@@ -79,11 +91,14 @@ have exact `Bool.false`/`Bool.true` constructor identities. Integer arithmetic u
 `wrapping_*`; Lean `Bool` results use the IR's `u8` convention (0/1).
 The closure command additionally supports typed direct calls, shared
 transitive dependencies, imported executable functions, and direct/mutual
-recursion when every reachable body uses supported IR.
+recursion when every reachable body uses supported IR. A restricted class of
+**non-recursive typed join points** (`jdecl`/`jmp`) now lowers to lexically
+capturing Rust closures, including jumps from Boolean branches. Recursive
+joins, non-scalar join parameters, and unsupported runtime operations refuse.
 
 **Not implemented:** general Lean/Rust compilation; arbitrary-precision
-`Nat`; indirect calls, closures, non-Boolean cases, join points, arrays,
-structures, complete standalone crate generation, general external primitives, and
+`Nat`; indirect calls, closures, non-Boolean cases, recursive joins, arrays,
+structures, general external primitives, and
 noncomputable expressions without compiler IR. The current generated functions are checked
 on examples but there is not yet a general semantic refinement theorem.
 
@@ -114,3 +129,13 @@ versioned IR coverage contract and exact test boundaries.
 This prototype is independent of the 4.35.0 leanfran experiment in PR #184.
 It is intended to establish a working in-process ABI and production-quality
 fail-closed boundary before extending coverage.
+
+### New G1 conformance fixtures
+
+`examples/JoinFixture.lean` creates real Lean compiler-IR join points and
+checks 256 independent Lean/Rust results. `examples/MultiRoot.lean` builds
+three public functions into one Cargo crate and checks 768 independent results.
+The exact test suite verifies shared dependency deduplication, deterministic
+crate emission, public-name collision refusal, unsupported type refusal, and
+no modification of previously published directories. These are successful
+examples within a **bounded subset**, not proof of general compiler correctness.

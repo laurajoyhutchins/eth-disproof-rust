@@ -10,6 +10,10 @@ namespace NativeRust
 @[extern "rs_emit_ir_module"] opaque emitModule
   (decls : @& Array Lean.IR.Decl) (root : @& String) (rustName : @& String) : String
 
+/-- Emit several public roots through one shared, deduplicated IR closure. -/
+@[extern "rs_emit_ir_module_many"] opaque emitModuleMany
+  (decls : @& Array Lean.IR.Decl) (roots : @& Array String) : String
+
 
 /-- Compile one executable declaration with the pinned Lean compiler and emit Rust.
     Refuses declarations missing IR, or outside the backend's strict subset. -/
@@ -62,9 +66,10 @@ private partial def callsInBody : Lean.IR.FnBody → Array Lean.Name
 /-- Compile the root and inspect the exact in-process IR dependency closure.
     Definitions in already-imported modules are retrieved by IR.findDecl. A
     missing/unsupported symbol remains a hard error in the Rust backend. -/
-def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
-  Lean.Compiler.compile #[root]
-  let mut queue := #[root]
+private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.Decl) := do
+  if roots.isEmpty then throwError "expected at least one Lean declaration"
+  Lean.Compiler.compile roots
+  let mut queue := roots
   let mut seen : Std.HashSet Lean.Name := {}
   let mut decls : Array Lean.IR.Decl := #[]
   while !queue.isEmpty do
@@ -80,6 +85,10 @@ def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String :=
       decls := decls.push decl
       if let .fdecl _ _ _ body _ := decl then
         queue := queue ++ callsInBody body
+  return decls
+
+def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
+  let decls ← gatherClosure #[root]
   let report := emitModule decls root.toString rustName
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
@@ -87,6 +96,33 @@ def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String :=
     throwError "Rust native backend refused {root}: {(report.drop 6).toString}"
   else
     throwError "Rust native backend returned an invalid closure response for {root}"
+
+/-- Produce a complete standalone Rust library, sharing any overlapping roots. -/
+def compileMany (roots : Array Lean.Name) : Lean.CoreM String := do
+  let decls ← gatherClosure roots
+  let report := emitModuleMany decls (roots.map Lean.Name.toString)
+  if report.startsWith "OK\n" then
+    return (report.drop 3).toString
+  else if report.startsWith "ERROR\n" then
+    throwError "Rust native backend refused compilation: {(report.drop 6).toString}"
+  else
+    throwError "Rust native backend returned invalid multi-root response"
+
+/-- Publish a complete, new Cargo package by renaming a staging directory.
+    We never overwrite an existing destination or publish a partial crate. -/
+def publishPackage (destination : System.FilePath) (source : String) : IO Unit := do
+  if ← destination.pathExists then
+    throw <| IO.userError s!"refusing to overwrite existing Cargo package: {destination}"
+  let temp ← IO.FS.createTempDir
+  try
+    IO.FS.createDirAll (temp / "src")
+    IO.FS.writeFile (temp / "Cargo.toml")
+      "[package]\nname = \"lean_generated\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[workspace]\n"
+    IO.FS.writeFile (temp / "src" / "lib.rs") source
+    IO.FS.rename temp destination
+  catch err =>
+    try IO.FS.removeDirAll temp catch _ => pure ()
+    throw err
 
 end NativeRust
 
@@ -112,4 +148,17 @@ def elabNativeRustClosureCmd : CommandElab := fun stx => do
     let code ← liftCoreM <| NativeRust.compileClosure root.getId rustName.getString
     liftIO <| NativeRust.writeAtomically outFile.getString code
     logInfo m!"Native Rust backend emitted dependency closure for {root.getId}"
+  | _ => throwUnsupportedSyntax
+
+
+syntax (name := nativeRustPackageCmd) "#native_rust_package " "[" ident,* "]" " to " str : command
+
+@[command_elab nativeRustPackageCmd]
+def elabNativeRustPackageCmd : CommandElab := fun stx => do
+  match stx with
+  | `(#native_rust_package [$roots:ident,*] to $outDir:str) =>
+    let names := roots.getElems.map (·.getId)
+    let code ← liftCoreM <| NativeRust.compileMany names
+    liftIO <| NativeRust.publishPackage outDir.getString code
+    logInfo m!"Native Rust backend emitted standalone Cargo library ({names.size} public roots)"
   | _ => throwUnsupportedSyntax

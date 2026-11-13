@@ -24,3 +24,5 @@
 /examples/test-join
 /examples/test-join.rs
 /examples/RefusalPackage*.log
+/examples/rejected-io-package/
+/examples/RefusalPackageIO.log

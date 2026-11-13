@@ -221,32 +221,13 @@ impl Reader {
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
-                let (op, comparison) = match name.as_str() {
-                    "UInt8.add" | "UInt16.add" | "UInt32.add" | "UInt64.add" | "USize.add" => {
-                        ("wrapping_add", false)
-                    }
-                    "UInt8.sub" | "UInt16.sub" | "UInt32.sub" | "UInt64.sub" | "USize.sub" => {
-                        ("wrapping_sub", false)
-                    }
-                    "UInt8.mul" | "UInt16.mul" | "UInt32.mul" | "UInt64.mul" | "USize.mul" => {
-                        ("wrapping_mul", false)
-                    }
-                    "UInt8.decEq" | "UInt16.decEq" | "UInt32.decEq" | "UInt64.decEq"
-                    | "USize.decEq" => ("==", true),
-                    "UInt8.decLt" | "UInt16.decLt" | "UInt32.decLt" | "UInt64.decLt"
-                    | "USize.decLt" => ("<", true),
-                    "UInt8.decLe" | "UInt16.decLe" | "UInt32.decLe" | "UInt64.decLe"
-                    | "USize.decLe" => ("<=", true),
-                    _ => return Err(format!("unrecognized primitive call: {name}")),
-                };
-                let expected_ty = match name.split('.').next() {
-                    Some("UInt8") => "u8",
-                    Some("UInt16") => "u16",
-                    Some("UInt32") => "u32",
-                    Some("UInt64") => "u64",
-                    Some("USize") => "usize",
-                    _ => return Err(format!("invalid primitive namespace: {name}")),
-                };
+                // Production lowering and closure discovery consult one versioned
+                // primitive registry. Unknown calls cannot acquire host semantics.
+                let spec = primitive_spec(&name)
+                    .ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
+                let op = spec.rust_op;
+                let comparison = spec.comparison;
+                let expected_ty = spec.operand_type;
                 let lhs = Self::arg(args[0], env, expected_ty)?;
                 let rhs = Self::arg(args[1], env, expected_ty)?;
                 if comparison {
@@ -678,6 +659,19 @@ impl Reader {
             )?);
             result.push('\n');
         }
+        // An exported public name cannot shadow a generated internal callee.
+        // Internal names are byte-injective over the full Lean declaration name.
+        let internal_names = closure
+            .keys()
+            .map(|name| internal_name(name))
+            .collect::<BTreeSet<_>>();
+        for (root, public_name) in &roots {
+            if internal_names.contains(public_name) {
+                return Err(format!(
+                    "{root}: public export {public_name} collides with an internal Lean symbol"
+                ));
+            }
+        }
         // Exact same dependency closure is shared by all public wrappers.
         for (root, public_name) in roots {
             let sig = signatures
@@ -715,40 +709,39 @@ impl Reader {
     }
 }
 
+// One pinned primitive registry drives lowering, closure collection, and tests.
+// Unsupported or undocumented functions never fall back to host operations.
+const PRIMITIVE_REGISTRY: &str = include_str!("../primitive-registry.tsv");
+
+struct PrimitiveSpec<'a> {
+    operand_type: &'a str,
+    rust_op: &'a str,
+    comparison: bool,
+}
+
+fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
+    PRIMITIVE_REGISTRY
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .find_map(|line| {
+            let mut cells = line.split('\t');
+            let id = cells.next()?;
+            let operand_type = cells.next()?;
+            let rust_op = cells.next()?;
+            let kind = cells.next()?;
+            if cells.next().is_some() || id != name {
+                return None;
+            }
+            Some(PrimitiveSpec {
+                operand_type,
+                rust_op,
+                comparison: kind == "comparison",
+            })
+        })
+}
+
 fn is_primitive(name: &str) -> bool {
-    matches!(
-        name,
-        "UInt8.add"
-            | "UInt16.add"
-            | "UInt32.add"
-            | "UInt64.add"
-            | "USize.add"
-            | "UInt8.sub"
-            | "UInt16.sub"
-            | "UInt32.sub"
-            | "UInt64.sub"
-            | "USize.sub"
-            | "UInt8.mul"
-            | "UInt16.mul"
-            | "UInt32.mul"
-            | "UInt64.mul"
-            | "USize.mul"
-            | "UInt8.decEq"
-            | "UInt16.decEq"
-            | "UInt32.decEq"
-            | "UInt64.decEq"
-            | "USize.decEq"
-            | "UInt8.decLt"
-            | "UInt16.decLt"
-            | "UInt32.decLt"
-            | "UInt64.decLt"
-            | "USize.decLt"
-            | "UInt8.decLe"
-            | "UInt16.decLe"
-            | "UInt32.decLe"
-            | "UInt64.decLe"
-            | "USize.decLe"
-    )
+    primitive_spec(name).is_some()
 }
 
 unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
@@ -872,6 +865,42 @@ mod tests {
         assert_ne!(internal_name("X.A"), internal_name("X.a"));
         assert!(internal_name("X.a").starts_with("lean_"));
     }
+    #[test]
+    fn primitive_registry_is_complete_and_unambiguous() {
+        let mut seen = BTreeSet::new();
+        for line in PRIMITIVE_REGISTRY.lines() {
+            if line.starts_with('#') || line.is_empty() {
+                continue;
+            }
+            let parts = line.split('\t').collect::<Vec<_>>();
+            assert_eq!(parts.len(), 4, "malformed registry row: {line}");
+            let name = parts[0];
+            assert!(seen.insert(name), "duplicate primitive: {name}");
+            let (family, operation) = name.split_once('.').expect("primitive qualified name");
+            assert!(
+                ["UInt8", "UInt16", "UInt32", "UInt64", "USize"].contains(&family),
+                "unsupported primitive family: {family}"
+            );
+            assert!(
+                ["add", "sub", "mul", "decEq", "decLt", "decLe"].contains(&operation),
+                "unreviewed primitive operation: {operation}"
+            );
+            let spec = primitive_spec(name).expect("registered primitive cannot disappear");
+            assert_eq!(spec.operand_type, parts[1]);
+            assert_eq!(spec.rust_op, parts[2]);
+            assert_eq!(spec.comparison, parts[3] == "comparison");
+        }
+        for family in ["UInt8", "UInt16", "UInt32", "UInt64", "USize"] {
+            for operation in ["add", "sub", "mul", "decEq", "decLt", "decLe"] {
+                let name = format!("{family}.{operation}");
+                assert!(seen.contains(name.as_str()), "primitive missing: {name}");
+            }
+        }
+        assert_eq!(seen.len(), 30);
+        assert!(primitive_spec("UInt64.shiftLeft").is_none());
+        assert!(primitive_spec("IO.println").is_none());
+    }
+
     #[test]
     fn permitted_rust_identacters_only() {
         for s in ["a", "a_1", "Fn2"] {

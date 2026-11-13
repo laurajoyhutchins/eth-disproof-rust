@@ -8,6 +8,15 @@ fi
 export PATH="${LEAN_PREFIX}/bin:${PATH}"
 export LEAN_PATH="${LEAN_PREFIX}/lib/lean${LEAN_PATH:+:${LEAN_PATH}}"
 export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+# The actual Lean environment, not handwritten Rust indices, verifies the
+# complete pinned IR constructor inventory and emits a machine-readable ledger.
+mkdir -p artifacts
+lean scripts/VerifyIRInventory.lean
+# There is one production primitive registry. CI compares it against the
+# independently derived Lean coverage ledger to prevent coverage drift.
+diff -u \
+  <(awk -F '\t' '$1 == "primitive" && $3 == "conditional" { print $2 }' artifacts/ir-coverage.tsv | sort) \
+  <(awk -F '\t' '!/^#/ && NF >= 4 { print $1 }' primitive-registry.tsv | sort)
 cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
@@ -147,7 +156,7 @@ package_hash_after="$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -
 if [[ "$package_hash_before" != "$package_hash_after" ]]; then
   echo "multi-root Cargo source is not deterministic" >&2; exit 1
 fi
-for name in RefusalPackageCollision RefusalPackageUnsupported; do
+for name in RefusalPackageCollision RefusalPackageUnsupported RefusalPackageIO; do
   rm -rf examples/rejected-package
   if lean --load-dynlib="$NATIVE_LIB" "examples/${name}.lean" > "examples/${name}.log" 2>&1; then
     echo "invalid multi-root package was accepted: $name" >&2; exit 1
@@ -178,6 +187,9 @@ mkdir -p artifacts
   rustc --version
   cargo --version
   echo "differential_assertions=3008"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
+  echo "constructor_inventory=PASS"
+  echo "primitive_registry=PASS"
+  echo "external_io_boundary=REFUSED"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

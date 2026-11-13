@@ -86,3 +86,25 @@ separate ETH symbolic/physical semantics obligations remain open.
   comparisons, 768 Cargo-package comparisons: **3,008** total. Neither the
   general control-flow completion gate nor general data/runtime semantics is
   established by this subset.
+
+## Exhaustive pinned IR-constructor inventory and primitive registry
+
+The exact-head native CI executes `scripts/VerifyIRInventory.lean` before
+compiling the Rust backend. The Lean compiler itself enumerates constructors
+of `IR.Decl`, `IRType`, `Arg`, `LitVal`, `Expr`, `Alt`, and `FnBody`.
+It refuses any changed membership **or constructor order** relative to the
+pinned Lean 4.34.1 ABI. The generated `artifacts/ir-coverage.tsv` records
+each constructor as `conditional` or `refused`; `jdecl/jmp` are conditional
+only for the typed scalar non-recursive join subset.
+
+The backend now uses one `primitive-registry.tsv` for primitive codegen and
+dependency classification. CI independently compares its set of 30 entries
+with the Lean-generated coverage ledger. Unlisted operations and all
+extern/IO/effect boundaries have no default adapter and must refuse. A real
+`IO.println` fixture exercises this refusal through the public package API.
+
+`conditional` is not synonymous with complete semantics. Arbitrary heap
+objects, closures, full pattern matching, Nat/Int/Unicode collections,
+floating-point conversions, mutation and reference counting remain
+explicitly unsupported by this compiler version. This protects against
+partial builds, but it does **not** complete checklist #193 items 16–19.

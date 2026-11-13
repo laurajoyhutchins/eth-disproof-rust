@@ -139,3 +139,18 @@ The exact test suite verifies shared dependency deduplication, deterministic
 crate emission, public-name collision refusal, unsupported type refusal, and
 no modification of previously published directories. These are successful
 examples within a **bounded subset**, not proof of general compiler correctness.
+
+## Verified coverage inventory
+
+`scripts/check.sh` now derives a pinned constructor inventory from the live
+Lean 4.34.1 environment into `artifacts/ir-coverage.tsv`. Production lowering
+and call-closure discovery share `primitive-registry.tsv`; the regression
+suite compares both primitive sets and fails on drift. The inventory lists
+**conditional** support for the currently tested scalar/direct-call/join
+shapes and explicit refusal for all other runtime types and IR variants.
+
+The generated multi-root Cargo package has no Lean runtime dependency; the
+source generation itself still runs in the pinned Lean process. The test
+suite explicitly refuses an `IO` root rather than providing a host-side
+substitute. Neither this inventory nor the finite differential fixtures
+establishes general Lean program semantics.

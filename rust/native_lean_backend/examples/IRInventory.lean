@@ -17,8 +17,9 @@ run_cmd do
   for target in targets do
     let some (.inductInfo info) := env.find? target
       | throwError "Pinned Lean compiler IR inductive missing: {target}"
-    for i in [:info.ctors.size] do
-      rows := rows ++ s!"{target}\t{info.ctors[i]!}\t{i}\n"
+    let constructors := info.ctors.toArray
+    for i in [:constructors.size] do
+      rows := rows ++ s!"{target}\t{constructors[i]!}\t{i}\n"
   liftIO <| IO.FS.createDirAll "artifacts"
   liftIO <| IO.FS.writeFile "artifacts/ir-constructors.tsv" rows
   logInfo "Emitted source-environment-derived IR constructor inventory"

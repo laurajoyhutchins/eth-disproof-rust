@@ -27,7 +27,7 @@ permissions:
 # Do not cancel running source builds: each run preserves completed pinned
 # .olean modules for the next stage or run.
 concurrency:
-  group: original-query-import-\${{ github.event.pull_request.number || github.ref }}
+  group: original-query-import-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -38,12 +38,12 @@ jobs:
       ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
       ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
       LEAN_ROOT: instrumentation/lean-env
-      ORIGINAL_SOURCE: \${{ github.workspace }}/upstream/openai-math
-      IMPORT_STAGE: \${{ inputs.stage || 'signature' }}
+      ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+      IMPORT_STAGE: ${{ inputs.stage || 'signature' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: \${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Test native Rust stage builder and strict refusal
@@ -97,10 +97,10 @@ jobs:
           path: instrumentation/lean-env/.lake/build
           # Immutable per-attempt key; fallback restores the latest previous
           # compilation checkpoint on this PR's cache scope.
-          key: original-query-v2-\${{ runner.os }}-\${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-\${{ github.run_id }}-\${{ github.run_attempt }}
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            original-query-v2-\${{ runner.os }}-\${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-
-            original-oai-v1-\${{ runner.os }}-\${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-
+            original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
 
       - name: Build and independently import one original QueryStream dependency
         shell: bash
@@ -108,7 +108,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/original-query-stage"
           echo "STAGE=$IMPORT_STAGE"
-          echo "PR_HEAD=\${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "PR_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
           cargo run --locked --offline --bin original-query-build -- \
             --upstream "$ORIGINAL_SOURCE" \
             --lake-root "$LEAN_ROOT" \
@@ -124,14 +124,14 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: instrumentation/lean-env/.lake/build
-          key: original-query-v2-\${{ runner.os }}-\${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-\${{ github.run_id }}-\${{ github.run_attempt }}
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Preserve stage log and true success/refusal report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: original-query-import-\${{ env.IMPORT_STAGE }}-\${{ github.sha }}
-          path: \${{ runner.temp }}/original-query-stage/
+          name: original-query-import-${{ env.IMPORT_STAGE }}-${{ github.sha }}
+          path: ${{ runner.temp }}/original-query-stage/
           retention-days: 14
           if-no-files-found: warn
 

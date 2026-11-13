@@ -404,8 +404,11 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     insist(src.stat().st_size<=MAX_INPUT_BYTES,'source graph exceeds total byte bound')
     original=src.read_bytes()
     parsed=parse_source_graph_json(original)
-    closed_keys(parsed,{'kind','source_commit','source_blob','declaration','id','abi','command'})
-    insist(parsed['kind']=='original-structured-source-v1','wrong graph protocol')
+    kind=parsed['kind']
+    insist(kind in ('original-structured-source-v1','original-linked-source-v1'),
+           'wrong graph protocol')
+    root_field='command' if kind=='original-structured-source-v1' else 'program'
+    closed_keys(parsed,{'kind','source_commit','source_blob','declaration','id','abi',root_field})
     insist(parsed['source_commit']==SOURCE_SHA,'source commit mismatch')
     insist(re.fullmatch('[0-9a-f]{40}',parsed['source_blob']),'source blob malformed')
     insist(re.fullmatch('[a-z0-9_-]{1,255}',parsed['id']),'program ID malformed')
@@ -420,9 +423,17 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     l=number(abi['labels'],MAX_SOURCE_LABELS,'labels');insist(r>0 and s>0 and l>0,'empty ABI')
     inp=number(abi['input'],s,'input');out=number(abi['output'],s,'output')
     insist(inp<s and out<s,'port out of range')
-    root=parse_node(parsed['command'],r,s,[MAX_NODES])
-    insist(root.size+1==l,'derived source label count differs from Lean type')
-    entry=root.entry(1,0)
+    if kind=='original-structured-source-v1':
+        root=parse_node(parsed['command'],r,s,[MAX_NODES])
+        insist(root.size+1==l,'derived source label count differs from Lean type')
+        entry=root.entry(1,0)
+        emitted=[('halt',())]+[root.instr(1,0,pc) for pc in range(1,l)]
+    else:
+        root=parse_program(parsed['program'],[MAX_NODES])
+        insist((root.r,root.s,root.labels,root.input,root.output)==
+               (r,s,l,inp,out),'linked root ABI differs from original source type')
+        entry=root.entry
+        emitted=[root.instruction(pc) for pc in range(l)]
     insist(0<=entry<l,'source graph entry outside labels')
     gold_path=golden_dir/(name+'.table')
     insist(gold_path.is_file(),'not one of the six pinned golden programs')
@@ -435,7 +446,6 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     insist(hashlib.sha256(raw).hexdigest()==expect['sha256'],'golden source table hash mismatch')
     canonical,rows=parse_golden(raw,name,parsed['source_blob'])
     insist((r,s,l,entry,inp,out)==canonical,'graph program ABI differs from original physical table')
-    emitted=[('halt',())]+[root.instr(1,0,pc) for pc in range(1,l)]
     for i,(got,expected) in enumerate(zip(emitted,rows)):
         insist(got==expected,f'exact source physical instruction mismatch at {name}[{i}]: {fmt(got)} vs {fmt(expected)}')
     body=generate_test(parsed,root,rows,canonical,hashlib.sha256(original).hexdigest())
@@ -444,7 +454,7 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
              'graph_sha256':hashlib.sha256(original).hexdigest(),
              'golden_table_sha256':expect['sha256'],
              'rust_acceptance_test_sha256':hashlib.sha256(body.encode()).hexdigest(),
-             'rust_loader':'original-structured-source-v1/serde-native',
+             'rust_loader':f'{kind}/serde-native',
              'physical_instructions_compared':l,'status':'EXACT_SOURCE_PHYSICAL_PARITY'}
     # Generated Rust and the success receipt are staged separately from the
     # published output. Publish only after the optional Cargo verification

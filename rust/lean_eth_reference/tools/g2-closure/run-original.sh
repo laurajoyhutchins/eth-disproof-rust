@@ -37,6 +37,9 @@ export LEAN_PATH="$tmp${LEAN_PATH:+:$LEAN_PATH}"
 
 (
   cd "$lake_root"
+  # A successful fresh Lake dependency check is required. Importing a stale
+  # .olean is not source identity evidence even with a clean Git checkout.
+  timeout 1800s lake -K maxJobs=4 build OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram
   lake env lean -o "$tmp/G2Inventory.olean" "$tool/G2Inventory.lean"
   # OriginalQuery imports the actual original .olean module. No synthetic fallback.
   timeout 1800s lake env lean "$tool/OriginalQuery.lean" > "$tmp/inventory.json"
@@ -58,6 +61,8 @@ jq -e -s '
 source_hash="$(git -C "$original" rev-parse "HEAD:$query_path")"
 inventory_hash="$(sha256sum "$tmp/inventory.json" | cut -d' ' -f1)"
 lean_version="$(cd "$lake_root" && lake env lean --version)"
+producer_hash="$(sha256sum "$tool/G2Inventory.lean" | cut -d' ' -f1)"
+compiler_revision="$(git -C "$tool" rev-parse HEAD)"
 jq -n \
   --arg source_commit "$source_sha" \
   --arg source_blob "$source_hash" \
@@ -73,6 +78,8 @@ jq -n \
     lean_toolchain: $toolchain,
     observed_lean_version: $lean_version,
     inventory_sha256: $inventory_sha256,
+    inventory_producer_sha256: $producer_sha256,
+    compiler_repository_head: $compiler_revision,
     status: "syntactic-closure-only",
     code_generated: false,
     lean_rust_semantics: "not-established",

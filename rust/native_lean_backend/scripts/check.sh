@@ -74,6 +74,22 @@ for pair in "RefusalClosure:rejected_closure" "RefusalClosureSorry:rejected_sorr
   fi
   rm -f "examples/${destination}.rs" "examples/${destination}.log"
 done
+# A refusal in one Lean process must not poison later native calls. The
+# successful second command must still publish a valid Rust function.
+rm -f examples/recovery_bad.rs examples/recovery_good.rs
+if timeout --kill-after=3s 90s lean --load-dynlib="$NATIVE_LIB" examples/Recovery.lean > artifacts_recovery.log 2>&1; then
+  echo "recovery fixture unexpectedly accepted its unsupported String" >&2; exit 1
+fi
+if [[ -e examples/recovery_bad.rs || ! -f examples/recovery_good.rs ]]; then
+  cat artifacts_recovery.log >&2
+  echo "Lean failed to recover and generate the second independent declaration" >&2; exit 1
+fi
+if ! grep -q '"status":"refused"' artifacts_recovery.log; then
+  cat artifacts_recovery.log >&2
+  echo "refusal is not machine-readable" >&2; exit 1
+fi
+rustc --edition=2021 --crate-type=lib -o examples/recovery_good.rlib examples/recovery_good.rs
+rm -f examples/recovery_good.rs examples/recovery_good.rlib artifacts_recovery.log
 cat > examples/run.rs <<'RUST'
 include!("generated_add_one.rs");
 include!("generated_times_three.rs");
@@ -123,6 +139,26 @@ fn main() {
 RUST
 rustc --edition=2021 -o examples/native-test examples/run.rs
 examples/native-test
+# The emitted source is a standalone Cargo target: build and execute it
+# with every Lean runtime location explicitly removed from the environment.
+mkdir -p artifacts
+rm -rf -- artifacts/standalone_pipeline
+bash scripts/package_crate.sh examples/generated_closure.rs native_pipeline artifacts/standalone_pipeline
+if bash scripts/package_crate.sh examples/generated_closure.rs native_pipeline artifacts/standalone_pipeline >/dev/null 2>&1; then
+  echo "packager overwrote a pre-existing standalone Cargo target" >&2; exit 1
+fi
+mkdir -p artifacts/standalone_pipeline/tests
+cat > artifacts/standalone_pipeline/tests/behavior.rs <<'RUST'
+use native_pipeline::pipeline;
+#[test]
+fn original_lean_graph_behaves_without_lean_runtime() {
+    assert_eq!(pipeline(5), 25);
+    assert_eq!(pipeline(0), 5);
+    assert_eq!(pipeline(u64::MAX), 3);
+}
+RUST
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path artifacts/standalone_pipeline/Cargo.toml
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -136,6 +172,9 @@ mkdir -p artifacts
   rustc --version
   cargo --version
   echo "differential_assertions=1984"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/generated_*.rs
+  echo "host_abi_probe=PASS"
+  echo "refusal_schema=status-declaration-construct-reason-v1"
+  echo "standalone_cargo_with_no_lean_runtime=PASS"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs src/safety.rs scripts/package_crate.sh examples/Example.lean examples/Refusal.lean examples/generated_*.rs artifacts/standalone_pipeline/Cargo.toml
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

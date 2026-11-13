@@ -27,18 +27,20 @@ def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   else
     throwError "Rust native backend returned an invalid response for {root}"
 
-/-- Do not publish partial Rust source on FFI failures or interrupted writes.
-    The final rename is atomic when source and destination share a filesystem.
-    Cross-filesystem moves refuse instead of falling back to a non-atomic copy. -/
+/-- The Rust publisher validates a workspace-relative .rs destination and writes
+    to a unique sibling file before atomic rename. The caller can observe an
+    explicit refusal but cannot receive a partially published artifact. -/
+@[extern "rs_publish_source"] opaque publishSource
+  (dst : @& String) (code : @& String) : String
+
 def writeAtomically (dst : System.FilePath) (code : String) : IO Unit := do
-  let (handle, temp) ← IO.FS.createTempFile
-  try
-    handle.putStr code
-    handle.flush
-    IO.FS.rename temp dst
-  catch err =>
-    try IO.FS.removeFile temp catch _ => pure ()
-    throw err
+  let report := publishSource dst.toString code
+  if report.startsWith "OK\n" then
+    return
+  else if report.startsWith "ERROR\n" then
+    throw <| IO.userError s!"Rust native publisher refused {dst}: {(report.drop 6).toString}"
+  else
+    throw <| IO.userError s!"Rust native publisher returned an invalid response for {dst}"
 
 
 /-- Read direct calls out of the *elaborated compiler IR*, not Lean syntax.

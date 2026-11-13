@@ -387,7 +387,9 @@ impl Reader {
                 0 => {
                     let info = Self::field(alt, 0)?;
                     let name = Self::name(Self::field(info, 0)?, 0)?;
-                    let parent = name.rsplit_once('.').map(|(p, _)| p)
+                    let parent = name
+                        .rsplit_once('.')
+                        .map(|(p, _)| p)
                         .ok_or_else(|| format!("unqualified inductive constructor {name}"))?;
                     if let Some(prior) = &constructor_parent {
                         if prior != parent {
@@ -432,7 +434,11 @@ impl Reader {
             Self::body(body, code, depth + 1, count, &mut branch_env, ret_ty, ctx)?;
             writeln!(code, "        }}").unwrap();
         } else {
-            writeln!(code, "        _ => unreachable!(\"invalid tagged enum value\"),").unwrap();
+            writeln!(
+                code,
+                "        _ => unreachable!(\"invalid tagged enum value\"),"
+            )
+            .unwrap();
         }
         writeln!(code, "    }}").unwrap();
         Ok(())
@@ -461,10 +467,10 @@ impl Reader {
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
                     let expr = Self::field(x, 2)?;
-                    if Self::tag(expr)? == 0
-                        && !matches!(Self::tag(Self::field(x, 1)?)?, 1 | 12)
-                    {
-                        return Err("nullary constructor needs UInt8 or tagged scalar IRType".into());
+                    if Self::tag(expr)? == 0 && !matches!(Self::tag(Self::field(x, 1)?)?, 1 | 12) {
+                        return Err(
+                            "nullary constructor needs UInt8 or tagged scalar IRType".into()
+                        );
                     }
                     let value = Self::expr(expr, ty, env, ctx.functions)?;
                     if env.insert(name, ty).is_some() {
@@ -534,8 +540,7 @@ impl Reader {
                     let mut is_bool = false;
                     for alt in &alts {
                         if Self::tag(*alt)? == 0 {
-                            let name =
-                                Self::name(Self::field(Self::field(*alt, 0)?, 0)?, 0)?;
+                            let name = Self::name(Self::field(Self::field(*alt, 0)?, 0)?, 0)?;
                             is_bool = name == "Bool.false" || name == "Bool.true";
                             break;
                         }

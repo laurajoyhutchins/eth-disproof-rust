@@ -89,6 +89,20 @@ noncomputable def repeatedRoot :=
     (Nat.rec (StructuredCalls.Cmd.base .skip)
       (fun _ acc => StructuredCalls.Cmd.seq acc (StructuredCalls.Cmd.call {fqn}))
       4) 0 0
+-- The source recursor is no longer at the root. It must be reduced through
+-- named Lean definitions without expanding four physical copies.
+noncomputable def namedRepeatCommand : StructuredCalls.Cmd 3 3 :=
+  Nat.rec (StructuredCalls.Cmd.base .skip)
+    (fun _ acc => StructuredCalls.Cmd.seq acc (StructuredCalls.Cmd.call {fqn}))
+    4
+noncomputable def namedRepeatAlias := namedRepeatCommand
+noncomputable def namedRepeatRoot :=
+  StructuredCalls.compiled namedRepeatAlias 0 0
+-- Named physical-link aliases must not force a finite callee table.
+noncomputable def namedLiftProgram := ProgramLinking.liftProgram
+  {fqn} (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+noncomputable def namedLiftAlias := namedLiftProgram
+noncomputable def namedLiftRoot := namedLiftAlias
 end {fixture_module}
 """
     imports=(f'import {module}\n'
@@ -103,7 +117,8 @@ end {fixture_module}
     gold_manifest={}
     accepted=[]
     supported=('lifted','linked','linkedInto',
-               'liftedRoot','linkedRoot','linkedIntoRoot','repeatedRoot')
+               'liftedRoot','linkedRoot','linkedIntoRoot','repeatedRoot','namedRepeatRoot',
+               'namedLiftRoot')
     selected=a.fixture_names or supported
     if not selected or any(name not in supported for name in selected):
         raise ValueError('unknown or empty original source fixture selection')
@@ -139,8 +154,8 @@ end {fixture_module}
             graph=parse_source_graph_json((dir/(fid+'.json')).read_bytes())
             expected={'lifted':'lift','linked':'link','linkedInto':'link_into',
                       'liftedRoot':'lift','linkedRoot':'link',
-                      'linkedIntoRoot':'link_into'}.get(short)
-            if short=='repeatedRoot':
+                      'linkedIntoRoot':'link_into','namedLiftRoot':'lift'}.get(short)
+            if short in ('repeatedRoot','namedRepeatRoot'):
                 command=graph.get('command',{})
                 if (graph.get('kind')!='original-structured-source-v1' or
                         command.get('kind')!='repeat' or command.get('count')!=4 or
@@ -154,7 +169,7 @@ end {fixture_module}
                         graph.get('program',{}).get('kind')!=expected):
                     raise ValueError(
                         f'{fid} direct physical root did not preserve ProgramLinking.{expected}')
-                expected_labels={'liftedRoot':36,'linkedRoot':72,'linkedIntoRoot':72}[short]
+                expected_labels={'liftedRoot':36,'linkedRoot':72,'linkedIntoRoot':72,'namedLiftRoot':36}[short]
                 if graph['abi']['labels']!=expected_labels:
                     raise ValueError(
                         f'{fid} unexpected physical labels: {graph["abi"]["labels"]}')

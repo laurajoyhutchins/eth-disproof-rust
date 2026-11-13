@@ -410,6 +410,7 @@ pub fn parse_dimacs(text: &str) -> Result<Cnf, Error> {
     Cnf::new(n, rows)
 }
 
+pub mod lean_codegen;
 pub mod bit_program;
 pub mod native_high;
 pub mod native_tuple;

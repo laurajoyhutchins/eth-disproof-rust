@@ -447,7 +447,16 @@ impl Reader {
         }
         writeln!(result, ") -> {ret} {{").unwrap();
         let started = Instant::now();
-        Self::body(body, &mut result, 0, &mut 0, &mut env, ret, functions, &started)?;
+        Self::body(
+            body,
+            &mut result,
+            0,
+            &mut 0,
+            &mut env,
+            ret,
+            functions,
+            &started,
+        )?;
         result.push_str("}\n");
         if result.len() > safety::MAX_OUTPUT_BYTES {
             return Err("generated Rust output byte limit exceeded".into());
@@ -577,11 +586,10 @@ impl Reader {
             if started.elapsed() > Duration::from_secs(15) {
                 return Err("declaration closure code generation time budget exceeded".into());
             }
-            result.push_str(&Self::emit_function(
-                *decl,
-                &internal_name(name),
-                Some(&signatures),
-            ).map_err(|e| format!("declaration={name}; {e}"))?);
+            result.push_str(
+                &Self::emit_function(*decl, &internal_name(name), Some(&signatures))
+                    .map_err(|e| format!("declaration={name}; {e}"))?,
+            );
             result.push('\n');
             if result.len() > safety::MAX_OUTPUT_BYTES {
                 return Err("generated Rust closure output byte limit exceeded".into());
@@ -618,7 +626,8 @@ impl Reader {
             *closure.get(&root).unwrap(),
             &public_name,
             Some(&signatures),
-        ).map_err(|e| format!("declaration={root}; {e}"))?;
+        )
+        .map_err(|e| format!("declaration={root}; {e}"))?;
         if result.len() > safety::MAX_OUTPUT_BYTES {
             return Err("generated Rust closure output byte limit exceeded".into());
         }

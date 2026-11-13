@@ -34,6 +34,11 @@ def require(ok: bool, message: str) -> None:
 
 def unique_json(raw: bytes) -> Any:
     require(0 < len(raw) <= MAX_BYTES, "artifact or report size outside bound")
+    require(not raw.startswith(b"\xef\xbb\xbf"), "UTF-8 BOM not permitted")
+    try:
+        raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise Refusal("artifact is not UTF-8") from exc
 
     def fields(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -111,6 +116,8 @@ def validate_residual(raw: bytes, root: str) -> dict[str, Any]:
     require(type(nodes) is list and 0 < len(nodes) <= MAX_NODES, "residual node budget invalid")
     require(type(d.get("node_count")) is int and d["node_count"] == len(nodes),
             "residual node count mismatch")
+    require(type(d.get("metadata_dropped")) is int and d["metadata_dropped"] >= 0,
+            "invalid metadata drop count")
     for k in ("source_root", "reduced_root"):
         require(type(d.get(k)) is int and 0 <= d[k] < len(nodes), f"invalid {k}")
     require(type(d.get("beta_zeta_steps")) is int and 0 <= d["beta_zeta_steps"] <= 16,
@@ -196,7 +203,8 @@ def git(repo: Path, *args: str) -> str:
     return r.stdout.strip()
 
 
-def source_identity(repo: Path, source_path: str, revision: str) -> dict[str, str]:
+def source_identity(repo: Path, source_path: str, revision: str,
+                    toolchain_path: str = "lean-toolchain") -> dict[str, str]:
     require(bool(HEX40.fullmatch(revision)), "source revision must be a full Git SHA")
     root = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
     require(root == repo.resolve(), "source repository path is not its Git root")
@@ -210,7 +218,18 @@ def source_identity(repo: Path, source_path: str, revision: str) -> dict[str, st
     require(bool(HEX40.fullmatch(blob)), "source path is not a committed Git blob")
     require(git(repo, "hash-object", relative) == blob,
             "working source file does not match pinned Git blob")
-    return {"git_revision": revision, "git_blob": blob, "path": relative}
+    pin_path = (root / toolchain_path).resolve()
+    require(pin_path.is_relative_to(root) and pin_path.is_file(), "missing source Lean toolchain pin")
+    pin_relative = pin_path.relative_to(root).as_posix()
+    require(pin_relative == toolchain_path.replace("\\", "/"), "toolchain path not canonical")
+    pin_blob = git(repo, "rev-parse", f"{revision}:{pin_relative}")
+    require(git(repo, "hash-object", pin_relative) == pin_blob, "source Lean toolchain is not pinned")
+    pin = pin_path.read_text(encoding="utf-8").strip()
+    require(bool(re.fullmatch(r"leanprover/lean4:v[0-9]+\.[0-9]+\.[0-9]+", pin)),
+            "unsupported source Lean toolchain format")
+    return {"git_revision": revision, "git_blob": blob, "path": relative,
+            "lean_toolchain": pin, "lean_toolchain_git_blob": pin_blob,
+            "lean_toolchain_path": pin_relative}
 
 
 def validate_contract(*, backend: str, artifact: bytes, report: bytes | None,
@@ -223,10 +242,16 @@ def validate_contract(*, backend: str, artifact: bytes, report: bytes | None,
         require(report is not None, "IR path requires backend generation report")
         upstream = validate_ir(report, artifact, module, roots)
         toolchain = upstream["lean_toolchain"]
+        require(toolchain == source["lean_toolchain"],
+                "compiler IR toolchain differs from pinned source toolchain")
+        require(type(upstream.get("lean_version")) is str and
+                re.search(r"\bversion " + re.escape(toolchain.rsplit("v", 1)[-1]) + r"\b",
+                          upstream["lean_version"]),
+                "compiler IR actual Lean version not attested or mismatched")
     else:
         require(report is None and len(roots) == 1, "residual path accepts one root and no IR receipt")
         validate_residual(artifact, roots[0])
-        toolchain = "source-environment-not-yet-attested"
+        toolchain = source["lean_toolchain"]
     return {
         "format": "lean-two-path-contract-v1", "backend": backend,
         "status": BACKENDS[backend], "module": module, "roots": roots,
@@ -237,6 +262,7 @@ def validate_contract(*, backend: str, artifact: bytes, report: bytes | None,
                    "backend_payload_checked": True,
                    "declaration_source_binding": "not-established",
                    "transitive_executable_closure": "not-established",
+                   "residual_actual_lean_version": "not-established" if backend == "residual-expr" else "backend-reported",
                    "lean_rust_semantic_refinement": "not-established",
                    "physical_bitprogram_refinement": "not-established"},
         "executable_approved": False,
@@ -253,11 +279,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source-repo", type=Path, required=True)
     parser.add_argument("--source-path", required=True)
     parser.add_argument("--source-revision", required=True)
+    parser.add_argument("--source-toolchain-path", default="lean-toolchain")
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         require(args.artifact.resolve() != args.receipt.resolve(), "receipt would overwrite artifact")
-        source = source_identity(args.source_repo, args.source_path, args.source_revision)
+        source = source_identity(args.source_repo, args.source_path, args.source_revision, args.source_toolchain_path)
         artifact = args.artifact.read_bytes()
         report = args.backend_report.read_bytes() if args.backend_report else None
         receipt = validate_contract(backend=args.backend, artifact=artifact, report=report,

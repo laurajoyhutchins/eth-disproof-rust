@@ -138,3 +138,16 @@ The native result protocol is `OK\n<source>` or
 Lean-side missing IR and sorry-axiom errors use the same structured keys.
 Resource caps, ABI ownership assumptions, panic behavior, and remaining
 G1 release obligations are detailed in [SAFETY.md](SAFETY.md).
+
+## Machine-derived IR and primitive conformance
+
+The pinned Lean environment is inspected to enumerate **48 IR constructors**
+across seven inductive families. The classifier implements 14 bounded variants
+and refuses 34; its tags are enforced in the production decoder. The single
+primitive registry drives 30 supported operations, each independently
+compared with 64 original-Lean oracle vectors. This adds 1,920 assertions to
+the previous 1,984, for **3,904** exact-head differential comparisons.
+
+See [CONFORMANCE.md](CONFORMANCE.md) for the generation and refusal contract.
+Unsupported large integers, Unicode strings, arrays, and general runtime
+sharing remain outside this version's semantic equivalence claims.

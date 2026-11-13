@@ -530,7 +530,6 @@ mod canonical_clause_tests {
     }
 }
 
-
 /// Source-defined signature head-factor construction.
 pub mod native_head_factors;
 

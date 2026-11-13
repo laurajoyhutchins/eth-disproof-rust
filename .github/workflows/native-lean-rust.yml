@@ -65,6 +65,8 @@ jobs:
             lake build
             ./scripts/check.sh
           )
+          # Keep the exact-head provenance and all generated-code hashes in the job log.
+          cat rust/native_lean_backend/artifacts/native-smoke-receipt.txt
           {
             echo 'NATIVE_LEAN_G0=REAL_IN_PROCESS_FFI_AND_GENERATED_RUST'
             echo 'Lean=4.34.1'

@@ -62,9 +62,9 @@ fi
 
 module_file="${module//.//}"
 mkdir -p -- "$staging/$(dirname "$module_file")"
-cp -- "$source" "$staging/source.lean"
+cp -- "$source" "$staging/$module_file.lean"
 export LEAN_PATH="$staging:$LEAN_PATH"
-if ! lean -o "$staging/$module_file.olean" "$staging/source.lean" > "$staging/lean-module.log" 2>&1; then
+if ! lean -o "$staging/$module_file.olean" "$staging/$module_file.lean" > "$staging/lean-module.log" 2>&1; then
   cat "$staging/lean-module.log" >&2
   exit 1
 fi
@@ -102,7 +102,7 @@ hash() { sha256sum -- "$1" | cut -d' ' -f1; }
   echo "lean_toolchain=$(cat lean-toolchain)"
   echo "lean_version=$(lean --version)"
   echo "rust_version=$(rustc --version)"
-  echo "source_lean_sha256=$(hash "$staging/source.lean")"
+  echo "source_lean_sha256=$(hash "$staging/$module_file.lean")"
   echo "compiled_olean_sha256=$(hash "$staging/$module_file.olean")"
   echo "native_abi_sha256=$(hash native/abi.c)"
   echo "native_backend_sha256=$(hash src/lib.rs)"

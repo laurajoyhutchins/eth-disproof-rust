@@ -24,12 +24,13 @@ def toolchain(lake_root: Path, expected: str) -> None:
     require(pin == expected, 'Lake toolchain differs from pinned source')
 
 
-def symbolic(args: argparse.Namespace, temp: Path, source: dict[str, str]) -> bytes:
+def symbolic(args: argparse.Namespace, temp: Path, source: dict[str, str]) -> tuple[bytes, str]:
     require(len(args.root) == 1, 'symbolic path currently accepts exactly one root')
     require(args.producer is not None and args.producer.is_file(),
             'symbolic path requires a Lean core-Expr producer')
     toolchain(args.lake_root, source['lean_toolchain'])
-    producer = args.producer.read_text(encoding='utf-8')
+    producer_bytes = args.producer.read_bytes()
+    producer = producer_bytes.decode('utf-8')
     # Insert the actual source import before declarations, not a host rewrite of the algorithm.
     require(producer.startswith('import Lean\n'), 'producer must begin with import Lean')
     body = ('import Lean\nimport ' + args.module + '\n' +
@@ -44,7 +45,7 @@ def symbolic(args: argparse.Namespace, temp: Path, source: dict[str, str]) -> by
         raise Refusal(f'Lean symbolic exporter unavailable: {exc}') from exc
     require(out.returncode == 0,
             f'Lean symbolic export refused: {out.stderr.decode("utf-8", "replace")[-1600:]}')
-    return out.stdout
+    return out.stdout, hashlib.sha256(producer_bytes).hexdigest()
 
 
 def run(args: argparse.Namespace) -> int:
@@ -69,12 +70,17 @@ def run(args: argparse.Namespace) -> int:
             require(run_ir(command) == 0, 'compiler-IR generator refused; no symbolic fallback')
             artifact, report = staged.read_bytes(), internal.read_bytes()
         else:
-            artifact, report = symbolic(args, work, source), None
+            artifact, producer_hash = symbolic(args, work, source)
+            report = None
+        require(source_identity(args.source_repo, args.source_path,
+                                args.source_revision, args.source_toolchain_path) == source,
+                "source changed during generation")
+        toolchain(args.lake_root, source["lean_toolchain"])
         receipt = validate_contract(backend=args.backend, artifact=artifact,
                                     report=report, module=args.module,
                                     roots=args.root, source=source)
         if args.backend == 'residual-expr':
-            receipt['producer_sha256'] = hashlib.sha256(args.producer.read_bytes()).hexdigest()
+            receipt['producer_sha256'] = producer_hash
         candidate = work / 'accepted-artifact'
         candidate.write_bytes(artifact)
         candidate_receipt = work / 'accepted-receipt'

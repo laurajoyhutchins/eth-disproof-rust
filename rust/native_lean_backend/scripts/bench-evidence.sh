@@ -25,6 +25,7 @@ lean -o examples/PropertyDef.olean examples/PropertyDef.lean
   echo "source_root=Property.hop"
   echo "source_sha256=$(sha256sum examples/PropertyDef.lean | cut -d' ' -f1)"
   echo "native_ir_input=precompiled_PropertyDef.olean"
+  echo "import_control=PropertyControl.lean_same_imports_and_plugin_without_codegen"
   echo "native_ir_sha256=$(sha256sum examples/PropertyDef.olean | cut -d' ' -f1)"
   echo "lean_c_input=PropertyDef.lean_full_source_module"
   echo "comparison_status=INCOMPLETE_PHASES_DIFFER_NO_JSON_SOURCE_GRAPH_EQUIVALENT"
@@ -34,6 +35,11 @@ lean -o examples/PropertyDef.olean examples/PropertyDef.lean
 } > artifacts/bench-native/manifest.txt
 
 for trial in 1 2 3; do
+  /usr/bin/time -f 'wall_seconds=%e peak_rss_kb=%M' \
+    -o "artifacts/bench-native/lean-import-control-${trial}.time" \
+    lean --load-dynlib="$NATIVE_LIB" examples/PropertyControl.lean \
+    > "artifacts/bench-native/lean-import-control-${trial}.log" 2>&1
+
   # In-process Lean-to-Rust codegen (without the independently generated
   # oracle values). Includes Lean startup and loading the imported module.
   /usr/bin/time -f 'wall_seconds=%e peak_rss_kb=%M' \
@@ -74,7 +80,7 @@ for trial in 2 3; do
 done
 printf 'trial\tphase\twall_seconds\tpeak_rss_kb\n' > artifacts/bench-native/measurements.tsv
 for trial in 1 2 3; do
-  for phase in native-codegen lean-c-codegen c-build rust-build rust-run; do
+  for phase in lean-import-control native-codegen lean-c-codegen c-build rust-build rust-run; do
     metrics="artifacts/bench-native/${phase}-${trial}.time"
     awk -v trial="$trial" -v phase="$phase" \
       '{split($1,a,"="); split($2,b,"="); print trial "\t" phase "\t" a[2] "\t" b[2]}' \
@@ -83,7 +89,7 @@ for trial in 1 2 3; do
 done
 sha256sum artifacts/bench-native/manifest.txt \
     artifacts/bench-native/measurements.tsv \
-    examples/PropertyDef.lean examples/PropertyCodegen.lean \
+    examples/PropertyDef.lean examples/PropertyCodegen.lean examples/PropertyControl.lean \
     examples/generated_property.rs > artifacts/bench-native/hashes.txt
 cat artifacts/bench-native/manifest.txt
 cat artifacts/bench-native/measurements.tsv

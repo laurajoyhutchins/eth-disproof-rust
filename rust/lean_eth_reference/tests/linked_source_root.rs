@@ -2,7 +2,7 @@
 //! StructuredCalls::Call wrapper would add a halt site and change the trace.
 //! These are schema/physical semantics tests, not Lean kernel certificates.
 use lean_eth_reference::bit_program::{DeferredProgram, Instr, RunLimits, SourceGraphBinding};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 fn linked() -> Value {
@@ -27,7 +27,9 @@ fn linked() -> Value {
     })
 }
 
-fn compile(value: Value) -> Result<std::sync::Arc<DeferredProgram<2, 2>>, lean_eth_reference::Error> {
+fn compile(
+    value: Value,
+) -> Result<std::sync::Arc<DeferredProgram<2, 2>>, lean_eth_reference::Error> {
     let mut bytes = serde_json::to_vec(&value).unwrap();
     bytes.push(b'\n');
     let digest = format!("{:x}", Sha256::digest(&bytes));
@@ -45,19 +47,43 @@ fn compile(value: Value) -> Result<std::sync::Arc<DeferredProgram<2, 2>>, lean_e
 #[test]
 fn direct_linked_root_preserves_all_physical_labels_and_entry() {
     let graph = compile(linked()).unwrap();
-    assert_eq!((graph.labels(), graph.entry(), graph.input_stack(), graph.output_stack()),
-               (4, 1, 0, 1));
+    assert_eq!(
+        (
+            graph.labels(),
+            graph.entry(),
+            graph.input_stack(),
+            graph.output_stack()
+        ),
+        (4, 1, 0, 1)
+    );
     assert_eq!(graph.instruction_at(0).unwrap(), Instr::Goto { next: 3 });
-    assert_eq!(graph.instruction_at(1).unwrap(),
-        Instr::Set { dst: 0, value: true, next: 0 });
+    assert_eq!(
+        graph.instruction_at(1).unwrap(),
+        Instr::Set {
+            dst: 0,
+            value: true,
+            next: 0
+        }
+    );
     assert_eq!(graph.instruction_at(2).unwrap(), Instr::Halt);
-    assert_eq!(graph.instruction_at(3).unwrap(),
-        Instr::Not { dst: 0, src: 0, next: 2 });
+    assert_eq!(
+        graph.instruction_at(3).unwrap(),
+        Instr::Not {
+            dst: 0,
+            src: 0,
+            next: 2
+        }
+    );
     let mut state = graph.initial([]);
-    let stats = graph.run(&mut state, RunLimits {
-        max_steps: 10,
-        max_stack_bits: 10,
-    }).unwrap();
+    let stats = graph
+        .run(
+            &mut state,
+            RunLimits {
+                max_steps: 10,
+                max_stack_bits: 10,
+            },
+        )
+        .unwrap();
     assert_eq!(stats.instructions, 4);
     assert!(state.pc.is_none());
     assert!(!state.regs[0]);
@@ -67,7 +93,10 @@ fn direct_linked_root_preserves_all_physical_labels_and_entry() {
 fn linked_root_rejects_ambiguous_schema_and_false_abi() {
     let mut graph = linked();
     graph["command"] = json!({"kind": "skip"});
-    assert!(compile(graph).is_err(), "a source root cannot be both forms");
+    assert!(
+        compile(graph).is_err(),
+        "a source root cannot be both forms"
+    );
 
     let mut graph = linked();
     graph["abi"]["labels"] = json!(5);
@@ -79,7 +108,10 @@ fn linked_root_rejects_ambiguous_schema_and_false_abi() {
 
     let mut graph = linked();
     graph["program"]["right"]["code"][1] = json!("not:9:0:0");
-    assert!(compile(graph).is_err(), "out-of-range physical operand must refuse");
+    assert!(
+        compile(graph).is_err(),
+        "out-of-range physical operand must refuse"
+    );
 }
 
 #[test]

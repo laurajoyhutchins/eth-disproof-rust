@@ -856,8 +856,7 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         if !matches!(
             source.kind.as_str(),
             "original-structured-source-v1" | "original-linked-source-v1"
-        )
-            || source.source_commit != SOURCE_COMMIT
+        ) || source.source_commit != SOURCE_COMMIT
             || source.id != expected.id
             || source.declaration != expected.declaration
             || source.source_blob != expected.source_blob
@@ -894,8 +893,13 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
             }
             ("original-linked-source-v1", None, Some(tree)) => {
                 let linked = lower_linked_program(tree, &mut budget, 0)?;
-                if (linked.r, linked.s, linked.labels, linked.input, linked.output)
-                    != (R, S, abi.labels, abi.input, abi.output)
+                if (
+                    linked.r,
+                    linked.s,
+                    linked.labels,
+                    linked.input,
+                    linked.output,
+                ) != (R, S, abi.labels, abi.input, abi.output)
                 {
                     return Err(invalid("linked root differs from elaborated source ABI"));
                 }

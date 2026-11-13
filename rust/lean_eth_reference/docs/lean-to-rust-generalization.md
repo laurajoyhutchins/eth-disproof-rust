@@ -72,9 +72,13 @@ The next graph node forms, in implementation order:
 | `Repeat`, `Fold` | Proven fixed combinator generators | Same order/size/entry as Lean recursion, without expansion |
 | `CodeAt` | Residual pure `Fin l → Instr` term | Must yield exact physical instruction or typed refusal |
 
-The source-elaborated Lean graph producer now exports a bounded, source-bound
-`original-structured-source-v1` JSON graph for the supported
-`StructuredCalls.compiled` closure. The native Rust loader validates the
+The source-elaborated Lean graph producer exports bounded, source-bound
+`original-structured-source-v1` command roots and
+`original-linked-source-v1` physical-program roots. The latter preserves a
+direct `ProgramLinking.liftProgram`, `link` or `linkInto` without inserting
+an artificial call site. Both use the same native Rust source-graph decoder.
+This new root protocol has synthetic physical-layout and refusal tests; pinned
+original-Lean source-root acceptance remains a separate verification gate. The native Rust loader validates the
 complete schema, source identifiers, expected certified SHA-256, finite
 operand/port/label bounds, and lowered physical sites; immutable equal callees
 are interned by full ABI and instructions. `Atom`, `Skip`, `Seq`, `If`,

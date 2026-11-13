@@ -66,6 +66,7 @@ jobs:
           set -euo pipefail
           python3 -m compileall -q rust/lean_eth_reference/tools
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_stream_aot.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_source_graph_kernel_certificate.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_physical_differential.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_compute_l_structural_acceptance.py' -v

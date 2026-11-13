@@ -86,3 +86,16 @@ environment variables. This does not yet implement compiler-native
 multi-root crate generation. See [SAFETY.md](SAFETY.md) for the full trust
 boundary and remaining checklist items 21–30. In particular, a comprehensive
 automatically-derived conformance matrix is still open.
+
+## Derived constructor and primitive conformance
+
+The pinned Lean environment emits a constructor inventory which must exactly
+match `ir-coverage-classification.tsv`. Rust `build.rs` converts the 14
+`implemented_bounded` entries into the production decoder's allowed tag set;
+all other constructor variants fail closed. `primitive-registry.tsv` is the
+shared production primitive list, not a parallel prose table. The native
+smoke suite generates 1,920 extra original-Lean oracle checks (30 primitives ×
+64 inputs), alongside the existing 1,984, and verifies exact-source receipts.
+
+[CONFORMANCE.md](CONFORMANCE.md) describes the machine-readable ledgers,
+coverage scope, and what testing does *not* establish.

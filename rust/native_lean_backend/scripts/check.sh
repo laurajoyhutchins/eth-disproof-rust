@@ -13,6 +13,21 @@ export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"
 lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
+# Compile an imported Lean module separately, then compile its transitive
+# dependency graph (including diamond sharing and recursive call cycles).
+export LEAN_PATH="$(pwd)/examples:${LEAN_PATH}"
+lean -o examples/Library.olean examples/Library.lean
+lean --load-dynlib="$NATIVE_LIB" examples/Closure.lean
+if [[ "$(grep -c 'Generated directly from Lean IR declaration: Library.bump' examples/generated_closure.rs)" != 1 ]]; then
+  echo "shared Lean dependency was duplicated in Rust" >&2; exit 1
+fi
+# The backend must be deterministic even if Lean has already compiled roots.
+closure_hash_before="$(sha256sum examples/generated_closure.rs | cut -d' ' -f1)"
+lean --load-dynlib="$NATIVE_LIB" examples/Closure.lean > /dev/null
+closure_hash_after="$(sha256sum examples/generated_closure.rs | cut -d' ' -f1)"
+if [[ "$closure_hash_before" != "$closure_hash_after" ]]; then
+  echo "non-deterministic in-process closure code generation" >&2; exit 1
+fi
 lean --load-dynlib="$NATIVE_LIB" examples/Refusal.lean
 # Exercise the public *command* refusal path, not only a direct FFI call.
 printf 'preserve-existing-artifact\n' > examples/rejected.rs
@@ -41,6 +56,24 @@ if [[ "$(cat examples/rejected_sorry.rs)" != "preserve-sorry-output" ]]; then
   echo "sorry-dependent compilation changed existing output" >&2; exit 1
 fi
 rm -f examples/rejected_sorry.rs examples/rejected_sorry.log
+# An unsupported primitive in a *transitive* callee must be refused,
+# preserving previously generated output; no implicit host fallback.
+for pair in "RefusalClosure:rejected_closure" "RefusalClosureSorry:rejected_sorry_closure"; do
+  fixture="${pair%%:*}"
+  destination="${pair##*:}"
+  printf 'preserve-closure-artifact\n' > "examples/${destination}.rs"
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${destination}.log" 2>&1; then
+    echo "unsupported ${fixture} dependency closure was accepted" >&2; exit 1
+  fi
+  if ! grep -q 'Rust native backend refused' "examples/${destination}.log"; then
+    cat "examples/${destination}.log" >&2
+    echo "missing structured refusal for ${fixture}" >&2; exit 1
+  fi
+  if [[ "$(cat "examples/${destination}.rs")" != 'preserve-closure-artifact' ]]; then
+    echo "failed ${fixture} changed existing Rust output" >&2; exit 1
+  fi
+  rm -f "examples/${destination}.rs" "examples/${destination}.log"
+done
 cat > examples/run.rs <<'RUST'
 include!("generated_add_one.rs");
 include!("generated_times_three.rs");
@@ -57,6 +90,9 @@ include!("generated_tiny8.rs");
 include!("generated_tiny16.rs");
 include!("generated_less32.rs");
 include!("generated_leq64.rs");
+include!("generated_closure.rs");
+include!("generated_descend.rs");
+include!("generated_mutual.rs");
 fn main() {
     assert_eq!(add_one(41), 42);
     assert_eq!(times_three(7), 21);
@@ -82,6 +118,7 @@ fn main() {
     assert_eq!(leq64(3, 3), 1);
     assert_eq!(leq64(4, 3), 0);
     include!("generated_differential.rs");
+    include!("generated_closure_differential.rs");
 }
 RUST
 rustc --edition=2021 -o examples/native-test examples/run.rs
@@ -98,7 +135,7 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=1600"
+  echo "differential_assertions=1984"
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

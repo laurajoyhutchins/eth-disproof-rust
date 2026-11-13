@@ -29,12 +29,12 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 ./scripts/check.sh
 ```
 
-`check.sh` builds a Rust shared library; builds `NativeRust.olean`; loads it into
-Lean's interpreter; invokes a real Lean compilation for **15 declarations**;
-writes Rust files through `#native_rust`; compiles and runs the standalone Rust
-program with `rustc`; runs **1,600 assertions** against independently evaluated
-Lean results; verifies fail-closed command behavior (including sorry-dependent definitions)
-without modifying existing outputs; and runs `cargo test`, formatting, and strict Clippy. `lake build`
+`check.sh` builds a Rust shared library and `NativeRust.olean`, then loads the
+backend into Lean's interpreter. It compiles **15 isolated declarations and
+three transitive closure roots**, generates standalone Rust, and executes
+**1,984 independently evaluated Lean/Rust assertions**. It also checks
+fail-closed behavior, preserved outputs, stable output hashes, Cargo tests,
+formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
 GitHub workflow runs these gates only for changes to this backend.
 
@@ -51,6 +51,24 @@ The command requires the `liblean_rust_native_backend.so` to be loaded by Lean.
 It intentionally refuses unsupported declarations instead of writing substitute
 algorithms.
 
+The additional `#native_rust_closure` command compiles a root together with
+its reachable executable dependencies, including imports, **in process**:
+
+```lean
+import NativeRust
+import Library
+
+def pipeline (x : UInt64) : UInt64 := Library.bump (Library.triple x)
+#native_rust_closure pipeline as "pipeline" to "generated_pipeline.rs"
+```
+
+The compiler reuses Lean's imported compiler IR, generates collision-free
+internal Rust names, checks signatures and calls, and refuses missing or
+unsupported dependencies. Example source and test fixtures are in
+`examples/Library.lean` and `examples/Closure.lean`. This emits a single
+Rust source module for **one root**; complete Cargo crate generation and
+multiple public roots remain future work.
+
 ## Precise coverage
 
 **Implemented and exercised:** functions over `UInt8`, `UInt16`, `UInt32`,
@@ -59,12 +77,15 @@ algorithms.
 straight-line local assignments, returns, and Boolean cases whose two arms
 have exact `Bool.false`/`Bool.true` constructor identities. Integer arithmetic uses
 `wrapping_*`; Lean `Bool` results use the IR's `u8` convention (0/1).
+The closure command additionally supports typed direct calls, shared
+transitive dependencies, imported executable functions, and direct/mutual
+recursion when every reachable body uses supported IR.
 
 **Not implemented:** general Lean/Rust compilation; arbitrary-precision
-`Nat`; recursion, closures, non-Boolean cases, join points, arrays,
-structures, transitive dependency closure, general external primitives, and
-noncomputable expressions without compiler IR. The generated functions are
-checked on examples, but there is not yet a general semantic refinement theorem.
+`Nat`; indirect calls, closures, non-Boolean cases, join points, arrays,
+structures, complete standalone crate generation, general external primitives, and
+noncomputable expressions without compiler IR. The current generated functions are checked
+on examples but there is not yet a general semantic refinement theorem.
 
 The backend returns `ERROR` for missing types, instructions, operations and
 unsupported shapes. Lean fails the command before publishing accepted output.
@@ -78,8 +99,8 @@ versioned IR coverage contract and exact test boundaries.
 
 - ABI layouts and constructor tags are pinned to `Lean.Compiler.IR.Basic` in
   Lean **4.34.1** at commit `5045d005`. The build script checks the exact
-  version and commit and rejects non-Linux-x86-64 targets. Upgrading Lean
-  requires auditing these layouts and rerunning the real integration tests. This is not a stable cross-version FFI.
+  version and commit and rejects non-Linux-x86-64 targets. Upgrading Lean requires auditing these exact layouts and
+  rerunning the real integration tests. This is not a stable cross-version FFI.
 - The shim accesses borrowed Lean objects synchronously. It does not retain
   pointers or mutate Lean's heap. Rust catches ordinary panics and reports
   failures, but memory safety depends on the exact Lean ABI; run this code in

@@ -11,3 +11,10 @@
 /examples/rejected.log
 /examples/rejected_sorry.rs
 /examples/rejected_sorry.log
+
+/examples/*.olean
+/examples/*.ilean
+/examples/rejected_closure.rs
+/examples/rejected_closure.log
+/examples/rejected_sorry_closure.rs
+/examples/rejected_sorry_closure.log

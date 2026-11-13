@@ -3,7 +3,7 @@
 //! This entry point receives `Lean.IR.Decl` *directly* as a borrowed Lean object.
 //! It does not serialize or clone the IR. Only an explicitly accepted subset is
 //! lowered; unknown instructions and types are errors, never substitutions.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::fmt::Write;
 
@@ -25,6 +25,14 @@ extern "C" {
     fn lr_string_ptr(x: Obj) -> *const c_char;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
 }
+
+#[derive(Debug, Clone)]
+struct Signature {
+    params: Vec<&'static str>,
+    result: &'static str,
+}
+
+type FunctionTable = BTreeMap<String, Signature>;
 
 struct Reader;
 impl Reader {
@@ -88,13 +96,22 @@ impl Reader {
             1 => {
                 let p = Self::name(Self::field(x, 0)?, depth + 1)?;
                 let s = Self::string(Self::field(x, 1)?)?;
+                // Restrict names to unambiguous ASCII segments until the
+                // backend uses structured Name identity throughout. Without
+                // this, a quoted segment containing '.' could collide with
+                // a nested Lean name in the call graph.
+                if s.is_empty()
+                    || !s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                    || s.as_bytes()[0].is_ascii_digit()
+                {
+                    return Err(
+                        "unsupported Lean.Name segment; refusing ambiguous dependency identity"
+                            .into(),
+                    );
+                }
                 Ok(if p.is_empty() { s } else { format!("{p}.{s}") })
             }
-            2 => {
-                let p = Self::name(Self::field(x, 0)?, depth + 1)?;
-                let n = Self::nat(Self::field(x, 1)?)?;
-                Ok(format!("{p}.{n}"))
-            }
+            2 => Err("numeric Lean.Name components require a structured identity adapter".into()),
             t => Err(format!("unknown Lean.Name tag {t}")),
         }
     }
@@ -166,12 +183,33 @@ impl Reader {
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
+        functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
         match Self::tag(x)? {
             6 => {
                 // fap, preserving the exact known primitive semantics.
                 let name = Self::name(Self::field(x, 0)?, 0)?;
                 let args = Self::array(Self::field(x, 1)?)?;
+                if let Some(signature) = functions.and_then(|table| table.get(&name)) {
+                    if args.len() != signature.params.len() {
+                        return Err(format!(
+                            "{name}: expected {} arguments, got {}",
+                            signature.params.len(),
+                            args.len()
+                        ));
+                    }
+                    if var_ty != signature.result {
+                        return Err(format!(
+                            "{name}: expected result type {}, got {var_ty}",
+                            signature.result
+                        ));
+                    }
+                    let mut lowered = Vec::with_capacity(args.len());
+                    for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
+                        lowered.push(Self::arg(arg, env, ty)?);
+                    }
+                    return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
+                }
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
@@ -232,6 +270,7 @@ impl Reader {
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
+        functions: Option<&FunctionTable>,
     ) -> Result<(), String> {
         // Lean 4.34.1 IR uses the *storage type* name UInt8 here,
         // not the source Bool name. Validate Bool constructor names below.
@@ -268,7 +307,15 @@ impl Reader {
             }
             seen[cidx] = true;
             writeln!(code, "        {cidx} => {{").unwrap();
-            Self::body(Self::field(alt, 1)?, code, depth + 1, count, env, ret_ty)?;
+            Self::body(
+                Self::field(alt, 1)?,
+                code,
+                depth + 1,
+                count,
+                env,
+                ret_ty,
+                functions,
+            )?;
             writeln!(code, "        }}").unwrap();
         }
         if !seen.into_iter().all(|b| b) {
@@ -290,6 +337,7 @@ impl Reader {
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
+        functions: Option<&FunctionTable>,
     ) -> Result<(), String> {
         if depth > 128 {
             return Err("IR control-flow nesting limit".into());
@@ -304,7 +352,7 @@ impl Reader {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
-                    let value = Self::expr(Self::field(x, 2)?, ty, env)?;
+                    let value = Self::expr(Self::field(x, 2)?, ty, env, functions)?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }
@@ -313,7 +361,7 @@ impl Reader {
                 }
                 9 => {
                     // case(tid, scrutinee, type, alts)
-                    Self::boolean_case(x, code, depth, count, env, ret_ty)?;
+                    Self::boolean_case(x, code, depth, count, env, ret_ty, functions)?;
                     return Ok(());
                 }
                 10 => {
@@ -331,11 +379,18 @@ impl Reader {
         }
     }
     unsafe fn emit(decl: Obj, rust_name: Obj) -> Result<String, String> {
+        Self::emit_function(decl, &Self::string(rust_name)?, None)
+    }
+
+    unsafe fn emit_function(
+        decl: Obj,
+        rust_name: &str,
+        functions: Option<&FunctionTable>,
+    ) -> Result<String, String> {
         if Self::tag(decl)? != 0 {
             return Err("extern declaration without executable body".into());
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
-        let rust_name = Self::string(rust_name)?;
         if rust_name.is_empty()
             || !rust_name.as_bytes()[0].is_ascii_alphabetic()
             || !rust_name
@@ -351,7 +406,7 @@ impl Reader {
             "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
             "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
         ];
-        if KEYWORDS.contains(&rust_name.as_str()) || rust_name == "_" {
+        if KEYWORDS.contains(&rust_name) || rust_name == "_" {
             return Err("reserved Rust function name".into());
         }
         let params = Self::array(Self::field(decl, 1)?)?;
@@ -373,10 +428,231 @@ impl Reader {
             write!(result, "x_{var}: {ty}").unwrap();
         }
         writeln!(result, ") -> {ret} {{").unwrap();
-        Self::body(body, &mut result, 0, &mut 0, &mut env, ret)?;
+        Self::body(body, &mut result, 0, &mut 0, &mut env, ret, functions)?;
         result.push_str("}\n");
         Ok(result)
     }
+}
+
+// Naming is injective over UTF-8 bytes and independent of declaration ordering.
+fn internal_name(lean_name: &str) -> String {
+    let mut out = String::from("lean_");
+    for byte in lean_name.as_bytes() {
+        write!(&mut out, "{byte:02x}").unwrap();
+    }
+    out
+}
+
+impl Reader {
+    unsafe fn signature(decl: Obj) -> Result<Signature, String> {
+        if Self::tag(decl)? != 0 {
+            return Err("extern or opaque declaration in native dependency closure".into());
+        }
+        let mut params = Vec::new();
+        for param in Self::array(Self::field(decl, 1)?)? {
+            params.push(Self::ty(Self::field(param, 1)?)?);
+        }
+        Ok(Signature {
+            params,
+            result: Self::ty(Self::field(decl, 2)?)?,
+        })
+    }
+
+    // Traverse dependency IR iteratively to avoid stack growth on long
+    // straight-line functions. All control-flow shapes not handled by the
+    // emitter fail closed before code publication.
+    unsafe fn body_calls(x: Obj, calls: &mut BTreeSet<String>) -> Result<(), String> {
+        let mut pending = vec![x];
+        let mut count = 0;
+        while let Some(body) = pending.pop() {
+            count += 1;
+            if count > 100_000 {
+                return Err("dependency IR traversal exceeded 100000 instructions".into());
+            }
+            match Self::tag(body)? {
+                0 => {
+                    let expr = Self::field(body, 2)?;
+                    if Self::tag(expr)? == 6 {
+                        calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
+                    }
+                    pending.push(Self::field(body, 3)?);
+                }
+                9 => {
+                    for alt in Self::array(Self::field(body, 3)?)? {
+                        match Self::tag(alt)? {
+                            0 => pending.push(Self::field(alt, 1)?),
+                            1 => pending.push(Self::field(alt, 0)?),
+                            t => return Err(format!("unknown alternative constructor {t}")),
+                        }
+                    }
+                }
+                10 => (),
+                t => {
+                    return Err(format!(
+                        "dependency traversal does not support IR body constructor {t}"
+                    ))
+                }
+            }
+        }
+        Ok(())
+    }
+
+    unsafe fn emit_module(decls: Obj, root: Obj, public_name: Obj) -> Result<String, String> {
+        let root = Self::string(root)?;
+        let public_name = Self::string(public_name)?;
+        // Public name is validated by the same strict emitter before publishing.
+        let entries = Self::array(decls)?;
+        let mut definitions = BTreeMap::<String, Obj>::new();
+        for decl in entries {
+            let name = Self::name(Self::field(decl, 0)?, 0)?;
+            if definitions.insert(name.clone(), decl).is_some() {
+                return Err(format!("duplicate IR declaration in closure: {name}"));
+            }
+        }
+        let mut pending = vec![root.clone()];
+        let mut visited = BTreeSet::<String>::new();
+        let mut closure = BTreeMap::<String, Obj>::new();
+        let mut signatures = FunctionTable::new();
+        while let Some(name) = pending.pop() {
+            if !visited.insert(name.clone()) {
+                continue;
+            }
+            if visited.len() > 2048 {
+                return Err("native declaration closure exceeds 2048 functions".into());
+            }
+            let decl = *definitions.get(&name).ok_or_else(||
+                format!("dependency {name} has no compiled IR in the current module; no external fallback"))?;
+            let sig = Self::signature(decl).map_err(|e| format!("{name}: {e}"))?;
+            let mut called = BTreeSet::new();
+            Self::body_calls(Self::field(decl, 3)?, &mut called)?;
+            for callee in called {
+                if !is_primitive(&callee) {
+                    pending.push(callee);
+                }
+            }
+            signatures.insert(name.clone(), sig);
+            closure.insert(name, decl);
+        }
+        let root_signature = signatures
+            .get(&root)
+            .ok_or("requested root missing from closure")?;
+        let mut result = String::from(
+            "// Native in-process Lean IR closure; no JSON or Lean runtime dependency.\n",
+        );
+        for (name, decl) in &closure {
+            result.push_str(&Self::emit_function(
+                *decl,
+                &internal_name(name),
+                Some(&signatures),
+            )?);
+            result.push('\n');
+        }
+        // Keep the existing external API for a single public root while
+        // exposing all internal callees using stable, collision-free names.
+        write!(result, "pub fn {public_name}(").unwrap();
+        for (i, ty) in root_signature.params.iter().enumerate() {
+            if i > 0 {
+                result.push_str(", ");
+            }
+            write!(result, "p_{i}: {ty}").unwrap();
+        }
+        write!(
+            result,
+            ") -> {} {{\n    {}(",
+            root_signature.result,
+            internal_name(&root)
+        )
+        .unwrap();
+        for i in 0..root_signature.params.len() {
+            if i > 0 {
+                result.push_str(", ");
+            }
+            write!(result, "p_{i}").unwrap();
+        }
+        result.push_str(")\n}\n");
+        // Invalid public Rust identifiers fail at generation, not only when
+        // rustc later parses the output. Reuse existing validation via an
+        // in-memory synthetic wrapper is unnecessary: emit_function accepts
+        // an actual root declaration under the public name and validates it.
+        let _ = Self::emit_function(
+            *closure.get(&root).unwrap(),
+            &public_name,
+            Some(&signatures),
+        )?;
+        Ok(result)
+    }
+}
+
+fn is_primitive(name: &str) -> bool {
+    matches!(
+        name,
+        "UInt8.add"
+            | "UInt16.add"
+            | "UInt32.add"
+            | "UInt64.add"
+            | "USize.add"
+            | "UInt8.sub"
+            | "UInt16.sub"
+            | "UInt32.sub"
+            | "UInt64.sub"
+            | "USize.sub"
+            | "UInt8.mul"
+            | "UInt16.mul"
+            | "UInt32.mul"
+            | "UInt64.mul"
+            | "USize.mul"
+            | "UInt8.decEq"
+            | "UInt16.decEq"
+            | "UInt32.decEq"
+            | "UInt64.decEq"
+            | "USize.decEq"
+            | "UInt8.decLt"
+            | "UInt16.decLt"
+            | "UInt32.decLt"
+            | "UInt64.decLt"
+            | "USize.decLt"
+            | "UInt8.decLe"
+            | "UInt16.decLe"
+            | "UInt32.decLe"
+            | "UInt64.decLe"
+            | "USize.decLe"
+    )
+}
+
+unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
+    let text = match std::panic::catch_unwind(|| Reader::emit_module(decls, root, public_name)) {
+        Ok(Ok(s)) => format!("OK\n{s}"),
+        Ok(Err(e)) => format!("ERROR\n{e}"),
+        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+    };
+    let text = text.replace('\0', "\\0");
+    let cstr = CString::new(text).expect("replaced NUL");
+    lean_mk_string(cstr.as_ptr())
+}
+
+/// # Safety
+/// Arguments must be live borrowed Lean 4.34.1 Array IR.Decl, String, String.
+#[no_mangle]
+pub unsafe extern "C" fn rs_emit_ir_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
+    reply_module(decls, root, public_name)
+}
+/// # Safety
+/// Interpreter entrypoint: same synchronous borrow contract as rs_emit_ir_module.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_emitModule(decls: Obj, root: Obj, name: Obj) -> *mut c_void {
+    reply_module(decls, root, name)
+}
+/// # Safety
+/// Boxed interpreter entrypoint.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_emitModule___boxed(
+    decls: Obj,
+    root: Obj,
+    name: Obj,
+) -> *mut c_void {
+    reply_module(decls, root, name)
 }
 
 unsafe fn reply(decl: Obj, name: Obj) -> *mut c_void {
@@ -420,6 +696,13 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 
 #[cfg(test)]
 mod tests {
+    use super::internal_name;
+    #[test]
+    fn closure_symbol_mangling_is_injective_on_ascii_names() {
+        assert_ne!(internal_name("X.ab"), internal_name("X.a_b"));
+        assert_ne!(internal_name("X.A"), internal_name("X.a"));
+        assert!(internal_name("X.a").starts_with("lean_"));
+    }
     #[test]
     fn permitted_rust_identacters_only() {
         for s in ["a", "a_1", "Fn2"] {

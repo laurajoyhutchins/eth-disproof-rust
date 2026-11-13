@@ -1,0 +1,78 @@
+name: ETH G2 original closure inventory smoke
+
+on:
+  pull_request:
+    paths:
+      - 'rust/lean_eth_reference/tools/g2-closure/**'
+      - '.github/workflows/g2-closure-inventory.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'rust/lean_eth_reference/tools/g2-closure/**'
+      - '.github/workflows/g2-closure-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g2-closure-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  closure-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Restore source-pinned Lean
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: false
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Inspect syntactic closure without building the enormous ETH source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat instrumentation/lean-env/lean-toolchain)" = 'leanprover/lean4:v4.34.1'
+          LEAN="$(cd instrumentation/lean-env && elan which lean)"
+          "$LEAN" --version
+          cd rust/lean_eth_reference/tools/g2-closure
+          export LEAN_PATH="$PWD"
+          "$LEAN" -o G2Inventory.olean G2Inventory.lean
+          "$LEAN" Smoke.lean > "$RUNNER_TEMP/g2-inventory-smoke.jsonl"
+          jq -s -e '
+            length == 3
+            and all(.[]; .format == "eth-original-closure-inventory-v1"
+              and .eth_ready == false
+              and .computational_relevance_verified == false
+              and .lean_rust_semantic_refinement == "not-established"
+              and .physical_bitprogram_refinement == "not-established"
+              and .status == "syntactic-closure-observed")
+            and (.[0].root == "InventorySmoke.originalRoot")
+            and (.[0].declarations | any(.name == "InventorySmoke.intermediate"))
+            and (.[0].blockers_for_review | index("axiom:InventorySmoke.oracle") != null)
+            and (.[1].blockers_for_review | index("opaque:InventorySmoke.sealed") != null)
+            and (.[2].root == "InventorySmoke.ordinary")
+          ' "$RUNNER_TEMP/g2-inventory-smoke.jsonl"
+          {
+            echo "G2 original closure inventory: syntactic/IR-observation smoke PASS"
+            echo "Exact head: ${{ github.event.pull_request.head.sha || github.sha }}"
+            echo "Original QueryStream module import: NOT RUN IN FAST SMOKE"
+            echo "Executable closure, physical semantics, G1/G2 acceptance: NOT ESTABLISHED"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g2-syntactic-inventory-smoke
+          path: ${{ runner.temp }}/g2-inventory-smoke.jsonl
+          if-no-files-found: error
+          retention-days: 14

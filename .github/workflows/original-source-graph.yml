@@ -121,24 +121,10 @@ jobs:
             original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-
             original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
 
-      # Expensive diagnostic for the exact original noncomputable QueryStream.
-      # A failure is mandatory refusal, not a generated or certified program.
-      # This branch-scoped probe must remain draft until it succeeds.
-      - name: Attempt complete original QueryStream native AOT
-        if: github.head_ref == 'feat/query-aot-source-20261113'
-        shell: bash
-        run: |
-          set -euo pipefail
-          rustup toolchain install 1.99.1 --profile minimal
-          rustup default 1.99.1
-          cargo fetch --locked
-          python3 rust/lean_eth_reference/tools/query_stream_aot.py \
-            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
-            --rust-crate rust/lean_eth_reference \
-            --output-dir "$RUNNER_TEMP/query-stream" \
-            --build-timeout 3000 --timeout 900 --max-jobs 4 \
-            --max-source-labels 1000000000
-          echo 'ORIGINAL_QUERY_STREAM=NATIVE_AOT_GRAPH_UNCERTIFIED' >> "$GITHUB_STEP_SUMMARY"
+      # QueryStream module compilation now has a separate staged, cache-preserving
+      # workflow. This generic source-graph gate must not redundantly spend
+      # 3000 seconds building the entire original QueryStream closure.
+      # See original-query-import.yml for authentic pinned imports.
 
       - name: Export independent physical original Lean tables
         if: env.SOURCE_SUITE != 'fixtures'

@@ -15,7 +15,7 @@ class LeanResidualGraphTests(unittest.TestCase):
     def setUpClass(cls):
         lean = os.environ.get('LEAN_BIN') or shutil.which('lean')
         if not lean:
-            raise unittest.SkipTest('actual Lean compiler is not installed')
+            raise AssertionError('actual Lean compiler required for real residualizer tests')
         cls.lean = lean
         cls.folder = tempfile.TemporaryDirectory(prefix='lean-residual-')
         cls.root = Path(cls.folder.name)

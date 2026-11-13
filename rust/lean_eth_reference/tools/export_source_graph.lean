@@ -317,27 +317,38 @@ elab_rules : command
       let l ← number a[2]!
       if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
         throwError m!"source machine out of bounded test dimensions: {r} {s} {l}"
-      match body.getAppFn with
-      | .const n _ =>
-        if n != ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled then
-          throwError m!"not a direct compiled StructuredCalls command: {n}"
-        let args := body.getAppArgs
-        if args.size != 5 then
-          throwError m!"unexpected compiled command arity {args.size}"
-        let input ← fin args[3]!
-        let output ← fin args[4]!
-        let command ← structured args[2]! maxLabels 512
-        return Json.mkObj [
-          ("kind", toJson "original-structured-source-v1"),
-          ("source_commit", toJson "4eaee87548250b2682affda7d05d947c05554bae"),
-          ("source_blob", toJson sourceBlob),
-          ("declaration", toJson (toString programName)),
-          ("id", toJson label),
-          ("abi", Json.mkObj [("r", toJson r), ("s", toJson s),
-            ("labels", toJson l), ("input", toJson input), ("output", toJson output)]),
-          ("command", command)
-        ]
-      | _ => throwError m!"source compilation root remains opaque: {body}"
+      -- A compiled command and a linked physical Program are both legitimate
+      -- top-level entrypoints. Preserve their exact source label spaces; never
+      -- wrap a linked root in an extra Cmd.call (which adds a halt site).
+      let (kind, field, value) ←
+        match body.getAppFn with
+        | .const n _ =>
+          if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled then
+            let args := body.getAppArgs
+            if args.size != 5 then
+              throwError m!"unexpected compiled command arity {args.size}"
+            let command ← structured args[2]! maxLabels 512
+            pure ("original-structured-source-v1", "command", command)
+          else
+            let program ← programGraph (mkConst programName) maxLabels 64
+            pure ("original-linked-source-v1", "program", program)
+        | _ =>
+          let program ← programGraph (mkConst programName) maxLabels 64
+          pure ("original-linked-source-v1", "program", program)
+      let input ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 0
+        (mkConst programName))
+      let output ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 1
+        (mkConst programName))
+      return Json.mkObj [
+        ("kind", toJson kind),
+        ("source_commit", toJson "4eaee87548250b2682affda7d05d947c05554bae"),
+        ("source_blob", toJson sourceBlob),
+        ("declaration", toJson (toString programName)),
+        ("id", toJson label),
+        ("abi", Json.mkObj [("r", toJson r), ("s", toJson s),
+          ("labels", toJson l), ("input", toJson input), ("output", toJson output)]),
+        (field, value)
+      ]
     if diagnose then
       liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=emit-complete-source-graph"
     liftIO <| IO.println graph.compress

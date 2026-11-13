@@ -36,7 +36,7 @@ FIELDS = {'goto':['next'],'set':['dst','value','next'],
 ATOM_FIELDS={name:fields[:-1] for name,fields in FIELDS.items() if name in ATOMS}
 MAX_NODES=8192
 MAX_TABLE_LABELS=4096
-MAX_SOURCE_LABELS=50000
+MAX_SOURCE_LABELS=1000000000
 MAX_INPUT_BYTES=4*1024*1024
 
 
@@ -107,20 +107,24 @@ class ProgramNode:
     """Exact bounded physical source, represented without flattening links."""
 
     def __init__(self, kind, r, s, labels, entry, inp, out,
-                 rows=(), children=(), maps=()):
+                 rows=(), children=(), maps=(), command=None):
         self.kind, self.r, self.s, self.labels = kind, r, s, labels
         self.entry, self.input, self.output = entry, inp, out
         self.rows, self.children, self.maps = rows, children, maps
+        self.command = command
 
     def key(self):
         return (self.kind, self.r, self.s, self.labels, self.entry,
                 self.input, self.output, self.rows,
-                tuple(child.key() for child in self.children), self.maps)
+                tuple(child.key() for child in self.children), self.maps,
+                self.command)
 
     def instruction(self, pc: int):
         insist(0 <= pc < self.labels, 'linked source label out of range')
         if self.kind == 'table':
             return self.rows[pc]
+        if self.kind == 'composed':
+            return ('halt', ()) if pc == 0 else self.command.instr(1, 0, pc)
         if self.kind == 'lift':
             return mapped_instr(self.children[0].instruction(pc),
                                 self.maps[0], self.maps[1])
@@ -188,6 +192,21 @@ def parse_program(value: Any, remaining: list[int], depth: int = 0) -> ProgramNo
         rows = tuple(parse_instr(row, r, s, labels) for row in code)
         return ProgramNode(kind, r, s, labels, entry, inp, out, rows=rows)
 
+    if kind == 'composed':
+        closed_keys(value, {'kind', 'r', 's', 'input', 'output', 'command'})
+        r = number(value['r'], 256, 'composed registers')
+        s = number(value['s'], 4096, 'composed stacks')
+        insist(r > 0 and s > 0, 'empty composed program dimensions')
+        inp = number(value['input'], s, 'composed input')
+        out = number(value['output'], s, 'composed output')
+        insist(inp < s and out < s, 'composed ports outside source dimensions')
+        command = parse_node(value['command'], r, s, remaining, depth + 1)
+        labels = command.size + 1
+        insist(labels <= MAX_SOURCE_LABELS, 'composed callee exceeds source labels')
+        entry = command.entry(1, 0)
+        insist(entry < labels, 'composed callee entry outside source labels')
+        return ProgramNode(kind, r, s, labels, entry, inp, out, command=command)
+
     if kind == 'lift':
         closed_keys(value, {'kind', 'r', 's', 'registers', 'stacks', 'source'})
         source = parse_program(value['source'], remaining, depth + 1)
@@ -235,6 +254,12 @@ class Node:
         if self.kind=='skip':return exit
         if self.kind in ('atom','if','while'):return base
         if self.kind=='call':return base+self.args['entry']
+        if self.kind=='repeat':
+            (body,)=self.children
+            count=self.args['count']
+            if count==0 or body.size==0:return exit
+            next_pc=body.entry(base+body.size,exit) if count>1 else exit
+            return body.entry(base,next_pc)
         if self.kind=='seq':
             a,b=self.children
             return a.entry(base,b.entry(base+a.size,exit))
@@ -244,6 +269,14 @@ class Node:
         insist(base<=pc<base+self.size,'source node address out of range')
         if self.kind=='atom':return (*self.args['opcode'][0:1],(*self.args['opcode'][1],exit))
         if self.kind=='call':return relocated(self.table.instruction(pc-base),base,exit)
+        if self.kind=='repeat':
+            (body,)=self.children
+            insist(body.size>0, 'empty repeat has no physical instruction')
+            index=(pc-base)//body.size
+            insist(index<self.args['count'],'repeat physical index outside count')
+            first=base+index*body.size
+            next_pc=body.entry(first+body.size,exit) if index+1<self.args['count'] else exit
+            return body.instr(first,next_pc,pc)
         if self.kind=='seq':
             a,b=self.children
             mid=base+a.size
@@ -282,6 +315,13 @@ def parse_node(node: Any,r:int,s:int,remaining:list[int],depth=0)->Node:
         return Node(k,program.labels,
                     args={'entry':program.entry,'input':program.input,'output':program.output},
                     table=program)
+    if k=='repeat':
+        closed_keys(node,{'kind','count','body'})
+        count=number(node['count'],MAX_SOURCE_LABELS,'repeat count')
+        body=parse_node(node['body'],r,s,remaining,depth+1)
+        size=body.size*count
+        insist(size<MAX_SOURCE_LABELS,'repeat source labels exceed bound')
+        return Node(k,size,(body,),{'count':count})
     if k=='seq':
         closed_keys(node,{'kind','first','second'})
         a=parse_node(node['first'],r,s,remaining,depth+1)
@@ -381,12 +421,16 @@ def generate_test(source:dict,root:Node,golden:list,abi:tuple[int,...],
     return '\n'.join(lines)+'\n'
 
 
-def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, cargo:bool) ->dict:
+def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path,
+                          cargo:bool, aot:bool=True)->dict:
     insist(src.stat().st_size<=MAX_INPUT_BYTES,'source graph exceeds total byte bound')
     original=src.read_bytes()
     parsed=parse_source_graph_json(original)
-    closed_keys(parsed,{'kind','source_commit','source_blob','declaration','id','abi','command'})
-    insist(parsed['kind']=='original-structured-source-v1','wrong graph protocol')
+    kind=parsed['kind']
+    insist(kind in ('original-structured-source-v1','original-linked-source-v1'),
+           'wrong graph protocol')
+    root_field='command' if kind=='original-structured-source-v1' else 'program'
+    closed_keys(parsed,{'kind','source_commit','source_blob','declaration','id','abi',root_field})
     insist(parsed['source_commit']==SOURCE_SHA,'source commit mismatch')
     insist(re.fullmatch('[0-9a-f]{40}',parsed['source_blob']),'source blob malformed')
     insist(re.fullmatch('[a-z0-9_-]{1,255}',parsed['id']),'program ID malformed')
@@ -401,9 +445,17 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     l=number(abi['labels'],MAX_SOURCE_LABELS,'labels');insist(r>0 and s>0 and l>0,'empty ABI')
     inp=number(abi['input'],s,'input');out=number(abi['output'],s,'output')
     insist(inp<s and out<s,'port out of range')
-    root=parse_node(parsed['command'],r,s,[MAX_NODES])
-    insist(root.size+1==l,'derived source label count differs from Lean type')
-    entry=root.entry(1,0)
+    if kind=='original-structured-source-v1':
+        root=parse_node(parsed['command'],r,s,[MAX_NODES])
+        insist(root.size+1==l,'derived source label count differs from Lean type')
+        entry=root.entry(1,0)
+        emitted=[('halt',())]+[root.instr(1,0,pc) for pc in range(1,l)]
+    else:
+        root=parse_program(parsed['program'],[MAX_NODES])
+        insist((root.r,root.s,root.labels,root.input,root.output)==
+               (r,s,l,inp,out),'linked root ABI differs from original source type')
+        entry=root.entry
+        emitted=[root.instruction(pc) for pc in range(l)]
     insist(0<=entry<l,'source graph entry outside labels')
     gold_path=golden_dir/(name+'.table')
     insist(gold_path.is_file(),'not one of the six pinned golden programs')
@@ -416,7 +468,6 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
     insist(hashlib.sha256(raw).hexdigest()==expect['sha256'],'golden source table hash mismatch')
     canonical,rows=parse_golden(raw,name,parsed['source_blob'])
     insist((r,s,l,entry,inp,out)==canonical,'graph program ABI differs from original physical table')
-    emitted=[('halt',())]+[root.instr(1,0,pc) for pc in range(1,l)]
     for i,(got,expected) in enumerate(zip(emitted,rows)):
         insist(got==expected,f'exact source physical instruction mismatch at {name}[{i}]: {fmt(got)} vs {fmt(expected)}')
     body=generate_test(parsed,root,rows,canonical,hashlib.sha256(original).hexdigest())
@@ -425,7 +476,7 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
              'graph_sha256':hashlib.sha256(original).hexdigest(),
              'golden_table_sha256':expect['sha256'],
              'rust_acceptance_test_sha256':hashlib.sha256(body.encode()).hexdigest(),
-             'rust_loader':'original-structured-source-v1/serde-native',
+             'rust_loader':f'{kind}/serde-native',
              'physical_instructions_compared':l,'status':'EXACT_SOURCE_PHYSICAL_PARITY'}
     # Generated Rust and the success receipt are staged separately from the
     # published output. Publish only after the optional Cargo verification
@@ -446,9 +497,46 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
                                   capture_output=True,text=True,timeout=240)
             if result.returncode:
                 raise RuntimeError('generated graph Rust test failed: '+result.stderr[-3000:]+' '+result.stdout[-1000:])
+            if aot:
+                # The independently exported Lean physical table also checks the
+                # actual AOT binary, not merely the deferred JSON interpreter.
+                # Keep this inside the certificate-gated acceptance flow. The
+                # emitted .rs is preserved only after every label agrees.
+                aot_source=project/'src/main.rs'
+                codegen=subprocess.run(
+                    ['cargo','run','--locked','--offline','--quiet',
+                     '--manifest-path',str(crate/'Cargo.toml'),
+                     '--bin','original-source-codegen','--',
+                     str(src),name,parsed['declaration'],parsed['source_blob'],
+                     receipt['graph_sha256'],str(aot_source)],
+                    capture_output=True,text=True,timeout=240)
+                if codegen.returncode:
+                    raise RuntimeError('original Lean graph AOT codegen failed: '+
+                                       codegen.stderr[-3000:])
+                build=subprocess.run(
+                    ['cargo','build','--offline','--manifest-path',str(project/'Cargo.toml')],
+                    capture_output=True,text=True,timeout=240)
+                if build.returncode:
+                    raise RuntimeError('original Lean graph AOT rustc failed: '+
+                                       build.stderr[-3000:])
+                binary=project/'target/debug/original_graph_check'
+                for pc,instruction in enumerate(rows):
+                    output=subprocess.run([str(binary),'lookup',str(pc)],
+                                          capture_output=True,text=True,timeout=30)
+                    expected=rust_instr(instruction).removeprefix('Instr::')
+                    if output.returncode or output.stdout.strip()!=expected:
+                        raise RuntimeError(
+                            f'original Lean AOT instruction differs at {name}[{pc}]: '+
+                            f'{output.stdout.strip()!r} vs {expected!r}; '+output.stderr[-1000:])
+                staged_aot=stage/(name+'.aot.rs')
+                staged_aot.write_bytes(aot_source.read_bytes())
+                receipt['aot_source_sha256']=hashlib.sha256(staged_aot.read_bytes()).hexdigest()
+                receipt['aot_physical_instructions_compared']=len(rows)
         staged_receipt=stage/(name+'.receipt.json')
         staged_receipt.write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
         staged_rust.replace(dest/(name+'.rs'))
+        if cargo and aot:
+            staged_aot.replace(dest/(name+'.aot.rs'))
         staged_receipt.replace(receipt_path)
     print(f'SOURCE_GRAPH_EXACT {name} labels={l} nodes_probed={MAX_NODES} rust_test_sha256={receipt["rust_acceptance_test_sha256"]}',flush=True)
     return receipt

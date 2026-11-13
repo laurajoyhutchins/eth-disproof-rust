@@ -82,6 +82,51 @@ class GraphContracts(unittest.TestCase):
         self.assertEqual(root.instr(1,0,6),('set',(0,1,5)))
         self.assertEqual(root.instr(1,0,9),('set',(0,1,8)))
 
+    def test_source_repeat_matches_eager_sequence_for_all_physical_sites(self):
+        # No invocation of a host-level semantic oracle: the comparison is
+        # between the physical lowering of ordinary seq and a shared repeat.
+        nested={'kind':'seq',
+                'first':{'kind':'if','test':0,
+                         'yes':{'kind':'atom','opcode':'set:1:1'},
+                         'no':{'kind':'skip'}},
+                'second':{'kind':'atom','opcode':'not:0:0'}}
+        for count in range(9):
+            expanded={'kind':'skip'}
+            for _ in range(count):
+                expanded={'kind':'seq','first':expanded,'second':nested}
+            repeated={'kind':'repeat','count':count,'body':nested}
+            expected=parse_node(expanded,2,2,[8192])
+            observed=parse_node(repeated,2,2,[8192])
+            self.assertEqual(expected.size,observed.size)
+            self.assertEqual(expected.entry(1,0),observed.entry(1,0))
+            for pc in range(1,1+observed.size):
+                self.assertEqual(expected.instr(1,0,pc),observed.instr(1,0,pc),
+                                 f'count={count}, pc={pc}')
+
+    def test_large_repeat_does_not_materialize_label_table(self):
+        root=parse_node({'kind':'repeat','count':500000000,
+                         'body':{'kind':'atom','opcode':'not:0:0'}},2,2,[8192])
+        self.assertEqual(root.size,500000000)
+        self.assertEqual(root.entry(1,0),1)
+        self.assertEqual(root.instr(1,0,250000000),('not',(0,0,250000001)))
+        self.assertEqual(root.instr(1,0,500000000),('not',(0,0,0)))
+
+    def test_repeat_malformed_and_overflow_refuse(self):
+        for cmd in [
+            {'kind':'repeat','count':-1,'body':{'kind':'skip'}},
+            {'kind':'repeat','count':True,'body':{'kind':'skip'}},
+            {'kind':'repeat','count':1000000000,
+             'body':{'kind':'atom','opcode':'set:0:1'}},
+            {'kind':'repeat','count':500000001,
+             'body':{'kind':'seq',
+                     'first':{'kind':'atom','opcode':'set:0:1'},
+                     'second':{'kind':'atom','opcode':'set:1:0'}}},
+            {'kind':'repeat','count':2,'body':{'kind':'unknown'}},
+            {'kind':'repeat','count':2,'body':{'kind':'skip'},'extra':'ignored'},
+        ]:
+            with self.subTest(cmd=cmd),self.assertRaises(ValueError):
+                parse_node(cmd,2,2,[8192])
+
     def test_program_identity_includes_ports_not_only_instruction_bytes(self):
         program = {'r':2,'s':2,'labels':2,'input':0,'output':1,'entry':1,
                    'code':['halt','goto:0']}
@@ -90,6 +135,32 @@ class GraphContracts(unittest.TestCase):
         b = parse_program(changed,[8192])
         self.assertNotEqual(a.key(), b.key())
         self.assertEqual(a.instruction(1), b.instruction(1))
+
+    def test_large_compiled_callee_preserves_physical_sites_without_host_codegen(self):
+        callee = {'kind':'composed','r':2,'s':2,'input':0,'output':1,
+                  'command':{'kind':'seq',
+                             'first':{'kind':'atom','opcode':'set:0:1'},
+                             'second':{'kind':'atom','opcode':'push:1:0'}}}
+        parsed = parse_program(callee,[8192])
+        self.assertEqual((parsed.labels,parsed.entry,parsed.input,parsed.output),
+                         (3,1,0,1))
+        self.assertEqual([parsed.instruction(pc) for pc in range(3)],
+                         [('halt',()),('set',(0,1,2)),('push',(1,0,0))])
+        source = parse_node({'kind':'call','program':callee},2,2,[8192])
+        self.assertEqual(source.entry(1,0),2)
+        self.assertEqual([source.instr(1,0,pc) for pc in range(1,4)],
+                         [('goto',(0,)),('set',(0,1,3)),('push',(1,0,1))])
+
+    def test_composed_callee_rejects_wrong_ports_and_unknown_commands(self):
+        baseline={'kind':'composed','r':2,'s':2,'input':0,'output':1,
+                  'command':{'kind':'atom','opcode':'set:0:1'}}
+        for bad in [
+            {**baseline,'input':2},
+            {**baseline,'command':{'kind':'sat_oracle'}},
+            {**baseline,'extra':'ignored'},
+        ]:
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                parse_program(bad,[8192])
 
     def test_lift_remaps_all_twelve_original_physical_opcodes(self):
         program={'r':4,'s':3,'labels':12,'entry':1,'input':0,'output':2,
@@ -236,7 +307,7 @@ class GraphContracts(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
 
             with patch('verify_source_graph.subprocess.run', side_effect=successful_build):
-                accepted=validate_and_generate(inp,golden,root/'out',root,True)
+                accepted=validate_and_generate(inp,golden,root/'out',root,True,aot=False)
             published=json.loads(receipt_path.read_text())
             self.assertEqual(published,accepted)
             self.assertEqual(published['rust_acceptance_test_sha256'],

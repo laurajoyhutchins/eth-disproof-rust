@@ -47,7 +47,10 @@ struct SerializedGraph {
     declaration: String,
     id: String,
     abi: Abi,
-    command: Command,
+    // Exactly one root representation is admitted by the protocol kind.
+    // A linked root is an ordinary physical Program, not an extra Call site.
+    command: Option<Command>,
+    program: Option<ProgramTree>,
 }
 
 #[derive(Deserialize)]
@@ -140,6 +143,10 @@ enum Command {
     },
     #[serde(rename = "while")]
     While { test: usize, body: Box<Command> },
+    /// Exact fixed sequential repetition of one source command. This node
+    /// never changes the source's physical step/label semantics.
+    #[serde(rename = "repeat")]
+    Repeat { count: usize, body: Box<Command> },
 }
 
 fn invalid(message: &str) -> Error {
@@ -438,6 +445,10 @@ enum NativeBlockKind {
         test: usize,
         body: Arc<NativeBlock>,
     },
+    Repeat {
+        count: usize,
+        body: Arc<NativeBlock>,
+    },
 }
 
 impl NativeBlock {
@@ -453,6 +464,17 @@ impl NativeBlock {
             NativeBlockKind::Seq(first, second) => {
                 let mid = base.checked_add(first.size).ok_or(Error::Overflow)?;
                 first.entry_at(base, second.entry_at(mid, exit)?)
+            }
+            NativeBlockKind::Repeat { count, body } => {
+                if *count == 0 || body.size == 0 {
+                    return Ok(exit);
+                }
+                let next = if *count > 1 {
+                    body.entry_at(base.checked_add(body.size).ok_or(Error::Overflow)?, exit)?
+                } else {
+                    exit
+                };
+                body.entry_at(base, next)
             }
         }
     }
@@ -505,6 +527,26 @@ impl NativeBlock {
                     body.instruction_at(first, base, pc)
                 }
             }
+            NativeBlockKind::Repeat { count, body } => {
+                // Zero-sized repetitions contain no source sites, so they
+                // never reach an instruction lookup or divide by zero.
+                if *count == 0 || body.size == 0 {
+                    return Err(invalid("empty nested repeat has no physical sites"));
+                }
+                let iteration = (pc - base) / body.size;
+                if iteration >= *count {
+                    return Err(invalid("nested repeat site outside iteration count"));
+                }
+                let start = base
+                    .checked_add(iteration.checked_mul(body.size).ok_or(Error::Overflow)?)
+                    .ok_or(Error::Overflow)?;
+                let next = if iteration + 1 < *count {
+                    body.entry_at(start.checked_add(body.size).ok_or(Error::Overflow)?, exit)?
+                } else {
+                    exit
+                };
+                body.instruction_at(start, next, pc)
+            }
         }
     }
 }
@@ -556,6 +598,11 @@ fn lower_native_block(
             let body = lower_native_block(*body, r, s, remaining, depth + 1)?;
             let size = body.size.checked_add(1).ok_or(Error::Overflow)?;
             (size, NativeBlockKind::While { test, body })
+        }
+        Command::Repeat { count, body } => {
+            let body = lower_native_block(*body, r, s, remaining, depth + 1)?;
+            let size = body.size.checked_mul(count).ok_or(Error::Overflow)?;
+            (size, NativeBlockKind::Repeat { count, body })
         }
     };
     if size >= MAX_LABELS {
@@ -812,7 +859,61 @@ fn lower<const R: usize, const S: usize>(
         Command::While { test, body } => {
             Block::while_(test, lower::<R, S>(*body, remaining, callees)?)
         }
+        Command::Repeat { count, body } => {
+            Block::repeat(count, lower::<R, S>(*body, remaining, callees)?)
+        }
     }
+}
+
+/// Validate the exact receipt-bound bytes before either backend sees the graph.
+/// A caller-supplied digest is not itself a Lean kernel certificate.
+fn parse_bound_graph(
+    bytes: &[u8],
+    expected: SourceGraphBinding<'_>,
+) -> Result<SerializedGraph, Error> {
+    if bytes.is_empty()
+        || bytes.len() > MAX_BYTES
+        || bytes.last() != Some(&b'\n')
+        || bytes.iter().filter(|&&b| b == b'\n').count() != 1
+        || bytes.contains(&b'\r')
+        || !bytes.is_ascii()
+    {
+        return Err(invalid("source graph must be one bounded ASCII JSON line"));
+    }
+    if expected.graph_sha256.len() != 64
+        || !expected
+            .graph_sha256
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err(invalid("certificate digest must be lowercase hex SHA-256"));
+    }
+    let computed = format!("{:x}", Sha256::digest(bytes));
+    if computed != expected.graph_sha256 {
+        return Err(invalid(
+            "graph SHA-256 differs from Lean certificate binding",
+        ));
+    }
+    let source: SerializedGraph = serde_json::from_slice(bytes)
+        .map_err(|e| Error::Invalid(format!("source graph JSON schema: {e}")))?;
+    if !matches!(
+        source.kind.as_str(),
+        "original-structured-source-v1" | "original-linked-source-v1"
+    ) || source.source_commit != SOURCE_COMMIT
+        || source.id != expected.id
+        || source.declaration != expected.declaration
+        || source.source_blob != expected.source_blob
+        || source.source_blob.len() != 40
+        || !source
+            .source_blob
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err(invalid(
+            "source declaration/blob does not match trusted binding",
+        ));
+    }
+    Ok(source)
 }
 
 impl<const R: usize, const S: usize> DeferredProgram<R, S> {
@@ -825,46 +926,7 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         bytes: &[u8],
         expected: SourceGraphBinding<'_>,
     ) -> Result<Arc<Self>, Error> {
-        if bytes.is_empty()
-            || bytes.len() > MAX_BYTES
-            || bytes.last() != Some(&b'\n')
-            || bytes.iter().filter(|&&b| b == b'\n').count() != 1
-            || bytes.contains(&b'\r')
-            || !bytes.is_ascii()
-        {
-            return Err(invalid("source graph must be one bounded ASCII JSON line"));
-        }
-        if expected.graph_sha256.len() != 64
-            || !expected
-                .graph_sha256
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        {
-            return Err(invalid("certificate digest must be lowercase hex SHA-256"));
-        }
-        let computed = format!("{:x}", Sha256::digest(bytes));
-        if computed != expected.graph_sha256 {
-            return Err(invalid(
-                "graph SHA-256 differs from Lean certificate binding",
-            ));
-        }
-        let source: SerializedGraph = serde_json::from_slice(bytes)
-            .map_err(|e| Error::Invalid(format!("source graph JSON schema: {e}")))?;
-        if source.kind != "original-structured-source-v1"
-            || source.source_commit != SOURCE_COMMIT
-            || source.id != expected.id
-            || source.declaration != expected.declaration
-            || source.source_blob != expected.source_blob
-            || source.source_blob.len() != 40
-            || !source
-                .source_blob
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        {
-            return Err(invalid(
-                "source declaration/blob does not match trusted binding",
-            ));
-        }
+        let source = parse_bound_graph(bytes, expected)?;
         let abi = source.abi;
         if R == 0
             || R > 256
@@ -880,9 +942,34 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
             return Err(invalid("source machine dimensions outside supported ABI"));
         }
         let mut budget = MAX_NODES;
-        let mut callees = HashMap::new();
-        let block = lower::<R, S>(source.command, &mut budget, &mut callees)?;
-        let program = DeferredProgram::composed(abi.input, abi.output, block)?;
+        let program = match (source.kind.as_str(), source.command, source.program) {
+            ("original-structured-source-v1", Some(command), None) => {
+                let mut callees = HashMap::new();
+                let block = lower::<R, S>(command, &mut budget, &mut callees)?;
+                DeferredProgram::composed(abi.input, abi.output, block)?
+            }
+            ("original-linked-source-v1", None, Some(tree)) => {
+                let linked = lower_linked_program(tree, &mut budget, 0)?;
+                if (
+                    linked.r,
+                    linked.s,
+                    linked.labels,
+                    linked.input,
+                    linked.output,
+                ) != (R, S, abi.labels, abi.input, abi.output)
+                {
+                    return Err(invalid("linked root differs from elaborated source ABI"));
+                }
+                DeferredProgram::<R, S>::source_program(
+                    linked.input,
+                    linked.output,
+                    linked.entry,
+                    linked.labels,
+                    Arc::new(linked),
+                )?
+            }
+            _ => return Err(invalid("source graph has ambiguous or absent root")),
+        };
         if program.labels() != abi.labels {
             return Err(invalid(
                 "source graph site count differs from original Lean ABI",
@@ -891,6 +978,9 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         Ok(program)
     }
 }
+
+mod codegen;
+pub use codegen::emit_original_source_rust;
 
 #[cfg(test)]
 mod native_interning_tests {

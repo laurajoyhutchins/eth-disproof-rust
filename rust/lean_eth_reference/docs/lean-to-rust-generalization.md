@@ -1,11 +1,90 @@
 # Compiling the original Lean ETH program to Rust without flattening it
 
-Status (2026-11-12): **verified source-graph compiler vertical slice**, not an end-to-end ETH counting port.
+Status (2026-11-13): **verified source-graph compiler vertical slice with an experimental AOT Rust source backend**, not an end-to-end ETH counting port.
 The complete original QueryStream program is not executable in Rust; the finite Lean
 kernel certificates do not constitute a universal proof of native Rust runtime
-correctness. The native JSON graph loader is the **only** source-graph execution
-path; Python is retained for Lean export orchestration, test generation, and
-independent acceptance evidence, not for emitting `Block` constructors.
+correctness. The native JSON graph decoder remains the canonical validated entrypoint.
+The deferred Rust interpreter and the specialized Rust-source emitter share
+source-bound decoding and physical instruction semantics; Python remains an
+independent acceptance oracle, not a production Rust code generator.
+
+## Ahead-of-time Rust source generation
+
+`original-source-codegen` accepts an original-Lean JSONL graph and the
+*independently checked* source ID, declaration, Git source blob, and graph
+SHA-256 from its kernel-certificate receipt. It emits a deterministic Rust
+`.rs` executable source file. In a workspace checkout:
+
+```sh
+cargo run --locked --offline --bin original-source-codegen -- \
+  /path/to/graph.jsonl CERT_ID CERT_DECLARATION CERT_BLOB CERT_SHA256 \
+  rust/lean_eth_reference/src/bin/source-generated-local.rs
+cargo build --locked --offline --bin source-generated-local
+# Run the resulting binary with: lookup PC | run BITS MAX_STEPS MAX_STACK_BITS
+```
+
+The generated source contains specialized functions for physical tables,
+structured control flow, calls, symbolic `Repeat`, `Lift`, `Link`, and
+`LinkInto`. It **does not embed a JSON interpreter or flatten repeats**.
+It links to the existing `lean_eth_reference` library for instruction types,
+port relocation, and the one shared bounded BitProgram execution engine. It is
+therefore a *specialized native executable*, **not a dependency-free Rust
+program**. Putting the generated `.rs` in `src/bin` uses Cargo's ordinary
+binary discovery; the generated file should normally stay untracked.
+
+The `lookup` subcommand prints an exact physical instruction at a specified
+label. `run` accepts a bitstring on the original input stack, then step and
+stack-bit limits; it prints terminal machine state and physical step counts.
+Unsupported graph forms, bad source digests, mismatched ABI, overflowing
+addresses and oversized generated source refuse. A caller-computed digest
+alone is **not** Lean source attestation; use the separate signed/certified
+receipt workflow. Synthetic Rust-to-Rust parity tests are useful development
+evidence, but pinned original-Lean differential acceptance remains mandatory.
+
+## One-command native build from a kernel receipt
+
+For a graph and certificate emitted by the pinned original-Lean acceptance
+workflow, the Rust `original-source-build` command produces an isolated Cargo
+package and compiled executable:
+
+```sh
+cargo run --locked --offline --bin original-source-build -- \
+  /path/to/original.json \
+  /path/to/certificates/original.receipt.json \
+  /path/to/certificates/original.lean \
+  /path/to/compiled-out
+/path/to/compiled-out/target/debug/original_lean_aot lookup 0
+/path/to/compiled-out/target/debug/original_lean_aot run 101 100 1000
+```
+
+The command checks the pinned Lean 4.34.1/source commit, the completed kernel
+receipt status, pinned full `lean --version` string (not an abbreviated
+version), exact graph SHA-256, exact certificate SHA-256, source identity,
+ABI and physical label count. It emits the same structural Rust as
+`original-source-codegen`, writes `src/main.rs`, a Cargo manifest with a local
+path dependency on the canonical Rust machine library, a pinned toolchain,
+Cargo.lock, graph and certificate inputs, and a content-hashed build receipt.
+Cargo must already have offline dependencies available. It executes an
+unlocked first build to produce the lockfile, then checks the locked build.
+
+An existing output directory is never overwritten. A failed validation or
+compilation removes its staging directory instead of publishing a partial
+successful output. **A receipt file is not an authenticated proof of a historical
+Lean check:** the user or CI must obtain it from a trusted, completed original
+Lean kernel run. The builder validates that all supplied artifacts agree with
+each other; anyone can forge mutually consistent files. The generated project
+also retains a local path dependency on the original crate, so it is not
+self-contained after moving away from the compiler checkout.
+
+The original-Lean acceptance workflow now additionally builds **one**
+certificate-checked original program through this public command, compares
+all its native physical instructions with the separately exported Lean table,
+and retains a bounded native build receipt. The rest of the selected programs
+still receive the existing AOT-codegen parity checks. This does not establish
+a proof of the entire native runtime or the original ETH counting pipeline.
+
+The generated executable remains a *source-physical* BitProgram machine, not
+the complete ETH #SAT counting executable or primitive TM2 resource theorem.
 
 ## Scope and preservation contract
 
@@ -72,14 +151,22 @@ The next graph node forms, in implementation order:
 | `Repeat`, `Fold` | Proven fixed combinator generators | Same order/size/entry as Lean recursion, without expansion |
 | `CodeAt` | Residual pure `Fin l → Instr` term | Must yield exact physical instruction or typed refusal |
 
-The source-elaborated Lean graph producer now exports a bounded, source-bound
-`original-structured-source-v1` JSON graph for the supported
-`StructuredCalls.compiled` closure. The native Rust loader validates the
+The source-elaborated Lean graph producer exports bounded, source-bound
+`original-structured-source-v1` command roots and
+`original-linked-source-v1` physical-program roots. The latter preserves a
+direct `ProgramLinking.liftProgram`, `link` or `linkInto` without inserting
+an artificial call site. Both use the same native Rust source-graph decoder.
+This new root protocol has synthetic physical-layout and refusal tests; pinned
+original-Lean source-root acceptance remains a separate verification gate. The native Rust loader validates the
 complete schema, source identifiers, expected certified SHA-256, finite
 operand/port/label bounds, and lowered physical sites; immutable equal callees
 are interned by full ABI and instructions. `Atom`, `Skip`, `Seq`, `If`,
-`While`, and finite `Call` are accepted. `Repeat` is an internal Rust
-compositional optimization but not yet an independently emitted JSON node.
+`While`, and finite `Call` are accepted. `Repeat` is a validated source-graph node for the restricted elaborated
+`Nat.rec skip (fun _ acc => seq acc fixed) count` command form (including
+its mirrored sequence orientation). The Rust source decoder and independent
+Python physical oracle preserve exact per-site continuations without flattening.
+Neither arbitrary `Nat.rec`, parameter-dependent folds, nor `List.foldl`
+may be silently translated as fixed repetition.
 `Lift` and `Link` (including heterogeneous `link_into`) are now decoded into
 bounded on-demand physical source views by the **same native Rust loader**.
 The loader checks the exact source SHA-256 binding, typed port dimensions,
@@ -103,6 +190,26 @@ reconcile it before the generalized generated source is accepted.
 
 Do not conflate source BitProgram steps with the primitive TM2 overhead or
 machine bit-complexity. Keep separate measurements and explicit maps.
+
+## Reproducible original-source acceptance
+
+The `Original Lean source-graph physical parity` GitHub workflow has two
+explicit suites, selected with **Run workflow** (`workflow_dispatch`), not
+by a transient branch name:
+
+- `original` (default, and the suite for compiler PRs): six pinned original
+  Lean program exports, independent physical transition differential, kernel
+  certificates, generated Rust tests, and the structural `computeL` probe.
+- `fixtures`: source-derived original-Lean `lift`, `link`, `linkInto`,
+  and fixed `Nat.rec` repetition; each is independently exported as a physical
+  Lean table, checked by the Lean kernel, and compared with generated Rust.
+  The optional `fixture_names` input selects a space-separated subset
+  (for example `repeatedRoot`); empty runs the entire fixture suite.
+
+Both suites pin the original `openai/math` commit, Lean and Mathlib. Passing
+either suite is evidence for its selected source programs, **not** a universal
+Rust runtime refinement theorem. Unknown fixture names refuse rather than
+silently running a different suite.
 
 ## Verified acceptance boundary
 

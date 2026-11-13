@@ -16,7 +16,8 @@ import subprocess
 import tempfile
 from export_compiled_batch import ensure_pinned, atomic_write
 from extract_compiled_catalog import discover, blob_hash
-from verify_source_graph import validate_and_generate, parse_source_graph_json
+from verify_source_graph import (validate_and_generate, parse_source_graph_json,
+                                 parse_golden, rust_instr)
 from source_graph_kernel_certificate import certificate_source
 
 HERE=Path(__file__).resolve().parent
@@ -72,6 +73,36 @@ noncomputable def linkedInto :=
     (StructuredCalls.Cmd.call (ProgramLinking.linkInto {fqn} {fqn}
       (Fin.castAddEmb 1) (Fin.castAddEmb 1)
       (Fin.castAddEmb 1) (Fin.castAddEmb 1))) 0 0
+-- Direct physical Program roots: there must be no extra call/return site.
+noncomputable def liftedRoot :=
+  ProgramLinking.liftProgram {fqn} (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+noncomputable def linkedRoot :=
+  ProgramLinking.link {fqn} {fqn}
+noncomputable def linkedIntoRoot :=
+  ProgramLinking.linkInto {fqn} {fqn}
+    (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+    (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+-- Source-level fixed repetition. The body is a real imported Lean program,
+-- not a Rust-only synthesized table or semantic SAT shortcut.
+noncomputable def repeatedRoot :=
+  StructuredCalls.compiled
+    (Nat.rec (StructuredCalls.Cmd.base .skip)
+      (fun _ acc => StructuredCalls.Cmd.seq acc (StructuredCalls.Cmd.call {fqn}))
+      4) 0 0
+-- The source recursor is no longer at the root. It must be reduced through
+-- named Lean definitions without expanding four physical copies.
+noncomputable def namedRepeatCommand : StructuredCalls.Cmd 3 3 :=
+  Nat.rec (StructuredCalls.Cmd.base .skip)
+    (fun _ acc => StructuredCalls.Cmd.seq acc (StructuredCalls.Cmd.call {fqn}))
+    4
+noncomputable def namedRepeatAlias := namedRepeatCommand
+noncomputable def namedRepeatRoot :=
+  StructuredCalls.compiled namedRepeatAlias 0 0
+-- Named physical-link aliases must not force a finite callee table.
+noncomputable def namedLiftProgram := ProgramLinking.liftProgram
+  {fqn} (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+noncomputable def namedLiftAlias := namedLiftProgram
+noncomputable def namedLiftRoot := namedLiftAlias
 end {fixture_module}
 """
     imports=(f'import {module}\n'
@@ -85,7 +116,13 @@ end {fixture_module}
     certs.mkdir(exist_ok=True)
     gold_manifest={}
     accepted=[]
-    for short in ('lifted','linked','linkedInto'):
+    supported=('lifted','linked','linkedInto',
+               'liftedRoot','linkedRoot','linkedIntoRoot','repeatedRoot','namedRepeatRoot',
+               'namedLiftRoot')
+    selected=a.fixture_names or supported
+    if not selected or any(name not in supported for name in selected):
+        raise ValueError('unknown or empty original source fixture selection')
+    for short in selected:
         fid='linked_fixture_'+short.lower()
         record={'id':fid,'fqn':fixture_module+'.'+short,
                 'module':module,'git_blob':original['git_blob']}
@@ -115,11 +152,34 @@ end {fixture_module}
                         raise ValueError(f'{fid} independent Lean table malformed')
                     (gold/(fid+'.table')).write_bytes(raw)
             graph=parse_source_graph_json((dir/(fid+'.json')).read_bytes())
-            expected={'lifted':'lift','linked':'link','linkedInto':'link_into'}[short]
-            command=graph['command']
-            if command.get('kind')!='call' or command['program'].get('kind')!=expected:
-                raise ValueError(
-                    f'{fid} source did not preserve ProgramLinking.{expected} as a graph node')
+            expected={'lifted':'lift','linked':'link','linkedInto':'link_into',
+                      'liftedRoot':'lift','linkedRoot':'link',
+                      'linkedIntoRoot':'link_into','namedLiftRoot':'lift'}.get(short)
+            if short in ('repeatedRoot','namedRepeatRoot'):
+                command=graph.get('command',{})
+                if (graph.get('kind')!='original-structured-source-v1' or
+                        command.get('kind')!='repeat' or command.get('count')!=4 or
+                        command.get('body',{}).get('kind')!='call'):
+                    raise ValueError(
+                        f'{fid} original Nat.rec was not preserved as an exact repeat')
+                if graph['abi']['labels']!=145:
+                    raise ValueError(f'{fid} expected 145 physical source labels')
+            elif short.endswith('Root'):
+                if (graph['kind']!='original-linked-source-v1' or
+                        graph.get('program',{}).get('kind')!=expected):
+                    raise ValueError(
+                        f'{fid} direct physical root did not preserve ProgramLinking.{expected}')
+                expected_labels={'liftedRoot':36,'linkedRoot':72,'linkedIntoRoot':72,'namedLiftRoot':36}[short]
+                if graph['abi']['labels']!=expected_labels:
+                    raise ValueError(
+                        f'{fid} unexpected physical labels: {graph["abi"]["labels"]}')
+            else:
+                command=graph['command']
+                if (graph['kind']!='original-structured-source-v1' or
+                        command.get('kind')!='call' or
+                        command['program'].get('kind')!=expected):
+                    raise ValueError(
+                        f'{fid} source did not preserve ProgramLinking.{expected} as a graph node')
             table_bytes=(gold/(fid+'.table')).read_bytes()
             gold_manifest[fid]={'declaration':record['fqn'],
                                 'source_blob':record['git_blob'],
@@ -160,6 +220,48 @@ end {fixture_module}
 
 
 
+def verify_receipt_native_build(a, record: dict, graph: Path,
+                                certificate: Path, receipt: Path) -> dict:
+    """Smoke the public receipt-driven CLI on one genuinely certified original.
+
+    Do not substitute a locally fabricated kernel receipt: this is called
+    only *after* the original Lean certificate has been kernel-checked and
+    the independent table has matched the source graph.
+    """
+    with tempfile.TemporaryDirectory(prefix='original-native-receipt-') as scratch:
+        output=Path(scratch)/'native'
+        result=subprocess.run(
+            ['cargo','run','--locked','--offline','--quiet',
+             '--manifest-path',str(a.rust_crate/'Cargo.toml'),
+             '--bin','original-source-build','--',
+             str(graph),str(receipt),str(certificate),str(output)],
+            capture_output=True,text=True,timeout=a.timeout_seconds)
+        if result.returncode:
+            raise ValueError('receipt-bound AOT native build failed: '+
+                             result.stderr[-2500:])
+        binary=output/'target/debug/original_lean_aot'
+        if not binary.is_file():
+            raise ValueError('receipt-bound native build produced no executable')
+        report=json.loads((output/'build.receipt.json').read_text())
+        golden=(a.golden_dir/(record['id']+'.table')).read_bytes()
+        _, rows=parse_golden(golden,record['id'],record['git_blob'])
+        if (report.get('status')!='GENERATED_AND_NATIVE_BUILT' or
+                report.get('id')!=record['id'] or
+                report.get('physical_labels')!=len(rows)):
+            raise ValueError('native build receipt disagrees with original Lean table')
+        for pc, instruction in enumerate(rows):
+            check=subprocess.run([str(binary),'lookup',str(pc)],
+                                 capture_output=True,text=True,timeout=15)
+            if check.returncode or check.stdout.strip()!=rust_instr(instruction).removeprefix('Instr::'):
+                raise ValueError(f'certified native binary differs at original label {pc}: '+
+                                 check.stdout[-200:]+check.stderr[-200:])
+        # Preserve a bounded proof artifact, not the generated Cargo target directory.
+        atomic_write(a.output_dir/'receipt-native-build.json',
+                     json.dumps(report,indent=2,sort_keys=True)+'\n')
+        print('ORIGINAL_RECEIPT_NATIVE_BUILD_EXACT',record['id'],len(rows),flush=True)
+        return report
+
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--upstream',required=True,type=Path)
@@ -173,6 +275,8 @@ def main():
     p.add_argument('--no-cargo',action='store_true')
     p.add_argument('--linking-fixtures',action='store_true')
     p.add_argument('--linking-fixtures-only',action='store_true')
+    p.add_argument('--fixture-names',nargs='+',default=None,
+                   help='source-derived compiler fixture names, defaults to all')
     a=p.parse_args()
     assert 5<=a.timeout_seconds<=1200 and 1<=a.limit<=6
     pin=ensure_pinned(a.upstream,a.lake_root)
@@ -188,6 +292,8 @@ def main():
     chosen=[x for x in catalog['candidates'] if pattern.search(x['fqn']) and x['id'] in manifest][:a.limit]
     if not chosen:raise SystemExit('no pinned original-source targets present in golden manifest')
     a.output_dir.mkdir(parents=True,exist_ok=True)
+    # Never let a previous successful binary receipt survive a new attempt.
+    (a.output_dir/'receipt-native-build.json').unlink(missing_ok=True)
     results=[];refused=[]
     def checkpoint():
         atomic_write(a.output_dir/'report.json',json.dumps({
@@ -241,6 +347,14 @@ def main():
                     raise ValueError('graph bytes changed between Lean certificate and Rust generation')
                 accepted['kernel_certificate_sha256']=cert_receipt['certificate_sha256']
                 accepted['kernel_certificate_status']=cert_receipt['status']
+                if not results and not a.no_cargo:
+                    native=verify_receipt_native_build(
+                        a,record,path,certpath,certdir/(record['id']+'.receipt.json'))
+                    # Hash the exact published JSON bytes, not a separately
+                    # serialized representation of the in-memory receipt.
+                    published=a.output_dir/'receipt-native-build.json'
+                    accepted['receipt_native_build_sha256']=hashlib.sha256(
+                        published.read_bytes()).hexdigest()
                 results.append(accepted)
                 print('ACCEPTED',record['id'],accepted['physical_instructions_compared'],flush=True)
         except (ValueError,subprocess.TimeoutExpired,RuntimeError,OSError) as exc:

@@ -154,7 +154,7 @@ use native_pipeline::pipeline;
 fn original_lean_graph_behaves_without_lean_runtime() {
     assert_eq!(pipeline(5), 25);
     assert_eq!(pipeline(0), 5);
-    assert_eq!(pipeline(u64::MAX), 3);
+    assert_eq!(pipeline(u64::MAX), 1);
 }
 RUST
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \

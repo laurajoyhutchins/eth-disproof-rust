@@ -80,7 +80,7 @@ fi
 test -s "$staging/generated.rs"
 
 # This is a standalone Rust library compilation check; not a semantic proof.
-if ! rustc --edition=2021 --crate-type=lib -D warnings \
+if ! rustc --edition=2021 --crate-type=lib -D warnings -F unsafe-code \
     -o "$staging/libgenerated.rlib" "$staging/generated.rs" > "$staging/rust-build.log" 2>&1; then
   cat "$staging/rust-build.log" >&2
   exit 1

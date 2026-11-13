@@ -36,9 +36,7 @@ impl Emitter {
             }
             NativeBody::Composed(block) => {
                 let (_, instruction) = self.block(block);
-                format!(
-                    "if pc == 0 {{ Ok(Instr::Halt) }} else {{ {instruction}(1, 0, pc) }}"
-                )
+                format!("if pc == 0 {{ Ok(Instr::Halt) }} else {{ {instruction}(1, 0, pc) }}")
             }
             NativeBody::Lift {
                 source,
@@ -46,9 +44,7 @@ impl Emitter {
                 stacks,
             } => {
                 let child = self.source(source);
-                format!(
-                    "relocate_ports({child}(pc)?, &{registers:?}, &{stacks:?})"
-                )
+                format!("relocate_ports({child}(pc)?, &{registers:?}, &{stacks:?})")
             }
             NativeBody::Link { left, right } => {
                 let l = self.source(left);
@@ -189,25 +185,35 @@ impl Emitter {
 
 fn atom_instruction(atom: &Atom) -> String {
     match *atom {
-        Atom::Set { dst, value } => format!("Instr::Set {{ dst: {dst}, value: {value}, next: exit }}"),
+        Atom::Set { dst, value } => {
+            format!("Instr::Set {{ dst: {dst}, value: {value}, next: exit }}")
+        }
         Atom::Copy { dst, src } => format!("Instr::Copy {{ dst: {dst}, src: {src}, next: exit }}"),
         Atom::Not { dst, src } => format!("Instr::Not {{ dst: {dst}, src: {src}, next: exit }}"),
-        Atom::And { dst, left, right } => format!(
-            "Instr::And {{ dst: {dst}, left: {left}, right: {right}, next: exit }}"
-        ),
-        Atom::Or { dst, left, right } => format!(
-            "Instr::Or {{ dst: {dst}, left: {left}, right: {right}, next: exit }}"
-        ),
-        Atom::Xor { dst, left, right } => format!(
-            "Instr::Xor {{ dst: {dst}, left: {left}, right: {right}, next: exit }}"
-        ),
-        Atom::Push { stack, src } => format!(
-            "Instr::Push {{ stack: {stack}, src: {src}, next: exit }}"
-        ),
-        Atom::Peek { stack, value, present } => format!(
+        Atom::And { dst, left, right } => {
+            format!("Instr::And {{ dst: {dst}, left: {left}, right: {right}, next: exit }}")
+        }
+        Atom::Or { dst, left, right } => {
+            format!("Instr::Or {{ dst: {dst}, left: {left}, right: {right}, next: exit }}")
+        }
+        Atom::Xor { dst, left, right } => {
+            format!("Instr::Xor {{ dst: {dst}, left: {left}, right: {right}, next: exit }}")
+        }
+        Atom::Push { stack, src } => {
+            format!("Instr::Push {{ stack: {stack}, src: {src}, next: exit }}")
+        }
+        Atom::Peek {
+            stack,
+            value,
+            present,
+        } => format!(
             "Instr::Peek {{ stack: {stack}, value: {value}, present: {present}, next: exit }}"
         ),
-        Atom::Pop { stack, value, present } => format!(
+        Atom::Pop {
+            stack,
+            value,
+            present,
+        } => format!(
             "Instr::Pop {{ stack: {stack}, value: {value}, present: {present}, next: exit }}"
         ),
     }
@@ -292,7 +298,9 @@ pub fn emit_original_source_rust(
     for function in emitter.functions {
         output.push_str(&function);
         if output.len() > MAX_RUST_SOURCE_BYTES {
-            return Err(Error::Capacity("AOT generated Rust exceeds source budget".into()));
+            return Err(Error::Capacity(
+                "AOT generated Rust exceeds source budget".into(),
+            ));
         }
     }
     writeln!(
@@ -353,7 +361,9 @@ fn main() {
 "#,
     );
     if output.len() > MAX_RUST_SOURCE_BYTES {
-        return Err(Error::Capacity("AOT generated Rust exceeds source budget".into()));
+        return Err(Error::Capacity(
+            "AOT generated Rust exceeds source budget".into(),
+        ));
     }
     Ok(output)
 }

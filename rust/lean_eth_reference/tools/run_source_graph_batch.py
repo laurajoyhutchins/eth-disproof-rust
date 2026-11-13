@@ -277,6 +277,8 @@ def main():
     chosen=[x for x in catalog['candidates'] if pattern.search(x['fqn']) and x['id'] in manifest][:a.limit]
     if not chosen:raise SystemExit('no pinned original-source targets present in golden manifest')
     a.output_dir.mkdir(parents=True,exist_ok=True)
+    # Never let a previous successful binary receipt survive a new attempt.
+    (a.output_dir/'receipt-native-build.json').unlink(missing_ok=True)
     results=[];refused=[]
     def checkpoint():
         atomic_write(a.output_dir/'report.json',json.dumps({
@@ -333,8 +335,11 @@ def main():
                 if not results and not a.no_cargo:
                     native=verify_receipt_native_build(
                         a,record,path,certpath,certdir/(record['id']+'.receipt.json'))
+                    # Hash the exact published JSON bytes, not a separately
+                    # serialized representation of the in-memory receipt.
+                    published=a.output_dir/'receipt-native-build.json'
                     accepted['receipt_native_build_sha256']=hashlib.sha256(
-                        json.dumps(native,sort_keys=True).encode()).hexdigest()
+                        published.read_bytes()).hexdigest()
                 results.append(accepted)
                 print('ACCEPTED',record['id'],accepted['physical_instructions_compared'],flush=True)
         except (ValueError,subprocess.TimeoutExpired,RuntimeError,OSError) as exc:

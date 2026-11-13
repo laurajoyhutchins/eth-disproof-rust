@@ -1,0 +1,65 @@
+name: Native Lean 4.34.1 to Rust G0
+
+on:
+  pull_request:
+    paths:
+      - 'rust/native_lean_backend/**'
+      - '.github/workflows/native-lean-rust.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'rust/native_lean_backend/**'
+      - '.github/workflows/native-lean-rust.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-lean-rust-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native-ffi-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Restore exact Lean 4.34.1 toolchain
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: false
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Run in-process Lean ABI, Rust codegen and executable conformance
+        shell: bash
+        run: |
+          set -euo pipefail
+          LEAN_BINARY="$(cd instrumentation/lean-env && elan which lean)"
+          export LEAN_PREFIX="$(dirname "$(dirname "$LEAN_BINARY")")"
+          test -f "$LEAN_PREFIX/include/lean/lean.h"
+          test "$(cat instrumentation/lean-env/lean-toolchain)" = 'leanprover/lean4:v4.34.1'
+          echo "PR_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
+          "$LEAN_PREFIX/bin/lean" --version
+          cargo --version
+          rustc --version
+          (
+            cd rust/native_lean_backend
+            ./scripts/check.sh
+          )
+          {
+            echo 'NATIVE_LEAN_G0=REAL_IN_PROCESS_FFI_AND_GENERATED_RUST'
+            echo 'Lean=4.34.1'
+            echo "Tested source SHA: ${{ github.event.pull_request.head.sha || github.sha }}"
+            echo 'G1 general compiler and G2 ETH physical equivalence: NOT ESTABLISHED'
+          } >> "$GITHUB_STEP_SUMMARY"

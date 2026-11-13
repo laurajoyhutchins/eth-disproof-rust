@@ -165,6 +165,27 @@ if [[ "$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)" != "$pac
   echo "refused overwrite modified the published Cargo package" >&2; exit 1
 fi
 rm -f examples/RefusalPackageOverwrite.log
+# Immutable reference-counted runtime: Option, nested Option, Prod,
+# constructors/projections, box/unbox and non-observable inc/dec bookkeeping.
+rm -rf examples/object-package
+lean --load-dynlib="$NATIVE_LIB" examples/Objects.lean
+cargo test --offline --manifest-path examples/object-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/object-package/Cargo.toml --all-targets -- -D warnings
+if [[ "$(grep -c 'Generated directly from Lean IR declaration: ObjectFixture.mkOpt' examples/object-package/src/lib.rs)" != 1 ]]; then
+  echo "object constructor dependency was not emitted exactly once" >&2; exit 1
+fi
+# Keep unsupported arbitrary Nat and non-Option sum constructors fail closed.
+for fixture in RefusalObjectNat RefusalObjectCtor; do
+  rm -rf examples/rejected-object-package
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then
+    echo "unsupported object program accepted: ${fixture}" >&2; exit 1
+  fi
+  if [[ -e examples/rejected-object-package ]] || ! grep -q 'Rust native backend refused' "examples/${fixture}.log"; then
+    cat "examples/${fixture}.log" >&2
+    echo "missing structured refusal: ${fixture}" >&2; exit 1
+  fi
+  rm -f "examples/${fixture}.log"
+done
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -177,7 +198,7 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=3008"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
+  echo "differential_assertions=6080"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

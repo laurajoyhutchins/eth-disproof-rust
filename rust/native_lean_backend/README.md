@@ -32,8 +32,9 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 `check.sh` builds a Rust shared library and `NativeRust.olean`, then loads the
 backend into Lean's interpreter. It compiles **15 isolated declarations and
 three transitive closure roots**, generates standalone Rust, and executes
-**3,008 independently evaluated Lean/Rust assertions**, including 256 join-point
-cases and 768 multi-root Cargo library cases. It also checks
+**6,080 independently evaluated Lean/Rust assertions**, including 256 join-point
+cases, 768 multi-root Cargo library cases, and 3,072 immutable object
+constructor/projection cases. It also checks
 fail-closed behavior, preserved outputs, stable output hashes, Cargo tests,
 formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
@@ -95,6 +96,12 @@ recursion when every reachable body uses supported IR. A restricted class of
 **non-recursive typed join points** (`jdecl`/`jmp`) now lowers to lexically
 capturing Rust closures, including jumps from Boolean branches. Recursive
 joins, non-scalar join parameters, and unsupported runtime operations refuse.
+
+A further opt-in immutable-value subset supports `Option UInt64`, nested
+`Option`, and `UInt64 × UInt64` constructions and pattern matching through an
+`Rc`-backed generated Rust runtime. See `examples/Objects.lean`. This representation
+is not a full Lean runtime: its constructor names and layouts are validated,
+and all mutation and observable reference-count primitives remain refused.
 
 **Not implemented:** general Lean/Rust compilation; arbitrary-precision
 `Nat`; indirect calls, closures, non-Boolean cases, recursive joins, arrays,

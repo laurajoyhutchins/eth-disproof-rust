@@ -9,11 +9,11 @@ refuse. Constructor/tag identities below are pinned to
 | IR family | Supported | Explicitly unsupported |
 | --- | --- | --- |
 | `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
-| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize` | `float`, `float32`, `erased`, `object`, `tobject`, `tagged`, `void`, `struct`, `union` |
+| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize`, plus `object`, `tobject`, `tagged` for the verified immutable runtime | `float`, `float32`, `erased`, `void`, `struct`, `union` |
 | `Arg` | `var` with known, matching type | `erased` in runtime position |
-| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls to supported compiled declarations | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
-| `FnBody` | `vdecl`, `ret`, `case` on Bool-as-UInt8 with exactly `Bool.false` and `Bool.true` arms | `jdecl`, `jmp`, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, other `case`, `unreachable` |
-| `Alt` | two exact Bool `ctor` alternatives | `default`, other constructors |
+| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls; immutable `Option.none`, `Option.some`, `Prod.mk` constructors, `box`, `unbox`, object `proj` | `reset`, `reuse`, `uproj`, `sproj`, `pap`, `ap`, `lit.str`, `isShared`, unverified constructors, other `fap` |
+| `FnBody` | `vdecl`, `ret`, Bool cases, `Option.none`/`Option.some` cases, nonrecursive `jdecl`/`jmp`, object-only `inc`/`dec`/`del` erased under immutable `Rc` ownership | `set`, `setTag`, `uset`, `sset`, other `case`, `unreachable`, recursive joins |
+| `Alt` | two exact Bool alternatives or two exact `Option` constructors | `default`, other constructors |
 | Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
@@ -86,3 +86,30 @@ separate ETH symbolic/physical semantics obligations remain open.
   comparisons, 768 Cargo-package comparisons: **3,008** total. Neither the
   general control-flow completion gate nor general data/runtime semantics is
   established by this subset.
+
+## Extension: immutable object values (stacked PR following #202)
+
+- Compiler IR `object`, `tobject` and `tagged` map to a small generated Rust
+  `Rc`-backed immutable value representation. Supported constructor layouts
+  are exactly `Option.none` (tagged), `Option.some` (one pointer field) and
+  `Prod.mk` (two pointer fields). Metadata (index, pointer count and scalar
+  layout) is checked before generation. Unsupported constructors refuse.
+- `Expr.box` and `Expr.unbox` preserve their fixed-width scalar payload types.
+  `Expr.proj` clones immutable constructor fields, preserving sharing.
+  Output is standalone Rust with no Lean runtime and no third-party crates.
+- `FnBody.inc`, `dec`, and `del` are eliminated for these immutable values
+  because Rust `Rc` ownership replaces source refcount bookkeeping. **This is
+  valid only while** `reset`, `reuse`, `isShared`, and mutation instructions
+  remain unsupported. They must not be enabled independently.
+- For object-valued case scrutinees, `Option.none` and `Option.some` tags and
+  exact constructor names and layouts are checked. Other ADTs and default
+  alternatives refuse. Root functions in the integration suite use *scalar*
+  public APIs, so no general source-level ADT type mapping is claimed.
+- `examples/Objects.lean` builds three interconnected roots containing nested
+  Options and pairs. It checks 3,072 original-Lean-evaluated results on edges
+  and seeded vectors. `RefusalObjectNat.lean` and `RefusalObjectCtor.lean`
+  prove that arbitrary-precision `Nat` and unknown `Sum` layouts still fail
+  closed without publishing a Cargo package.
+- Total smoke suite: **6,080** differential assertions, not a general
+  semantic-refinement theorem. Arbitrary-precision Nat, String, Array, and
+  mutable object semantics remain entirely unsupported.

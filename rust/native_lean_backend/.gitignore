@@ -24,3 +24,8 @@
 /examples/test-join
 /examples/test-join.rs
 /examples/RefusalPackage*.log
+
+# Immutable object-value conformance fixture outputs
+/examples/object-package/
+/examples/object-lean.log
+/examples/RefusalObject*.log

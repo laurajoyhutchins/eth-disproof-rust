@@ -10,6 +10,10 @@ namespace NativeRust
 @[extern "rs_emit_ir_module"] opaque emitModule
   (decls : @& Array Lean.IR.Decl) (root : @& String) (rustName : @& String) : String
 
+/-- Emit multiple named public roots and their shared live IR closure in one Rust module. -/
+@[extern "rs_emit_ir_bundle"] opaque emitBundle
+  (decls : @& Array Lean.IR.Decl)
+  (roots : @& Array String) (rustNames : @& Array String) : String
 
 /-- Compile one executable declaration with the pinned Lean compiler and emit Rust.
     Refuses declarations missing IR, or outside the backend's strict subset. -/
@@ -62,9 +66,13 @@ private partial def callsInBody : Lean.IR.FnBody → Array Lean.Name
 /-- Compile the root and inspect the exact in-process IR dependency closure.
     Definitions in already-imported modules are retrieved by IR.findDecl. A
     missing/unsupported symbol remains a hard error in the Rust backend. -/
-def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
-  Lean.Compiler.compile #[root]
-  let mut queue := #[root]
+def collectClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.Decl) := do
+  if roots.isEmpty then
+    throwError "Rust native backend requires at least one executable root"
+  if roots.size > 256 then
+    throwError "Rust native backend supports at most 256 public roots"
+  Lean.Compiler.compile roots
+  let mut queue := roots
   let mut seen : Std.HashSet Lean.Name := {}
   let mut decls : Array Lean.IR.Decl := #[]
   while !queue.isEmpty do
@@ -80,6 +88,11 @@ def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String :=
       decls := decls.push decl
       if let .fdecl _ _ _ body _ := decl then
         queue := queue ++ callsInBody body
+  return decls
+
+/-- Retain the public single-root API while sharing the exact closure traversal. -/
+def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
+  let decls ← collectClosure #[root]
   let report := emitModule decls root.toString rustName
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
@@ -87,6 +100,19 @@ def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String :=
     throwError "Rust native backend refused {root}: {(report.drop 6).toString}"
   else
     throwError "Rust native backend returned an invalid closure response for {root}"
+
+/-- All roots are compiled together and deduplicated before crossing the FFI. -/
+def compileBundle (roots : Array Lean.Name) (names : Array String) : Lean.CoreM String := do
+  if roots.size != names.size then
+    throwError "Rust native bundle needs one public Rust name per Lean root"
+  let decls ← collectClosure roots
+  let report := emitBundle decls (roots.map Name.toString) names
+  if report.startsWith "OK\n" then
+    return (report.drop 3).toString
+  else if report.startsWith "ERROR\n" then
+    throwError "Rust native backend refused bundle: {(report.drop 6).toString}"
+  else
+    throwError "Rust native backend returned an invalid bundle response"
 
 end NativeRust
 
@@ -112,4 +138,19 @@ def elabNativeRustClosureCmd : CommandElab := fun stx => do
     let code ← liftCoreM <| NativeRust.compileClosure root.getId rustName.getString
     liftIO <| NativeRust.writeAtomically outFile.getString code
     logInfo m!"Native Rust backend emitted dependency closure for {root.getId}"
+  | _ => throwUnsupportedSyntax
+
+/-- Generate one standalone Rust module with multiple named public functions. -/
+syntax (name := nativeRustBundleCmd)
+  "#native_rust_bundle [" ident,* "] as [" str,* "] to " str : command
+
+@[command_elab nativeRustBundleCmd]
+def elabNativeRustBundleCmd : CommandElab := fun stx => do
+  match stx with
+  | `(#native_rust_bundle [$roots:ident,*] as [$names:str,*] to $outFile:str) =>
+    let names := names.getElems.map (fun x => x.getString)
+    let roots := roots.getElems.map (fun x => x.getId)
+    let code ← liftCoreM <| NativeRust.compileBundle roots names
+    liftIO <| NativeRust.writeAtomically outFile.getString code
+    logInfo m!"Native Rust backend emitted {roots.size} public roots as one closure"
   | _ => throwUnsupportedSyntax

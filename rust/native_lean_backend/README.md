@@ -32,7 +32,7 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 `check.sh` builds a Rust shared library and `NativeRust.olean`, then loads the
 backend into Lean's interpreter. It compiles **15 isolated declarations and
 three transitive closure roots**, generates standalone Rust, and executes
-**1,984 independently evaluated Lean/Rust assertions**. It also checks
+**2,240 independently evaluated Lean/Rust assertions** (including multi-root Cargo tests). It also checks
 fail-closed behavior, preserved outputs, stable output hashes, Cargo tests,
 formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
@@ -67,7 +67,31 @@ internal Rust names, checks signatures and calls, and refuses missing or
 unsupported dependencies. Example source and test fixtures are in
 `examples/Library.lean` and `examples/Closure.lean`. This emits a single
 Rust source module for **one root**; complete Cargo crate generation and
-multiple public roots remain future work.
+multiple public roots were the prior boundary. A new command now emits a
+combined module for multiple named roots:
+
+```lean
+#native_rust_bundle [Bundle.first, Bundle.second]
+  as ["first", "second"] to "examples/generated_bundle.rs"
+```
+
+The lists must have the same nonzero length, all Rust exports must be unique,
+and each root shares one deduplicated transitive IR closure. Rejected IR, missing
+dependencies, duplicate names, and invalid Rust identifiers leave an existing
+output unchanged.
+
+To package that single generated Rust source as a **self-contained Cargo
+library**, run:
+
+```sh
+./scripts/package-crate.sh examples/generated_bundle.rs /tmp/native_lean_bundle generated_bundle
+cargo test --offline --manifest-path /tmp/native_lean_bundle/Cargo.toml
+```
+
+The packager stages a new crate directory on the destination filesystem and
+refuses to overwrite an existing directory. This is a standalone library, not
+a Lean runtime plugin. The bundle command emits one source file; packaging is
+a separate explicit step, so the G1-A single-invocation gate remains open.
 
 ## Precise coverage
 
@@ -83,7 +107,7 @@ recursion when every reachable body uses supported IR.
 
 **Not implemented:** general Lean/Rust compilation; arbitrary-precision
 `Nat`; indirect calls, closures, non-Boolean cases, join points, arrays,
-structures, complete standalone crate generation, general external primitives, and
+structures, one-step Cargo crate generation, general external primitives, and
 noncomputable expressions without compiler IR. The current generated functions are checked
 on examples but there is not yet a general semantic refinement theorem.
 

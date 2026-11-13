@@ -8,6 +8,10 @@ fi
 export PATH="${LEAN_PREFIX}/bin:${PATH}"
 export LEAN_PATH="${LEAN_PREFIX}/lib/lean${LEAN_PATH:+:${LEAN_PATH}}"
 export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+# Derive and check the full constructor inventory from the pinned Lean environment.
+# New/reordered constructors fail before any native library is loaded.
+mkdir -p artifacts
+lean scripts/VerifyIRInventory.lean
 cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
@@ -18,6 +22,21 @@ lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
 export LEAN_PATH="$(pwd)/examples:${LEAN_PATH}"
 lean -o examples/Library.olean examples/Library.lean
 lean --load-dynlib="$NATIVE_LIB" examples/Closure.lean
+# Two public names share one imported closure, emitted into one module.
+lean --load-dynlib="$NATIVE_LIB" examples/Bundle.lean
+if [[ "$(grep -c 'Generated directly from Lean IR declaration: Library.bump' examples/generated_bundle.rs)" != 1 ]]; then
+  echo "multi-root compilation duplicated a shared imported declaration" >&2; exit 1
+fi
+# Package the generated source as a standalone Cargo library with zero Lean dependencies.
+bundle_parent="$(mktemp -d)"
+trap 'rm -rf "$bundle_parent"' EXIT
+./scripts/package-crate.sh examples/generated_bundle.rs "$bundle_parent/multi_root" generated_bundle
+mkdir "$bundle_parent/multi_root/tests"
+cp examples/generated_bundle_differential.rs "$bundle_parent/multi_root/tests/differential.rs"
+cargo test --offline --manifest-path "$bundle_parent/multi_root/Cargo.toml"
+if ./scripts/package-crate.sh examples/generated_bundle.rs "$bundle_parent/multi_root" generated_bundle; then
+  echo "crate packager overwrote an existing destination" >&2; exit 1
+fi
 if [[ "$(grep -c 'Generated directly from Lean IR declaration: Library.bump' examples/generated_closure.rs)" != 1 ]]; then
   echo "shared Lean dependency was duplicated in Rust" >&2; exit 1
 fi
@@ -56,6 +75,19 @@ if [[ "$(cat examples/rejected_sorry.rs)" != "preserve-sorry-output" ]]; then
   echo "sorry-dependent compilation changed existing output" >&2; exit 1
 fi
 rm -f examples/rejected_sorry.rs examples/rejected_sorry.log
+# Duplicate public exports refuse without altering the existing module.
+printf 'preserve-bundle-artifact\n' > examples/rejected_bundle.rs
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalBundle.lean > examples/rejected_bundle.log 2>&1; then
+  echo "duplicate Rust exports were accepted" >&2; exit 1
+fi
+if ! grep -q 'duplicate Rust export name' examples/rejected_bundle.log; then
+  cat examples/rejected_bundle.log >&2
+  echo "missing duplicate-export refusal diagnostic" >&2; exit 1
+fi
+if [[ "$(cat examples/rejected_bundle.rs)" != 'preserve-bundle-artifact' ]]; then
+  echo "rejected bundle changed previous output" >&2; exit 1
+fi
+rm -f examples/rejected_bundle.rs examples/rejected_bundle.log
 # An unsupported primitive in a *transitive* callee must be refused,
 # preserving previously generated output; no implicit host fallback.
 for pair in "RefusalClosure:rejected_closure" "RefusalClosureSorry:rejected_sorry_closure"; do
@@ -135,7 +167,9 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=1984"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/generated_*.rs
+  echo "differential_assertions=2240"
+  echo "bundle_cargo_tests=PASS"
+  echo "ir_constructor_inventory=PASS"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs scripts/VerifyIRInventory.lean scripts/package-crate.sh artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/Bundle.lean examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

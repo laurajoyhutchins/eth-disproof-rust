@@ -18,3 +18,6 @@
 /examples/rejected_closure.log
 /examples/rejected_sorry_closure.rs
 /examples/rejected_sorry_closure.log
+/examples/rejected_bundle.rs
+/examples/rejected_bundle.log
+/examples/generated_bundle_differential.rs

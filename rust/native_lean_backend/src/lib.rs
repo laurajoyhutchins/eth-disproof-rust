@@ -498,9 +498,27 @@ impl Reader {
     }
 
     unsafe fn emit_module(decls: Obj, root: Obj, public_name: Obj) -> Result<String, String> {
-        let root = Self::string(root)?;
-        let public_name = Self::string(public_name)?;
-        // Public name is validated by the same strict emitter before publishing.
+        Self::emit_roots(decls, &[(Self::string(root)?, Self::string(public_name)?)])
+    }
+
+    unsafe fn emit_bundle(decls: Obj, roots: Obj, public_names: Obj) -> Result<String, String> {
+        let roots = Self::array(roots)?
+            .into_iter()
+            .map(|x| Self::string(x))
+            .collect::<Result<Vec<_>, _>>()?;
+        let names = Self::array(public_names)?
+            .into_iter()
+            .map(|x| Self::string(x))
+            .collect::<Result<Vec<_>, _>>()?;
+        if roots.len() != names.len() {
+            return Err("bundle root/name array lengths differ".into());
+        }
+        let exports = roots.into_iter().zip(names).collect::<Vec<_>>();
+        Self::emit_roots(decls, &exports)
+    }
+
+    unsafe fn emit_roots(decls: Obj, exports: &[(String, String)]) -> Result<String, String> {
+        validate_exports(exports)?;
         let entries = Self::array(decls)?;
         let mut definitions = BTreeMap::<String, Obj>::new();
         for decl in entries {
@@ -509,7 +527,7 @@ impl Reader {
                 return Err(format!("duplicate IR declaration in closure: {name}"));
             }
         }
-        let mut pending = vec![root.clone()];
+        let mut pending = exports.iter().map(|(root, _)| root.clone()).collect::<Vec<_>>();
         let mut visited = BTreeSet::<String>::new();
         let mut closure = BTreeMap::<String, Obj>::new();
         let mut signatures = FunctionTable::new();
@@ -521,10 +539,11 @@ impl Reader {
                 return Err("native declaration closure exceeds 2048 functions".into());
             }
             let decl = *definitions.get(&name).ok_or_else(||
-                format!("dependency {name} has no compiled IR in the current module; no external fallback"))?;
+                format!("dependency {name} has no compiled IR in this module; no external fallback"))?;
             let sig = Self::signature(decl).map_err(|e| format!("{name}: {e}"))?;
             let mut called = BTreeSet::new();
-            Self::body_calls(Self::field(decl, 3)?, &mut called)?;
+            Self::body_calls(Self::field(decl, 3)?, &mut called)
+                .map_err(|e| format!("{name}: {e}"))?;
             for callee in called {
                 if !is_primitive(&callee) {
                     pending.push(callee);
@@ -533,9 +552,21 @@ impl Reader {
             signatures.insert(name.clone(), sig);
             closure.insert(name, decl);
         }
-        let root_signature = signatures
-            .get(&root)
-            .ok_or("requested root missing from closure")?;
+
+        let internal_names = closure.keys().map(|name| internal_name(name))
+            .collect::<BTreeSet<_>>();
+        for (root, public_name) in exports {
+            if internal_names.contains(public_name) {
+                return Err(format!(
+                    "{root}: public export {public_name} collides with an internal Lean symbol"
+                ));
+            }
+            let decl = *closure.get(root).ok_or_else(|| format!("missing public root {root}"))?;
+            // Validate Rust identifiers and every reachable body before publication.
+            Self::emit_function(decl, public_name, Some(&signatures))
+                .map_err(|e| format!("{root}: {e}"))?;
+        }
+
         let mut result = String::from(
             "// Native in-process Lean IR closure; no JSON or Lean runtime dependency.\n",
         );
@@ -544,43 +575,53 @@ impl Reader {
                 *decl,
                 &internal_name(name),
                 Some(&signatures),
-            )?);
+            ).map_err(|e| format!("{name}: {e}"))?);
             result.push('\n');
         }
-        // Keep the existing external API for a single public root while
-        // exposing all internal callees using stable, collision-free names.
-        write!(result, "pub fn {public_name}(").unwrap();
-        for (i, ty) in root_signature.params.iter().enumerate() {
-            if i > 0 {
-                result.push_str(", ");
+        for (root, public_name) in exports {
+            let sig = signatures.get(root).ok_or_else(|| format!("missing signature {root}"))?;
+            write!(result, "pub fn {public_name}(").unwrap();
+            for (i, ty) in sig.params.iter().enumerate() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+                write!(result, "p_{i}: {ty}").unwrap();
             }
-            write!(result, "p_{i}: {ty}").unwrap();
-        }
-        write!(
-            result,
-            ") -> {} {{\n    {}(",
-            root_signature.result,
-            internal_name(&root)
-        )
-        .unwrap();
-        for i in 0..root_signature.params.len() {
-            if i > 0 {
-                result.push_str(", ");
+            write!(
+                result,
+                ") -> {} {{\n    {}(",
+                sig.result,
+                internal_name(root)
+            )
+            .unwrap();
+            for i in 0..sig.params.len() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+                write!(result, "p_{i}").unwrap();
             }
-            write!(result, "p_{i}").unwrap();
+            result.push_str(")\n}\n");
         }
-        result.push_str(")\n}\n");
-        // Invalid public Rust identifiers fail at generation, not only when
-        // rustc later parses the output. Reuse existing validation via an
-        // in-memory synthetic wrapper is unnecessary: emit_function accepts
-        // an actual root declaration under the public name and validates it.
-        let _ = Self::emit_function(
-            *closure.get(&root).unwrap(),
-            &public_name,
-            Some(&signatures),
-        )?;
         Ok(result)
     }
+
+}
+
+// Duplicate exports and aliases are errors, never silently shadowed.
+fn validate_exports(exports: &[(String, String)]) -> Result<(), String> {
+    if exports.is_empty() || exports.len() > 256 {
+        return Err("bundle must have 1..=256 public roots".into());
+    }
+    let mut names = BTreeSet::new();
+    for (root, public_name) in exports {
+        if root.is_empty() {
+            return Err("bundle root must not be empty".into());
+        }
+        if !names.insert(public_name) {
+            return Err(format!("duplicate Rust export name: {public_name}"));
+        }
+    }
+    Ok(())
 }
 
 fn is_primitive(name: &str) -> bool {
@@ -617,6 +658,46 @@ fn is_primitive(name: &str) -> bool {
             | "UInt64.decLe"
             | "USize.decLe"
     )
+}
+
+unsafe fn reply_bundle(decls: Obj, roots: Obj, names: Obj) -> *mut c_void {
+    let text = match std::panic::catch_unwind(|| Reader::emit_bundle(decls, roots, names)) {
+        Ok(Ok(s)) => format!("OK\n{s}"),
+        Ok(Err(e)) => format!("ERROR\n{e}"),
+        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+    };
+    let text = text.replace('\0', "\\0");
+    let cstr = CString::new(text).expect("replaced NUL");
+    lean_mk_string(cstr.as_ptr())
+}
+
+/// # Safety
+/// All arguments are borrowed live Lean 4.34.1 Array/Strings and must outlive this call.
+#[no_mangle]
+pub unsafe extern "C" fn rs_emit_ir_bundle(decls: Obj, roots: Obj, names: Obj) -> *mut c_void {
+    reply_bundle(decls, roots, names)
+}
+/// # Safety
+/// Interpreter entrypoint, same synchronous borrowed ABI contract.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_emitBundle(
+    decls: Obj,
+    roots: Obj,
+    names: Obj,
+) -> *mut c_void {
+    reply_bundle(decls, roots, names)
+}
+/// # Safety
+/// Boxed interpreter entrypoint, same synchronous borrowed ABI contract.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_emitBundle___boxed(
+    decls: Obj,
+    roots: Obj,
+    names: Obj,
+) -> *mut c_void {
+    reply_bundle(decls, roots, names)
 }
 
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
@@ -696,7 +777,14 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 
 #[cfg(test)]
 mod tests {
-    use super::internal_name;
+    use super::{internal_name, validate_exports};
+    #[test]
+    fn bundle_rejects_duplicate_exports_and_empty_roots() {
+        assert!(validate_exports(&[]).is_err());
+        assert!(validate_exports(&[(String::new(), "x".into())]).is_err());
+        assert!(validate_exports(&[("A".into(), "x".into()), ("B".into(), "x".into())]).is_err());
+        assert!(validate_exports(&[("A".into(), "a".into()), ("B".into(), "b".into())]).is_ok());
+    }
     #[test]
     fn closure_symbol_mangling_is_injective_on_ascii_names() {
         assert_ne!(internal_name("X.ab"), internal_name("X.a_b"));

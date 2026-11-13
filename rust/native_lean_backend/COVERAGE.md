@@ -8,7 +8,7 @@ refuse. Constructor/tag identities below are pinned to
 
 | IR family | Supported | Explicitly unsupported |
 | --- | --- | --- |
-| `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
+| `Decl` | `fdecl` (one or more chosen roots and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
 | `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize` | `float`, `float32`, `erased`, `object`, `tobject`, `tagged`, `void`, `struct`, `union` |
 | `Arg` | `var` with known, matching type | `erased` in runtime position |
 | `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls to supported compiled declarations | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
@@ -34,10 +34,10 @@ value is a Lean tagged small `Nat` (large literals refuse).
 - Unsupported branches, runtime types, bad output identifiers, and wrong
   primitive shapes refuse; the public Lean command must not modify a previous
   output on refusal.
-- `scripts/check.sh` compiles 15 isolated declarations **and three additional
-  closure roots**, including a separately compiled imported module, shared
-  diamond dependencies, direct recursion and mutual recursion; all generated
-  Rust compiles and executes against **1,984 independent assertions**
+- `scripts/check.sh` compiles 15 isolated declarations, three closure roots,
+  and a two-root bundle into a standalone offline Cargo library, including
+  imported code, shared diamond dependencies, direct recursion and mutual
+  recursion; generated Rust executes **2,240 independent assertions**
   evaluated by original Lean definitions on fixed edges and seeded vectors.
 - Run `lake build` and `scripts/check.sh` from a clean checkout. The separate
   `native-lean-rust.yml` job targets PR changes in this subtree and logs an
@@ -60,8 +60,11 @@ separate ETH symbolic/physical semantics obligations remain open.
   implementation, unsupported body, unsupported primitive, or `sorryAx`
   dependency **refuses the whole closure** without publishing partial code.
 - Compilation is deterministic on repeated runs; imported shared dependencies
-  are emitted exactly once. This is **one named root per emission**, not yet
-  a complete Cargo crate or arbitrary project build.
+  are emitted exactly once. The new `#native_rust_bundle` emits multiple
+  named public exports in one module. `scripts/package-crate.sh` wraps that
+  source into a standalone no-dependency Cargo library without overwriting an
+  existing destination. Arbitrary project builds and one-step crate production
+  remain open.
 - Lean names are currently accepted only when every component is an
   unambiguous ASCII identifier. Numeric and quoted/special components refuse
   rather than potentially aliasing distinct Lean declaration identities.
@@ -69,3 +72,21 @@ separate ETH symbolic/physical semantics obligations remain open.
   indirect applications, closures, join points, and general runtime types
   remain unsupported. Recursive functions with supported bodies compile, but
   no guarantee of stack safety or tail-call optimization is claimed.
+
+## Machine-readable constructor and primitive ledger
+
+`scripts/VerifyIRInventory.lean` interrogates the pinned Lean environment's
+actual constructor lists for `Decl`, `IRType`, `Arg`, `LitVal`,
+`Expr`, `Alt` and `FnBody`. An additional/reordered constructor fails CI.
+The output `artifacts/ir-coverage.tsv` has `family`, `constructor`,
+`status` and `semantics` columns; it is included in the exact-head hash
+receipt. `conditional` means *only the restrictions in this document are
+accepted*; it is not an assertion of comprehensive execution semantics.
+Unknown primitives and reachable external runtime calls refuse, with no
+implicit host-Rust replacement. The ledger lists the 30 recognized typed
+binary primitives; all other primitives are refused in this version.
+
+This inventory checks ABI *constructor names/order*, not raw object field
+layout compatibility or semantic preservation. Those separate issue #193
+obligations remain open, as do join points, indirect calls, boxed values,
+collections, arbitrary-precision integers, floats, RC, memory, and effects.

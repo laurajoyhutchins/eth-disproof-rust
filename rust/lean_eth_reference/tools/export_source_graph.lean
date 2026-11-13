@@ -227,6 +227,47 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
 
 private partial def structured (e : Expr) (maxLabels fuel : Nat) : MetaM Json := do
   if fuel == 0 then throwError "source command nesting exceeded 512 nodes"
+  -- Inspect the *elaborated* recursor before whnf expands all repetitions.
+  -- Accept only Nat.rec skip (fun _ previous => seq previous fixed) count,
+  -- or its right-associated mirror. A different step or a state-dependent
+  -- body is not a source repeat and must follow the ordinary refusal path.
+  match e.getAppFn with
+  | .const head _ =>
+    if head == ``Nat.rec then
+      let args := e.getAppArgs
+      if args.size != 4 then
+        throwError m!"unexpected Nat.rec command argument count {args.size}"
+      let start ← structured args[1]! maxLabels (fuel - 1)
+      if start.compress != (Json.mkObj [("kind", toJson "skip")]).compress then
+        throwError "unsupported source Nat.rec: zero case is not a skip"
+      let fixed ←
+        match args[2]! with
+        | .lam _ _ (.lam _ _ step _) _ =>
+          match step.getAppFn with
+          | .const op _ =>
+            if op != ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq then
+              throwError "unsupported source Nat.rec: step is not sequencing"
+            let stepArgs := step.getAppArgs
+            if stepArgs.size != 4 then
+              throwError "unsupported source Nat.rec: unexpected sequencing arity"
+            if stepArgs[2]! == Expr.bvar 0 then
+              pure stepArgs[3]!
+            else if stepArgs[3]! == Expr.bvar 0 then
+              pure stepArgs[2]!
+            else
+              throwError "unsupported source Nat.rec: no direct accumulator"
+          | _ => throwError "unsupported source Nat.rec: opaque step"
+        | _ => throwError "unsupported source Nat.rec: not a two-argument step"
+      let count ← number args[3]!
+      if count > maxLabels then
+        throwError "source repetition count exceeds bounded label budget"
+      -- The fixed command is checked recursively, including its finite ABI.
+      -- In particular, an index-dependent body cannot silently become fixed.
+      let body ← structured fixed maxLabels (fuel - 1)
+      return Json.mkObj [
+        ("kind", toJson "repeat"), ("count", toJson count), ("body", body)
+      ]
+  | _ => pure ()
   let v ← whnf e
   match v.getAppFn with
   | .const n _ =>

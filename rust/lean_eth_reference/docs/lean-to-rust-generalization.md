@@ -82,8 +82,12 @@ original-Lean source-root acceptance remains a separate verification gate. The n
 complete schema, source identifiers, expected certified SHA-256, finite
 operand/port/label bounds, and lowered physical sites; immutable equal callees
 are interned by full ABI and instructions. `Atom`, `Skip`, `Seq`, `If`,
-`While`, and finite `Call` are accepted. `Repeat` is an internal Rust
-compositional optimization but not yet an independently emitted JSON node.
+`While`, and finite `Call` are accepted. `Repeat` is a validated source-graph node for the restricted elaborated
+`Nat.rec skip (fun _ acc => seq acc fixed) count` command form (including
+its mirrored sequence orientation). The Rust source decoder and independent
+Python physical oracle preserve exact per-site continuations without flattening.
+Neither arbitrary `Nat.rec`, parameter-dependent folds, nor `List.foldl`
+may be silently translated as fixed repetition.
 `Lift` and `Link` (including heterogeneous `link_into`) are now decoded into
 bounded on-demand physical source views by the **same native Rust loader**.
 The loader checks the exact source SHA-256 binding, typed port dimensions,

@@ -106,6 +106,12 @@
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DifferencePairsProgram.lean": "0ffbcd1bfd8ed16e12e017c892bd7d92b59689ce",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/FactorEnvironment.lean": "f3107b585cac4d0dd775426251ea973d277fe76c",
     "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryTupleVisitor.lean": "175c17ca25d8d7b9188ac7ad53189efad10f5454",
-    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryProgram.lean": "7a2535f7c479463a5f5ed8a30a33192aad1b063e"
+    "lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryProgram.lean": "7a2535f7c479463a5f5ed8a30a33192aad1b063e",
+    "lean/OAI/Algorithms/SubexponentialSAT/BooleanPacking.lean": "48f735f44cb3326437472fb3d7b844e82ad1e0e2",
+    "lean/OAI/Algorithms/SubexponentialSAT/FixedParameters.lean": "adfd3d9d582264482486e0d5e4e01ef2b7fdd091",
+    "lean/OAI/Algorithms/SubexponentialSAT/StackAdapter.lean": "a7166cff66c6531db80cc5ea83352aa7bc6f20b7",
+    "lean/OAI/Algorithms/SubexponentialSAT/StackCompiler.lean": "02c74fd18510ea69992c9cf760b40f17cb823ea5",
+    "lean/OAI/Algorithms/SubexponentialSAT/StackEncoding.lean": "d6a1589139993317766fc8c3bae1a993a52c920f",
+    "lean/OAI/Algorithms/SubexponentialSAT/StackMachine.lean": "1d2239b388311392f12a7b883cd2bf3757bf916f"
   }
 }

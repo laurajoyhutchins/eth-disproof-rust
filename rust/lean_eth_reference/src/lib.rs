@@ -562,3 +562,6 @@ pub mod native_signature_arithmetic;
 
 /// Source-defined full predecessor rescan and finite tuple probe.
 pub mod native_signature_candidate;
+
+/// Source-linked bounded primitive TM2 resource accounting (not an asymptotic proof).
+pub mod tm2_resources;

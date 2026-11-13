@@ -310,17 +310,11 @@ elab_rules : command
       liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=infer-original-type"
     let graph ← liftTermElabM do
       let tp ← inferType (mkConst programName)
-      if diagnose then
-        liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=original-type-inferred"
       let a := tp.getAppArgs
       if a.size != 3 then throwError m!"expected a closed BitProgram.Program: {tp}"
       let r ← number a[0]!
       let s ← number a[1]!
-      if diagnose then
-        liftIO <| IO.eprintln s!"SOURCE_GRAPH_PHASE=root-registers-stacks r={r} s={s}"
       let l ← number a[2]!
-      if diagnose then
-        liftIO <| IO.eprintln s!"SOURCE_GRAPH_PHASE=root-physical-labels labels={l}"
       if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
         throwError m!"source machine out of bounded test dimensions: {r} {s} {l}"
       match body.getAppFn with
@@ -332,11 +326,7 @@ elab_rules : command
           throwError m!"unexpected compiled command arity {args.size}"
         let input ← fin args[3]!
         let output ← fin args[4]!
-        if diagnose then
-          liftIO <| IO.eprintln s!"SOURCE_GRAPH_PHASE=structured-command input={input} output={output}"
         let command ← structured args[2]! maxLabels 512
-        if diagnose then
-          liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=structured-command-complete"
         return Json.mkObj [
           ("kind", toJson "original-structured-source-v1"),
           ("source_commit", toJson "4eaee87548250b2682affda7d05d947c05554bae"),

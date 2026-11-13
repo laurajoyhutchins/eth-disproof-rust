@@ -322,7 +322,7 @@ fn compiler_ir(
     }
     args.extend(["--output-file", target_path, "--output", "json"]);
     let summary_raw = run_command(opts, &stage.0, "leanfran", &args)?;
-    let summary: Value = serde_json::from_slice(&summary_raw).map_err(|e| e.to_string())?;
+    let summary = contract::strict_json_value(&summary_raw)?;
     let artifact = read_bounded(&target)?;
     let report = contract::ir_report(
         &opts.module,
@@ -427,7 +427,7 @@ fn execute(opts: &Options) -> Result<()> {
     if opts.mode == Mode::Compile {
         let staged = stage.0.join("accepted-artifact");
         fs::write(&staged, artifact).map_err(|e| e.to_string())?;
-        if let Some(parent) = opts.artifact.parent() {
+        if let Some(parent) = opts.artifact.parent().filter(|p| !p.as_os_str().is_empty()) {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         fs::rename(staged, &opts.artifact).map_err(|e| e.to_string())?;

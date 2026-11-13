@@ -526,3 +526,18 @@ mod canonical_clause_tests {
         );
     }
 }
+
+/// Experimental symbolic representation of the source power word.
+pub mod deferred_power;
+
+/// Experimental valuation-based pruning for tensor contraction modes.
+pub mod valuation_modes;
+
+/// Experimental source-geometry valuation certificates.
+pub mod valuation_witness;
+
+/// Conditional whole-mode (rather than single-row) valuation certificates.
+pub mod valuation_mode_certificate;
+
+/// Source-packet slot support and whole-mode valuation obstruction.
+pub mod packet_mode_support;

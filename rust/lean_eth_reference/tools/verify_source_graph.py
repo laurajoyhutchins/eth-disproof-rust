@@ -421,7 +421,8 @@ def generate_test(source:dict,root:Node,golden:list,abi:tuple[int,...],
     return '\n'.join(lines)+'\n'
 
 
-def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, cargo:bool) ->dict:
+def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path,
+                          cargo:bool, aot:bool=True)->dict:
     insist(src.stat().st_size<=MAX_INPUT_BYTES,'source graph exceeds total byte bound')
     original=src.read_bytes()
     parsed=parse_source_graph_json(original)
@@ -496,9 +497,46 @@ def validate_and_generate(src:Path, golden_dir:Path, dest:Path, crate:Path, carg
                                   capture_output=True,text=True,timeout=240)
             if result.returncode:
                 raise RuntimeError('generated graph Rust test failed: '+result.stderr[-3000:]+' '+result.stdout[-1000:])
+            if aot:
+                # The independently exported Lean physical table also checks the
+                # actual AOT binary, not merely the deferred JSON interpreter.
+                # Keep this inside the certificate-gated acceptance flow. The
+                # emitted .rs is preserved only after every label agrees.
+                aot_source=project/'src/main.rs'
+                codegen=subprocess.run(
+                    ['cargo','run','--locked','--offline','--quiet',
+                     '--manifest-path',str(crate/'Cargo.toml'),
+                     '--bin','original-source-codegen','--',
+                     str(src),name,parsed['declaration'],parsed['source_blob'],
+                     receipt['graph_sha256'],str(aot_source)],
+                    capture_output=True,text=True,timeout=240)
+                if codegen.returncode:
+                    raise RuntimeError('original Lean graph AOT codegen failed: '+
+                                       codegen.stderr[-3000:])
+                build=subprocess.run(
+                    ['cargo','build','--offline','--manifest-path',str(project/'Cargo.toml')],
+                    capture_output=True,text=True,timeout=240)
+                if build.returncode:
+                    raise RuntimeError('original Lean graph AOT rustc failed: '+
+                                       build.stderr[-3000:])
+                binary=project/'target/debug/original_graph_check'
+                for pc,instruction in enumerate(rows):
+                    output=subprocess.run([str(binary),'lookup',str(pc)],
+                                          capture_output=True,text=True,timeout=30)
+                    expected=rust_instr(instruction).removeprefix('Instr::')
+                    if output.returncode or output.stdout.strip()!=expected:
+                        raise RuntimeError(
+                            f'original Lean AOT instruction differs at {name}[{pc}]: '+
+                            f'{output.stdout.strip()!r} vs {expected!r}; '+output.stderr[-1000:])
+                staged_aot=stage/(name+'.aot.rs')
+                staged_aot.write_bytes(aot_source.read_bytes())
+                receipt['aot_source_sha256']=hashlib.sha256(staged_aot.read_bytes()).hexdigest()
+                receipt['aot_physical_instructions_compared']=len(rows)
         staged_receipt=stage/(name+'.receipt.json')
         staged_receipt.write_text(json.dumps(receipt,indent=2,sort_keys=True)+'\n')
         staged_rust.replace(dest/(name+'.rs'))
+        if cargo and aot:
+            staged_aot.replace(dest/(name+'.aot.rs'))
         staged_receipt.replace(receipt_path)
     print(f'SOURCE_GRAPH_EXACT {name} labels={l} nodes_probed={MAX_NODES} rust_test_sha256={receipt["rust_acceptance_test_sha256"]}',flush=True)
     return receipt

@@ -865,6 +865,57 @@ fn lower<const R: usize, const S: usize>(
     }
 }
 
+/// Validate the exact receipt-bound bytes before either backend sees the graph.
+/// A caller-supplied digest is not itself a Lean kernel certificate.
+fn parse_bound_graph(
+    bytes: &[u8],
+    expected: SourceGraphBinding<'_>,
+) -> Result<SerializedGraph, Error> {
+    if bytes.is_empty()
+        || bytes.len() > MAX_BYTES
+        || bytes.last() != Some(&b'\n')
+        || bytes.iter().filter(|&&b| b == b'\n').count() != 1
+        || bytes.contains(&b'\r')
+        || !bytes.is_ascii()
+    {
+        return Err(invalid("source graph must be one bounded ASCII JSON line"));
+    }
+    if expected.graph_sha256.len() != 64
+        || !expected
+            .graph_sha256
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err(invalid("certificate digest must be lowercase hex SHA-256"));
+    }
+    let computed = format!("{:x}", Sha256::digest(bytes));
+    if computed != expected.graph_sha256 {
+        return Err(invalid(
+            "graph SHA-256 differs from Lean certificate binding",
+        ));
+    }
+    let source: SerializedGraph = serde_json::from_slice(bytes)
+        .map_err(|e| Error::Invalid(format!("source graph JSON schema: {e}")))?;
+    if !matches!(
+        source.kind.as_str(),
+        "original-structured-source-v1" | "original-linked-source-v1"
+    ) || source.source_commit != SOURCE_COMMIT
+        || source.id != expected.id
+        || source.declaration != expected.declaration
+        || source.source_blob != expected.source_blob
+        || source.source_blob.len() != 40
+        || !source
+            .source_blob
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err(invalid(
+            "source declaration/blob does not match trusted binding",
+        ));
+    }
+    Ok(source)
+}
+
 impl<const R: usize, const S: usize> DeferredProgram<R, S> {
     /// Interpret the exact serialized bytes bound by an external Lean-certificate receipt.
     ///
@@ -875,48 +926,7 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         bytes: &[u8],
         expected: SourceGraphBinding<'_>,
     ) -> Result<Arc<Self>, Error> {
-        if bytes.is_empty()
-            || bytes.len() > MAX_BYTES
-            || bytes.last() != Some(&b'\n')
-            || bytes.iter().filter(|&&b| b == b'\n').count() != 1
-            || bytes.contains(&b'\r')
-            || !bytes.is_ascii()
-        {
-            return Err(invalid("source graph must be one bounded ASCII JSON line"));
-        }
-        if expected.graph_sha256.len() != 64
-            || !expected
-                .graph_sha256
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        {
-            return Err(invalid("certificate digest must be lowercase hex SHA-256"));
-        }
-        let computed = format!("{:x}", Sha256::digest(bytes));
-        if computed != expected.graph_sha256 {
-            return Err(invalid(
-                "graph SHA-256 differs from Lean certificate binding",
-            ));
-        }
-        let source: SerializedGraph = serde_json::from_slice(bytes)
-            .map_err(|e| Error::Invalid(format!("source graph JSON schema: {e}")))?;
-        if !matches!(
-            source.kind.as_str(),
-            "original-structured-source-v1" | "original-linked-source-v1"
-        ) || source.source_commit != SOURCE_COMMIT
-            || source.id != expected.id
-            || source.declaration != expected.declaration
-            || source.source_blob != expected.source_blob
-            || source.source_blob.len() != 40
-            || !source
-                .source_blob
-                .bytes()
-                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-        {
-            return Err(invalid(
-                "source declaration/blob does not match trusted binding",
-            ));
-        }
+        let source = parse_bound_graph(bytes, expected)?;
         let abi = source.abi;
         if R == 0
             || R > 256
@@ -968,6 +978,9 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         Ok(program)
     }
 }
+
+mod codegen;
+pub use codegen::emit_original_source_rust;
 
 #[cfg(test)]
 mod native_interning_tests {

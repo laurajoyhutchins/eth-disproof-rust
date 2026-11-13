@@ -1,11 +1,45 @@
 # Compiling the original Lean ETH program to Rust without flattening it
 
-Status (2026-11-12): **verified source-graph compiler vertical slice**, not an end-to-end ETH counting port.
+Status (2026-11-13): **verified source-graph compiler vertical slice with an experimental AOT Rust source backend**, not an end-to-end ETH counting port.
 The complete original QueryStream program is not executable in Rust; the finite Lean
 kernel certificates do not constitute a universal proof of native Rust runtime
-correctness. The native JSON graph loader is the **only** source-graph execution
-path; Python is retained for Lean export orchestration, test generation, and
-independent acceptance evidence, not for emitting `Block` constructors.
+correctness. The native JSON graph decoder remains the canonical validated entrypoint.
+The deferred Rust interpreter and the specialized Rust-source emitter share
+source-bound decoding and physical instruction semantics; Python remains an
+independent acceptance oracle, not a production Rust code generator.
+
+## Ahead-of-time Rust source generation
+
+`original-source-codegen` accepts an original-Lean JSONL graph and the
+*independently checked* source ID, declaration, Git source blob, and graph
+SHA-256 from its kernel-certificate receipt. It emits a deterministic Rust
+`.rs` executable source file. In a workspace checkout:
+
+```sh
+cargo run --locked --offline --bin original-source-codegen -- \
+  /path/to/graph.jsonl CERT_ID CERT_DECLARATION CERT_BLOB CERT_SHA256 \
+  rust/lean_eth_reference/src/bin/source-generated-local.rs
+cargo build --locked --offline --bin source-generated-local
+# Run the resulting binary with: lookup PC | run BITS MAX_STEPS MAX_STACK_BITS
+```
+
+The generated source contains specialized functions for physical tables,
+structured control flow, calls, symbolic `Repeat`, `Lift`, `Link`, and
+`LinkInto`. It **does not embed a JSON interpreter or flatten repeats**.
+It links to the existing `lean_eth_reference` library for instruction types,
+port relocation, and the one shared bounded BitProgram execution engine. It is
+therefore a *specialized native executable*, **not a dependency-free Rust
+program**. Putting the generated `.rs` in `src/bin` uses Cargo's ordinary
+binary discovery; the generated file should normally stay untracked.
+
+The `lookup` subcommand prints an exact physical instruction at a specified
+label. `run` accepts a bitstring on the original input stack, then step and
+stack-bit limits; it prints terminal machine state and physical step counts.
+Unsupported graph forms, bad source digests, mismatched ABI, overflowing
+addresses and oversized generated source refuse. A caller-computed digest
+alone is **not** Lean source attestation; use the separate signed/certified
+receipt workflow. Synthetic Rust-to-Rust parity tests are useful development
+evidence, but pinned original-Lean differential acceptance remains mandatory.
 
 ## Scope and preservation contract
 

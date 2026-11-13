@@ -30,13 +30,13 @@ The suite also compiles the emitted code as a **new standalone Cargo executable*
 
 ### Performance evidence policy
 
-`scripts/bench-evidence.sh` is **opt-in** and writes three raw, repeated *fresh-process* measurements of:
+`scripts/bench-evidence.sh` runs a cheap, bounded three-trial measurement on the same original `Property.hop` declaration. It records **fresh-process**, cache-uncontrolled measurements in `artifacts/bench-native/measurements.tsv`, with source/toolchain identities and raw logs:
 
-- Lean invocation time and peak RSS, **including** elaboration, in-process Rust codegen, and generation of the independent test vectors (not pure FFI overhead).
-- Generated Rust `rustc -O` build time and peak RSS.
-- Generated executable wall time, peak RSS, source/binary bytes, generated output identity.
+- In-process Lean→Rust codegen using precompiled `PropertyDef.olean` and `PropertyCodegen.lean`; the independent oracle is **excluded** from these timings.
+- Lean's original pinned `lean -c` backend generating C from `PropertyDef.lean`, then `cc -O2` compiling that source to a native object.
+- Generated Rust `rustc -O` build, generated executable runtime, wall time, peak RSS, emitted source/object/binary bytes and deterministic output hashes.
 
-Results are under `artifacts/bench-native/`. Repeated calls are **not** cold-cache vs warm-cache measurements. No source-to-Rust speedup should be claimed from this suite: no semantically equivalent Lean native C runtime and legacy JSON/source-graph baseline has yet been measured.
+These are **not apples-to-apples end-to-end comparisons**. The Lean C invocation re-elaborates source, while the Rust FFI path imports existing compiled IR; the C result is an object, not a matching executable with measured runtime, and the older JSON/source-graph path does not yet support this exact `UInt64` program. No C-vs-Rust or JSON-vs-Rust speedup is claimed, and the three runs do not measure cold OS caches. The full equivalence and measurement requirement in item 36 therefore remains open.
 
 For #193 item 36, extend this harness only after constructing a **shared supported program with identical inputs, outputs, and algorithm** across all three backends. Then measure source hash, toolchain, cold/warm definitions, process startup, compilation, intermediate bytes, execution, RSS, and refusal rates separately. If any backend cannot compile that common program, record **unsupported**, not an invented runtime comparison.
 
@@ -69,7 +69,7 @@ A receipt with `status=GENERATED_COMPILED_UNVERIFIED` means **only** that the ge
 | 33 | Generated code: Cargo, Clippy and runtime checks | Standalone generated Cargo binary, `cargo test`, strict Clippy, and Rust executable comparisons | **Verified for generated standalone Cargo on 43504031394**; broader memory/runtime checks open |
 | 34 | Tested vs formally proved | This ledger and explicit declarations below | **Documented**, no new theorem |
 | 35 | Exact-head CI native, unit, conformance, differential, clean generation, negative cases | Extended existing path-scoped native workflow to run `check.sh` then `check-evidence.sh`; receipts uploaded | **Verified on 43504031394** for the current bounded subset |
-| 36 | Comparative cold/warm compilation, RSS, size, run performance across Lean C, JSON path and native FFI | Repeatable raw native-path instrumentation, explicit refusal to compare incomparable paths | **Open** |
+| 36 | Comparative cold/warm compilation, RSS, size, run performance across Lean C, JSON path and native FFI | Three bounded native-IR and Lean C codegen/build samples with separate timing/RSS/size phases; cross-backend executable/JSON parity still missing | **Open** |
 | 37 | Quantify in-process overhead reduction without mandatory JSON IR | No general speedup number; native path does not serialize IR | **Open** |
 | 38 | Public API, versions, examples, refusals, troubleshooting | README, COVERAGE and this runbook | **Partially documented**; single-invocation ergonomics/open features remain |
 | 39 | Per-build source/closure/toolchain/artifact hashes and receipts | Atomic receipt-bearing build wrapper with source, compiled module, closure, native backend, toolchain and output hashes; existing direct commands remain uninstrumented | **Partial**; not yet emitted for *every* compiler build |

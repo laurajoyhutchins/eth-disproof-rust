@@ -328,10 +328,12 @@ fn compiler_ir(
     let report = contract::ir_report(
         &opts.module,
         &opts.roots,
-        pin,
-        lean_version,
-        &backend,
-        &generator,
+        contract::IrVersions {
+            toolchain: pin,
+            lean: lean_version,
+            backend: &backend,
+            generator: &generator,
+        },
         &artifact,
         summary,
     );

@@ -24,7 +24,7 @@ impl<const R: usize, const S: usize> PhysicalSource for DeferredProgram<R, S> {
 
 /// Original ProgramLinking.relocateInstr data-port portion, covering every
 /// source opcode. The label map is identity for a lift.
-pub(super) fn relocate_ports(
+pub fn relocate_ports(
     instr: Instr,
     registers: &[usize],
     stacks: &[usize],
@@ -403,6 +403,22 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
     /// Physically faithful bounded execution, without a flat instruction table.
     /// The reported count is source BitProgram steps, not TM2 microsteps.
     pub fn run(&self, config: &mut Config<R, S>, limits: RunLimits) -> Result<RunStats, Error> {
+        run_with_instruction_at(config, limits, |pc| self.instruction_at(pc))
+    }
+
+}
+
+/// Execute the exact physical BitProgram machine against any validated instruction lookup.
+/// The source-graph interpreter and ahead-of-time generated Rust share this runner,
+/// including instruction and stack-bit limits and readRegs overwrite ordering.
+pub fn run_with_instruction_at<const R: usize, const S: usize, F>(
+    config: &mut Config<R, S>,
+    limits: RunLimits,
+    mut instruction_at: F,
+) -> Result<RunStats, Error>
+where
+    F: FnMut(usize) -> Result<Instr, Error>,
+{
         let mut stats = RunStats {
             peak_stack_bits: config.stack_bits()?,
             ..RunStats::default()
@@ -415,7 +431,7 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
             if stats.instructions >= limits.max_steps {
                 return Err(Error::Capacity("BitProgram instruction limit".into()));
             }
-            let instruction = self.instruction_at(pc)?;
+            let instruction = instruction_at(pc)?;
             match instruction {
                 Instr::Push { .. } => {
                     if live_bits >= limits.max_stack_bits {
@@ -434,7 +450,6 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
         }
         Ok(stats)
     }
-}
 
 #[derive(Clone, Debug)]
 enum BlockKind<const R: usize, const S: usize> {

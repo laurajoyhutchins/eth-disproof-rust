@@ -1,14 +1,38 @@
-# OpenAI ETH Rust test accuracy audit (2026-11-10)
+# What the tests can establish
 
-The Rust tests produce several distinct kinds of evidence, which must not be conflated.
+This is a test-design audit, not an independent Lean conformance
+certificate. For the **current accepted main tree**, use the
+[execution/evidence matrix](evidence.md) and the exact GitHub Actions run
+for the commit you are reviewing.
 
-- **Executable instruction behavior:** Native prefix and bit-machine tests check register/stack state, source-instruction counts and bounded refusal. They do **not** establish imported-source Lean/Rust trace equality.
-- **Source identity:** `reference/source-manifest.json` now includes Git blob SHAs from the pinned `openai/math@4eaee87548250b2682affda7d05d947c05554bae` revision for **every Lean file named by the 42-stage registry**. The Rust test checks exact path membership and well-formed 40-hex pins. This is a source catalogue, not a byte-for-byte implementation equivalence test.
-- **Synthetic composition:** `native_seam_tdd.rs` combines `NativeLayoutLoad.command` directly with `PairNativeSetup.setupCaller`. The actual `QueryStreamProgram.nodeBody` has an intervening `SignatureHeadLoader.bootstrapProgram`. The diagnostic test is not a Lean source trace of that node body.
-- **Temporary scaffold tests:** Active `remaining_tdd.rs` checks expect `NotImplemented`. Retire or replace each such check with behavioral assertions when its stage becomes executable.
-- **Ignored ABI smoke tests:** The ignored tests are intentionally red while stubs remain. A dummy halt could pass the simple instruction-table/port smoke gates. Do not promote them to acceptance without imported-Lean traces, semantics, frame invariants and resource accounting.
-- **Count fixtures:** Nine small CNFs use an independent raw-literal truth-table oracle, covering no clauses, contradictions, tautologies, empty clauses and unused variables. The actual native end-to-end count is still unimplemented.
+| Test family | Positive evidence | Does not prove |
+| --- | --- | --- |
+| Finite CNF count fixtures | Rust finite semantics agree with independent small-input raw-literal enumeration | Native counting or a non-exponential algorithm |
+| `BitProgram` instruction tests | Rust interpreter state, stack/register behavior, bounds and halt cases on tested inputs | Independently executed source Lean equivalence |
+| Native frontend integration | The runnable Rust `Native.frontendCommand` preserves required source ABI ports and reports instructions/peak stack bits | A #SAT answer or full native counting pipeline |
+| Stage/registry tests | Source-path pin *format*, graph uniqueness, ordered prerequisites, refusal boundaries | Byte-for-byte source equivalence or original Lean execution |
+| Synthetic seam/composition tests | Invariants for the specific Rust components assembled in each test | Equivalence of a different full original source command |
+| Ignored scaffold smoke tests | Information about tests intended for future implementation work | Successful implementation merely because they compile or are ignored |
 
-**Mutation sanity check:** Changing the initial stack admission condition from `>` to `>=` causes the corrected test to fail; restoring it makes the test pass. This is one targeted mutation, not a mutation-coverage score.
+## Remaining high-value tests
 
-A source refinement claim additionally requires actual Lean execution in the pinned Lean 4.34.1/Mathlib environment, independent state trace comparison, code-table identity checks, protected-frame invariants, and separate primitive TM2 resource verification. No test here establishes an ETH complexity bound.
+- Execute the genuine pinned original Lean `BitProgram.step` and the Rust
+  interpreter independently. Compare all machine state and outputs after
+  **every** transition, including dirty unrelated state, scratch cleanup,
+  step limits, capacity failure and halting.
+- Use adversarial and generated inputs for stack underflow/overflow,
+  aliasing, high-index registers, bitword order, integer limits, and illegal
+  encoded formulas. A local Rust-vs-Rust oracle does not replace Lean.
+- Complete a source-defined **nonterminal** count without an enumerating host
+  fallback. Test its full chain from input encoding to answer.
+- Report source instruction counts, Rust allocations and runtime separately
+  from primitive TM2 transitions, tape occupancy and any theorem-level
+  asymptotic bound.
+
+A previously performed mutation of the initial stack admission guard
+(`>` versus `>=`) was detected by a focused Rust test. That observation
+does not establish broad mutation coverage.
+
+When a stage becomes executable, replace any test that only expects
+`NotImplemented` with meaningful behavior checks and leave negative
+refusal cases for the stages that remain unimplemented.

@@ -1,0 +1,47 @@
+name: Pinned Lean literal extraction
+
+on:
+  pull_request:
+    paths:
+      - 'rust/lean_eth_reference/src/bin/extract-lean-tables.rs'
+      - 'rust/lean_eth_reference/tools/lean_table_codegen.rs'
+      - 'rust/lean_eth_reference/tools/fixtures/original/**'
+      - '.github/workflows/lean-extraction.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  original-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+      - name: Fetch only original Lean source at exact pinned revision
+        env:
+          SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+        run: |
+          git init "$RUNNER_TEMP/original-math"
+          git -C "$RUNNER_TEMP/original-math" remote add origin https://github.com/openai/math.git
+          git -C "$RUNNER_TEMP/original-math" sparse-checkout init --cone
+          git -C "$RUNNER_TEMP/original-math" sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C "$RUNNER_TEMP/original-math" fetch --depth=1 --filter=blob:none origin "$SOURCE_SHA"
+          git -C "$RUNNER_TEMP/original-math" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/original-math" rev-parse HEAD)" = "$SOURCE_SHA"
+      - name: Check all literal tables against original pinned bytes
+        run: |
+          cargo run --locked --offline -p lean-eth-reference --bin extract-lean-tables -- \
+            --upstream "$RUNNER_TEMP/original-math" \
+            --output-dir rust/lean_eth_reference/tools/fixtures/original --check
+      - name: Check legacy fixed table identities
+        run: |
+          cargo run --locked --offline -p lean-eth-reference --bin extract-lean-tables -- \
+            --upstream "$RUNNER_TEMP/original-math" \
+            --output-dir rust/lean_eth_reference/tools/fixtures/original --legacy --check

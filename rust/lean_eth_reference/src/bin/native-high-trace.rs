@@ -1,5 +1,5 @@
 //! Machine-readable traces from the Rust port. Compare with unchanged Lean
-//! source imports using `scripts/compare-native-high-trace.py`.
+//! source imports using `compare-traces --suite high`.
 use lean_eth_reference::bit_program::{Config, RunLimits};
 use lean_eth_reference::native_high::{branch_program, initialize_program};
 

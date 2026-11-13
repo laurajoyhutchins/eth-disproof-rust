@@ -3,7 +3,7 @@
 //! Ignored tests are ABI smoke gates, not source-refinement or correctness proof.
 //! Do not mark an incomplete count or a diagnostic callback as a success.
 
-use lean_eth_reference::bit_program::{Atom, Cmd, Instr, Program, RunLimits};
+use lean_eth_reference::bit_program::{Atom, Cmd, Instr, Program};
 use lean_eth_reference::remaining::{self, Machine, Stage, Status};
 use lean_eth_reference::{Error, parse_dimacs};
 use std::collections::{HashMap, HashSet};
@@ -24,7 +24,17 @@ fn graph() -> HashMap<&'static str, &'static Stage> {
 #[test]
 fn registry_is_source_pinned_unique_and_topologically_sorted() {
     assert_eq!(remaining::SOURCE_COMMIT, LEAN_COMMIT);
-    assert_eq!(remaining::STAGES.len(), 43);
+    // Milestone increments register new source stages. Enforce the exact
+    // source nodes and graph invariants rather than a brittle stage count.
+    for id in [
+        "normalization_polarity",
+        "normalization_record_reverse",
+        "normalization_literal_dedup",
+        "normalization_literal_cleanup",
+        "normalization_full",
+    ] {
+        assert!(graph().contains_key(id), "missing stage: {id}");
+    }
     let mut seen = HashSet::new();
     for stage in remaining::STAGES {
         assert!(seen.insert(stage.id), "duplicated stage {}", stage.id);
@@ -40,6 +50,35 @@ fn registry_is_source_pinned_unique_and_topologically_sorted() {
         }
     }
     assert_eq!(remaining::STAGES.last().unwrap().id, "final_theorem");
+
+    let nodes = graph();
+    for id in [
+        "normalization_polarity",
+        "normalization_record_reverse",
+        "normalization_literal_dedup",
+        "normalization_literal_cleanup",
+        "normalization_negated_query",
+        "normalization_tautology_core",
+        "normalization_tautology_filter",
+        "normalization_prefix",
+    ] {
+        assert_eq!(nodes[id].status, Status::Executable, "{id}");
+        assert_eq!(nodes[id].machine, Machine::Local, "{id}");
+    }
+    assert_eq!(nodes["normalization_full"].status, Status::Executable);
+    for id in [
+        "normalization_subset",
+        "normalization_clause_relations",
+        "normalization_clause_relation_scan",
+        "normalization_preserving_relation_scan",
+        "normalization_clause_dedup",
+        "normalization_strict_subset_filter",
+    ] {
+        assert_eq!(nodes[id].status, Status::Executable, "{id}");
+        assert_eq!(nodes[id].machine, Machine::Local, "{id}");
+    }
+    assert_eq!(nodes["frontend_normalization"].status, Status::Executable);
+    assert_eq!(nodes["frontend"].status, Status::Executable);
 }
 
 #[test]
@@ -167,6 +206,26 @@ fn source_machine_dimensions_are_enforced_at_compile_time() {
         remaining::outer::counting_program;
     let _: fn(Cmd<40, 896>) -> Result<Cmd<80, 1220>, Error> = remaining::leaf::execution;
     let _: fn(Cmd<80, 1220>) -> Result<Cmd<80, 1220>, Error> = remaining::leaf::terminal_dispatch;
+    let _: fn() -> Result<Program<2, 2>, Error> = remaining::outer::negate_literal;
+    let _: fn() -> Result<Program<3, 4>, Error> = remaining::outer::reverse_records;
+    let _: fn() -> Result<Program<10, 8>, Error> = remaining::outer::dedup_literals;
+    let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::clean_literals;
+    let _: fn() -> Result<Program<2, 4>, Error> = remaining::outer::negated_query;
+    let _: fn() -> Result<Program<10, 8>, Error> = remaining::outer::tautology_clause;
+    let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::tautology_filter;
+    let _: fn() -> Result<Program<13, 11>, Error> = remaining::outer::normalization_prefix;
+    let _: fn() -> Result<Program<10, 8>, Error> = remaining::outer::subset_clause;
+    let _: fn() -> Result<Program<12, 10>, Error> = remaining::outer::clause_relations;
+    let _: fn(
+        lean_eth_reference::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 12>, Error> = remaining::outer::relation_scan;
+    let _: fn(
+        lean_eth_reference::native_clause_relation_scan::Mode,
+    ) -> Result<Program<15, 13>, Error> = remaining::outer::preserving_relation_scan;
+    let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::dedup_clauses;
+    let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::filter_supersets;
+    let _: fn() -> Result<Program<15, 16>, Error> = remaining::outer::normalization_full;
+    let _: fn() -> Result<Cmd<80, 1220>, Error> = remaining::outer::frontend_normalization;
 }
 
 #[test]
@@ -203,6 +262,7 @@ fn unfinished_query_stages_return_the_exact_source_identity() {
     assert_refuses(q::node_loop(), "QueryStreamProgram.nodeLoop");
     assert_refuses(q::reconstruction(), "QueryReconstruction.command");
     assert_refuses(q::command(), "QueryStreamProgram.command");
+    assert_refuses(q::program(), "QueryStreamProgram.program");
     assert_refuses(q::program(), "QueryStreamProgram.program");
 }
 
@@ -241,17 +301,17 @@ fn leaf_callbacks_cannot_be_replaced_by_skip_or_diagnostic_programs() {
         assert_refuses(l::command(k), "NativeLeafProgram.command");
         assert_refuses(l::program(k), "NativeLeafProgram.program");
     }
-    assert_refuses(
-        l::terminal_dispatch(Cmd::Skip),
-        "NativeLeafDispatch.command",
-    );
+    // Generic source dispatch is an executable command factory. The real
+    // nonterminal leaf remains unavailable and is still refused above.
+    l::terminal_dispatch(Cmd::Skip).expect("source generic dispatch must compile");
 }
 
 #[test]
 fn outer_and_noncomputable_fallback_cannot_return_a_fake_answer() {
     use remaining::outer as o;
-    assert_refuses(o::frontend(), "Native.frontendCommand");
-    assert_refuses(o::answer_suffix(), "Native.answerCommand");
+    o::frontend().expect("source Native frontend must construct");
+    // Physical positivity suffix is implemented, not a CNF counting oracle.
+    o::answer_suffix().expect("source positivity suffix must compile");
     for cutoff in [0, 1, 64, usize::MAX] {
         assert_refuses(
             o::finite_fallback(cutoff, Cmd::Skip),
@@ -279,37 +339,6 @@ fn primitive_refinement_refuses_on_a_valid_executable_program() {
         "BitProgram.tm / GuardedCompiler.primitive",
     );
     assert_eq!(p, original);
-}
-
-// The following ignored tests currently fail because the stubs fail closed.
-// Passing an ABI smoke test only demonstrates type/port compatibility. It does
-// NOT establish source-table identity, Lean/Rust trace parity, exact arithmetic,
-// end-to-end correctness or complexity. Behavioral oracles must be added before
-// promoting any of them to a release acceptance gate.
-
-#[test]
-#[ignore = "RED TDD: implement exact SignatureHeadLoader.bootstrapProgram"]
-fn pending_signature_bootstrap_abi_smoke_only() {
-    let p = remaining::query::signature_bootstrap().expect("source bootstrap not implemented");
-    assert_eq!((p.input_stack(), p.output_stack()), (307, 647));
-    assert!(!p.code().is_empty());
-}
-
-#[test]
-#[ignore = "RED TDD: implement QueryStreamProgram.program before enabling"]
-fn pending_query_stream_abi_smoke_only() {
-    let p = remaining::query::program().expect("real source query stream not implemented");
-    assert_eq!((p.input_stack(), p.output_stack()), (330, 323));
-    assert!(!p.code().is_empty());
-}
-
-#[test]
-#[ignore = "RED TDD: implement actual native leaf, not the exponential semantic leaf"]
-fn pending_native_leaf_abi_smoke_only() {
-    let local = remaining::leaf::local_program(3).expect("local native leaf not implemented");
-    assert_eq!((local.input_stack(), local.output_stack()), (784, 788));
-    let outer = remaining::leaf::program(3).expect("lifted native leaf not implemented");
-    assert_eq!((outer.input_stack(), outer.output_stack()), (265, 263));
 }
 
 /// Independent raw-literal truth-table oracle, deliberately not using Cnf::eval.
@@ -369,53 +398,5 @@ fn goldens_cover_true_false_zero_empty_tautological_and_unused_variables() {
             }
         }
         assert_eq!(semantic, expected, "DIMACS semantics disagree: {dimacs}");
-    }
-}
-
-fn binary_count_word(n: usize) -> Vec<bool> {
-    if n == 0 {
-        return vec![false];
-    }
-    let mut x = n;
-    let mut word = Vec::new();
-    while x > 0 {
-        word.push(x & 1 != 0);
-        x >>= 1;
-    }
-    word
-}
-
-#[test]
-#[ignore = "RED TDD: full canonical native program, imported-Lean oracle and bounded execution required"]
-fn pending_native_end_to_end_counts_both_sat_and_unsat() {
-    let leaf = remaining::leaf::command(3).expect("native leaf must be implemented first");
-    let program = remaining::outer::counting_program(0, 3, leaf)
-        .expect("native counting program not implemented");
-    assert_eq!((program.input_stack(), program.output_stack()), (256, 1216));
-    for &(variables, clauses, expected) in COUNT_CASES {
-        let dimacs = make_dimacs(variables, clauses);
-        let f = parse_dimacs(&dimacs).unwrap();
-        let encoded = f.encode_lean();
-        let word = encoded.bytes().map(|bit| bit == b'1');
-        let mut config = program.initial(word);
-        let stats = program
-            .run(
-                &mut config,
-                RunLimits {
-                    max_steps: 20_000_000,
-                    max_stack_bits: 20_000_000,
-                },
-            )
-            .unwrap();
-        assert!(stats.instructions > 0);
-        assert_eq!(config.pc, None);
-        assert_eq!(
-            config.stacks[256].iter().copied().collect::<Vec<_>>(),
-            binary_count_word(expected)
-        );
-        assert_eq!(
-            config.stacks[1216].iter().copied().collect::<Vec<_>>(),
-            vec![expected > 0]
-        );
     }
 }

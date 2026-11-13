@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 from export_compiled_batch import ensure_pinned, atomic_write
 from extract_compiled_catalog import discover, blob_hash
-from verify_source_graph import validate_and_generate
+from verify_source_graph import validate_and_generate, parse_source_graph_json
 from source_graph_kernel_certificate import certificate_source
 
 HERE=Path(__file__).resolve().parent
@@ -33,6 +33,157 @@ def source(record:dict) -> str:
             f'#export_original_source_graph {record["fqn"]} "{record["id"]}" "{record["git_blob"]}"\n')
 
 
+
+def verify_original_linking_fixtures(a, pin: dict, catalog: dict) -> None:
+    """Check real original ProgramLinking operations through the one compiler.
+
+    These are source-derived sidecar programs, NOT declarations present in the
+    pinned OpenAI Git tree. The original logSuccProgram is the finite callee.
+    Each sidecar is independently materialized by Lean and compared with
+    structurally exported, kernel-certified, generated Rust.
+    """
+    original = next((record for record in catalog['candidates']
+                     if record['fqn'].endswith('SqrtLog.Setup.logSuccProgram')), None)
+    if original is None:
+        raise ValueError('missing source-pinned logSuccProgram for link fixtures')
+    if blob_hash((a.upstream/original['file']).read_bytes()) != original['git_blob']:
+        raise ValueError('linked fixture callee source Git blob mismatch')
+    fqn=original['fqn']
+    module=original['module']
+    # The lean/Mathlib restore does not build original OpenAI modules.
+    # Build only the one imported callee, not the whole six-program batch.
+    built=subprocess.run(['lake','-K','maxJobs=2','build',module],
+                         cwd=a.lake_root,capture_output=True,text=True,
+                         timeout=a.timeout_seconds)
+    if built.returncode:
+        raise ValueError('original linking fixture module build failed: '+
+                         built.stdout[-2500:]+built.stderr[-2500:])
+    fixture_module='OAI.Algorithms.SubexponentialSAT.LinkCompilerFixture'
+    definitions=f"""namespace {fixture_module}
+noncomputable def lifted :=
+  StructuredCalls.compiled
+    (StructuredCalls.Cmd.call (ProgramLinking.liftProgram
+      {fqn} (Fin.castAddEmb 1) (Fin.castAddEmb 1))) 0 0
+noncomputable def linked :=
+  StructuredCalls.compiled
+    (StructuredCalls.Cmd.call (ProgramLinking.link {fqn} {fqn})) 0 0
+noncomputable def linkedInto :=
+  StructuredCalls.compiled
+    (StructuredCalls.Cmd.call (ProgramLinking.linkInto {fqn} {fqn}
+      (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+      (Fin.castAddEmb 1) (Fin.castAddEmb 1))) 0 0
+-- Direct physical Program roots: there must be no extra call/return site.
+noncomputable def liftedRoot :=
+  ProgramLinking.liftProgram {fqn} (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+noncomputable def linkedRoot :=
+  ProgramLinking.link {fqn} {fqn}
+noncomputable def linkedIntoRoot :=
+  ProgramLinking.linkInto {fqn} {fqn}
+    (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+    (Fin.castAddEmb 1) (Fin.castAddEmb 1)
+end {fixture_module}
+"""
+    imports=(f'import {module}\n'
+             'import OAI.Algorithms.SubexponentialSAT.ProgramLinking\n')
+    dir=a.output_dir/'linking-fixtures'
+    dir.mkdir(parents=True, exist_ok=True)
+    gold=dir/'original-tables'
+    gold.mkdir(exist_ok=True)
+    rust=dir/'generated-rust'
+    certs=dir/'kernel-certificates'
+    certs.mkdir(exist_ok=True)
+    gold_manifest={}
+    accepted=[]
+    for short in ('lifted','linked','linkedInto',
+                  'liftedRoot','linkedRoot','linkedIntoRoot'):
+        fid='linked_fixture_'+short.lower()
+        record={'id':fid,'fqn':fixture_module+'.'+short,
+                'module':module,'git_blob':original['git_blob']}
+        graph_source=(imports+LEAN.read_text()+'\n'+definitions+
+                      '\nset_option maxHeartbeats 2000000\n'+
+                      f'#export_original_source_graph {record["fqn"]} "{fid}" "{record["git_blob"]}"\n')
+        table_source=(imports+(HERE/'export_source_program.lean').read_text()+
+                      '\n'+definitions+'\nset_option maxHeartbeats 2000000\n'+
+                      f'#export_original_program {record["fqn"]} "{fid}" "{record["git_blob"]}"\n')
+        with tempfile.TemporaryDirectory(prefix='original-link-fixture-') as tmp:
+            for suffix, program in (('graph',graph_source),('table',table_source)):
+                src=Path(tmp)/(fid+'-'+suffix+'.lean')
+                src.write_text(program, encoding='utf-8')
+                check=subprocess.run(['lake','env','lean',str(src)],
+                                     cwd=a.lake_root,capture_output=True,text=True,
+                                     env={**os.environ,'ORIGINAL_MAX_LABELS':'4096'},
+                                     timeout=a.timeout_seconds)
+                if check.returncode:
+                    raise ValueError(f'{fid} original Lean {suffix} export failed: '+
+                                     check.stdout[-2500:]+check.stderr[-2500:])
+                if suffix=='graph':
+                    atomic_write(dir/(fid+'.json'),check.stdout)
+                else:
+                    raw=check.stdout.encode('ascii')
+                    if not raw.startswith(f'PIN|{fid}|'.encode()) or not raw.endswith(
+                            f'END|{fid}|'.encode()+raw.splitlines()[1].split(b'|')[4]+b'\n'):
+                        raise ValueError(f'{fid} independent Lean table malformed')
+                    (gold/(fid+'.table')).write_bytes(raw)
+            graph=parse_source_graph_json((dir/(fid+'.json')).read_bytes())
+            expected={'lifted':'lift','linked':'link','linkedInto':'link_into',
+                      'liftedRoot':'lift','linkedRoot':'link',
+                      'linkedIntoRoot':'link_into'}[short]
+            if short.endswith('Root'):
+                if (graph['kind']!='original-linked-source-v1' or
+                        graph.get('program',{}).get('kind')!=expected):
+                    raise ValueError(
+                        f'{fid} direct physical root did not preserve ProgramLinking.{expected}')
+                expected_labels={'liftedRoot':36,'linkedRoot':72,'linkedIntoRoot':72}[short]
+                if graph['abi']['labels']!=expected_labels:
+                    raise ValueError(
+                        f'{fid} unexpected physical labels: {graph["abi"]["labels"]}')
+            else:
+                command=graph['command']
+                if (graph['kind']!='original-structured-source-v1' or
+                        command.get('kind')!='call' or
+                        command['program'].get('kind')!=expected):
+                    raise ValueError(
+                        f'{fid} source did not preserve ProgramLinking.{expected} as a graph node')
+            table_bytes=(gold/(fid+'.table')).read_bytes()
+            gold_manifest[fid]={'declaration':record['fqn'],
+                                'source_blob':record['git_blob'],
+                                'sha256':hashlib.sha256(table_bytes).hexdigest()}
+            atomic_write(gold/'manifest.json',json.dumps(gold_manifest,sort_keys=True)+'\n')
+
+            cert,cert_receipt=certificate_source(dir/(fid+'.json'),record)
+            # The acceptance fixture itself is source-derived, so include
+            # exactly its definition in the kernel witness before proving.
+            cert=cert.replace(f'import {module}\n',
+                              imports+definitions+'\n',1)
+            cert_receipt['certificate_sha256']=hashlib.sha256(cert.encode()).hexdigest()
+            cert_path=certs/(fid+'.lean')
+            atomic_write(cert_path,cert)
+            check=subprocess.run(['lake','env','lean',str(cert_path)],
+                                 cwd=a.lake_root,capture_output=True,text=True,
+                                 timeout=a.timeout_seconds)
+            if check.returncode or check.stdout.strip():
+                raise ValueError(f'{fid} original Lean kernel certificate failed: '+
+                                 check.stdout[-2500:]+check.stderr[-2500:])
+            cert_receipt['status']='LEAN_KERNEL_CERTIFIED_SOURCE_DERIVED_FIXTURE'
+            cert_receipt['lean_version']=pin['lean']
+            atomic_write(certs/(fid+'.receipt.json'),
+                         json.dumps(cert_receipt,sort_keys=True,indent=2)+'\n')
+            verified=validate_and_generate(dir/(fid+'.json'),gold,rust,
+                                           a.rust_crate,not a.no_cargo)
+            if verified['graph_sha256']!=cert_receipt['source_graph_sha256']:
+                raise ValueError('fixture graph mutated between Lean and Rust verification')
+            verified['fixture_kind']='source-derived (not original declaration)'
+            verified['kernel_certificate_sha256']=cert_receipt['certificate_sha256']
+            accepted.append(verified)
+            atomic_write(dir/'report.json',
+                         json.dumps({'kind':'source-derived-linking-acceptance',
+                                     'source_callee':fqn, 'accepted':accepted},
+                                    sort_keys=True,indent=2)+'\n')
+            print('SOURCE_LINKING_FIXTURE_EXACT',fid,verified['physical_instructions_compared'],
+                  flush=True)
+
+
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument('--upstream',required=True,type=Path)
@@ -44,10 +195,18 @@ def main():
     p.add_argument('--name-regex',default=r'SparseFrontierProgram\.(popIfPresentProgram|pushProgram)')
     p.add_argument('--limit',type=int,default=6)
     p.add_argument('--no-cargo',action='store_true')
+    p.add_argument('--linking-fixtures',action='store_true')
+    p.add_argument('--linking-fixtures-only',action='store_true')
     a=p.parse_args()
     assert 5<=a.timeout_seconds<=1200 and 1<=a.limit<=6
     pin=ensure_pinned(a.upstream,a.lake_root)
     catalog=discover(a.upstream,True)
+    if a.linking_fixtures_only:
+        if not a.linking_fixtures:
+            raise ValueError('--linking-fixtures-only requires --linking-fixtures')
+        a.output_dir.mkdir(parents=True,exist_ok=True)
+        verify_original_linking_fixtures(a,pin,catalog)
+        return
     pattern=re.compile(a.name_regex)
     manifest=json.loads((a.golden_dir/'manifest.json').read_text())
     chosen=[x for x in catalog['candidates'] if pattern.search(x['fqn']) and x['id'] in manifest][:a.limit]
@@ -114,6 +273,8 @@ def main():
         checkpoint()
     if refused or len(results)!=len(chosen):
         raise SystemExit(f'source graph parity incomplete: accepted={len(results)}, refused={len(refused)}')
+    if a.linking_fixtures:
+        verify_original_linking_fixtures(a,pin,catalog)
     print(f'SOURCE_GRAPH_COMPLETE {len(results)} Lean-kernel-certified original-source graphs: all physical code + bounded Rust parity; native Rust equivalence is tested, not formally proved')
 
 if __name__=='__main__':main()

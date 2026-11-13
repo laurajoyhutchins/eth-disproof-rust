@@ -106,7 +106,7 @@ def compileBundle (roots : Array Lean.Name) (names : Array String) : Lean.CoreM 
   if roots.size != names.size then
     throwError "Rust native bundle needs one public Rust name per Lean root"
   let decls ← collectClosure roots
-  let report := emitBundle decls (roots.map Name.toString) names
+  let report := emitBundle decls (roots.map (fun root => root.toString)) names
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
   else if report.startsWith "ERROR\n" then

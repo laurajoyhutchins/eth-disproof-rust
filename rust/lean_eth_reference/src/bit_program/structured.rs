@@ -212,9 +212,12 @@ impl<const R: usize, const S: usize> Cmd<R, S> {
         output_stack: usize,
     ) -> Result<Program<R, S>, Error> {
         let size = self.size()?;
-        let exit = size;
+        // Original StructuredCalls.compiled maps the outer exit/halt to
+        // physical label zero; source command sites occupy 1..=size.
+        // A halt-at-size layout has the same logical result but *different*
+        // observable program counters and is not physical-source parity.
         let mut code = vec![Instr::Halt; size.checked_add(1).ok_or(Error::Overflow)?];
-        self.emit(0, exit, &mut code)?;
-        Program::new(input_stack, output_stack, self.entry_at(0, exit)?, code)
+        self.emit(1, 0, &mut code)?;
+        Program::new(input_stack, output_stack, self.entry_at(1, 0)?, code)
     }
 }

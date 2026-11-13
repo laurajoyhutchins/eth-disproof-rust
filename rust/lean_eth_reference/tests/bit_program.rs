@@ -214,26 +214,26 @@ fn structured_compiler_generates_exact_finite_tables() {
     );
     let program = command.compiled(0, 1).unwrap();
     assert_eq!(command.size().unwrap(), 3);
-    assert_eq!(program.entry(), 0);
+    assert_eq!(program.entry(), 1);
     assert_eq!(
         program.code(),
         &[
+            Instr::Halt,
             Instr::Set {
                 dst: 0,
                 value: true,
-                next: 1
+                next: 2
             },
             Instr::Branch {
                 test: 0,
-                yes: 2,
-                no: 3
+                yes: 3,
+                no: 0
             },
             Instr::Push {
                 stack: 1,
                 src: 0,
-                next: 3
+                next: 0
             },
-            Instr::Halt,
         ]
     );
     let mut state = program.initial([]);
@@ -319,29 +319,29 @@ fn call_relocates_all_jumps_and_replaces_each_halt_with_return() {
     assert_eq!(
         program.code(),
         &[
+            Instr::Halt,
             Instr::Set {
                 dst: 0,
                 value: false,
-                next: 1
+                next: 2
             },
             Instr::Set {
                 dst: 0,
                 value: true,
-                next: 2
+                next: 3
             },
             Instr::Branch {
                 test: 0,
-                yes: 3,
-                no: 4
+                yes: 4,
+                no: 5
             },
-            Instr::Goto { next: 5 },
-            Instr::Goto { next: 5 },
+            Instr::Goto { next: 6 },
+            Instr::Goto { next: 6 },
             Instr::Push {
                 stack: 0,
                 src: 0,
-                next: 6
+                next: 0
             },
-            Instr::Halt,
         ]
     );
     let mut config = program.initial([]);
@@ -412,7 +412,7 @@ fn budget_refusal_is_before_the_failing_instruction() {
             )
             .is_err()
     );
-    assert_eq!(config.pc, Some(1));
+    assert_eq!(config.pc, Some(2));
     assert_eq!(config.regs, [true]);
     assert_eq!(
         config.stacks[0].iter().copied().collect::<Vec<_>>(),
@@ -430,7 +430,7 @@ fn budget_refusal_is_before_the_failing_instruction() {
             )
             .is_err()
     );
-    assert_eq!(config.pc, Some(1));
+    assert_eq!(config.pc, Some(2));
 }
 
 #[test]
@@ -455,4 +455,15 @@ fn arbitrary_corrupted_program_counter_is_rejected_not_indexed() {
     assert_eq!(config.pc, Some(7));
     assert!(program.run(&mut config, RunLimits::default()).is_err());
     assert_eq!(config.pc, Some(7));
+}
+
+#[test]
+fn compiled_empty_command_uses_the_exact_source_exit_label() {
+    let p = Cmd::<1, 1>::Skip.compiled(0, 0).unwrap();
+    assert_eq!(p.entry(), 0);
+    assert_eq!(p.code(), &[Instr::Halt]);
+    let mut c = p.initial([]);
+    let stats = p.run(&mut c, RunLimits::default()).unwrap();
+    assert_eq!(stats.instructions, 1);
+    assert_eq!(c.pc, None);
 }

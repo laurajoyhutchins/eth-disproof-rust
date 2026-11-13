@@ -21,6 +21,7 @@ private def expectedConstructors : Array (Name × Array Name) := #[
 
 private def conditionalConstructors : Array Name := #[
   ``Lean.IR.Decl.fdecl,
+  ``Lean.IR.IRType.float,
   ``Lean.IR.IRType.uint8,
   ``Lean.IR.IRType.uint16,
   ``Lean.IR.IRType.uint32,
@@ -54,5 +55,7 @@ run_cmd do
   for width in widths do
     for operation in operations do
       ledger := ledger ++ s!"primitive\t{width}.{operation}\tconditional\ttyped-binary-only\n"
+  for operation in #["add", "sub", "mul"] do
+    ledger := ledger ++ s!"primitive\tFloat.{operation}\tconditional\tfinite-f64-binary-only\n"
   ledger := ledger ++ "primitive\t*\trefused\tunknown-or-external\n"
   liftIO <| IO.FS.writeFile "artifacts/ir-coverage.tsv" ledger

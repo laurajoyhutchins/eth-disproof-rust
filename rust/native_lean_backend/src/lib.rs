@@ -157,13 +157,14 @@ impl Reader {
     unsafe fn ty(x: Obj) -> Result<&'static str, String> {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
         match Self::tag(x)? {
+            0 => Ok("f64"),
             1 => Ok("u8"),
             2 => Ok("u16"),
             3 => Ok("u32"),
             4 => Ok("u64"),
             5 => Ok("usize"),
             t => Err(format!(
-                "IR type tag {t} unsupported (supported u8/u16/u32/u64/usize)"
+                "IR type tag {t} unsupported (supported f64/u8/u16/u32/u64/usize)"
             )),
         }
     }
@@ -241,7 +242,14 @@ impl Reader {
                             "{name}: result type mismatch: expected {expected_ty}, got {var_ty}"
                         ));
                     }
-                    Ok(format!("{lhs}.{op}({rhs})"))
+                    if expected_ty == "f64" {
+                        if !matches!(op, "+" | "-" | "*") {
+                            return Err(format!("{name}: unsupported floating operation {op}"));
+                        }
+                        Ok(format!("({lhs} {op} {rhs})"))
+                    } else {
+                        Ok(format!("{lhs}.{op}({rhs})"))
+                    }
                 }
             }
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
@@ -879,7 +887,7 @@ mod tests {
             assert!(seen.insert(name), "duplicate primitive: {name}");
             let (family, operation) = name.split_once('.').expect("primitive qualified name");
             assert!(
-                ["UInt8", "UInt16", "UInt32", "UInt64", "USize"].contains(&family),
+                ["UInt8", "UInt16", "UInt32", "UInt64", "USize", "Float"].contains(&family),
                 "unsupported primitive family: {family}"
             );
             assert!(
@@ -897,7 +905,11 @@ mod tests {
                 assert!(seen.contains(name.as_str()), "primitive missing: {name}");
             }
         }
-        assert_eq!(seen.len(), 30);
+        for operation in ["add", "sub", "mul"] {
+            let name = format!("Float.{operation}");
+            assert!(seen.contains(name.as_str()), "missing finite-f64 primitive: {name}");
+        }
+        assert_eq!(seen.len(), 33);
         assert!(primitive_spec("UInt64.shiftLeft").is_none());
         assert!(primitive_spec("IO.println").is_none());
     }

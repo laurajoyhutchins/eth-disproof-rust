@@ -154,3 +154,11 @@ source generation itself still runs in the pinned Lean process. The test
 suite explicitly refuses an `IO` root rather than providing a host-side
 substitute. Neither this inventory nor the finite differential fixtures
 establishes general Lean program semantics.
+
+### Finite Float arithmetic
+
+`examples/FloatFixture.lean` now exercises original Lean `Float` addition,
+subtraction and multiplication compiled to Rust `f64`, checking 384 generated
+results against original-Lean evaluations on exactly representable finite
+inputs. This is a deliberately narrow IEEE-754 subset, not generic Float,
+Float32, casting, exceptional-value or mathematical-runtime support.

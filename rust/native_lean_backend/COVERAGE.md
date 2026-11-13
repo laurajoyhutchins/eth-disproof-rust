@@ -108,3 +108,15 @@ objects, closures, full pattern matching, Nat/Int/Unicode collections,
 floating-point conversions, mutation and reference counting remain
 explicitly unsupported by this compiler version. This protects against
 partial builds, but it does **not** complete checklist #193 items 16–19.
+
+## Finite Float scalar arithmetic subset
+
+For Lean IR `IRType.float`, the backend maps inputs, results and intermediates
+to Rust `f64`. Only exact `Float.add`, `Float.sub` and `Float.mul`
+primitives are permitted, lowered to Rust IEEE-754 `+`, `-` and `*`.
+A real original-Lean oracle fixture compares generated functions on finite,
+exact dyadic inputs including negatives and zeros.
+
+This is **not** unrestricted floating-point semantics. NaN/signalling,
+infinity/overflow, conversions, Float32, exception flags, unusual rounding
+modes and other operations remain outside the verified domain and refuse.

@@ -30,3 +30,6 @@ USize.mul	usize	wrapping_mul	arithmetic
 USize.decEq	usize	==	comparison
 USize.decLt	usize	<	comparison
 USize.decLe	usize	<=	comparison
+Float.add	f64	+	arithmetic
+Float.sub	f64	-	arithmetic
+Float.mul	f64	*	arithmetic

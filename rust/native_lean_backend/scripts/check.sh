@@ -133,6 +133,17 @@ RUST
 rustc --edition=2021 -o examples/native-test examples/run.rs
 examples/native-test
 # Real Lean IR join continuations (jdecl/jmp), including captured locals.
+# Float is accepted only for three finite typed-scalar operations.
+# Test oracle results computed by original Lean Float, never by the Rust backend.
+lean --load-dynlib="$NATIVE_LIB" examples/FloatFixture.lean
+cat > examples/test-float.rs <<'RUST'
+include!("generated_float_add.rs");
+include!("generated_float_sub.rs");
+include!("generated_float_mul.rs");
+fn main() { include!("generated_float_differential.rs"); }
+RUST
+rustc --edition=2024 -o examples/test-float examples/test-float.rs
+examples/test-float
 lean --load-dynlib="$NATIVE_LIB" examples/JoinFixture.lean
 cat > examples/test-join.rs <<'RUST'
 include!("generated_join.rs");
@@ -186,10 +197,10 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=3008"
+  echo "differential_assertions=3392"
   echo "constructor_inventory=PASS"
   echo "primitive_registry=PASS"
   echo "external_io_boundary=REFUSED"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
+  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/FloatFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

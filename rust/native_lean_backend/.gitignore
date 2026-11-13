@@ -26,3 +26,6 @@
 /examples/RefusalPackage*.log
 /examples/rejected-io-package/
 /examples/RefusalPackageIO.log
+
+/examples/test-float
+/examples/test-float.rs

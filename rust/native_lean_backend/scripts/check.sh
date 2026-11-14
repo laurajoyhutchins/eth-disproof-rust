@@ -165,6 +165,10 @@ cargo clippy --offline --all-targets -- -D warnings
 # Inventory is reflected from the pinned Lean IR definitions and rejects
 # source/coverage drift; every registered scalar primitive receives oracle tests.
 bash scripts/check-coverage.sh
+# Diagnostic: inspect actual pinned Lean executable IR of unsupported semantic types.
+lean -o examples/Item30IRProbe.olean examples/Item30IRProbe.lean
+cat artifacts/item30-ir-probes.txt
+bash scripts/check-item30.sh
 # Receipt exists only after *all* end-to-end and negative checks pass.
 mkdir -p artifacts
 {
@@ -174,12 +178,13 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=3904"
+  echo "differential_assertions=4004"
+  echo "item30_supported_value_cases=100"
   echo "primitive_conformance=30_operations_x_64_cases"
   echo "IR_constructor_inventory=environment_reflected_and_tag_verified"
   echo "host_abi_probe=PASS"
   echo "refusal_schema=status-declaration-construct-reason-v1"
   echo "standalone_cargo_with_no_lean_runtime=PASS"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs src/safety.rs scripts/package_crate.sh scripts/check-coverage.sh scripts/coverage-ledger.rs primitive-registry.tsv ir-coverage-classification.tsv examples/IRInventory.lean examples/PrimitiveMatrix.lean examples/Example.lean examples/Refusal.lean examples/generated_*.rs artifacts/standalone_pipeline/Cargo.toml artifacts/ir-coverage.tsv artifacts/primitive-conformance.tsv
+  sha256sum NativeRust.lean native/abi.c src/lib.rs src/safety.rs scripts/package_crate.sh scripts/check-coverage.sh scripts/check-item30.sh scripts/coverage-ledger.rs primitive-registry.tsv runtime-primitive-registry.tsv src/standalone_runtime.rs examples/Item30IRProbe.lean examples/Item30Conformance.lean examples/generated_semantic_cases.rs ir-coverage-classification.tsv examples/IRInventory.lean examples/PrimitiveMatrix.lean examples/Example.lean examples/Refusal.lean examples/generated_*.rs artifacts/standalone_pipeline/Cargo.toml artifacts/ir-coverage.tsv artifacts/primitive-conformance.tsv
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

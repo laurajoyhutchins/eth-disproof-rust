@@ -81,8 +81,8 @@ The closure command additionally supports typed direct calls, shared
 transitive dependencies, imported executable functions, and direct/mutual
 recursion when every reachable body uses supported IR.
 
-**Not implemented:** general Lean/Rust compilation; arbitrary-precision
-`Nat`; indirect calls, closures, non-Boolean cases, join points, arrays,
+**Not implemented:** general Lean/Rust compilation; arbitrary heap objects,
+indirect calls, closures, non-Boolean cases, join points, generic collections,
 structures, complete standalone crate generation, general external primitives, and
 noncomputable expressions without compiler IR. The current generated functions are checked
 on examples but there is not yet a general semantic refinement theorem.
@@ -142,12 +142,27 @@ G1 release obligations are detailed in [SAFETY.md](SAFETY.md).
 ## Machine-derived IR and primitive conformance
 
 The pinned Lean environment is inspected to enumerate **48 IR constructors**
-across seven inductive families. The classifier implements 14 bounded variants
-and refuses 34; its tags are enforced in the production decoder. The single
+across seven inductive families. The classifier implements 19 bounded variants
+and refuses 29; its tags are enforced in the production decoder. The single
 primitive registry drives 30 supported operations, each independently
 compared with 64 original-Lean oracle vectors. This adds 1,920 assertions to
-the previous 1,984, for **3,904** exact-head differential comparisons.
+the previous 1,984, with 100 new cross-type checks, for **4,004**
+exact-head differential comparisons.
 
 See [CONFORMANCE.md](CONFORMANCE.md) for the generation and refusal contract.
 Unsupported large integers, Unicode strings, arrays, and general runtime
 sharing remain outside this version's semantic equivalence claims.
+
+## Exact Nat/Int, Unicode and collection subset
+
+The compiler now lowers ten pinned original-Lean runtime primitives over
+arbitrary-precision Nat and Int, valid UTF-8 String, Array UInt64 and
+List UInt64 into a **dependency-free embedded Rust value runtime**.
+The separate item-30 conformance fixture compiles original Lean IR and runs
+original-Lean oracle comparisons for values beyond 512 bits, negative Int,
+Unicode code points (including embedded NUL, quotes, backslashes and line breaks), and persistent collections. It also verifies structured
+refusal without output modification for unsupported operations.
+
+Run `bash scripts/check.sh` to execute the historical scalar suite and the
+cross-type suite. See [SEMANTICS.md](SEMANTICS.md) for the exact API and
+limits. This is not a general object-memory or Lean effects translation.

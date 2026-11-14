@@ -26,13 +26,13 @@ reading the constructors and positions of all these inductive definitions:
 | Lean IR family | Constructors | Bounded supported |
 | --- | ---: | ---: |
 | Decl | 2 | 1 |
-| IRType | 14 | 5 |
-| Arg | 2 | 1 |
+| IRType | 14 | 8 |
+| Arg | 2 | 2 |
 | LitVal | 2 | 1 |
-| Expr | 13 | 2 |
+| Expr | 13 | 3 |
 | Alt | 2 | 1 |
 | FnBody | 13 | 3 |
-| **Total** | **48** | **14** |
+| **Total** | **48** | **19** |
 
 The source-derived list is emitted to artifacts/ir-constructors.tsv.
 scripts/coverage-ledger.rs requires an exact name, tag and supported/refused
@@ -50,7 +50,7 @@ artifacts/ir-coverage.tsv is a machine-readable release ledger.
 
 The supported entries are *bounded*: e.g. Alt.ctor and FnBody.case mean only
 a two-constructor Bool match; LitVal.num accepts only small tagged Nat
-literals; IRType.usize has Linux x86-64 semantics. The 34 refused variants
+literals; IRType.usize has Linux x86-64 semantics. The 29 refused variants
 have no positive semantic-equivalence claim. The whitelist test checks tags,
 not a theorem about runtime ABI layout or Lean reference counting.
 
@@ -76,15 +76,17 @@ assertions. The execution ledger is artifacts/primitive-conformance.tsv.
 
 The existing regression fixtures provide 1,984 additional original-Lean
 comparisons over supported scalar, Bool, imported-direct-call and recursive
-programs. Total native comparisons in this branch: **3,904**.
+programs. Baseline scalar/direct-call comparisons: **3,904**. The item-30 suite adds
+**100** original-Lean object-value cases for **4,004** in total.
 
 ## Explicit limitations
 
 These tests establish equivalence only for the exercised programs and
-supported compiler IR. They do **not** establish equivalent arbitrary-
-precision Nat/Int, Unicode Strings, Arrays, effects/IO, heap sharing,
-indirect application, recursive join points, or the source-defined
-noncomputable ETH program. Many of those are deliberately refused.
+supported compiler IR. Ten exact runtime primitive adapters cover bounded
+arbitrary-precision Nat/Int, Unicode String and collection operations.
+They do **not** establish unrestricted Nat/Int or Unicode APIs,
+generic collections, effects/IO, heap sharing, indirect application,
+recursive join points, or the source-defined noncomputable ETH program.
 
 The IR constructor inventory covers the seven pinned *inductive* families;
 it does not yet inventory every field of supporting structures such as
@@ -96,3 +98,13 @@ semantically correct. The automated guards ensure complete enumeration,
 prevent unsupported tag acceptance, and require executable evidence for each
 registered primitive. They do not turn finite differential tests into a
 semantic-preservation theorem.
+
+## Extended object-value matrix
+
+The ten runtime primitives are enumerated in
+`runtime-primitive-registry.tsv`, separately from the 30 scalar arithmetic
+operations. `scripts/check-item30.sh` requires every runtime adapter to
+appear in emitted code and executes **100** identical-input comparisons
+against original Lean results. The generated runtime is standalone Rust
+with no Lean runtime or third-party crates. [SEMANTICS.md](SEMANTICS.md)
+records the precise feature boundary and negative refusal conditions.

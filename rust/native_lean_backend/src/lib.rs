@@ -10,6 +10,11 @@ use std::time::{Duration, Instant};
 
 mod safety;
 
+// Exact standalone value semantics, also unit-tested inside the backend.
+#[cfg(test)]
+#[allow(dead_code)]
+mod standalone_runtime;
+
 // Generated at build time from the pinned constructor classification.
 include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));
 
@@ -191,7 +196,11 @@ impl Reader {
                 if *found != expected {
                     return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }
-                Ok(format!("x_{id}"))
+                Ok(if expected == "Value" {
+                    format!("x_{id}.clone()")
+                } else {
+                    format!("x_{id}")
+                })
             }
             1 => Err("erased value used as runtime operand".into()),
             t => Err(format!("unknown Arg constructor {t}")),
@@ -205,6 +214,7 @@ impl Reader {
             3 => Ok("u32"),
             4 => Ok("u64"),
             5 => Ok("usize"),
+            7 | 8 | 12 => Ok("Value"),
             t => Err(format!(
                 "IR type tag {t} unsupported (supported u8/u16/u32/u64/usize)"
             )),
@@ -220,6 +230,11 @@ impl Reader {
                     "u32" => u32::MAX as usize,
                     "u64" => usize::MAX, // Pinned Linux x86-64 Lean ABI.
                     "usize" => usize::MAX,
+                    "Value" => {
+                        return Ok(format!(
+                            "Value::Nat(native_runtime::BigNat::from_u64({n}u64))"
+                        ))
+                    }
                     _ => return Err(format!("literal type {ty} unsupported")),
                 };
                 if n > max {
@@ -261,6 +276,43 @@ impl Reader {
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
                 }
+                if let Some(runtime) = runtime_primitive_spec(&name) {
+                    if var_ty != "Value" {
+                        return Err(format!(
+                            "{name}: expected object-valued result, got {var_ty}"
+                        ));
+                    }
+                    let required = match runtime.shape {
+                        "unary" => 1,
+                        "binary" => 2,
+                        "erased_unary" => 2,
+                        "erased_binary" => 3,
+                        _ => return Err(format!("{name}: unsupported runtime primitive shape")),
+                    };
+                    if args.len() != required {
+                        return Err(format!(
+                            "{name}: expected {required} IR operands, got {}",
+                            args.len()
+                        ));
+                    }
+                    let start = if runtime.shape.starts_with("erased_") {
+                        if Self::checked_tag(args[0], "Arg")? != 1 {
+                            return Err(format!("{name}: missing exact erased type argument"));
+                        }
+                        1
+                    } else {
+                        0
+                    };
+                    let mut values = Vec::new();
+                    for arg in &args[start..] {
+                        values.push(format!("&{}", Self::arg(*arg, env, "Value")?));
+                    }
+                    return Ok(format!(
+                        "native_runtime::{}({})",
+                        runtime.rust_function,
+                        values.join(", ")
+                    ));
+                }
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
@@ -284,6 +336,16 @@ impl Reader {
                     }
                     Ok(format!("{lhs}.{op}({rhs})"))
                 }
+            }
+            9 => {
+                if var_ty != "Value" || Self::ty(Self::field(x, 0)?)? != "u64" {
+                    return Err("box supports only UInt64 into object Value".into());
+                }
+                let id = Self::var(Self::field(x, 1)?)?;
+                if env.get(&id) != Some(&"u64") {
+                    return Err(format!("box UInt64 operand x_{id} has wrong type"));
+                }
+                Ok(format!("native_runtime::box_uint64(x_{id})"))
             }
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
             t => Err(format!("IR expression constructor {t} unsupported")),
@@ -402,12 +464,7 @@ impl Reader {
                 }
                 10 => {
                     // ret(Arg)
-                    writeln!(
-                        code,
-                        "    return {};",
-                        Self::arg(Self::field(x, 0)?, env, ret_ty)?
-                    )
-                    .unwrap();
+                    writeln!(code, "    {}", Self::arg(Self::field(x, 0)?, env, ret_ty)?).unwrap();
                     return Ok(());
                 }
                 t => return Err(format!("IR body constructor {t} unsupported")),
@@ -419,8 +476,9 @@ impl Reader {
             return Err("Lean C ABI runtime probe failed".into());
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
-        Self::emit_function(decl, &Self::string(rust_name)?, None)
-            .map_err(|e| format!("declaration={declared_name}; {e}"))
+        let code = Self::emit_function(decl, &Self::string(rust_name)?, None)
+            .map_err(|e| format!("declaration={declared_name}; {e}"))?;
+        with_runtime_if_needed(code)
     }
 
     unsafe fn emit_function(
@@ -624,7 +682,7 @@ impl Reader {
         if result.len() > safety::MAX_OUTPUT_BYTES {
             return Err("generated Rust closure output byte limit exceeded".into());
         }
-        Ok(result)
+        with_runtime_if_needed(result)
     }
 }
 
@@ -660,7 +718,52 @@ fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
 }
 
 fn is_primitive(name: &str) -> bool {
-    primitive_spec(name).is_some()
+    primitive_spec(name).is_some() || runtime_primitive_spec(name).is_some()
+}
+
+const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");
+
+struct RuntimePrimitiveSpec<'a> {
+    rust_function: &'a str,
+    shape: &'a str,
+}
+
+fn runtime_primitive_spec(name: &str) -> Option<RuntimePrimitiveSpec<'static>> {
+    RUNTIME_PRIMITIVE_REGISTRY
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .find_map(|line| {
+            let mut cells = line.split('\t');
+            let id = cells.next()?;
+            let rust_function = cells.next()?;
+            let shape = cells.next()?;
+            if cells.next().is_some() || id != name {
+                return None;
+            }
+            Some(RuntimePrimitiveSpec {
+                rust_function,
+                shape,
+            })
+        })
+}
+
+fn with_runtime_if_needed(source: String) -> Result<String, String> {
+    let needs_runtime = source.contains("native_runtime::")
+        || source.contains(": Value")
+        || source.contains("-> Value")
+        || source.contains("Value::");
+    let output = if needs_runtime {
+        format!(
+            "mod native_runtime {{\n{}\n}}\npub use native_runtime::Value;\n{source}",
+            include_str!("standalone_runtime.rs")
+        )
+    } else {
+        source
+    };
+    if output.len() > safety::MAX_OUTPUT_BYTES {
+        return Err("complete generated Rust, including embedded value runtime, exceeds output byte limit".into());
+    }
+    Ok(output)
 }
 
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
@@ -791,12 +894,76 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("Decl", 0)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("Decl", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 4)));
-        assert!(!SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 8)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 12)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 6)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("Expr", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 9)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 14);
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 19);
+    }
+
+    #[test]
+    fn embedded_runtime_is_included_in_the_output_size_cap() {
+        let tiny = super::with_runtime_if_needed("pub fn tiny() -> u64 { 2 }".to_owned())
+            .expect("scalar-only function");
+        assert!(!tiny.contains("mod native_runtime"));
+        let source = format!("// input\nlet x_1: Value = Value::nat(\"1\");\n{}", "a".repeat(super::safety::MAX_OUTPUT_BYTES));
+        assert!(super::with_runtime_if_needed(source).is_err());
+    }
+
+    #[test]
+    fn value_registry_covers_only_explicitly_tested_lean_runtime_adapters() {
+        use super::{runtime_primitive_spec, RUNTIME_PRIMITIVE_REGISTRY};
+        use std::collections::BTreeSet;
+        let expected: BTreeSet<_> = [
+            "Nat.add",
+            "Nat.sub",
+            "Nat.mul",
+            "Int.add",
+            "String.append",
+            "String.utf8ByteSize",
+            "String.length",
+            "Array.push",
+            "Array.size",
+            "List.reverse._redArg",
+        ]
+        .into_iter()
+        .collect();
+        let source = include_str!("standalone_runtime.rs");
+        let mut actual = BTreeSet::new();
+        for row in RUNTIME_PRIMITIVE_REGISTRY
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        {
+            let cells: Vec<_> = row.split('\t').collect();
+            assert_eq!(cells.len(), 3, "malformed runtime primitive row: {row}");
+            assert!(
+                actual.insert(cells[0]),
+                "duplicate source primitive: {}",
+                cells[0]
+            );
+            let spec = runtime_primitive_spec(cells[0]).unwrap();
+            assert_eq!(spec.rust_function, cells[1]);
+            assert_eq!(spec.shape, cells[2]);
+            assert!(
+                ["binary", "unary", "erased_binary", "erased_unary"].contains(&spec.shape),
+                "invalid runtime primitive shape: {}",
+                spec.shape
+            );
+            assert!(
+                source.contains(&format!("pub fn {}(", spec.rust_function)),
+                "missing dependency-free adapter: {}",
+                spec.rust_function
+            );
+        }
+        assert_eq!(
+            actual, expected,
+            "primitive coverage changed without corresponding tests"
+        );
     }
 
     #[test]

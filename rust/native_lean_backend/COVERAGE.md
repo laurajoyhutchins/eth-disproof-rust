@@ -9,12 +9,12 @@ refuse. Constructor/tag identities below are pinned to
 | IR family | Supported | Explicitly unsupported |
 | --- | --- | --- |
 | `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
-| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize` | `float`, `float32`, `erased`, `object`, `tobject`, `tagged`, `void`, `struct`, `union` |
-| `Arg` | `var` with known, matching type | `erased` in runtime position |
-| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls to supported compiled declarations | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
+| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize`, plus bounded `object`/`tobject`/`tagged` value adapters | `float`, `float32`, `erased`, `void`, `struct`, `union` and arbitrary heap layouts |
+| `Arg` | `var` with known type; `erased` only in exact Array type-proof positions | erased values used as runtime operands |
+| `Expr` | bounded `lit.num`, selected `fap` primitives, typed direct calls, UInt64-to-value `box` | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, other `box`/`unbox`, `lit.str`, `isShared`, other `fap` |
 | `FnBody` | `vdecl`, `ret`, `case` on Bool-as-UInt8 with exactly `Bool.false` and `Bool.true` arms | `jdecl`, `jmp`, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, other `case`, `unreachable` |
 | `Alt` | two exact Bool `ctor` alternatives | `default`, other constructors |
-| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
+| Primitive operations | 30 scalar operations plus ten exact Nat/Int/String/Array/List value adapters in `runtime-primitive-registry.tsv` | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
 Lean `Bool` is emitted as the compiler's `u8` representation (`0=false`,
@@ -90,7 +90,7 @@ automatically-derived conformance matrix is still open.
 ## Derived constructor and primitive conformance
 
 The pinned Lean environment emits a constructor inventory which must exactly
-match `ir-coverage-classification.tsv`. Rust `build.rs` converts the 14
+match `ir-coverage-classification.tsv`. Rust `build.rs` converts the 19
 `implemented_bounded` entries into the production decoder's allowed tag set;
 all other constructor variants fail closed. `primitive-registry.tsv` is the
 shared production primitive list, not a parallel prose table. The native
@@ -99,3 +99,13 @@ smoke suite generates 1,920 extra original-Lean oracle checks (30 primitives ×
 
 [CONFORMANCE.md](CONFORMANCE.md) describes the machine-readable ledgers,
 coverage scope, and what testing does *not* establish.
+
+## Item 30 object-value conformance
+
+Ten source-native primitive adapters provide exact BigNat/BigInt arithmetic,
+Unicode append/length, Array UInt64 push/size and List UInt64 reversal.
+The bounded whitelist now allows 19 of 48 IR constructors and refuses 29.
+The new original-Lean oracle fixture adds **100 comparisons**, yielding
+**4,004** total across the historical scalar/control-flow/recursion suite.
+Undefined/unimplemented heap operations are not silently substituted.
+See [SEMANTICS.md](SEMANTICS.md) for the type boundary and exact evidence.

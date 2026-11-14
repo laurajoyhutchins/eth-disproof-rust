@@ -62,6 +62,42 @@ struct ImmutableCaseContext<'a> {
 // redundant only while mutation, isShared, reset and reuse remain unsupported.
 const RUNTIME_SOURCE: &str = include_str!("runtime/immutable_value.rs");
 
+const ARRAY_OWNERSHIP_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_array_ownership_tests {
+    use super::__LeanValue;
+    use std::rc::Rc;
+
+    #[test]
+    fn unique_owner_reuses_array_allocation() {
+        let empty = __LeanValue::empty_array(2);
+        let original = Rc::as_ptr(&empty.0);
+        let pushed = empty.array_push_owned(__LeanValue::tagged(7));
+        assert!(std::ptr::eq(original, Rc::as_ptr(&pushed.0)));
+        let original = Rc::as_ptr(&pushed.0);
+        let updated = pushed.array_set_tagged_owned(0, __LeanValue::tagged(11));
+        assert!(std::ptr::eq(original, Rc::as_ptr(&updated.0)));
+        assert_eq!(updated.array_get_tagged(0).tagged_nat(), 11);
+    }
+
+    #[test]
+    fn shared_owner_keeps_earlier_alias_unchanged() {
+        let original = __LeanValue::empty_array(2)
+            .array_push_owned(__LeanValue::tagged(3));
+        let alias = original.clone();
+        let allocation = Rc::as_ptr(&original.0);
+        let updated = original.array_set_tagged_owned(0, __LeanValue::tagged(17));
+        assert!(!std::ptr::eq(allocation, Rc::as_ptr(&updated.0)));
+        assert_eq!(alias.array_get_tagged(0).tagged_nat(), 3);
+        assert_eq!(updated.array_get_tagged(0).tagged_nat(), 17);
+        let appended = alias.clone().array_push_owned(__LeanValue::tagged(19));
+        assert_eq!(alias.array_size().nat_to_decimal(), "1");
+        assert_eq!(appended.array_size().nat_to_decimal(), "2");
+    }
+}
+"#;
+
+
 fn is_value_type(ty: &str) -> bool {
     matches!(ty, "obj" | "tobj" | "tagged")
 }
@@ -105,7 +141,18 @@ fn immutable_case_ctor(family: &str, index: usize, actual: &str) -> Result<usize
 
 fn include_value_runtime(source: String) -> Result<String, String> {
     let code = if source.contains("__LeanValue") {
-        format!("{RUNTIME_SOURCE}\n{source}")
+        // Runtime identity is shared by every generated package. Tests are
+        // appended after functions so Clippy sees no items after a test module.
+        let tests = if source.contains(".array_push(")
+            || source.contains(".array_push_owned(")
+            || source.contains(".array_set_tagged(")
+            || source.contains(".array_set_tagged_owned(")
+        {
+            ARRAY_OWNERSHIP_TEST_SOURCE
+        } else {
+            ""
+        };
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}")
     } else {
         source
     };
@@ -297,11 +344,98 @@ impl Reader {
             t => Err(format!("literal constructor {t} unsupported")),
         }
     }
+
+    // Last-use analysis only permits moves through a straight-line tail.
+    // Any join, branch, unknown expression, or reference bookkeeping for the
+    // candidate is conservatively considered an additional use. This is a
+    // performance optimization; it never extends accepted source semantics.
+    unsafe fn arg_refs(x: Obj, id: usize) -> Result<bool, String> {
+        Ok(match Self::checked_tag(x, "Arg")? {
+            0 => Self::var(Self::field(x, 0)?)? == id,
+            1 => false,
+            _ => true,
+        })
+    }
+
+    unsafe fn args_ref(args: Obj, id: usize) -> Result<bool, String> {
+        for arg in Self::array(args)? {
+            if Self::arg_refs(arg, id)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    unsafe fn expr_refs(x: Obj, id: usize) -> Result<bool, String> {
+        Ok(match Self::checked_tag(x, "Expr")? {
+            0 => Self::args_ref(Self::field(x, 1)?, id)?,
+            3 | 9 => Self::var(Self::field(x, 1)?)? == id,
+            6 | 7 => Self::args_ref(Self::field(x, 1)?, id)?,
+            8 => Self::var(Self::field(x, 0)?)? == id
+                || Self::args_ref(Self::field(x, 1)?, id)?,
+            10 => Self::var(Self::field(x, 0)?)? == id,
+            11 => false,
+            _ => true,
+        })
+    }
+
+    unsafe fn straight_tail_unused(mut x: Obj, id: usize) -> Result<bool, String> {
+        for _ in 0..100_000 {
+            match Self::checked_tag(x, "FnBody")? {
+                0 => {
+                    if Self::expr_refs(Self::field(x, 2)?, id)? {
+                        return Ok(false);
+                    }
+                    x = Self::field(x, 3)?;
+                }
+                6 | 7 => {
+                    if Self::var(Self::field(x, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    x = Self::field(x, 2)?;
+                }
+                8 => {
+                    if Self::var(Self::field(x, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    x = Self::field(x, 1)?;
+                }
+                10 => return Ok(!Self::arg_refs(Self::field(x, 0)?, id)?),
+                _ => return Ok(false),
+            }
+        }
+        Ok(false)
+    }
+
+    unsafe fn consumable_array(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
+        if Self::checked_tag(expr, "Expr")? != 6 {
+            return Ok(None);
+        }
+        let name = Self::name(Self::field(expr, 0)?, 0)?;
+        let arity = match name.as_str() {
+            "Array.push" => 3,
+            "Array.set!" => 4,
+            _ => return Ok(None),
+        };
+        let args = Self::array(Self::field(expr, 1)?)?;
+        if args.len() != arity || Self::checked_tag(args[1], "Arg")? != 0 {
+            return Ok(None);
+        }
+        let id = Self::var(Self::field(args[1], 0)?)?;
+        for arg in args.iter().skip(2) {
+            if Self::arg_refs(*arg, id)? {
+                return Ok(None);
+            }
+        }
+        Ok(Self::straight_tail_unused(tail, id)?.then_some(id))
+    }
+
     unsafe fn expr(
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
+        consumed_array: Option<usize>,
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
@@ -566,9 +700,11 @@ impl Reader {
                             let array = Self::arg(args[1], env, "obj")?;
                             let index = Self::arg(args[2], env, "tagged")?;
                             let value = Self::arg(args[3], env, "tobj")?;
-                            Ok(format!(
-                                "{array}.array_set_tagged({index}.tagged_nat(), {value})"
-                            ))
+                            if let Some(id) = consumed_array {
+                                Ok(format!("x_{id}.array_set_tagged_owned({index}.tagged_nat(), {value})"))
+                            } else {
+                                Ok(format!("{array}.array_set_tagged({index}.tagged_nat(), {value})"))
+                            }
                         }
                         _ => unreachable!(),
                     };
@@ -601,6 +737,14 @@ impl Reader {
                     let mut operands = Vec::new();
                     for arg in &args[begin..] {
                         operands.push(Self::arg(*arg, env, "tobj")?);
+                    }
+                    if name == "Array.push" {
+                        if let Some(id) = consumed_array {
+                            if operands.len() != 2 {
+                                return Err("Array.push ownership operands malformed".into());
+                            }
+                            return Ok(format!("x_{id}.array_push_owned({})", operands[1]));
+                        }
                     }
                     return match operands.as_slice() {
                         [value] => Ok(format!("{value}.{}()", runtime.rust_function)),
@@ -1073,7 +1217,16 @@ impl Reader {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
-                    let value = Self::expr(Self::field(x, 2)?, ty, env, ctx.functions)?;
+                    let expr = Self::field(x, 2)?;
+                    // A lexical join or nested control-flow arm may capture
+                    // this variable. Only top-level straight-line tails can
+                    // transfer ownership to the Rc array fast path.
+                    let consumed_array = if depth == 0 && ctx.joins.is_empty() {
+                        Self::consumable_array(expr, Self::field(x, 3)?)?
+                    } else {
+                        None
+                    };
+                    let value = Self::expr(expr, ty, env, ctx.functions, consumed_array)?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }

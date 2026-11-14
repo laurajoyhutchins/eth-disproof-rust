@@ -313,14 +313,17 @@ impl Reader {
                 let size = Self::nat(Self::field(info, 2)?)?;
                 let usize_count = Self::nat(Self::field(info, 3)?)?;
                 let ssize = Self::nat(Self::field(info, 4)?)?;
-                if !matches!(name.as_str(), "Option.none" | "Option.some" | "Prod.mk") {
+                if !matches!(
+                    name.as_str(),
+                    "Option.none" | "Option.some" | "Prod.mk" | "List.nil" | "List.cons"
+                ) {
                     return Err(format!(
                         "constructor {name} is not in the verified runtime subset"
                     ));
                 }
                 let expected_arity = match name.as_str() {
-                    "Option.none" => (0, 0),
-                    "Option.some" => (1, 1),
+                    "Option.none" | "List.nil" => (0, 0),
+                    "Option.some" | "List.cons" => (1, if name == "List.cons" { 2 } else { 1 }),
                     "Prod.mk" => (0, 2),
                     _ => unreachable!(),
                 };
@@ -331,9 +334,9 @@ impl Reader {
                 {
                     return Err(format!("constructor {name} layout unsupported"));
                 }
-                if name == "Option.none" {
+                if matches!(name.as_str(), "Option.none" | "List.nil") {
                     if var_ty != "tagged" {
-                        return Err("Option.none must be tagged in pinned IR".into());
+                        return Err(format!("{name} must be tagged in pinned IR"));
                     }
                     return Ok("__LeanValue::tagged(0)".into());
                 }
@@ -343,6 +346,9 @@ impl Reader {
                 let mut args = Vec::new();
                 for arg in fields {
                     args.push(Self::arg(arg, env, "tobj")?);
+                }
+                if name == "List.cons" {
+                    return Ok(format!("__LeanValue::list_cons({}, {})", args[0], args[1]));
                 }
                 Ok(format!(
                     "__LeanValue::ctor({tag}, \"{name}\", vec![{}])",

@@ -346,7 +346,8 @@ fn lex_math(raw: &str) -> Result<Vec<Token>> {
         out.push(tok);
         i += 1;
     }
-    Ok(out)}
+    Ok(out)
+}
 #[derive(Debug)]
 struct Parser {
     tokens: Vec<Token>,
@@ -694,7 +695,8 @@ fn parse_theorem(body: &str) -> Result<Claim> {
         toks.drain(..2);
         let n = match toks.as_slice() {
             [Token::Ident(x), Token::Caret, Token::Num(n)] if x == "R" => checked_dim(*n as usize)?,
-            _ => return Err(bad("theorem", "bad vector dimension")),        };
+            _ => return Err(bad("theorem", "bad vector dimension")),
+        };
         let between = &text[spans[0].1..spans[1].0];
         if between.trim() != "," || text[spans[1].1..].trim() != "." {
             return Err(bad("theorem", "unrecognized vector quantifier prose"));
@@ -1042,7 +1044,8 @@ pub fn to_lean(article: &Article, namespace: &str) -> Result<String> {
     for d in &article.definitions {
         lines.push(render_def(d)?);
     }
-    let prop = match &article.claim {        Claim::WordCount {
+    let prop = match &article.claim {
+        Claim::WordCount {
             base,
             length,
             count,

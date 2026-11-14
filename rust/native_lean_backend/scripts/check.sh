@@ -427,7 +427,11 @@ done
 # Emitted programs must include precisely the one canonical value runtime.
 runtime_bytes="$(wc -c < src/runtime/immutable_value.rs)"
 cmp -n "$runtime_bytes" src/runtime/immutable_value.rs examples/array-package/src/lib.rs
-if ldd examples/array-package/target/debug/deps/lean_generated-* 2>/dev/null | grep -i 'lean4\|liblean'; then
+array_binary="$(find examples/array-package/target/debug/deps -maxdepth 1 -type f -name 'arrays-*' -perm /111 -print -quit)"
+if [[ -z "$array_binary" ]]; then
+  echo "source Array executable test binary was not produced" >&2; exit 1
+fi
+if ldd "$array_binary" | grep -Ei 'liblean|lean4'; then
   echo "standalone source Array unexpectedly links Lean" >&2; exit 1
 fi
 # Receipt exists only after *all* end-to-end and negative checks pass.

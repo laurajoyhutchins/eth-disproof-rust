@@ -1164,7 +1164,9 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 
 #[cfg(test)]
 mod tests {
-    use super::{append_name_component, encode_name_str, internal_name, RUNTIME_SOURCE, SUPPORTED_IR_TAGS};
+    use super::{
+        append_name_component, encode_name_str, internal_name, RUNTIME_SOURCE, SUPPORTED_IR_TAGS,
+    };
     #[test]
     fn one_canonical_generated_immutable_runtime() {
         assert_eq!(RUNTIME_SOURCE.matches("pub struct __LeanValue(").count(), 1);

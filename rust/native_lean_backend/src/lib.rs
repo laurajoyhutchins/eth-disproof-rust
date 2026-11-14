@@ -12,6 +12,7 @@ mod safety;
 
 // Exact standalone value semantics, also unit-tested inside the backend.
 #[cfg(test)]
+#[allow(dead_code)]
 mod standalone_runtime;
 
 // Generated at build time from the pinned constructor classification.
@@ -877,9 +878,13 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("Decl", 0)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("Decl", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 4)));
-        assert!(!SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 8)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 12)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 6)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("Expr", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 9)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
         assert_eq!(SUPPORTED_IR_TAGS.len(), 19);

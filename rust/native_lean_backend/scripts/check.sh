@@ -181,8 +181,8 @@ fi
 if [[ "$(grep -c 'Generated directly from Lean IR declaration: ObjectFixture.mkOpt' examples/object-package/src/lib.rs)" != 1 ]]; then
   echo "object constructor dependency was not emitted exactly once" >&2; exit 1
 fi
-# Nat literals are now supported (see LargeNat), but non-Option
-# sum constructors remain outside the verified immutable runtime.
+# Nat and exact Option/Sum constructors are supported, but custom
+# inductive constructors are still refused without verified layouts.
 for fixture in RefusalObjectCtor; do
   rm -rf examples/rejected-object-package
   if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then

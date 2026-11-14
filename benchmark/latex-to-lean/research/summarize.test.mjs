@@ -15,7 +15,7 @@ function fixture(){
  fs.writeFileSync(path.join(evidence,'vendor.sha'),manifest.upstream_commit+'\n');
  for(const x of manifest.cases){
   fs.writeFileSync(path.join(cases,x.id+'.tex'),'synthetic source '+x.id);
-  fs.writeFileSync(path.join(evidence,x.id+'.stdout'),'info: claim 0: forall x, x=x\nresults: 1 compiled, 0 failed, 0 prose (of 1)\n');
+  fs.writeFileSync(path.join(evidence,x.id+'.stdout'),'info: claim 0: forall x, x=x\n0 definitions, 1 claims\nresults: 1 compiled, 0 failed, 0 prose (of 1)\n');
   fs.writeFileSync(path.join(evidence,x.id+'.stderr'),'');
   fs.writeFileSync(path.join(evidence,x.id+'.exit'),'0\n');
  }
@@ -38,13 +38,13 @@ test('missing evidence refuses to score',t=>{
 });
 test('compiler exit zero with one unread theorem earns no coverage',t=>{
  const f=fixture();t.after(()=>fs.rmSync(f.tmp,{recursive:true,force:true}));
- fs.writeFileSync(path.join(f.evidence,'RG01.stdout'),'results: 0 compiled, 0 failed, 1 prose (of 1)\n');
+ fs.writeFileSync(path.join(f.evidence,'RG01.stdout'),'0 definitions, 0 claims\nresults: 0 compiled, 0 failed, 1 prose (of 1)\n');
  assert.equal(run(f).status,0);
  assert.equal(JSON.parse(fs.readFileSync(f.output)).records[0].status,'unread_or_partial');
 });
 test('forged compiled count without emitted claim fails closed',t=>{
  const f=fixture();t.after(()=>fs.rmSync(f.tmp,{recursive:true,force:true}));
- fs.writeFileSync(path.join(f.evidence,'RG01.stdout'),'results: 1 compiled, 0 failed, 0 prose (of 1)\n');
+ fs.writeFileSync(path.join(f.evidence,'RG01.stdout'),'0 definitions, 1 claims\nresults: 1 compiled, 0 failed, 0 prose (of 1)\n');
  assert.notEqual(run(f).status,0);
 });
 test('incorrect upstream revision refuses to score',t=>{
@@ -54,9 +54,18 @@ test('incorrect upstream revision refuses to score',t=>{
 });
 test('diagnostic rejections cannot count as compiled',t=>{
  const f=fixture();t.after(()=>fs.rmSync(f.tmp,{recursive:true,force:true}));
- fs.writeFileSync(path.join(f.evidence,'RG01.stdout'),'warning: cannot parse\nresults: 0 compiled, 1 failed, 0 prose (of 1)\n');
+ fs.writeFileSync(path.join(f.evidence,'RG01.stdout'),'warning: cannot parse\n0 definitions, 0 claims\nresults: 0 compiled, 1 failed, 0 prose (of 1)\n');
  fs.writeFileSync(path.join(f.evidence,'RG01.exit'),'1\n');
  assert.equal(run(f).status,0);
  const r=JSON.parse(fs.readFileSync(f.output)).records[0];
  assert.equal(r.status,'diagnosed_failure');
+});
+test('two mathematical claims inside one compiled result sentence are valid',t=>{
+ const f=fixture();t.after(()=>fs.rmSync(f.tmp,{recursive:true,force:true}));
+ fs.writeFileSync(path.join(f.evidence,'RG01.stdout'),'info: claim 0: x=x\\ninfo: claim 1: y=y\\n2 definitions, 2 claims\\nresults: 1 compiled, 0 failed, 0 prose (of 1)\\n'.replaceAll('\\n','\n'));
+ assert.equal(run(f).status,0);
+ const rec=JSON.parse(fs.readFileSync(f.output)).records[0];
+ assert.equal(rec.status,'statement_compiled');
+ assert.equal(rec.counts.declaredClaims,2);
+ assert.equal(rec.counts.compiled,1);
 });

@@ -128,3 +128,10 @@ The exact type-proof and seven registered non-Nat adapters share the **one** imm
 ## Exact decimal constants (candidate)
 
 Up to 4 KiB of source Lean Nat storage is converted through the original pinned Lean C runtime into a decimal literal, then reconstructed into canonical GMP Nat on the standalone Rust side. **76** original-Lean oracle comparisons are required, and `Nat.pow` remains an explicit refusal. Ordinary scalar `Nat` arguments are not widened by guessing representations. Validation is limited to accepted source IR and does not constitute full Lean Nat semantics.
+
+## Lean List constructor/case subset (verified original-source IR)
+
+Source `List.nil` is accepted only with tag 0, no fields, and pinned tagged storage. Source `List.cons` is accepted only with tag 1, two immutable object-pointer fields, no scalar payload, and pinned heap-object storage. A List case must have exactly two independently source-checked `List.nil`/`List.cons` alternatives. Cases never reinterpret `List.nil` as `Option.none` merely because they share a tag. Generated cons has O(1) `Rc`-shared tail construction; existing Vec-backed persistent List adapters remain interoperable but can incur O(n) projection of a tail.
+
+The same canonical `__LeanValue`/GMP runtime handles these objects, source-defined Nat comparisons and imported List dependencies. The original unchanged Armada `Sched.argLeastLoad` and specialized `List.min?`/`List.idxOf` closure now compile and agree with **128** independent Lean evaluations in standalone Rust; a separate **512**-case List fixture passed. See [EVIDENCE.md](EVIDENCE.md) for source hash and CI artifact. The full three-project acceptance remains open: Newspeak `isShared`, Keboola `sproj`. No full List/heap semantics or resource equivalence are claimed.
+

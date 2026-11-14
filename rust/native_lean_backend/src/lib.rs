@@ -51,6 +51,12 @@ struct LoweringContext<'a> {
     joins: &'a JoinTable,
 }
 
+#[derive(Clone, Copy)]
+struct ImmutableCaseContext<'a> {
+    lowering: LoweringContext<'a>,
+    family: &'static str,
+}
+
 // Standalone immutable object model for the supported Lean IR subset.
 // Rc cloning models shared immutable values; source inc/dec instructions are
 // redundant only while mutation, isShared, reset and reuse remain unsupported.
@@ -70,6 +76,29 @@ fn rust_type(ty: &str) -> &str {
 
 fn ir_type_compatible(found: &str, expected: &str) -> bool {
     found == expected || (expected == "tobj" && matches!(found, "obj" | "tagged"))
+}
+
+// Typed source constructor identities, not numeric tags alone, authorize
+// immutable List/Option case lowering. This avoids List.nil==Option.none by
+// accident even though both use the pinned Lean tagged-zero representation.
+fn immutable_case_ctor(family: &str, index: usize, actual: &str) -> Result<usize, String> {
+    let (expected, pointers) = match (family, index) {
+        ("Option", 0) => ("Option.none", 0),
+        ("Option", 1) => ("Option.some", 1),
+        ("List", 0) => ("List.nil", 0),
+        ("List", 1) => ("List.cons", 2),
+        _ => {
+            return Err(format!(
+                "unsupported {family} object case constructor {actual} at tag {index}"
+            ));
+        }
+    };
+    if actual != expected {
+        return Err(format!(
+            "unsupported {family} object case constructor {actual} at tag {index}; expected {expected}"
+        ));
+    }
+    Ok(pointers)
 }
 
 fn include_value_runtime(source: String) -> Result<String, String> {
@@ -313,14 +342,17 @@ impl Reader {
                 let size = Self::nat(Self::field(info, 2)?)?;
                 let usize_count = Self::nat(Self::field(info, 3)?)?;
                 let ssize = Self::nat(Self::field(info, 4)?)?;
-                if !matches!(name.as_str(), "Option.none" | "Option.some" | "Prod.mk") {
+                if !matches!(
+                    name.as_str(),
+                    "Option.none" | "Option.some" | "Prod.mk" | "List.nil" | "List.cons"
+                ) {
                     return Err(format!(
                         "constructor {name} is not in the verified runtime subset"
                     ));
                 }
                 let expected_arity = match name.as_str() {
-                    "Option.none" => (0, 0),
-                    "Option.some" => (1, 1),
+                    "Option.none" | "List.nil" => (0, 0),
+                    "Option.some" | "List.cons" => (1, if name == "List.cons" { 2 } else { 1 }),
                     "Prod.mk" => (0, 2),
                     _ => unreachable!(),
                 };
@@ -331,9 +363,9 @@ impl Reader {
                 {
                     return Err(format!("constructor {name} layout unsupported"));
                 }
-                if name == "Option.none" {
+                if matches!(name.as_str(), "Option.none" | "List.nil") {
                     if var_ty != "tagged" {
-                        return Err("Option.none must be tagged in pinned IR".into());
+                        return Err(format!("{name} must be tagged in pinned IR"));
                     }
                     return Ok("__LeanValue::tagged(0)".into());
                 }
@@ -343,6 +375,9 @@ impl Reader {
                 let mut args = Vec::new();
                 for arg in fields {
                     args.push(Self::arg(arg, env, "tobj")?);
+                }
+                if name == "List.cons" {
+                    return Ok(format!("__LeanValue::list_cons({}, {})", args[0], args[1]));
                 }
                 Ok(format!(
                     "__LeanValue::ctor({tag}, \"{name}\", vec![{}])",
@@ -596,7 +631,45 @@ impl Reader {
     ) -> Result<(), String> {
         let type_name = Self::name(Self::field(x, 0)?, 0)?;
         match type_name.as_str() {
-            "Option" | "tobj" | "obj" => Self::option_case(x, code, depth, count, env, ret_ty, ctx),
+            "Option" | "List" | "tobj" | "obj" => {
+                // The storage type may be erased to obj/tobj. Inspect the
+                // actual source CtorInfo, never infer List from a numeric tag.
+                let alts = Self::array(Self::field(x, 3)?)?;
+                let mut family = None;
+                for alt in alts {
+                    if Self::checked_tag(alt, "Alt")? != 0 {
+                        continue;
+                    }
+                    let info = Self::field(alt, 0)?;
+                    let name = Self::name(Self::field(info, 0)?, 0)?;
+                    family = Some(if name.starts_with("Option.") {
+                        "Option"
+                    } else if name.starts_with("List.") {
+                        "List"
+                    } else {
+                        return Err(format!("unsupported object-valued case constructor {name}"));
+                    });
+                    break;
+                }
+                let family = family.ok_or("object case has no constructor identity")?;
+                if matches!(type_name.as_str(), "Option" | "List") && type_name != family {
+                    return Err(format!(
+                        "object case source family {family} contradicts storage type {type_name}"
+                    ));
+                }
+                Self::immutable_case(
+                    x,
+                    code,
+                    depth,
+                    count,
+                    env,
+                    ret_ty,
+                    ImmutableCaseContext {
+                        lowering: ctx,
+                        family,
+                    },
+                )
+            }
             _ => {
                 let alts = Self::array(Self::field(x, 3)?)?;
                 let mut has_bool_constructor = false;
@@ -710,57 +783,81 @@ impl Reader {
         Ok(())
     }
 
-    unsafe fn option_case(
+    unsafe fn immutable_case(
         x: Obj,
         code: &mut String,
         depth: usize,
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
-        ctx: LoweringContext<'_>,
+        scoped: ImmutableCaseContext<'_>,
     ) -> Result<(), String> {
+        let family = scoped.family;
+        let ctx = scoped.lowering;
         if !is_value_type(Self::ty(Self::field(x, 2)?)?) {
-            return Err("Option case scrutinee must be object-valued".into());
+            return Err(format!("{family} case scrutinee must be object-valued"));
         }
         let id = Self::var(Self::field(x, 1)?)?;
         if !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
-            return Err("Option case scrutinee not object-valued".into());
+            return Err(format!("{family} case scrutinee is not object-valued"));
         }
         let alts = Self::array(Self::field(x, 3)?)?;
         if alts.len() != 2 {
-            return Err("Option case requires exactly two constructors".into());
+            return Err(format!(
+                "{family} case requires exactly two constructor alternatives"
+            ));
         }
         let mut seen = [false; 2];
         writeln!(code, "    match x_{id}.tag() {{").unwrap();
         for alt in alts {
-            if Self::tag(alt)? != 0 {
-                return Err("Option default alternative unsupported".into());
+            if Self::checked_tag(alt, "Alt")? != 0 {
+                return Err(format!("{family} default case alternative unsupported"));
             }
             let info = Self::field(alt, 0)?;
-            let ctor = Self::name(Self::field(info, 0)?, 0)?;
+            let name = Self::name(Self::field(info, 0)?, 0)?;
             let idx = Self::nat(Self::field(info, 1)?)?;
-            let expected = match idx {
-                0 => "Option.none",
-                1 => "Option.some",
-                _ => return Err("invalid Option constructor index".into()),
-            };
-            if expected != ctor || seen[idx] {
-                return Err("incorrect Option constructor metadata".into());
+            let expected_pointers = immutable_case_ctor(family, idx, &name)?;
+            if seen[idx] {
+                return Err(format!(
+                    "duplicate {family} case constructor {name} at tag {idx}"
+                ));
             }
             let pointer_fields = Self::nat(Self::field(info, 2)?)?;
             let usize_fields = Self::nat(Self::field(info, 3)?)?;
             let scalar_bytes = Self::nat(Self::field(info, 4)?)?;
-            if pointer_fields != idx || usize_fields != 0 || scalar_bytes != 0 {
+            if pointer_fields != expected_pointers || usize_fields != 0 || scalar_bytes != 0 {
                 return Err(format!(
-                    "Option alternative {ctor} has unsupported field layout"
+                    "{family} alternative {name} has unsupported field layout"
                 ));
             }
             seen[idx] = true;
             writeln!(code, "        {idx} => {{").unwrap();
             if idx == 0 {
-                writeln!(code, "            assert!(x_{id}.has_tagged(0), \"invalid Option.none representation\");").unwrap();
+                if family == "List" {
+                    writeln!(
+                        code,
+                        "            assert!(x_{id}.list_is_nil(), \"invalid List.nil representation\");"
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        code,
+                        "            assert!(x_{id}.has_tagged(0), \"invalid Option.none representation\");"
+                    )
+                    .unwrap();
+                }
+            } else if family == "List" {
+                writeln!(
+                    code,
+                    "            assert!(x_{id}.list_is_cons(), \"invalid List.cons representation\");"
+                )
+                .unwrap();
             } else {
-                writeln!(code, "            assert!(x_{id}.has_ctor(1, \"Option.some\", 1), \"invalid Option.some representation\");").unwrap();
+                writeln!(
+                    code,
+                    "            assert!(x_{id}.has_ctor(1, \"Option.some\", 1), \"invalid Option.some representation\");"
+                )
+                .unwrap();
             }
             let mut arm_env = env.clone();
             Self::body(
@@ -775,9 +872,9 @@ impl Reader {
             writeln!(code, "        }}").unwrap();
         }
         if !seen.into_iter().all(|b| b) {
-            return Err("incomplete Option case".into());
+            return Err(format!("incomplete {family} case"));
         }
-        writeln!(code, "        _ => unreachable!(\"invalid Option tag\"),").unwrap();
+        writeln!(code, "        _ => unreachable!(\"invalid {family} tag\"),").unwrap();
         writeln!(code, "    }}").unwrap();
         Ok(())
     }
@@ -1542,8 +1639,29 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 #[cfg(test)]
 mod tests {
     use super::{
-        append_name_component, encode_name_str, internal_name, RUNTIME_SOURCE, SUPPORTED_IR_TAGS,
+        append_name_component, encode_name_str, immutable_case_ctor, internal_name, RUNTIME_SOURCE,
+        SUPPORTED_IR_TAGS,
     };
+    #[test]
+    fn list_and_option_cases_require_source_constructor_identity_and_layout() {
+        assert_eq!(immutable_case_ctor("Option", 0, "Option.none").unwrap(), 0);
+        assert_eq!(immutable_case_ctor("Option", 1, "Option.some").unwrap(), 1);
+        assert_eq!(immutable_case_ctor("List", 0, "List.nil").unwrap(), 0);
+        assert_eq!(immutable_case_ctor("List", 1, "List.cons").unwrap(), 2);
+        for (family, index, name) in [
+            ("Option", 0, "List.nil"),
+            ("Option", 1, "List.cons"),
+            ("List", 0, "Option.none"),
+            ("List", 1, "Option.some"),
+            ("List", 0, "Sum.inl"),
+            ("List", 2, "List.cons"),
+        ] {
+            let err = immutable_case_ctor(family, index, name).unwrap_err();
+            assert!(err.contains("unsupported"));
+            assert!(err.contains(name));
+        }
+    }
+
     #[test]
     fn one_generated_value_abi_for_nat_objects_and_closures() {
         assert_eq!(RUNTIME_SOURCE.matches("pub struct __LeanValue(").count(), 1);

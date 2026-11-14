@@ -118,3 +118,8 @@ jobs:
             rust/native_lean_backend/artifacts/external-projects/*/*.txt
             rust/native_lean_backend/artifacts/external-projects/*/*.log
             rust/native_lean_backend/artifacts/external-projects/*/*.time
+            rust/native_lean_backend/artifacts/external-projects/*/generated.rs
+            rust/native_lean_backend/artifacts/external-projects/*/verified-crate/Cargo.toml
+            rust/native_lean_backend/artifacts/external-projects/*/verified-crate/src/*.rs
+            rust/native_lean_backend/artifacts/external-projects/*/verified-crate/tests/*.rs
+            rust/native_lean_backend/examples/ListFixture.lean

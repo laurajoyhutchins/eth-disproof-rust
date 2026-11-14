@@ -169,6 +169,57 @@ impl __LeanValue {
     pub fn list(values: Vec<Self>) -> Self {
         Self(std::rc::Rc::new(__LeanValueRepr::List(values)))
     }
+    // Generated Lean List.cons is a two-pointer immutable constructor.
+    // Retain O(1) cons and sharing rather than copying the tail on construction.
+    // Vec-backed lists remain accepted as the existing source-runtime List
+    // adapter's owned input/output representation.
+    fn list_cons(head: Self, tail: Self) -> Self {
+        assert!(tail.list_is_nil() || tail.list_is_cons(), "List.cons tail must be a List");
+        Self::ctor(1, "List.cons", vec![head, tail])
+    }
+    fn list_is_nil(&self) -> bool {
+        match self.0.as_ref() {
+            __LeanValueRepr::Tagged(0) => true,
+            __LeanValueRepr::List(values) => values.is_empty(),
+            _ => false,
+        }
+    }
+    fn list_is_cons(&self) -> bool {
+        match self.0.as_ref() {
+            __LeanValueRepr::Ctor { tag: 1, name: "List.cons", fields } =>
+                fields.len() == 2,
+            __LeanValueRepr::List(values) => !values.is_empty(),
+            _ => false,
+        }
+    }
+    // Source-defined list operators must accept both immutable cons cells
+    // and the preexisting Vec-backed, persistent List runtime adapter.
+    // The resource cap is explicit; no recursive traversal or hidden mutation.
+    fn list_items(&self) -> Vec<Self> {
+        let mut items = Vec::new();
+        let mut cursor = self.clone();
+        loop {
+            let next = match cursor.0.as_ref() {
+                __LeanValueRepr::Tagged(0) => None,
+                __LeanValueRepr::List(values) => {
+                    items.extend(values.iter().cloned());
+                    None
+                }
+                __LeanValueRepr::Ctor { tag: 1, name: "List.cons", fields }
+                    if fields.len() == 2 => {
+                    items.push(fields[0].clone());
+                    Some(fields[1].clone())
+                }
+                _ => panic!("List operation received unsupported value representation"),
+            };
+            assert!(items.len() <= 1_000_000, "List conversion exceeds bounded runtime policy");
+            match next {
+                Some(tail) => cursor = tail,
+                None => break,
+            }
+        }
+        items
+    }
     fn int_add(&self, rhs: &Self) -> Self {
         let (__LeanValueRepr::Int(a), __LeanValueRepr::Int(b)) =
             (self.0.as_ref(), rhs.0.as_ref())
@@ -206,9 +257,9 @@ impl __LeanValue {
         Self::nat_from_decimal(&values.len().to_string())
     }
     fn list_reverse(&self) -> Self {
-        let __LeanValueRepr::List(values) = self.0.as_ref()
-        else { panic!("List.reverse expects List"); };
-        Self::list(values.iter().rev().cloned().collect())
+        let mut values = self.list_items();
+        values.reverse();
+        Self::list(values)
     }
     pub fn nat_from_decimal(value: &str) -> Self {
         Self(std::rc::Rc::new(__LeanValueRepr::Nat(__LeanBigNat::from_decimal(value))))
@@ -241,19 +292,31 @@ impl __LeanValue {
         match self.0.as_ref() {
             __LeanValueRepr::Tagged(v) => *v,
             __LeanValueRepr::Ctor { tag, .. } => *tag,
+            __LeanValueRepr::List(values) => usize::from(!values.is_empty()),
             _ => panic!("tried to case-analyze a boxed scalar"),
         }
     }
     fn has_ctor(&self, tag: usize, name: &str, arity: usize) -> bool {
-        matches!(self.0.as_ref(), __LeanValueRepr::Ctor {tag: t, name: n, fields}
-            if *t == tag && *n == name && fields.len() == arity)
+        match self.0.as_ref() {
+            __LeanValueRepr::Ctor {tag: t, name: n, fields} =>
+                *t == tag && *n == name && fields.len() == arity,
+            __LeanValueRepr::List(values) =>
+                tag == 1 && name == "List.cons" && arity == 2 && !values.is_empty(),
+            _ => false,
+        }
     }
     fn has_tagged(&self, value: usize) -> bool {
         matches!(self.0.as_ref(), __LeanValueRepr::Tagged(v) if *v == value)
     }
     fn field(&self, index: usize) -> Self {
         match self.0.as_ref() {
-            __LeanValueRepr::Ctor { fields, .. } => fields.get(index).expect("constructor field absent").clone(),
+            __LeanValueRepr::Ctor { fields, .. } =>
+                fields.get(index).expect("constructor field absent").clone(),
+            __LeanValueRepr::List(values) if !values.is_empty() => match index {
+                0 => values[0].clone(),
+                1 => Self::list(values[1..].to_vec()),
+                _ => panic!("List.cons has exactly two fields"),
+            },
             _ => panic!("projection from a non-constructor"),
         }
     }

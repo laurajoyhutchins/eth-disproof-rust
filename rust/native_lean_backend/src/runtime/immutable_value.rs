@@ -166,6 +166,39 @@ impl __LeanValue {
     pub fn array(values: Vec<Self>) -> Self {
         Self(std::rc::Rc::new(__LeanValueRepr::Array(values)))
     }
+
+    // `Array.mkEmpty` has an unobservable capacity hint. Keep
+    // allocation bounded even if the original Nat is enormous.
+    fn empty_array(capacity: usize) -> Self {
+        Self::array(Vec::with_capacity(capacity.min(1024)))
+    }
+    fn tagged_nat(&self) -> usize {
+        match self.0.as_ref() {
+            __LeanValueRepr::Tagged(n) => *n,
+            _ => panic!("expected a source-verified tagged Nat"),
+        }
+    }
+    // Lean IR can lower Array.size to an immediate tagged Nat or to
+    // a boxed Nat. Keep the existing boxed adapter intact.
+    fn array_size_tagged(&self) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.size expected an Array"); };
+        Self::tagged(values.len())
+    }
+    fn array_get_tagged(&self, index: usize) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.getInternal expected an Array"); };
+        values.get(index).expect("source Array.getInternal index out of bounds").clone()
+    }
+    // A persistent copy preserves all observable prior references. The
+    // ownership-aware optimization is a separate reviewed concern.
+    fn array_set_tagged(&self, index: usize, value: Self) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.set! expected an Array"); };
+        let mut updated = values.clone();
+        *updated.get_mut(index).expect("source Array.set! index out of bounds") = value;
+        Self::array(updated)
+    }
     pub fn list(values: Vec<Self>) -> Self {
         Self(std::rc::Rc::new(__LeanValueRepr::List(values)))
     }

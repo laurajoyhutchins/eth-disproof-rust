@@ -32,8 +32,9 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 `check.sh` builds a Rust shared library and `NativeRust.olean`, then loads the
 backend into Lean's interpreter. It compiles **15 isolated declarations and
 three transitive closure roots**, generates standalone Rust, and executes
-**3,008 independently evaluated Lean/Rust assertions**, including 256 join-point
-cases and 768 multi-root Cargo library cases. It also checks
+**13,336 independently evaluated Lean/Rust assertions**, including 256 join-point
+cases, 768 multi-root library cases, 3,072 immutable Option/Prod checks, 2,048
+source-defined boxed closure/PAP/AP checks and 5,208 GMP Nat checks. It also checks
 fail-closed behavior, preserved outputs, stable output hashes, Cargo tests,
 formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
@@ -97,8 +98,9 @@ capturing Rust closures, including jumps from Boolean branches. Recursive
 joins, non-scalar join parameters, and unsupported runtime operations refuse.
 
 **Not implemented:** general Lean/Rust compilation; arbitrary-precision
-`Nat`; indirect calls, closures, non-Boolean cases, recursive joins, arrays,
-structures, general external primitives, and
+`Nat` beyond the pinned primitive subset; unrestricted indirect calls,
+custom structures, arbitrary array/string operations, recursive joins, and
+unregistered external primitives, and
 noncomputable expressions without compiler IR. The current generated functions are checked
 on examples but there is not yet a general semantic refinement theorem.
 
@@ -142,7 +144,7 @@ examples within a **bounded subset**, not proof of general compiler correctness.
 
 ## Pinned source-derived conformance matrix
 
-The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 16-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
+The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 28-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
 
 ## Integrated immutable objects and callable values
 
@@ -166,3 +168,20 @@ remainder by zero returns the dividend. Real pinned Lean IR and
 are checked by examples/NatFixture.lean. Nonregistered Nat operations
 refuse, and generated binaries require libgmp at runtime.
 General Nat semantics, signed Int, IO and portability are not established.
+
+## Canonical generated value runtime
+
+The single generated Rust value model (immutable `Rc` objects, source-defined
+boxed first-class closures, and GMP-backed arbitrary-width `Nat`) is now owned
+by [`src/runtime/immutable_value.rs`](src/runtime/immutable_value.rs). The
+compiler embeds its **exact source bytes** with `include_str!`, rather than
+maintaining copied runtime strings. The native CI compares the runtime prefix
+of independently generated Object, Function and Nat Cargo packages against
+that same file and rejects duplicate `__LeanValue` types.
+
+The extracted runtime is byte-identical to the merged #209 inline runtime; no
+source-defined algorithms or value semantics were changed in this refactor.
+Mutation, observed Lean reference sharing, general custom datatype layouts
+and effects remain unsupported. The three original external Newspeak, Armada
+and Keboola projects pass their Lean tests but still refuse selected Rust
+roots, so #193 item 32 and G1 release readiness remain open.

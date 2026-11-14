@@ -244,6 +244,18 @@ if [[ -e examples/rejected-nat-package ]] || ! grep -q "Rust native backend refu
   echo 'unsupported Nat compilation failed to refuse cleanly' >&2; exit 1
 fi
 rm -f examples/RefusalNatBitwise.log
+# All three independently generated Cargo packages must use the exact same
+# Nat/object/closure value ABI bytes, not copied or divergent runtime models.
+runtime_bytes="$(wc -c < src/runtime/immutable_value.rs)"
+for output in examples/object-package/src/lib.rs examples/function-package/src/lib.rs examples/nat-package/src/lib.rs; do
+  cmp -n "$runtime_bytes" src/runtime/immutable_value.rs "$output"
+  if [[ "$(grep -c '^pub struct __LeanValue(' "$output")" != 1 ]] ||
+     [[ "$(grep -c '^enum __LeanValueRepr ' "$output")" != 1 ]]; then
+    echo "duplicate or missing generated Value ABI in $output" >&2
+    exit 1
+  fi
+done
+echo 'canonical_nat_immutable_and_closure_runtime=ONE_IDENTICAL_SOURCE'
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -265,6 +277,8 @@ mkdir -p artifacts
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
   echo "safety_and_primitive_matrix=PASS"
+  echo "canonical_value_runtime=ONE_IDENTICAL_SOURCE_NAT_OBJECT_CLOSURE"
+  sha256sum src/runtime/immutable_value.rs
   echo "ir_constructor_inventory=PASS"
   echo "runtime_tag_whitelist=28_scoped_IR_constructors"
   echo "primitive_conformance=30_operations_x_64_original_Lean_oracles"

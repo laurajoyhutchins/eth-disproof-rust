@@ -9,11 +9,11 @@ refuse. Constructor/tag identities below are pinned to
 | IR family | Supported | Explicitly unsupported |
 | --- | --- | --- |
 | `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
-| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize` | `float`, `float32`, `erased`, `object`, `tobject`, `tagged`, `void`, `struct`, `union` |
+| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize`; bounded immutable `object`, `tobject`, `tagged` | `float`, `float32`, `erased`, `void`, `struct`, `union`; unrestricted object semantics |
 | `Arg` | `var` with known, matching type | `erased` in runtime position |
-| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls to supported compiled declarations | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
-| `FnBody` | `vdecl`, `ret`, Bool-only `case`, and bounded nonrecursive typed scalar `jdecl`/`jmp` | recursive/non-scalar joins, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, other `case`, `unreachable` |
-| `Alt` | two exact Bool `ctor` alternatives | `default`, other constructors |
+| `Expr` | bounded `lit.num`, registered direct `fap`, exact immutable `Option`/`Prod` `ctor`/`proj`, fixed-width `box`/`unbox`, statically compiled boxed `pap`/`ap` | `reset`, `reuse`, `uproj`, `sproj`, `lit.str`, `isShared`, unverified constructor/closure layouts, other `fap` |
+| `FnBody` | `vdecl`, `ret`, exact Bool/Option `case`, nonrecursive typed joins, and immutable-only `inc`/`dec`/`del` bookkeeping | recursive joins, mutable `set`/`setTag`/`uset`/`sset`, observable RC, other `case`, `unreachable` |
+| `Alt` | two exact Bool/Option `ctor` alternatives | `default`, unknown constructor layouts |
 | Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
@@ -97,7 +97,7 @@ This inventory is a constructor **membership/order** check, not a complete ABI l
 
 The real pinned Lean 4.34.1 constructor inventory is first checked by `scripts/VerifyIRInventory.lean` and recorded in `artifacts/ir-constructor-summary.tsv`. Separately, `examples/IRInventory.lean` and `scripts/coverage-ledger.rs` verify the complete 48-constructor tag classification, publishing `artifacts/ir-constructors.tsv` and `artifacts/ir-coverage.tsv`. The Rust `build.rs` compiles the same checked classification into `SUPPORTED_IR_TAGS`, and **production readers refuse unclassified tags**.
 
-Of those 48 constructors, **16** are bounded-supported, including `FnBody.jdecl` and `FnBody.jmp` strictly for nonrecursive, typed scalar lexical joins. The other **32** are explicitly unsupported. No unsupported branch is allowed to become accepted just because a Rust `match` arm is added. The `primitive-registry.tsv` is now the production lookup for exactly 30 typed unsigned operations. A generated 30 × 64 matrix of independent original-Lean results (1,920 comparisons) is executed from source IR. The legacy fixture gate still independently covers 3,008 base/join/multi-root comparisons. These checks do **not** establish semantic correctness of general collections, arbitrary-precision `Nat`/`Int`, effects, or whole ETH-source compilation.
+Of those 48 constructors, **28** are bounded-supported, including nonrecursive typed `FnBody.jdecl`/`FnBody.jmp`, validated immutable objects and source-defined boxed `Expr.pap`/`Expr.ap`. The other **20** are explicitly unsupported. No unsupported branch is allowed to become accepted just because a Rust `match` arm is added. The `primitive-registry.tsv` is now the production lookup for exactly 30 typed unsigned operations. A generated 30 × 64 matrix of independent original-Lean results (1,920 comparisons) is executed from source IR. The integrated suite covers **13,336** original-Lean/Rust fixture comparisons (3,008 scalar/join/multi-root, 3,072 immutable Option/Prod, 2,048 boxed functions, and 5,208 GMP-backed Nat), plus a separately recorded 1,920-comparison fixed-width primitive matrix. These checks do **not** establish arbitrary Lean collections, general Nat/Int, effects, or whole ETH-source compilation.
 
 ## Integrated immutable object and callable subset
 
@@ -120,3 +120,11 @@ The original Lean runtime supplies 5,208 numerical oracles with
 0 to 1024-bit inputs; no machine-width truncation or synthesized
 finite-table implementation is accepted. GMP must be installed on
 supported Linux x86-64 execution hosts; no Lean runtime is linked.
+
+### Canonical runtime across Nat, Option/Prod and first-class closures
+
+The current pinned G1 generator embeds a **single source of truth** for the entire supported immutable object, GMP-backed Nat and boxed closure representation: `src/runtime/immutable_value.rs`, loaded with `include_str!`. Its 9,786 source bytes are identical to the previously tested inline `RUNTIME_SOURCE` after PR #209. The native smoke gate now verifies that the generated Object, Function and Nat Cargo packages all begin with those **exact bytes**, each containing exactly one `__LeanValue` and `__LeanValueRepr` declaration. The receipt hashes this source independently of generated code. This does not add an alternative runtime or compiler.
+
+`Rc` immutable values use tagged nullary values, fixed-width boxed scalars, verified pointer-only constructors, source-defined closure captures/thunks and source-refined GMP naturals. Lean `inc/dec/del` bookkeeping can be erased only while `isShared`, `reset`, `reuse`, mutation and unverified layouts remain forbidden. The emitted model does **not** reproduce arbitrary physical Lean heap/RC semantics.
+
+The three original unmodified source probes (Newspeak, Armada, Keboola) pass Lean build and original Lean oracle checks, but still refuse Rust extraction at `Expr.isShared`, external `Nat.decLe`, and `Expr.sproj`, respectively. Item [#193-32](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/193) remains open. The pending [#219](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/219) Int/String/Array work must **extend** the canonical `__LeanValue` representation and preserve this three-crate identity check, not add a competing Value runtime.

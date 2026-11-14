@@ -668,32 +668,6 @@ impl Reader {
                         _ => unreachable!(),
                     };
                 }
-                let (op, comparison) = match name.as_str() {
-                    "UInt8.add" | "UInt16.add" | "UInt32.add" | "UInt64.add" | "USize.add" => {
-                        ("wrapping_add", false)
-                    }
-                    "UInt8.sub" | "UInt16.sub" | "UInt32.sub" | "UInt64.sub" | "USize.sub" => {
-                        ("wrapping_sub", false)
-                    }
-                    "UInt8.mul" | "UInt16.mul" | "UInt32.mul" | "UInt64.mul" | "USize.mul" => {
-                        ("wrapping_mul", false)
-                    }
-                    "UInt8.decEq" | "UInt16.decEq" | "UInt32.decEq" | "UInt64.decEq"
-                    | "USize.decEq" => ("==", true),
-                    "UInt8.decLt" | "UInt16.decLt" | "UInt32.decLt" | "UInt64.decLt"
-                    | "USize.decLt" => ("<", true),
-                    "UInt8.decLe" | "UInt16.decLe" | "UInt32.decLe" | "UInt64.decLe"
-                    | "USize.decLe" => ("<=", true),
-                    _ => return Err(format!("unrecognized primitive call: {name}")),
-                };
-                let expected_ty = match name.split('.').next() {
-                    Some("UInt8") => "u8",
-                    Some("UInt16") => "u16",
-                    Some("UInt32") => "u32",
-                    Some("UInt64") => "u64",
-                    Some("USize") => "usize",
-                    _ => return Err(format!("invalid primitive namespace: {name}")),
-                };
                 let spec = primitive_spec(&name)
                     .ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
                 let op = spec.rust_op;
@@ -1377,8 +1351,17 @@ fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
 // The supported Nat runtime is explicit, with no fallback to host arithmetic.
 // Both dependency discovery and native codegen consult this exact whitelist.
 fn is_nat_primitive(name: &str) -> bool {
-    matches!(name, "Nat.add" | "Nat.sub" | "Nat.mul" | "Nat.div" | "Nat.mod"
-        | "Nat.decEq" | "Nat.decLt" | "Nat.decLe")
+    matches!(
+        name,
+        "Nat.add"
+            | "Nat.sub"
+            | "Nat.mul"
+            | "Nat.div"
+            | "Nat.mod"
+            | "Nat.decEq"
+            | "Nat.decLt"
+            | "Nat.decLe"
+    )
 }
 
 fn is_primitive(name: &str) -> bool {

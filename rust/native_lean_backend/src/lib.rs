@@ -87,6 +87,8 @@ fn immutable_case_ctor(family: &str, index: usize, actual: &str) -> Result<usize
         ("Option", 1) => ("Option.some", 1),
         ("List", 0) => ("List.nil", 0),
         ("List", 1) => ("List.cons", 2),
+        ("Sum", 0) => ("Sum.inl", 1),
+        ("Sum", 1) => ("Sum.inr", 1),
         _ => {
             return Err(format!(
                 "unsupported {family} object case constructor {actual} at tag {index}"
@@ -344,7 +346,7 @@ impl Reader {
                 let ssize = Self::nat(Self::field(info, 4)?)?;
                 if !matches!(
                     name.as_str(),
-                    "Option.none" | "Option.some" | "Prod.mk" | "List.nil" | "List.cons"
+                    "Option.none" | "Option.some" | "Prod.mk" | "List.nil" | "List.cons" | "Sum.inl" | "Sum.inr"
                 ) {
                     return Err(format!(
                         "constructor {name} is not in the verified runtime subset"
@@ -354,6 +356,8 @@ impl Reader {
                     "Option.none" | "List.nil" => (0, 0),
                     "Option.some" | "List.cons" => (1, if name == "List.cons" { 2 } else { 1 }),
                     "Prod.mk" => (0, 2),
+                    "Sum.inl" => (0, 1),
+                    "Sum.inr" => (1, 1),
                     _ => unreachable!(),
                 };
                 if (tag, fields.len()) != expected_arity
@@ -724,7 +728,7 @@ impl Reader {
     ) -> Result<(), String> {
         let type_name = Self::name(Self::field(x, 0)?, 0)?;
         match type_name.as_str() {
-            "Option" | "List" | "tobj" | "obj" => {
+            "Option" | "List" | "Sum" | "tobj" | "obj" => {
                 // The storage type may be erased to obj/tobj. Inspect the
                 // actual source CtorInfo, never infer List from a numeric tag.
                 let alts = Self::array(Self::field(x, 3)?)?;
@@ -739,13 +743,15 @@ impl Reader {
                         "Option"
                     } else if name.starts_with("List.") {
                         "List"
+                    } else if name.starts_with("Sum.") {
+                        "Sum"
                     } else {
                         return Err(format!("unsupported object-valued case constructor {name}"));
                     });
                     break;
                 }
                 let family = family.ok_or("object case has no constructor identity")?;
-                if matches!(type_name.as_str(), "Option" | "List") && type_name != family {
+                if matches!(type_name.as_str(), "Option" | "List" | "Sum") && type_name != family {
                     return Err(format!(
                         "object case source family {family} contradicts storage type {type_name}"
                     ));
@@ -932,6 +938,8 @@ impl Reader {
                         "            assert!(x_{id}.list_is_nil(), \"invalid List.nil representation\");"
                     )
                     .unwrap();
+                } else if family == "Sum" {
+                    writeln!(code, "            assert!(x_{id}.has_ctor(0, \"Sum.inl\", 1), \"invalid Sum.inl representation\");").unwrap();
                 } else {
                     writeln!(
                         code,
@@ -945,6 +953,8 @@ impl Reader {
                     "            assert!(x_{id}.list_is_cons(), \"invalid List.cons representation\");"
                 )
                 .unwrap();
+            } else if family == "Sum" {
+                writeln!(code, "            assert!(x_{id}.has_ctor(1, \"Sum.inr\", 1), \"invalid Sum.inr representation\");").unwrap();
             } else {
                 writeln!(
                     code,
@@ -1745,6 +1755,8 @@ mod tests {
         assert_eq!(immutable_case_ctor("Option", 1, "Option.some").unwrap(), 1);
         assert_eq!(immutable_case_ctor("List", 0, "List.nil").unwrap(), 0);
         assert_eq!(immutable_case_ctor("List", 1, "List.cons").unwrap(), 2);
+        assert_eq!(immutable_case_ctor("Sum", 0, "Sum.inl").unwrap(), 1);
+        assert_eq!(immutable_case_ctor("Sum", 1, "Sum.inr").unwrap(), 1);
         for (family, index, name) in [
             ("Option", 0, "List.nil"),
             ("Option", 1, "List.cons"),

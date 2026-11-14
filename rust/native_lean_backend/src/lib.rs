@@ -70,6 +70,26 @@ fn ir_type_compatible(found: &str, expected: &str) -> bool {
     found == expected || (expected == "tobj" && matches!(found, "obj" | "tagged"))
 }
 
+// An object/tobject scrutinee is not necessarily an Option. Require exact
+// source constructor identity before selecting Option's Rust representation.
+fn exact_option_ctor(tag: usize, actual: &str) -> Result<(), String> {
+    let expected = match tag {
+        0 => "Option.none",
+        1 => "Option.some",
+        _ => {
+            return Err(format!(
+                "unsupported object-valued case constructor {actual} at tag {tag}; only Option tags 0/1 are implemented"
+            ));
+        }
+    };
+    if actual != expected {
+        return Err(format!(
+            "unsupported object-valued case constructor {actual} at tag {tag}; expected exact {expected}"
+        ));
+    }
+    Ok(())
+}
+
 fn include_value_runtime(source: String) -> Result<String, String> {
     let code = if source.contains("__LeanValue") {
         format!("{RUNTIME_SOURCE}\n{source}")
@@ -717,13 +737,11 @@ impl Reader {
             let info = Self::field(alt, 0)?;
             let ctor = Self::name(Self::field(info, 0)?, 0)?;
             let idx = Self::nat(Self::field(info, 1)?)?;
-            let expected = match idx {
-                0 => "Option.none",
-                1 => "Option.some",
-                _ => return Err("invalid Option constructor index".into()),
-            };
-            if expected != ctor || seen[idx] {
-                return Err("incorrect Option constructor metadata".into());
+            exact_option_ctor(idx, &ctor)?;
+            if seen[idx] {
+                return Err(format!(
+                    "duplicate Option case constructor {ctor} at tag {idx}"
+                ));
             }
             let pointer_fields = Self::nat(Self::field(info, 2)?)?;
             let usize_fields = Self::nat(Self::field(info, 3)?)?;
@@ -1520,8 +1538,28 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 #[cfg(test)]
 mod tests {
     use super::{
-        append_name_component, encode_name_str, internal_name, RUNTIME_SOURCE, SUPPORTED_IR_TAGS,
+        append_name_component, encode_name_str, exact_option_ctor, internal_name, RUNTIME_SOURCE,
+        SUPPORTED_IR_TAGS,
     };
+    #[test]
+    fn only_exact_option_constructors_can_enter_option_case_codegen() {
+        assert!(exact_option_ctor(0, "Option.none").is_ok());
+        assert!(exact_option_ctor(1, "Option.some").is_ok());
+        for (tag, name) in [
+            (0, "List.nil"),
+            (1, "List.cons"),
+            (0, "Sum.inl"),
+            (1, "Sum.inr"),
+            (1, "Option.none"),
+            (2, "Option.some"),
+        ] {
+            let error = exact_option_ctor(tag, name).unwrap_err();
+            assert!(error.contains("unsupported object-valued case constructor"));
+            assert!(error.contains(name));
+            assert!(error.contains(&format!("tag {tag}")));
+        }
+    }
+
     #[test]
     fn one_generated_value_abi_for_nat_objects_and_closures() {
         assert_eq!(RUNTIME_SOURCE.matches("pub struct __LeanValue(").count(), 1);

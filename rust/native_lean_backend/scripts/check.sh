@@ -181,8 +181,8 @@ fi
 if [[ "$(grep -c 'Generated directly from Lean IR declaration: ObjectFixture.mkOpt' examples/object-package/src/lib.rs)" != 1 ]]; then
   echo "object constructor dependency was not emitted exactly once" >&2; exit 1
 fi
-# Nat and exact Option/Sum constructors are supported, but custom
-# inductive constructors are still refused without verified layouts.
+# Nat literals are now supported (see LargeNat), but non-Option
+# sum constructors remain outside the verified immutable runtime.
 for fixture in RefusalObjectCtor; do
   rm -rf examples/rejected-object-package
   if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then
@@ -286,6 +286,35 @@ for package in examples/ownership-package examples/sum-package; do
     echo 'generated standalone program unexpectedly links GMP/Lean' >&2; exit 1
   fi
 done
+# Arbitrary pointer-only user inductives with multiple tags and default arms.
+# Scalar field layouts remain explicitly unsupported (RefusalObjectCtor).
+rm -rf examples/custom-package
+lean --load-dynlib="$NATIVE_LIB" examples/CustomCtor.lean
+cargo test --offline --manifest-path examples/custom-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/custom-package/Cargo.toml --lib -- -D warnings
+# Optimized constructor mutation: unique and shared reference paths, as
+# produced by Lean's *real compiler IR*. These tests establish observable
+# value semantics, not exact physical Lean reference-count schedules.
+rm -rf examples/mut-package
+lean --load-dynlib="$NATIVE_LIB" examples/MutFixture.lean
+cargo test --offline --manifest-path examples/mut-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/mut-package/Cargo.toml --lib -- -D warnings
+if ! grep -q 'with_field(' examples/mut-package/src/lib.rs ||
+   ! grep -q '.is_shared()' examples/mut-package/src/lib.rs ||
+   ! grep -q '__LeanValue::erased()' examples/mut-package/src/lib.rs; then
+  echo 'optimized constructor path was not really emitted' >&2; exit 1
+fi
+for package in examples/custom-package examples/mut-package; do
+  if ldd "$(find "$package/target/debug/deps" -maxdepth 1 -type f -executable -name '*-*' -print -quit)" | grep -Eq 'lib(Lean|lean)\.'; then
+    echo "generated constructor program unexpectedly linked Lean: $package" >&2; exit 1
+  fi
+done
+# Recursive user-defined pointer-only inductive (List-like) across a
+# transitive recursive declaration closure.
+rm -rf examples/recursive-package
+lean --load-dynlib="$NATIVE_LIB" examples/RecursiveCtor.lean
+cargo test --offline --manifest-path examples/recursive-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/recursive-package/Cargo.toml --lib -- -D warnings
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -298,7 +327,7 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=14436"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/NatFixture.lean examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml examples/ArrayFixture.lean examples/RefusalArrayPop.lean examples/RefusalArrayBang.lean examples/array-package/src/lib.rs examples/array-package/Cargo.toml examples/SumFixture.lean examples/sum-package/src/lib.rs examples/sum-package/Cargo.toml examples/OwnershipFixture.lean examples/ownership-package/src/lib.rs examples/ownership-package/Cargo.toml examples/RefusalObjectCtor.lean examples/generated_*.rs
+  echo "differential_assertions=14950"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/NatFixture.lean examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml examples/ArrayFixture.lean examples/RefusalArrayPop.lean examples/RefusalArrayBang.lean examples/array-package/src/lib.rs examples/array-package/Cargo.toml examples/SumFixture.lean examples/sum-package/src/lib.rs examples/sum-package/Cargo.toml examples/OwnershipFixture.lean examples/ownership-package/src/lib.rs examples/ownership-package/Cargo.toml examples/RefusalObjectCtor.lean examples/CustomCtor.lean examples/MutFixture.lean examples/RecursiveCtor.lean examples/custom-package/src/lib.rs examples/mut-package/src/lib.rs examples/recursive-package/src/lib.rs examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

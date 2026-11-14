@@ -184,3 +184,38 @@ separate ETH symbolic/physical semantics obligations remain open.
   `Option (Sum UInt64 UInt64)`. General scalar-layout ADTs are unsupported.
 - New total differential suite: **14,436** tests (prior 12,644 + 768 + 1,024).
   No general semantic preservation proof or resource-equivalence claim.
+
+## Experimental extension: pointer-only user inductives and optimized field updates
+
+- The backend now lowers general *qualified* user-defined inductive constructors
+  with object-pointer fields (including zero-field tagged constructors) and
+  checks the exact `CtorInfo.{size,usize,ssize}` runtime metadata. Constructor
+  families with packed `USize` or scalar fields still refuse. Constructors
+  with mismatched field arity or incomplete metadata refuse.
+- Object-valued `case` lowering validates constructor-family consistency,
+  duplicate tags, declared object field counts, and a final `Alt.default`.
+  No claim is made for `IRType.union`, `IRType.struct`, arbitrary cases on
+  boxed runtime scalars, or all possible Lean data representations.
+- A restricted `FnBody.set` lowers to an Rc-backed copy-on-write update of an
+  *existing heap constructor*. `Expr.isShared` branches according to the
+  generated Rust value's current Rc sharing state. The last-use optimization
+  now consumes arguments to known compiled callees when safe, avoiding
+  artificial aliases and exercising both allocation paths.
+- `Arg.erased` is still refused everywhere except as a payload to a known
+  typed join point. A poison marker traps on accidental runtime use. The
+  support is conditional on the guarded continuation, not a general
+  implementation of erased values or a proof of physical RC trace parity.
+- The supported set/reuse subset is intentionally incomplete: `Expr.reset`,
+  `Expr.reuse`, `FnBody.setTag`, `FnBody.uset`, and `FnBody.sset` remain
+  unsupported. The compiler's physical object-reuse/resource model is **not**
+  equivalent to Lean's native allocator just because values match.
+- `examples/CustomCtor.lean` adds 274 differential assertions spanning four
+  custom constructor alternatives, field projection, and a default branch.
+  `examples/MutFixture.lean` adds 176 assertions through actual Lean IR
+  `isShared` / `set` / erased join optimizations; generated-runtime unit tests
+  verify unique-owner reuse and shared-alias preservation. Both generated
+  crates are standalone Rust using GMP for `Nat`, not Lean at runtime.
+- Expected combined differential coverage is **14,950** assertions
+  (14,436 prior + 274 + 176 + 64). The final 64 exercise a recursive
+  user-defined list-like inductive, with constructor creation and recursive
+  traversal across a compiled dependency closure, subject to exact-head CI verification.

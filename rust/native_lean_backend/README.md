@@ -241,3 +241,18 @@ still fail closed.
 more Lean-derived comparisons; the emitted Rust runtime has direct pointer
 identity tests for unique and aliased arrays. Total: **14,436** source-evaluated
 comparisons, with no semantic refinement theorem claimed.
+
+### Experimental generic pointer-only constructors and optimized updates
+
+The in-process backend can now compile multi-constructor user inductives whose
+runtime fields are **all Lean objects**, including zero-field tagged variants,
+with exhaustive and default pattern matching. It also accepts a restricted
+`FnBody.set` and `Expr.isShared` optimization pattern, retaining extensional
+value semantics through Rust copy-on-write values. See `COVERAGE.md` for the
+precise IR contract and the limitations of erased join arguments.
+
+Run `examples/CustomCtor.lean` and `examples/MutFixture.lean` with the
+`check.sh` integration script. An additional 64 comparisons cover a recursive custom linked-list
+constructor and traversal. The initial 450 Lean-evaluated comparisons
+cover both unique and shared constructor updates, but do not constitute a
+proof of exact Lean reference-count trace or primitive machine costs.

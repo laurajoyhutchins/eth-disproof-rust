@@ -59,12 +59,29 @@ enum __LeanValueRepr {
     U8(u8), U16(u16), U32(u32), U64(u64), USize(usize),
     Ctor { tag: usize, name: &'static str, fields: Vec<__LeanValue> },
     Array(Vec<__LeanValue>),
+    Erased, // Physically erased optimized-join argument, never valid to read.
     // __NAT_RUNTIME_VARIANT__
 }
 
 #[allow(dead_code)]
 impl __LeanValue {
     fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
+    fn erased() -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Erased)) }
+    fn is_shared(&self) -> u8 { u8::from(std::rc::Rc::strong_count(&self.0) > 1) }
+    fn with_field(mut self, index: usize, value: Self) -> Self {
+        if let Some(__LeanValueRepr::Ctor { fields, .. }) = std::rc::Rc::get_mut(&mut self.0) {
+            *fields.get_mut(index).expect("constructor set: missing field") = value;
+            return self;
+        }
+        match self.0.as_ref() {
+            __LeanValueRepr::Ctor { tag, name, fields } => {
+                let mut updated = fields.clone();
+                *updated.get_mut(index).expect("constructor set: missing field") = value;
+                Self::ctor(*tag, name, updated)
+            }
+            _ => panic!("constructor set on non-constructor or erased value"),
+        }
+    }
     fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }
     fn boxed_u16(v: u16) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U16(v))) }
     fn boxed_u32(v: u32) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U32(v))) }
@@ -187,6 +204,47 @@ mod __lean_array_ownership_tests {
         assert!(!std::ptr::eq(original, Rc::as_ptr(&updated.0)));
         assert_eq!(alias.array_get(0).tagged_nat(), 3);
         assert_eq!(updated.array_get(0).tagged_nat(), 17);
+    }
+}
+"#;
+
+const CTOR_RUNTIME_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_constructor_ownership_tests {
+    use super::__LeanValue;
+    use std::rc::Rc;
+
+    #[test]
+    fn unique_constructor_field_update_reuses_allocation() {
+        let first = __LeanValue::ctor(2, "Fixture.Record.pair", vec![
+            __LeanValue::tagged(3), __LeanValue::tagged(4)
+        ]);
+        assert_eq!(first.is_shared(), 0);
+        let previous = Rc::as_ptr(&first.0);
+        let changed = first.with_field(0, __LeanValue::tagged(7));
+        assert!(std::ptr::eq(previous, Rc::as_ptr(&changed.0)));
+        assert_eq!(changed.field(0).tagged_nat(), 7);
+        assert_eq!(changed.field(1).tagged_nat(), 4);
+    }
+
+    #[test]
+    fn shared_constructor_field_update_preserves_alias() {
+        let first = __LeanValue::ctor(2, "Fixture.Record.pair", vec![
+            __LeanValue::tagged(3), __LeanValue::tagged(4)
+        ]);
+        let alias = first.clone();
+        assert_eq!(first.is_shared(), 1);
+        let previous = Rc::as_ptr(&first.0);
+        let changed = first.with_field(1, __LeanValue::tagged(8));
+        assert!(!std::ptr::eq(previous, Rc::as_ptr(&changed.0)));
+        assert_eq!(alias.field(1).tagged_nat(), 4);
+        assert_eq!(changed.field(1).tagged_nat(), 8);
+    }
+
+    #[test]
+    #[should_panic(expected = "constructor set on non-constructor or erased value")]
+    fn erased_join_payload_is_poison() {
+        __LeanValue::erased().with_field(0, __LeanValue::tagged(9));
     }
 }
 "#;
@@ -372,11 +430,13 @@ fn include_value_runtime(source: String) -> String {
     );
     // Tests come *after* generated functions: strict Clippy disallows
     // ordinary items following a test module.
-    let tests = if source.contains(".array_push(") || source.contains(".array_set(") {
-        ARRAY_RUNTIME_TEST_SOURCE
-    } else {
-        ""
-    };
+    let mut tests = String::new();
+    if source.contains(".array_push(") || source.contains(".array_set(") {
+        tests.push_str(ARRAY_RUNTIME_TEST_SOURCE);
+    }
+    if source.contains(".with_field(") || source.contains(".is_shared()") {
+        tests.push_str(CTOR_RUNTIME_TEST_SOURCE);
+    }
     if needs_nat {
         format!("{core}\n{NAT_RUNTIME_SOURCE}\n{source}\n{tests}")
     } else {
@@ -510,7 +570,7 @@ impl Reader {
                     format!("x_{id}")
                 })
             }
-            1 => Err("erased value used as runtime operand".into()),
+            1 => Err("erased value is only permitted as a guarded join payload".into()),
             t => Err(format!("unknown Arg constructor {t}")),
         }
     }
@@ -665,6 +725,43 @@ impl Reader {
         }
         Ok(Some(id))
     }
+    // Consume a compiled callee's object argument at its last IR use.
+    // Without this, an unnecessary Rc clone at the call site changes the
+    // observable optimization path of the callee's isShared check.
+    unsafe fn consumable_call_object(
+        expr: Obj,
+        tail: Obj,
+        env: &BTreeMap<usize, &'static str>,
+        functions: Option<&FunctionTable>,
+    ) -> Result<Option<usize>, String> {
+        if Self::tag(expr)? != 6 {
+            return Ok(None);
+        }
+        let name = Self::name(Self::field(expr, 0)?, 0)?;
+        if functions.is_none_or(|f| !f.contains_key(&name)) {
+            return Ok(None);
+        }
+        let args = Self::array(Self::field(expr, 1)?)?;
+        for &candidate in &args {
+            if Self::tag(candidate)? != 0 {
+                continue;
+            }
+            let id = Self::var(Self::field(candidate, 0)?)?;
+            if !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
+                continue;
+            }
+            let mut duplicates = 0;
+            for arg in &args {
+                if Self::arg_uses(*arg, id)? {
+                    duplicates += 1;
+                }
+            }
+            if duplicates == 1 && !Self::body_uses(tail, id, 0)? {
+                return Ok(Some(id));
+            }
+        }
+        Ok(None)
+    }
     unsafe fn expr(
         x: Obj,
         var_ty: &str,
@@ -686,39 +783,28 @@ impl Reader {
                 let size = Self::nat(Self::field(info, 2)?)?;
                 let usize_count = Self::nat(Self::field(info, 3)?)?;
                 let ssize = Self::nat(Self::field(info, 4)?)?;
-                if !matches!(
-                    name.as_str(),
-                    "Option.none" | "Option.some" | "Prod.mk" | "Sum.inl" | "Sum.inr"
-                ) {
+                // Any Lean inductive constructor with pointer-only fields is
+                // representable by our typed Rc-backed constructor model.
+                // The exact CtorInfo layout is checked instead of assuming
+                // that source-language arity equals the runtime layout.
+                if name.is_empty() || !name.contains('.') {
+                    return Err("constructor has no supported qualified identity".into());
+                }
+                if usize_count != 0 || ssize != 0 || size != fields.len() || size > 1024 {
                     return Err(format!(
-                        "constructor {name} is not in the verified runtime subset"
+                        "constructor {name} has an unsupported scalar or field layout"
                     ));
                 }
-                let expected_arity = match name.as_str() {
-                    "Option.none" => (0, 0),
-                    "Option.some" => (1, 1),
-                    "Prod.mk" => (0, 2),
-                    "Sum.inl" => (0, 1),
-                    "Sum.inr" => (1, 1),
-                    _ => unreachable!(),
-                };
-                if (tag, fields.len()) != expected_arity
-                    || size != fields.len()
-                    || usize_count != 0
-                    || ssize != 0
-                {
-                    return Err(format!("constructor {name} layout unsupported"));
-                }
-                if name == "Option.none" {
+                if size == 0 {
                     if var_ty != "tagged" {
-                        return Err("Option.none must be tagged in pinned IR".into());
+                        return Err(format!("zero-field constructor {name} is not tagged"));
                     }
-                    return Ok("__LeanValue::tagged(0)".into());
+                    return Ok(format!("__LeanValue::tagged({tag})"));
                 }
                 if var_ty != "obj" {
-                    return Err("heap constructor has unexpected IR result type".into());
+                    return Err(format!("constructor {name} expected object result"));
                 }
-                let mut args = Vec::new();
+                let mut args = Vec::with_capacity(fields.len());
                 for arg in fields {
                     args.push(Self::arg(arg, env, "tobj")?);
                 }
@@ -787,6 +873,12 @@ impl Reader {
                     }
                     let mut lowered = Vec::with_capacity(args.len());
                     for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
+                        if let Some(id) = consumed_array {
+                            if Self::arg_uses(arg, id)? {
+                                lowered.push(format!("x_{id}"));
+                                continue;
+                            }
+                        }
                         lowered.push(Self::arg(arg, env, ty)?);
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
@@ -971,6 +1063,16 @@ impl Reader {
                 }
             }
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
+            12 => {
+                if var_ty != "u8" {
+                    return Err("isShared must yield uint8".into());
+                }
+                let id = Self::var(Self::field(x, 0)?)?;
+                if !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
+                    return Err("isShared expects a value object".into());
+                }
+                Ok(format!("x_{id}.is_shared()"))
+            }
             t => Err(format!("IR expression constructor {t} unsupported")),
         }
     }
@@ -1016,76 +1118,89 @@ impl Reader {
             return Err("algebraic case scrutinee not object-valued".into());
         }
         let alts = Self::array(Self::field(x, 3)?)?;
-        if alts.len() != 2 {
-            return Err("supported algebraic case requires exactly two constructors".into());
+        if alts.is_empty() || alts.len() > 256 {
+            return Err("algebraic case alternative count outside supported range".into());
         }
-        let mut constructors = Vec::new();
-        for &alt in &alts {
-            if Self::tag(alt)? != 0 {
-                return Err("default algebraic case alternative unsupported".into());
-            }
-            let info = Self::field(alt, 0)?;
-            let ctor = Self::name(Self::field(info, 0)?, 0)?;
-            let idx = Self::nat(Self::field(info, 1)?)?;
-            constructors.push((ctor, idx, info, alt));
-        }
-        let is_option = constructors
-            .iter()
-            .all(|(name, _, _, _)| name.starts_with("Option."));
-        let is_sum = constructors
-            .iter()
-            .all(|(name, _, _, _)| name.starts_with("Sum."));
-        if !is_option && !is_sum {
-            return Err("unsupported or mixed algebraic constructor family".into());
-        }
-        let mut seen = [false; 2];
+        let mut seen_tags = BTreeSet::new();
+        let mut family: Option<String> = None;
+        let mut saw_default = false;
         writeln!(code, "    match x_{id}.tag() {{").unwrap();
-        for (ctor, idx, info, alt) in constructors {
-            let expected = match (is_sum, idx) {
-                (false, 0) => "Option.none",
-                (false, 1) => "Option.some",
-                (true, 0) => "Sum.inl",
-                (true, 1) => "Sum.inr",
-                _ => return Err("invalid constructor index".into()),
-            };
-            if ctor != expected || seen[idx] {
-                return Err(format!(
-                    "incorrect or repeated constructor metadata: {ctor}"
-                ));
+        for (index, alt) in alts.iter().enumerate() {
+            match Self::tag(*alt)? {
+                0 => {
+                    if saw_default {
+                        return Err("constructor alternative follows default".into());
+                    }
+                    let info = Self::field(*alt, 0)?;
+                    let ctor = Self::name(Self::field(info, 0)?, 0)?;
+                    let (parent, _) = ctor
+                        .rsplit_once('.')
+                        .ok_or_else(|| format!("invalid constructor family for {ctor}"))?;
+                    if !family.as_ref().is_none_or(|f| f == parent) {
+                        return Err(format!(
+                            "mixed constructor families in algebraic case: {ctor}"
+                        ));
+                    }
+                    family = Some(parent.to_owned());
+                    let tag = Self::nat(Self::field(info, 1)?)?;
+                    if !seen_tags.insert(tag) {
+                        return Err(format!("duplicate constructor index {tag}"));
+                    }
+                    let ptrs = Self::nat(Self::field(info, 2)?)?;
+                    let usize_fields = Self::nat(Self::field(info, 3)?)?;
+                    let scalar_bytes = Self::nat(Self::field(info, 4)?)?;
+                    if usize_fields != 0 || scalar_bytes != 0 || ptrs > 1024 {
+                        return Err(format!("unsupported constructor field layout: {ctor}"));
+                    }
+                    writeln!(code, "        {tag} => {{").unwrap();
+                    if ptrs == 0 {
+                        writeln!(code, "            assert!(x_{id}.has_tagged({tag}), \"invalid tagged constructor\");").unwrap();
+                    } else {
+                        writeln!(code, "            assert!(x_{id}.has_ctor({tag}, \"{ctor}\", {ptrs}), \"invalid constructor representation\");").unwrap();
+                    }
+                    let mut arm_env = env.clone();
+                    Self::body(
+                        Self::field(*alt, 1)?,
+                        code,
+                        depth + 1,
+                        count,
+                        &mut arm_env,
+                        ret_ty,
+                        ctx,
+                    )?;
+                    writeln!(code, "        }}").unwrap();
+                }
+                1 => {
+                    if saw_default || index != alts.len() - 1 {
+                        return Err("algebraic default must be unique and last".into());
+                    }
+                    saw_default = true;
+                    writeln!(code, "        _ => {{").unwrap();
+                    let mut arm_env = env.clone();
+                    Self::body(
+                        Self::field(*alt, 0)?,
+                        code,
+                        depth + 1,
+                        count,
+                        &mut arm_env,
+                        ret_ty,
+                        ctx,
+                    )?;
+                    writeln!(code, "        }}").unwrap();
+                }
+                t => return Err(format!("unknown algebraic alternative constructor {t}")),
             }
-            let ptrs = Self::nat(Self::field(info, 2)?)?;
-            let usize_fields = Self::nat(Self::field(info, 3)?)?;
-            let scalar_bytes = Self::nat(Self::field(info, 4)?)?;
-            if ptrs != usize::from(is_sum || idx == 1) || usize_fields != 0 || scalar_bytes != 0 {
-                return Err(format!("unsupported constructor field layout: {ctor}"));
-            }
-            seen[idx] = true;
-            writeln!(code, "        {idx} => {{").unwrap();
-            if !is_sum && idx == 0 {
-                writeln!(code, "            assert!(x_{id}.has_tagged(0), \"invalid Option.none representation\");").unwrap();
-            } else {
-                writeln!(code, "            assert!(x_{id}.has_ctor({idx}, \"{ctor}\", 1), \"invalid {ctor} representation\");").unwrap();
-            }
-            let mut arm_env = env.clone();
-            Self::body(
-                Self::field(alt, 1)?,
+        }
+        if family.is_none() {
+            return Err("algebraic case lacks constructor identity metadata".into());
+        }
+        if !saw_default {
+            writeln!(
                 code,
-                depth + 1,
-                count,
-                &mut arm_env,
-                ret_ty,
-                ctx,
-            )?;
-            writeln!(code, "        }}").unwrap();
+                "        _ => unreachable!(\"unknown Lean constructor tag\"),"
+            )
+            .unwrap();
         }
-        if !seen.into_iter().all(|s| s) {
-            return Err("incomplete algebraic case".into());
-        }
-        writeln!(
-            code,
-            "        _ => unreachable!(\"invalid Lean algebraic tag\"),"
-        )
-        .unwrap();
         writeln!(code, "    }}").unwrap();
         Ok(())
     }
@@ -1183,7 +1298,14 @@ impl Reader {
                     let ty = Self::ty(Self::field(x, 1)?)?;
                     let expr = Self::field(x, 2)?;
                     let consumed_array = if ctx.joins.is_empty() {
-                        Self::consumable_array(expr, Self::field(x, 3)?)?
+                        Self::consumable_array(expr, Self::field(x, 3)?)?.or(
+                            Self::consumable_call_object(
+                                expr,
+                                Self::field(x, 3)?,
+                                env,
+                                ctx.functions,
+                            )?,
+                        )
                     } else {
                         // An earlier lexical join closure may borrow this value.
                         None
@@ -1251,10 +1373,35 @@ impl Reader {
                     )?;
                     return Ok(());
                 }
+                2 => {
+                    // Lean IR set requires unique ownership. Generated Rust
+                    // keeps the observable value semantics with COW, even if
+                    // Rust's ownership counts differ from Lean's RC schedule.
+                    let id = Self::var(Self::field(x, 0)?)?;
+                    let ty = env
+                        .get(&id)
+                        .ok_or("set on undefined constructor variable")?;
+                    if !is_value_type(ty) {
+                        return Err("set on non-object variable".into());
+                    }
+                    let index = Self::nat(Self::field(x, 1)?)?;
+                    if index >= 1024 {
+                        return Err("constructor set field index exceeds cap".into());
+                    }
+                    let value = Self::arg(Self::field(x, 2)?, env, "tobj")?;
+                    writeln!(
+                        code,
+                        "    let x_{id} = x_{id}.with_field({index}, {value});"
+                    )
+                    .unwrap();
+                    // A field write proves heap-constructor representation.
+                    env.insert(id, "obj");
+                    x = Self::field(x, 3)?;
+                }
                 6..=8 => {
-                    // Immutable Rc-backed emitted values own their references;
-                    // Lean's inc/dec/del bookkeeping is non-observable in this
-                    // subset because reset/reuse/isShared are refused.
+                    // Rc-backed emitted values own their references;
+                    // Lean's inc/dec/del bookkeeping is non-observable for
+                    // supported pure value semantics; exact RC traces are not claimed.
                     let id = Self::var(Self::field(x, 0)?)?;
                     let ty = env
                         .get(&id)
@@ -1287,7 +1434,17 @@ impl Reader {
                     }
                     let mut lowered = Vec::new();
                     for (arg, ty) in args.into_iter().zip(types.iter()) {
-                        lowered.push(Self::arg(arg, env, ty)?);
+                        if Self::tag(arg)? == 1 {
+                            if !is_value_type(ty) {
+                                return Err("erased scalar join argument not supported".into());
+                            }
+                            // A guard-dependent parameter is physically
+                            // absent in this path. Any accidental read must
+                            // trap, never silently yield an arbitrary object.
+                            lowered.push("__LeanValue::erased()".into());
+                        } else {
+                            lowered.push(Self::arg(arg, env, ty)?);
+                        }
                     }
                     writeln!(code, "    return j_{id}({});", lowered.join(", ")).unwrap();
                     return Ok(());
@@ -1436,6 +1593,7 @@ impl Reader {
                         }
                     }
                 }
+                2 => pending.push(Self::field(body, 3)?),
                 6 | 7 => pending.push(Self::field(body, 2)?),
                 8 => pending.push(Self::field(body, 1)?),
                 10 | 11 => (),

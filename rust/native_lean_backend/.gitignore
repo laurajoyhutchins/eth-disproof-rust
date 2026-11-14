@@ -42,3 +42,4 @@
 /examples/item30-run.rs
 /examples/unsafe-public-name.rs
 /examples/sem_rejected_*.rs
+/examples/list-package/

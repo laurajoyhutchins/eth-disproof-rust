@@ -263,7 +263,9 @@ impl Reader {
                     }
                     for field in 2..=4 {
                         if Self::nat(Self::field(info, field)?)? != 0 {
-                            return Err("constructor with pointer/scalar layout is unsupported".into());
+                            return Err(
+                                "constructor with pointer/scalar layout is unsupported".into()
+                            );
                         }
                     }
                     let _name = Self::name(Self::field(info, 0)?, 0)?;

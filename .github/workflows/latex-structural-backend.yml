@@ -27,6 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          rustup component add --toolchain 1.99.1 rustfmt clippy
           cargo +1.99.1 --version
           rustc +1.99.1 --version
       - name: Rust correctness, formatting, and static analysis

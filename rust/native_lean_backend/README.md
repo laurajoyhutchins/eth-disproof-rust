@@ -146,7 +146,7 @@ across seven inductive families. The classifier implements 19 bounded variants
 and refuses 29; its tags are enforced in the production decoder. The single
 primitive registry drives 30 supported operations, each independently
 compared with 64 original-Lean oracle vectors. This adds 1,920 assertions to
-the previous 1,984, with 100 new cross-type checks, for **4,004**
+the previous 1,984, with 101 new cross-type checks, for **4,005**
 exact-head differential comparisons.
 
 See [CONFORMANCE.md](CONFORMANCE.md) for the generation and refusal contract.

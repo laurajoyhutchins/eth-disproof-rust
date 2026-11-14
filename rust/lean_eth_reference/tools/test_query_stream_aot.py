@@ -149,12 +149,12 @@ class QueryAotContract(unittest.TestCase):
             pid_path = root / "detached.pid"
             child = "import time; time.sleep(8)"
             script = (
-                "import pathlib,subprocess,sys,time\\n"
+                "import pathlib,subprocess,sys,time\n"
                 f"child=subprocess.Popen([sys.executable, '-c', {child!r}], "
-                "start_new_session=True, stdout=sys.stdout, stderr=sys.stderr)\\n"
-                f"pathlib.Path({str(pid_path)!r}).write_text(str(child.pid))\\n"
-                "print('DETACHED_MARKER',flush=True)\\n"
-                "time.sleep(8)\\n"
+                "start_new_session=True, stdout=sys.stdout, stderr=sys.stderr)\n"
+                f"pathlib.Path({str(pid_path)!r}).write_text(str(child.pid))\n"
+                "print('DETACHED_MARKER',flush=True)\n"
+                "time.sleep(8)\n"
             )
             start = time.monotonic()
             try:

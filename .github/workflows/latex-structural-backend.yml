@@ -2,7 +2,7 @@ name: Structural LaTeX typed backend
 
 on:
   push:
-    branches: ['experiment/latex-structural-slim-imports']
+    branches: ['experiment/latex-typed-structural-backend', 'experiment/latex-structural-slim-imports', 'experiment/latex-to-lean-pilot']
     paths:
       - 'benchmark/latex-to-lean/structural/**'
       - '.github/workflows/latex-structural-backend.yml'

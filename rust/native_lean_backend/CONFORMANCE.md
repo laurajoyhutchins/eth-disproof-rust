@@ -27,14 +27,14 @@ reading the constructors and positions of all these inductive definitions:
 | --- | ---: | ---: |
 | Decl | 2 | 1 |
 | IRType | 14 | 8 |
-| Arg | 2 | 1 |
+| Arg | 2 | 2 |
 | LitVal | 2 | 1 |
 | Expr | 13 | 8 |
 | Alt | 2 | 1 |
 | FnBody | 13 | 8 |
-| **Total** | **48** | **28** |
+| **Total** | **48** | **29** |
 
-Bounded-supported `FnBody.jdecl`/`FnBody.jmp` are **only** tested nonrecursive typed lexical joins. The separate `Expr.pap`/`Expr.ap` implementation supports only exact statically compiled, boxed capture/argument signatures; unrestricted recursive joins and arbitrary indirect calls remain refused. The source-derived list is emitted to artifacts/ir-constructors.tsv.
+Bounded-supported `FnBody.jdecl`/`FnBody.jmp` are **only** the tested nonrecursive scalar lexical joins; neither unrestricted recursive joins nor indirect applications are accepted. The source-derived list is emitted to artifacts/ir-constructors.tsv.
 scripts/coverage-ledger.rs requires an exact name, tag and supported/refused
 classification for **each** constructor in ir-coverage-classification.tsv.
 An added, renamed or moved Lean constructor cannot be silently treated as a
@@ -49,10 +49,8 @@ anything outside its supported constructor set. The combined
 artifacts/ir-coverage.tsv is a machine-readable release ledger.
 
 The supported entries are *bounded*: e.g. Alt.ctor and FnBody.case mean only
-an exact two-constructor Bool or Option match; Expr.ctor/proj/box/unbox and
-Expr.pap/ap require verified immutable object/boxed closure metadata.
-LitVal.num accepts only small tagged Nat literals; IRType.usize has Linux
-x86-64 semantics. The 20 refused variants
+a two-constructor Bool match; LitVal.num accepts only small tagged Nat
+literals; IRType.usize has Linux x86-64 semantics. The 19 refused variants
 have no positive semantic-equivalence claim. The whitelist test checks tags,
 not a theorem about runtime ABI layout or Lean reference counting.
 
@@ -76,22 +74,14 @@ scripts/check-coverage.sh rejects a missing fixture or generated function,
 compiles all emitted Rust functions into one test binary, and runs all 1,920
 assertions. The execution ledger is artifacts/primitive-conformance.tsv.
 
-The integrated regression fixtures now provide **13,336** independently
-original-Lean-evaluated Rust comparisons: 3,008 scalar/Bool/joins/multi-root,
-3,072 immutable Option/Prod, 2,048 source-defined boxed closure/PAP/AP, and
-5,208 GMP-backed arbitrary-width Nat tests. Together with the separate 1,920
-fixed-width primitive matrix assertions, this is **15,256** compared results.
-The additional 1,024-case randomized Lean/Rust property suite is reported
-separately. These counts describe different tested subsets, not universal
-compiler equivalence.
+The existing regression fixtures provide 3,008 additional original-Lean
+comparisons over supported scalar, Bool, imported-direct-call and recursive
+programs. The candidate combined native suite targets **15,357** Lean/Rust comparisons: 13,336 mainline scalar, join, multi-root, immutable object, function-value and GMP Nat cases; 101 original-source Int/String/collection/Nat cases; and the separate 1,920 fixed-width primitive matrix. The additional 1,024-case randomized Lean/Rust property suite is reported separately.
 
 ## Explicit limitations
 
 These tests establish equivalence only for the exercised programs and
-supported compiler IR. They do **not** establish general Nat/Int, Unicode
-Strings, Arrays, effects/IO, observable heap sharing, arbitrary indirect
-application, recursive join points, or the source-defined
-noncomputable ETH program. Many of those are deliberately refused.
+supported compiler IR. These tests establish finite comparisons for bounded GMP Nat/Int, Unicode String and collection primitives, but not arbitrary Nat/Int APIs, generic arrays, effects/IO, mutable heap sharing, unrestricted indirect application, recursive join points, or the noncomputable ETH program. Many of those are deliberately refused.
 
 The IR constructor inventory covers the seven pinned *inductive* families;
 it does not yet inventory every field of supporting structures such as
@@ -103,3 +93,7 @@ semantically correct. The automated guards ensure complete enumeration,
 prevent unsupported tag acceptance, and require executable evidence for each
 registered primitive. They do not turn finite differential tests into a
 semantic-preservation theorem.
+
+## Supplementary exact-source value adapters
+
+The production `runtime-primitive-registry.tsv` lists seven non-Nat operations. Three further original Lean Nat functions use the existing GMP primitive dispatcher rather than a second arithmetic implementation. The 101 original-source oracles and refusal-preservation checks run in `scripts/check-item30.sh` using the same in-process compiler. See [SEMANTICS.md](SEMANTICS.md). The 29 supported constructors are conditional on their typed and source-verified layouts.

@@ -664,7 +664,10 @@ impl Reader {
                     count,
                     env,
                     ret_ty,
-                    ImmutableCaseContext { lowering: ctx, family },
+                    ImmutableCaseContext {
+                        lowering: ctx,
+                        family,
+                    },
                 )
             }
             _ => {

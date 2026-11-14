@@ -366,12 +366,7 @@ impl Reader {
                 }
                 10 => {
                     // ret(Arg)
-                    writeln!(
-                        code,
-                        "    return {};",
-                        Self::arg(Self::field(x, 0)?, env, ret_ty)?
-                    )
-                    .unwrap();
+                    writeln!(code, "    {}", Self::arg(Self::field(x, 0)?, env, ret_ty)?).unwrap();
                     return Ok(());
                 }
                 t => return Err(format!("IR body constructor {t} unsupported")),

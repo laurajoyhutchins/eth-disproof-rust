@@ -20,7 +20,7 @@ import time
 
 from export_compiled_batch import atomic_write, ensure_pinned
 from extract_compiled_catalog import blob_hash
-from run_source_graph_batch import source
+from run_source_graph_batch import LEAN as SOURCE_GRAPH_EXPORTER
 from temporary_rust_crate import isolated_cargo_manifest
 from verify_source_graph import (
     MAX_NODES, MAX_SOURCE_LABELS, closed_keys, insist, number,
@@ -297,10 +297,40 @@ def compile_query(args):
 
     with tempfile.TemporaryDirectory(prefix="original-query-aot-") as scratch:
         tmp = Path(scratch)
+        # Compile source-graph metaprogramming once, before importing the
+        # enormous original QueryStream module. Elaborating this helper after
+        # importing QueryStream causes otherwise avoidable environment pressure.
+        # The helper is a compiled Lean module, not a JSON compiler backend.
+        exporter_module = "OriginalSourceGraphExporter"
+        exporter_source = tmp / (exporter_module + ".lean")
+        exporter_source.write_bytes(SOURCE_GRAPH_EXPORTER.read_bytes())
+        exporter_olean = (args.lake_root / ".lake/build/lib/lean" /
+                          (exporter_module + ".olean"))
+        exporter_olean.parent.mkdir(parents=True, exist_ok=True)
+        exporter_olean.unlink(missing_ok=True)
+        try:
+            compiled_exporter = run_bounded(
+                ["lake", "env", "lean", "-o", str(exporter_olean),
+                 str(exporter_source)], args.lake_root, args.timeout,
+                log_base=out / "source-graph-exporter-build")
+        except (TimeoutError, ResourceLimitError) as error:
+            refuse("source-graph-exporter-build-resource-limit", str(error))
+        if compiled_exporter.returncode or not exporter_olean.is_file():
+            refuse("source-graph-exporter-build",
+                   f"exit={compiled_exporter.returncode} "
+                   f"stdout_tail={compiled_exporter.stdout[-2500:]} "
+                   f"stderr_tail={compiled_exporter.stderr[-1500:]}")
+        exporter_digest = hashlib.sha256(exporter_olean.read_bytes()).hexdigest()
+        print(f"ORIGINAL_AOT_EXPORTER_PRECOMPILED olean_sha256={exporter_digest}",
+              flush=True)
+
         lean = tmp / "QueryStream.lean"
         lean.write_text(
-            source(record).replace("set_option maxHeartbeats 2000000\n",
-                                   "set_option maxHeartbeats 8000000\nset_option maxRecDepth 8192\n"),
+            f"import {exporter_module}\\n"
+            f"import {MODULE}\\n"
+            "set_option maxHeartbeats 8000000\\n"
+            "set_option maxRecDepth 8192\\n"
+            f'#export_original_source_graph {DECLARATION} "{IDENTIFIER}" "{blob}"\\n',
             encoding="utf8",
         )
         try:
@@ -375,6 +405,9 @@ def compile_query(args):
             "lean_version": pin["lean"],
             "source_blob": blob,
             "original_module_olean_sha256": original_olean_digest,
+            "source_graph_exporter_source_sha256": hashlib.sha256(
+                SOURCE_GRAPH_EXPORTER.read_bytes()).hexdigest(),
+            "source_graph_exporter_olean_sha256": exporter_digest,
             "original_module_import_receipt_sha256": import_receipt_digest,
             "original_module_import_method": (
                 "verified-stage-receipt" if args.import_receipt is not None

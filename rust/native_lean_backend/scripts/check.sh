@@ -20,6 +20,11 @@ awk -F '\t' '
   $1 == "Lean.IR.Expr" && $2 == "Lean.IR.Expr.pap" && $3 == "refused" { pap = 1 }
   END { exit !(jdecl && jmp && pap) }
 ' artifacts/ir-coverage.tsv
+# Do not accidentally revive the competing multi-root bundle emitter.
+if grep -Eq 'rs_emit_ir_bundle|#native_rust_bundle' NativeRust.lean src/lib.rs; then
+  echo "duplicate multi-root compiler API detected" >&2
+  exit 2
+fi
 cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean

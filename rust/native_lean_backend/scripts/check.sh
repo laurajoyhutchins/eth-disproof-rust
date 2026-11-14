@@ -61,6 +61,25 @@ if [[ "$(cat examples/rejected.rs)" != "preserve-existing-artifact" ]]; then
   echo "failed compilation modified preexisting Rust output" >&2; exit 1
 fi
 rm -f examples/rejected.rs examples/rejected.log
+# Reject embedded-NUL and unsafe public Rust identifiers at live Lean ABI.
+printf 'preserve-public-name\n' > examples/unsafe-public-name.rs
+for fixture in RefusalNameNul RefusalPublicName; do
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" \
+      > "artifacts/${fixture}.log" 2>&1; then
+    echo "Unsafe public name unexpectedly accepted: ${fixture}" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'unsafe Rust function name' "artifacts/${fixture}.log"; then
+    cat "artifacts/${fixture}.log" >&2
+    echo "Unexpected failure class for ${fixture}" >&2
+    exit 1
+  fi
+done
+if [[ "$(cat examples/unsafe-public-name.rs)" != 'preserve-public-name' ]]; then
+  echo 'Rejected public Rust name modified an existing output' >&2
+  exit 1
+fi
+rm -f examples/unsafe-public-name.rs
 # Even an elaborated executable declaration must refuse if its source
 # depends on sorryAx. Do not publish code for untrusted proof holes.
 printf 'preserve-sorry-output\n' > examples/rejected_sorry.rs
@@ -377,6 +396,10 @@ cargo clippy --offline --all-targets -- -D warnings
 # matrix, then execute all 30 registered primitives against 64 Lean oracles.
 # This richer ledger is separate from VerifyIRInventory's initial drift gate.
 bash scripts/check-coverage.sh
+# Original Lean 4.34.1 source definitions, including GMP Nat,
+# signed Int, UTF-8, persistent array/list and the transitive Nat closure.
+lean -o examples/Item30IRProbe.olean examples/Item30IRProbe.lean
+bash scripts/check-item30.sh
 # Receipt exists only after *all* end-to-end and negative checks pass.
 mkdir -p artifacts
 {
@@ -386,7 +409,10 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=16344"
+  echo "differential_assertions=16445"
+  echo "item30_exact_source_oracles=101"
+  echo "additional_scalar_matrix_oracles=1920"
+  echo "core_and_matrix_oracles=18365"
   echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
@@ -394,7 +420,7 @@ mkdir -p artifacts
   echo "canonical_value_runtime=ONE_IDENTICAL_SOURCE_NAT_OBJECT_CLOSURE"
   sha256sum src/runtime/immutable_value.rs
   echo "ir_constructor_inventory=PASS"
-  echo "runtime_tag_whitelist=30_scoped_IR_constructors"
+  echo "runtime_tag_whitelist=31_scoped_IR_constructors"
   echo "primitive_conformance=30_baseline_x_64_plus_38_extended_oracles"
   echo "extended_float_enum_bitwise_div_shift=PASS"
   echo "standalone_cargo_binary=PASS"
@@ -405,6 +431,10 @@ mkdir -p artifacts
     artifacts/primitive-conformance.tsv
   echo "structured_refusal_recovery=PASS"
   echo "atomic_publisher=PASS"
+  sha256sum runtime-primitive-registry.tsv scripts/check-item30.sh \
+    examples/Item30IRProbe.lean examples/Item30Conformance.lean \
+    examples/Item30Errors.lean examples/RefusalNameNul.lean examples/RefusalPublicName.lean \
+    artifacts/item30-oracles.rs artifacts/item30-ir-probes.txt artifacts/item30-rejection.log
   sha256sum src/safety.rs
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
   sha256sum examples/NatFixture.lean examples/RefusalNatBitwise.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml

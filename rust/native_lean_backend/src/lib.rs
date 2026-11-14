@@ -9,6 +9,9 @@ use std::fmt::Write;
 
 mod safety;
 
+// Generated from the complete reviewed pinned Lean IR constructor contract.
+include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));
+
 #[repr(C)]
 pub struct LeanObject {
     _opaque: [u8; 0],
@@ -62,6 +65,16 @@ impl Reader {
             return Err("expected inductive constructor".into());
         }
         Ok(lr_tag(x) as usize)
+    }
+    unsafe fn checked_tag(x: Obj, family: &str) -> Result<usize, String> {
+        let tag = Self::tag(x)?;
+        if SUPPORTED_IR_TAGS.contains(&(family, tag)) {
+            Ok(tag)
+        } else {
+            Err(format!(
+                "{family} constructor tag {tag} explicitly unsupported by pinned IR coverage contract"
+            ))
+        }
     }
     unsafe fn field(x: Obj, index: usize) -> Result<Obj, String> {
         if lr_is_ctor(x) == 0 || index >= lr_field_count(x) {
@@ -142,7 +155,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         expected: &str,
     ) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "Arg")? {
             0 => {
                 let id = Self::var(Self::field(x, 0)?)?;
                 let found = env
@@ -159,7 +172,7 @@ impl Reader {
     }
     unsafe fn ty(x: Obj) -> Result<&'static str, String> {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "IRType")? {
             1 => Ok("u8"),
             2 => Ok("u16"),
             3 => Ok("u32"),
@@ -171,7 +184,7 @@ impl Reader {
         }
     }
     unsafe fn lit(x: Obj, ty: &str) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "LitVal")? {
             0 => {
                 let n = Self::nat(Self::field(x, 0)?)?;
                 let max = match ty {
@@ -196,7 +209,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "Expr")? {
             6 => {
                 // fap, preserving the exact known primitive semantics.
                 let name = Self::name(Self::field(x, 0)?, 0)?;
@@ -224,32 +237,11 @@ impl Reader {
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
-                let (op, comparison) = match name.as_str() {
-                    "UInt8.add" | "UInt16.add" | "UInt32.add" | "UInt64.add" | "USize.add" => {
-                        ("wrapping_add", false)
-                    }
-                    "UInt8.sub" | "UInt16.sub" | "UInt32.sub" | "UInt64.sub" | "USize.sub" => {
-                        ("wrapping_sub", false)
-                    }
-                    "UInt8.mul" | "UInt16.mul" | "UInt32.mul" | "UInt64.mul" | "USize.mul" => {
-                        ("wrapping_mul", false)
-                    }
-                    "UInt8.decEq" | "UInt16.decEq" | "UInt32.decEq" | "UInt64.decEq"
-                    | "USize.decEq" => ("==", true),
-                    "UInt8.decLt" | "UInt16.decLt" | "UInt32.decLt" | "UInt64.decLt"
-                    | "USize.decLt" => ("<", true),
-                    "UInt8.decLe" | "UInt16.decLe" | "UInt32.decLe" | "UInt64.decLe"
-                    | "USize.decLe" => ("<=", true),
-                    _ => return Err(format!("unrecognized primitive call: {name}")),
-                };
-                let expected_ty = match name.split('.').next() {
-                    Some("UInt8") => "u8",
-                    Some("UInt16") => "u16",
-                    Some("UInt32") => "u32",
-                    Some("UInt64") => "u64",
-                    Some("USize") => "usize",
-                    _ => return Err(format!("invalid primitive namespace: {name}")),
-                };
+                let spec = primitive_spec(&name)
+                    .ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
+                let op = spec.rust_op;
+                let comparison = spec.comparison;
+                let expected_ty = spec.operand_type;
                 let lhs = Self::arg(args[0], env, expected_ty)?;
                 let rhs = Self::arg(args[1], env, expected_ty)?;
                 if comparison {
@@ -302,7 +294,7 @@ impl Reader {
         let mut seen = [false; 2];
         writeln!(code, "    match x_{scrutinee} {{").unwrap();
         for alt in alts {
-            if Self::tag(alt)? != 0 {
+            if Self::checked_tag(alt, "Alt")? != 0 {
                 return Err("Bool default case is not yet supported".into());
             }
             let info = Self::field(alt, 0)?;
@@ -360,7 +352,7 @@ impl Reader {
             if *count > 100_000 {
                 return Err("IR instruction limit exceeded".into());
             }
-            match Self::tag(x)? {
+            match Self::checked_tag(x, "FnBody")? {
                 0 => {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
@@ -475,7 +467,7 @@ impl Reader {
         rust_name: &str,
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
-        if Self::tag(decl)? != 0 {
+        if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern declaration without executable body".into());
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
@@ -544,7 +536,7 @@ fn internal_name(lean_name: &str) -> String {
 
 impl Reader {
     unsafe fn signature(decl: Obj) -> Result<Signature, String> {
-        if Self::tag(decl)? != 0 {
+        if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
         let mut params = Vec::new();
@@ -568,10 +560,10 @@ impl Reader {
             if count > 100_000 {
                 return Err("dependency IR traversal exceeded 100000 instructions".into());
             }
-            match Self::tag(body)? {
+            match Self::checked_tag(body, "FnBody")? {
                 0 => {
                     let expr = Self::field(body, 2)?;
-                    if Self::tag(expr)? == 6 {
+                    if Self::checked_tag(expr, "Expr")? == 6 {
                         calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
                     }
                     pending.push(Self::field(body, 3)?);
@@ -582,7 +574,7 @@ impl Reader {
                 }
                 9 => {
                     for alt in Self::array(Self::field(body, 3)?)? {
-                        match Self::tag(alt)? {
+                        match Self::checked_tag(alt, "Alt")? {
                             0 => pending.push(Self::field(alt, 1)?),
                             1 => pending.push(Self::field(alt, 0)?),
                             t => return Err(format!("unknown alternative constructor {t}")),
@@ -719,40 +711,37 @@ impl Reader {
     }
 }
 
+const PRIMITIVE_REGISTRY: &str = include_str!("../primitive-registry.tsv");
+
+struct PrimitiveSpec<'a> {
+    operand_type: &'a str,
+    rust_op: &'a str,
+    comparison: bool,
+}
+
+fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
+    PRIMITIVE_REGISTRY
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .find_map(|line| {
+            let mut cells = line.split('\t');
+            let id = cells.next()?;
+            let operand_type = cells.next()?;
+            let rust_op = cells.next()?;
+            let kind = cells.next()?;
+            if cells.next().is_some() || id != name {
+                return None;
+            }
+            Some(PrimitiveSpec {
+                operand_type,
+                rust_op,
+                comparison: kind == "comparison",
+            })
+        })
+}
+
 fn is_primitive(name: &str) -> bool {
-    matches!(
-        name,
-        "UInt8.add"
-            | "UInt16.add"
-            | "UInt32.add"
-            | "UInt64.add"
-            | "USize.add"
-            | "UInt8.sub"
-            | "UInt16.sub"
-            | "UInt32.sub"
-            | "UInt64.sub"
-            | "USize.sub"
-            | "UInt8.mul"
-            | "UInt16.mul"
-            | "UInt32.mul"
-            | "UInt64.mul"
-            | "USize.mul"
-            | "UInt8.decEq"
-            | "UInt16.decEq"
-            | "UInt32.decEq"
-            | "UInt64.decEq"
-            | "USize.decEq"
-            | "UInt8.decLt"
-            | "UInt16.decLt"
-            | "UInt32.decLt"
-            | "UInt64.decLt"
-            | "USize.decLt"
-            | "UInt8.decLe"
-            | "UInt16.decLe"
-            | "UInt32.decLe"
-            | "UInt64.decLe"
-            | "USize.decLe"
-    )
+    primitive_spec(name).is_some()
 }
 
 unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
@@ -907,7 +896,7 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 
 #[cfg(test)]
 mod tests {
-    use super::internal_name;
+    use super::{internal_name, SUPPORTED_IR_TAGS};
     #[test]
     fn closure_symbol_mangling_is_injective_on_ascii_names() {
         assert_ne!(internal_name("X.ab"), internal_name("X.a_b"));
@@ -920,4 +909,35 @@ mod tests {
             assert!(s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
         }
     }
+    #[test]
+    fn constructor_whitelist_preserves_scoped_join_support() {
+        assert!(SUPPORTED_IR_TAGS.contains(&("Decl", 0)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("Decl", 1)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 6)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 11)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("Expr", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 1)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 16);
+    }
+
+    #[test]
+    fn primitive_registry_is_complete_and_unambiguous() {
+        use super::{primitive_spec, PRIMITIVE_REGISTRY};
+        use std::collections::BTreeSet;
+        let mut seen = BTreeSet::new();
+        for line in PRIMITIVE_REGISTRY.lines().filter(|s| !s.starts_with('#') && !s.is_empty()) {
+            let cells: Vec<_> = line.split('\t').collect();
+            assert_eq!(cells.len(), 4);
+            assert!(seen.insert(cells[0]));
+            assert!(primitive_spec(cells[0]).is_some());
+        }
+        assert_eq!(seen.len(), 30);
+        assert!(primitive_spec("UInt64.add").is_some());
+        assert!(primitive_spec("USize.decLe").is_some());
+        assert!(primitive_spec("Int.add").is_none());
+    }
+
 }

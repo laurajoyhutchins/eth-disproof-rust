@@ -39,3 +39,9 @@
 
 /examples/rejected-nat-pow-package/
 /examples/RefusalNatPow.log
+
+# Native immutable copy-on-write array conformance artifacts
+/examples/array-package/
+/examples/rejected-array-package/
+/examples/RefusalArrayPop.log
+/examples/RefusalArrayBang.log

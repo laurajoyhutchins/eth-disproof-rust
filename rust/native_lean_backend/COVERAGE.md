@@ -139,3 +139,26 @@ separate ETH symbolic/physical semantics obligations remain open.
   code does not depend on Lean at runtime, but bigint programs still depend
   on GMP. The 4 KiB constant bound prevents unbounded quadratic decimal
   conversion in the pinned Lean C ABI shim.
+
+## Extension: immutable copy-on-write Array values
+
+- Implemented pinned native Array FFI-call identities: `Array.mkEmpty`,
+  `Array.push`, `Array.size`, `Array.getInternal`,
+  `Array.getInternalBorrowed`, and `Array.set!`.
+- Each primitive enforces an exact arity, result IR type, erased argument
+  positions, and source type categories. Index operands must be statically
+  `tagged` Nat; arbitrary boxed `Nat` indices **refuse**.
+- `Nat.decEq`/`decLt`/`decLe` on two statically tagged values use host
+  `usize` comparisons, avoiding GMP for pure tagged-Array programs.
+- Array updates return new vectors, preserving prior values on branches and
+  under `Rc` sharing. This is extensional value semantics, not an exact model
+  of Lean's mutable storage allocation or primitive TM2 costs. Current writes
+  copy O(n) elements and repeated pushes can take O(n²) time.
+- `examples/ArrayFixture.lean` compiles five roots and compares 1,280
+  independently Lean-evaluated results. A generated Cargo executable has no
+  GMP or Lean dynamic-library dependency. Both generated source determinism
+  and unsupported `Array.pop`/`Array.get!Internal` refusals are checked.
+- Full local smoke expectation: **12,644** differential assertions across
+  all preceding compiler fixtures and the Array extension. No general array
+  API, arbitrary-size source program, mutation ownership equivalence, or
+  proof of semantic refinement is implied.

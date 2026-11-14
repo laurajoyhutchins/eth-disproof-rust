@@ -82,6 +82,12 @@ private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.
     if let some decl ← Lean.IR.findDecl name then
       if let some blame := decl.getInfo.sorryDep? then
         throwError "Rust native backend refused {name}: dependency on sorry axiom {blame}"
+      -- The native backend implements these *exact* Lean runtime externs,
+      -- validating their arity, IR types and erased argument positions.
+      -- Do not inject opaque extern declarations into the compiled closure.
+      if let .extern .. := decl then
+        if #["Array.mkEmpty", "Array.push", "Array.size", "Array.getInternal", "Array.getInternalBorrowed", "Array.set!"].contains name.toString then
+          continue
       decls := decls.push decl
       if let .fdecl _ _ _ body _ := decl then
         queue := queue ++ callsInBody body
@@ -149,7 +155,6 @@ def elabNativeRustClosureCmd : CommandElab := fun stx => do
     liftIO <| NativeRust.writeAtomically outFile.getString code
     logInfo m!"Native Rust backend emitted dependency closure for {root.getId}"
   | _ => throwUnsupportedSyntax
-
 
 syntax (name := nativeRustPackageCmd) "#native_rust_package " "[" ident,* "]" " to " str : command
 

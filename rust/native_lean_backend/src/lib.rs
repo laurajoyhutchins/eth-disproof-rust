@@ -58,6 +58,7 @@ enum __LeanValueRepr {
     Tagged(usize),
     U8(u8), U16(u16), U32(u32), U64(u64), USize(usize),
     Ctor { tag: usize, name: &'static str, fields: Vec<__LeanValue> },
+    Array(Vec<__LeanValue>),
     // __NAT_RUNTIME_VARIANT__
 }
 
@@ -69,6 +70,53 @@ impl __LeanValue {
     fn boxed_u32(v: u32) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U32(v))) }
     fn boxed_u64(v: u64) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U64(v))) }
     fn boxed_usize(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::USize(v))) }
+    fn tagged_nat(&self) -> usize {
+        match self.0.as_ref() {
+            __LeanValueRepr::Tagged(n) => *n,
+            _ => panic!("expected a statically tagged Nat"),
+        }
+    }
+    fn empty_array(capacity: usize) -> Self {
+        // Capacity is a performance hint, not part of observable array state.
+        // Avoid attempting a huge eager allocation from a valid runtime Nat.
+        let items = Vec::with_capacity(capacity.min(1024));
+        Self(std::rc::Rc::new(__LeanValueRepr::Array(items)))
+    }
+    // Pure, copy-on-write semantics: every write returns a fresh value.
+    // An earlier reference to the input remains unchanged. This currently
+    // copies the vector; it does NOT claim Lean's unique-buffer fast path.
+    fn array_push(&self, value: Self) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Array(items) => {
+                let mut updated = items.clone();
+                updated.push(value);
+                Self(std::rc::Rc::new(__LeanValueRepr::Array(updated)))
+            }
+            _ => panic!("Array.push on non-array object"),
+        }
+    }
+    fn array_size(&self) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Array(items) => Self::tagged(items.len()),
+            _ => panic!("Array.size on non-array object"),
+        }
+    }
+    fn array_get(&self, index: usize) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Array(items) => items.get(index).expect("Array.getInternal: out of bounds").clone(),
+            _ => panic!("Array.getInternal on non-array object"),
+        }
+    }
+    fn array_set(&self, index: usize, value: Self) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Array(items) => {
+                let mut updated = items.clone();
+                *updated.get_mut(index).expect("Array.set!: out of bounds") = value;
+                Self(std::rc::Rc::new(__LeanValueRepr::Array(updated)))
+            }
+            _ => panic!("Array.set! on non-array object"),
+        }
+    }
     fn ctor(tag: usize, name: &'static str, fields: Vec<Self>) -> Self {
         Self(std::rc::Rc::new(__LeanValueRepr::Ctor { tag, name, fields }))
     }
@@ -365,7 +413,9 @@ impl Reader {
                 // this, a quoted segment containing '.' could collide with
                 // a nested Lean name in the call graph.
                 if s.is_empty()
-                    || !s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+                    || !s
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'!')
                     || s.as_bytes()[0].is_ascii_digit()
                 {
                     return Err(
@@ -580,8 +630,99 @@ impl Reader {
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
                 }
+                // A deliberately narrow, allocation-safe Array primitive
+                // subset. Type/proof arguments are erased by Lean; check the
+                // exact erased slots rather than silently dropping arguments.
+                // The generated methods use persistent value semantics so
+                // that updates never mutate a previously shared array.
+                if name.starts_with("Array.") {
+                    let erased = |i: usize| -> Result<(), String> {
+                        if Self::tag(args[i])? == 1 {
+                            Ok(())
+                        } else {
+                            Err(format!(
+                                "{name}: expected an erased type/proof argument at {i}"
+                            ))
+                        }
+                    };
+                    let check = |arity: usize, ty: &str| -> Result<(), String> {
+                        if args.len() != arity || var_ty != ty {
+                            return Err(format!("{name}: wrong arity or IR result type"));
+                        }
+                        Ok(())
+                    };
+                    return match name.as_str() {
+                        "Array.mkEmpty" => {
+                            check(2, "obj")?;
+                            erased(0)?;
+                            let capacity = Self::arg(args[1], env, "tagged")?;
+                            Ok(format!("__LeanValue::empty_array({capacity}.tagged_nat())"))
+                        }
+                        "Array.push" => {
+                            check(3, "obj")?;
+                            erased(0)?;
+                            let array = Self::arg(args[1], env, "obj")?;
+                            let item = Self::arg(args[2], env, "tobj")?;
+                            Ok(format!("{array}.array_push({item})"))
+                        }
+                        "Array.size" => {
+                            check(2, "tagged")?;
+                            erased(0)?;
+                            let array = Self::arg(args[1], env, "obj")?;
+                            Ok(format!("{array}.array_size()"))
+                        }
+                        "Array.getInternal" | "Array.getInternalBorrowed" => {
+                            check(4, "tobj")?;
+                            erased(0)?;
+                            erased(3)?;
+                            let array = Self::arg(args[1], env, "obj")?;
+                            let index = Self::arg(args[2], env, "tagged")?;
+                            Ok(format!("{array}.array_get({index}.tagged_nat())"))
+                        }
+                        "Array.set!" => {
+                            check(4, "obj")?;
+                            erased(0)?;
+                            let array = Self::arg(args[1], env, "obj")?;
+                            let index = Self::arg(args[2], env, "tagged")?;
+                            let item = Self::arg(args[3], env, "tobj")?;
+                            Ok(format!("{array}.array_set({index}.tagged_nat(), {item})"))
+                        }
+                        _ => Err(format!("unrecognized Array primitive: {name}")),
+                    };
+                }
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
+                }
+                let mut both_tagged = true;
+                if matches!(name.as_str(), "Nat.decEq" | "Nat.decLt" | "Nat.decLe") {
+                    for arg in &args {
+                        if Self::tag(*arg)? != 0 {
+                            both_tagged = false;
+                            break;
+                        }
+                        let id = Self::var(Self::field(*arg, 0)?)?;
+                        if env.get(&id) != Some(&"tagged") {
+                            both_tagged = false;
+                            break;
+                        }
+                    }
+                } else {
+                    both_tagged = false;
+                }
+                if both_tagged {
+                    if var_ty != "u8" {
+                        return Err(format!("{name}: tagged Nat comparison must return UInt8"));
+                    }
+                    let lhs = Self::arg(args[0], env, "tagged")?;
+                    let rhs = Self::arg(args[1], env, "tagged")?;
+                    let op = match name.as_str() {
+                        "Nat.decEq" => "==",
+                        "Nat.decLt" => "<",
+                        _ => "<=",
+                    };
+                    return Ok(format!(
+                        "u8::from({lhs}.tagged_nat() {op} {rhs}.tagged_nat())"
+                    ));
                 }
                 if matches!(
                     name.as_str(),
@@ -1232,6 +1373,12 @@ fn is_primitive(name: &str) -> bool {
     matches!(
         name,
         "Nat.add"
+            | "Array.mkEmpty"
+            | "Array.push"
+            | "Array.size"
+            | "Array.getInternal"
+            | "Array.getInternalBorrowed"
+            | "Array.set!"
             | "Nat.sub"
             | "Nat.mul"
             | "Nat.div"

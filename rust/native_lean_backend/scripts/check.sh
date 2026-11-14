@@ -231,6 +231,37 @@ if [[ -e examples/rejected-nat-pow-package ]] || ! grep -q 'Rust native backend 
   echo 'Nat.pow refusal published partial output or lacked diagnostic' >&2; exit 1
 fi
 rm -f examples/RefusalNatPow.log
+# Array operations are lowered from actual Lean IR, with an immutable
+# copy-on-write value runtime. The fixture exercises array construction,
+# append, size, checked reads, updates that preserve the old array, and
+# arrays flowing through an Option. The generated program must not depend
+# on either GMP or the Lean runtime.
+rm -rf examples/array-package
+lean --load-dynlib="$NATIVE_LIB" examples/ArrayFixture.lean
+cargo test --offline --manifest-path examples/array-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/array-package/Cargo.toml --lib -- -D warnings
+array_exe="$(find examples/array-package/target/debug/deps -maxdepth 1 -type f -name 'arrays-*' -executable -print -quit)"
+if [[ -z "$array_exe" ]] || ldd "$array_exe" | grep -Eq 'lib(gmp|Lean|lean)\.'; then
+  echo 'standalone Array test executable links GMP/Lean or is missing' >&2; exit 1
+fi
+array_hash_before="$(sha256sum examples/array-package/src/lib.rs | cut -d' ' -f1)"
+rm -rf examples/array-package
+lean --load-dynlib="$NATIVE_LIB" examples/ArrayFixture.lean > /dev/null
+array_hash_after="$(sha256sum examples/array-package/src/lib.rs | cut -d' ' -f1)"
+if [[ "$array_hash_before" != "$array_hash_after" ]]; then
+  echo 'Array code generation was not deterministic' >&2; exit 1
+fi
+for fixture in RefusalArrayPop RefusalArrayBang; do
+  rm -rf examples/rejected-array-package
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then
+    echo "unsupported Array operation accepted: $fixture" >&2; exit 1
+  fi
+  if [[ -e examples/rejected-array-package ]] || ! grep -q 'Rust native backend refused' "examples/${fixture}.log"; then
+    cat "examples/${fixture}.log" >&2
+    echo "unsupported $fixture published partial output or lacked refusal" >&2; exit 1
+  fi
+  rm -f "examples/${fixture}.log"
+done
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -243,7 +274,7 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=11364"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/NatFixture.lean examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml examples/generated_*.rs
+  echo "differential_assertions=12644"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/NatFixture.lean examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml examples/ArrayFixture.lean examples/RefusalArrayPop.lean examples/RefusalArrayBang.lean examples/array-package/src/lib.rs examples/array-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

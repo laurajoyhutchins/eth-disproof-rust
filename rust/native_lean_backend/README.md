@@ -191,3 +191,32 @@ no `libgmp` or Lean runtime dependency. Arithmetic over Nat retains GMP.
 `examples/LargeNat.lean` checks 76 independently Lean-evaluated results on
 inputs up to 4,096 bits. This handles literal constants, **not** general
 constant folding: `Nat.pow` expressions remaining as IR calls still refuse.
+
+### New: native IR array operations and value sharing (post #214)
+
+`Array.mkEmpty`, `Array.push`, `Array.size`, `Array.getInternal`,
+`Array.getInternalBorrowed`, and `Array.set!` are supported **only** with the
+exact pinned erased-argument positions and statically tagged Nat indices used
+in the tested IR. The common source `Array.getD` is compiled using Lean's own
+size checks, `Nat.decLt`, IR cases and join points. For two statically tagged
+Nat operands, comparisons use exact `usize` comparisons, avoiding GMP.
+
+The generated immutable `__LeanValue` runtime now has an `Array` variant.
+`push` and `set!` produce new vectors; old snapshots remain unchanged even
+when they are shared with other values. Rust `Rc` manages the generated
+lifetime. This preserves the *value behavior* of the checked array programs,
+not Lean's physical reference counts, in-place storage reuse or allocator
+costs. Array writes currently clone the whole vector, so repeated pushes are
+quadratic, and this must be optimized and independently benchmarked before
+claiming competitive runtime performance. `Array.pop`, `Array.get!Internal`,
+large/boxed indices, unverified operations, general mutable constructors,
+`reset`, `reuse`, and `isShared` remain unsupported and fail closed.
+
+`examples/ArrayFixture.lean` independently evaluates five public Lean roots
+and generates **1,280 Rust assertions**, exercising empty/out-of-bounds
+defaults, array size, pushing, copy-on-write updates preserving an old alias,
+and arrays composed through an `Option`. The generated Cargo tests use neither
+Lean nor GMP. Two additional fixtures refuse unsupported array primitives
+without publishing a partial package. The cumulative checked suite now
+contains **12,644** Lean-derived assertions. This is not a proof of complete
+array semantics, exact resource behavior, or compiler correctness.

@@ -175,6 +175,7 @@ LEAN
   # A missing diagnostic is reported separately and never accepted as Rust.
   if [[ "$name" == "armada" ]]; then
     cat > "$case_dir/inspect-list-deps.lean" <<'LEAN'
+import NativeRust
 import Sched.Basic
 open Lean Elab Command
 run_cmd do

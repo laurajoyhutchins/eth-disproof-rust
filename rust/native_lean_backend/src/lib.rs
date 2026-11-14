@@ -1164,7 +1164,18 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 
 #[cfg(test)]
 mod tests {
-    use super::{append_name_component, encode_name_str, internal_name, SUPPORTED_IR_TAGS};
+    use super::{append_name_component, encode_name_str, internal_name, RUNTIME_SOURCE, SUPPORTED_IR_TAGS};
+    #[test]
+    fn one_canonical_generated_immutable_runtime() {
+        assert_eq!(RUNTIME_SOURCE.matches("pub struct __LeanValue(").count(), 1);
+        assert_eq!(RUNTIME_SOURCE.matches("enum __LeanValueRepr").count(), 1);
+        assert!(RUNTIME_SOURCE.contains("std::rc::Rc<__LeanValueRepr>"));
+        assert!(RUNTIME_SOURCE.contains("fn unbox_u64"));
+        assert!(RUNTIME_SOURCE.contains("fn has_ctor"));
+        assert!(!RUNTIME_SOURCE.contains("fn is_shared"));
+        assert!(!RUNTIME_SOURCE.contains("fn mutate"));
+    }
+
     #[test]
     fn closure_symbol_mangling_is_injective_on_ascii_names() {
         assert_ne!(internal_name("X.ab"), internal_name("X.a_b"));

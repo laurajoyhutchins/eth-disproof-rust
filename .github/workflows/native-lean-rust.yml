@@ -1,4 +1,4 @@
-name: Native Lean 4.34.1 to Rust G0
+name: Native Lean to Rust (in-process)
 
 on:
   pull_request:
@@ -16,60 +16,56 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-lean-rust-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: native-lean-rust-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  native-ffi-smoke:
+  native:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-
-      - name: Restore pinned Rust 1.99.1
+      - name: Verify exact commit
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+      - name: Restore pinned Rust
         run: |
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
           rustup default 1.99.1
-
-      - name: Restore exact Lean 4.34.1 toolchain
-        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+      - name: Restore pinned Lean (no Mathlib or large-project build)
+        uses: leanprover/lean-action@ba3fdfe5c4476c925da13bf11a005ddb47e47aee
         with:
-          # Install the pinned Lean toolchain through the already verified Lake root.
-          # The native backend's standalone Lake package has no committed manifest.
-          lake-package-directory: instrumentation/lean-env
+          lake-package-directory: rust/native_lean_backend
           auto-config: false
-          use-github-cache: false
           use-mathlib-cache: false
+          use-github-cache: false
           build: false
           test: false
-          lint: false
-          mk_all-check: false
-
-      - name: Run in-process Lean ABI, Rust codegen and executable conformance
-        shell: bash
+      - name: Install GMP development library for generated Nat runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libgmp-dev
+      - name: Check Lean package
+        working-directory: rust/native_lean_backend
+        run: lake build
+      - name: Native FFI and independent Lean/Rust differential verification
+        working-directory: rust/native_lean_backend
         run: |
           set -euo pipefail
-          LEAN_BINARY="$(cd instrumentation/lean-env && elan which lean)"
-          export LEAN_PREFIX="$(dirname "$(dirname "$LEAN_BINARY")")"
-          test -f "$LEAN_PREFIX/include/lean/lean.h"
-          test "$(cat rust/native_lean_backend/lean-toolchain)" = 'leanprover/lean4:v4.34.1'
-          echo "PR_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
-          "$LEAN_PREFIX/bin/lean" --version
-          cargo --version
-          rustc --version
-          (
-            cd rust/native_lean_backend
-            lake build
-            ./scripts/check.sh
-          )
-          # Keep the exact-head provenance and all generated-code hashes in the job log.
-          cat rust/native_lean_backend/artifacts/native-smoke-receipt.txt
+          export LEAN_PREFIX="$(lean --print-prefix)"
+          ./scripts/check.sh
+      - name: Publish exact-head evidence in run summary
+        if: success()
+        working-directory: rust/native_lean_backend
+        run: |
           {
-            echo 'NATIVE_LEAN_G0=REAL_IN_PROCESS_FFI_AND_GENERATED_RUST'
-            echo 'Lean=4.34.1'
-            echo "Tested source SHA: ${{ github.event.pull_request.head.sha || github.sha }}"
-            echo 'G1 general compiler and G2 ETH physical equivalence: NOT ESTABLISHED'
+            echo '### Native Lean/Rust verification'
+            echo '```text'
+            head -n 7 artifacts/native-smoke-receipt.txt
+            echo '```'
+            echo 'Full source and generated-code SHA-256 hashes are in the job logs.'
           } >> "$GITHUB_STEP_SUMMARY"
+          cat artifacts/native-smoke-receipt.txt

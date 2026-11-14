@@ -113,3 +113,24 @@ separate ETH symbolic/physical semantics obligations remain open.
 - Total smoke suite: **6,080** differential assertions, not a general
   semantic-refinement theorem. Arbitrary-precision Nat, String, Array, and
   mutable object semantics remain entirely unsupported.
+
+## Extension: GMP-backed arbitrary-precision Nat (post #204)
+
+- The generated Rust immutable-value runtime includes a GMP-backed Nat
+  variant; tagged small Nat literals and boxed arbitrary-width inputs share
+  the same operation semantics. Nat never silently truncates to machine word.
+- Implemented exact native primitive lowering: `Nat.add`, `Nat.sub`,
+  `Nat.mul`, `Nat.div`, `Nat.mod`, `Nat.decEq`, `Nat.decLt`, `Nat.decLe`.
+  `Nat.sub` is truncated at zero. Both `Nat.div` and `Nat.mod` have explicit
+  Lean-compatible zero-divisor semantics.
+- All remaining Nat primitives, large closed Nat constant declarations,
+  unimplemented field layouts and unsupported object shapes refuse.
+- Integration suite: 5,208 new Lean-evaluated assertions on up-to-1,024-bit
+  inputs, plus the preceding 6,080 case suite. **11,288 total**. This is
+  empirical semantics checking, **not** a proof of full Lean compiler or
+  kernel-to-machine-code correctness.
+- This extension requires `libgmp` on Linux x86-64, even for object programs
+  that do not invoke Nat because they share the emitted value runtime.
+  Generated code has no Lean runtime dependency, but is not fully
+  dependency-free. We should factor the optional Nat runtime out before
+  claiming a portable compiler v1 release.

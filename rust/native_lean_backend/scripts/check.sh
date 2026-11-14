@@ -186,6 +186,24 @@ for fixture in RefusalObjectNat RefusalObjectCtor; do
   fi
   rm -f "examples/${fixture}.log"
 done
+# Arbitrary precision Nat arithmetic over live compiler IR. GMP is linked into
+# the standalone generated Rust (no Lean runtime required). Testing includes
+# >1024-bit values and Lean's totalized division/modulus by zero.
+rm -rf examples/nat-package
+lean --load-dynlib="$NATIVE_LIB" examples/NatFixture.lean
+cargo test --offline --manifest-path examples/nat-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/nat-package/Cargo.toml --lib -- -D warnings
+# A Nat operation outside the supported primitive set must refuse the entire
+# dependency closure and must not publish a partial Cargo package.
+rm -rf examples/rejected-nat-package
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalNatBitwise.lean > examples/RefusalNatBitwise.log 2>&1; then
+  echo 'unsupported Nat bitwise primitive was accepted' >&2; exit 1
+fi
+if [[ -e examples/rejected-nat-package ]] || ! grep -q 'Rust native backend refused' examples/RefusalNatBitwise.log; then
+  cat examples/RefusalNatBitwise.log >&2
+  echo 'unsupported Nat compilation published partial output or lacked refusal' >&2; exit 1
+fi
+rm -f examples/RefusalNatBitwise.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -198,7 +216,7 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=6080"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/generated_*.rs
+  echo "differential_assertions=11288"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/NatFixture.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

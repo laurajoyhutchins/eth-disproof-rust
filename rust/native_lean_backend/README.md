@@ -20,8 +20,11 @@ Lean 4.34.1 -> Lean.Compiler.compile -> Lean.IR.Decl
 ## Tested usage
 
 Linux x86_64, pinned Lean 4.34.1 (including headers and shared runtime), Rust
-1.99.1, C compiler, `ar`. No Cargo crates are downloaded; there are no
-third-party Rust dependencies.
+1.99.1, C compiler, `ar`, and **GMP development headers/library** for
+object-valued generated Rust. No Cargo crates are downloaded. The generated
+Nat runtime links against system `libgmp`; it does not link Lean. On Ubuntu,
+install `libgmp-dev` before running the suite. GMP's library/distribution
+license obligations apply independently of this compiler's license.
 
 ```sh
 cd rust/native_lean_backend
@@ -32,9 +35,9 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 `check.sh` builds a Rust shared library and `NativeRust.olean`, then loads the
 backend into Lean's interpreter. It compiles **15 isolated declarations and
 three transitive closure roots**, generates standalone Rust, and executes
-**6,080 independently evaluated Lean/Rust assertions**, including 256 join-point
-cases, 768 multi-root Cargo library cases, and 3,072 immutable object
-constructor/projection cases. It also checks
+**11,288 independently evaluated Lean/Rust assertions**, including 256 join-point
+cases, 768 multi-root Cargo library cases, 3,072 immutable object
+constructor/projection cases, and 5,208 arbitrary-precision `Nat` cases. It also checks
 fail-closed behavior, preserved outputs, stable output hashes, Cargo tests,
 formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
@@ -103,9 +106,10 @@ A further opt-in immutable-value subset supports `Option UInt64`, nested
 is not a full Lean runtime: its constructor names and layouts are validated,
 and all mutation and observable reference-count primitives remain refused.
 
-**Not implemented:** general Lean/Rust compilation; arbitrary-precision
-`Nat`; indirect calls, closures, non-Boolean cases, recursive joins, arrays,
-structures, general external primitives, and
+**Not implemented:** general Lean/Rust compilation; full `Nat` primitive
+coverage or large closed `Nat` constant graphs; indirect calls, closures,
+non-Boolean cases, recursive joins, arrays, structures, general external
+primitives, and
 noncomputable expressions without compiler IR. The current generated functions are checked
 on examples but there is not yet a general semantic refinement theorem.
 
@@ -146,3 +150,26 @@ The exact test suite verifies shared dependency deduplication, deterministic
 crate emission, public-name collision refusal, unsupported type refusal, and
 no modification of previously published directories. These are successful
 examples within a **bounded subset**, not proof of general compiler correctness.
+
+### New: exact arbitrary-precision Nat primitives
+
+The generated Rust runtime now represents natural numbers with GMP-backed,
+reference-counted immutable values. This supports **Nat.add, Nat.sub, Nat.mul,
+Nat.div, Nat.mod, Nat.decEq, Nat.decLt and Nat.decLe**, plus small tagged Nat
+constants and arithmetic with them. It does **not** cast Nat to `u64` or
+`usize`. Subtraction saturates at zero; division by zero returns zero and
+modulo by zero returns the dividend, matching Lean's semantics.
+
+`examples/NatFixture.lean` generates a standalone Cargo library and 5,208
+independently Lean-evaluated test assertions over numbers from 0 to 1,024+
+bits. The test includes zero divisors, mixed tagged and heap operands, large
+products, and boundary comparisons. `RefusalNatBitwise.lean` tests an
+unsupported Nat primitive and the absence of partial output.
+
+**Limitations:** This is still a bounded, explicitly supported primitive
+subset, not a complete implementation of Lean Nat code generation. Large
+*closed* Nat expressions and many additional `Nat` operations remain
+unsupported. Public Nat results use the generated `__LeanValue` wrapper;
+`nat_from_decimal` and `nat_to_decimal` are the explicit Rust boundary for
+this subset. Generated packages containing the immutable-value runtime need
+`libgmp` at build and run time. No semantic-preservation theorem is claimed.

@@ -29,3 +29,7 @@
 /examples/object-package/
 /examples/object-lean.log
 /examples/RefusalObject*.log
+
+# Arbitrary-precision Nat GMP conformance artifacts
+/examples/nat-package/
+/examples/RefusalNatBitwise.log

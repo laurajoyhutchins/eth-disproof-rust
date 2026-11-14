@@ -20,12 +20,15 @@ for(const c of m.cases){
  const exit_code=Number(raw);
  const counts=[...stdout.matchAll(/\bresults:\s*(\d+) compiled,\s*(\d+) failed,\s*(\d+) prose \(of (\d+)\)/g)];
  const claims=[...stdout.matchAll(/\binfo: claim \d+:\s*(.+)$/gm)].map(x=>x[1]);
+ const countLine=[...stdout.matchAll(/\b(\d+) definitions,\s*(\d+) claims\b/g)];
  const warnings=stdout.split('\n').filter(x=>/\bwarning:/.test(x));
  let status='tool_error',result=null;
  if(counts.length===1){
   const [compiled,failed,prose,total]=counts[0].slice(1).map(Number);
-  if(total!==compiled+failed+prose||!total||claims.length!==compiled)throw Error('inconsistent counts for '+c.id);
-  result={compiled,failed,prose,total};
+  if(total!==compiled+failed+prose||!total||countLine.length!==1)throw Error('inconsistent sentence counts for '+c.id);
+  const [definitions,declaredClaims]=countLine[0].slice(1).map(Number);
+  if(claims.length!==declaredClaims || (compiled===0 && declaredClaims>0))throw Error('inconsistent claim counts for '+c.id);
+  result={compiled,failed,prose,total,definitions,declaredClaims};
   if(exit_code===124||exit_code===137)status='timeout_or_signal';
   else if(failed>0)status='diagnosed_failure';
   else if(exit_code!==0)status='tool_error';

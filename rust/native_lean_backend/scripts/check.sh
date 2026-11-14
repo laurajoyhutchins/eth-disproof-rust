@@ -157,7 +157,7 @@ fn main() {
 RUST
 rustc --edition=2021 -o examples/native-test examples/run.rs
 examples/native-test
-# Any inductive carrying a field requires the object runtime and must refuse.
+# Unverified heap-backed constructors must still refuse under the bounded object runtime.
 printf 'preserve-previous-tagged-output\n' > examples/rejected_tagged_heap.rs
 if lean --load-dynlib="$NATIVE_LIB" examples/RefusalTaggedHeap.lean > examples/RefusalTaggedHeap.log 2>&1; then
   echo "heap-backed tagged constructor was incorrectly accepted" >&2; exit 1
@@ -170,6 +170,71 @@ if [[ "$(cat examples/rejected_tagged_heap.rs)" != "preserve-previous-tagged-out
   echo "failed tagged refusal modified existing output" >&2; exit 1
 fi
 rm -f examples/rejected_tagged_heap.rs examples/RefusalTaggedHeap.log
+# Float is accepted only for three finite typed-scalar operations.
+# Test oracle results computed by original Lean Float, never by the Rust backend.
+lean --load-dynlib="$NATIVE_LIB" examples/FloatFixture.lean
+cat > examples/test-float.rs <<'RUST'
+include!("generated_float_add.rs");
+include!("generated_float_sub.rs");
+include!("generated_float_mul.rs");
+fn main() { include!("generated_float_differential.rs"); }
+RUST
+rustc --edition=2024 -o examples/test-float examples/test-float.rs
+examples/test-float
+# Nullary tagged inductive constructors and exhaustive finite pattern matches
+# must execute without representing heap-backed fields as raw Rust integers.
+lean --load-dynlib="$NATIVE_LIB" examples/TaggedFixture.lean
+cat > examples/test-tagged.rs <<'RUST'
+include!("generated_tag_rotate.rs");
+include!("generated_tag_score.rs");
+include!("generated_tag_identity.rs");
+fn main() { include!("generated_tagged_differential.rs"); }
+RUST
+rustc --edition=2024 -o examples/test-tagged examples/test-tagged.rs
+examples/test-tagged
+# Typed bitwise operations, mod-width shifts and total unsigned div/mod.
+# All 2,240 expectations originate in the original pinned Lean evaluator.
+lean --load-dynlib="$NATIVE_LIB" examples/BitwiseFixture.lean
+cat > examples/test-bitwise.rs <<'RUST'
+include!("generated_bw_and8.rs");
+include!("generated_bw_or8.rs");
+include!("generated_bw_xor8.rs");
+include!("generated_bw_left8.rs");
+include!("generated_bw_right8.rs");
+include!("generated_bw_div8.rs");
+include!("generated_bw_mod8.rs");
+include!("generated_bw_and16.rs");
+include!("generated_bw_or16.rs");
+include!("generated_bw_xor16.rs");
+include!("generated_bw_left16.rs");
+include!("generated_bw_right16.rs");
+include!("generated_bw_div16.rs");
+include!("generated_bw_mod16.rs");
+include!("generated_bw_and32.rs");
+include!("generated_bw_or32.rs");
+include!("generated_bw_xor32.rs");
+include!("generated_bw_left32.rs");
+include!("generated_bw_right32.rs");
+include!("generated_bw_div32.rs");
+include!("generated_bw_mod32.rs");
+include!("generated_bw_and64.rs");
+include!("generated_bw_or64.rs");
+include!("generated_bw_xor64.rs");
+include!("generated_bw_left64.rs");
+include!("generated_bw_right64.rs");
+include!("generated_bw_div64.rs");
+include!("generated_bw_mod64.rs");
+include!("generated_bw_andSize.rs");
+include!("generated_bw_orSize.rs");
+include!("generated_bw_xorSize.rs");
+include!("generated_bw_leftSize.rs");
+include!("generated_bw_rightSize.rs");
+include!("generated_bw_divSize.rs");
+include!("generated_bw_modSize.rs");
+fn main() { include!("generated_bitwise_differential.rs"); }
+RUST
+rustc --edition=2024 -o examples/test-bitwise examples/test-bitwise.rs
+examples/test-bitwise
 # Real Lean IR join continuations (jdecl/jmp), including captured locals.
 lean --load-dynlib="$NATIVE_LIB" examples/JoinFixture.lean
 cat > examples/test-join.rs <<'RUST'

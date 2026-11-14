@@ -343,15 +343,25 @@ impl Reader {
                 let usize_count = Self::nat(Self::field(info, 3)?)?;
                 let ssize = Self::nat(Self::field(info, 4)?)?;
                 if name == "SyncModel.PullIn.mk" {
-                    if var_ty != "obj" || tag != 0 || size != 4 ||
-                       usize_count != 0 || ssize != 8 || fields.len() != 4 {
-                        return Err("PullIn.mk requires exact source 4-pointer/8-byte layout".into());
+                    if var_ty != "obj"
+                        || tag != 0
+                        || size != 4
+                        || usize_count != 0
+                        || ssize != 8
+                        || fields.len() != 4
+                    {
+                        return Err(
+                            "PullIn.mk requires exact source 4-pointer/8-byte layout".into()
+                        );
                     }
                     let mut args = Vec::new();
                     for arg in fields {
                         args.push(Self::arg(arg, env, "tobj")?);
                     }
-                    return Ok(format!("__LeanValue::pull_in_ctor(vec![{}])", args.join(", ")));
+                    return Ok(format!(
+                        "__LeanValue::pull_in_ctor(vec![{}])",
+                        args.join(", ")
+                    ));
                 }
                 if !matches!(
                     name.as_str(),
@@ -418,8 +428,8 @@ impl Reader {
                 let pointers = Self::nat(Self::field(x, 0)?)?;
                 let offset = Self::nat(Self::field(x, 1)?)?;
                 let id = Self::var(Self::field(x, 2)?)?;
-                if pointers != 4 || offset >= 8 ||
-                   !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
+                if pointers != 4 || offset >= 8 || !env.get(&id).is_some_and(|ty| is_value_type(ty))
+                {
                     return Err(format!(
                         "unverified sproj layout n={pointers}, offset={offset}, operand=x_{id}"
                     ));
@@ -1163,9 +1173,12 @@ impl Reader {
                     let offset = Self::nat(Self::field(x, 2)?)?;
                     let value = Self::var(Self::field(x, 3)?)?;
                     let ty = Self::ty(Self::field(x, 4)?)?;
-                    if pointers != 4 || offset >= 8 || ty != "u8" ||
-                       !env.get(&id).is_some_and(|t| is_value_type(t)) ||
-                       env.get(&value) != Some(&"u8") {
+                    if pointers != 4
+                        || offset >= 8
+                        || ty != "u8"
+                        || !env.get(&id).is_some_and(|t| is_value_type(t))
+                        || env.get(&value) != Some(&"u8")
+                    {
                         return Err(format!(
                             "unverified sset layout n={pointers}, offset={offset}, type={ty}"
                         ));
@@ -1173,7 +1186,8 @@ impl Reader {
                     writeln!(
                         code,
                         "    let x_{id} = x_{id}.pull_in_set_u8({pointers}, {offset}, x_{value});"
-                    ).unwrap();
+                    )
+                    .unwrap();
                     x = Self::field(x, 5)?;
                 }
                 6..=8 => {

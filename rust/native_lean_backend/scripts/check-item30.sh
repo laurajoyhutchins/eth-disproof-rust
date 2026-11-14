@@ -74,26 +74,26 @@ if ldd artifacts/item30-standalone/target/release/lean_native_item30_conformance
 fi
 cargo clippy --offline --manifest-path artifacts/item30-standalone/Cargo.toml --all-targets -- -D warnings
 # Verify unsupported operations and failed compilation preserve every artifact.
-for kind in nat_bitwise string_push array_get; do
+for kind in nat_bitwise string_push array_pop; do
   printf 'preexisting-source-must-survive\n' > "examples/sem_rejected_${kind}.rs"
 done
 if lean --load-dynlib="$NATIVE_LIB" examples/Item30Errors.lean \
     > artifacts/item30-rejection.log 2>&1; then
   echo "item30 unsupported operations incorrectly reported success" >&2; exit 1
 fi
-for kind in nat_bitwise string_push array_get; do
+for kind in nat_bitwise string_push array_pop; do
   if [[ "$(cat "examples/sem_rejected_${kind}.rs")" != "preexisting-source-must-survive" ]]; then
     echo "item30 refusal damaged ${kind} output artifact" >&2; exit 1
   fi
 done
-for declaration in unsupportedNatBitwise unsupportedStringPush unsupportedArrayGet; do
+for declaration in unsupportedNatBitwise unsupportedStringPush unsupportedArrayPop; do
   if ! grep -Fq "\"declaration\":\"Item30Errors.${declaration}\"" \
       artifacts/item30-rejection.log; then
     cat artifacts/item30-rejection.log >&2
     echo "item30 missing named JSON refusal for ${declaration}" >&2; exit 1
   fi
 done
-rm -f examples/sem_rejected_nat_bitwise.rs examples/sem_rejected_string_push.rs examples/sem_rejected_array_get.rs
+rm -f examples/sem_rejected_nat_bitwise.rs examples/sem_rejected_string_push.rs examples/sem_rejected_array_pop.rs
 echo "item30 supported object semantics=PASS"
 echo "item30 value_oracle_assertions=$checks"
 echo "item30 verified_runtime_adapters=$adapter_count"

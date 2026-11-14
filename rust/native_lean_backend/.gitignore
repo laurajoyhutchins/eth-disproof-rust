@@ -21,3 +21,6 @@
 
 # Derived conformance runner, not authoritative compiler source
 /examples/matrix_run.rs
+
+# Derived semantic oracle test driver
+/examples/item30-run.rs

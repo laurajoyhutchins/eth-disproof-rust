@@ -326,11 +326,11 @@ def compile_query(args):
 
         lean = tmp / "QueryStream.lean"
         lean.write_text(
-            f"import {exporter_module}\\n"
-            f"import {MODULE}\\n"
-            "set_option maxHeartbeats 8000000\\n"
-            "set_option maxRecDepth 8192\\n"
-            f'#export_original_source_graph {DECLARATION} "{IDENTIFIER}" "{blob}"\\n',
+            f"import {exporter_module}\n"
+            f"import {MODULE}\n"
+            "set_option maxHeartbeats 8000000\n"
+            "set_option maxRecDepth 8192\n"
+            f'#export_original_source_graph {DECLARATION} "{IDENTIFIER}" "{blob}"\n',
             encoding="utf8",
         )
         try:

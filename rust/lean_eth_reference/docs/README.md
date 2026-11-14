@@ -20,6 +20,12 @@ acceptance certificate.
 | [Finite fallback disposition](m2-finite-fallback-decision.md) | Why source noncomputability must not be replaced by a hidden oracle |
 | [Reading history](reading-the-history.md) | Constructed first-parent study sequence and original provenance |
 
+## Active research and performance notes
+
+| Document | Purpose |
+| --- | --- |
+| [Worst-case stressors and polynomial overhead](worst-case-and-polynomial-overhead.md) | Adversarial test families, quantitative parameter bottlenecks, finite-field/interpolation/packet/precision optimization agenda, and end-to-end acceptance criteria. Research hypotheses are not execution or complexity certificates. |
+
 The live stage catalogue is
 [`src/remaining/registry.rs`](../src/remaining/registry.rs), not an
 independently maintained status table in this documentation.

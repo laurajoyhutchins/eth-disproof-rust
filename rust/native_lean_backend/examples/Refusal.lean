@@ -3,7 +3,7 @@ open Lean Elab Command
 
 def nontrivialBranch (x : UInt64) : UInt64 := if x == 0 then 1 else x
 def unsupportedString (x : String) : String := x ++ "!"
-def unsupportedNat (x : Nat) : Nat := x + 1
+def unsupportedNat (x : Nat) : Nat := x / 2
 
 run_cmd do
   liftCoreM <| Lean.Compiler.compile #[`unsupportedString]
@@ -25,4 +25,4 @@ run_cmd do
   let keywordName := NativeRust.emit decl "fn"
   unless keywordName.startsWith "ERROR\n" do
     throwError "Rust reserved keyword was accepted"
-  logInfo "Unsupported Nat and invalid Rust identifiers refused"
+  logInfo "Unsupported Nat division and invalid Rust identifiers refused"

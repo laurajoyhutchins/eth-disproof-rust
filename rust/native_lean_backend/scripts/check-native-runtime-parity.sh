@@ -58,6 +58,15 @@ for trial in 1 2 3; do
       "$out/${backend}-${trial}.time" >> "$out/measurements.tsv"
   done
 done
+
+# GNU time reports just two decimals, insufficient to resolve fast Rust runs.
+# Use a pinned, dependency-free Rust monotonic clock and check every subprocess.
+rustc --edition=2021 -O -D warnings -F unsafe-code \
+  -o "$out/bench-subprocess" examples/bench_subprocess.rs
+"$out/bench-subprocess" "$out/lean-native" "$out/rust-native" \
+  "$out/lean-interpreted.txt" \
+  > "$out/measurements-ns.tsv" 2> "$out/summary-ns.txt"
+
 {
   echo "status=PASS_ORIGINAL_LEAN_C_VS_EMITTED_RUST_IDENTICAL_CHECKSUM"
   echo "lean_revision=$(lean --version)"
@@ -76,7 +85,10 @@ done
     examples/property_native_benchmark.rs examples/generated_property.rs \
     "$out/PropertyDef.c" "$out/PropertyNativeBenchmark.c" \
     "$out/lean-native" "$out/rust-native" \
-    "$out/measurements.tsv"
+    "$out/measurements.tsv" "$out/measurements-ns.tsv" \
+    examples/bench_subprocess.rs
 } > "$out/receipt.txt"
 cat "$out/receipt.txt"
 cat "$out/measurements.tsv"
+
+cat "$out/summary-ns.txt"

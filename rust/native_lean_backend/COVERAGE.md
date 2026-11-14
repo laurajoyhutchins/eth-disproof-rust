@@ -9,12 +9,12 @@ refuse. Constructor/tag identities below are pinned to
 | IR family | Supported | Explicitly unsupported |
 | --- | --- | --- |
 | `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
-| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize` | `float`, `float32`, `erased`, `object`, `tobject`, `tagged`, `void`, `struct`, `union` |
-| `Arg` | `var` with known, matching type | `erased` in runtime position |
-| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls to supported compiled declarations | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
+| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize`, exact bounded `object`/`tobject`/`tagged` Value subset | `float`, `float32`, `erased`, `void`, `struct`, `union`, other object layouts |
+| `Arg` | `var` with known matching type; `erased` only in exact Array proof positions | erased arguments used as runtime values |
+| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls; `box` of UInt64 into Value | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, other `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
 | `FnBody` | `vdecl`, `ret`, Bool-only `case`, and bounded nonrecursive typed scalar `jdecl`/`jmp` | recursive/non-scalar joins, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, other `case`, `unreachable` |
 | `Alt` | two exact Bool `ctor` alternatives | `default`, other constructors |
-| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
+| Primitive operations | 30 scalar arithmetic/comparison operations plus ten exact registered Nat/Int/Unicode/collection Value adapters | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
 Lean `Bool` is emitted as the compiler's `u8` representation (`0=false`,
@@ -97,4 +97,8 @@ This inventory is a constructor **membership/order** check, not a complete ABI l
 
 The real pinned Lean 4.34.1 constructor inventory is first checked by `scripts/VerifyIRInventory.lean` and recorded in `artifacts/ir-constructor-summary.tsv`. Separately, `examples/IRInventory.lean` and `scripts/coverage-ledger.rs` verify the complete 48-constructor tag classification, publishing `artifacts/ir-constructors.tsv` and `artifacts/ir-coverage.tsv`. The Rust `build.rs` compiles the same checked classification into `SUPPORTED_IR_TAGS`, and **production readers refuse unclassified tags**.
 
-Of those 48 constructors, **16** are bounded-supported, including `FnBody.jdecl` and `FnBody.jmp` strictly for nonrecursive, typed scalar lexical joins. The other **32** are explicitly unsupported. No unsupported branch is allowed to become accepted just because a Rust `match` arm is added. The `primitive-registry.tsv` is now the production lookup for exactly 30 typed unsigned operations. A generated 30 × 64 matrix of independent original-Lean results (1,920 comparisons) is executed from source IR. The legacy fixture gate still independently covers 3,008 base/join/multi-root comparisons. These checks do **not** establish semantic correctness of general collections, arbitrary-precision `Nat`/`Int`, effects, or whole ETH-source compilation.
+Of those 48 constructors, **21** are bounded-supported, including `FnBody.jdecl` and `FnBody.jmp` strictly for nonrecursive, typed scalar lexical joins. The other **27** are explicitly unsupported. No unsupported branch is allowed to become accepted just because a Rust `match` arm is added. The `primitive-registry.tsv` is now the production lookup for exactly 30 typed unsigned operations. A generated 30 × 64 matrix of independent original-Lean results (1,920 comparisons) is executed from source IR. The legacy fixture gate still independently covers 3,008 base/join/multi-root comparisons. The added original-source object-value suite exercises exact arbitrary-precision `Nat`/`Int`, valid Unicode, Array UInt64 and List UInt64 operations (101 assertions). Combined mandatory count is **5,029**. These tests do **not** establish general collections, unrestricted `Nat`/`Int` APIs, effects, or whole ETH-source compilation.
+
+## Integrated value-runtime boundary
+
+The same source-reflected ledger now authorizes **21 of 48** bounded constructor forms, preserving the conditional nonrecursive join-point additions and adding only the five exact runtime-value shapes demonstrated by 101 original-Lean oracle cases. `runtime-primitive-registry.tsv` is a separate production registry for the ten supported value operations. The emitted Rust source embeds a dependency-free value runtime only when needed. See [SEMANTICS.md](SEMANTICS.md). Existing mainline join, multi-root and property tests remain mandatory; passing isolated source tests is not a substitute for combined exact-head verification.

@@ -791,7 +791,7 @@ impl Reader {
     ) -> Result<(), String> {
         let family = scoped.family;
         let ctx = scoped.lowering;
-        if !is_value_type(Self::ty(Self::field(x, 2)?)?)? {
+        if !is_value_type(Self::ty(Self::field(x, 2)?)?) {
             return Err(format!("{family} case scrutinee must be object-valued"));
         }
         let id = Self::var(Self::field(x, 1)?)?;

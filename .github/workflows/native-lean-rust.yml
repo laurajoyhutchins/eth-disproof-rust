@@ -86,3 +86,6 @@ jobs:
             rust/native_lean_backend/artifacts/ir-coverage.tsv
             rust/native_lean_backend/artifacts/primitive-conformance.tsv
             rust/native_lean_backend/artifacts/native-smoke-receipt.txt
+            rust/native_lean_backend/artifacts/item30-ir-probes.txt
+            rust/native_lean_backend/artifacts/item30-oracles.rs
+            rust/native_lean_backend/artifacts/item30-rejection.log

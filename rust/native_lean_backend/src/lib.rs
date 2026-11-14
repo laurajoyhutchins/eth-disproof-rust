@@ -4,7 +4,7 @@
 //! It does not serialize or clone the IR. Only an explicitly accepted subset is
 //! lowered; unknown instructions and types are errors, never substitutions.
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{c_char, c_void, CString};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::fmt::Write;
 
 mod safety;

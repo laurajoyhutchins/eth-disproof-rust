@@ -76,6 +76,22 @@ The new borrowed structured-name FFI and name-encoding Rust unit test passed alo
 
 This fixes **only identity fidelity**, not support for the data type or execution semantics of any original project. The new branch re-runs the external matrix on the integrated core, with the hardened workspace-relative source publisher and stricter original-IR inventory. A refusal that moves deeper into the compiler is not a success unless the emitted Rust actually compiles and agrees with the original Lean program.
 
+## Current external-source executable acceptance: exact Lean semantics, not rewrites
+
+At [exact head `48f92ae53823d20b283509a8328bb516bb2619d4`](https://github.com/laurajoyhutchins/eth-disproof-rust/commit/48f92ae53823d20b283509a8328bb516bb2619d4), both [native CI 43630697526](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43630697526) and [root Rust CI 43630697589](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43630697589) **PASS**. The native suite still builds the same three original source-pinned independent Lean projects without edits and executes their unchanged original Lean guards.
+
+The new positive case also compiles **two unchanged executable functions from Keboola's original `SyncModel.Pull` module**: `sweepRemovesDir` and `dirAfterPull`. It uses original `Lean.IR.Decl` via the actual in-process Rust backend to generate one standalone two-root Cargo package, then independently invokes Lean's original definitions on all Boolean inputs to produce **12** Rust assertions. Debug/release Cargo tests and strict Clippy pass with Lean runtime environment variables unset. CI retains source files, generated Rust, oracle tests, Cargo manifest, original module SHA, compiler version and receipt hashes. This is real generated-code correctness evidence for one external project, not a synthetic substitute or a claim about all three.
+
+| Original project | Original Lean build and guard | Original selected root's Rust status | Additional independently verified Rust |
+| --- | --- | --- | --- |
+| Newspeak | PASS | `ConcreteTree.span` REFUSED at `Expr.isShared` | Not established |
+| Armada | PASS | `Sched.argLeastLoad` REFUSED at constructor `List.nil` tag 0; this is **not** `Option.none` | Not established |
+| Keboola | PASS | `pullDecide` REFUSED at `Expr.sproj` | Two separate original Boolean roots; **12 Lean/Rust results PASS** |
+
+The unexpected `List.nil` came from inspecting the **real source case metadata**. The codegen `exact_option_ctor` guard accepts only genuine `Option.none` / `Option.some` identities; List, Sum, mismatched tags and duplicates refuse with source constructor name and tag rather than being silently assigned an incorrect Option layout. The immediate Armada requirement is therefore a **source-faithful List constructor and pattern-match runtime**, plus its transitive Nat/list closure, not permission to relax the Option check.
+
+**Checklist #193 item 32 remains open:** two small helpers from *one* original independent project do not constitute three substantial external programs running, and all three originally selected substantial roots remain unsupported. This is an incremental positive acceptance result with a precise list of remaining real-world blockers.
+
 ## Atomic bundle publication and build receipts
 
 `scripts/compile-bundle.sh` is a reproducible build wrapper around the existing in-process Lean compiler. It does not replace its backend or introduce serialized JSON IR. A successful invocation accepts an imported module, actual root, source file, new destination directory, and optional Rust export name:
@@ -112,7 +128,7 @@ The pinned Lean C source-generation control remains around 0.19–0.20 s and ~49
 | # | Requirement | This branch | Release status |
 | --- | --- | --- | --- |
 | 31 | Randomized/property differential tests with shrinking and replay | 128 seeded vectors; 1,024 Lean-evaluated finite shrink candidates; one-seed reproduction | **Verified on pinned exact-head CI 43504031394**; broader shrinking/domain coverage remains |
-| 32 | Three independent substantial unmodified Lean projects | Three original Lean stdlib declarations directly probed and explicitly refused; still no three independently built external projects | **Open** |
+| 32 | Three independent substantial unmodified Lean projects | Three original external Lean projects build and pass original guards; two unchanged Keboola helper functions now compile into Rust with 12 source-derived comparisons; no three substantial external Rust programs | **Open** |
 | 33 | Generated code: Cargo, Clippy and runtime checks | Standalone generated Cargo binary, `cargo test`, strict Clippy, and Rust executable comparisons | **Exact-head 43510481607:** debug and optimized release Cargo tests (2 each), strict Clippy, emitted-code unsafe forbidden, no Lean dynamic link, runtime + peak RSS; future heap/unsafe features remain outside contract |
 | 34 | Tested vs formally proved | This ledger and explicit declarations below | **Documented**, no new theorem |
 | 35 | Exact-head CI native, unit, conformance, differential, clean generation, negative cases | Extended existing path-scoped native workflow to run `check.sh` then `check-evidence.sh`; receipts uploaded | **Verified on 43504031394** for the current bounded subset |

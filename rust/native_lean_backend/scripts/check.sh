@@ -165,6 +165,9 @@ cargo clippy --offline --all-targets -- -D warnings
 # Inventory is reflected from the pinned Lean IR definitions and rejects
 # source/coverage drift; every registered scalar primitive receives oracle tests.
 bash scripts/check-coverage.sh
+# Diagnostic: inspect actual pinned Lean executable IR of unsupported semantic types.
+lean examples/Item30IRProbe.lean
+cat artifacts/item30-ir-probes.txt
 # Receipt exists only after *all* end-to-end and negative checks pass.
 mkdir -p artifacts
 {

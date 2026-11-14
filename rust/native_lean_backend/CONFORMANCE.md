@@ -32,7 +32,7 @@ reading the constructors and positions of all these inductive definitions:
 | Expr | 13 | 2 |
 | Alt | 2 | 1 |
 | FnBody | 13 | 5 |
-| **Total** | **48** | **16** |
+| **Total** | **48** | **30** |
 
 Bounded-supported `FnBody.jdecl`/`FnBody.jmp` are **only** the tested nonrecursive scalar lexical joins; neither unrestricted recursive joins nor indirect applications are accepted. The source-derived list is emitted to artifacts/ir-constructors.tsv.
 scripts/coverage-ledger.rs requires an exact name, tag and supported/refused
@@ -50,7 +50,7 @@ artifacts/ir-coverage.tsv is a machine-readable release ledger.
 
 The supported entries are *bounded*: e.g. Alt.ctor and FnBody.case mean only
 a two-constructor Bool match; LitVal.num accepts only small tagged Nat
-literals; IRType.usize has Linux x86-64 semantics. The 32 refused variants
+literals; IRType.usize has Linux x86-64 semantics. The 18 refused variants
 have no positive semantic-equivalence claim. The whitelist test checks tags,
 not a theorem about runtime ABI layout or Lean reference counting.
 
@@ -96,3 +96,9 @@ semantically correct. The automated guards ensure complete enumeration,
 prevent unsupported tag acceptance, and require executable evidence for each
 registered primitive. They do not turn finite differential tests into a
 semantic-preservation theorem.
+
+## Extended scalar and executable G1 layer (PR #221)
+
+The same production `primitive-registry.tsv` expands to **68** source-approved operation names: 30 original unsigned add/sub/mul/comparisons, 35 total unsigned div/mod/bitwise/width-masked shifts, and 3 precisely scoped finite Float add/sub/mul operations. The original 30 × 64 independently evaluated Lean fixtures are retained; the 38 additional primitive calls have dedicated source-derived Lean/Rust fixtures, including zero divisors and wide shift counts. Unsupported Float transcedentals, NaN-specific equivalence and nontrivial casts remain refused; finite dyadic operand tests alone cannot prove IEEE behavior generally.
+
+The exact IR whitelist contains **30 bounded-supported / 18 explicitly refused** constructors: it retains the immutable Option/Prod + PAP/AP semantics from #216 and adds only `IRType.float` (finite scalar) and `Alt.default` (nullary UInt8 enum default), with layout validation for scalar constructors. A standalone Cargo binary is generated only from zero-argument scalar roots and checked without a Lean runtime. Neither a checked constructor tag nor a finite differential test establishes general Lean semantic preservation.

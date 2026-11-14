@@ -427,6 +427,7 @@ impl Reader {
     unsafe fn ty(x: Obj) -> Result<&'static str, String> {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
         match Self::checked_tag(x, "IRType")? {
+            0 => Ok("f64"), // finite source-checked arithmetic, not float object semantics
             1 => Ok("u8"),
             2 => Ok("u16"),
             3 => Ok("u32"),
@@ -471,6 +472,31 @@ impl Reader {
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
+                // Source-pinned zero-field scalar inductives do not allocate a heap.
+                // Object constructors retain the independently verified Rc model.
+                if matches!(var_ty, "u8" | "usize") {
+                    // ctor(info, fields). Only nullary scalar constructors are
+                    // representable without a Lean heap. No field-packing shortcut.
+                    if !matches!(var_ty, "u8" | "usize") {
+                        return Err("heap-backed or non-scalar constructor is unsupported".into());
+                    }
+                    let info = Self::field(x, 0)?;
+                    let fields = Self::array(Self::field(x, 1)?)?;
+                    if !fields.is_empty() {
+                        return Err("constructor with fields requires an object runtime".into());
+                    }
+                    for field in 2..=4 {
+                        if Self::nat(Self::field(info, field)?)? != 0 {
+                            return Err("constructor with pointer/scalar layout is unsupported".into());
+                        }
+                    }
+                    let _name = Self::name(Self::field(info, 0)?, 0)?;
+                    let index = Self::nat(Self::field(info, 1)?)?;
+                    if index > 255 {
+                        return Err("constructor tag exceeds nullary enum bound".into());
+                    }
+                    return Ok(format!("{index}{var_ty}"));
+                }
                 // ctor: only immutable, pointer-field constructors with
                 // verified metadata. Scalar-field layouts are not yet mapped.
                 if !is_value_type(var_ty) {
@@ -598,6 +624,9 @@ impl Reader {
                 if is_value_type(ty) {
                     return Err("box expects a scalar IR type".into());
                 }
+                if ty == "f64" {
+                    return Err("Float boxing requires an unsupported runtime adapter".into());
+                }
                 let id = Self::var(Self::field(x, 1)?)?;
                 if env.get(&id) != Some(&ty) {
                     return Err("box scalar input type mismatch".into());
@@ -686,7 +715,27 @@ impl Reader {
                             "{name}: result type mismatch: expected {expected_ty}, got {var_ty}"
                         ));
                     }
-                    Ok(format!("{lhs}.{op}({rhs})"))
+                    match (expected_ty, op) {
+                        ("f64", "+" | "-" | "*") => Ok(format!("{lhs} {op} {rhs}")),
+                        (_, "wrapping_add" | "wrapping_sub" | "wrapping_mul") => {
+                            Ok(format!("{lhs}.{op}({rhs})"))
+                        }
+                        // Lean's unsigned division and remainder are total.
+                        // Rust's raw / and % panic on zero: never substitute them.
+                        (_, "checked_div") => Ok(format!("{lhs}.checked_div({rhs}).unwrap_or(0)")),
+                        (_, "checked_rem") => {
+                            Ok(format!("{lhs}.checked_rem({rhs}).unwrap_or({lhs})"))
+                        }
+                        (_, "&" | "|" | "^") => Ok(format!("{lhs} {op} {rhs}")),
+                        (_, "wrapping_shl" | "wrapping_shr") => {
+                            // Lean shifts modulo the bit width, including counts
+                            // beyond 64 and on the platform-sized USize type.
+                            Ok(format!(
+                                "{lhs}.{op}(({rhs} % ({expected_ty}::BITS as {expected_ty})) as u32)"
+                            ))
+                        }
+                        _ => Err(format!("{name}: unreviewed primitive operation {op}")),
+                    }
                 }
             }
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
@@ -708,10 +757,118 @@ impl Reader {
     ) -> Result<(), String> {
         let type_name = Self::name(Self::field(x, 0)?, 0)?;
         match type_name.as_str() {
-            "UInt8" => Self::boolean_case(x, code, depth, count, env, ret_ty, ctx),
             "Option" | "tobj" | "obj" => Self::option_case(x, code, depth, count, env, ret_ty, ctx),
-            _ => Err(format!("unsupported case type {type_name}")),
+            _ => {
+                let alts = Self::array(Self::field(x, 3)?)?;
+                let mut has_bool_constructor = false;
+                for alt in alts {
+                    if Self::checked_tag(alt, "Alt")? == 0 {
+                        let name = Self::name(Self::field(Self::field(alt, 0)?, 0)?, 0)?;
+                        has_bool_constructor = name == "Bool.false" || name == "Bool.true";
+                        break;
+                    }
+                }
+                if has_bool_constructor {
+                    if type_name != "UInt8" {
+                        return Err("Bool constructor has unexpected IR storage type".into());
+                    }
+                    Self::boolean_case(x, code, depth, count, env, ret_ty, ctx)
+                } else {
+                    Self::scalar_enum_case(x, code, depth, count, env, ret_ty, ctx)
+                }
+            }
         }
+    }
+
+    // Data-free inductives may use UInt8 or tagged scalar storage.
+    // Constructor identity, not a guessed source datatype, directs patterns.
+    unsafe fn scalar_enum_case(
+        x: Obj,
+        code: &mut String,
+        depth: usize,
+        count: &mut usize,
+        env: &mut BTreeMap<usize, &'static str>,
+        ret_ty: &str,
+        ctx: LoweringContext<'_>,
+    ) -> Result<(), String> {
+        let repr = match Self::checked_tag(Self::field(x, 2)?, "IRType")? {
+            1 => "u8",
+            12 => return Err("object-tagged enum requires a typed object case adapter".into()),
+            _ => return Err("non-scalar inductive case is unsupported".into()),
+        };
+        let _storage_type = Self::name(Self::field(x, 0)?, 0)?;
+        let scrutinee = Self::var(Self::field(x, 1)?)?;
+        if env.get(&scrutinee) != Some(&repr) {
+            return Err("inductive scrutinee storage type mismatch".into());
+        }
+        let alts = Self::array(Self::field(x, 3)?)?;
+        if alts.is_empty() || alts.len() > 256 {
+            return Err("tagged case has unsupported number of alternatives".into());
+        }
+        let mut seen = BTreeSet::new();
+        let mut constructor_parent: Option<String> = None;
+        let mut default = None;
+        writeln!(code, "    match x_{scrutinee} {{").unwrap();
+        for alt in alts {
+            match Self::checked_tag(alt, "Alt")? {
+                0 => {
+                    let info = Self::field(alt, 0)?;
+                    let name = Self::name(Self::field(info, 0)?, 0)?;
+                    let parent = name
+                        .rsplit_once('.')
+                        .map(|(p, _)| p)
+                        .ok_or_else(|| format!("unqualified inductive constructor {name}"))?;
+                    if let Some(prior) = &constructor_parent {
+                        if prior != parent {
+                            return Err(format!(
+                                "mixed inductive constructor families: {prior} and {parent}"
+                            ));
+                        }
+                    } else {
+                        constructor_parent = Some(parent.to_owned());
+                    }
+                    let index = Self::nat(Self::field(info, 1)?)?;
+                    if index > 255 || !seen.insert(index) {
+                        return Err(format!("invalid or repeated tagged constructor {name}"));
+                    }
+                    writeln!(code, "        {index} => {{").unwrap();
+                    let mut branch_env = env.clone();
+                    Self::body(
+                        Self::field(alt, 1)?,
+                        code,
+                        depth + 1,
+                        count,
+                        &mut branch_env,
+                        ret_ty,
+                        ctx,
+                    )?;
+                    writeln!(code, "        }}").unwrap();
+                }
+                1 => {
+                    if default.replace(Self::field(alt, 0)?).is_some() {
+                        return Err("multiple tagged default alternatives".into());
+                    }
+                }
+                t => return Err(format!("unknown tagged alternative constructor {t}")),
+            }
+        }
+        if constructor_parent.is_none() {
+            return Err("scalar inductive case lacks constructor identity".into());
+        }
+        if let Some(body) = default {
+            writeln!(code, "        _ => {{").unwrap();
+            let mut branch_env = env.clone();
+            Self::body(body, code, depth + 1, count, &mut branch_env, ret_ty, ctx)?;
+            writeln!(code, "        }}").unwrap();
+        } else {
+            writeln!(
+                code,
+                "        _ => unreachable!(\"invalid tagged enum value\"),"
+            )
+            .unwrap();
+        }
+        writeln!(code, "    }}").unwrap();
+        Ok(())
     }
 
     unsafe fn option_case(
@@ -1569,8 +1726,10 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 0)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Alt", 1)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 28);
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 30);
     }
 
     #[test]
@@ -1587,9 +1746,11 @@ mod tests {
             assert!(seen.insert(cells[0]));
             assert!(primitive_spec(cells[0]).is_some());
         }
-        assert_eq!(seen.len(), 30);
+        assert_eq!(seen.len(), 68);
         assert!(primitive_spec("UInt64.add").is_some());
         assert!(primitive_spec("USize.decLe").is_some());
+        assert!(primitive_spec("Float.mul").is_some());
+        assert!(primitive_spec("UInt64.shiftRight").is_some());
         assert!(primitive_spec("Int.add").is_none());
     }
 }

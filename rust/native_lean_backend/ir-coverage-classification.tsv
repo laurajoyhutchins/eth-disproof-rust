@@ -2,7 +2,7 @@
 # constructor<TAB>tag<TAB>state<TAB>scope<TAB>evidence
 Lean.IR.Decl.fdecl	0	implemented_bounded	only_closed_executable_closure	matrix_or_baseline_fixture
 Lean.IR.Decl.extern	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
-Lean.IR.IRType.float	0	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.IRType.float	0	implemented_bounded	finite_f64_add_sub_mul_only	FloatFixture_384
 Lean.IR.IRType.uint8	1	implemented_bounded	scalar_u8	matrix_or_baseline_fixture
 Lean.IR.IRType.uint16	2	implemented_bounded	scalar_u16	matrix_or_baseline_fixture
 Lean.IR.IRType.uint32	3	implemented_bounded	scalar_u32	matrix_or_baseline_fixture
@@ -20,7 +20,7 @@ Lean.IR.Arg.var	0	implemented_bounded	typed_variable_operand	matrix_or_baseline_
 Lean.IR.Arg.erased	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.LitVal.num	0	implemented_bounded	small_tagged_natural_literal	matrix_or_baseline_fixture
 Lean.IR.LitVal.str	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
-Lean.IR.Expr.ctor	0	implemented_bounded	verified_Option_Prod_constructors_only	Objects_3072
+Lean.IR.Expr.ctor	0	implemented_bounded	Option_Prod_or_zero_field_UInt8_enum	Objects_3072_and_TaggedFixture_384
 Lean.IR.Expr.reset	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.Expr.reuse	2	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.Expr.proj	3	implemented_bounded	verified_immutable_Option_Prod_fields_only	Objects_3072
@@ -34,7 +34,7 @@ Lean.IR.Expr.unbox	10	implemented_bounded	verified_immutable_boxed_scalar_types	
 Lean.IR.Expr.lit	11	implemented_bounded	small_tagged_natural_literal	matrix_or_baseline_fixture
 Lean.IR.Expr.isShared	12	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.Alt.ctor	0	implemented_bounded	Bool_false_true_only	matrix_or_baseline_fixture
-Lean.IR.Alt.default	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.Alt.default	1	implemented_bounded	UInt8_nullary_enum_default_only	TaggedFixture_384
 Lean.IR.FnBody.vdecl	0	implemented_bounded	typed_local_assignment	matrix_or_baseline_fixture
 Lean.IR.FnBody.jdecl	1	implemented_bounded	nonrecursive_typed_scalar_join	JoinFixture_256
 Lean.IR.FnBody.set	2	explicitly_unsupported	default_refusal	no_positive_semantics_claim
@@ -44,7 +44,7 @@ Lean.IR.FnBody.sset	5	explicitly_unsupported	default_refusal	no_positive_semanti
 Lean.IR.FnBody.inc	6	implemented_bounded	immutable_Rc_reference_management_only	Objects_and_FunctionValues
 Lean.IR.FnBody.dec	7	implemented_bounded	immutable_Rc_reference_management_only	Objects_and_FunctionValues
 Lean.IR.FnBody.del	8	implemented_bounded	immutable_Rc_reference_management_only	Objects_and_FunctionValues
-Lean.IR.FnBody.case	9	implemented_bounded	Bool_two_exact_ctors_only	matrix_or_baseline_fixture
+Lean.IR.FnBody.case	9	implemented_bounded	Bool_Option_or_nullary_UInt8_enum	Objects_and_TaggedFixture
 Lean.IR.FnBody.ret	10	implemented_bounded	typed_return	matrix_or_baseline_fixture
 Lean.IR.FnBody.jmp	11	implemented_bounded	nonrecursive_typed_scalar_jump	JoinFixture_256
 Lean.IR.FnBody.unreachable	12	explicitly_unsupported	default_refusal	no_positive_semantics_claim

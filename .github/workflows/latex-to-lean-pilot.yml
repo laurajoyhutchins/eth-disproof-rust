@@ -83,6 +83,30 @@ jobs:
             2> "$GITHUB_WORKSPACE/evidence/leanify/MathlibAdversarial.stderr"
           cat "$GITHUB_WORKSPACE/evidence/leanify/MathlibAdversarial.stdout"
           cat "$GITHUB_WORKSPACE/evidence/leanify/MathlibAdversarial.stderr"
+      - name: Elaborate generated Lean and verify source-equivalent claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          mkdir -p "$GITHUB_WORKSPACE/evidence/leanify/generated"
+          for id in E01 X01 X02; do
+            ns="Bench${id}"
+            mkdir -p "$ns"
+            cp "$GITHUB_WORKSPACE/benchmark/latex-to-lean/cases/${id}.tex" "$ns/article.tex"
+            cmp "$GITHUB_WORKSPACE/benchmark/latex-to-lean/cases/${id}.tex" "$ns/article.tex"
+            lake exe leanify init "$ns/article.tex" --name "$ns" \
+              > "$GITHUB_WORKSPACE/evidence/leanify/generated/${id}.init.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/leanify/generated/${id}.init.stderr"
+            lake build "$ns.Article" \
+              > "$GITHUB_WORKSPACE/evidence/leanify/generated/${id}.build.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/leanify/generated/${id}.build.stderr"
+            cp "$ns/Article.lean" "$GITHUB_WORKSPACE/evidence/leanify/generated/${id}.Article.lean"
+            cp "$ns/Compiled.lean" "$GITHUB_WORKSPACE/evidence/leanify/generated/${id}.Compiled.lean"
+          done
+          timeout 180s lake env lean "$GITHUB_WORKSPACE/benchmark/latex-to-lean/oracle/GeneratedEquivalence.lean" \
+            > "$GITHUB_WORKSPACE/evidence/leanify/generated/Equivalence.stdout" \
+            2> "$GITHUB_WORKSPACE/evidence/leanify/generated/Equivalence.stderr"
+          cat "$GITHUB_WORKSPACE/evidence/leanify/generated/Equivalence.stdout"
       - name: Upload primary evidence even when setup fails
         if: always()
         uses: actions/upload-artifact@v4

@@ -3,7 +3,13 @@ on:
   push:
     branches: ['experiment/latex-to-lean-pilot']
     paths:
-      - 'benchmark/latex-to-lean/research/**'
+      - 'benchmark/latex-to-lean/research/cases/**'
+      - 'benchmark/latex-to-lean/research/oracle/**'
+      - 'benchmark/latex-to-lean/research/manifest.json'
+      - 'benchmark/latex-to-lean/research/summarize.mjs'
+      - 'benchmark/latex-to-lean/research/summarize.test.mjs'
+      - 'benchmark/latex-to-lean/research/verify-receipts.mjs'
+      - 'benchmark/latex-to-lean/research/verify-receipts.test.mjs'
       - '.github/workflows/latex-to-lean-research.yml'
   workflow_dispatch:
 

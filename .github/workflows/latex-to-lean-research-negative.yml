@@ -1,0 +1,105 @@
+name: LaTeX-to-Lean adversarial research
+on:
+  push:
+    branches: ['experiment/latex-to-lean-pilot']
+    paths:
+      - 'benchmark/latex-to-lean/research/mutations/**'
+      - '.github/workflows/latex-to-lean-research-negative.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: latex-lean-negative-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  negative-source-fidelity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require exact single-clause mathematical mutations
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/mutations
+          node benchmark/latex-to-lean/research/mutations/validate.mjs \
+            > evidence/mutations/manifest-validation.json
+      - name: Checkout pinned Leanify
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Corrram/leanify.git vendor/leanify
+          git -C vendor/leanify checkout --detach 134da59ae02e9fffc011a5ea89acf4320268d220
+          git -C vendor/leanify rev-parse HEAD > evidence/mutations/vendor.sha
+          grep -qx 134da59ae02e9fffc011a5ea89acf4320268d220 evidence/mutations/vendor.sha
+      - name: Restore pinned Lean and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: vendor/leanify
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Restore immutable Leanify build cache
+        uses: actions/cache@v4
+        with:
+          path: vendor/leanify/.lake/build
+          key: leanify-build-${{ runner.os }}-${{ runner.arch }}-4.34.0-134da59ae02e9fffc011a5ea89acf4320268d220-v1
+      - name: Compile and kernel-audit mutated original-source claims
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          lake exe cache get
+          lake build leanify
+          for id in MRG03 MRS02 MRC02; do
+            ns="Mutation${id}"
+            mkdir -p "$ns"
+            original="$GITHUB_WORKSPACE/benchmark/latex-to-lean/research/mutations/cases/${id}.tex"
+            cp "$original" "$ns/article.tex"
+            cmp "$original" "$ns/article.tex"
+            sha256sum "$original" > "$GITHUB_WORKSPACE/evidence/mutations/${id}.sha256"
+            lake exe leanify check "$original" --claims --defined \
+              > "$GITHUB_WORKSPACE/evidence/mutations/${id}.check.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/mutations/${id}.check.stderr"
+            lake exe leanify init "$ns/article.tex" --name "$ns" \
+              > "$GITHUB_WORKSPACE/evidence/mutations/${id}.init.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/mutations/${id}.init.stderr"
+            lake build "$ns.Article" \
+              > "$GITHUB_WORKSPACE/evidence/mutations/${id}.build.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/mutations/${id}.build.stderr"
+            cp "$ns/Article.lean" "$GITHUB_WORKSPACE/evidence/mutations/${id}.Article.lean"
+            cp "$ns/Compiled.lean" "$GITHUB_WORKSPACE/evidence/mutations/${id}.Compiled.lean"
+            /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/mutations/${id}.audit.time" \
+              timeout 120s lake exe leanify audit "$ns/article.tex" \
+                --lean "$ns/Compiled.lean" --module "$ns.Compiled" \
+              > "$GITHUB_WORKSPACE/evidence/mutations/${id}.audit.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/mutations/${id}.audit.stderr"
+            grep -Fq "The kernel evaluated the compiler" \
+              "$GITHUB_WORKSPACE/evidence/mutations/${id}.audit.stdout"
+          done
+      - name: Refute false claims from actual generated Lean declarations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          timeout 180s lake env lean "$GITHUB_WORKSPACE/benchmark/latex-to-lean/research/mutations/MutationOracles.lean" \
+            > "$GITHUB_WORKSPACE/evidence/mutations/semantics.stdout" \
+            2> "$GITHUB_WORKSPACE/evidence/mutations/semantics.stderr"
+          cat "$GITHUB_WORKSPACE/evidence/mutations/semantics.stdout"
+          test "$(grep -Ec 'ResearchMutations\..*depends on axioms:' "$GITHUB_WORKSPACE/evidence/mutations/semantics.stdout")" -eq 8
+          ! grep -q 'sorryAx' "$GITHUB_WORKSPACE/evidence/mutations/semantics.stdout"
+      - name: Preserve verification receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latex-lean-mutation-evidence
+          path: evidence/mutations/
+          if-no-files-found: warn

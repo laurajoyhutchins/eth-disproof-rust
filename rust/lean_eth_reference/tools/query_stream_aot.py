@@ -35,7 +35,11 @@ SOURCE_COMMIT = "4eaee87548250b2682affda7d05d947c05554bae"
 
 
 MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
-MAX_EXPORT_RSS_BYTES = 5 * 1024 * 1024 * 1024
+# The verified original QueryStream fresh import alone peaked at 8,460,263,424
+# bytes of process-group RSS on the hosted runner (run 43632313284).
+# A 5-GiB exporter limit therefore refused before entering the graph macro.
+# Keep a finite bound with measured headroom, not an arbitrary lower-than-import cap.
+MAX_EXPORT_RSS_BYTES = 12 * 1024 * 1024 * 1024
 
 
 class ResourceLimitError(RuntimeError):

@@ -28,6 +28,8 @@ private def conditionalConstructors : Array Name := #[
   ``Lean.IR.IRType.uint64,
   ``Lean.IR.IRType.usize,
   ``Lean.IR.Arg.var,
+  -- Only known Array extern type-proof arguments; never an ordinary runtime value.
+  ``Lean.IR.Arg.erased,
   ``Lean.IR.LitVal.num,
   ``Lean.IR.Expr.fap,
   ``Lean.IR.Expr.lit,

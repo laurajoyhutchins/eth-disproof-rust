@@ -37,3 +37,8 @@
 /examples/nat-package/
 /examples/rejected-nat-package/
 /examples/RefusalNatBitwise.log
+
+# Source-driven value conformance and negative-test temporary files
+/examples/item30-run.rs
+/examples/unsafe-public-name.rs
+/examples/sem_rejected_*.rs

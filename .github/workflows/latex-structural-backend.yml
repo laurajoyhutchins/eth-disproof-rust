@@ -2,7 +2,7 @@ name: Structural LaTeX typed backend
 
 on:
   push:
-    branches: ['experiment/latex-typed-structural-backend']
+    branches: ['experiment/latex-structural-slim-imports']
     paths:
       - 'benchmark/latex-to-lean/structural/**'
       - '.github/workflows/latex-structural-backend.yml'
@@ -115,9 +115,9 @@ jobs:
           lake exe cache get
           proof="$GITHUB_WORKSPACE/benchmark/latex-to-lean/structural/tests/StructuralGold.lean"
           combined="$GITHUB_WORKSPACE/evidence/structural/lean/GeneratedWithProofs.lean"
-          printf 'import Mathlib\nopen scoped Matrix\n\n' > "$combined"
+          printf 'import Mathlib.Basic.Real.Basic Mathlib.LinearAlgebra.Matrix.Notation Mathlib.Data.Fintype.BigOperators Mathlib.Tactic.NormNum Mathlib.Tactic.FinCases\nopen scoped Matrix\n\n' > "$combined"
           for file in "$GITHUB_WORKSPACE"/evidence/structural/generated/Structural*.lean; do
-            head -1 "$file" | grep -Fxq 'import Mathlib'
+            head -1 "$file" | grep -Fxq 'import Mathlib.Basic.Real.Basic Mathlib.LinearAlgebra.Matrix.Notation Mathlib.Data.Fintype.BigOperators'
             tail -n +3 "$file" >> "$combined"
             printf '\n' >> "$combined"
           done

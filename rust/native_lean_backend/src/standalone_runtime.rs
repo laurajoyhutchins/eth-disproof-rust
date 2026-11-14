@@ -116,9 +116,7 @@ impl BigNat {
             let mut carry = 0_u64;
             for (j, &rhs) in other.0.iter().enumerate() {
                 let idx = i + j;
-                let product = u64::from(lhs) * u64::from(rhs)
-                    + u64::from(digits[idx])
-                    + carry;
+                let product = u64::from(lhs) * u64::from(rhs) + u64::from(digits[idx]) + carry;
                 digits[idx] = product as u32;
                 carry = product >> 32;
             }
@@ -300,7 +298,9 @@ pub fn string_bytes(value: &Value) -> Value {
     Value::Nat(BigNat::from_u64(value.require_string().len() as u64))
 }
 pub fn string_chars(value: &Value) -> Value {
-    Value::Nat(BigNat::from_u64(value.require_string().chars().count() as u64))
+    Value::Nat(BigNat::from_u64(
+        value.require_string().chars().count() as u64
+    ))
 }
 pub fn array_push(array: &Value, element: &Value) -> Value {
     let Value::Array(values) = array else {
@@ -334,8 +334,14 @@ mod tests {
     fn wide_unsigned_arithmetic_is_exact_and_sub_saturates() {
         let huge = BigNat::from_str("340282366920938463463374607431768211456").unwrap();
         let one = BigNat::from_u64(1);
-        assert_eq!(huge.add(&one).to_string(), "340282366920938463463374607431768211457");
-        assert_eq!(huge.mul(&huge).to_string(), "115792089237316195423570985008687907853269984665640564039457584007913129639936");
+        assert_eq!(
+            huge.add(&one).to_string(),
+            "340282366920938463463374607431768211457"
+        );
+        assert_eq!(
+            huge.mul(&huge).to_string(),
+            "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+        );
         assert_eq!(one.sub(&huge), BigNat::default());
     }
 
@@ -344,7 +350,10 @@ mod tests {
         let negative = BigInt::from_str("-340282366920938463463374607431768211456").unwrap();
         let positive = BigInt::from_str("340282366920938463463374607431768211455").unwrap();
         assert_eq!(negative.add(&positive).to_string(), "-1");
-        assert_eq!(BigInt::from_i64(-1).add(&BigInt::from_i64(1)).to_string(), "0");
+        assert_eq!(
+            BigInt::from_i64(-1).add(&BigInt::from_i64(1)).to_string(),
+            "0"
+        );
     }
 
     #[test]

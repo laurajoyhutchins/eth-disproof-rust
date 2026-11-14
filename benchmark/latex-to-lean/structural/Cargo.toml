@@ -1,0 +1,10 @@
+[package]
+name = "structural-latex"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Deterministic, fail-closed typed structural LaTeX fragment compiler to Lean 4"
+
+[[bin]]
+name = "structural-latex"
+path = "src/main.rs"

@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "134da59ae02e9fffc011a5ea89acf4320268d220",
+  "suite": "original-source single-clause adversarial mutations",
+  "mutations": [
+    {
+      "id": "MRG03",
+      "base": "RG03",
+      "from": "$ac+bd=bd+ac$",
+      "to": "$ac+bd=bd-ac$",
+      "falseClaim": 0,
+      "category": "group_actions",
+      "witness": "a=1,b=0,c=1,d=0"
+    },
+    {
+      "id": "MRS02",
+      "base": "RS02",
+      "from": "$e(x,y)-o(x,y)=y$",
+      "to": "$e(x,y)-o(x,y)=x$",
+      "falseClaim": 1,
+      "category": "spectral_decomposition",
+      "witness": "x=1,y=0"
+    },
+    {
+      "id": "MRC02",
+      "base": "RC02",
+      "from": "$\\binom{4}{2}=6$",
+      "to": "$\\binom{4}{2}=5$",
+      "falseClaim": 0,
+      "category": "combinatorial_counting",
+      "witness": "Nat.choose 4 2 = 6"
+    }
+  ]
+}

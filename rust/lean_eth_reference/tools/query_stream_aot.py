@@ -16,6 +16,8 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import time
+import resource
 
 from export_compiled_batch import atomic_write, ensure_pinned
 from extract_compiled_catalog import blob_hash
@@ -33,23 +35,95 @@ IDENTIFIER = "query_stream_program"
 SOURCE_COMMIT = "4eaee87548250b2682affda7d05d947c05554bae"
 
 
-def run_bounded(argv: list[str], cwd: Path, timeout: int,
-                env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    """Reap Lake/Lean descendant workers on refusal, before saving any cache."""
-    child = subprocess.Popen(argv, cwd=cwd, env=env,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, start_new_session=True)
-    try:
-        stdout, stderr = child.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired as error:
-        os.killpg(child.pid, signal.SIGKILL)
-        stdout, stderr = child.communicate()
-        raise TimeoutError(
-            f"timeout {timeout}s: {argv[0]} {argv[1:3]}; "
-            f"last stderr={stderr[-2400:]}"
-        ) from error
-    return subprocess.CompletedProcess(argv, child.returncode, stdout, stderr)
+MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
+MAX_PROCESS_ADDRESS_BYTES = 6 * 1024 * 1024 * 1024
 
+
+class OutputLimitError(RuntimeError):
+    """A process exceeded the finite stdout/stderr evidence budget."""
+
+
+def _tail(path: Path, maximum: int = 2400) -> str:
+    with path.open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        stream.seek(max(0, stream.tell() - maximum), os.SEEK_SET)
+        return stream.read(maximum).decode("utf8", errors="replace")
+
+
+def run_bounded(argv: list[str], cwd: Path, timeout: int,
+                env: dict[str, str] | None = None,
+                log_base: Path | None = None) -> subprocess.CompletedProcess[str]:
+    """Supervise a whole process group without unbounded output or pipe waits.
+
+    A child in a different session can inherit a pipe and survive group kill.
+    Therefore no stdout/stderr pipes or second unbounded communicate() call
+    are permitted. Output is streamed into bounded disk-backed evidence; the
+    supervising process keeps its own fixed wall-clock deadline.
+    """
+    with tempfile.TemporaryDirectory(prefix="original-query-process-") as scratch:
+        root = Path(scratch)
+        stdout_path = Path(str(log_base) + ".stdout.log") if log_base else root / "stdout.log"
+        stderr_path = Path(str(log_base) + ".stderr.log") if log_base else root / "stderr.log"
+        stdout_path.parent.mkdir(parents=True, exist_ok=True)
+        stderr_path.parent.mkdir(parents=True, exist_ok=True)
+
+        def limit_address_space() -> None:
+            resource.setrlimit(resource.RLIMIT_AS,
+                               (MAX_PROCESS_ADDRESS_BYTES, MAX_PROCESS_ADDRESS_BYTES))
+
+        with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
+            child = subprocess.Popen(
+                argv, cwd=cwd, env=env, stdout=stdout_file, stderr=stderr_file,
+                start_new_session=True, preexec_fn=limit_address_space,
+            )
+            started = time.monotonic()
+            heartbeat = 30
+            try:
+                while child.poll() is None:
+                    elapsed = time.monotonic() - started
+                    out_size = os.fstat(stdout_file.fileno()).st_size
+                    err_size = os.fstat(stderr_file.fileno()).st_size
+                    if out_size > MAX_PROCESS_OUTPUT_BYTES or err_size > MAX_PROCESS_OUTPUT_BYTES:
+                        raise OutputLimitError(
+                            f"bounded output exceeded {MAX_PROCESS_OUTPUT_BYTES} bytes "
+                            f"(stdout={out_size} stderr={err_size})")
+                    if elapsed >= timeout:
+                        raise TimeoutError(f"timeout {timeout}s: {argv[0]} {argv[1:3]}")
+                    if log_base is not None and elapsed >= heartbeat:
+                        print(f"ORIGINAL_AOT_PROCESS_PROGRESS elapsed={int(elapsed)}s "
+                              f"stdout_bytes={out_size} stderr_bytes={err_size}", flush=True)
+                        heartbeat += 30
+                    time.sleep(0.2)
+                if (os.fstat(stdout_file.fileno()).st_size > MAX_PROCESS_OUTPUT_BYTES
+                        or os.fstat(stderr_file.fileno()).st_size > MAX_PROCESS_OUTPUT_BYTES):
+                    raise OutputLimitError("bounded output exceeded after child exit")
+            except (TimeoutError, OutputLimitError) as error:
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                # Never wait on inherited pipes. Even if the leader is stuck,
+                # the cleanup path itself has a hard deadline.
+                try:
+                    child.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    try:
+                        child.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        pass
+                raise type(error)(
+                    f"{error}; stdout_tail={_tail(stdout_path, 1200)} "
+                    f"stderr_tail={_tail(stderr_path, 2400)}") from error
+            finally:
+                if child.poll() is None:
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+        stdout = stdout_path.read_bytes().decode("utf8", errors="replace")
+        stderr = stderr_path.read_bytes().decode("utf8", errors="replace")
+        return subprocess.CompletedProcess(argv, child.returncode, stdout, stderr)
 
 
 def verify_query_import_receipt(receipt: Path, lake_root: Path, blob: str,
@@ -158,7 +232,7 @@ def compile_query(args):
                     refuse("original-module-fresh-import", checked.stderr[-3500:])
             atomic_write(out / "lean-build.log",
                          "verified original query .olean and independent fresh import\n")
-        except (ValueError, OSError, TimeoutError, json.JSONDecodeError) as error:
+        except (ValueError, OSError, TimeoutError, OutputLimitError, json.JSONDecodeError) as error:
             refuse("original-module-import-receipt", str(error))
     else:
         try:
@@ -167,8 +241,8 @@ def compile_query(args):
             atomic_write(out / "lean-build.log", built.stdout + "\n" + built.stderr)
             if built.returncode:
                 refuse("original-module-build", built.stderr[-3500:])
-        except TimeoutError as error:
-            refuse("original-module-build-timeout", str(error))
+        except (TimeoutError, OutputLimitError) as error:
+            refuse("original-module-build-resource-limit", str(error))
 
     # Bind the eventual native AOT report to the exact original module bytes,
     # not merely to a source file's Git blob or an untrusted JSON receipt.
@@ -193,9 +267,10 @@ def compile_query(args):
             exported = run_bounded(["lake", "env", "lean", str(lean)],
                                   args.lake_root, args.timeout,
                                   {**os.environ, "ORIGINAL_MAX_LABELS": str(args.max_source_labels),
-                                   "ORIGINAL_SOURCE_GRAPH_TRACE": "1"})
-        except TimeoutError as error:
-            refuse("original-command-export-timeout", str(error))
+                                   "ORIGINAL_SOURCE_GRAPH_TRACE": "1"},
+                                  log_base=out / "original-command")
+        except (TimeoutError, OutputLimitError) as error:
+            refuse("original-command-export-resource-limit", str(error))
         atomic_write(out / "lean-export.log", exported.stdout + "\n" + exported.stderr)
         if exported.returncode:
             # Lean elaboration errors often appear on stdout, not stderr.

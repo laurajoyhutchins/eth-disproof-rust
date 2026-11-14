@@ -769,7 +769,7 @@ impl Reader {
                 } else {
                     Self::scalar_enum_case(x, code, depth, count, env, ret_ty, ctx)
                 }
-            },
+            }
             "Option" | "tobj" | "obj" => Self::option_case(x, code, depth, count, env, ret_ty, ctx),
             _ => Err(format!("unsupported case type {type_name}")),
         }

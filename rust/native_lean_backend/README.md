@@ -174,3 +174,12 @@ A single `__LeanValue` immutable runtime now supports the mainline GMP Nat arith
 ### Source-native large Nat constants (candidate)
 
 The compiler now attempts direct, exact decimal extraction of boxed Lean Nat literals up to a fixed 4 KiB bound using the pinned Lean public C API. The emitted Rust value uses the existing canonical GMP `Nat` object. A separate Lean fixture exercises 76 exact large-constant comparisons, while unsupported Nat expressions still refuse. No second value runtime or compiler path is added.
+
+## Source-verified immutable List constructors and real Armada execution
+
+The single in-process compiler recognizes the bounded source IR for immutable `List.nil`/`List.cons`, two-way pattern matching, and pointer-field projections. It reuses the same canonical GMP-backed `Rc` runtime; it does not implement general heap mutation, `isShared`, unknown constructors or every List operation. Run `examples/ListFixture.lean` through the pinned native smoke suite for **512** original-Lean comparisons.
+
+The external-project matrix now compiles the **unmodified original Armada scheduler** `Sched.argLeastLoad`, including its specialized List dependencies, into a standalone Cargo crate and tests **128** inputs independently evaluated by original Lean, including 1,024-bit Nat values. Debug/release Cargo tests and strict Clippy pass. [Exact-head run](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43639021692) and [raw source/oracle evidence](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43639021692/artifacts/14131273459).
+
+Only one of three substantial original external roots has full generated Rust execution evidence. Newspeak and Keboola are still unsupported at their selected roots, so G1 release is not declared complete.
+

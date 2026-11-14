@@ -34,11 +34,13 @@ on:
 permissions:
   contents: read
 
-# Do not cancel running source builds: each run preserves completed pinned
-# .olean modules for the next stage or run.
+# The original QueryStream import is now complete and cached under pinned
+# source/Mathlib/Lean identities. Avoid spending hosted minutes on superseded
+# developer-branch source-graph probes; the verified cache remains immutable.
+# Manual dispatch stays non-cancelling for deliberate long source build work.
 concurrency:
   group: original-query-import-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   build-one-pinned-import:

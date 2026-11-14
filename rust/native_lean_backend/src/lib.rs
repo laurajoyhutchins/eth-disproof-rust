@@ -97,7 +97,6 @@ mod __lean_array_ownership_tests {
 }
 "#;
 
-
 fn is_value_type(ty: &str) -> bool {
     matches!(ty, "obj" | "tobj" | "tagged")
 }
@@ -371,8 +370,7 @@ impl Reader {
             0 => Self::args_ref(Self::field(x, 1)?, id)?,
             3 | 9 => Self::var(Self::field(x, 1)?)? == id,
             6 | 7 => Self::args_ref(Self::field(x, 1)?, id)?,
-            8 => Self::var(Self::field(x, 0)?)? == id
-                || Self::args_ref(Self::field(x, 1)?, id)?,
+            8 => Self::var(Self::field(x, 0)?)? == id || Self::args_ref(Self::field(x, 1)?, id)?,
             10 => Self::var(Self::field(x, 0)?)? == id,
             11 => false,
             _ => true,
@@ -480,7 +478,13 @@ impl Reader {
                 let ssize = Self::nat(Self::field(info, 4)?)?;
                 if !matches!(
                     name.as_str(),
-                    "Option.none" | "Option.some" | "Prod.mk" | "List.nil" | "List.cons" | "Sum.inl" | "Sum.inr"
+                    "Option.none"
+                        | "Option.some"
+                        | "Prod.mk"
+                        | "List.nil"
+                        | "List.cons"
+                        | "Sum.inl"
+                        | "Sum.inr"
                 ) {
                     return Err(format!(
                         "constructor {name} is not in the verified runtime subset"
@@ -701,9 +705,13 @@ impl Reader {
                             let index = Self::arg(args[2], env, "tagged")?;
                             let value = Self::arg(args[3], env, "tobj")?;
                             if let Some(id) = consumed_array {
-                                Ok(format!("x_{id}.array_set_tagged_owned({index}.tagged_nat(), {value})"))
+                                Ok(format!(
+                                    "x_{id}.array_set_tagged_owned({index}.tagged_nat(), {value})"
+                                ))
                             } else {
-                                Ok(format!("{array}.array_set_tagged({index}.tagged_nat(), {value})"))
+                                Ok(format!(
+                                    "{array}.array_set_tagged({index}.tagged_nat(), {value})"
+                                ))
                             }
                         }
                         _ => unreachable!(),

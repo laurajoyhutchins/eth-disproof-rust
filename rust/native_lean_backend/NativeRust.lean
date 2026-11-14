@@ -18,7 +18,10 @@ namespace NativeRust
 /-- Compile one executable declaration with the pinned Lean compiler and emit Rust.
     Refuses declarations missing IR, or outside the backend's strict subset. -/
 def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
-  Lean.Compiler.compile #[root]
+  -- Existing imported .olean IR is already the compiler's executable artifact.
+  -- Only compile roots missing IR; never substitute an alternative algorithm.
+  if (← Lean.IR.findDecl root).isNone then
+    Lean.Compiler.compile #[root]
   let some decl ← Lean.IR.findDecl root
     | throwError "No compiler IR for {root} (possibly noncomputable)"
   if let some blame := decl.getInfo.sorryDep? then
@@ -68,7 +71,14 @@ private partial def callsInBody : Lean.IR.FnBody → Array Lean.Name
     missing/unsupported symbol remains a hard error in the Rust backend. -/
 private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.Decl) := do
   if roots.isEmpty then throwError "expected at least one Lean declaration"
-  Lean.Compiler.compile roots
+  -- Preserve already-imported executable compiler IR; compile only missing
+  -- roots. The transitive closure is inspected and validated below.
+  let mut missing : Array Lean.Name := #[]
+  for root in roots do
+    if (← Lean.IR.findDecl root).isNone then
+      missing := missing.push root
+  unless missing.isEmpty do
+    Lean.Compiler.compile missing
   let mut queue := roots
   let mut seen : Std.HashSet Lean.Name := {}
   let mut decls : Array Lean.IR.Decl := #[]

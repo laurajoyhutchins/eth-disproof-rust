@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "134da59ae02e9fffc011a5ea89acf4320268d220",
+  "target": "Leanify check --claims --defined",
+  "cases": [
+    {
+      "id": "RG01",
+      "category": "group_actions",
+      "expected_truth": true
+    },
+    {
+      "id": "RG02",
+      "category": "group_actions",
+      "expected_truth": true
+    },
+    {
+      "id": "RG03",
+      "category": "group_actions",
+      "expected_truth": true
+    },
+    {
+      "id": "RG04",
+      "category": "group_actions",
+      "expected_truth": true
+    },
+    {
+      "id": "RS01",
+      "category": "spectral_decomposition",
+      "expected_truth": true
+    },
+    {
+      "id": "RS02",
+      "category": "spectral_decomposition",
+      "expected_truth": true
+    },
+    {
+      "id": "RS03",
+      "category": "spectral_decomposition",
+      "expected_truth": true
+    },
+    {
+      "id": "RS04",
+      "category": "spectral_decomposition",
+      "expected_truth": true
+    },
+    {
+      "id": "RC01",
+      "category": "combinatorial_counting",
+      "expected_truth": true
+    },
+    {
+      "id": "RC02",
+      "category": "combinatorial_counting",
+      "expected_truth": true
+    },
+    {
+      "id": "RC03",
+      "category": "combinatorial_counting",
+      "expected_truth": true
+    },
+    {
+      "id": "RC04",
+      "category": "combinatorial_counting",
+      "expected_truth": true
+    }
+  ]
+}

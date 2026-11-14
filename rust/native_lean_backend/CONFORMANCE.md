@@ -26,15 +26,15 @@ reading the constructors and positions of all these inductive definitions:
 | Lean IR family | Constructors | Bounded supported |
 | --- | ---: | ---: |
 | Decl | 2 | 1 |
-| IRType | 14 | 5 |
+| IRType | 14 | 8 |
 | Arg | 2 | 1 |
 | LitVal | 2 | 1 |
-| Expr | 13 | 2 |
+| Expr | 13 | 8 |
 | Alt | 2 | 1 |
-| FnBody | 13 | 5 |
-| **Total** | **48** | **16** |
+| FnBody | 13 | 8 |
+| **Total** | **48** | **28** |
 
-Bounded-supported `FnBody.jdecl`/`FnBody.jmp` are **only** the tested nonrecursive scalar lexical joins; neither unrestricted recursive joins nor indirect applications are accepted. The source-derived list is emitted to artifacts/ir-constructors.tsv.
+Bounded-supported `FnBody.jdecl`/`FnBody.jmp` are **only** tested nonrecursive typed lexical joins. The separate `Expr.pap`/`Expr.ap` implementation supports only exact statically compiled, boxed capture/argument signatures; unrestricted recursive joins and arbitrary indirect calls remain refused. The source-derived list is emitted to artifacts/ir-constructors.tsv.
 scripts/coverage-ledger.rs requires an exact name, tag and supported/refused
 classification for **each** constructor in ir-coverage-classification.tsv.
 An added, renamed or moved Lean constructor cannot be silently treated as a
@@ -49,8 +49,10 @@ anything outside its supported constructor set. The combined
 artifacts/ir-coverage.tsv is a machine-readable release ledger.
 
 The supported entries are *bounded*: e.g. Alt.ctor and FnBody.case mean only
-a two-constructor Bool match; LitVal.num accepts only small tagged Nat
-literals; IRType.usize has Linux x86-64 semantics. The 32 refused variants
+an exact two-constructor Bool or Option match; Expr.ctor/proj/box/unbox and
+Expr.pap/ap require verified immutable object/boxed closure metadata.
+LitVal.num accepts only small tagged Nat literals; IRType.usize has Linux
+x86-64 semantics. The 20 refused variants
 have no positive semantic-equivalence claim. The whitelist test checks tags,
 not a theorem about runtime ABI layout or Lean reference counting.
 
@@ -74,16 +76,21 @@ scripts/check-coverage.sh rejects a missing fixture or generated function,
 compiles all emitted Rust functions into one test binary, and runs all 1,920
 assertions. The execution ledger is artifacts/primitive-conformance.tsv.
 
-The existing regression fixtures provide 3,008 additional original-Lean
-comparisons over supported scalar, Bool, imported-direct-call and recursive
-programs. Total native comparisons in the integrated conformance gate: **4,928** (3,008 earlier scalar, join and package fixtures plus 1,920 primitive matrix assertions). The additional 1,024-case randomized Lean/Rust property suite is reported separately.
+The integrated regression fixtures now provide **13,336** independently
+original-Lean-evaluated Rust comparisons: 3,008 scalar/Bool/joins/multi-root,
+3,072 immutable Option/Prod, 2,048 source-defined boxed closure/PAP/AP, and
+5,208 GMP-backed arbitrary-width Nat tests. Together with the separate 1,920
+fixed-width primitive matrix assertions, this is **15,256** compared results.
+The additional 1,024-case randomized Lean/Rust property suite is reported
+separately. These counts describe different tested subsets, not universal
+compiler equivalence.
 
 ## Explicit limitations
 
 These tests establish equivalence only for the exercised programs and
-supported compiler IR. They do **not** establish equivalent arbitrary-
-precision Nat/Int, Unicode Strings, Arrays, effects/IO, heap sharing,
-indirect application, recursive join points, or the source-defined
+supported compiler IR. They do **not** establish general Nat/Int, Unicode
+Strings, Arrays, effects/IO, observable heap sharing, arbitrary indirect
+application, recursive join points, or the source-defined
 noncomputable ETH program. Many of those are deliberately refused.
 
 The IR constructor inventory covers the seven pinned *inductive* families;

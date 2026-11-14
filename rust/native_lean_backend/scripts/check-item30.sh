@@ -36,8 +36,8 @@ include!("generated_semantic_cases.rs");
 RUST
 checks="$(grep -c 'assert_eq!' examples/generated_semantic_cases.rs)"
 cp examples/generated_semantic_cases.rs artifacts/item30-oracles.rs
-if [[ "$checks" -ne 91 ]]; then
-  echo "expected 91 real Lean type-semantic cases, received $checks" >&2; exit 1
+if [[ "$checks" -ne 100 ]]; then
+  echo "expected 100 real Lean type-semantic cases, received $checks" >&2; exit 1
 fi
 rustc --edition=2021 -D warnings -F unsafe-code -o artifacts/item30-conformance examples/item30-run.rs
 artifacts/item30-conformance

@@ -88,6 +88,7 @@ for spec in "${projects[@]}"; do
   oracle="NOT_RUN"
   codegen="NOT_RUN"
   rustbuild="NOT_RUN"
+  semantic_parity="NOT_VERIFIED"
   reason="upstream_compile_failed"
   if (cd "$project" &&
       timeout 120s /usr/bin/time -f 'wall_seconds=%e peak_rss_kb=%M' \
@@ -141,14 +142,87 @@ LEAN
           echo "FATAL: codegen reported success but did not emit Rust for $name" >&2
           exit 1
         fi
+        # GMP's audited canonical runtime uses unsafe FFI internally. Do not
+        # forbid it for the whole file; forbid unsafe in generated Lean code.
+        algorithm="$(sed -n '/^\/\/ Native in-process Lean IR closure/,$p' "$target")"
+        if [[ -z "$algorithm" ]] ||
+           grep -Eq '(^|[^[:alnum:]_])unsafe([^[:alnum:]_]|$)' <<< "$algorithm"; then
+          echo "FATAL: missing generated IR boundary or unsafe emitted algorithm: $name" >&2
+          exit 1
+        fi
         if timeout 30s /usr/bin/time -f 'wall_seconds=%e peak_rss_kb=%M' \
            -o "$case_dir/rustbuild.time" \
-           rustc --edition=2021 --crate-type lib -D warnings -F unsafe-code \
+           rustc --edition=2024 --crate-type lib -D warnings \
            "$target" -o "$case_dir/generated.rlib" > "$case_dir/rustbuild.log" 2>&1; then
           rustbuild="PASS"
         else
           rustbuild="FAIL"
           reason="generated_rust_cannot_compile"
+        fi
+        # Original unchanged Armada scheduler, independently computed Lean
+        # oracles. This is not a synthetic implementation or a source rewrite.
+        if [[ "$name" == "armada" && "$rustbuild" == "PASS" ]]; then
+          verified="$case_dir/verified-crate"
+          mkdir -p "$verified/src" "$verified/tests"
+          cp "$target" "$verified/src/lib.rs"
+          cat > "$verified/Cargo.toml" <<'TOML'
+[package]
+name = "lean_generated_armada"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[workspace]
+TOML
+          cat > "$case_dir/armada-oracles.lean" <<'LEAN'
+import NativeRust
+import Sched.Basic
+open Lean Elab Command
+run_cmd do
+  let mut test := "use lean_generated_armada::*;\n#[test] fn original_armada_scheduler_oracles() {\n"
+  let originals : Array (List Nat) := #[
+    [], [0], [1], [3, 1, 4], [3, 2, 1], [7, 7, 7],
+    [2^120, 2^120+1], [2^512+1, 2^512], [2^1024, 2^1024+2],
+    [0, 0, 1, 0], [1, 0, 1, 0], [42, 42, 42, 42]
+  ]
+  for i in [:128] do
+    let xs := if i < originals.size then originals[i]!
+      else (List.range (i % 13 + 1)).map (fun j => (i * 19 + j * j + 7) % 67)
+    let values := xs.map (fun n => s!"__LeanValue::nat_from_decimal(\"{n}\")")
+    let rust := "__LeanValue::list(vec![" ++ String.intercalate ", " values ++ "])"
+    let expected := Sched.argLeastLoad xs
+    test := test ++ s!"assert_eq!(external_root({rust}).nat_to_decimal(), \"{expected}\");\n"
+  test := test ++ "}\n"
+  liftIO <| IO.FS.writeFile "artifacts/external-projects/armada/verified-crate/tests/oracle.rs" test
+  logInfo "Generated 128 independent original-Armada Lean scheduler oracles"
+LEAN
+          if ! (cd "$native" && timeout 45s lean "$case_dir/armada-oracles.lean") \
+               > "$case_dir/armada-oracles.log" 2>&1 ||
+             [[ ! -s "$verified/tests/oracle.rs" ]]; then
+            cat "$case_dir/armada-oracles.log" >&2
+            echo "FATAL: original pinned Armada oracle generation failed" >&2
+            exit 1
+          fi
+          if ! env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+              cargo test --offline --manifest-path "$verified/Cargo.toml" \
+                > "$case_dir/armada-cargo.log" 2>&1; then
+            cat "$case_dir/armada-cargo.log" >&2
+            echo "FATAL: compiled unchanged Armada scheduler disagrees with Lean" >&2
+            exit 1
+          fi
+          env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+            cargo test --release --offline --manifest-path "$verified/Cargo.toml" \
+            >> "$case_dir/armada-cargo.log" 2>&1
+          env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+            cargo clippy --offline --manifest-path "$verified/Cargo.toml" \
+            --all-targets -- -D warnings >> "$case_dir/armada-cargo.log" 2>&1
+          semantic_parity="128_original_Lean_Armada_scheduler_cases_PASS"
+          echo "verified_original_armada_source=PASS_128_cases" >> "$case_dir/identity.txt"
+          sha256sum "$verified/src/lib.rs" "$verified/tests/oracle.rs" \
+            "$verified/Cargo.toml" "$case_dir/armada-oracles.lean" \
+            >> "$case_dir/identity.txt"
         fi
       else
         codegen="REFUSED"
@@ -207,7 +281,7 @@ LEAN
     echo "original_lean_oracle=$oracle"
     echo "native_codegen=$codegen"
     echo "generated_rust_build=$rustbuild"
-    echo "generated_rust_semantic_parity=NOT_VERIFIED"
+    echo "generated_rust_semantic_parity=$semantic_parity"
     echo "status=$reason"
     for f in "$case_dir"/*.lean "$case_dir"/*.log "$case_dir"/generated.rs; do
       if [[ -f "$f" ]]; then sha256sum "$f"; fi

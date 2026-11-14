@@ -32,8 +32,9 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 `check.sh` builds a Rust shared library and `NativeRust.olean`, then loads the
 backend into Lean's interpreter. It compiles **15 isolated declarations and
 three transitive closure roots**, generates standalone Rust, and executes
-**3,008 independently evaluated Lean/Rust assertions**, including 256 join-point
-cases and 768 multi-root Cargo library cases. It also checks
+**6,080 independently evaluated Lean/Rust assertions**, including 256 join-point
+cases, 768 multi-root Cargo library cases, and 3,072 checks for immutable
+`Option`, nested `Option`, and `Prod` values. It also checks
 fail-closed behavior, preserved outputs, stable output hashes, Cargo tests,
 formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
@@ -97,8 +98,8 @@ capturing Rust closures, including jumps from Boolean branches. Recursive
 joins, non-scalar join parameters, and unsupported runtime operations refuse.
 
 **Not implemented:** general Lean/Rust compilation; arbitrary-precision
-`Nat`; indirect calls, closures, non-Boolean cases, recursive joins, arrays,
-structures, general external primitives, and
+`Nat`; indirect calls, closures, unrestricted datatype cases, recursive joins, arrays,
+general structures, general external primitives, and
 noncomputable expressions without compiler IR. The current generated functions are checked
 on examples but there is not yet a general semantic refinement theorem.
 
@@ -142,4 +143,12 @@ examples within a **bounded subset**, not proof of general compiler correctness.
 
 ## Pinned source-derived conformance matrix
 
-The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 16-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
+The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 26-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
+
+## Immutable object runtime and external acceptance probes
+
+The `#native_rust_package` path also supports a **strict immutable** object subset: `Option.none/some`, `Prod.mk`, pattern matching and field projections, fixed-width boxing/unboxing, and non-observable `inc/dec/del` reference bookkeeping. The single standalone Rust representation is maintained in [`src/runtime/immutable_value.rs`](src/runtime/immutable_value.rs), embedded by the compiler only when required. The objects use `Rc` internally, but generated code does not link to Lean or add a Cargo dependency. Rust operations that would observe the Lean reference-count state or mutate storage remain unsupported.
+
+`examples/Objects.lean` independently evaluates 3,072 cases against the original Lean definitions. Unsupported arbitrary `Nat` and `Sum` constructors are negative tests; the production constructor whitelist refuses unreviewed IR. See [COVERAGE.md](COVERAGE.md) for exact scope and the runtime-branch reconciliation decision.
+
+`scripts/check-external-projects.sh` checks out exact original commits of independent Newspeak, Armada, and Keboola Lean 4.34.1 projects, runs their original Lake build and Lean `#guard`, then attempts **unmodified** original-root Rust extraction. As of this integration, all three original projects pass their Lean checks, but all three Rust requests still refuse: `Expr.isShared`, extern `Nat.decLe`, and `Expr.sproj`, respectively. This is deliberately **not** counted as three successful cross-language programs or a full release.

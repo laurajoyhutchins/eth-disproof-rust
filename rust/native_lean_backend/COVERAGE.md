@@ -135,3 +135,9 @@ Source `List.nil` is accepted only with tag 0, no fields, and pinned tagged stor
 
 The same canonical `__LeanValue`/GMP runtime handles these objects, source-defined Nat comparisons and imported List dependencies. The original unchanged Armada `Sched.argLeastLoad` and specialized `List.min?`/`List.idxOf` closure now compile and agree with **128** independent Lean evaluations in standalone Rust; a separate **512**-case List fixture passed. See [EVIDENCE.md](EVIDENCE.md) for source hash and CI artifact. The full three-project acceptance remains open: Newspeak `isShared`, Keboola `sproj`. No full List/heap semantics or resource equivalence are claimed.
 
+## Source-verified two-constructor default alternatives
+
+Original Lean 4.34.1 compiler IR can use one explicit constructor and `Alt.default` for Option/List cases. The default is accepted only as **exactly the other known source-verified constructor**. Both branches enforce runtime representation identities for Option.none/some or List.nil/cons; no unknown family, duplicate default, unchecked wildcard, Sum default, mixed scalar layout or mutation is permitted.
+
+`OptionDefaultFixture.lean` captures two original IR instances (`Option.some → default` and `Option.none → default`), and verifies **512 independently evaluated Lean results** with up to 1,024-bit Nat against standalone generated Rust in debug/release, with strict Clippy. The CI requires genuine `default →` IR, not ordinary explicit-two-constructor matches. [Source IR, Rust and oracles artifact](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43643490357/artifacts/14133486120). This is a bounded finite-tested subset, not general semantic preservation.
+

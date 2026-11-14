@@ -7,12 +7,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::fmt::Write;
 
+mod safety;
+
 #[repr(C)]
 pub struct LeanObject {
     _opaque: [u8; 0],
 }
 type Obj = *const LeanObject;
 extern "C" {
+    fn lr_abi_probe() -> i32;
     fn lr_is_scalar(x: Obj) -> i32;
     fn lr_scalar_value(x: Obj) -> usize;
     fn lr_is_ctor(x: Obj) -> i32;
@@ -461,6 +464,7 @@ impl Reader {
         }
     }
     unsafe fn emit(decl: Obj, rust_name: Obj) -> Result<String, String> {
+        if lr_abi_probe() == 0 { return Err("Lean C ABI runtime probe failed".into()); }
         Self::emit_function(decl, &Self::string(rust_name)?, None)
     }
 
@@ -613,6 +617,7 @@ impl Reader {
     }
 
     unsafe fn emit_roots(decls: Obj, roots: Vec<(String, String)>) -> Result<String, String> {
+        if lr_abi_probe() == 0 { return Err("Lean C ABI runtime probe failed".into()); }
         if roots.is_empty() || roots.len() > 128 {
             return Err("expected 1..128 public Lean root declarations".into());
         }
@@ -749,8 +754,8 @@ fn is_primitive(name: &str) -> bool {
 unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit_module_many(decls, roots)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     lean_mk_string(
         CString::new(text.replace('\0', "\\0"))
@@ -786,8 +791,8 @@ pub unsafe extern "C" fn l_NativeRust_emitModuleMany___boxed(
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit_module(decls, root, public_name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     let text = text.replace('\0', "\\0");
     let cstr = CString::new(text).expect("replaced NUL");
@@ -822,14 +827,52 @@ pub unsafe extern "C" fn l_NativeRust_emitModule___boxed(
 unsafe fn reply(decl: Obj, name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit(decl, name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     // Lean strings do not contain NUL bytes. Sanitizing inputs prevents interior
     // NUL from causing an FFI panic; diagnostics remain safely in the error channel.
     let text = text.replace('\0', "\\0");
     let cstr = CString::new(text).expect("replaced NUL");
     lean_mk_string(cstr.as_ptr())
+}
+
+unsafe fn reply_publish(path: Obj, source: Obj) -> *mut c_void {
+    let report = match std::panic::catch_unwind(|| {
+        let path = Reader::string(path)?;
+        let source = Reader::string(source)?;
+        safety::publish(&path, &source)
+    }) {
+        Ok(Ok(())) => "OK\npublished".to_string(),
+        Ok(Err(e)) => safety::refusal("output", &e),
+        Err(_) => safety::refusal("output", "publisher panic (no output accepted)"),
+    };
+    let report = report.replace('\0', "\\0");
+    let encoded = CString::new(report).expect("NUL sanitized");
+    lean_mk_string(encoded.as_ptr())
+}
+
+/// # Safety
+/// Borrowed path and source must be live Lean Strings from the pinned runtime.
+#[no_mangle]
+pub unsafe extern "C" fn rs_publish_source(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
+}
+
+/// # Safety
+/// Interpreter alias for rs_publish_source.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_publishSource(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
+}
+
+/// # Safety
+/// Boxed interpreter alias for rs_publish_source.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_publishSource___boxed(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
 }
 
 // `rs_emit_ir` is the native compiled ABI; the l_* names let Lean's

@@ -89,6 +89,21 @@ for pair in "RefusalClosure:rejected_closure" "RefusalClosureSorry:rejected_sorr
   fi
   rm -f "examples/${destination}.rs" "examples/${destination}.log"
 done
+# A refused source declaration must not poison later calls in the same host.
+rm -f examples/recovery_bad.rs examples/recovery_good.rs
+if timeout --kill-after=3s 90s lean --load-dynlib="$NATIVE_LIB" examples/Recovery.lean > artifacts/recovery.log 2>&1; then
+  echo 'recovery fixture unexpectedly accepted an unsupported String' >&2; exit 1
+fi
+if [[ -e examples/recovery_bad.rs || ! -f examples/recovery_good.rs ]]; then
+  cat artifacts/recovery.log >&2
+  echo 'refusal corrupted later valid emission' >&2; exit 1
+fi
+if ! grep -q '"status":"refused"' artifacts/recovery.log; then
+  cat artifacts/recovery.log >&2
+  echo 'missing machine-readable refusal' >&2; exit 1
+fi
+rustc --edition=2021 --crate-type=lib -o artifacts/recovery_good.rlib examples/recovery_good.rs
+rm -f examples/recovery_good.rs artifacts/recovery_good.rlib
 cat > examples/run.rs <<'RUST'
 include!("generated_add_one.rs");
 include!("generated_times_three.rs");
@@ -194,6 +209,9 @@ mkdir -p artifacts
   cargo --version
   echo "differential_assertions=3008"
   echo "ir_constructor_inventory=PASS"
+  echo "structured_refusal_recovery=PASS"
+  echo "atomic_publisher=PASS"
+  sha256sum src/safety.rs
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt

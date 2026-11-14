@@ -418,7 +418,8 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   cargo clippy --offline --manifest-path examples/ownership-package/Cargo.toml --all-targets -- -D warnings
 # A uniquely live array must be transferred without an implicit clone.
-if ! grep -Eq '\\.array_(push|set_tagged)_owned\\(' examples/ownership-package/src/lib.rs; then
+if ! grep -Fq '.array_push_owned(' examples/ownership-package/src/lib.rs &&
+   ! grep -Fq '.array_set_tagged_owned(' examples/ownership-package/src/lib.rs; then
   echo "last-use ownership lowering did not activate for source Array" >&2
   exit 1
 fi

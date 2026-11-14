@@ -46,6 +46,11 @@ jobs:
           test: false
           lint: false
           mk_all-check: false
+      - name: Restore pinned Leanify build cache
+        uses: actions/cache@v4
+        with:
+          path: vendor/leanify/.lake/build
+          key: leanify-build-${{ runner.os }}-${{ runner.arch }}-4.34.0-134da59ae02e9fffc011a5ea89acf4320268d220-v1
       - name: Execute unaltered research LaTeX corpus
         id: parse_research
         shell: bash
@@ -108,20 +113,29 @@ jobs:
           cat "$GITHUB_WORKSPACE/evidence/research/generated/Semantics.stdout"
           test "$(grep -Ec 'ResearchGenerated\.[a-z0-9_]+.*(depends on axioms:|does not depend on any axioms)' "$GITHUB_WORKSPACE/evidence/research/generated/Semantics.stdout")" -eq 21
           ! grep -q 'sorryAx' "$GITHUB_WORKSPACE/evidence/research/generated/Semantics.stdout"
-      - name: Audit source-to-document compilation with the Lean kernel
+      - name: Kernel-audit all eight accepted research articles
         shell: bash
         run: |
           set -euo pipefail
           cd vendor/leanify
           mkdir -p "$GITHUB_WORKSPACE/evidence/research/audit"
-          /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/research/audit/RG03.time" \
-            timeout 600s lake exe leanify audit ResearchRG03/article.tex \
-            --lean ResearchRG03/Compiled.lean --module ResearchRG03.Compiled \
-            > "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stdout" \
-            2> "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stderr"
-          cat "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stdout"
-          cat "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stderr"
-          grep -q 'Audit' "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stdout"
+          for id in RG01 RG03 RS02 RS03 RS04 RC01 RC02 RC03; do
+            ns="Research${id}"
+            original="$GITHUB_WORKSPACE/benchmark/latex-to-lean/research/cases/${id}.tex"
+            cmp "$ns/article.tex" "$original"
+            /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/research/audit/${id}.time" \
+              timeout 240s lake exe leanify audit "$ns/article.tex" \
+              --lean "$ns/Compiled.lean" --module "$ns.Compiled" \
+              > "$GITHUB_WORKSPACE/evidence/research/audit/${id}.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/research/audit/${id}.stderr"
+            cmp "$ns/article.tex" "$original"
+            grep -Fq "'${ns}.Audit.built' depends on axioms:" \
+              "$GITHUB_WORKSPACE/evidence/research/audit/${id}.stdout"
+            grep -Fq "The kernel evaluated the compiler" \
+              "$GITHUB_WORKSPACE/evidence/research/audit/${id}.stdout"
+            ! grep -q 'sorryAx' "$GITHUB_WORKSPACE/evidence/research/audit/${id}.stdout"
+            echo "Kernel compiler audit passed: ${id}"
+          done
       - name: Upload raw evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -63,10 +63,10 @@ fn validate_rust_function_name(rust_name: &str) -> Result<(), String> {
     }
     const KEYWORDS: &[&str] = &[
         "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
-        "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
-        "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
-        "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
+        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move",
+        "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait",
+        "true", "type", "unsafe", "use", "where", "while", "abstract", "become", "box", "gen",
+        "try", "typeof", "unsized", "virtual", "yield",
     ];
     if KEYWORDS.contains(&rust_name) || rust_name == "_" {
         return Err("reserved Rust function name".into());
@@ -1011,7 +1011,16 @@ mod tests {
         for accepted in ["hello", "my_function", "f4", "internal_f"] {
             validate_rust_function_name(accepted).unwrap();
         }
-        for rejected in ["", "fn", "_", "bad-name", "my name", "a::b", "x); unsafe {}", "safe\u{0}evil"] {
+        for rejected in [
+            "",
+            "fn",
+            "_",
+            "bad-name",
+            "my name",
+            "a::b",
+            "x); unsafe {}",
+            "safe\u{0}evil",
+        ] {
             assert!(
                 validate_rust_function_name(rejected).is_err(),
                 "invalid public Rust identifier unexpectedly accepted"

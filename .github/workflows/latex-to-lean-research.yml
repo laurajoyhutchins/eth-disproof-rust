@@ -23,7 +23,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate fail-closed research benchmark scorer (no model or Lean)
-        run: node --test benchmark/latex-to-lean/research/summarize.test.mjs
+        run: |
+          node --test benchmark/latex-to-lean/research/summarize.test.mjs
+          node --test benchmark/latex-to-lean/research/verify-receipts.test.mjs
       - name: Checkout pinned Leanify source
         shell: bash
         run: |
@@ -136,6 +138,14 @@ jobs:
             ! grep -q 'sorryAx' "$GITHUB_WORKSPACE/evidence/research/audit/${id}.stdout"
             echo "Kernel compiler audit passed: ${id}"
           done
+      - name: Publish fail-closed machine-readable verification ledger
+        shell: bash
+        run: |
+          set -euo pipefail
+          node benchmark/latex-to-lean/research/verify-receipts.mjs \
+            benchmark/latex-to-lean/research evidence/research evidence/research/verified.json
+          test "$(node -p 'require("./evidence/research/verified.json").generated_claims_verified')" -eq 12
+          test "$(node -p 'require("./evidence/research/verified.json").source_compilation_audits')" -eq 8
       - name: Upload raw evidence
         if: always()
         uses: actions/upload-artifact@v4

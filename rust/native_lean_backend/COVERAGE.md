@@ -105,7 +105,7 @@ coverage scope, and what testing does *not* establish.
 Ten source-native primitive adapters provide exact BigNat/BigInt arithmetic,
 Unicode append/length, Array UInt64 push/size and List UInt64 reversal.
 The bounded whitelist now allows 19 of 48 IR constructors and refuses 29.
-The new original-Lean oracle fixture adds **91 comparisons**, yielding
-**3,995** total across the historical scalar/control-flow/recursion suite.
+The new original-Lean oracle fixture adds **100 comparisons**, yielding
+**4,004** total across the historical scalar/control-flow/recursion suite.
 Undefined/unimplemented heap operations are not silently substituted.
 See [SEMANTICS.md](SEMANTICS.md) for the type boundary and exact evidence.

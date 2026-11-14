@@ -108,3 +108,15 @@ all-boxed call signatures and preserve captured values in immutable Rc
 objects. FnBody.inc/dec/del are non-observable only while mutation,
 reuse/reset/isShared and unknown heap layouts are prohibited.
 Source-differential evidence: 3,072 object + 2,048 callable results.
+
+## GMP Nat exact operation subset
+
+Nat.add/sub/mul/div/mod/decEq/decLt/decLe are recognized only
+with actual pinned compiler IR and known object/scalar return types.
+Generated Rc-backed Nat values store arbitrary-precision GMP integers.
+Lean Nat subtraction is saturating, and division/remainder by zero
+are total. All other Nat primitives refuse (including Nat.land).
+The original Lean runtime supplies 5,208 numerical oracles with
+0 to 1024-bit inputs; no machine-width truncation or synthesized
+finite-table implementation is accepted. GMP must be installed on
+supported Linux x86-64 execution hosts; no Lean runtime is linked.

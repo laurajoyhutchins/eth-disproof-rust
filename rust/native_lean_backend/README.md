@@ -154,3 +154,15 @@ The new fixtures provide 3,072 object and 2,048 function-value
 independently evaluated Lean/Rust comparisons.
 
 Mutation, full heap semantics, IO and arbitrary closure layouts still refuse.
+
+## Arbitrary-precision Nat (GMP, bounded source-defined subset)
+
+The generated standalone Rust runtime now includes a GMP-backed immutable
+Nat value and a source-refined subset: Nat.add/sub/mul/div/mod and
+Nat.decEq/decLt/decLe. Large naturals are not truncated to u64.
+Subtraction saturates at zero. Division by zero returns zero, and
+remainder by zero returns the dividend. Real pinned Lean IR and
+5,208 independently evaluated cases (including 1024-bit operands)
+are checked by examples/NatFixture.lean. Nonregistered Nat operations
+refuse, and generated binaries require libgmp at runtime.
+General Nat semantics, signed Int, IO and portability are not established.

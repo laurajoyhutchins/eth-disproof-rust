@@ -48,6 +48,11 @@ jobs:
           lint: false
           mk_all-check: false
 
+      - name: Install GMP development library for source-refined Nat arithmetic
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libgmp-dev
+
       - name: Run in-process Lean ABI, Rust codegen and executable conformance
         shell: bash
         run: |

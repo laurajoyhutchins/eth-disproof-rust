@@ -33,3 +33,7 @@
 /examples/rejected-object-package/
 /examples/rejected-function-package/
 /examples/RefusalFunctionValues.log
+
+/examples/nat-package/
+/examples/rejected-nat-package/
+/examples/RefusalNatBitwise.log

@@ -3,7 +3,7 @@ open Lean Elab Command
 
 def nontrivialBranch (x : UInt64) : UInt64 := if x == 0 then 1 else x
 def unsupportedString (x : String) : String := x ++ "!"
-def unsupportedNat (x : Nat) : Nat := x + 1
+def unsupportedNat (x y : Nat) : Nat := Nat.land x y
 
 run_cmd do
   liftCoreM <| Lean.Compiler.compile #[`unsupportedString]
@@ -18,11 +18,11 @@ run_cmd do
     | throwError "no Nat IR to test refusal"
   let natReport := NativeRust.emit natDecl "unsupported_nat"
   unless natReport.startsWith "ERROR\n" do
-    throwError "unsupported Nat semantics were silently accepted"
+    throwError "unsupported Nat bitwise primitive was silently accepted"
   let invalidName := NativeRust.emit decl "9not_valid"
   unless invalidName.startsWith "ERROR\n" do
     throwError "unsafe Rust name was accepted"
   let keywordName := NativeRust.emit decl "fn"
   unless keywordName.startsWith "ERROR\n" do
     throwError "Rust reserved keyword was accepted"
-  logInfo "Unsupported Nat and invalid Rust identifiers refused"
+  logInfo "Unsupported Nat bitwise operation and invalid Rust identifiers refused"

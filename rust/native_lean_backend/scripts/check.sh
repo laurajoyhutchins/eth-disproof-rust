@@ -230,6 +230,20 @@ if [[ -e examples/rejected-function-package ]] || ! grep -q "Rust native backend
   echo 'unsupported function dependency did not refuse' >&2; exit 1
 fi
 rm -f examples/RefusalFunctionValues.log
+# Bounded GMP-backed Nat over actual source IR: >1024-bit input operands,
+# saturated subtraction, totalized division/modulo by zero and comparisons.
+rm -rf examples/nat-package examples/rejected-nat-package
+lean --load-dynlib="$NATIVE_LIB" examples/NatFixture.lean
+cargo test --offline --manifest-path examples/nat-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/nat-package/Cargo.toml --lib -- -D warnings
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalNatBitwise.lean > examples/RefusalNatBitwise.log 2>&1; then
+  echo 'unreviewed Nat bitwise primitive was accepted' >&2; exit 1
+fi
+if [[ -e examples/rejected-nat-package ]] || ! grep -q "Rust native backend refused" examples/RefusalNatBitwise.log; then
+  cat examples/RefusalNatBitwise.log >&2
+  echo 'unsupported Nat compilation failed to refuse cleanly' >&2; exit 1
+fi
+rm -f examples/RefusalNatBitwise.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -246,7 +260,8 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=8128"
+  echo "differential_assertions=13336"
+  echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
   echo "safety_and_primitive_matrix=PASS"
@@ -261,6 +276,7 @@ mkdir -p artifacts
   echo "atomic_publisher=PASS"
   sha256sum src/safety.rs
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
+  sha256sum examples/NatFixture.lean examples/RefusalNatBitwise.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml
   sha256sum examples/Objects.lean examples/FunctionValues.lean examples/RefusalObjectNat.lean examples/RefusalObjectCtor.lean examples/RefusalFunctionValues.lean examples/object-package/src/lib.rs examples/function-package/src/lib.rs
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt

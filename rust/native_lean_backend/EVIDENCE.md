@@ -46,6 +46,22 @@ For #193 item 36, extend this harness only after constructing a **shared support
 
 The exact pinned original Lean 4.34.1 source is exercised without hand-copying or rewriting implementations. `examples/ProbeNatGcd.lean`, `ProbeListReverse.lean`, and `ProbeStringIntercalate.lean` independently check real original Lean behavior, then attempt native in-process extraction. All three **explicitly refuse** unsupported compiled IR in [native CI 43507863090](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43507863090), commit `714524c06e8ee2b47a74957722abf052f9831e72`. Their original behavior is valid, but generated Rust does **not** exist. Precise refusals, prior-output preservation, and peak RSS/time are saved in `artifacts/imported-probes/`. This provides a reproducible negative coverage baseline. It **does not** satisfy checklist item 32's requirement for three nontrivial independent projects actually building and running.
 
+## Three independent source-pinned Lean projects
+
+`scripts/check-external-projects.sh` performs **sparse, shallow, immutable-commit checkouts** from three independent upstream GitHub repositories. It never changes their source. In each project's own original Lean 4.34.1 Lake workspace, it builds an original substantial module and runs a separate `#guard` against that module's real executable definition. It then attempts direct in-process IR extraction without substituting or rewriting the algorithm. A refused extraction must leave an existing Rust sentinel unchanged. Original source and upstream Git tree SHAs, toolchains, build/oracle/codegen wall/RSS, diagnostic logs, and compiler revision are recorded.
+
+[Exact-head native run 43611081595](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43611081595), commit `ebc618026592c832d619291decd2e63bb0e71a87`, plus [raw evidence artifact 14120635627](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43611081595/artifacts/14120635627):
+
+| Repository, pinned commit | Original unchanged module/definition | Original Lake + Lean oracle | In-process Rust extraction | Lake wall / compiler refusal wall |
+| --- | --- | --- | --- | --- |
+| `newspeaklanguage/newspeak@8e8ed029` | `Newspeak.PEG` / `Newspeak.ConcreteTree.span` (185-line module, parsing semantics) | PASS / PASS | **REFUSED**: object IR type tag 7 | 1.24 s / 0.26 s |
+| `AshishKumar4/armada@c12b4a57` | `Sched.Basic` / `Sched.argLeastLoad` (450-line scheduler + proofs) | PASS / PASS | **REFUSED**: a noncanonical `Lean.Name` component | 0.94 s / 0.26 s |
+| `keboola/cli@e29d2cb3` | `SyncModel.Pull` / `SyncModel.pullDecide` (211-line sync decision model + proofs) | PASS / PASS | **REFUSED**: object IR type tag 7 | 1.03 s / 0.26 s |
+
+These are **real successful original Lean builds and behavior checks**, but **zero successful extracted Rust programs**. No cross-language semantic comparison for these external roots exists yet. All three refusals correctly preserved prior output. Thus this is a genuine negative coverage matrix, **not item 32 acceptance**. Codegen refusal RSS was around 832–834 MB, including Lean process/module startup, on this runner.
+
+The real-world `Lean.Name` refusal motivates a structured-name adapter (pass the actual `Lean.Name` object over FFI, encode nonstandard string/numeric components injectively), while object IR tag 7 requires exact object layout, allocation and ownership semantics, not a permissive type cast. Neither refusal may be silently changed to a successful result until the emitted Rust compiles, executes, and matches original Lean behavior.
+
 ## Atomic bundle publication and build receipts
 
 `scripts/compile-bundle.sh` is a reproducible build wrapper around the existing in-process Lean compiler. It does not replace its backend or introduce serialized JSON IR. A successful invocation accepts an imported module, actual root, source file, new destination directory, and optional Rust export name:
@@ -97,7 +113,7 @@ This is an **observed 4.0× subprocess wall-time ratio on one authored supported
 | # | Requirement | This branch | Release status |
 | --- | --- | --- | --- |
 | 31 | Randomized/property differential tests with shrinking and replay | 128 seeded vectors; 1,024 Lean-evaluated finite shrink candidates; one-seed reproduction | **Verified on pinned exact-head CI 43504031394**; broader shrinking/domain coverage remains |
-| 32 | Three independent substantial unmodified Lean projects | Three original Lean stdlib declarations directly probed and explicitly refused; still no three independently built external projects | **Open** |
+| 32 | Three independent substantial unmodified Lean projects | Three external projects independently built and original Lean oracles passed, but all three Rust roots explicitly refused (see matrix); no external Rust semantic parity | **Open** |
 | 33 | Generated code: Cargo, Clippy and runtime checks | Standalone generated Cargo binary, `cargo test`, strict Clippy, and Rust executable comparisons | **Exact-head 43510481607:** debug and optimized release Cargo tests (2 each), strict Clippy, emitted-code unsafe forbidden, no Lean dynamic link, runtime + peak RSS; future heap/unsafe features remain outside contract |
 | 34 | Tested vs formally proved | This ledger and explicit declarations below | **Documented**, no new theorem |
 | 35 | Exact-head CI native, unit, conformance, differential, clean generation, negative cases | Extended existing path-scoped native workflow to run `check.sh` then `check-evidence.sh`; receipts uploaded | **Verified on 43504031394** for the current bounded subset |

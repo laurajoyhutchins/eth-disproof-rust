@@ -38,7 +38,11 @@ MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
 MAX_EXPORT_RSS_BYTES = 5 * 1024 * 1024 * 1024
 
 
-class OutputLimitError(RuntimeError):
+class ResourceLimitError(RuntimeError):
+    """A supervised process exceeded its finite execution resource budget."""
+
+
+class OutputLimitError(ResourceLimitError):
     """A process exceeded the finite stdout/stderr evidence budget."""
 
 
@@ -123,7 +127,7 @@ def run_bounded(argv: list[str], cwd: Path, timeout: int,
                 if (os.fstat(stdout_file.fileno()).st_size > MAX_PROCESS_OUTPUT_BYTES
                         or os.fstat(stderr_file.fileno()).st_size > MAX_PROCESS_OUTPUT_BYTES):
                     raise OutputLimitError("bounded output exceeded after child exit")
-            except (TimeoutError, OutputLimitError) as error:
+            except (TimeoutError, ResourceLimitError) as error:
                 try:
                     os.killpg(child.pid, signal.SIGKILL)
                 except ProcessLookupError:
@@ -261,7 +265,7 @@ def compile_query(args):
                            f"stderr_tail={checked.stderr[-1000:]}")
             atomic_write(out / "lean-build.log",
                          "verified original query .olean and independent fresh import\n")
-        except (ValueError, OSError, TimeoutError, OutputLimitError, json.JSONDecodeError) as error:
+        except (ValueError, OSError, TimeoutError, ResourceLimitError, json.JSONDecodeError) as error:
             refuse("original-module-import-receipt", str(error))
     else:
         try:

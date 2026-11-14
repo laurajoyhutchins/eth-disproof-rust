@@ -481,7 +481,9 @@ impl Reader {
                         if Self::checked_tag(args[index], "Arg")? == 1 {
                             Ok(())
                         } else {
-                            Err(format!("{name}: expected erased type proof at slot {index}"))
+                            Err(format!(
+                                "{name}: expected erased type proof at slot {index}"
+                            ))
                         }
                     };
                     let check = |len: usize, ty: &str| -> Result<(), String> {
@@ -564,10 +566,8 @@ impl Reader {
                 // Lean emits tagged small Nat comparisons in array bounds
                 // checks. Use the exact tagged object representation, while
                 // all boxed Nat comparisons retain GMP behavior below.
-                let mut both_tagged = matches!(
-                    name.as_str(),
-                    "Nat.decEq" | "Nat.decLt" | "Nat.decLe"
-                );
+                let mut both_tagged =
+                    matches!(name.as_str(), "Nat.decEq" | "Nat.decLt" | "Nat.decLe");
                 if both_tagged {
                     for arg in &args {
                         if Self::checked_tag(*arg, "Arg")? != 0 {
@@ -1447,7 +1447,8 @@ fn is_nat_primitive(name: &str) -> bool {
 }
 
 fn is_pinned_array_extern(name: &str) -> bool {
-    matches!(name,
+    matches!(
+        name,
         "Array.mkEmpty" | "Array.getInternal" | "Array.getInternalBorrowed" | "Array.set!"
     )
 }

@@ -1,0 +1,12 @@
+# Exact source-native primitives; generated Rust includes standalone_runtime.rs only for Value types.
+# lean_name<TAB>rust_function<TAB>shape
+Nat.add	nat_add	binary
+Nat.sub	nat_sub	binary
+Nat.mul	nat_mul	binary
+Int.add	int_add	binary
+String.append	string_append	binary
+String.utf8ByteSize	string_bytes	unary
+String.length	string_chars	unary
+Array.push	array_push	erased_binary
+Array.size	array_size	erased_unary
+List.reverse._redArg	list_reverse	unary

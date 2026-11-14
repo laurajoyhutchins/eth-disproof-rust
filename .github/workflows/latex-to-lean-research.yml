@@ -17,7 +17,7 @@ concurrency:
 jobs:
   research-reference:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -106,9 +106,22 @@ jobs:
             > "$GITHUB_WORKSPACE/evidence/research/generated/Semantics.stdout" \
             2> "$GITHUB_WORKSPACE/evidence/research/generated/Semantics.stderr"
           cat "$GITHUB_WORKSPACE/evidence/research/generated/Semantics.stdout"
-          grep -q 'ResearchGenerated.rg03_exact_statement.*axioms' \
-            "$GITHUB_WORKSPACE/evidence/research/generated/Semantics.stdout"
+          test "$(grep -Ec 'ResearchGenerated\.[a-z0-9_]+.*(depends on axioms:|does not depend on any axioms)' "$GITHUB_WORKSPACE/evidence/research/generated/Semantics.stdout")" -eq 21
           ! grep -q 'sorryAx' "$GITHUB_WORKSPACE/evidence/research/generated/Semantics.stdout"
+      - name: Audit source-to-document compilation with the Lean kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          mkdir -p "$GITHUB_WORKSPACE/evidence/research/audit"
+          /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/research/audit/RG03.time" \
+            timeout 600s lake exe leanify audit ResearchRG03/article.tex \
+            --lean ResearchRG03/Compiled.lean --module ResearchRG03.Compiled \
+            > "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stdout" \
+            2> "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stderr"
+          cat "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stdout"
+          cat "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stderr"
+          grep -q 'Audit' "$GITHUB_WORKSPACE/evidence/research/audit/RG03.stdout"
       - name: Upload raw evidence
         if: always()
         uses: actions/upload-artifact@v4

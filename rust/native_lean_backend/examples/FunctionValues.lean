@@ -23,12 +23,21 @@ namespace FunctionValues
   def runShared (flag : Bool) (x y z : UInt64) : UInt64 :=
     let f := if flag then plus x else times x
     applyValue f y + applyValue f z
+
+  @[noinline] def applyTwo (f : UInt64 → UInt64 → UInt64) (y z : UInt64) : UInt64 :=
+    let half := f y
+    half z
+
+  def runMulti (flag : Bool) (x y z : UInt64) : UInt64 :=
+    let f : UInt64 → UInt64 → UInt64 :=
+      if flag then (fun a b => x + a + b) else (fun a b => x * a + b)
+    applyTwo f y z
 end FunctionValues
 
-#native_rust_package [FunctionValues.runIndirect, FunctionValues.runPacked, FunctionValues.runShared] to "examples/function-package"
+#native_rust_package [FunctionValues.runIndirect, FunctionValues.runPacked, FunctionValues.runShared, FunctionValues.runMulti] to "examples/function-package"
 
 run_cmd do
-  let mut text := "use lean_generated::{runIndirect, runPacked, runShared};\n#[test] fn closure_differential() {\n"
+  let mut text := "use lean_generated::{runIndirect, runPacked, runShared, runMulti};\n#[test] fn closure_differential() {\n"
   let mut state : UInt64 := 14029467366897019727
   for i in [:512] do
     state := state * 2862933555777941757 + 3037000493
@@ -40,7 +49,8 @@ run_cmd do
     text := text ++ s!"assert_eq!(runIndirect({b}u8,{x.toNat}u64,{y.toNat}u64),{(FunctionValues.runIndirect flag x y).toNat}u64);\n"
     text := text ++ s!"assert_eq!(runPacked({b}u8,{x.toNat}u64,{y.toNat}u64),{(FunctionValues.runPacked flag x y).toNat}u64);\n"
     text := text ++ s!"assert_eq!(runShared({b}u8,{x.toNat}u64,{y.toNat}u64,{z.toNat}u64),{(FunctionValues.runShared flag x y z).toNat}u64);\n"
+    text := text ++ s!"assert_eq!(runMulti({b}u8,{x.toNat}u64,{y.toNat}u64,{z.toNat}u64),{(FunctionValues.runMulti flag x y z).toNat}u64);\n"
   text := text ++ "}\n"
   liftIO <| IO.FS.createDirAll "examples/function-package/tests"
   liftIO <| IO.FS.writeFile "examples/function-package/tests/closures.rs" text
-  logInfo "Generated 1536 original-Lean function value and indirect AP differential assertions"
+  logInfo "Generated 2048 original-Lean function value and indirect AP differential assertions"

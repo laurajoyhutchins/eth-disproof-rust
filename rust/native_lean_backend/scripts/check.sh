@@ -12,13 +12,13 @@ export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_
 # The ledger is fail-closed on tag/order drift and documents conditional semantics.
 mkdir -p artifacts
 lean scripts/VerifyIRInventory.lean
-test "$(awk -F '\t' 'NR>1 && $1=="primitive" && $3=="conditional" {n++} END {print n+0}' artifacts/ir-coverage.tsv)" -eq 30
+test "$(awk -F '\t' 'NR>1 && $1=="primitive" && $3=="conditional" {n++} END {print n+0}' artifacts/ir-constructor-summary.tsv)" -eq 30
 awk -F '\t' '
   $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jdecl" && $3=="conditional" {a=1}
   $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jmp" && $3=="conditional" {b=1}
   $1=="Lean.IR.Expr" && $2=="Lean.IR.Expr.pap" && $3=="refused" {c=1}
   END {exit !(a && b && c)}
-' artifacts/ir-coverage.tsv
+' artifacts/ir-constructor-summary.tsv
 if grep -Eq 'rs_emit_ir_bundle|#native_rust_bundle' NativeRust.lean src/lib.rs; then
   echo 'multiple competing multi-root compiler interfaces detected' >&2
   exit 2
@@ -198,6 +198,10 @@ rm -f examples/RefusalPackageOverwrite.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
+# Validate every pinned constructor against the complete source-derived tag
+# matrix, then execute all 30 registered primitives against 64 Lean oracles.
+# This richer ledger is separate from VerifyIRInventory's initial drift gate.
+bash scripts/check-coverage.sh
 # Receipt exists only after *all* end-to-end and negative checks pass.
 mkdir -p artifacts
 {
@@ -209,10 +213,16 @@ mkdir -p artifacts
   cargo --version
   echo "differential_assertions=3008"
   echo "ir_constructor_inventory=PASS"
+  echo "runtime_tag_whitelist=16_scoped_IR_constructors"
+  echo "primitive_conformance=30_operations_x_64_original_Lean_oracles"
+  sha256sum ir-coverage-classification.tsv primitive-registry.tsv scripts/coverage-ledger.rs \
+    scripts/check-coverage.sh examples/IRInventory.lean examples/PrimitiveMatrix.lean \
+    artifacts/ir-constructors.tsv artifacts/ir-coverage.tsv \
+    artifacts/primitive-conformance.tsv
   echo "structured_refusal_recovery=PASS"
   echo "atomic_publisher=PASS"
   sha256sum src/safety.rs
-  sha256sum scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv
+  sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

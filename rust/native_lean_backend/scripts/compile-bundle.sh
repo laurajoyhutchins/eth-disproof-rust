@@ -47,12 +47,19 @@ test -f "$NATIVE_LIB"
 test -f NativeRust.olean
 
 parent="$(realpath -e -- "$(dirname -- "$dest")")"
+# The pinned same-process publisher accepts only workspace-relative .rs paths.
+# Refuse outside-workspace staging rather than weakening native path checks.
+case "$parent/" in
+  "$PWD/"*) ;;
+  *) echo "Bundle output parent must remain under the compiler workspace" >&2; exit 2 ;;
+esac
 dest="$parent/$filename"
 if [[ -e "$dest" || -L "$dest" ]]; then
   echo "Refusing to overwrite existing bundle: $dest" >&2
   exit 2
 fi
 staging="$(mktemp -d "$parent/.native-bundle.XXXXXXXX")"
+staging_rel="${staging#"$PWD/"}"
 # Never remove a caller's destination even on any error.
 trap 'rm -rf -- "$staging"' EXIT
 if [[ "$staging" = *'"'* || "$staging" = *'\'* || "$staging" = *$'\n'* ]]; then
@@ -71,7 +78,7 @@ fi
 cat > "$staging/compile.lean" <<LEAN
 import NativeRust
 import $module
-#native_rust_closure $root as "$export_name" to "$staging/generated.rs"
+#native_rust_closure $root as "$export_name" to "$staging_rel/generated.rs"
 LEAN
 if ! lean --load-dynlib="$NATIVE_LIB" "$staging/compile.lean" > "$staging/lean-codegen.log" 2>&1; then
   cat "$staging/lean-codegen.log" >&2

@@ -284,6 +284,33 @@ impl __LeanValue {
         next.push(value.clone());
         Self::array(next)
     }
+
+    // Transfer the final IR use of an Array into its next value. Shared
+    // references are detected dynamically, so aliases preserve prior values.
+    #[allow(dead_code)]
+    fn array_push_owned(mut self, value: Self) -> Self {
+        if let Some(__LeanValueRepr::Array(values)) = std::rc::Rc::get_mut(&mut self.0) {
+            values.push(value);
+            return self;
+        }
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.push expects Array"); };
+        let mut next = values.clone();
+        next.push(value);
+        Self::array(next)
+    }
+    #[allow(dead_code)]
+    fn array_set_tagged_owned(mut self, index: usize, value: Self) -> Self {
+        if let Some(__LeanValueRepr::Array(values)) = std::rc::Rc::get_mut(&mut self.0) {
+            *values.get_mut(index).expect("source Array.set! index out of bounds") = value;
+            return self;
+        }
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.set! expected an Array"); };
+        let mut updated = values.clone();
+        *updated.get_mut(index).expect("source Array.set! index out of bounds") = value;
+        Self::array(updated)
+    }
     fn array_size(&self) -> Self {
         let __LeanValueRepr::Array(values) = self.0.as_ref()
         else { panic!("Array.size expects Array"); };

@@ -398,6 +398,31 @@ if ! grep -Fq '__LeanValue::list_cons(' examples/list-package/src/lib.rs; then
   echo 'original source List.cons was silently optimized or substituted' >&2
   exit 1
 fi
+# Source-verified Sum.inl / Sum.inr constructor and case family identities.
+rm -rf examples/sum-package
+lean --load-dynlib="$NATIVE_LIB" examples/SumFixture.lean
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path examples/sum-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --release --offline --manifest-path examples/sum-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo clippy --offline --manifest-path examples/sum-package/Cargo.toml --all-targets -- -D warnings
+# Source-defined unique/shared Array ownership behavior, with original
+# Lean oracles and generated-runtime pointer identity regression tests.
+rm -rf examples/ownership-package
+lean --load-dynlib="$NATIVE_LIB" examples/OwnershipFixture.lean
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path examples/ownership-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --release --offline --manifest-path examples/ownership-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo clippy --offline --manifest-path examples/ownership-package/Cargo.toml --all-targets -- -D warnings
+# A uniquely live array must be transferred without an implicit clone.
+if ! grep -Fq '.array_push_owned(' examples/ownership-package/src/lib.rs &&
+   ! grep -Fq '.array_set_tagged_owned(' examples/ownership-package/src/lib.rs; then
+  echo "last-use ownership lowering did not activate for source Array" >&2
+  exit 1
+fi
 # Original closed Lean Nat constants of 200-512 bits, with oracle inputs
 # through 4096 bits. The pinned Lean C shim reads the full decimal value.
 rm -rf examples/large-nat-package examples/rejected-nat-pow-package
@@ -477,13 +502,15 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=18313"
+  echo "differential_assertions=20105"
+  echo "array_ownership_original_lean_oracles=768"
+  echo "sum_original_lean_oracles=1024"
   echo "list_nat_original_lean_oracles=512"
   echo "persistent_array_original_lean_oracles=1280"
   echo "large_nat_literal_oracles=76"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-  echo "core_and_matrix_oracles=20233"
+  echo "core_and_matrix_oracles=22025"
   echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"

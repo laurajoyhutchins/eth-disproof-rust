@@ -494,7 +494,9 @@ impl Reader {
                     if Self::checked_tag(expr, "Expr")? == 0
                         && !matches!(Self::checked_tag(Self::field(x, 1)?, "IRType")?, 1 | 12)
                     {
-                        return Err("nullary constructor needs UInt8 or tagged scalar IRType".into());
+                        return Err(
+                            "nullary constructor needs UInt8 or tagged scalar IRType".into()
+                        );
                     }
                     let value = Self::expr(expr, ty, env, ctx.functions)?;
                     if env.insert(name, ty).is_some() {

@@ -442,7 +442,9 @@ impl Reader {
                             return Err(format!("{name}: missing erased source type proof"));
                         }
                         1
-                    } else { 0 };
+                    } else {
+                        0
+                    };
                     let mut operands = Vec::new();
                     for arg in &args[begin..] {
                         operands.push(Self::arg(*arg, env, "tobj")?);
@@ -1174,7 +1176,9 @@ fn is_nat_primitive(name: &str) -> bool {
 }
 
 fn is_primitive(name: &str) -> bool {
-    primitive_spec(name).is_some() || is_nat_primitive(name) || runtime_primitive_spec(name).is_some()
+    primitive_spec(name).is_some()
+        || is_nat_primitive(name)
+        || runtime_primitive_spec(name).is_some()
 }
 
 const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");
@@ -1191,8 +1195,13 @@ fn runtime_primitive_spec(name: &str) -> Option<RuntimePrimitiveSpec<'static>> {
             let id = cells.next()?;
             let rust_function = cells.next()?;
             let shape = cells.next()?;
-            if cells.next().is_some() || id != name { return None; }
-            Some(RuntimePrimitiveSpec { rust_function, shape })
+            if cells.next().is_some() || id != name {
+                return None;
+            }
+            Some(RuntimePrimitiveSpec {
+                rust_function,
+                shape,
+            })
         })
 }
 
@@ -1403,7 +1412,10 @@ mod tests {
             "List.reverse._redArg",
         ];
         let mut seen = std::collections::BTreeSet::new();
-        for line in registry.lines().filter(|line| !line.is_empty() && !line.starts_with('#')) {
+        for line in registry
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        {
             let fields: Vec<_> = line.split('\t').collect();
             assert_eq!(fields.len(), 3, "malformed adapter registry");
             assert!(seen.insert(fields[0]), "duplicate primitive {}", fields[0]);

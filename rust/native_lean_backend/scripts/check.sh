@@ -334,6 +334,20 @@ rm -rf examples/object-package examples/function-package
 lean --load-dynlib="$NATIVE_LIB" examples/Objects.lean
 cargo test --offline --manifest-path examples/object-package/Cargo.toml
 cargo clippy --offline --manifest-path examples/object-package/Cargo.toml --all-targets -- -D warnings
+# Verify actual source Alt.default IR; prevent a green test on ordinary two
+# explicit constructor branches without exercising the new lowering.
+rm -rf examples/option-default-package
+lean --load-dynlib="$NATIVE_LIB" examples/OptionDefaultFixture.lean
+if ! grep -Fq 'default →' examples/option-default-package/original-ir.txt; then
+  echo 'original Lean source IR lacks Option default constructor case' >&2
+  exit 1
+fi
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path examples/option-default-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --release --offline --manifest-path examples/option-default-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo clippy --offline --manifest-path examples/option-default-package/Cargo.toml --all-targets -- -D warnings
 if [[ "$(grep -c "Generated directly from Lean IR declaration: ObjectFixture.mkOpt" examples/object-package/src/lib.rs)" != 1 ]]; then
   echo "immutable object closure was duplicated or omitted" >&2; exit 1
 fi
@@ -516,7 +530,8 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=20443"
+  echo "differential_assertions=20955"
+  echo "source_option_default_oracles=512"
   echo "generic_inductive_original_lean_oracles=338"
   echo "array_ownership_original_lean_oracles=768"
   echo "sum_original_lean_oracles=1024"
@@ -525,7 +540,7 @@ mkdir -p artifacts
   echo "large_nat_literal_oracles=76"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-  echo "core_and_matrix_oracles=22363"
+  echo "core_and_matrix_oracles=22875"
   echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
@@ -557,6 +572,7 @@ mkdir -p artifacts
   sha256sum examples/NatFixture.lean examples/RefusalNatBitwise.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml \
     examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/large-nat-package/Cargo.toml \
     examples/large-nat-package/tests/literals.rs
+  sha256sum examples/OptionDefaultFixture.lean examples/option-default-package/original-ir.txt examples/option-default-package/src/lib.rs examples/option-default-package/tests/oracle.rs examples/option-default-package/Cargo.toml
   sha256sum examples/Objects.lean examples/FunctionValues.lean examples/RefusalObjectNat.lean examples/RefusalObjectCtor.lean examples/RefusalFunctionValues.lean examples/object-package/src/lib.rs examples/function-package/src/lib.rs
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt

@@ -27,3 +27,9 @@
 
 # Generated primitive matrix orchestration
 /examples/matrix_run.rs
+
+/examples/object-package/
+/examples/function-package/
+/examples/rejected-object-package/
+/examples/rejected-function-package/
+/examples/RefusalFunctionValues.log

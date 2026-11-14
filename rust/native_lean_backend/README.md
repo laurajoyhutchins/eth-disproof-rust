@@ -143,3 +143,14 @@ examples within a **bounded subset**, not proof of general compiler correctness.
 ## Pinned source-derived conformance matrix
 
 The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 16-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
+
+## Integrated immutable objects and callable values
+
+The compiler now supports bounded immutable Option/Prod values, boxing,
+projections, and first-class callable values using Rc-backed closures.
+The same pinned native backend retains main's ABI checks, refusals,
+publisher and independent 30 x 64 primitive conformance matrix.
+The new fixtures provide 3,072 object and 2,048 function-value
+independently evaluated Lean/Rust comparisons.
+
+Mutation, full heap semantics, IO and arbitrary closure layouts still refuse.

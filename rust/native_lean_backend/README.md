@@ -169,8 +169,12 @@ Unrestricted Nat/Int APIs, IO and portability remain unsupported; the signed Int
 
 ## Unified GMP-backed value operations
 
-A single `__LeanValue` immutable runtime now supports the mainline GMP Nat arithmetic, the original verified Option/Prod constructors and callable values, and seven supplementary source-native Int, Unicode String, Array UInt64 and List UInt64 operations. No duplicate native source compiler or BigNat arithmetic engine is maintained. The Lean original-source oracle fixture adds 101 comparisons to mainline's 16,344 source-based cases, plus the separate 1,920 fixed-width matrix. These **18,441** total comparisons are the target for combined exact-head verification, not a completed G1 claim. [SEMANTICS.md](SEMANTICS.md) gives exact supported and unsupported semantics.
+A single `__LeanValue` immutable runtime now supports the mainline GMP Nat arithmetic, the original verified Option/Prod constructors and callable values, and seven supplementary source-native Int, Unicode String, Array UInt64 and List UInt64 operations. No duplicate native source compiler or BigNat arithmetic engine is maintained. The Lean original-source oracle fixture adds 101 comparisons to mainline's 16,344 source-based cases, plus the separate 1,920 fixed-width matrix. These **19,721** total comparisons are the target for combined exact-head verification, not a completed G1 claim. [SEMANTICS.md](SEMANTICS.md) gives exact supported and unsupported semantics.
 
 ### Source-native large Nat constants (candidate)
 
 The compiler now attempts direct, exact decimal extraction of boxed Lean Nat literals up to a fixed 4 KiB bound using the pinned Lean public C API. The emitted Rust value uses the existing canonical GMP `Nat` object. A separate Lean fixture exercises 76 exact large-constant comparisons, while unsupported Nat expressions still refuse. No second value runtime or compiler path is added.
+
+## Source-derived persistent Array programs (integration candidate)
+
+Five unchanged original Lean functions in `examples/ArrayFixture.lean` cover construction, append, indexed reads, persistent updates, array-size branching, and composition through `Option`. The canonical immutable `Rc`-backed Array implementation is reused, not forked. The additional **1,280** expected results come from Lean 4.34.1 and are required to match independently compiled standalone Cargo tests. `Array.pop` and `Array.get!Internal` still refuse. Source-derived tagged indices, erased type proofs and fixed ABI signatures are validated before code generation. Full generic arrays, mutable sharing, and general Lean compiler correctness are not established.

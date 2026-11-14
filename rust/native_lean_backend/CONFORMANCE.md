@@ -76,10 +76,10 @@ scripts/check-coverage.sh rejects a missing fixture or generated function,
 compiles all emitted Rust functions into one test binary, and runs all 1,920
 assertions. The execution ledger is artifacts/primitive-conformance.tsv.
 
-The integrated regression fixtures now provide **16,521** independently
+The integrated regression fixtures now provide **17,801** independently
 original-Lean-evaluated Rust comparisons: 3,008 scalar/Bool/joins/multi-root,
 3,072 immutable Option/Prod, 2,048 source-defined boxed closure/PAP/AP, 5,208 GMP-backed arbitrary-width Nat tests, 3,008 extended Float/enum/unsigned cases, 101 additional original-Lean Int/Unicode/collection/closure operations, and 76 separately Lean-evaluated large closed Nat literal comparisons. Together with the separate 1,920
-fixed-width primitive matrix assertions, this is **18,441** compared results.
+fixed-width primitive matrix assertions, this is **19,721** compared results.
 The additional 1,024-case randomized Lean/Rust property suite is reported
 separately. These counts describe different tested subsets, not universal
 compiler equivalence.
@@ -120,3 +120,7 @@ The canonical `src/runtime/immutable_value.rs` is extended with seven source-ide
 ## Closed arbitrary-precision Nat literals (candidate)
 
 The pinned Lean C API converts source `Lean.IR.LitVal.num` objects to decimal without machine-word truncation; emitted Rust constructs the same canonical GMP-backed `__LeanValue::nat_from_decimal`. Constants with more than 4 KiB of Lean integer storage refuse. `LargeNat.lean` supplies **76** original-Lean oracle comparisons, including large literals and up to 4096-bit external inputs; unknown `Nat.pow` remains a structured refusal. No competing generated GMP runtime is introduced. This feature requires a clean exact-head and post-merge acceptance run.
+
+## Source-derived persistent Array programs (integration candidate)
+
+Five unchanged original Lean functions in `examples/ArrayFixture.lean` cover construction, append, indexed reads, persistent updates, array-size branching, and composition through `Option`. The canonical immutable `Rc`-backed Array implementation is reused, not forked. The additional **1,280** expected results come from Lean 4.34.1 and are required to match independently compiled standalone Cargo tests. `Array.pop` and `Array.get!Internal` still refuse. Source-derived tagged indices, erased type proofs and fixed ABI signatures are validated before code generation. Full generic arrays, mutable sharing, and general Lean compiler correctness are not established.

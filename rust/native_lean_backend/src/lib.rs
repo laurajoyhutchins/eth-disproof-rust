@@ -473,6 +473,50 @@ impl Reader {
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
                 }
+                // Exact-source Array extern ABI. Unlike the generic object
+                // adapters, indices and capacities must be tagged Nat values,
+                // and erased type proofs have fixed positions.
+                if is_pinned_array_extern(&name) {
+                    let erased = |index: usize| -> Result<(), String> {
+                        if Self::checked_tag(args[index], "Arg")? == 1 {
+                            Ok(())
+                        } else {
+                            Err(format!("{name}: expected erased type proof at slot {index}"))
+                        }
+                    };
+                    let check = |len: usize, ty: &str| -> Result<(), String> {
+                        if args.len() == len && var_ty == ty {
+                            Ok(())
+                        } else {
+                            Err(format!("{name}: unsupported arity or IR result type"))
+                        }
+                    };
+                    return match name.as_str() {
+                        "Array.mkEmpty" => {
+                            check(2, "obj")?;
+                            erased(0)?;
+                            let capacity = Self::arg(args[1], env, "tagged")?;
+                            Ok(format!("__LeanValue::empty_array({capacity}.tagged_nat())"))
+                        }
+                        "Array.getInternal" | "Array.getInternalBorrowed" => {
+                            check(4, "tobj")?;
+                            erased(0)?;
+                            erased(3)?;
+                            let array = Self::arg(args[1], env, "obj")?;
+                            let index = Self::arg(args[2], env, "tagged")?;
+                            Ok(format!("{array}.array_get({index}.tagged_nat())"))
+                        }
+                        "Array.set!" => {
+                            check(4, "obj")?;
+                            erased(0)?;
+                            let array = Self::arg(args[1], env, "obj")?;
+                            let index = Self::arg(args[2], env, "tagged")?;
+                            let value = Self::arg(args[3], env, "tobj")?;
+                            Ok(format!("{array}.array_set({index}.tagged_nat(), &{value})"))
+                        }
+                        _ => Err(format!("{name}: unrecognized source Array extern")),
+                    };
+                }
                 if let Some(runtime) = runtime_primitive_spec(&name) {
                     if !is_value_type(var_ty) {
                         return Err(format!("{name}: object result required for native runtime"));
@@ -502,6 +546,12 @@ impl Reader {
                     for arg in &args[begin..] {
                         operands.push(Self::arg(*arg, env, "tobj")?);
                     }
+                    if name == "Array.size" && var_ty == "tagged" {
+                        let [array] = operands.as_slice() else {
+                            return Err("Array.size source ABI must have one array operand".into());
+                        };
+                        return Ok(format!("{array}.array_size_tagged()"));
+                    }
                     return match operands.as_slice() {
                         [value] => Ok(format!("{value}.{}()", runtime.rust_function)),
                         [lhs, rhs] => Ok(format!("{lhs}.{}(&{rhs})", runtime.rust_function)),
@@ -511,6 +561,43 @@ impl Reader {
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
+                // Lean emits tagged small Nat comparisons in array bounds
+                // checks. Use the exact tagged object representation, while
+                // all boxed Nat comparisons retain GMP behavior below.
+                let mut both_tagged = matches!(
+                    name.as_str(),
+                    "Nat.decEq" | "Nat.decLt" | "Nat.decLe"
+                );
+                if both_tagged {
+                    for arg in &args {
+                        if Self::checked_tag(*arg, "Arg")? != 0 {
+                            both_tagged = false;
+                            break;
+                        }
+                        let id = Self::var(Self::field(*arg, 0)?)?;
+                        if env.get(&id) != Some(&"tagged") {
+                            both_tagged = false;
+                            break;
+                        }
+                    }
+                }
+                if both_tagged {
+                    if var_ty != "u8" {
+                        return Err("tagged Nat comparison requires UInt8 result".into());
+                    }
+                    let lhs = Self::arg(args[0], env, "tagged")?;
+                    let rhs = Self::arg(args[1], env, "tagged")?;
+                    let op = match name.as_str() {
+                        "Nat.decEq" => "==",
+                        "Nat.decLt" => "<",
+                        "Nat.decLe" => "<=",
+                        _ => unreachable!(),
+                    };
+                    return Ok(format!(
+                        "u8::from({lhs}.tagged_nat() {op} {rhs}.tagged_nat())"
+                    ));
+                }
+
                 if is_nat_primitive(&name) {
                     let lhs = Self::arg(args[0], env, "tobj")?;
                     let rhs = Self::arg(args[1], env, "tobj")?;
@@ -1359,10 +1446,17 @@ fn is_nat_primitive(name: &str) -> bool {
     )
 }
 
+fn is_pinned_array_extern(name: &str) -> bool {
+    matches!(name,
+        "Array.mkEmpty" | "Array.getInternal" | "Array.getInternalBorrowed" | "Array.set!"
+    )
+}
+
 fn is_primitive(name: &str) -> bool {
     primitive_spec(name).is_some()
         || is_nat_primitive(name)
         || runtime_primitive_spec(name).is_some()
+        || is_pinned_array_extern(name)
 }
 
 const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");

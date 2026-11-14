@@ -205,6 +205,36 @@ impl __LeanValue {
         else { panic!("Array.size expects Array"); };
         Self::nat_from_decimal(&values.len().to_string())
     }
+    // These adapters operate on the SAME Rc-backed immutable Array storage
+    // used by the original Array.push/size semantic fixtures.
+    fn tagged_nat(&self) -> usize {
+        match self.0.as_ref() {
+            __LeanValueRepr::Tagged(value) => *value,
+            _ => panic!("Array index/capacity must be a statically tagged Nat"),
+        }
+    }
+    fn empty_array(capacity: usize) -> Self {
+        // The Nat capacity is only a hint; allocating arbitrarily large buffers
+        // would make compilation of a valid expression resource-unsafe.
+        Self::array(Vec::with_capacity(capacity.min(1024)))
+    }
+    fn array_size_tagged(&self) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.size expects Array"); };
+        Self::tagged(values.len())
+    }
+    fn array_get(&self, index: usize) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.getInternal expects Array"); };
+        values.get(index).expect("source Array index out of bounds").clone()
+    }
+    fn array_set(&self, index: usize, value: &Self) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.set! expects Array"); };
+        let mut next = values.clone();
+        *next.get_mut(index).expect("source Array update out of bounds") = value.clone();
+        Self::array(next)
+    }
     fn list_reverse(&self) -> Self {
         let __LeanValueRepr::List(values) = self.0.as_ref()
         else { panic!("List.reverse expects List"); };

@@ -1,0 +1,144 @@
+name: LaTeX-to-Lean upstream pilot
+on:
+  push:
+    branches: ['experiment/latex-to-lean-pilot']
+    paths:
+      - '.github/workflows/latex-to-lean-pilot.yml'
+      - 'benchmark/latex-to-lean/**'
+
+permissions:
+  contents: read
+
+jobs:
+  leanify-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout exact Leanify revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Corrram/leanify.git vendor/leanify
+          git -C vendor/leanify checkout --detach 134da59ae02e9fffc011a5ea89acf4320268d220
+          test "$(git -C vendor/leanify rev-parse HEAD)" = 134da59ae02e9fffc011a5ea89acf4320268d220
+          mkdir -p evidence/leanify
+          git -C vendor/leanify rev-parse HEAD > evidence/leanify/sha.txt
+          cat vendor/leanify/lean-toolchain > evidence/leanify/lean-toolchain.txt
+      - name: Restore native Leanify toolchain
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: vendor/leanify
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Build original Leanify and run four original source cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          lake exe cache get
+          lake build leanify
+          for id in E01 R01 G01 X01; do
+            set +e
+            /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/leanify/${id}.time" \
+              timeout 180s lake exe leanify check "$GITHUB_WORKSPACE/benchmark/latex-to-lean/cases/${id}.tex" --claims \
+              > "$GITHUB_WORKSPACE/evidence/leanify/${id}.stdout" 2> "$GITHUB_WORKSPACE/evidence/leanify/${id}.stderr"
+            status=$?
+            set -e
+            printf '%s\n' "$status" > "$GITHUB_WORKSPACE/evidence/leanify/${id}.exit"
+            echo "Leanify ${id}: exit ${status}"
+            cat "$GITHUB_WORKSPACE/evidence/leanify/${id}.stdout"
+            cat "$GITHUB_WORKSPACE/evidence/leanify/${id}.stderr"
+          done
+      - name: Upload primary evidence even when setup fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: leanify-pilot
+          path: evidence/leanify/
+          if-no-files-found: warn
+
+  paperformalizer-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Checkout exact PaperFormalizer revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Jiyuan-Tan/PaperFormalizer.git vendor/paperformalizer
+          git -C vendor/paperformalizer checkout --detach 5e1f269bb1c19512e2bc8dde69119c2b7f667f74
+          test "$(git -C vendor/paperformalizer rev-parse HEAD)" = 5e1f269bb1c19512e2bc8dde69119c2b7f667f74
+          mkdir -p evidence/paperformalizer
+          git -C vendor/paperformalizer rev-parse HEAD > evidence/paperformalizer/sha.txt
+      - name: Install locked tool dependencies and test native CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/paperformalizer/tools
+          npm ci
+          npx --no-install tsx bin/paperformalizer.ts init --list > "$GITHUB_WORKSPACE/evidence/paperformalizer/domains.txt" 2>&1
+          set +e
+          npx --no-install tsx bin/paperformalizer.ts doctor > "$GITHUB_WORKSPACE/evidence/paperformalizer/doctor.txt" 2>&1
+          status=$?
+          set -e
+          echo "$status" > "$GITHUB_WORKSPACE/evidence/paperformalizer/doctor.exit"
+          cat "$GITHUB_WORKSPACE/evidence/paperformalizer/domains.txt"
+          cat "$GITHUB_WORKSPACE/evidence/paperformalizer/doctor.txt"
+          echo "Doctor status $status (expected missing agent/Lean runtime on this runner)"
+      - name: Upload native CLI diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paperformalizer-smoke
+          path: evidence/paperformalizer/
+          if-no-files-found: warn
+
+  autoformbot-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+      - name: Checkout exact AutoformBot revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/facebookresearch/autoform-bot.git vendor/autoformbot
+          git -C vendor/autoformbot checkout --detach 32b28c7829dd101262ad93a625026893a2c23828
+          test "$(git -C vendor/autoformbot rev-parse HEAD)" = 32b28c7829dd101262ad93a625026893a2c23828
+          mkdir -p evidence/autoformbot
+          git -C vendor/autoformbot rev-parse HEAD > evidence/autoformbot/sha.txt
+      - name: Restore frozen Python environment and inspect native CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/autoformbot
+          uv sync --frozen
+          uv run --frozen autoform --help > "$GITHUB_WORKSPACE/evidence/autoformbot/help.txt" 2>&1
+          uv pip list > "$GITHUB_WORKSPACE/evidence/autoformbot/deps.txt"
+          cat "$GITHUB_WORKSPACE/evidence/autoformbot/help.txt"
+      - name: Upload native CLI diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autoformbot-smoke
+          path: evidence/autoformbot/
+          if-no-files-found: warn

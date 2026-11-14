@@ -9,12 +9,12 @@ refuse. Constructor/tag identities below are pinned to
 | IR family | Supported | Explicitly unsupported |
 | --- | --- | --- |
 | `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
-| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize`, plus `object`, `tobject`, `tagged` for the verified immutable runtime | `float`, `float32`, `erased`, `void`, `struct`, `union` |
+| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize` | `float`, `float32`, `erased`, `object`, `tobject`, `tagged`, `void`, `struct`, `union` |
 | `Arg` | `var` with known, matching type | `erased` in runtime position |
-| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls; immutable `Option.none`, `Option.some`, `Prod.mk` constructors, `box`, `unbox`, object `proj` | `reset`, `reuse`, `uproj`, `sproj`, `pap`, `ap`, `lit.str`, `isShared`, unverified constructors, other `fap` |
-| `FnBody` | `vdecl`, `ret`, Bool cases, `Option.none`/`Option.some` cases, nonrecursive `jdecl`/`jmp`, object-only `inc`/`dec`/`del` erased under immutable `Rc` ownership | `set`, `setTag`, `uset`, `sset`, other `case`, `unreachable`, recursive joins |
-| `Alt` | two exact Bool alternatives or two exact `Option` constructors | `default`, other constructors |
-| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe`; GMP-backed `Nat` subset detailed below | all other runtime calls |
+| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls to supported compiled declarations | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
+| `FnBody` | `vdecl`, `ret`, Bool-only `case`, and bounded nonrecursive typed scalar `jdecl`/`jmp` | recursive/non-scalar joins, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, other `case`, `unreachable` |
+| `Alt` | two exact Bool `ctor` alternatives | `default`, other constructors |
+| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
 Lean `Bool` is emitted as the compiler's `u8` representation (`0=false`,
@@ -87,50 +87,36 @@ separate ETH symbolic/physical semantics obligations remain open.
   general control-flow completion gate nor general data/runtime semantics is
   established by this subset.
 
-## Extension: immutable object values (stacked PR following #202)
+## Source-derived constructor inventory (integration of PR #200)
 
-- Compiler IR `object`, `tobject` and `tagged` map to a small generated Rust
-  `Rc`-backed immutable value representation. Supported constructor layouts
-  are exactly `Option.none` (tagged), `Option.some` (one pointer field) and
-  `Prod.mk` (two pointer fields). Metadata (index, pointer count and scalar
-  layout) is checked before generation. Unsupported constructors refuse.
-- `Expr.box` and `Expr.unbox` preserve their fixed-width scalar payload types.
-  `Expr.proj` clones immutable constructor fields, preserving sharing.
-  Output is standalone Rust with no Lean runtime and no third-party crates.
-- `FnBody.inc`, `dec`, and `del` are eliminated for these immutable values
-  because Rust `Rc` ownership replaces source refcount bookkeeping. **This is
-  valid only while** `reset`, `reuse`, `isShared`, and mutation instructions
-  remain unsupported. They must not be enabled independently.
-- For object-valued case scrutinees, `Option.none` and `Option.some` tags and
-  exact constructor names and layouts are checked. Other ADTs and default
-  alternatives refuse. Root functions in the integration suite use *scalar*
-  public APIs, so no general source-level ADT type mapping is claimed.
-- `examples/Objects.lean` builds three interconnected roots containing nested
-  Options and pairs. It checks 3,072 original-Lean-evaluated results on edges
-  and seeded vectors. `RefusalObjectNat.lean` and `RefusalObjectCtor.lean`
-  show that large closed Nat constant graphs and unknown `Sum` layouts still
-  fail closed without publishing a Cargo package.
-- The original immutable-value smoke suite had **6,080** differential
-  assertions. Arbitrary-precision Nat primitives are now covered separately
-  below; String, Array, and mutable object semantics remain unsupported.
+`scripts/VerifyIRInventory.lean` asks the **actual pinned Lean 4.34.1 environment** for constructor identities and order in `Decl`, `IRType`, `Arg`, `LitVal`, `Expr`, `Alt`, and `FnBody`. `scripts/check.sh` runs this inspection **before native codegen** and fails if a pinned IR family has changed. It emits `artifacts/ir-coverage.tsv` and includes its SHA-256 and the generator SHA-256 in the smoke receipt. Exactly 30 selected typed binary primitives are recorded; all others remain refused. `FnBody.jdecl` and `FnBody.jmp` are marked *conditional* only for the scoped nonrecursive scalar joins exercised in this branch.
 
-## Extension: GMP-backed arbitrary-precision Nat (post #204)
+This inventory is a constructor **membership/order** check, not a complete ABI layout audit or proof of Rust semantic correspondence. No duplicate `#native_rust_bundle` route is added: `#native_rust_package` remains the one multi-root Cargo-producing interface, with real Lean/Rust join and three-root differential fixtures. The imported subset claims only what the combined smoke actually tests; G1 requirements 13, 23, 29 and release 41 remain open.
 
-- The generated Rust immutable-value runtime includes a GMP-backed Nat
-  variant; tagged small Nat literals and boxed arbitrary-width inputs share
-  the same operation semantics. Nat never silently truncates to machine word.
-- Implemented exact native primitive lowering: `Nat.add`, `Nat.sub`,
-  `Nat.mul`, `Nat.div`, `Nat.mod`, `Nat.decEq`, `Nat.decLt`, `Nat.decLe`.
-  `Nat.sub` is truncated at zero. Both `Nat.div` and `Nat.mod` have explicit
-  Lean-compatible zero-divisor semantics.
-- All remaining Nat primitives, large closed Nat constant declarations,
-  unimplemented field layouts and unsupported object shapes refuse.
-- Integration suite: 5,208 new Lean-evaluated assertions on up-to-1,024-bit
-  inputs, plus the preceding 6,080 case suite. **11,288 total**. This is
-  empirical semantics checking, **not** a proof of full Lean compiler or
-  kernel-to-machine-code correctness.
-- This extension requires `libgmp` on Linux x86-64, even for object programs
-  that do not invoke Nat because they share the emitted value runtime.
-  Generated code has no Lean runtime dependency, but is not fully
-  dependency-free. We should factor the optional Nat runtime out before
-  claiming a portable compiler v1 release.
+## Runtime-gated IR whitelist and primitive matrix (#201 integration)
+
+The real pinned Lean 4.34.1 constructor inventory is first checked by `scripts/VerifyIRInventory.lean` and recorded in `artifacts/ir-constructor-summary.tsv`. Separately, `examples/IRInventory.lean` and `scripts/coverage-ledger.rs` verify the complete 48-constructor tag classification, publishing `artifacts/ir-constructors.tsv` and `artifacts/ir-coverage.tsv`. The Rust `build.rs` compiles the same checked classification into `SUPPORTED_IR_TAGS`, and **production readers refuse unclassified tags**.
+
+Of those 48 constructors, **16** are bounded-supported, including `FnBody.jdecl` and `FnBody.jmp` strictly for nonrecursive, typed scalar lexical joins. The other **32** are explicitly unsupported. No unsupported branch is allowed to become accepted just because a Rust `match` arm is added. The `primitive-registry.tsv` is now the production lookup for exactly 30 typed unsigned operations. A generated 30 × 64 matrix of independent original-Lean results (1,920 comparisons) is executed from source IR. The legacy fixture gate still independently covers 3,008 base/join/multi-root comparisons. These checks do **not** establish semantic correctness of general collections, arbitrary-precision `Nat`/`Int`, effects, or whole ETH-source compilation.
+
+## Integrated immutable object and callable subset
+
+IRType.object/tobject/tagged and the supported Expr.ctor/proj/box/unbox
+forms are accepted only for verified immutable Option/Prod layouts.
+Expr.pap and Expr.ap accept statically compiled, source-defined
+all-boxed call signatures and preserve captured values in immutable Rc
+objects. FnBody.inc/dec/del are non-observable only while mutation,
+reuse/reset/isShared and unknown heap layouts are prohibited.
+Source-differential evidence: 3,072 object + 2,048 callable results.
+
+## GMP Nat exact operation subset
+
+Nat.add/sub/mul/div/mod/decEq/decLt/decLe are recognized only
+with actual pinned compiler IR and known object/scalar return types.
+Generated Rc-backed Nat values store arbitrary-precision GMP integers.
+Lean Nat subtraction is saturating, and division/remainder by zero
+are total. All other Nat primitives refuse (including Nat.land).
+The original Lean runtime supplies 5,208 numerical oracles with
+0 to 1024-bit inputs; no machine-width truncation or synthesized
+finite-table implementation is accepted. GMP must be installed on
+supported Linux x86-64 execution hosts; no Lean runtime is linked.

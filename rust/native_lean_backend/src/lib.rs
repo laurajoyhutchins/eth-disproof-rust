@@ -4,8 +4,13 @@
 //! It does not serialize or clone the IR. Only an explicitly accepted subset is
 //! lowered; unknown instructions and types are errors, never substitutions.
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_char, c_void, CString};
 use std::fmt::Write;
+
+mod safety;
+
+// Generated from the complete reviewed pinned Lean IR constructor contract.
+include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));
 
 #[repr(C)]
 pub struct LeanObject {
@@ -13,6 +18,7 @@ pub struct LeanObject {
 }
 type Obj = *const LeanObject;
 extern "C" {
+    fn lr_abi_probe() -> i32;
     fn lr_is_scalar(x: Obj) -> i32;
     fn lr_scalar_value(x: Obj) -> usize;
     fn lr_is_ctor(x: Obj) -> i32;
@@ -23,6 +29,7 @@ extern "C" {
     fn lr_array_len(x: Obj) -> usize;
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
+    fn lr_string_size(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
 }
 
@@ -54,6 +61,13 @@ enum __LeanValueRepr {
     Tagged(usize),
     U8(u8), U16(u16), U32(u32), U64(u64), USize(usize),
     Ctor { tag: usize, name: &'static str, fields: Vec<__LeanValue> },
+    // Immutable first-class functions, represented by a statically generated
+    // object-argument thunk and an Rc-shared vector of captured values.
+    Closure {
+        arity: usize,
+        captures: Vec<__LeanValue>,
+        invoke: fn(Vec<__LeanValue>) -> __LeanValue,
+    },
     Nat(__LeanBigNat),
 }
 
@@ -237,6 +251,30 @@ impl __LeanValue {
     fn unbox_u32(&self) -> u32 { match self.0.as_ref() {__LeanValueRepr::U32(x) => *x, _ => panic!("incorrect boxed u32") } }
     fn unbox_u64(&self) -> u64 { match self.0.as_ref() {__LeanValueRepr::U64(x) => *x, _ => panic!("incorrect boxed u64") } }
     fn unbox_usize(&self) -> usize { match self.0.as_ref() {__LeanValueRepr::USize(x) => *x, _ => panic!("incorrect boxed usize") } }
+
+    fn pap(invoke: fn(Vec<Self>) -> Self, arity: usize, captures: Vec<Self>) -> Self {
+        assert!(arity > 0 && captures.len() < arity, "invalid source PAP arity");
+        Self(std::rc::Rc::new(__LeanValueRepr::Closure { arity, captures, invoke }))
+    }
+
+    // Preserve declaration-order captures and permit additional partial
+    // application. No mutation or runtime lookup of untrusted pointers.
+    fn apply(&self, args: Vec<Self>) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Closure { arity, captures, invoke } => {
+                assert!(!args.is_empty(), "empty source AP");
+                let mut all = captures.clone();
+                all.extend(args);
+                assert!(all.len() <= *arity, "oversaturated source AP");
+                if all.len() == *arity {
+                    invoke(all)
+                } else {
+                    Self::pap(*invoke, *arity, all)
+                }
+            }
+            _ => panic!("tried to apply a non-function Lean value"),
+        }
+    }
 }
 "#;
 
@@ -282,6 +320,16 @@ impl Reader {
         }
         Ok(lr_tag(x) as usize)
     }
+    unsafe fn checked_tag(x: Obj, family: &str) -> Result<usize, String> {
+        let tag = Self::tag(x)?;
+        if SUPPORTED_IR_TAGS.contains(&(family, tag)) {
+            Ok(tag)
+        } else {
+            Err(format!(
+                "{family} constructor tag {tag} explicitly unsupported by pinned IR coverage contract"
+            ))
+        }
+    }
     unsafe fn field(x: Obj, index: usize) -> Result<Obj, String> {
         if lr_is_ctor(x) == 0 || index >= lr_field_count(x) {
             return Err(format!(
@@ -308,15 +356,19 @@ impl Reader {
         if ptr.is_null() {
             return Err("expected Lean String".into());
         }
-        Ok(CStr::from_ptr(ptr)
-            .to_str()
-            .map_err(|_| "invalid UTF-8")?
-            .to_owned())
+        let len = lr_string_size(x);
+        if len == 0 || len > 1_048_577 {
+            return Err("Lean String byte length outside supported bound".into());
+        }
+        let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len - 1);
+        String::from_utf8(bytes.to_vec()).map_err(|_| "invalid UTF-8".into())
     }
     unsafe fn nat(x: Obj) -> Result<usize, String> {
         Self::scalar(x).map_err(|_| "large Nat unsupported by v0 compiler".into())
     }
-    // Lean.Name: anonymous=0, str(parent, string)=1, num(parent, nat)=2.
+    // Name paths retain an injective identity, not a lossy pretty-print.
+    // Plain ASCII segments keep historical spelling for pinned primitives;
+    // special UTF-8 strings use ~s<hex bytes>, numeric segments use ~n<nat>.
     unsafe fn name(x: Obj, depth: usize) -> Result<String, String> {
         if depth > 128 {
             return Err("name nesting limit".into());
@@ -324,24 +376,16 @@ impl Reader {
         match Self::tag(x)? {
             0 => Ok(String::new()),
             1 => {
-                let p = Self::name(Self::field(x, 0)?, depth + 1)?;
-                let s = Self::string(Self::field(x, 1)?)?;
-                // Restrict names to unambiguous ASCII segments until the
-                // backend uses structured Name identity throughout. Without
-                // this, a quoted segment containing '.' could collide with
-                // a nested Lean name in the call graph.
-                if s.is_empty()
-                    || !s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-                    || s.as_bytes()[0].is_ascii_digit()
-                {
-                    return Err(
-                        "unsupported Lean.Name segment; refusing ambiguous dependency identity"
-                            .into(),
-                    );
-                }
-                Ok(if p.is_empty() { s } else { format!("{p}.{s}") })
+                let parent = Self::name(Self::field(x, 0)?, depth + 1)?;
+                let component = Self::string(Self::field(x, 1)?)?;
+                let encoded = encode_name_str(&component)?;
+                Ok(append_name_component(&parent, &encoded))
             }
-            2 => Err("numeric Lean.Name components require a structured identity adapter".into()),
+            2 => {
+                let parent = Self::name(Self::field(x, 0)?, depth + 1)?;
+                let number = Self::nat(Self::field(x, 1)?)?;
+                Ok(append_name_component(&parent, &format!("~n{number}")))
+            }
             t => Err(format!("unknown Lean.Name tag {t}")),
         }
     }
@@ -361,7 +405,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         expected: &str,
     ) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "Arg")? {
             0 => {
                 let id = Self::var(Self::field(x, 0)?)?;
                 let found = env
@@ -382,7 +426,7 @@ impl Reader {
     }
     unsafe fn ty(x: Obj) -> Result<&'static str, String> {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "IRType")? {
             1 => Ok("u8"),
             2 => Ok("u16"),
             3 => Ok("u32"),
@@ -397,7 +441,7 @@ impl Reader {
         }
     }
     unsafe fn lit(x: Obj, ty: &str) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "LitVal")? {
             0 => {
                 let n = Self::nat(Self::field(x, 0)?)?;
                 if ty == "tagged" {
@@ -425,7 +469,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "Expr")? {
             0 => {
                 // ctor: only immutable, pointer-field constructors with
                 // verified metadata. Scalar-field layouts are not yet mapped.
@@ -488,6 +532,63 @@ impl Reader {
                 }
                 Ok(format!("x_{id}.field({index})"))
             }
+
+            7 => {
+                // PAP(callee, captured operands). For this first subset, each
+                // source callee must be compiled and its ABI must consist
+                // solely of boxed values, both parameters and return.
+                if !is_value_type(var_ty) {
+                    return Err("PAP result must be an object".into());
+                }
+                let name = Self::name(Self::field(x, 0)?, 0)?;
+                let signature = functions
+                    .and_then(|table| table.get(&name))
+                    .ok_or_else(|| format!("PAP {name} lacks reachable executable IR"))?;
+                let args = Self::array(Self::field(x, 1)?)?;
+                if signature.params.is_empty()
+                    || args.len() >= signature.params.len()
+                    || !signature.params.iter().all(|ty| is_value_type(ty))
+                    || !is_value_type(signature.result)
+                {
+                    return Err(format!("PAP {name} has unsupported typed/arity layout"));
+                }
+                let mut captured = Vec::new();
+                for arg in args {
+                    // A generated helper may accept tagged while its source
+                    // PAP operand is tobj (boxed Bool). Both map to the same
+                    // immutable value model; scalar operands still refuse.
+                    captured.push(Self::arg(arg, env, "tobj")?);
+                }
+                Ok(format!(
+                    "__LeanValue::pap({}, {}, vec![{}])",
+                    internal_closure_name(&name),
+                    signature.params.len(),
+                    captured.join(", ")
+                ))
+            }
+            8 => {
+                // AP(f, arguments): supported as 1..16 boxed-value operands.
+                // A dynamic closure may be partially applied again.
+                if !is_value_type(var_ty) {
+                    return Err("AP scalar result requires an unsupported ABI adapter".into());
+                }
+                let fun = Self::var(Self::field(x, 0)?)?;
+                let found = env
+                    .get(&fun)
+                    .ok_or_else(|| format!("undefined AP function x_{fun}"))?;
+                if !is_value_type(found) {
+                    return Err("AP function must have an object representation".into());
+                }
+                let args = Self::array(Self::field(x, 1)?)?;
+                if args.is_empty() || args.len() > 16 {
+                    return Err("AP requires 1..16 object arguments".into());
+                }
+                let mut lowered = Vec::new();
+                for arg in args {
+                    lowered.push(Self::arg(arg, env, "tobj")?);
+                }
+                Ok(format!("x_{fun}.apply(vec![{}])", lowered.join(", ")))
+            }
             9 => {
                 // box(scalar type, variable)
                 if !is_value_type(var_ty) {
@@ -542,17 +643,7 @@ impl Reader {
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
-                if matches!(
-                    name.as_str(),
-                    "Nat.add"
-                        | "Nat.sub"
-                        | "Nat.mul"
-                        | "Nat.div"
-                        | "Nat.mod"
-                        | "Nat.decEq"
-                        | "Nat.decLt"
-                        | "Nat.decLe"
-                ) {
+                if is_nat_primitive(&name) {
                     let lhs = Self::arg(args[0], env, "tobj")?;
                     let rhs = Self::arg(args[1], env, "tobj")?;
                     return match name.as_str() {
@@ -603,6 +694,11 @@ impl Reader {
                     Some("USize") => "usize",
                     _ => return Err(format!("invalid primitive namespace: {name}")),
                 };
+                let spec = primitive_spec(&name)
+                    .ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
+                let op = spec.rust_op;
+                let comparison = spec.comparison;
+                let expected_ty = spec.operand_type;
                 let lhs = Self::arg(args[0], env, expected_ty)?;
                 let rhs = Self::arg(args[1], env, expected_ty)?;
                 if comparison {
@@ -744,7 +840,7 @@ impl Reader {
         let mut seen = [false; 2];
         writeln!(code, "    match x_{scrutinee} {{").unwrap();
         for alt in alts {
-            if Self::tag(alt)? != 0 {
+            if Self::checked_tag(alt, "Alt")? != 0 {
                 return Err("Bool default case is not yet supported".into());
             }
             let info = Self::field(alt, 0)?;
@@ -802,7 +898,7 @@ impl Reader {
             if *count > 100_000 {
                 return Err("IR instruction limit exceeded".into());
             }
-            match Self::tag(x)? {
+            match Self::checked_tag(x, "FnBody")? {
                 0 => {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
@@ -908,17 +1004,12 @@ impl Reader {
                     for (arg, ty) in args.into_iter().zip(types.iter()) {
                         lowered.push(Self::arg(arg, env, ty)?);
                     }
-                    writeln!(code, "    return j_{id}({});", lowered.join(", ")).unwrap();
+                    writeln!(code, "    j_{id}({})", lowered.join(", ")).unwrap();
                     return Ok(());
                 }
                 10 => {
                     // ret(Arg)
-                    writeln!(
-                        code,
-                        "    return {};",
-                        Self::arg(Self::field(x, 0)?, env, ret_ty)?
-                    )
-                    .unwrap();
+                    writeln!(code, "    {}", Self::arg(Self::field(x, 0)?, env, ret_ty)?).unwrap();
                     return Ok(());
                 }
                 t => return Err(format!("IR body constructor {t} unsupported")),
@@ -926,6 +1017,9 @@ impl Reader {
         }
     }
     unsafe fn emit(decl: Obj, rust_name: Obj) -> Result<String, String> {
+        if lr_abi_probe() == 0 {
+            return Err("Lean C ABI runtime probe failed".into());
+        }
         Ok(include_value_runtime(Self::emit_function(
             decl,
             &Self::string(rust_name)?,
@@ -938,7 +1032,7 @@ impl Reader {
         rust_name: &str,
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
-        if Self::tag(decl)? != 0 {
+        if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern declaration without executable body".into());
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
@@ -999,7 +1093,42 @@ impl Reader {
     }
 }
 
+// The path separators cannot occur inside a canonical component: plain
+// ASCII components exclude '.', '~'; special strings and Nat segments use
+// disjoint prefixed encodings. The original Lean.Name object crosses FFI.
+fn append_name_component(parent: &str, component: &str) -> String {
+    if parent.is_empty() {
+        component.to_owned()
+    } else {
+        format!("{parent}.{component}")
+    }
+}
+
+fn encode_name_str(component: &str) -> Result<String, String> {
+    if component.len() > 4096 {
+        return Err("Lean.Name string component exceeds safety cap".into());
+    }
+    if !component.is_empty()
+        && !component.as_bytes()[0].is_ascii_digit()
+        && component
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        return Ok(component.to_owned());
+    }
+    let mut encoded = String::from("~s");
+    for byte in component.as_bytes() {
+        write!(&mut encoded, "{byte:02x}").unwrap();
+    }
+    Ok(encoded)
+}
+
+// Emitted Rust function names remain injective for all canonical Lean paths.
 // Naming is injective over UTF-8 bytes and independent of declaration ordering.
+fn internal_closure_name(lean_name: &str) -> String {
+    format!("__pap_{}", internal_name(lean_name))
+}
+
 fn internal_name(lean_name: &str) -> String {
     let mut out = String::from("lean_");
     for byte in lean_name.as_bytes() {
@@ -1010,7 +1139,7 @@ fn internal_name(lean_name: &str) -> String {
 
 impl Reader {
     unsafe fn signature(decl: Obj) -> Result<Signature, String> {
-        if Self::tag(decl)? != 0 {
+        if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
         let mut params = Vec::new();
@@ -1034,10 +1163,10 @@ impl Reader {
             if count > 100_000 {
                 return Err("dependency IR traversal exceeded 100000 instructions".into());
             }
-            match Self::tag(body)? {
+            match Self::checked_tag(body, "FnBody")? {
                 0 => {
                     let expr = Self::field(body, 2)?;
-                    if Self::tag(expr)? == 6 {
+                    if matches!(Self::checked_tag(expr, "Expr")?, 6 | 7) {
                         calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
                     }
                     pending.push(Self::field(body, 3)?);
@@ -1048,7 +1177,7 @@ impl Reader {
                 }
                 9 => {
                     for alt in Self::array(Self::field(body, 3)?)? {
-                        match Self::tag(alt)? {
+                        match Self::checked_tag(alt, "Alt")? {
                             0 => pending.push(Self::field(alt, 1)?),
                             1 => pending.push(Self::field(alt, 0)?),
                             t => return Err(format!("unknown alternative constructor {t}")),
@@ -1069,7 +1198,7 @@ impl Reader {
     }
 
     unsafe fn emit_module(decls: Obj, root: Obj, public_name: Obj) -> Result<String, String> {
-        let root = Self::string(root)?;
+        let root = Self::name(root, 0)?;
         let public_name = Self::string(public_name)?;
         Self::emit_roots(decls, vec![(root, public_name)])
     }
@@ -1077,7 +1206,7 @@ impl Reader {
     unsafe fn emit_module_many(decls: Obj, roots: Obj) -> Result<String, String> {
         let mut public_roots = Vec::new();
         for item in Self::array(roots)? {
-            let root = Self::string(item)?;
+            let root = Self::name(item, 0)?;
             // In v1 we expose the final Lean identifier as the Rust public API.
             // Any collisions (e.g. Foo.run and Bar.run) must refuse.
             let public = root.rsplit('.').next().unwrap_or("").to_owned();
@@ -1087,6 +1216,9 @@ impl Reader {
     }
 
     unsafe fn emit_roots(decls: Obj, roots: Vec<(String, String)>) -> Result<String, String> {
+        if lr_abi_probe() == 0 {
+            return Err("Lean C ABI runtime probe failed".into());
+        }
         if roots.is_empty() || roots.len() > 128 {
             return Err("expected 1..128 public Lean root declarations".into());
         }
@@ -1147,6 +1279,32 @@ impl Reader {
             )?);
             result.push('\n');
         }
+        // Only callable object ABI declarations receive generated thunks.
+        // No raw address is ever read out of a Lean or Rust heap object.
+        for (name, sig) in &signatures {
+            if sig.params.is_empty()
+                || !sig.params.iter().all(|ty| is_value_type(ty))
+                || !is_value_type(sig.result)
+            {
+                continue;
+            }
+            result.push_str("#[allow(dead_code)]\n");
+            writeln!(
+                result,
+                "fn {}(args: Vec<__LeanValue>) -> __LeanValue {{",
+                internal_closure_name(name)
+            )
+            .unwrap();
+            writeln!(result, "    assert_eq!(args.len(), {});", sig.params.len()).unwrap();
+            write!(result, "    {}(", internal_name(name)).unwrap();
+            for i in 0..sig.params.len() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+                write!(result, "args[{i}].clone()").unwrap();
+            }
+            result.push_str(")\n}\n");
+        }
         // Exact same dependency closure is shared by all public wrappers.
         for (root, public_name) in roots {
             let sig = signatures
@@ -1187,55 +1345,51 @@ impl Reader {
     }
 }
 
+const PRIMITIVE_REGISTRY: &str = include_str!("../primitive-registry.tsv");
+
+struct PrimitiveSpec<'a> {
+    operand_type: &'a str,
+    rust_op: &'a str,
+    comparison: bool,
+}
+
+fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
+    PRIMITIVE_REGISTRY
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .find_map(|line| {
+            let mut cells = line.split('\t');
+            let id = cells.next()?;
+            let operand_type = cells.next()?;
+            let rust_op = cells.next()?;
+            let kind = cells.next()?;
+            if cells.next().is_some() || id != name {
+                return None;
+            }
+            Some(PrimitiveSpec {
+                operand_type,
+                rust_op,
+                comparison: kind == "comparison",
+            })
+        })
+}
+
+// The supported Nat runtime is explicit, with no fallback to host arithmetic.
+// Both dependency discovery and native codegen consult this exact whitelist.
+fn is_nat_primitive(name: &str) -> bool {
+    matches!(name, "Nat.add" | "Nat.sub" | "Nat.mul" | "Nat.div" | "Nat.mod"
+        | "Nat.decEq" | "Nat.decLt" | "Nat.decLe")
+}
+
 fn is_primitive(name: &str) -> bool {
-    matches!(
-        name,
-        "Nat.add"
-            | "Nat.sub"
-            | "Nat.mul"
-            | "Nat.div"
-            | "Nat.mod"
-            | "Nat.decEq"
-            | "Nat.decLt"
-            | "Nat.decLe"
-            | "UInt8.add"
-            | "UInt16.add"
-            | "UInt32.add"
-            | "UInt64.add"
-            | "USize.add"
-            | "UInt8.sub"
-            | "UInt16.sub"
-            | "UInt32.sub"
-            | "UInt64.sub"
-            | "USize.sub"
-            | "UInt8.mul"
-            | "UInt16.mul"
-            | "UInt32.mul"
-            | "UInt64.mul"
-            | "USize.mul"
-            | "UInt8.decEq"
-            | "UInt16.decEq"
-            | "UInt32.decEq"
-            | "UInt64.decEq"
-            | "USize.decEq"
-            | "UInt8.decLt"
-            | "UInt16.decLt"
-            | "UInt32.decLt"
-            | "UInt64.decLt"
-            | "USize.decLt"
-            | "UInt8.decLe"
-            | "UInt16.decLe"
-            | "UInt32.decLe"
-            | "UInt64.decLe"
-            | "USize.decLe"
-    )
+    primitive_spec(name).is_some() || is_nat_primitive(name)
 }
 
 unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit_module_many(decls, roots)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     lean_mk_string(
         CString::new(text.replace('\0', "\\0"))
@@ -1271,8 +1425,8 @@ pub unsafe extern "C" fn l_NativeRust_emitModuleMany___boxed(
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit_module(decls, root, public_name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     let text = text.replace('\0', "\\0");
     let cstr = CString::new(text).expect("replaced NUL");
@@ -1307,14 +1461,52 @@ pub unsafe extern "C" fn l_NativeRust_emitModule___boxed(
 unsafe fn reply(decl: Obj, name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit(decl, name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     // Lean strings do not contain NUL bytes. Sanitizing inputs prevents interior
     // NUL from causing an FFI panic; diagnostics remain safely in the error channel.
     let text = text.replace('\0', "\\0");
     let cstr = CString::new(text).expect("replaced NUL");
     lean_mk_string(cstr.as_ptr())
+}
+
+unsafe fn reply_publish(path: Obj, source: Obj) -> *mut c_void {
+    let report = match std::panic::catch_unwind(|| {
+        let path = Reader::string(path)?;
+        let source = Reader::string(source)?;
+        safety::publish(&path, &source)
+    }) {
+        Ok(Ok(())) => "OK\npublished".to_string(),
+        Ok(Err(e)) => safety::refusal("output", &e),
+        Err(_) => safety::refusal("output", "publisher panic (no output accepted)"),
+    };
+    let report = report.replace('\0', "\\0");
+    let encoded = CString::new(report).expect("NUL sanitized");
+    lean_mk_string(encoded.as_ptr())
+}
+
+/// # Safety
+/// Borrowed path and source must be live Lean Strings from the pinned runtime.
+#[no_mangle]
+pub unsafe extern "C" fn rs_publish_source(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
+}
+
+/// # Safety
+/// Interpreter alias for rs_publish_source.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_publishSource(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
+}
+
+/// # Safety
+/// Boxed interpreter alias for rs_publish_source.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_publishSource___boxed(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
 }
 
 // `rs_emit_ir` is the native compiled ABI; the l_* names let Lean's
@@ -1345,7 +1537,7 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 
 #[cfg(test)]
 mod tests {
-    use super::internal_name;
+    use super::{append_name_component, encode_name_str, internal_name, SUPPORTED_IR_TAGS};
     #[test]
     fn closure_symbol_mangling_is_injective_on_ascii_names() {
         assert_ne!(internal_name("X.ab"), internal_name("X.a_b"));
@@ -1353,9 +1545,68 @@ mod tests {
         assert!(internal_name("X.a").starts_with("lean_"));
     }
     #[test]
+    fn structured_name_identity_is_injective() {
+        assert_eq!(encode_name_str("Sched").unwrap(), "Sched");
+        assert_eq!(encode_name_str("argLeastLoad").unwrap(), "argLeastLoad");
+        assert_eq!(encode_name_str("a.b").unwrap(), "~s612e62");
+        assert_eq!(encode_name_str("1").unwrap(), "~s31");
+        assert_eq!(encode_name_str("").unwrap(), "~s");
+        assert_eq!(encode_name_str("a\u{0}b").unwrap(), "~s610062");
+        assert_ne!(encode_name_str("~n9").unwrap(), "~n9");
+        assert_ne!(
+            append_name_component("X", &encode_name_str("a.b").unwrap()),
+            append_name_component("X.a", "b")
+        );
+        assert_ne!(
+            append_name_component("X", "~n9"),
+            append_name_component("X", "~s39")
+        );
+        assert!(encode_name_str(&"x".repeat(4097)).is_err());
+    }
+
+    #[test]
     fn permitted_rust_identacters_only() {
         for s in ["a", "a_1", "Fn2"] {
             assert!(s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
         }
+    }
+    #[test]
+    fn constructor_whitelist_preserves_scoped_join_support() {
+        assert!(SUPPORTED_IR_TAGS.contains(&("Decl", 0)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("Decl", 1)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 6)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 11)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 8)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 0)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 3)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("Expr", 1)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 6)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 1)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 28);
+    }
+
+    #[test]
+    fn primitive_registry_is_complete_and_unambiguous() {
+        use super::{primitive_spec, PRIMITIVE_REGISTRY};
+        use std::collections::BTreeSet;
+        let mut seen = BTreeSet::new();
+        for line in PRIMITIVE_REGISTRY
+            .lines()
+            .filter(|s| !s.starts_with('#') && !s.is_empty())
+        {
+            let cells: Vec<_> = line.split('\t').collect();
+            assert_eq!(cells.len(), 4);
+            assert!(seen.insert(cells[0]));
+            assert!(primitive_spec(cells[0]).is_some());
+        }
+        assert_eq!(seen.len(), 30);
+        assert!(primitive_spec("UInt64.add").is_some());
+        assert!(primitive_spec("USize.decLe").is_some());
+        assert!(primitive_spec("Int.add").is_none());
     }
 }

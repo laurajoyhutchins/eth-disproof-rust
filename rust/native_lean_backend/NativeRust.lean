@@ -2,27 +2,40 @@ import Lean
 
 namespace NativeRust
 
+/-- Stable, machine-readable refusal for failures before native IR reaches Rust. -/
+private def refusalMessage (decl : Lean.Name) (construct reason : String) : String :=
+  "Rust native backend refused " ++ decl.toString ++ ": " ++
+    (Lean.Json.mkObj [
+      ("status", .str "refused"),
+      ("declaration", .str decl.toString),
+      ("construct", .str construct),
+      ("reason", .str reason)
+    ]).compress
+
 /-- A borrowed, in-process Lean.IR.Decl passed directly to Rust.
     Rust returns `OK\n<source>` or `ERROR\n<reason>`; no serialized IR. -/
 @[extern "rs_emit_ir"] opaque emit (decl : @& Lean.IR.Decl) (rustName : @& String) : String
 
 /-- Emit a closed executable dependency graph in-process (no JSON IR). -/
 @[extern "rs_emit_ir_module"] opaque emitModule
-  (decls : @& Array Lean.IR.Decl) (root : @& String) (rustName : @& String) : String
+  (decls : @& Array Lean.IR.Decl) (root : @& Lean.Name) (rustName : @& String) : String
 
 /-- Emit several public roots through one shared, deduplicated IR closure. -/
 @[extern "rs_emit_ir_module_many"] opaque emitModuleMany
-  (decls : @& Array Lean.IR.Decl) (roots : @& Array String) : String
+  (decls : @& Array Lean.IR.Decl) (roots : @& Array Lean.Name) : String
 
 
 /-- Compile one executable declaration with the pinned Lean compiler and emit Rust.
     Refuses declarations missing IR, or outside the backend's strict subset. -/
 def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
-  Lean.Compiler.compile #[root]
+  -- Existing imported .olean IR is already the compiler's executable artifact.
+  -- Only compile roots missing IR; never substitute an alternative algorithm.
+  if (← Lean.IR.findDecl root).isNone then
+    Lean.Compiler.compile #[root]
   let some decl ← Lean.IR.findDecl root
-    | throwError "No compiler IR for {root} (possibly noncomputable)"
+    | throwError "{refusalMessage root "CompilerIR" "no compiler IR (possibly noncomputable)"}"
   if let some blame := decl.getInfo.sorryDep? then
-    throwError "Rust native backend refused {root}: dependency on sorry axiom {blame}"
+    throwError "{refusalMessage root "SorryAxiom" s!"dependency on sorry axiom {blame}"}"
   let report := emit decl rustName
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
@@ -31,19 +44,20 @@ def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   else
     throwError "Rust native backend returned an invalid response for {root}"
 
-/-- Do not publish partial Rust source on FFI failures or interrupted writes.
-    The final rename is atomic when source and destination share a filesystem.
-    Cross-filesystem moves refuse instead of falling back to a non-atomic copy. -/
-def writeAtomically (dst : System.FilePath) (code : String) : IO Unit := do
-  let (handle, temp) ← IO.FS.createTempFile
-  try
-    handle.putStr code
-    handle.flush
-    IO.FS.rename temp dst
-  catch err =>
-    try IO.FS.removeFile temp catch _ => pure ()
-    throw err
+/-- Output publication remains same-process via a pinned Rust FFI entrypoint.
+    Its sibling stage, relative path check and refusal semantics are enforced
+    by the Rust publisher; no partial code is accepted after an error. -/
+@[extern "rs_publish_source"] opaque publishSource
+  (dst : @& String) (code : @& String) : String
 
+def writeAtomically (dst : System.FilePath) (code : String) : IO Unit := do
+  let report := publishSource dst.toString code
+  if report.startsWith "OK\n" then
+    return
+  else if report.startsWith "ERROR\n" then
+    throw <| IO.userError s!"Rust native publisher refused {dst}: {(report.drop 6).toString}"
+  else
+    throw <| IO.userError s!"Rust native publisher returned an invalid response for {dst}"
 
 /-- Read direct calls out of the *elaborated compiler IR*, not Lean syntax.
     A recognized body's dependencies are scanned in Lean, including IR imported
@@ -68,7 +82,14 @@ private partial def callsInBody : Lean.IR.FnBody → Array Lean.Name
     missing/unsupported symbol remains a hard error in the Rust backend. -/
 private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.Decl) := do
   if roots.isEmpty then throwError "expected at least one Lean declaration"
-  Lean.Compiler.compile roots
+  -- Preserve already-imported executable compiler IR; compile only missing
+  -- roots. The transitive closure is inspected and validated below.
+  let mut missing : Array Lean.Name := #[]
+  for root in roots do
+    if (← Lean.IR.findDecl root).isNone then
+      missing := missing.push root
+  unless missing.isEmpty do
+    Lean.Compiler.compile missing
   let mut queue := roots
   let mut seen : Std.HashSet Lean.Name := {}
   let mut decls : Array Lean.IR.Decl := #[]
@@ -78,10 +99,10 @@ private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.
     if seen.contains name then continue
     seen := seen.insert name
     if seen.size > 2048 then
-      throwError "Rust native dependency closure exceeded 2048 names"
+      throwError "{refusalMessage name "ResourceLimit" "native dependency closure exceeded 2048 names"}"
     if let some decl ← Lean.IR.findDecl name then
       if let some blame := decl.getInfo.sorryDep? then
-        throwError "Rust native backend refused {name}: dependency on sorry axiom {blame}"
+        throwError "{refusalMessage name "SorryAxiom" s!"dependency on sorry axiom {blame}"}"
       decls := decls.push decl
       if let .fdecl _ _ _ body _ := decl then
         queue := queue ++ callsInBody body
@@ -89,7 +110,7 @@ private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.
 
 def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   let decls ← gatherClosure #[root]
-  let report := emitModule decls root.toString rustName
+  let report := emitModule decls root rustName
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
   else if report.startsWith "ERROR\n" then
@@ -100,7 +121,7 @@ def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String :=
 /-- Produce a complete standalone Rust library, sharing any overlapping roots. -/
 def compileMany (roots : Array Lean.Name) : Lean.CoreM String := do
   let decls ← gatherClosure roots
-  let report := emitModuleMany decls (roots.map Lean.Name.toString)
+  let report := emitModuleMany decls roots
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
   else if report.startsWith "ERROR\n" then

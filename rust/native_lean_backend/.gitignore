@@ -25,11 +25,15 @@
 /examples/test-join.rs
 /examples/RefusalPackage*.log
 
-# Immutable object-value conformance fixture outputs
-/examples/object-package/
-/examples/object-lean.log
-/examples/RefusalObject*.log
+# Generated primitive matrix orchestration
+/examples/matrix_run.rs
 
-# Arbitrary-precision Nat GMP conformance artifacts
+/examples/object-package/
+/examples/function-package/
+/examples/rejected-object-package/
+/examples/rejected-function-package/
+/examples/RefusalFunctionValues.log
+
 /examples/nat-package/
+/examples/rejected-nat-package/
 /examples/RefusalNatBitwise.log

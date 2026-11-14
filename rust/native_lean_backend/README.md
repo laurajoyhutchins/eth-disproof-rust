@@ -20,11 +20,8 @@ Lean 4.34.1 -> Lean.Compiler.compile -> Lean.IR.Decl
 ## Tested usage
 
 Linux x86_64, pinned Lean 4.34.1 (including headers and shared runtime), Rust
-1.99.1, C compiler, `ar`, and **GMP development headers/library** for
-object-valued generated Rust. No Cargo crates are downloaded. The generated
-Nat runtime links against system `libgmp`; it does not link Lean. On Ubuntu,
-install `libgmp-dev` before running the suite. GMP's library/distribution
-license obligations apply independently of this compiler's license.
+1.99.1, C compiler, `ar`. No Cargo crates are downloaded; there are no
+third-party Rust dependencies.
 
 ```sh
 cd rust/native_lean_backend
@@ -35,9 +32,8 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 `check.sh` builds a Rust shared library and `NativeRust.olean`, then loads the
 backend into Lean's interpreter. It compiles **15 isolated declarations and
 three transitive closure roots**, generates standalone Rust, and executes
-**11,288 independently evaluated Lean/Rust assertions**, including 256 join-point
-cases, 768 multi-root Cargo library cases, 3,072 immutable object
-constructor/projection cases, and 5,208 arbitrary-precision `Nat` cases. It also checks
+**3,008 independently evaluated Lean/Rust assertions**, including 256 join-point
+cases and 768 multi-root Cargo library cases. It also checks
 fail-closed behavior, preserved outputs, stable output hashes, Cargo tests,
 formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
@@ -100,16 +96,9 @@ recursion when every reachable body uses supported IR. A restricted class of
 capturing Rust closures, including jumps from Boolean branches. Recursive
 joins, non-scalar join parameters, and unsupported runtime operations refuse.
 
-A further opt-in immutable-value subset supports `Option UInt64`, nested
-`Option`, and `UInt64 × UInt64` constructions and pattern matching through an
-`Rc`-backed generated Rust runtime. See `examples/Objects.lean`. This representation
-is not a full Lean runtime: its constructor names and layouts are validated,
-and all mutation and observable reference-count primitives remain refused.
-
-**Not implemented:** general Lean/Rust compilation; full `Nat` primitive
-coverage or large closed `Nat` constant graphs; indirect calls, closures,
-non-Boolean cases, recursive joins, arrays, structures, general external
-primitives, and
+**Not implemented:** general Lean/Rust compilation; arbitrary-precision
+`Nat`; indirect calls, closures, non-Boolean cases, recursive joins, arrays,
+structures, general external primitives, and
 noncomputable expressions without compiler IR. The current generated functions are checked
 on examples but there is not yet a general semantic refinement theorem.
 
@@ -151,25 +140,29 @@ crate emission, public-name collision refusal, unsupported type refusal, and
 no modification of previously published directories. These are successful
 examples within a **bounded subset**, not proof of general compiler correctness.
 
-### New: exact arbitrary-precision Nat primitives
+## Pinned source-derived conformance matrix
 
-The generated Rust runtime now represents natural numbers with GMP-backed,
-reference-counted immutable values. This supports **Nat.add, Nat.sub, Nat.mul,
-Nat.div, Nat.mod, Nat.decEq, Nat.decLt and Nat.decLe**, plus small tagged Nat
-constants and arithmetic with them. It does **not** cast Nat to `u64` or
-`usize`. Subtraction saturates at zero; division by zero returns zero and
-modulo by zero returns the dividend, matching Lean's semantics.
+The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 16-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
 
-`examples/NatFixture.lean` generates a standalone Cargo library and 5,208
-independently Lean-evaluated test assertions over numbers from 0 to 1,024+
-bits. The test includes zero divisors, mixed tagged and heap operands, large
-products, and boundary comparisons. `RefusalNatBitwise.lean` tests an
-unsupported Nat primitive and the absence of partial output.
+## Integrated immutable objects and callable values
 
-**Limitations:** This is still a bounded, explicitly supported primitive
-subset, not a complete implementation of Lean Nat code generation. Large
-*closed* Nat expressions and many additional `Nat` operations remain
-unsupported. Public Nat results use the generated `__LeanValue` wrapper;
-`nat_from_decimal` and `nat_to_decimal` are the explicit Rust boundary for
-this subset. Generated packages containing the immutable-value runtime need
-`libgmp` at build and run time. No semantic-preservation theorem is claimed.
+The compiler now supports bounded immutable Option/Prod values, boxing,
+projections, and first-class callable values using Rc-backed closures.
+The same pinned native backend retains main's ABI checks, refusals,
+publisher and independent 30 x 64 primitive conformance matrix.
+The new fixtures provide 3,072 object and 2,048 function-value
+independently evaluated Lean/Rust comparisons.
+
+Mutation, full heap semantics, IO and arbitrary closure layouts still refuse.
+
+## Arbitrary-precision Nat (GMP, bounded source-defined subset)
+
+The generated standalone Rust runtime now includes a GMP-backed immutable
+Nat value and a source-refined subset: Nat.add/sub/mul/div/mod and
+Nat.decEq/decLt/decLe. Large naturals are not truncated to u64.
+Subtraction saturates at zero. Division by zero returns zero, and
+remainder by zero returns the dividend. Real pinned Lean IR and
+5,208 independently evaluated cases (including 1024-bit operands)
+are checked by examples/NatFixture.lean. Nonregistered Nat operations
+refuse, and generated binaries require libgmp at runtime.
+General Nat semantics, signed Int, IO and portability are not established.

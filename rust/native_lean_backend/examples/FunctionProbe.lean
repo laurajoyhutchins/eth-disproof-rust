@@ -18,10 +18,15 @@ end FunctionProbe
 run_cmd do
   let roots := #[``FunctionProbe.plus, ``FunctionProbe.times,
     ``FunctionProbe.choose, ``FunctionProbe.run, ``FunctionProbe.runDirect]
-  Lean.Compiler.compile roots
-  for root in roots do
-    let some decl ← Lean.IR.findDecl root
-      | throwError "missing IR {root}"
+  let snapshots ← liftCoreM do
+    Lean.Compiler.compile roots
+    let mut output : Array (Lean.Name × String) := #[]
+    for root in roots do
+      let some decl ← Lean.IR.findDecl root
+        | throwError "missing IR {root}"
+      output := output.push (root, toString decl)
+    return output
+  for (root, ir) in snapshots do
     logInfo m!"FUNCTION_IR_PROBE_START {root}"
-    logInfo m!"{toString decl}"
+    logInfo m!"{ir}"
     logInfo m!"FUNCTION_IR_PROBE_END {root}"

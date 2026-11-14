@@ -12,7 +12,7 @@ refuse. Constructor/tag identities below are pinned to
 | `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize` | `float`, `float32`, `erased`, `object`, `tobject`, `tagged`, `void`, `struct`, `union` |
 | `Arg` | `var` with known, matching type | `erased` in runtime position |
 | `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls to supported compiled declarations | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
-| `FnBody` | `vdecl`, `ret`, `case` on Bool-as-UInt8 with exactly `Bool.false` and `Bool.true` arms | `jdecl`, `jmp`, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, other `case`, `unreachable` |
+| `FnBody` | `vdecl`, `ret`, Bool-only `case`, and bounded nonrecursive typed scalar `jdecl`/`jmp` | recursive/non-scalar joins, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, other `case`, `unreachable` |
 | `Alt` | two exact Bool `ctor` alternatives | `default`, other constructors |
 | Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
 
@@ -86,3 +86,9 @@ separate ETH symbolic/physical semantics obligations remain open.
   comparisons, 768 Cargo-package comparisons: **3,008** total. Neither the
   general control-flow completion gate nor general data/runtime semantics is
   established by this subset.
+
+## Source-derived constructor inventory (integration of PR #200)
+
+`scripts/VerifyIRInventory.lean` asks the **actual pinned Lean 4.34.1 environment** for constructor identities and order in `Decl`, `IRType`, `Arg`, `LitVal`, `Expr`, `Alt`, and `FnBody`. `scripts/check.sh` runs this inspection **before native codegen** and fails if a pinned IR family has changed. It emits `artifacts/ir-coverage.tsv` and includes its SHA-256 and the generator SHA-256 in the smoke receipt. Exactly 30 selected typed binary primitives are recorded; all others remain refused. `FnBody.jdecl` and `FnBody.jmp` are marked *conditional* only for the scoped nonrecursive scalar joins exercised in this branch.
+
+This inventory is a constructor **membership/order** check, not a complete ABI layout audit or proof of Rust semantic correspondence. No duplicate `#native_rust_bundle` route is added: `#native_rust_package` remains the one multi-root Cargo-producing interface, with real Lean/Rust join and three-root differential fixtures. The imported subset claims only what the combined smoke actually tests; G1 requirements 13, 23, 29 and release 41 remain open.

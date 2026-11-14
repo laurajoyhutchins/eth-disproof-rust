@@ -482,10 +482,9 @@ impl Reader {
                         | "Array.getInternal"
                         | "Array.getInternalBorrowed"
                         | "Array.set!"
-                ) || (name == "Array.size" && var_ty == "tagged")
-                {
+                ) {
                     let expected = match name.as_str() {
-                        "Array.mkEmpty" | "Array.size" => 2,
+                        "Array.mkEmpty" => 2,
                         _ => 4,
                     };
                     if args.len() != expected {
@@ -511,10 +510,6 @@ impl Reader {
                             }
                             let capacity = Self::arg(args[1], env, "tagged")?;
                             Ok(format!("__LeanValue::empty_array({capacity}.tagged_nat())"))
-                        }
-                        "Array.size" => {
-                            let array = Self::arg(args[1], env, "obj")?;
-                            Ok(format!("{array}.array_size_tagged()"))
                         }
                         "Array.getInternal" | "Array.getInternalBorrowed" => {
                             if var_ty != "tobj" {

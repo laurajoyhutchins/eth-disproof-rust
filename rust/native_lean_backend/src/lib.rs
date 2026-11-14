@@ -478,7 +478,10 @@ impl Reader {
                 // stay in the source-reviewed primitive adapter registry.
                 if matches!(
                     name.as_str(),
-                    "Array.mkEmpty" | "Array.getInternal" | "Array.getInternalBorrowed" | "Array.set!"
+                    "Array.mkEmpty"
+                        | "Array.getInternal"
+                        | "Array.getInternalBorrowed"
+                        | "Array.set!"
                 ) || (name == "Array.size" && var_ty == "tagged")
                 {
                     let expected = match name.as_str() {
@@ -486,13 +489,18 @@ impl Reader {
                         _ => 4,
                     };
                     if args.len() != expected {
-                        return Err(format!("{name}: expected {expected} operands, got {}", args.len()));
+                        return Err(format!(
+                            "{name}: expected {expected} operands, got {}",
+                            args.len()
+                        ));
                     }
                     let erased = |index: usize| -> Result<(), String> {
                         if Self::checked_tag(args[index], "Arg")? == 1 {
                             Ok(())
                         } else {
-                            Err(format!("{name}: expected erased source type/proof at {index}"))
+                            Err(format!(
+                                "{name}: expected erased source type/proof at {index}"
+                            ))
                         }
                     };
                     erased(0)?;
@@ -524,7 +532,9 @@ impl Reader {
                             let array = Self::arg(args[1], env, "obj")?;
                             let index = Self::arg(args[2], env, "tagged")?;
                             let value = Self::arg(args[3], env, "tobj")?;
-                            Ok(format!("{array}.array_set_tagged({index}.tagged_nat(), {value})"))
+                            Ok(format!(
+                                "{array}.array_set_tagged({index}.tagged_nat(), {value})"
+                            ))
                         }
                         _ => unreachable!(),
                     };
@@ -569,7 +579,8 @@ impl Reader {
                 }
                 // Statically tagged immediate Nat comparisons do not require
                 // GMP. Boxed arbitrary Nat continues through the GMP path.
-                let mut both_tagged = matches!(name.as_str(), "Nat.decEq" | "Nat.decLt" | "Nat.decLe");
+                let mut both_tagged =
+                    matches!(name.as_str(), "Nat.decEq" | "Nat.decLt" | "Nat.decLe");
                 if both_tagged {
                     for arg in &args {
                         if Self::checked_tag(*arg, "Arg")? != 0 {
@@ -594,7 +605,9 @@ impl Reader {
                         "Nat.decLt" => "<",
                         _ => "<=",
                     };
-                    return Ok(format!("u8::from({lhs}.tagged_nat() {op} {rhs}.tagged_nat())"));
+                    return Ok(format!(
+                        "u8::from({lhs}.tagged_nat() {op} {rhs}.tagged_nat())"
+                    ));
                 }
                 if is_nat_primitive(&name) {
                     let lhs = Self::arg(args[0], env, "tobj")?;
@@ -1448,7 +1461,10 @@ fn is_primitive(name: &str) -> bool {
     primitive_spec(name).is_some()
         || is_nat_primitive(name)
         || runtime_primitive_spec(name).is_some()
-        || matches!(name, "Array.mkEmpty" | "Array.getInternal" | "Array.getInternalBorrowed" | "Array.set!")
+        || matches!(
+            name,
+            "Array.mkEmpty" | "Array.getInternal" | "Array.getInternalBorrowed" | "Array.set!"
+        )
 }
 
 const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");

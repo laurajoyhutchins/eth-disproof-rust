@@ -24,3 +24,6 @@
 /examples/test-join
 /examples/test-join.rs
 /examples/RefusalPackage*.log
+
+# Generated primitive matrix orchestration
+/examples/matrix_run.rs

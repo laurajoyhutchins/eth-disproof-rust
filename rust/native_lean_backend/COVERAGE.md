@@ -11,10 +11,10 @@ refuse. Constructor/tag identities below are pinned to
 | `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
 | `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize`, plus `object`, `tobject`, `tagged` for the verified immutable runtime | `float`, `float32`, `erased`, `void`, `struct`, `union` |
 | `Arg` | `var` with known, matching type | `erased` in runtime position |
-| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls; immutable `Option.none`, `Option.some`, `Prod.mk` constructors, `box`, `unbox`, object `proj` | `reset`, `reuse`, `uproj`, `sproj`, `pap`, `ap`, `lit.str`, `isShared`, unverified constructors, other `fap` |
+| `Expr` | bounded `lit.num` (including large boxed Nat literals <= 4 KiB), selected `fap` primitives and typed direct calls; immutable `Option.none`, `Option.some`, `Prod.mk` constructors, `box`, `unbox`, object `proj` | `reset`, `reuse`, `uproj`, `sproj`, `pap`, `ap`, `lit.str`, `isShared`, unverified constructors, other `fap` |
 | `FnBody` | `vdecl`, `ret`, Bool cases, `Option.none`/`Option.some` cases, nonrecursive `jdecl`/`jmp`, object-only `inc`/`dec`/`del` erased under immutable `Rc` ownership | `set`, `setTag`, `uset`, `sset`, other `case`, `unreachable`, recursive joins |
 | `Alt` | two exact Bool alternatives or two exact `Option` constructors | `default`, other constructors |
-| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe`; GMP-backed `Nat` subset detailed below | all other runtime calls |
+| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
 Lean `Bool` is emitted as the compiler's `u8` representation (`0=false`,
@@ -108,29 +108,34 @@ separate ETH symbolic/physical semantics obligations remain open.
 - `examples/Objects.lean` builds three interconnected roots containing nested
   Options and pairs. It checks 3,072 original-Lean-evaluated results on edges
   and seeded vectors. `RefusalObjectNat.lean` and `RefusalObjectCtor.lean`
-  show that large closed Nat constant graphs and unknown `Sum` layouts still
-  fail closed without publishing a Cargo package.
-- The original immutable-value smoke suite had **6,080** differential
-  assertions. Arbitrary-precision Nat primitives are now covered separately
-  below; String, Array, and mutable object semantics remain unsupported.
+  prove that arbitrary-precision `Nat` and unknown `Sum` layouts still fail
+  closed without publishing a Cargo package.
+- Total smoke suite: **6,080** differential assertions, not a general
+  semantic-refinement theorem. Arbitrary-precision Nat, String, Array, and
+  mutable object semantics remain entirely unsupported.
 
 ## Extension: GMP-backed arbitrary-precision Nat (post #204)
 
-- The generated Rust immutable-value runtime includes a GMP-backed Nat
-  variant; tagged small Nat literals and boxed arbitrary-width inputs share
+- When Nat operations are reachable, the generated immutable runtime
+  includes a GMP-backed Nat variant; tagged small Nat literals and boxed arbitrary-width inputs share
   the same operation semantics. Nat never silently truncates to machine word.
 - Implemented exact native primitive lowering: `Nat.add`, `Nat.sub`,
   `Nat.mul`, `Nat.div`, `Nat.mod`, `Nat.decEq`, `Nat.decLt`, `Nat.decLe`.
   `Nat.sub` is truncated at zero. Both `Nat.div` and `Nat.mod` have explicit
   Lean-compatible zero-divisor semantics.
-- All remaining Nat primitives, large closed Nat constant declarations,
+- All remaining Nat primitives (including non-folded `Nat.pow`),
   unimplemented field layouts and unsupported object shapes refuse.
-- Integration suite: 5,208 new Lean-evaluated assertions on up-to-1,024-bit
-  inputs, plus the preceding 6,080 case suite. **11,288 total**. This is
+  Large **decimal literal** constants are supported via the pinned Lean runtime
+  up to a 4 KiB bigint storage cap; nonliteral expressions are not implicitly
+  constant-folded or substituted.
+- Integration suite: 5,208 original Nat assertions on up-to-1,024-bit inputs,
+  plus 76 new large-literal assertions and the preceding 6,080 case suite.
+  **11,364 total**. This is
   empirical semantics checking, **not** a proof of full Lean compiler or
   kernel-to-machine-code correctness.
-- This extension requires `libgmp` on Linux x86-64, even for object programs
-  that do not invoke Nat because they share the emitted value runtime.
-  Generated code has no Lean runtime dependency, but is not fully
-  dependency-free. We should factor the optional Nat runtime out before
-  claiming a portable compiler v1 release.
+- GMP is now emitted and linked **only for generated code with Nat primitive
+  operations or boxed Nat literals**. Constructor-only object programs have
+  no GMP dependency, verified against linked Cargo test executables. Generated
+  code does not depend on Lean at runtime, but bigint programs still depend
+  on GMP. The 4 KiB constant bound prevents unbounded quadratic decimal
+  conversion in the pinned Lean C ABI shim.

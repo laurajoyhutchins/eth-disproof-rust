@@ -23,6 +23,8 @@ extern "C" {
     fn lr_array_len(x: Obj) -> usize;
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
+    fn lr_nat_decimal(x: Obj) -> *mut c_char;
+    fn lr_free_string(x: *mut c_char);
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
 }
 
@@ -45,7 +47,9 @@ struct LoweringContext<'a> {
 // Standalone immutable object model for the supported Lean IR subset.
 // Rc cloning models shared immutable values; source inc/dec instructions are
 // redundant only while mutation, isShared, reset and reuse remain unsupported.
-const RUNTIME_SOURCE: &str = r#"
+// The GMP implementation is injected only for generated code that actually
+// invokes Nat primitives. Constructor-only programs must not link libgmp.
+const VALUE_RUNTIME_SOURCE: &str = r#"
 #[derive(Clone, Debug)]
 pub struct __LeanValue(std::rc::Rc<__LeanValueRepr>);
 
@@ -54,10 +58,49 @@ enum __LeanValueRepr {
     Tagged(usize),
     U8(u8), U16(u16), U32(u32), U64(u64), USize(usize),
     Ctor { tag: usize, name: &'static str, fields: Vec<__LeanValue> },
-    Nat(__LeanBigNat),
+    // __NAT_RUNTIME_VARIANT__
 }
 
-// Nat is arbitrary precision in Lean. GMP is an established, maintained
+#[allow(dead_code)]
+impl __LeanValue {
+    fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
+    fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }
+    fn boxed_u16(v: u16) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U16(v))) }
+    fn boxed_u32(v: u32) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U32(v))) }
+    fn boxed_u64(v: u64) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U64(v))) }
+    fn boxed_usize(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::USize(v))) }
+    fn ctor(tag: usize, name: &'static str, fields: Vec<Self>) -> Self {
+        Self(std::rc::Rc::new(__LeanValueRepr::Ctor { tag, name, fields }))
+    }
+    fn tag(&self) -> usize {
+        match self.0.as_ref() {
+            __LeanValueRepr::Tagged(v) => *v,
+            __LeanValueRepr::Ctor { tag, .. } => *tag,
+            _ => panic!("tried to case-analyze a boxed scalar"),
+        }
+    }
+    fn has_ctor(&self, tag: usize, name: &str, arity: usize) -> bool {
+        matches!(self.0.as_ref(), __LeanValueRepr::Ctor {tag: t, name: n, fields}
+            if *t == tag && *n == name && fields.len() == arity)
+    }
+    fn has_tagged(&self, value: usize) -> bool {
+        matches!(self.0.as_ref(), __LeanValueRepr::Tagged(v) if *v == value)
+    }
+    fn field(&self, index: usize) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Ctor { fields, .. } => fields.get(index).expect("constructor field absent").clone(),
+            _ => panic!("projection from a non-constructor"),
+        }
+    }
+    fn unbox_u8(&self) -> u8 { match self.0.as_ref() {__LeanValueRepr::U8(x) => *x, _ => panic!("incorrect boxed u8") } }
+    fn unbox_u16(&self) -> u16 { match self.0.as_ref() {__LeanValueRepr::U16(x) => *x, _ => panic!("incorrect boxed u16") } }
+    fn unbox_u32(&self) -> u32 { match self.0.as_ref() {__LeanValueRepr::U32(x) => *x, _ => panic!("incorrect boxed u32") } }
+    fn unbox_u64(&self) -> u64 { match self.0.as_ref() {__LeanValueRepr::U64(x) => *x, _ => panic!("incorrect boxed u64") } }
+    fn unbox_usize(&self) -> usize { match self.0.as_ref() {__LeanValueRepr::USize(x) => *x, _ => panic!("incorrect boxed usize") } }
+}
+"#;
+
+const NAT_RUNTIME_SOURCE: &str = r#"// Nat is arbitrary precision in Lean. GMP is an established, maintained
 // arithmetic library, linked into standalone generated Rust. The backend
 // never truncates Nat to a machine-sized integer.
 #[repr(C)]
@@ -177,14 +220,9 @@ impl __LeanNatOperand<'_> {
     }
 }
 
+
 #[allow(dead_code)]
 impl __LeanValue {
-    fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
-    fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }
-    fn boxed_u16(v: u16) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U16(v))) }
-    fn boxed_u32(v: u32) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U32(v))) }
-    fn boxed_u64(v: u64) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U64(v))) }
-    fn boxed_usize(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::USize(v))) }
     pub fn nat_from_decimal(value: &str) -> Self {
         Self(std::rc::Rc::new(__LeanValueRepr::Nat(__LeanBigNat::from_decimal(value))))
     }
@@ -209,34 +247,6 @@ impl __LeanValue {
         let rhs = other.nat_operand();
         unsafe { __gmpz_cmp(lhs.as_ref().ptr(), rhs.as_ref().ptr()) }
     }
-    fn ctor(tag: usize, name: &'static str, fields: Vec<Self>) -> Self {
-        Self(std::rc::Rc::new(__LeanValueRepr::Ctor { tag, name, fields }))
-    }
-    fn tag(&self) -> usize {
-        match self.0.as_ref() {
-            __LeanValueRepr::Tagged(v) => *v,
-            __LeanValueRepr::Ctor { tag, .. } => *tag,
-            _ => panic!("tried to case-analyze a boxed scalar"),
-        }
-    }
-    fn has_ctor(&self, tag: usize, name: &str, arity: usize) -> bool {
-        matches!(self.0.as_ref(), __LeanValueRepr::Ctor {tag: t, name: n, fields}
-            if *t == tag && *n == name && fields.len() == arity)
-    }
-    fn has_tagged(&self, value: usize) -> bool {
-        matches!(self.0.as_ref(), __LeanValueRepr::Tagged(v) if *v == value)
-    }
-    fn field(&self, index: usize) -> Self {
-        match self.0.as_ref() {
-            __LeanValueRepr::Ctor { fields, .. } => fields.get(index).expect("constructor field absent").clone(),
-            _ => panic!("projection from a non-constructor"),
-        }
-    }
-    fn unbox_u8(&self) -> u8 { match self.0.as_ref() {__LeanValueRepr::U8(x) => *x, _ => panic!("incorrect boxed u8") } }
-    fn unbox_u16(&self) -> u16 { match self.0.as_ref() {__LeanValueRepr::U16(x) => *x, _ => panic!("incorrect boxed u16") } }
-    fn unbox_u32(&self) -> u32 { match self.0.as_ref() {__LeanValueRepr::U32(x) => *x, _ => panic!("incorrect boxed u32") } }
-    fn unbox_u64(&self) -> u64 { match self.0.as_ref() {__LeanValueRepr::U64(x) => *x, _ => panic!("incorrect boxed u64") } }
-    fn unbox_usize(&self) -> usize { match self.0.as_ref() {__LeanValueRepr::USize(x) => *x, _ => panic!("incorrect boxed usize") } }
 }
 "#;
 
@@ -257,10 +267,22 @@ fn ir_type_compatible(found: &str, expected: &str) -> bool {
 }
 
 fn include_value_runtime(source: String) -> String {
-    if source.contains("__LeanValue") {
-        format!("{RUNTIME_SOURCE}\n{source}")
+    if !source.contains("__LeanValue") {
+        return source;
+    }
+    // Detect actual generated Nat primitive calls rather than importing GMP
+    // merely because an immutable constructor is represented by __LeanValue.
+    let needs_nat = source.contains(".nat_binary(")
+        || source.contains(".nat_cmp(")
+        || source.contains("::nat_from_decimal(");
+    let core = VALUE_RUNTIME_SOURCE.replace(
+        "// __NAT_RUNTIME_VARIANT__",
+        if needs_nat { "Nat(__LeanBigNat)," } else { "" },
+    );
+    if needs_nat {
+        format!("{core}\n{NAT_RUNTIME_SOURCE}\n{source}")
     } else {
-        source
+        format!("{core}\n{source}")
     }
 }
 
@@ -312,6 +334,18 @@ impl Reader {
             .to_str()
             .map_err(|_| "invalid UTF-8")?
             .to_owned())
+    }
+    unsafe fn decimal_nat(x: Obj) -> Result<String, String> {
+        let raw = lr_nat_decimal(x);
+        if raw.is_null() {
+            return Err("large Nat literal rejected (invalid or over 4 KiB)".into());
+        }
+        let result = CStr::from_ptr(raw)
+            .to_str()
+            .map_err(|_| "invalid Nat literal decimal representation".to_owned())
+            .map(str::to_owned);
+        lr_free_string(raw);
+        result
     }
     unsafe fn nat(x: Obj) -> Result<usize, String> {
         Self::scalar(x).map_err(|_| "large Nat unsupported by v0 compiler".into())
@@ -399,6 +433,13 @@ impl Reader {
     unsafe fn lit(x: Obj, ty: &str) -> Result<String, String> {
         match Self::tag(x)? {
             0 => {
+                // Boxed Nat literals can exceed machine word size. Decode
+                // them through Lean's own pinned runtime, never through
+                // truncating to a Rust usize/u64.
+                if ty == "obj" || ty == "tobj" {
+                    let decimal = Self::decimal_nat(Self::field(x, 0)?)?;
+                    return Ok(format!("__LeanValue::nat_from_decimal(\"{decimal}\")"));
+                }
                 let n = Self::nat(Self::field(x, 0)?)?;
                 if ty == "tagged" {
                     return Ok(format!("__LeanValue::tagged({n})"));
@@ -1351,6 +1392,25 @@ mod tests {
         assert_ne!(internal_name("X.ab"), internal_name("X.a_b"));
         assert_ne!(internal_name("X.A"), internal_name("X.a"));
         assert!(internal_name("X.a").starts_with("lean_"));
+    }
+    #[test]
+    fn nat_runtime_is_injected_only_when_needed() {
+        let obj_only =
+            super::include_value_runtime("pub fn keep(x: __LeanValue) -> __LeanValue { x }".into());
+        assert!(obj_only.contains("pub struct __LeanValue"));
+        assert!(!obj_only.contains("__gmpz_init"));
+        assert!(!obj_only.contains("Nat(__LeanBigNat)"));
+
+        let with_nat_ops = super::include_value_runtime(
+            "pub fn add(x: __LeanValue, y: __LeanValue) -> __LeanValue { x.nat_binary(&y, \"add\") }".into(),
+        );
+        assert!(with_nat_ops.contains("__gmpz_init"));
+        assert!(with_nat_ops.contains("Nat(__LeanBigNat)"));
+
+        let with_literal = super::include_value_runtime(
+            "pub fn constant() -> __LeanValue { __LeanValue::nat_from_decimal(\"123\") }".into(),
+        );
+        assert!(with_literal.contains("__gmpz_init"));
     }
     #[test]
     fn permitted_rust_identacters_only() {

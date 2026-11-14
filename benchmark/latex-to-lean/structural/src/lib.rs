@@ -1036,7 +1036,9 @@ fn render_def(def: &Def) -> Result<String> {
 pub fn to_lean(article: &Article, namespace: &str) -> Result<String> {
     let name = identifier(namespace)?;
     let mut lines = vec![
-        "import Mathlib.Basic.Real.Basic Mathlib.LinearAlgebra.Matrix.Notation Mathlib.Data.Fintype.BigOperators".to_string(),
+        "import Mathlib.Basic.Real.Basic".to_string(),
+        "import Mathlib.LinearAlgebra.Matrix.Notation".to_string(),
+        "import Mathlib.Data.Fintype.BigOperators".to_string(),
         "open scoped Matrix".to_string(),
         format!("namespace {name}"),
         String::new(),

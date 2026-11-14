@@ -464,7 +464,9 @@ impl Reader {
         }
     }
     unsafe fn emit(decl: Obj, rust_name: Obj) -> Result<String, String> {
-        if lr_abi_probe() == 0 { return Err("Lean C ABI runtime probe failed".into()); }
+        if lr_abi_probe() == 0 {
+            return Err("Lean C ABI runtime probe failed".into());
+        }
         Self::emit_function(decl, &Self::string(rust_name)?, None)
     }
 
@@ -617,7 +619,9 @@ impl Reader {
     }
 
     unsafe fn emit_roots(decls: Obj, roots: Vec<(String, String)>) -> Result<String, String> {
-        if lr_abi_probe() == 0 { return Err("Lean C ABI runtime probe failed".into()); }
+        if lr_abi_probe() == 0 {
+            return Err("Lean C ABI runtime probe failed".into());
+        }
         if roots.is_empty() || roots.len() > 128 {
             return Err("expected 1..128 public Lean root declarations".into());
         }

@@ -57,6 +57,17 @@ jobs:
             cat "$GITHUB_WORKSPACE/evidence/leanify/${id}.stdout"
             cat "$GITHUB_WORKSPACE/evidence/leanify/${id}.stderr"
           done
+      - name: Validate exact Mathlib gold oracles and axioms
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/leanify/MathlibExactPilot.time" \
+            timeout 180s lake env lean "$GITHUB_WORKSPACE/benchmark/latex-to-lean/oracle/MathlibExactPilot.lean" \
+            > "$GITHUB_WORKSPACE/evidence/leanify/MathlibExactPilot.stdout" \
+            2> "$GITHUB_WORKSPACE/evidence/leanify/MathlibExactPilot.stderr"
+          cat "$GITHUB_WORKSPACE/evidence/leanify/MathlibExactPilot.stdout"
+          cat "$GITHUB_WORKSPACE/evidence/leanify/MathlibExactPilot.stderr"
       - name: Upload primary evidence even when setup fails
         if: always()
         uses: actions/upload-artifact@v4

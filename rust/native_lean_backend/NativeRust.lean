@@ -2,6 +2,16 @@ import Lean
 
 namespace NativeRust
 
+/-- Stable, machine-readable refusal for failures before native IR reaches Rust. -/
+private def refusalMessage (decl : Lean.Name) (construct reason : String) : String :=
+  "Rust native backend refused " ++ decl.toString ++ ": " ++
+    (Lean.Json.mkObj [
+      ("status", .str "refused"),
+      ("declaration", .str decl.toString),
+      ("construct", .str construct),
+      ("reason", .str reason)
+    ]).compress
+
 /-- A borrowed, in-process Lean.IR.Decl passed directly to Rust.
     Rust returns `OK\n<source>` or `ERROR\n<reason>`; no serialized IR. -/
 @[extern "rs_emit_ir"] opaque emit (decl : @& Lean.IR.Decl) (rustName : @& String) : String
@@ -23,9 +33,9 @@ def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   if (← Lean.IR.findDecl root).isNone then
     Lean.Compiler.compile #[root]
   let some decl ← Lean.IR.findDecl root
-    | throwError "No compiler IR for {root} (possibly noncomputable)"
+    | throwError "{refusalMessage root "CompilerIR" "no compiler IR (possibly noncomputable)"}"
   if let some blame := decl.getInfo.sorryDep? then
-    throwError "Rust native backend refused {root}: dependency on sorry axiom {blame}"
+    throwError "{refusalMessage root "SorryAxiom" s!"dependency on sorry axiom {blame}"}"
   let report := emit decl rustName
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
@@ -34,19 +44,20 @@ def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   else
     throwError "Rust native backend returned an invalid response for {root}"
 
-/-- Do not publish partial Rust source on FFI failures or interrupted writes.
-    The final rename is atomic when source and destination share a filesystem.
-    Cross-filesystem moves refuse instead of falling back to a non-atomic copy. -/
-def writeAtomically (dst : System.FilePath) (code : String) : IO Unit := do
-  let (handle, temp) ← IO.FS.createTempFile
-  try
-    handle.putStr code
-    handle.flush
-    IO.FS.rename temp dst
-  catch err =>
-    try IO.FS.removeFile temp catch _ => pure ()
-    throw err
+/-- Output publication remains same-process via a pinned Rust FFI entrypoint.
+    Its sibling stage, relative path check and refusal semantics are enforced
+    by the Rust publisher; no partial code is accepted after an error. -/
+@[extern "rs_publish_source"] opaque publishSource
+  (dst : @& String) (code : @& String) : String
 
+def writeAtomically (dst : System.FilePath) (code : String) : IO Unit := do
+  let report := publishSource dst.toString code
+  if report.startsWith "OK\n" then
+    return
+  else if report.startsWith "ERROR\n" then
+    throw <| IO.userError s!"Rust native publisher refused {dst}: {(report.drop 6).toString}"
+  else
+    throw <| IO.userError s!"Rust native publisher returned an invalid response for {dst}"
 
 /-- Read direct calls out of the *elaborated compiler IR*, not Lean syntax.
     A recognized body's dependencies are scanned in Lean, including IR imported
@@ -88,10 +99,10 @@ private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.
     if seen.contains name then continue
     seen := seen.insert name
     if seen.size > 2048 then
-      throwError "Rust native dependency closure exceeded 2048 names"
+      throwError "{refusalMessage name "ResourceLimit" "native dependency closure exceeded 2048 names"}"
     if let some decl ← Lean.IR.findDecl name then
       if let some blame := decl.getInfo.sorryDep? then
-        throwError "Rust native backend refused {name}: dependency on sorry axiom {blame}"
+        throwError "{refusalMessage name "SorryAxiom" s!"dependency on sorry axiom {blame}"}"
       decls := decls.push decl
       if let .fdecl _ _ _ body _ := decl then
         queue := queue ++ callsInBody body

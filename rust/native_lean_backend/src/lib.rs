@@ -1062,7 +1062,7 @@ mod tests {
             );
         }
         assert_eq!(seen.len(), 68);
-        assert!(primitive_spec("UInt64.shiftLeft").is_none());
+        assert!(primitive_spec("UInt64.complement").is_none());
         assert!(primitive_spec("IO.println").is_none());
     }
 

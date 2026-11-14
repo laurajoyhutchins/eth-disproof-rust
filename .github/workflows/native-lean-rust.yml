@@ -118,3 +118,6 @@ jobs:
             rust/native_lean_backend/artifacts/external-projects/*/*.txt
             rust/native_lean_backend/artifacts/external-projects/*/*.log
             rust/native_lean_backend/artifacts/external-projects/*/*.time
+            rust/native_lean_backend/artifacts/external-projects/*/positive-package/Cargo.toml
+            rust/native_lean_backend/artifacts/external-projects/*/positive-package/src/*.rs
+            rust/native_lean_backend/artifacts/external-projects/*/positive-package/tests/*.rs

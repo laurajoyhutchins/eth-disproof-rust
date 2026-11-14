@@ -476,40 +476,26 @@ impl Reader {
                 let size = Self::nat(Self::field(info, 2)?)?;
                 let usize_count = Self::nat(Self::field(info, 3)?)?;
                 let ssize = Self::nat(Self::field(info, 4)?)?;
-                if !matches!(
-                    name.as_str(),
-                    "Option.none"
-                        | "Option.some"
-                        | "Prod.mk"
-                        | "List.nil"
-                        | "List.cons"
-                        | "Sum.inl"
-                        | "Sum.inr"
-                ) {
-                    return Err(format!(
-                        "constructor {name} is not in the verified runtime subset"
-                    ));
-                }
-                let expected_arity = match name.as_str() {
-                    "Option.none" | "List.nil" => (0, 0),
-                    "Option.some" | "List.cons" => (1, if name == "List.cons" { 2 } else { 1 }),
-                    "Prod.mk" => (0, 2),
-                    "Sum.inl" => (0, 1),
-                    "Sum.inr" => (1, 1),
-                    _ => unreachable!(),
-                };
-                if (tag, fields.len()) != expected_arity
+                // The source CtorInfo is authoritative: only zero-field
+                // tagged variants and heap objects with pointer-only fields
+                // are representable. Never pack a scalar field implicitly.
+                if !name.contains('.')
+                    || name.is_empty()
+                    || tag >= 256
+                    || size > 1024
                     || size != fields.len()
                     || usize_count != 0
                     || ssize != 0
                 {
-                    return Err(format!("constructor {name} layout unsupported"));
+                    return Err(format!(
+                        "constructor {name} has unsupported scalar, tag or field layout"
+                    ));
                 }
-                if matches!(name.as_str(), "Option.none" | "List.nil") {
+                if size == 0 {
                     if var_ty != "tagged" {
-                        return Err(format!("{name} must be tagged in pinned IR"));
+                        return Err(format!("zero-field constructor {name} is not tagged"));
                     }
-                    return Ok("__LeanValue::tagged(0)".into());
+                    return Ok(format!("__LeanValue::tagged({tag})"));
                 }
                 if var_ty != "obj" {
                     return Err("heap constructor has unexpected IR result type".into());
@@ -898,7 +884,12 @@ impl Reader {
                     } else if name.starts_with("Sum.") {
                         "Sum"
                     } else {
-                        return Err(format!("unsupported object-valued case constructor {name}"));
+                        if matches!(type_name.as_str(), "Option" | "List" | "Sum") {
+                            return Err(format!(
+                                "constructor {name} disagrees with source case family {type_name}"
+                            ));
+                        }
+                        return Self::generic_object_case(x, code, depth, count, env, ret_ty, ctx);
                     });
                     break;
                 }
@@ -936,6 +927,8 @@ impl Reader {
                         return Err("Bool constructor has unexpected IR storage type".into());
                     }
                     Self::boolean_case(x, code, depth, count, env, ret_ty, ctx)
+                } else if is_value_type(Self::ty(Self::field(x, 2)?)?) {
+                    Self::generic_object_case(x, code, depth, count, env, ret_ty, ctx)
                 } else {
                     Self::scalar_enum_case(x, code, depth, count, env, ret_ty, ctx)
                 }
@@ -1130,6 +1123,117 @@ impl Reader {
             return Err(format!("incomplete {family} case"));
         }
         writeln!(code, "        _ => unreachable!(\"invalid {family} tag\"),").unwrap();
+        writeln!(code, "    }}").unwrap();
+        Ok(())
+    }
+
+    // A user inductive is accepted only through the actual Lean 4.34.1
+    // constructor metadata. The family is source-derived and must agree for
+    // every explicit arm; pointer and packed-scalar layouts cannot be mixed.
+    unsafe fn generic_object_case(
+        x: Obj,
+        code: &mut String,
+        depth: usize,
+        count: &mut usize,
+        env: &mut BTreeMap<usize, &'static str>,
+        ret_ty: &str,
+        ctx: LoweringContext<'_>,
+    ) -> Result<(), String> {
+        if !is_value_type(Self::ty(Self::field(x, 2)?)?) {
+            return Err("user inductive case requires object-valued storage".into());
+        }
+        let id = Self::var(Self::field(x, 1)?)?;
+        if !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
+            return Err("user inductive scrutinee is not object-valued".into());
+        }
+        let alts = Self::array(Self::field(x, 3)?)?;
+        if alts.is_empty() || alts.len() > 256 {
+            return Err("user inductive alternatives exceed reviewed bounds".into());
+        }
+        let mut family: Option<String> = None;
+        let mut seen = BTreeSet::new();
+        let mut default = false;
+        writeln!(code, "    match x_{id}.tag() {{").unwrap();
+        for (position, alt) in alts.iter().enumerate() {
+            match Self::checked_tag(*alt, "Alt")? {
+                0 => {
+                    if default {
+                        return Err("constructor alternative after default".into());
+                    }
+                    let info = Self::field(*alt, 0)?;
+                    let name = Self::name(Self::field(info, 0)?, 0)?;
+                    let (parent, _) = name
+                        .rsplit_once('.')
+                        .ok_or_else(|| format!("constructor {name} has no family identity"))?;
+                    if family.as_deref().is_some_and(|f| f != parent) {
+                        return Err(format!("mixed user inductive families: {name}"));
+                    }
+                    family = Some(parent.to_owned());
+                    let tag = Self::nat(Self::field(info, 1)?)?;
+                    let pointers = Self::nat(Self::field(info, 2)?)?;
+                    let usize_fields = Self::nat(Self::field(info, 3)?)?;
+                    let scalar_bytes = Self::nat(Self::field(info, 4)?)?;
+                    if tag >= 256
+                        || pointers > 1024
+                        || usize_fields != 0
+                        || scalar_bytes != 0
+                        || !seen.insert(tag)
+                    {
+                        return Err(format!(
+                            "unsupported or duplicate constructor layout: {name}"
+                        ));
+                    }
+                    writeln!(code, "        {tag} => {{").unwrap();
+                    if pointers == 0 {
+                        writeln!(code, "            assert!(x_{id}.has_tagged({tag}), \"invalid nullary constructor representation\");").unwrap();
+                    } else {
+                        writeln!(code, "            assert!(x_{id}.has_ctor({tag}, \"{name}\", {pointers}), \"invalid object constructor representation\");").unwrap();
+                    }
+                    let mut local = env.clone();
+                    Self::body(
+                        Self::field(*alt, 1)?,
+                        code,
+                        depth + 1,
+                        count,
+                        &mut local,
+                        ret_ty,
+                        ctx,
+                    )?;
+                    writeln!(code, "        }}").unwrap();
+                }
+                1 => {
+                    if default || position + 1 != alts.len() || family.is_none() {
+                        return Err(
+                            "user inductive default must be unique, last, and source-bound".into(),
+                        );
+                    }
+                    default = true;
+                    writeln!(code, "        _ => {{").unwrap();
+                    let mut local = env.clone();
+                    Self::body(
+                        Self::field(*alt, 0)?,
+                        code,
+                        depth + 1,
+                        count,
+                        &mut local,
+                        ret_ty,
+                        ctx,
+                    )?;
+                    writeln!(code, "        }}").unwrap();
+                }
+                t => return Err(format!("unknown user inductive alternative {t}")),
+            }
+        }
+        if family.is_none() {
+            return Err("user inductive lacks explicit constructor identity".into());
+        }
+        if !default {
+            writeln!(
+                code,
+                "        _ => unreachable!(\"invalid Lean constructor tag\"),"
+            )
+            .unwrap();
+        }
         writeln!(code, "    }}").unwrap();
         Ok(())
     }

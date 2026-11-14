@@ -423,6 +423,20 @@ if ! grep -Fq '.array_push_owned(' examples/ownership-package/src/lib.rs &&
   echo "last-use ownership lowering did not activate for source Array" >&2
   exit 1
 fi
+# Source-native user-defined inductives: pointer-only nullary/one/two/
+# three-field layouts, defaults, unbounded Nat, and recursive list-shaped data.
+for pair in "CustomCtor:custom-package" "RecursiveCtor:recursive-package"; do
+  fixture="${pair%%:*}"
+  package="${pair##*:}"
+  rm -rf "examples/$package"
+  lean --load-dynlib="$NATIVE_LIB" "examples/$fixture.lean"
+  env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+    cargo test --offline --manifest-path "examples/$package/Cargo.toml"
+  env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+    cargo test --release --offline --manifest-path "examples/$package/Cargo.toml"
+  env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+    cargo clippy --offline --manifest-path "examples/$package/Cargo.toml" --all-targets -- -D warnings
+done
 # Original closed Lean Nat constants of 200-512 bits, with oracle inputs
 # through 4096 bits. The pinned Lean C shim reads the full decimal value.
 rm -rf examples/large-nat-package examples/rejected-nat-pow-package
@@ -502,7 +516,8 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=20105"
+  echo "differential_assertions=20443"
+  echo "generic_inductive_original_lean_oracles=338"
   echo "array_ownership_original_lean_oracles=768"
   echo "sum_original_lean_oracles=1024"
   echo "list_nat_original_lean_oracles=512"
@@ -510,7 +525,7 @@ mkdir -p artifacts
   echo "large_nat_literal_oracles=76"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-  echo "core_and_matrix_oracles=22025"
+  echo "core_and_matrix_oracles=22363"
   echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"

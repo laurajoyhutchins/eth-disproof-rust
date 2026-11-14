@@ -10,6 +10,10 @@ on:
       - feat/query-aot-source-20261113
     paths:
       - 'rust/lean_eth_reference/src/bin/original-query-build.rs'
+      - 'rust/lean_eth_reference/tools/query_stream_aot.py'
+      - 'rust/lean_eth_reference/tools/export_source_graph.lean'
+      - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
+      - 'rust/lean_eth_reference/tools/verify_source_graph.py'
       - '.github/workflows/original-query-import.yml'
   workflow_dispatch:
     inputs:

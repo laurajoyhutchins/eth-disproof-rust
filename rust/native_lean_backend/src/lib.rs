@@ -395,8 +395,11 @@ impl Reader {
                     return Err(format!("PAP {name} has unsupported typed/arity layout"));
                 }
                 let mut captured = Vec::new();
-                for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
-                    captured.push(Self::arg(arg, env, ty)?);
+                for arg in args {
+                    // A generated helper may accept tagged while its source
+                    // PAP operand is tobj (boxed Bool). Both map to the same
+                    // immutable value model; scalar operands still refuse.
+                    captured.push(Self::arg(arg, env, "tobj")?);
                 }
                 Ok(format!(
                     "__LeanValue::pap({}, {}, vec![{}])",

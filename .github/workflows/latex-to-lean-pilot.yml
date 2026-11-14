@@ -38,25 +38,29 @@ jobs:
           test: false
           lint: false
           mk_all-check: false
-      - name: Build original Leanify and run four original source cases
+      - name: Check the entire immutable 32-case corpus, not just four examples
         shell: bash
         run: |
           set -euo pipefail
           cd vendor/leanify
           lake exe cache get
           lake build leanify
-          for id in E01 R01 G01 X01; do
+          for file in "$GITHUB_WORKSPACE"/benchmark/latex-to-lean/cases/*.tex; do
+            id="$(basename "$file" .tex)"
             set +e
             /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/leanify/${id}.time" \
-              timeout 180s lake exe leanify check "$GITHUB_WORKSPACE/benchmark/latex-to-lean/cases/${id}.tex" --claims \
-              > "$GITHUB_WORKSPACE/evidence/leanify/${id}.stdout" 2> "$GITHUB_WORKSPACE/evidence/leanify/${id}.stderr"
+              timeout 90s lake exe leanify check "$file" --claims \
+              > "$GITHUB_WORKSPACE/evidence/leanify/${id}.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/leanify/${id}.stderr"
             status=$?
             set -e
             printf '%s\n' "$status" > "$GITHUB_WORKSPACE/evidence/leanify/${id}.exit"
-            echo "Leanify ${id}: exit ${status}"
-            cat "$GITHUB_WORKSPACE/evidence/leanify/${id}.stdout"
-            cat "$GITHUB_WORKSPACE/evidence/leanify/${id}.stderr"
+            echo "${id}: parser exit=$status"
           done
+          cd "$GITHUB_WORKSPACE"
+          node benchmark/latex-to-lean/summarize.mjs \
+            evidence/leanify benchmark/latex-to-lean/cases evidence/leanify/coverage.json all
+          node -e 'const r=require("./evidence/leanify/coverage.json"); if(r.records.length!==32) process.exit(1);'
       - name: Validate exact Mathlib gold oracles and axioms
         shell: bash
         run: |

@@ -13,11 +13,25 @@ namespace FunctionProbe
 
   def runDirect (flag : Bool) (x y : UInt64) : UInt64 :=
     (if flag then plus x else times x) y
+  @[noinline] def applyValue (f : UInt64 → UInt64) (x : UInt64) : UInt64 := f x
+
+  def runIndirect (flag : Bool) (x y : UInt64) : UInt64 :=
+    applyValue (if flag then plus x else times x) y
+
+  @[noinline] def pack (flag : Bool) (x : UInt64) : Option (UInt64 → UInt64) :=
+    some (if flag then plus x else times x)
+
+  def runPacked (flag : Bool) (x y : UInt64) : UInt64 :=
+    match pack flag x with
+    | none => 0
+    | some f => f y
 end FunctionProbe
 
 run_cmd do
   let roots := #[``FunctionProbe.plus, ``FunctionProbe.times,
-    ``FunctionProbe.choose, ``FunctionProbe.run, ``FunctionProbe.runDirect]
+    ``FunctionProbe.choose, ``FunctionProbe.run, ``FunctionProbe.runDirect,
+    ``FunctionProbe.applyValue, ``FunctionProbe.runIndirect,
+    ``FunctionProbe.pack, ``FunctionProbe.runPacked]
   let snapshots ← liftCoreM do
     Lean.Compiler.compile roots
     let mut output : Array (Lean.Name × String) := #[]

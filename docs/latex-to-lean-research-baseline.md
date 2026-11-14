@@ -8,6 +8,7 @@
 - Original research fixtures: `benchmark/latex-to-lean/research/cases/`
 - Oracle and generated-code verification: `benchmark/latex-to-lean/research/oracle/`
 - Executable workflow: `.github/workflows/latex-to-lean-research.yml`
+- **Verified machine-readable ledger (8 articles, 12 claims)**: https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43642313840
 - **Fully audited run (all 8 articles)**: https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43641601358
 - Earlier generated-module run: https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43639595364
 - Initial checker-only run with scoring bug: https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43637454725
@@ -44,3 +45,5 @@ Leanify's independent kernel audit has now completed for **all eight accepted ar
 The workflow now runs `verify-receipts.mjs` after all eight audits. It refuses to publish `verified.json` unless the pinned upstream commit, original and generated source hashes, 12 exact claim-correspondence theorem receipts, 6 denotation receipts, 3 separate generated proof receipts, and 8 independent compiler audit receipts all agree. It accepts only standard reported axioms and refuses `sorryAx`. Its local regression tests include missing/tampered evidence.
 
 **Interpretation:** The reference mathematical theorems and selected generated claims have proofs, but the vendor itself has not generated those proofs. Report `vendor_produced_mathematical_proofs: 0` and `model_tokens: 0`; PaperFormalizer and AutoformBot agent trials remain unrun.
+
+The fully passing verified-ledger CI run publishes `evidence/research/verified.json` in its `latex-lean-research-receipts` artifact (43586 bytes ZIP), including each source SHA-256, corresponding generated-claim theorem names, and the per-article compiler audit theorem. This report is produced after all eight kernel audits pass and was independently checked for ZIP integrity. The scorer's six negative/positive regression tests pass on the same run.

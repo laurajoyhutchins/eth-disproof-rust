@@ -95,6 +95,9 @@ jobs:
             rust/native_lean_backend/artifacts/ir-constructor-summary.tsv
             rust/native_lean_backend/artifacts/ir-constructors.tsv
             rust/native_lean_backend/artifacts/primitive-conformance.tsv
+            rust/native_lean_backend/artifacts/item30-ir-probes.txt
+            rust/native_lean_backend/artifacts/item30-oracles.rs
+            rust/native_lean_backend/artifacts/item30-rejection.log
             rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
             rust/native_lean_backend/artifacts/imported-probes/*
             rust/native_lean_backend/artifacts/native-compiler-bundle-*.txt

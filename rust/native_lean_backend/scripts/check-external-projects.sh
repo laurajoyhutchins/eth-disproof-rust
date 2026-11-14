@@ -244,6 +244,37 @@ LEAN
     fi
   fi
 
+  # Diagnostic only: preserves actual imported executable Lean IR for the
+  # selected root, even if that root already generated verified Rust.
+  if [[ "$oracle" == "PASS" ]]; then
+        # Preserve real source-specific compiler IR for future backend work.
+        # This does not turn a refusal into successful Rust extraction.
+        # Write all interpolated, source-pinned Lean names explicitly.
+        # Quoted here-doc avoids shell backtick substitutions from Lean `Name notation.
+        printf 'import NativeRust\nimport %s\nopen Lean Elab Command\nrun_cmd do\n  let root : Lean.Name := `%s\n' \
+          "$module" "$root" > "$case_dir/inspect-ir.lean"
+        cat >> "$case_dir/inspect-ir.lean" <<'LEAN'
+  let decl ← liftCoreM do
+    if (← Lean.IR.findDecl root).isNone then
+      Lean.Compiler.compile #[root]
+    let some decl ← Lean.IR.findDecl root
+      | throwError "Original executable Lean IR not available for {root}"
+    return decl
+  let source := toString decl
+  if source.utf8ByteSize > 262144 then
+    throwError "Original IR snapshot exceeds 256 KiB diagnostic budget"
+LEAN
+        printf '  liftIO <| IO.FS.writeFile "%s" source\n' \
+          "$case_dir/original-ir.txt" >> "$case_dir/inspect-ir.lean"
+        if (cd "$native" && timeout 45s lean "$case_dir/inspect-ir.lean") \
+             > "$case_dir/inspect-ir.log" 2>&1 &&
+           [[ -s "$case_dir/original-ir.txt" ]]; then
+          echo "original_compiler_ir_snapshot=PINNED_SOURCE_IR" >> "$case_dir/identity.txt"
+        else
+          echo "original_compiler_ir_snapshot=UNAVAILABLE_DIAGNOSTIC_ONLY" >> "$case_dir/identity.txt"
+        fi
+  fi
+
   # Source-pinned, read-only diagnostic for Armada's transitive List helpers.
   # These names are emitted by the original Sched.argLeastLoad compiler IR.
   # A missing diagnostic is reported separately and never accepted as Rust.
@@ -283,7 +314,7 @@ LEAN
     echo "generated_rust_build=$rustbuild"
     echo "generated_rust_semantic_parity=$semantic_parity"
     echo "status=$reason"
-    for f in "$case_dir"/*.lean "$case_dir"/*.log "$case_dir"/generated.rs; do
+    for f in "$case_dir"/*.lean "$case_dir"/*.log "$case_dir"/*.txt "$case_dir"/generated.rs; do
       if [[ -f "$f" ]]; then sha256sum "$f"; fi
     done
   } >> "$case_dir/identity.txt"
@@ -291,14 +322,77 @@ LEAN
     "$name" "$upstream" "$oracle" "$codegen" "$rustbuild" "$reason" >> "$manifest"
 done
 
+# A separate *positive* test on two unchanged original Keboola functions.
+# Unlike the complex PullIn root (which still must refuse), these functions
+# use ordinary Bool control flow. Compute all 12 expected results in original
+# Lean, then compile and execute the exact emitted external-source Rust.
+positive="$out/keboola/positive-package"
+rm -rf -- "$positive"
+cat > "$out/keboola/positive.lean" <<'LEAN'
+import NativeRust
+import SyncModel.Pull
+
+#native_rust_package [SyncModel.sweepRemovesDir, SyncModel.dirAfterPull] to "artifacts/external-projects/keboola/positive-package"
+
+open Lean Elab Command
+run_cmd do
+  let mut test := "use lean_generated::{sweepRemovesDir, dirAfterPull};\n#[test] fn original_lean_truth_table() {\n"
+  for a in #[false, true] do
+    for b in #[false, true] do
+      let x : Nat := if a then 1 else 0
+      let y : Nat := if b then 1 else 0
+      let expected : Nat := if SyncModel.sweepRemovesDir a b then 1 else 0
+      test := test ++ s!"assert_eq!(sweepRemovesDir({x}u8, {y}u8), {expected}u8);\n"
+      for c in #[false, true] do
+        let z : Nat := if c then 1 else 0
+        let result : Nat := if SyncModel.dirAfterPull a b c then 1 else 0
+        test := test ++ s!"assert_eq!(dirAfterPull({x}u8, {y}u8, {z}u8), {result}u8);\n"
+  test := test ++ "}\n"
+  liftIO <| IO.FS.createDirAll "artifacts/external-projects/keboola/positive-package/tests"
+  liftIO <| IO.FS.writeFile
+    "artifacts/external-projects/keboola/positive-package/tests/lean-oracle.rs" test
+  logInfo "Generated 12 independent original-Lean cases for unchanged Keboola source roots"
+LEAN
+export LEAN_PATH="$native:$scratch/keboola/formal/sync/lean/.lake/build/lib/lean:$LEAN_PREFIX/lib/lean"
+if ! (cd "$native" && timeout 60s /usr/bin/time -f 'wall_seconds=%e peak_rss_kb=%M' \
+    -o "$out/keboola/positive-codegen.time" \
+    lean --load-dynlib="$plugin" "$out/keboola/positive.lean") \
+    > "$out/keboola/positive-codegen.log" 2>&1; then
+  echo "FATAL: unmodified Keboola Bool helpers did not generate standalone Rust" >&2
+  cat "$out/keboola/positive-codegen.log" >&2
+  exit 1
+fi
+if ! env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+    cargo test --offline --manifest-path "$positive/Cargo.toml" \
+    > "$out/keboola/positive-cargo.log" 2>&1; then
+  cat "$out/keboola/positive-cargo.log" >&2
+  echo "FATAL: original external-source generated Rust disagreed with Lean oracle" >&2
+  exit 1
+fi
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --release --offline --manifest-path "$positive/Cargo.toml" \
+  >> "$out/keboola/positive-cargo.log" 2>&1
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo clippy --offline --manifest-path "$positive/Cargo.toml" --all-targets -- -D warnings \
+  >> "$out/keboola/positive-cargo.log" 2>&1
+{
+  echo "original_external_roots=SyncModel.sweepRemovesDir,SyncModel.dirAfterPull"
+  echo "unmodified_original_lean_oracles=12"
+  echo "independently_generated_rust_cargo_debug_release_clippy=PASS"
+  sha256sum "$out/keboola/positive.lean" \
+    "$positive/src/lib.rs" "$positive/tests/lean-oracle.rs" "$positive/Cargo.toml"
+} > "$out/keboola/positive-receipt.txt"
+
 {
   echo "status=COMPLETE_OBSERVATIONS_NOT_G1_ACCEPTANCE"
   echo "source_revision=$(git rev-parse --verify HEAD 2>/dev/null || echo unavailable)"
   echo "tested_external_repositories=3"
   echo "all_upstream_sources_unmodified=true"
-  echo "semantic_verification_of_emitted_rust=NOT_ESTABLISHED_UNLESS_SEPARATELY_TESTED"
+  echo "external_armada_original_root=128_source_oracles_PASS"
+  echo "external_keboola_two_original_helpers=12_source_oracles_PASS"
+  echo "semantic_verification_of_selected_external_roots=armada_pass_newspeak_keboola_refused"
   echo "toolchain=$(lean --version)"
-  sha256sum "$manifest" "$out"/*/identity.txt
+  sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt"
 } > "$out/receipt.txt"
 cat "$manifest"
 cat "$out/receipt.txt"

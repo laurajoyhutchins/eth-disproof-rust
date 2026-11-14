@@ -149,3 +149,11 @@ The runtime admits only immutable source-checked `List.nil` (tagged 0, no fields
 
 **Updated three-project acceptance:** Armada selected root **GENERATED, compiled, 128/128 execution PASS**; Newspeak `ConcreteTree.span` **REFUSED** (`Expr.isShared`); Keboola `pullDecide` **REFUSED** (`Expr.sproj`). Earlier negative-only external matrix entries above are preserved as historical baselines, not current status. G1 checklist item #193-32 still requires two additional substantial original projects and remains open. Finite differential tests do not prove a universal semantic/refinement theorem.
 
+## Reconciled exact-source IR receipts and second independent-project helper acceptance
+
+The source-pinned external project suite now retains an original unmodified `Lean.IR.Decl` snapshot for each of the three selected roots. This read-only diagnostic uses the pinned `Lean.IR.findDecl` compiler API, a **256 KiB** per-root size cap, and exact upstream commit/module hashes. Snapshots are never substituted for executable IR and cannot upgrade a refusal into a generated-code success. The existing Armada run also preserves source IR for its `List.min?` and `List.idxOf` specializations.
+
+Two original, unchanged [Keboola](https://github.com/keboola/cli/tree/e29d2cb3385b752c7928e1ea3c7dd9b3cc8d8bcf/formal/sync/lean) `SyncModel.sweepRemovesDir` and `SyncModel.dirAfterPull` functions are compiled to one standalone multi-root Rust Cargo library and checked against **12 independent original Lean Boolean results**, in debug/release, with strict Clippy and no Lean runtime environment variables. This carries forward the independently verified evidence from superseded draft #223 without its obsolete compiler implementation. The original *substantial* `SyncModel.pullDecide` remains refused at `Expr.sproj`.
+
+With the [#230](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/230) Armada integration already in main, two independent source repositories now have **positive** executable Rust evidence: **128** cases for the substantial Armada scheduler and **12** for the smaller Keboola helpers. This does **not** satisfy G1's requirement of three substantial unchanged external programs; Newspeak still refuses `Expr.isShared`, and the primary Keboola root still refuses `Expr.sproj`. All original Lean sources remain unedited.
+

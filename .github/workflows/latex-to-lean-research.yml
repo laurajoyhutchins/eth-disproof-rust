@@ -47,6 +47,7 @@ jobs:
           lint: false
           mk_all-check: false
       - name: Execute unaltered research LaTeX corpus
+        id: parse_research
         shell: bash
         run: |
           set -euo pipefail
@@ -68,6 +69,7 @@ jobs:
           node benchmark/latex-to-lean/research/summarize.mjs \
             benchmark/latex-to-lean/research evidence/research evidence/research/summary.json
       - name: Verify independent research theorems and axioms with Lean kernel
+        if: ${{ always() && steps.parse_research.outcome != 'skipped' }}
         shell: bash
         run: |
           set -euo pipefail

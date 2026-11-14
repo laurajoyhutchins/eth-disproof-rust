@@ -26,6 +26,8 @@ acceptance certificate.
 | --- | --- |
 | [Worst-case stressors and polynomial overhead](worst-case-and-polynomial-overhead.md) | Adversarial test families, quantitative parameter bottlenecks, finite-field/interpolation/packet/precision optimization agenda, and end-to-end acceptance criteria. Research hypotheses are not execution or complexity certificates. |
 
+The [cross-project research notebook](../../../research/README.md) synthesizes the 31 October–14 November work: [chronology](../../../research/2026-10-31-to-2026-11-14-ledger.md), [spectral group actions](../../../research/spectral-group-actions.md), [two-adic recursion](../../../research/two-adic-recursion.md), [G1/G2 compiler gates](../../../research/lean-rust-acceptance.md), [cost/benchmark design](../../../research/cost-model-and-benchmarks.md), [peer-reviewed literature](../../../research/literature.md) and [formalization evaluation](../../../research/formalization-evaluation.md). These are research notes, not an alternate status ledger.
+
 The live stage catalogue is
 [`src/remaining/registry.rs`](../src/remaining/registry.rs), not an
 independently maintained status table in this documentation.

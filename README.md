@@ -49,6 +49,10 @@ explains what each test actually establishes and how to reproduce it. The
 identifies missing stages; a constructor that is still unavailable must refuse
 rather than supply a synthetic answer.
 
+## Research notebook (31 October–14 November 2026)
+
+The [research notebook](research/README.md) consolidates the [dated decision ledger](research/2026-10-31-to-2026-11-14-ledger.md), [spectral/group-action research](research/spectral-group-actions.md), [two-adic recursion proof map](research/two-adic-recursion.md), [Lean-to-Rust G1/G2 acceptance](research/lean-rust-acceptance.md), [end-to-end cost/benchmarks](research/cost-model-and-benchmarks.md), [annotated literature](research/literature.md) and [LaTeX-to-Lean evaluation plan](research/formalization-evaluation.md). Research results and open PRs are deliberately not presented as accepted native counting capabilities.
+
 ## Source, checks and history
 
 - [Rust crate and CLI guide](rust/lean_eth_reference/README.md)

@@ -895,6 +895,50 @@ mod tests {
     }
 
     #[test]
+    fn value_registry_covers_only_explicitly_tested_lean_runtime_adapters() {
+        use super::{runtime_primitive_spec, RUNTIME_PRIMITIVE_REGISTRY};
+        use std::collections::BTreeSet;
+        let expected: BTreeSet<_> = [
+            "Nat.add",
+            "Nat.sub",
+            "Nat.mul",
+            "Int.add",
+            "String.append",
+            "String.utf8ByteSize",
+            "String.length",
+            "Array.push",
+            "Array.size",
+            "List.reverse._redArg",
+        ]
+        .into_iter()
+        .collect();
+        let source = include_str!("standalone_runtime.rs");
+        let mut actual = BTreeSet::new();
+        for row in RUNTIME_PRIMITIVE_REGISTRY
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        {
+            let cells: Vec<_> = row.split('\t').collect();
+            assert_eq!(cells.len(), 3, "malformed runtime primitive row: {row}");
+            assert!(actual.insert(cells[0]), "duplicate source primitive: {}", cells[0]);
+            let spec = runtime_primitive_spec(cells[0]).unwrap();
+            assert_eq!(spec.rust_function, cells[1]);
+            assert_eq!(spec.shape, cells[2]);
+            assert!(
+                ["binary", "unary", "erased_binary", "erased_unary"].contains(&spec.shape),
+                "invalid runtime primitive shape: {}",
+                spec.shape
+            );
+            assert!(
+                source.contains(&format!("pub fn {}(", spec.rust_function)),
+                "missing dependency-free adapter: {}",
+                spec.rust_function
+            );
+        }
+        assert_eq!(actual, expected, "primitive coverage changed without corresponding tests");
+    }
+
+    #[test]
     fn registry_is_complete_and_unambiguous() {
         use super::{primitive_spec, PRIMITIVE_REGISTRY};
         use std::collections::BTreeSet;

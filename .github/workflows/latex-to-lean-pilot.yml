@@ -49,7 +49,7 @@ jobs:
             id="$(basename "$file" .tex)"
             set +e
             /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/leanify/${id}.time" \
-              timeout 90s lake exe leanify check "$file" --claims \
+              timeout 90s lake exe leanify check "$file" --claims --defined \
               > "$GITHUB_WORKSPACE/evidence/leanify/${id}.stdout" \
               2> "$GITHUB_WORKSPACE/evidence/leanify/${id}.stderr"
             status=$?
@@ -72,6 +72,17 @@ jobs:
             2> "$GITHUB_WORKSPACE/evidence/leanify/MathlibExactPilot.stderr"
           cat "$GITHUB_WORKSPACE/evidence/leanify/MathlibExactPilot.stdout"
           cat "$GITHUB_WORKSPACE/evidence/leanify/MathlibExactPilot.stderr"
+      - name: Validate real-number adversarial oracles and semantic drift guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/leanify/MathlibAdversarial.time" \
+            timeout 180s lake env lean "$GITHUB_WORKSPACE/benchmark/latex-to-lean/oracle/MathlibAdversarial.lean" \
+            > "$GITHUB_WORKSPACE/evidence/leanify/MathlibAdversarial.stdout" \
+            2> "$GITHUB_WORKSPACE/evidence/leanify/MathlibAdversarial.stderr"
+          cat "$GITHUB_WORKSPACE/evidence/leanify/MathlibAdversarial.stdout"
+          cat "$GITHUB_WORKSPACE/evidence/leanify/MathlibAdversarial.stderr"
       - name: Upload primary evidence even when setup fails
         if: always()
         uses: actions/upload-artifact@v4

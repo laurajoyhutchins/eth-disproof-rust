@@ -27,11 +27,12 @@ for(const id of ids){
  if(claims.length!==compiled)throw Error(id+' claims/compiled count mismatch');
  const warnings=stdout.split('\n').filter(s=>/\bwarning:/.test(s));
  const gap=warnings.some(s=>/not checked|partly checked|follows a sentence that Leanify does not read/.test(s));
- const status=exit!==0?'execution_error':failed>0?'parse_failure':compiled===total&&!gap?'statement_compiled':'unsupported_or_partial';
- records.push({id,source_sha256:hash(path.join(casesDir,id+'.tex')),stdout_sha256:hash(path.join(evidenceDir,id+'.stdout')),stderr_sha256:hash(path.join(evidenceDir,id+'.stderr')),exit_code:exit,compiled,failed,prose,total,status,claims,warnings,proof_status:'not_run',refutation_status:'not_run',semantic_equivalence:'not_audited'});
+ const status=failed>0&&warnings.length?'diagnosed_failure':exit!==0?'tool_error':compiled===total&&!gap?'statement_compiled':'unsupported_or_partial';
+ const definedness=[...stdout.matchAll(/\binfo: claim\s+\d+ is meaningful if:\s+(.+)$/gm)].map(m=>m[1]);
+ records.push({id,source_sha256:hash(path.join(casesDir,id+'.tex')),stdout_sha256:hash(path.join(evidenceDir,id+'.stdout')),stderr_sha256:hash(path.join(evidenceDir,id+'.stderr')),exit_code:exit,compiled,failed,prose,total,status,claims,definedness,warnings,proof_status:'not_run',refutation_status:'not_run',semantic_equivalence:'not_audited'});
 }
-const strata=Object.fromEntries('ERGX'.split('').map(c=>[c,{attempted:0,compiled:0,unsupported:0,errors:0}]));
-for(const r of records){let x=strata[r.id[0]];x.attempted++;if(r.status==='statement_compiled')x.compiled++;else if(r.status==='unsupported_or_partial')x.unsupported++;else x.errors++;}
-const result={schema_version:2,upstream_commit:upstream,phase:'check --claims',interpretation:'Statement parsing only; no proof, refutation, or semantic equivalence credit',strata,records};
+const strata=Object.fromEntries('ERGX'.split('').map(c=>[c,{attempted:0,compiled:0,unsupported:0,diagnosed:0,tool_errors:0}]));
+for(const r of records){let x=strata[r.id[0]];x.attempted++;if(r.status==='statement_compiled')x.compiled++;else if(r.status==='unsupported_or_partial')x.unsupported++;else if(r.status==='diagnosed_failure')x.diagnosed++;else x.tool_errors++;}
+const result={schema_version:2,upstream_commit:upstream,phase:'check --claims --defined',interpretation:'Statement parsing only; no proof, refutation, or semantic equivalence credit',strata,records};
 fs.mkdirSync(path.dirname(outputFile),{recursive:true});fs.writeFileSync(outputFile,JSON.stringify(result,null,2)+'\n');
 console.log(JSON.stringify(strata,null,2));

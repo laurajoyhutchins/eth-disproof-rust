@@ -190,7 +190,8 @@ uses the same 68-operation coverage registry consulted by CI.
 The command
 
 ```lean
-#native_rust_binary MyModule.answer to "artifacts/my-binary"```
+#native_rust_binary MyModule.answer to "artifacts/my-binary"
+```
 
 produces a standalone Cargo binary (`Cargo.toml` and `src/main.rs`) with a
 generated Rust `main()` that prints the function's scalar return value.

@@ -448,17 +448,12 @@ impl Reader {
                     for (arg, ty) in args.into_iter().zip(types.iter()) {
                         lowered.push(Self::arg(arg, env, ty)?);
                     }
-                    writeln!(code, "    return j_{id}({});", lowered.join(", ")).unwrap();
+                    writeln!(code, "    j_{id}({})", lowered.join(", ")).unwrap();
                     return Ok(());
                 }
                 10 => {
                     // ret(Arg)
-                    writeln!(
-                        code,
-                        "    return {};",
-                        Self::arg(Self::field(x, 0)?, env, ret_ty)?
-                    )
-                    .unwrap();
+                    writeln!(code, "    {}", Self::arg(Self::field(x, 0)?, env, ret_ty)?).unwrap();
                     return Ok(());
                 }
                 t => return Err(format!("IR body constructor {t} unsupported")),

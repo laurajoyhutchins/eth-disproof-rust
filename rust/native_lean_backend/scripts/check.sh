@@ -14,7 +14,13 @@ export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_
 mkdir -p artifacts
 lean scripts/VerifyIRInventory.lean
 test "$(awk -F '\t' 'NR > 1 && $1 == "primitive" && $3 == "conditional" { count++ } END { print count + 0 }' artifacts/ir-coverage.tsv)" -eq 30
-grep -Fqx 
+awk -F '\t' '
+  $1 == "Lean.IR.FnBody" && $2 == "Lean.IR.FnBody.jdecl" && $3 == "conditional" { jdecl = 1 }
+  $1 == "Lean.IR.FnBody" && $2 == "Lean.IR.FnBody.jmp" && $3 == "conditional" { jmp = 1 }
+  $1 == "Lean.IR.Expr" && $2 == "Lean.IR.Expr.pap" && $3 == "refused" { pap = 1 }
+  END { exit !(jdecl && jmp && pap) }
+' artifacts/ir-coverage.tsv
+cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"

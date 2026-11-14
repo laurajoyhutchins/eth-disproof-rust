@@ -49,6 +49,83 @@ struct LoweringContext<'a> {
     joins: &'a JoinTable,
 }
 
+// Standalone immutable object model for the supported Lean IR subset.
+// Rc cloning models shared immutable values; source inc/dec instructions are
+// redundant only while mutation, isShared, reset and reuse remain unsupported.
+const RUNTIME_SOURCE: &str = r#"
+#[derive(Clone, Debug)]
+pub struct __LeanValue(std::rc::Rc<__LeanValueRepr>);
+
+#[derive(Debug)]
+enum __LeanValueRepr {
+    Tagged(usize),
+    U8(u8), U16(u16), U32(u32), U64(u64), USize(usize),
+    Ctor { tag: usize, name: &'static str, fields: Vec<__LeanValue> },
+}
+
+#[allow(dead_code)]
+impl __LeanValue {
+    fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
+    fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }
+    fn boxed_u16(v: u16) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U16(v))) }
+    fn boxed_u32(v: u32) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U32(v))) }
+    fn boxed_u64(v: u64) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U64(v))) }
+    fn boxed_usize(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::USize(v))) }
+    fn ctor(tag: usize, name: &'static str, fields: Vec<Self>) -> Self {
+        Self(std::rc::Rc::new(__LeanValueRepr::Ctor { tag, name, fields }))
+    }
+    fn tag(&self) -> usize {
+        match self.0.as_ref() {
+            __LeanValueRepr::Tagged(v) => *v,
+            __LeanValueRepr::Ctor { tag, .. } => *tag,
+            _ => panic!("tried to case-analyze a boxed scalar"),
+        }
+    }
+    fn has_ctor(&self, tag: usize, name: &str, arity: usize) -> bool {
+        matches!(self.0.as_ref(), __LeanValueRepr::Ctor {tag: t, name: n, fields}
+            if *t == tag && *n == name && fields.len() == arity)
+    }
+    fn has_tagged(&self, value: usize) -> bool {
+        matches!(self.0.as_ref(), __LeanValueRepr::Tagged(v) if *v == value)
+    }
+    fn field(&self, index: usize) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Ctor { fields, .. } => fields.get(index).expect("constructor field absent").clone(),
+            _ => panic!("projection from a non-constructor"),
+        }
+    }
+    fn unbox_u8(&self) -> u8 { match self.0.as_ref() {__LeanValueRepr::U8(x) => *x, _ => panic!("incorrect boxed u8") } }
+    fn unbox_u16(&self) -> u16 { match self.0.as_ref() {__LeanValueRepr::U16(x) => *x, _ => panic!("incorrect boxed u16") } }
+    fn unbox_u32(&self) -> u32 { match self.0.as_ref() {__LeanValueRepr::U32(x) => *x, _ => panic!("incorrect boxed u32") } }
+    fn unbox_u64(&self) -> u64 { match self.0.as_ref() {__LeanValueRepr::U64(x) => *x, _ => panic!("incorrect boxed u64") } }
+    fn unbox_usize(&self) -> usize { match self.0.as_ref() {__LeanValueRepr::USize(x) => *x, _ => panic!("incorrect boxed usize") } }
+}
+"#;
+
+fn is_value_type(ty: &str) -> bool {
+    matches!(ty, "obj" | "tobj" | "tagged")
+}
+
+fn rust_type(ty: &str) -> &str {
+    if is_value_type(ty) {
+        "__LeanValue"
+    } else {
+        ty
+    }
+}
+
+fn ir_type_compatible(found: &str, expected: &str) -> bool {
+    found == expected || (expected == "tobj" && matches!(found, "obj" | "tagged"))
+}
+
+fn include_value_runtime(source: String) -> String {
+    if source.contains("__LeanValue") {
+        format!("{RUNTIME_SOURCE}\n{source}")
+    } else {
+        source
+    }
+}
+
 struct Reader;
 impl Reader {
     unsafe fn scalar(x: Obj) -> Result<usize, String> {
@@ -158,10 +235,14 @@ impl Reader {
                 let found = env
                     .get(&id)
                     .ok_or_else(|| format!("unknown input variable x_{id}"))?;
-                if *found != expected {
+                if !ir_type_compatible(found, expected) {
                     return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }
-                Ok(format!("x_{id}"))
+                Ok(if is_value_type(found) {
+                    format!("x_{id}.clone()")
+                } else {
+                    format!("x_{id}")
+                })
             }
             1 => Err("erased value used as runtime operand".into()),
             t => Err(format!("unknown Arg constructor {t}")),
@@ -171,7 +252,9 @@ impl Reader {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
         match Self::checked_tag(x, "IRType")? {
             0 => Ok("f64"),
-            12 => Ok("usize"), // nullary tagged enum storage, not a heap value
+            7 => Ok("obj"),
+            8 => Ok("tobj"),
+            12 => Ok("tagged"), // source-checked immutable value, scalar-only enums use UInt8
             1 => Ok("u8"),
             2 => Ok("u16"),
             3 => Ok("u32"),
@@ -186,6 +269,9 @@ impl Reader {
         match Self::checked_tag(x, "LitVal")? {
             0 => {
                 let n = Self::nat(Self::field(x, 0)?)?;
+                if ty == "tagged" {
+                    return Ok(format!("__LeanValue::tagged({n})"));
+                }
                 let max = match ty {
                     "u8" => u8::MAX as usize,
                     "u16" => u16::MAX as usize,

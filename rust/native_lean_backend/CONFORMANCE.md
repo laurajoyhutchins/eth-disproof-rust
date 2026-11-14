@@ -26,13 +26,13 @@ reading the constructors and positions of all these inductive definitions:
 | Lean IR family | Constructors | Bounded supported |
 | --- | ---: | ---: |
 | Decl | 2 | 1 |
-| IRType | 14 | 5 |
-| Arg | 2 | 1 |
+| IRType | 14 | 8 |
+| Arg | 2 | 2 |
 | LitVal | 2 | 1 |
-| Expr | 13 | 2 |
+| Expr | 13 | 3 |
 | Alt | 2 | 1 |
 | FnBody | 13 | 5 |
-| **Total** | **48** | **16** |
+| **Total** | **48** | **21** |
 
 Bounded-supported `FnBody.jdecl`/`FnBody.jmp` are **only** the tested nonrecursive scalar lexical joins; neither unrestricted recursive joins nor indirect applications are accepted. The source-derived list is emitted to artifacts/ir-constructors.tsv.
 scripts/coverage-ledger.rs requires an exact name, tag and supported/refused
@@ -50,7 +50,7 @@ artifacts/ir-coverage.tsv is a machine-readable release ledger.
 
 The supported entries are *bounded*: e.g. Alt.ctor and FnBody.case mean only
 a two-constructor Bool match; LitVal.num accepts only small tagged Nat
-literals; IRType.usize has Linux x86-64 semantics. The 32 refused variants
+literals; IRType.usize has Linux x86-64 semantics. The 27 refused variants
 have no positive semantic-equivalence claim. The whitelist test checks tags,
 not a theorem about runtime ABI layout or Lean reference counting.
 
@@ -76,15 +76,12 @@ assertions. The execution ledger is artifacts/primitive-conformance.tsv.
 
 The existing regression fixtures provide 3,008 additional original-Lean
 comparisons over supported scalar, Bool, imported-direct-call and recursive
-programs. Total native comparisons in the integrated conformance gate: **4,928** (3,008 earlier scalar, join and package fixtures plus 1,920 primitive matrix assertions). The additional 1,024-case randomized Lean/Rust property suite is reported separately.
+programs. Total native comparisons in the integrated conformance gate: **5,029** (3,008 earlier scalar, join and package fixtures, 1,920 primitive matrix assertions and 101 original-source object-value comparisons). The additional 1,024-case randomized Lean/Rust property suite is reported separately.
 
 ## Explicit limitations
 
 These tests establish equivalence only for the exercised programs and
-supported compiler IR. They do **not** establish equivalent arbitrary-
-precision Nat/Int, Unicode Strings, Arrays, effects/IO, heap sharing,
-indirect application, recursive join points, or the source-defined
-noncomputable ETH program. Many of those are deliberately refused.
+supported compiler IR. The ten exact registered object runtime adapters establish finite oracle evidence for some arbitrary-precision Nat/Int, Unicode String, Array UInt64 and List UInt64 operations only. They do **not** establish general Nat/Int or Unicode APIs, generic arrays, effects/IO, heap sharing, indirect application, recursive join points, or the source-defined noncomputable ETH program. Many of those are deliberately refused.
 
 The IR constructor inventory covers the seven pinned *inductive* families;
 it does not yet inventory every field of supporting structures such as
@@ -96,3 +93,7 @@ semantically correct. The automated guards ensure complete enumeration,
 prevent unsupported tag acceptance, and require executable evidence for each
 registered primitive. They do not turn finite differential tests into a
 semantic-preservation theorem.
+
+## Integrated value semantics and host boundary
+
+[SEMANTICS.md](SEMANTICS.md) documents the ten runtime adapters and the 101 original Lean oracle comparisons, including >512-bit numbers, Unicode strings with NUL and a source-derived big-Nat closure. Rust source imports no Lean runtime at execution time. Both the 256 real join-point assertions and 768 multi-root Cargo assertions are **retained**; the constructor whitelist is the **union** of both reviewed feature sets (21 bounded supported and 27 refused).

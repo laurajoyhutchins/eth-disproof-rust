@@ -76,10 +76,10 @@ scripts/check-coverage.sh rejects a missing fixture or generated function,
 compiles all emitted Rust functions into one test binary, and runs all 1,920
 assertions. The execution ledger is artifacts/primitive-conformance.tsv.
 
-The integrated regression fixtures now provide **16,445** independently
+The integrated regression fixtures now provide **16,521** independently
 original-Lean-evaluated Rust comparisons: 3,008 scalar/Bool/joins/multi-root,
-3,072 immutable Option/Prod, 2,048 source-defined boxed closure/PAP/AP, 5,208 GMP-backed arbitrary-width Nat tests, 3,008 extended Float/enum/unsigned cases, and 101 additional original-Lean Int/Unicode/collection/closure operations. Together with the separate 1,920
-fixed-width primitive matrix assertions, this is **18,365** compared results.
+3,072 immutable Option/Prod, 2,048 source-defined boxed closure/PAP/AP, 5,208 GMP-backed arbitrary-width Nat tests, 3,008 extended Float/enum/unsigned cases, 101 additional original-Lean Int/Unicode/collection/closure operations, and 76 separately Lean-evaluated large closed Nat literal comparisons. Together with the separate 1,920
+fixed-width primitive matrix assertions, this is **18,441** compared results.
 The additional 1,024-case randomized Lean/Rust property suite is reported
 separately. These counts describe different tested subsets, not universal
 compiler equivalence.
@@ -116,3 +116,7 @@ The runtime backing these tests is the canonical post-#218 `src/runtime/immutabl
 The canonical `src/runtime/immutable_value.rs` is extended with seven source-identified adapters: `Int.add`, `String.append`, `String.utf8ByteSize`, `String.length`, `Array.push`, `Array.size`, and `List.reverse._redArg`. An additional **101** original Lean differential cases cover signed GMP integers, UTF-8 including embedded NUL, immutable arrays/lists, and exact Nat closure calls. The Nat operations reuse the existing GMP implementation rather than a second arithmetic kernel.
 
 `Lean.IR.Arg.erased` is conditionally admitted **only for the source-verified type-proof operand of listed Array externs**. All other erased runtime arguments still refuse. This raises the source-checked bounded constructor whitelist from 30 to **31 of 48**. This acceptance does not imply general Lean heap/exception/IO support or successful independent upstream project compilation. Source-to-Rust CI must pass the combined head before this scope is considered verified.
+
+## Closed arbitrary-precision Nat literals (candidate)
+
+The pinned Lean C API converts source `Lean.IR.LitVal.num` objects to decimal without machine-word truncation; emitted Rust constructs the same canonical GMP-backed `__LeanValue::nat_from_decimal`. Constants with more than 4 KiB of Lean integer storage refuse. `LargeNat.lean` supplies **76** original-Lean oracle comparisons, including large literals and up to 4096-bit external inputs; unknown `Nat.pow` remains a structured refusal. No competing generated GMP runtime is introduced. This feature requires a clean exact-head and post-merge acceptance run.

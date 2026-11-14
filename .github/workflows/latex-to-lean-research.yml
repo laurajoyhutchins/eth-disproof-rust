@@ -22,6 +22,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Validate fail-closed research benchmark scorer (no model or Lean)
+        run: node --test benchmark/latex-to-lean/research/summarize.test.mjs
       - name: Checkout pinned Leanify source
         shell: bash
         run: |

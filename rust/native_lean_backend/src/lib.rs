@@ -97,7 +97,6 @@ mod __lean_array_ownership_tests {
 }
 "#;
 
-
 fn is_value_type(ty: &str) -> bool {
     matches!(ty, "obj" | "tobj" | "tagged")
 }
@@ -371,8 +370,7 @@ impl Reader {
             0 => Self::args_ref(Self::field(x, 1)?, id)?,
             3 | 9 => Self::var(Self::field(x, 1)?)? == id,
             6 | 7 => Self::args_ref(Self::field(x, 1)?, id)?,
-            8 => Self::var(Self::field(x, 0)?)? == id
-                || Self::args_ref(Self::field(x, 1)?, id)?,
+            8 => Self::var(Self::field(x, 0)?)? == id || Self::args_ref(Self::field(x, 1)?, id)?,
             10 => Self::var(Self::field(x, 0)?)? == id,
             11 => false,
             _ => true,
@@ -481,11 +479,17 @@ impl Reader {
                 // The source CtorInfo is authoritative: only zero-field
                 // tagged variants and heap objects with pointer-only fields
                 // are representable. Never pack a scalar field implicitly.
-                if !name.contains('.') || name.is_empty() || tag >= 256
-                    || size > 1024 || size != fields.len()
-                    || usize_count != 0 || ssize != 0
+                if !name.contains('.')
+                    || name.is_empty()
+                    || tag >= 256
+                    || size > 1024
+                    || size != fields.len()
+                    || usize_count != 0
+                    || ssize != 0
                 {
-                    return Err(format!("constructor {name} has unsupported scalar, tag or field layout"));
+                    return Err(format!(
+                        "constructor {name} has unsupported scalar, tag or field layout"
+                    ));
                 }
                 if size == 0 {
                     if var_ty != "tagged" {
@@ -687,9 +691,13 @@ impl Reader {
                             let index = Self::arg(args[2], env, "tagged")?;
                             let value = Self::arg(args[3], env, "tobj")?;
                             if let Some(id) = consumed_array {
-                                Ok(format!("x_{id}.array_set_tagged_owned({index}.tagged_nat(), {value})"))
+                                Ok(format!(
+                                    "x_{id}.array_set_tagged_owned({index}.tagged_nat(), {value})"
+                                ))
                             } else {
-                                Ok(format!("{array}.array_set_tagged({index}.tagged_nat(), {value})"))
+                                Ok(format!(
+                                    "{array}.array_set_tagged({index}.tagged_nat(), {value})"
+                                ))
                             }
                         }
                         _ => unreachable!(),
@@ -877,7 +885,9 @@ impl Reader {
                         "Sum"
                     } else {
                         if matches!(type_name.as_str(), "Option" | "List" | "Sum") {
-                            return Err(format!("constructor {name} disagrees with source case family {type_name}"));
+                            return Err(format!(
+                                "constructor {name} disagrees with source case family {type_name}"
+                            ));
                         }
                         return Self::generic_object_case(x, code, depth, count, env, ret_ty, ctx);
                     });
@@ -1152,7 +1162,8 @@ impl Reader {
                     }
                     let info = Self::field(*alt, 0)?;
                     let name = Self::name(Self::field(info, 0)?, 0)?;
-                    let (parent, _) = name.rsplit_once('.')
+                    let (parent, _) = name
+                        .rsplit_once('.')
                         .ok_or_else(|| format!("constructor {name} has no family identity"))?;
                     if family.as_deref().is_some_and(|f| f != parent) {
                         return Err(format!("mixed user inductive families: {name}"));
@@ -1162,11 +1173,15 @@ impl Reader {
                     let pointers = Self::nat(Self::field(info, 2)?)?;
                     let usize_fields = Self::nat(Self::field(info, 3)?)?;
                     let scalar_bytes = Self::nat(Self::field(info, 4)?)?;
-                    if tag >= 256 || pointers > 1024
-                        || usize_fields != 0 || scalar_bytes != 0
+                    if tag >= 256
+                        || pointers > 1024
+                        || usize_fields != 0
+                        || scalar_bytes != 0
                         || !seen.insert(tag)
                     {
-                        return Err(format!("unsupported or duplicate constructor layout: {name}"));
+                        return Err(format!(
+                            "unsupported or duplicate constructor layout: {name}"
+                        ));
                     }
                     writeln!(code, "        {tag} => {{").unwrap();
                     if pointers == 0 {
@@ -1175,17 +1190,35 @@ impl Reader {
                         writeln!(code, "            assert!(x_{id}.has_ctor({tag}, \"{name}\", {pointers}), \"invalid object constructor representation\");").unwrap();
                     }
                     let mut local = env.clone();
-                    Self::body(Self::field(*alt, 1)?, code, depth + 1, count, &mut local, ret_ty, ctx)?;
+                    Self::body(
+                        Self::field(*alt, 1)?,
+                        code,
+                        depth + 1,
+                        count,
+                        &mut local,
+                        ret_ty,
+                        ctx,
+                    )?;
                     writeln!(code, "        }}").unwrap();
                 }
                 1 => {
                     if default || position + 1 != alts.len() || family.is_none() {
-                        return Err("user inductive default must be unique, last, and source-bound".into());
+                        return Err(
+                            "user inductive default must be unique, last, and source-bound".into(),
+                        );
                     }
                     default = true;
                     writeln!(code, "        _ => {{").unwrap();
                     let mut local = env.clone();
-                    Self::body(Self::field(*alt, 0)?, code, depth + 1, count, &mut local, ret_ty, ctx)?;
+                    Self::body(
+                        Self::field(*alt, 0)?,
+                        code,
+                        depth + 1,
+                        count,
+                        &mut local,
+                        ret_ty,
+                        ctx,
+                    )?;
                     writeln!(code, "        }}").unwrap();
                 }
                 t => return Err(format!("unknown user inductive alternative {t}")),
@@ -1195,7 +1228,11 @@ impl Reader {
             return Err("user inductive lacks explicit constructor identity".into());
         }
         if !default {
-            writeln!(code, "        _ => unreachable!(\"invalid Lean constructor tag\"),").unwrap();
+            writeln!(
+                code,
+                "        _ => unreachable!(\"invalid Lean constructor tag\"),"
+            )
+            .unwrap();
         }
         writeln!(code, "    }}").unwrap();
         Ok(())

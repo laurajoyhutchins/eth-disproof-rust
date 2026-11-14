@@ -135,6 +135,53 @@ Preserve original ProgramLinking constructors as a typed graph instead of
 reducing their entire `Fin labels → Instr` code to a table. Unknown cases
 still use the existing bounded finite-leaf exporter.
 -/
+/-!
+The original `StructuredCalls.compiled` has type
+`Program r s (StructuredCalls.size command + 1)`. Reducing that enormous
+type-level Nat into one literal before traversing the command overflows the
+metaprogramming recursion limit, even though the original module imports.
+
+Mirror the original `size` equations on the *source-elaborated* typed graph,
+without materializing a flat instruction table. Keep independent physical
+equivalence and kernel-certification obligations open: computing this size is
+a source-derived structural measurement, not a standalone certificate.
+-/
+mutual
+private partial def graphCommandSize (j : Json) (fuel : Nat) : Except String Nat := do
+  if fuel == 0 then throw "source command size graph depth exceeded"
+  let kind ← j.getObjValAs? String "kind"
+  if kind == "skip" then return 0
+  if kind == "atom" then return 1
+  if kind == "call" then
+    graphProgramLabels (← j.getObjVal? "program") (fuel - 1)
+  else if kind == "seq" then
+    return (← graphCommandSize (← j.getObjVal? "first") (fuel - 1)) +
+      (← graphCommandSize (← j.getObjVal? "second") (fuel - 1))
+  else if kind == "if" then
+    return (← graphCommandSize (← j.getObjVal? "yes") (fuel - 1)) +
+      (← graphCommandSize (← j.getObjVal? "no") (fuel - 1)) + 1
+  else if kind == "while" then
+    return (← graphCommandSize (← j.getObjVal? "body") (fuel - 1)) + 1
+  else if kind == "repeat" then
+    return (← j.getObjValAs? Nat "count") *
+      (← graphCommandSize (← j.getObjVal? "body") (fuel - 1))
+  else throw s!"unsupported source command for physical size: {kind}"
+
+private partial def graphProgramLabels (j : Json) (fuel : Nat) : Except String Nat := do
+  if fuel == 0 then throw "source callee size graph depth exceeded"
+  match j.getObjValAs? String "kind" with
+  | .error _ => j.getObjValAs? Nat "labels"
+  | .ok kind =>
+    if kind == "composed" then
+      return (← graphCommandSize (← j.getObjVal? "command") (fuel - 1)) + 1
+    else if kind == "lift" then
+      graphProgramLabels (← j.getObjVal? "source") (fuel - 1)
+    else if kind == "link" || kind == "link_into" then
+      return (← graphProgramLabels (← j.getObjVal? "left") (fuel - 1)) +
+        (← graphProgramLabels (← j.getObjVal? "right") (fuel - 1))
+    else throw s!"unsupported source program for physical size: {kind}"
+end
+
 mutual
 private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json := do
   if fuel == 0 then throwError "source program linking exceeds recursion bound"
@@ -144,10 +191,11 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
     throwError m!"source callee is not a closed BitProgram.Program: {tp}"
   let r ← number args[0]!
   let s ← number args[1]!
-  let labels ← number args[2]!
-  if r == 0 || s == 0 || labels == 0 || r > 256 ||
-      s > 4096 || labels > maxLabels then
-    throwError m!"source linked program dimensions unsupported: {r} {s} {labels}"
+  -- Do not normalize the type-level label Nat until a genuinely finite
+  -- leaf table is selected. Large compiled/linked programs derive labels
+  -- from the exact source constructors after structural decoding.
+  if r == 0 || s == 0 || r > 256 || s > 4096 then
+    throwError m!"source linked program dimensions unsupported: {r} {s}"
   match p.getAppFn with
   | .const n _ =>
     let a := p.getAppArgs
@@ -187,18 +235,31 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
         ("left", ← programGraph left maxLabels (fuel - 1)),
         ("right", ← programGraph right maxLabels (fuel - 1))
       ]
-    -- Large source-defined compiled callees are preserved as commands, never
-    -- expanded into a Fin-indexed physical table. Small callees retain the
-    -- separately verified table path for stable finite fixtures.
+    -- Decode the source command *before* deciding whether it is finite.
+    -- A naive whnf of its type-level "size command + 1" diverges for the
+    -- original QueryStream's large linked subroutines. This branch only
+    -- materializes an instruction table when its structural size is small.
     if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled &&
-        a.size == 5 && labels > 4096 then
-      return Json.mkObj [
-        ("kind", toJson "composed"),
-        ("r", toJson r), ("s", toJson s),
-        ("input", toJson (← fin a[3]!)),
-        ("output", toJson (← fin a[4]!)),
-        ("command", ← structured a[2]! maxLabels 512)
-      ]
+        a.size == 5 then
+      let command ← structured a[2]! maxLabels 512
+      let sites ← match graphCommandSize command 512 with
+        | .ok n => pure n
+        | .error error => throwError m!"nested source-structured-size refused: {error}"
+      let labels := sites + 1
+      if labels > maxLabels then
+        throwError m!"nested source compiled label budget exceeded: {labels}"
+      if labels > 4096 then
+        return Json.mkObj [
+          ("kind", toJson "composed"),
+          ("r", toJson r), ("s", toJson s),
+          ("input", toJson (← fin a[3]!)),
+          ("output", toJson (← fin a[4]!)),
+          ("command", command)
+        ]
+      -- Maintain the independently checked concrete-table representation
+      -- for small leaf callees, including their true physical instruction
+      -- addresses and source-defined halt.
+      return (← boundedTable p (min maxLabels 4096))
     if n == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link &&
         a.size >= 2 then
       return Json.mkObj [
@@ -218,8 +279,7 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
           if head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram ||
              head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.linkInto ||
              head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link ||
-             (head == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled &&
-              labels > 4096) ||
+             head == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled ||
              (v.value.getAppArgs.isEmpty && head != n) then
             return (← programGraph v.value maxLabels (fuel - 1))
         | _ => pure ()
@@ -331,52 +391,6 @@ where
 
 end
 
-/-!
-The original `StructuredCalls.compiled` has type
-`Program r s (StructuredCalls.size command + 1)`. Reducing that enormous
-type-level Nat into one literal before traversing the command overflows the
-metaprogramming recursion limit, even though the original module imports.
-
-Mirror the original `size` equations on the *source-elaborated* typed graph,
-without materializing a flat instruction table. Keep independent physical
-equivalence and kernel-certification obligations open: computing this size is
-a source-derived structural measurement, not a standalone certificate.
--/
-mutual
-private partial def graphCommandSize (j : Json) (fuel : Nat) : Except String Nat := do
-  if fuel == 0 then throw "source command size graph depth exceeded"
-  let kind ← j.getObjValAs? String "kind"
-  if kind == "skip" then return 0
-  if kind == "atom" then return 1
-  if kind == "call" then
-    graphProgramLabels (← j.getObjVal? "program") (fuel - 1)
-  else if kind == "seq" then
-    return (← graphCommandSize (← j.getObjVal? "first") (fuel - 1)) +
-      (← graphCommandSize (← j.getObjVal? "second") (fuel - 1))
-  else if kind == "if" then
-    return (← graphCommandSize (← j.getObjVal? "yes") (fuel - 1)) +
-      (← graphCommandSize (← j.getObjVal? "no") (fuel - 1)) + 1
-  else if kind == "while" then
-    return (← graphCommandSize (← j.getObjVal? "body") (fuel - 1)) + 1
-  else if kind == "repeat" then
-    return (← j.getObjValAs? Nat "count") *
-      (← graphCommandSize (← j.getObjVal? "body") (fuel - 1))
-  else throw s!"unsupported source command for physical size: {kind}"
-
-private partial def graphProgramLabels (j : Json) (fuel : Nat) : Except String Nat := do
-  if fuel == 0 then throw "source callee size graph depth exceeded"
-  match j.getObjValAs? String "kind" with
-  | .error _ => j.getObjValAs? Nat "labels"
-  | .ok kind =>
-    if kind == "composed" then
-      return (← graphCommandSize (← j.getObjVal? "command") (fuel - 1)) + 1
-    else if kind == "lift" then
-      graphProgramLabels (← j.getObjVal? "source") (fuel - 1)
-    else if kind == "link" || kind == "link_into" then
-      return (← graphProgramLabels (← j.getObjVal? "left") (fuel - 1)) +
-        (← graphProgramLabels (← j.getObjVal? "right") (fuel - 1))
-    else throw s!"unsupported source program for physical size: {kind}"
-end
 
 syntax (name := exportOriginalSourceGraph)
   "#export_original_source_graph " ident str str : command
@@ -413,13 +427,13 @@ elab_rules : command
     -- Split pure term elaboration from CommandElabM diagnostic IO.
     -- A type-level label normalization failure must have its own phase,
     -- rather than being mistaken for the complete command traversal.
-    let (r, s, labelExpr) ← liftTermElabM do
+    let (r, s) ← liftTermElabM do
       let tp ← inferType (mkConst programName)
       let a := tp.getAppArgs
       if a.size != 3 then throwError m!"expected a closed BitProgram.Program: {tp}"
       let r ← number a[0]!
       let s ← number a[1]!
-      return (r, s, a[2]!)
+      return (r, s)
     -- The exact source root decides which length calculation is legitimate.
     -- For StructuredCalls.compiled, infer the physical label count from its
     -- original command constructors. Normalizing its type-level size would
@@ -447,8 +461,10 @@ elab_rules : command
         pure ("original-structured-source-v1", "command", command,
           input, output, labels)
       else
-        let l ← number labelExpr
         let program ← programGraph (mkConst programName) maxLabels 64
+        let l ← match graphProgramLabels program 512 with
+          | .ok n => pure n
+          | .error error => throwError m!"source-linked-size refused: {error}"
         let input ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 0
           (mkConst programName))
         let output ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 1

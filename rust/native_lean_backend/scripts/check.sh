@@ -57,6 +57,27 @@ if [[ "$(cat examples/rejected.rs)" != "preserve-existing-artifact" ]]; then
   echo "failed compilation modified preexisting Rust output" >&2; exit 1
 fi
 rm -f examples/rejected.rs examples/rejected.log
+# Real Lean-to-Rust FFI validation: a NUL cannot shorten a symbol name,
+# and a closure public identifier must refuse before touching old output.
+printf 'existing-name-artifact\n' > examples/unsafe-public-name.rs
+for fixture in RefusalNameNul RefusalPublicName; do
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" \
+      > "artifacts_name_${fixture}.log" 2>&1; then
+    echo "$fixture unexpectedly accepted an unsafe public Rust name" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'unsafe Rust function name' "artifacts_name_${fixture}.log"; then
+    cat "artifacts_name_${fixture}.log" >&2
+    echo "$fixture did not refuse at the correct FFI name boundary" >&2
+    exit 1
+  fi
+  rm -f "artifacts_name_${fixture}.log"
+done
+if [[ "$(cat examples/unsafe-public-name.rs)" != "existing-name-artifact" ]]; then
+  echo "rejected public closure name modified a prior output" >&2
+  exit 1
+fi
+rm -f examples/unsafe-public-name.rs
 # Even an elaborated executable declaration must refuse if its source
 # depends on sorryAx. Do not publish code for untrusted proof holes.
 printf 'preserve-sorry-output\n' > examples/rejected_sorry.rs
@@ -195,6 +216,29 @@ if [[ "$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)" != "$pac
   echo "refused overwrite modified the published Cargo package" >&2; exit 1
 fi
 rm -f examples/RefusalPackageOverwrite.log
+# The emitted source is a standalone Cargo target: build and execute it
+# with every Lean runtime location explicitly removed from the environment.
+mkdir -p artifacts
+rm -rf -- artifacts/standalone_pipeline
+bash scripts/package_crate.sh examples/generated_closure.rs native_pipeline artifacts/standalone_pipeline
+if bash scripts/package_crate.sh examples/generated_closure.rs native_pipeline artifacts/standalone_pipeline >/dev/null 2>&1; then
+  echo "packager overwrote a pre-existing standalone Cargo target" >&2; exit 1
+fi
+mkdir -p artifacts/standalone_pipeline/tests
+cat > artifacts/standalone_pipeline/tests/behavior.rs <<'RUST'
+use native_pipeline::pipeline;
+#[test]
+fn original_lean_graph_behaves_without_lean_runtime() {
+    assert_eq!(pipeline(5), 25);
+    assert_eq!(pipeline(0), 5);
+    assert_eq!(pipeline(u64::MAX), 1);
+}
+RUST
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path artifacts/standalone_pipeline/Cargo.toml
+cargo test --offline
+cargo fmt -- --check
+cargo clippy --offline --all-targets -- -D warnings
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -202,6 +246,10 @@ cargo clippy --offline --all-targets -- -D warnings
 # matrix, then execute all 30 registered primitives against 64 Lean oracles.
 # This richer ledger is separate from VerifyIRInventory's initial drift gate.
 bash scripts/check-coverage.sh
+# Diagnostic: inspect actual pinned Lean executable IR of unsupported semantic types.
+lean -o examples/Item30IRProbe.olean examples/Item30IRProbe.lean
+cat artifacts/item30-ir-probes.txt
+bash scripts/check-item30.sh
 # Receipt exists only after *all* end-to-end and negative checks pass.
 mkdir -p artifacts
 {
@@ -211,9 +259,13 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=3008"
+  echo "differential_assertions=5029"
+  echo "base_scalar_join_multiroot_assertions=3008"
+  echo "primitive_matrix_assertions=1920"
+  echo "item30_supported_value_cases=101"
+  echo "verified_object_runtime_adapters=10"
   echo "ir_constructor_inventory=PASS"
-  echo "runtime_tag_whitelist=16_scoped_IR_constructors"
+  echo "runtime_tag_whitelist=21_scoped_IR_constructors"
   echo "primitive_conformance=30_operations_x_64_original_Lean_oracles"
   sha256sum ir-coverage-classification.tsv primitive-registry.tsv scripts/coverage-ledger.rs \
     scripts/check-coverage.sh examples/IRInventory.lean examples/PrimitiveMatrix.lean \
@@ -221,7 +273,7 @@ mkdir -p artifacts
     artifacts/primitive-conformance.tsv
   echo "structured_refusal_recovery=PASS"
   echo "atomic_publisher=PASS"
-  sha256sum src/safety.rs
+  sha256sum src/safety.rs src/standalone_runtime.rs runtime-primitive-registry.tsv scripts/check-item30.sh examples/Item30Conformance.lean examples/Item30Errors.lean examples/RefusalNameNul.lean examples/RefusalPublicName.lean artifacts/item30-oracles.rs artifacts/item30-ir-probes.txt artifacts/item30-rejection.log
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt

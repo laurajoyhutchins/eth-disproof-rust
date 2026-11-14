@@ -187,14 +187,76 @@ LEAN
     "$name" "$upstream" "$oracle" "$codegen" "$rustbuild" "$reason" >> "$manifest"
 done
 
+# A separate *positive* test on two unchanged original Keboola functions.
+# Unlike the complex PullIn root (which still must refuse), these functions
+# use ordinary Bool control flow. Compute all 12 expected results in original
+# Lean, then compile and execute the exact emitted external-source Rust.
+positive="$out/keboola/positive-package"
+rm -rf -- "$positive"
+cat > "$out/keboola/positive.lean" <<'LEAN'
+import NativeRust
+import SyncModel.Pull
+
+#native_rust_package [SyncModel.sweepRemovesDir, SyncModel.dirAfterPull] to "artifacts/external-projects/keboola/positive-package"
+
+open Lean Elab Command
+run_cmd do
+  let mut test := "use lean_generated::{sweepRemovesDir, dirAfterPull};\n#[test] fn original_lean_truth_table() {\n"
+  for a in #[false, true] do
+    for b in #[false, true] do
+      let x : Nat := if a then 1 else 0
+      let y : Nat := if b then 1 else 0
+      let expected : Nat := if SyncModel.sweepRemovesDir a b then 1 else 0
+      test := test ++ s!"assert_eq!(sweepRemovesDir({x}u8, {y}u8), {expected}u8);\n"
+      for c in #[false, true] do
+        let z : Nat := if c then 1 else 0
+        let result : Nat := if SyncModel.dirAfterPull a b c then 1 else 0
+        test := test ++ s!"assert_eq!(dirAfterPull({x}u8, {y}u8, {z}u8), {result}u8);\n"
+  test := test ++ "}\n"
+  liftIO <| IO.FS.createDirAll "artifacts/external-projects/keboola/positive-package/tests"
+  liftIO <| IO.FS.writeFile
+    "artifacts/external-projects/keboola/positive-package/tests/lean-oracle.rs" test
+  logInfo "Generated 12 independent original-Lean cases for unchanged Keboola source roots"
+LEAN
+export LEAN_PATH="$native:$scratch/keboola/formal/sync/lean/.lake/build/lib/lean:$LEAN_PREFIX/lib/lean"
+if ! (cd "$native" && timeout 60s /usr/bin/time -f 'wall_seconds=%e peak_rss_kb=%M' \
+    -o "$out/keboola/positive-codegen.time" \
+    lean --load-dynlib="$plugin" "$out/keboola/positive.lean") \
+    > "$out/keboola/positive-codegen.log" 2>&1; then
+  echo "FATAL: unmodified Keboola Bool helpers did not generate standalone Rust" >&2
+  cat "$out/keboola/positive-codegen.log" >&2
+  exit 1
+fi
+if ! env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+    cargo test --offline --manifest-path "$positive/Cargo.toml" \
+    > "$out/keboola/positive-cargo.log" 2>&1; then
+  cat "$out/keboola/positive-cargo.log" >&2
+  echo "FATAL: original external-source generated Rust disagreed with Lean oracle" >&2
+  exit 1
+fi
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --release --offline --manifest-path "$positive/Cargo.toml" \
+  >> "$out/keboola/positive-cargo.log" 2>&1
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo clippy --offline --manifest-path "$positive/Cargo.toml" --all-targets -- -D warnings \
+  >> "$out/keboola/positive-cargo.log" 2>&1
+{
+  echo "original_external_roots=SyncModel.sweepRemovesDir,SyncModel.dirAfterPull"
+  echo "unmodified_original_lean_oracles=12"
+  echo "independently_generated_rust_cargo_debug_release_clippy=PASS"
+  sha256sum "$out/keboola/positive.lean" \
+    "$positive/src/lib.rs" "$positive/tests/lean-oracle.rs" "$positive/Cargo.toml"
+} > "$out/keboola/positive-receipt.txt"
+
 {
   echo "status=COMPLETE_OBSERVATIONS_NOT_G1_ACCEPTANCE"
   echo "source_revision=$(git rev-parse --verify HEAD 2>/dev/null || echo unavailable)"
   echo "tested_external_repositories=3"
   echo "all_upstream_sources_unmodified=true"
+  echo "keboola_unmodified_small_roots_original_lean_rust_parity=12_cases_PASS"
   echo "semantic_verification_of_emitted_rust=NOT_ESTABLISHED_UNLESS_SEPARATELY_TESTED"
   echo "toolchain=$(lean --version)"
-  sha256sum "$manifest" "$out"/*/identity.txt
+  sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt"
 } > "$out/receipt.txt"
 cat "$manifest"
 cat "$out/receipt.txt"

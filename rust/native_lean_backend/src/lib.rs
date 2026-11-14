@@ -476,6 +476,27 @@ impl Reader {
                 let size = Self::nat(Self::field(info, 2)?)?;
                 let usize_count = Self::nat(Self::field(info, 3)?)?;
                 let ssize = Self::nat(Self::field(info, 4)?)?;
+                if name == "SyncModel.PullIn.mk" {
+                    if var_ty != "obj"
+                        || tag != 0
+                        || size != 4
+                        || usize_count != 0
+                        || ssize != 8
+                        || fields.len() != 4
+                    {
+                        return Err(
+                            "PullIn.mk requires exact source 4-pointer/8-byte layout".into()
+                        );
+                    }
+                    let mut args = Vec::new();
+                    for arg in fields {
+                        args.push(Self::arg(arg, env, "tobj")?);
+                    }
+                    return Ok(format!(
+                        "__LeanValue::pull_in_ctor(vec![{}])",
+                        args.join(", ")
+                    ));
+                }
                 // The source CtorInfo is authoritative: only zero-field
                 // tagged variants and heap objects with pointer-only fields
                 // are representable. Never pack a scalar field implicitly.
@@ -526,6 +547,23 @@ impl Reader {
                 Ok(format!("x_{id}.field({index})"))
             }
 
+            5 => {
+                // Lean sproj(n,offset,x): only pinned original PullIn.mk's
+                // four object pointers and eight source Bool bytes.
+                if var_ty != "u8" {
+                    return Err("PullIn sproj requires UInt8 result".into());
+                }
+                let pointers = Self::nat(Self::field(x, 0)?)?;
+                let offset = Self::nat(Self::field(x, 1)?)?;
+                let id = Self::var(Self::field(x, 2)?)?;
+                if pointers != 4 || offset >= 8 || !env.get(&id).is_some_and(|ty| is_value_type(ty))
+                {
+                    return Err(format!(
+                        "unverified sproj layout n={pointers}, offset={offset}, operand=x_{id}"
+                    ));
+                }
+                Ok(format!("x_{id}.pull_in_sproj_u8({pointers}, {offset})"))
+            }
             7 => {
                 // PAP(callee, captured operands). For this first subset, each
                 // source callee must be compiled and its ABI must consist
@@ -1441,6 +1479,31 @@ impl Reader {
                     )?;
                     return Ok(());
                 }
+                5 => {
+                    // Source sset is legal only for a unique constructor.
+                    // The emitted runtime consumes the Rc and rejects aliases.
+                    let id = Self::var(Self::field(x, 0)?)?;
+                    let pointers = Self::nat(Self::field(x, 1)?)?;
+                    let offset = Self::nat(Self::field(x, 2)?)?;
+                    let value = Self::var(Self::field(x, 3)?)?;
+                    let ty = Self::ty(Self::field(x, 4)?)?;
+                    if pointers != 4
+                        || offset >= 8
+                        || ty != "u8"
+                        || !env.get(&id).is_some_and(|t| is_value_type(t))
+                        || env.get(&value) != Some(&"u8")
+                    {
+                        return Err(format!(
+                            "unverified sset layout n={pointers}, offset={offset}, type={ty}"
+                        ));
+                    }
+                    writeln!(
+                        code,
+                        "    let x_{id} = x_{id}.pull_in_set_u8({pointers}, {offset}, x_{value});"
+                    )
+                    .unwrap();
+                    x = Self::field(x, 5)?;
+                }
                 6..=8 => {
                     // Immutable Rc-backed emitted values own their references;
                     // Lean's inc/dec/del bookkeeping is non-observable in this
@@ -1658,6 +1721,7 @@ impl Reader {
                         }
                     }
                 }
+                5 => pending.push(Self::field(body, 5)?),
                 6 | 7 => pending.push(Self::field(body, 2)?),
                 8 => pending.push(Self::field(body, 1)?),
                 10 | 11 => (),
@@ -2160,6 +2224,8 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 8)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 0)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 3)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 5)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 5)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("Expr", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 6)));
@@ -2170,7 +2236,7 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("Alt", 1)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 31);
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 33);
     }
 
     #[test]

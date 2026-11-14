@@ -168,21 +168,23 @@ LEAN
         rm -f "$target"
         # Preserve real source-specific compiler IR for future backend work.
         # This does not turn a refusal into successful Rust extraction.
-        cat > "$case_dir/inspect-ir.lean" <<LEAN
-import NativeRust
-import $module
-open Lean Elab Command
-run_cmd do
-  let root : Lean.Name := `$root
-  if (← Lean.IR.findDecl root).isNone then
-    liftCoreM <| Lean.Compiler.compile #[root]
-  let some decl ← liftCoreM <| Lean.IR.findDecl root
-    | throwError "Original executable Lean IR not available for {root}"
+        # Write all interpolated, source-pinned Lean names explicitly.
+        # Quoted here-doc avoids shell backtick substitutions from Lean `Name notation.
+        printf 'import NativeRust\nimport %s\nopen Lean Elab Command\nrun_cmd do\n  let root : Lean.Name := `%s\n' \
+          "$module" "$root" > "$case_dir/inspect-ir.lean"
+        cat >> "$case_dir/inspect-ir.lean" <<'LEAN'
+  let decl ← liftCoreM do
+    if (← Lean.IR.findDecl root).isNone then
+      Lean.Compiler.compile #[root]
+    let some decl ← Lean.IR.findDecl root
+      | throwError "Original executable Lean IR not available for {root}"
+    return decl
   let source := toString decl
   if source.utf8ByteSize > 262144 then
     throwError "Original IR snapshot exceeds 256 KiB diagnostic budget"
-  liftIO <| IO.FS.writeFile "$case_dir/original-ir.txt" source
 LEAN
+        printf '  liftIO <| IO.FS.writeFile "%s" source\n' \
+          "$case_dir/original-ir.txt" >> "$case_dir/inspect-ir.lean"
         if (cd "$native" && timeout 45s lean "$case_dir/inspect-ir.lean") \
              > "$case_dir/inspect-ir.log" 2>&1 &&
            [[ -s "$case_dir/original-ir.txt" ]]; then

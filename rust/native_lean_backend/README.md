@@ -184,3 +184,24 @@ divide-by-zero/remainder-by-zero semantics and modulo-width shifts. The
 standalone fixture `examples/BitwiseFixture.lean` checks 35 compiled roots
 over 2,240 independent original-Lean comparisons. The production compiler
 uses the same 68-operation coverage registry consulted by CI.
+
+### Executable output (zero-argument scalar roots)
+
+The command
+
+```lean
+#native_rust_binary MyModule.answer to "artifacts/my-binary"```
+
+produces a standalone Cargo binary (`Cargo.toml` and `src/main.rs`) with a
+generated Rust `main()` that prints the function's scalar return value.
+Only compiled Lean declarations with **zero runtime parameters** and a
+`UInt8/16/32/64`, `USize`, or `Float` scalar result are accepted. Functions
+requiring arguments, heap-backed outputs, unsupported dependencies, or
+pre-existing package destinations fail before publication. Execute using
+`cargo run --offline --manifest-path artifacts/my-binary/Cargo.toml` without
+Lean installed. This is a minimal scalar CLI, not a general IO adapter or
+serialization format.
+
+`examples/BinaryFixture.lean` compares two independently compiled Cargo
+executables against values evaluated by original Lean. Negative fixtures
+check argument refusal and preservation of an existing binary.

@@ -166,3 +166,16 @@ Vectors include zero divisors, zero/maximum operands, 1-, 8-, 16-, 32-,
 general `Nat`/`Int`, signed bitwise, arbitrary-precision computation
 or cross-platform `USize` verification. There is no formal compiler
 semantic-preservation theorem.
+
+## Standalone Cargo binary output
+
+`#native_rust_binary Root.answer to "new/dir"` requires a zero-argument
+compiled IR function returning a supported printable scalar. It produces a
+Cargo executable with its own main function, using the same production
+dependency-closure backend as the library API. Runtime does not load Lean.
+
+This is intentionally **not** a generic `IO` compilation path. Arbitrary
+parameters and return object/heap types refuse before writing anything.
+An existing destination refuses and is preserved. Exact-head acceptance
+executes two independently generated binaries and checks stdout against
+original-Lean-evaluated results with all Lean runtime variables removed.

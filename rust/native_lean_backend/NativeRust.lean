@@ -108,21 +108,45 @@ def compileMany (roots : Array Lean.Name) : Lean.CoreM String := do
   else
     throwError "Rust native backend returned invalid multi-root response"
 
+/-- A complete binary needs a zero-argument scalar result. An arbitrary
+    function is not a CLI entry point, so refuse rather than invent arguments. -/
+def compileExecutable (root : Lean.Name) : Lean.CoreM String := do
+  Lean.Compiler.compile #[root]
+  let some (.fdecl _ params result _ _) ← Lean.IR.findDecl root
+    | throwError "Rust native executable refused {root}: no executable function IR"
+  unless params.isEmpty do
+    throwError "Rust native executable refused {root}: entry requires zero arguments"
+  unless result == .uint8 || result == .uint16 || result == .uint32 ||
+         result == .uint64 || result == .usize || result == .float do
+    throwError "Rust native executable refused {root}: entry requires a printable scalar return"
+  let code ← compileClosure root "lean_result"
+  return code ++ "\nfn main() { println!(\"{}\", lean_result()); }\n"
+
 /-- Publish a complete, new Cargo package by renaming a staging directory.
     We never overwrite an existing destination or publish a partial crate. -/
-def publishPackage (destination : System.FilePath) (source : String) : IO Unit := do
+def publishTarget (destination : System.FilePath) (source : String)
+    (binary : Bool) : IO Unit := do
   if ← destination.pathExists then
     throw <| IO.userError s!"refusing to overwrite existing Cargo package: {destination}"
+  let kind := if binary then "bin" else "lib"
+  let filename := if binary then "main.rs" else "lib.rs"
+  let manifest := "[package]\nname = \"lean_generated\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[" ++
+    kind ++ "]\npath = \"src/" ++ filename ++ "\"\n\n[workspace]\n"
   let temp ← IO.FS.createTempDir
   try
     IO.FS.createDirAll (temp / "src")
-    IO.FS.writeFile (temp / "Cargo.toml")
-      "[package]\nname = \"lean_generated\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[workspace]\n"
-    IO.FS.writeFile (temp / "src" / "lib.rs") source
+    IO.FS.writeFile (temp / "Cargo.toml") manifest
+    IO.FS.writeFile (temp / "src" / filename) source
     IO.FS.rename temp destination
   catch err =>
     try IO.FS.removeDirAll temp catch _ => pure ()
     throw err
+
+def publishPackage (destination : System.FilePath) (source : String) : IO Unit :=
+  publishTarget destination source false
+
+def publishExecutable (destination : System.FilePath) (source : String) : IO Unit :=
+  publishTarget destination source true
 
 end NativeRust
 
@@ -161,4 +185,15 @@ def elabNativeRustPackageCmd : CommandElab := fun stx => do
     let code ← liftCoreM <| NativeRust.compileMany names
     liftIO <| NativeRust.publishPackage outDir.getString code
     logInfo m!"Native Rust backend emitted standalone Cargo library ({names.size} public roots)"
+  | _ => throwUnsupportedSyntax
+
+syntax (name := nativeRustBinaryCmd) "#native_rust_binary " ident " to " str : command
+
+@[command_elab nativeRustBinaryCmd]
+def elabNativeRustBinaryCmd : CommandElab := fun stx => do
+  match stx with
+  | `(#native_rust_binary $root:ident to $outDir:str) =>
+    let code ← liftCoreM <| NativeRust.compileExecutable root.getId
+    liftIO <| NativeRust.publishExecutable outDir.getString code
+    logInfo m!"Native Rust backend emitted standalone Cargo binary for {root.getId}"
   | _ => throwUnsupportedSyntax

@@ -252,6 +252,38 @@ if [[ "$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)" != "$pac
   echo "refused overwrite modified the published Cargo package" >&2; exit 1
 fi
 rm -f examples/RefusalPackageOverwrite.log
+# A zero-argument Lean scalar entrypoint can be packaged as a standalone
+# executable. No Lean shared library or environment is needed at execution.
+rm -rf examples/native-binary examples/native-binary-small
+lean --load-dynlib="$NATIVE_LIB" examples/BinaryFixture.lean
+mapfile -t binary_expected < artifacts/binary-expected.txt
+for entry in "native-binary:0" "native-binary-small:1"; do
+  package="${entry%%:*}"
+  position="${entry##*:}"
+  observed="$(env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+    cargo run --quiet --offline --manifest-path "examples/${package}/Cargo.toml")"
+  if [[ "$observed" != "${binary_expected[$position]}" ]]; then
+    echo "standalone binary ${package} disagrees with Lean: ${observed}" >&2; exit 1
+  fi
+done
+# A parameterized root is NOT silently turned into a guessed CLI.
+rm -rf examples/rejected-binary
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalBinaryArguments.lean > examples/RefusalBinaryArguments.log 2>&1; then
+  echo "accepted a parameterized binary without an argument contract" >&2; exit 1
+fi
+if [[ -e examples/rejected-binary ]] || ! grep -q "entry requires zero arguments" examples/RefusalBinaryArguments.log; then
+  echo "parameterized binary refusal failed closed" >&2; exit 1
+fi
+rm -f examples/RefusalBinaryArguments.log
+# An existing package can never be clobbered by another generated binary.
+binary_hash_before="$(sha256sum examples/native-binary/src/main.rs | cut -d' ' -f1)"
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalBinaryOverwrite.lean > examples/RefusalBinaryOverwrite.log 2>&1; then
+  echo "binary command overwrote a previous package" >&2; exit 1
+fi
+if [[ "$(sha256sum examples/native-binary/src/main.rs | cut -d' ' -f1)" != "$binary_hash_before" ]]; then
+  echo "refused binary overwrite changed a published source" >&2; exit 1
+fi
+rm -f examples/RefusalBinaryOverwrite.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -266,9 +298,10 @@ mkdir -p artifacts
   cargo --version
   echo "differential_assertions=6016"
   echo "unsigned_total_division_shift_width=PASS"
+  echo "standalone_cargo_binary_no_lean_runtime=PASS"
   echo "constructor_inventory=PASS"
   echo "primitive_registry=PASS"
   echo "external_io_boundary=REFUSED"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/FloatFixture.lean examples/TaggedFixture.lean examples/RefusalTaggedHeap.lean examples/BitwiseFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
+  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/FloatFixture.lean examples/TaggedFixture.lean examples/RefusalTaggedHeap.lean examples/BitwiseFixture.lean examples/BinaryFixture.lean examples/RefusalBinaryArguments.lean examples/RefusalBinaryOverwrite.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/native-binary/src/main.rs examples/native-binary/Cargo.toml examples/native-binary-small/src/main.rs examples/native-binary-small/Cargo.toml artifacts/binary-expected.txt examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

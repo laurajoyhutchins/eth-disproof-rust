@@ -37,3 +37,9 @@
 
 /examples/test-bitwise
 /examples/test-bitwise.rs
+
+/examples/native-binary/
+/examples/native-binary-small/
+/examples/rejected-binary/
+/examples/RefusalBinaryArguments.log
+/examples/RefusalBinaryOverwrite.log

@@ -15,6 +15,10 @@ enum __LeanValueRepr {
         invoke: fn(Vec<__LeanValue>) -> __LeanValue,
     },
     Nat(__LeanBigNat),
+    Int(__LeanBigNat),
+    Str(String),
+    Array(Vec<__LeanValue>),
+    List(Vec<__LeanValue>),
 }
 
 // Nat is arbitrary precision in Lean. GMP is an established, maintained
@@ -143,8 +147,69 @@ impl __LeanValue {
     fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }
     fn boxed_u16(v: u16) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U16(v))) }
     fn boxed_u32(v: u32) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U32(v))) }
-    fn boxed_u64(v: u64) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U64(v))) }
+    pub fn boxed_u64(v: u64) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U64(v))) }
     fn boxed_usize(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::USize(v))) }
+
+    pub fn nat(text: &str) -> Self { Self::nat_from_decimal(text) }
+    pub fn int(text: &str) -> Self {
+        let digits = text.strip_prefix('-').unwrap_or(text);
+        assert!(!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()), "invalid Int decimal input");
+        let cstr = std::ffi::CString::new(text).expect("decimal Int cannot contain NUL");
+        let mut value = __LeanBigNat::zero();
+        let rc = unsafe { __gmpz_set_str(&mut value.value, cstr.as_ptr(), 10) };
+        assert_eq!(rc, 0, "invalid GMP signed decimal input");
+        Self(std::rc::Rc::new(__LeanValueRepr::Int(value)))
+    }
+    pub fn string(value: &str) -> Self {
+        Self(std::rc::Rc::new(__LeanValueRepr::Str(value.to_owned())))
+    }
+    pub fn array(values: Vec<Self>) -> Self {
+        Self(std::rc::Rc::new(__LeanValueRepr::Array(values)))
+    }
+    pub fn list(values: Vec<Self>) -> Self {
+        Self(std::rc::Rc::new(__LeanValueRepr::List(values)))
+    }
+    fn int_add(&self, rhs: &Self) -> Self {
+        let (__LeanValueRepr::Int(a), __LeanValueRepr::Int(b)) =
+            (self.0.as_ref(), rhs.0.as_ref())
+        else { panic!("Int.add expects two signed GMP Int objects"); };
+        let mut out = __LeanBigNat::zero();
+        unsafe { __gmpz_add(&mut out.value, a.ptr(), b.ptr()); }
+        Self(std::rc::Rc::new(__LeanValueRepr::Int(out)))
+    }
+    fn string_append(&self, rhs: &Self) -> Self {
+        let (__LeanValueRepr::Str(a), __LeanValueRepr::Str(b)) =
+            (self.0.as_ref(), rhs.0.as_ref())
+        else { panic!("String.append expects UTF-8 String values"); };
+        Self::string(&format!("{a}{b}"))
+    }
+    fn string_bytes(&self) -> Self {
+        let __LeanValueRepr::Str(value) = self.0.as_ref()
+        else { panic!("String.utf8ByteSize expects String"); };
+        Self::nat_from_decimal(&value.len().to_string())
+    }
+    fn string_chars(&self) -> Self {
+        let __LeanValueRepr::Str(value) = self.0.as_ref()
+        else { panic!("String.length expects String"); };
+        Self::nat_from_decimal(&value.chars().count().to_string())
+    }
+    fn array_push(&self, value: &Self) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.push expects Array"); };
+        let mut next = values.clone();
+        next.push(value.clone());
+        Self::array(next)
+    }
+    fn array_size(&self) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.size expects Array"); };
+        Self::nat_from_decimal(&values.len().to_string())
+    }
+    fn list_reverse(&self) -> Self {
+        let __LeanValueRepr::List(values) = self.0.as_ref()
+        else { panic!("List.reverse expects List"); };
+        Self::list(values.iter().rev().cloned().collect())
+    }
     pub fn nat_from_decimal(value: &str) -> Self {
         Self(std::rc::Rc::new(__LeanValueRepr::Nat(__LeanBigNat::from_decimal(value))))
     }
@@ -222,3 +287,26 @@ impl __LeanValue {
         }
     }
 }
+
+impl PartialEq for __LeanValue {
+    fn eq(&self, other: &Self) -> bool {
+        use __LeanValueRepr::*;
+        match (self.0.as_ref(), other.0.as_ref()) {
+            (Nat(a), Nat(b)) | (Int(a), Int(b)) =>
+                unsafe { __gmpz_cmp(a.ptr(), b.ptr()) == 0 },
+            (Str(a), Str(b)) => a == b,
+            (Array(a), Array(b)) | (List(a), List(b)) => a == b,
+            (Tagged(a), Tagged(b)) => a == b,
+            (U8(a), U8(b)) => a == b,
+            (U16(a), U16(b)) => a == b,
+            (U32(a), U32(b)) => a == b,
+            (U64(a), U64(b)) => a == b,
+            (USize(a), USize(b)) => a == b,
+            (Ctor {tag:a, name:an, fields:af}, Ctor {tag:b, name:bn, fields:bf}) =>
+                a == b && an == bn && af == bf,
+            (Closure { .. }, Closure { .. }) => std::rc::Rc::ptr_eq(&self.0, &other.0),
+            _ => false,
+        }
+    }
+}
+impl Eq for __LeanValue {}

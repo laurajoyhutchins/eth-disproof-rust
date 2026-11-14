@@ -27,3 +27,8 @@
 
 # Generated primitive matrix orchestration
 /examples/matrix_run.rs
+
+# Generated native object-value and public-name conformance harness
+/examples/item30-run.rs
+/examples/unsafe-public-name.rs
+/examples/sem_rejected_*.rs

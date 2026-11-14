@@ -46,6 +46,8 @@ theorem mrc02_refuted : ¬ MutationMRC02.claim0 := by
   intro h
   have hx := mrc02_exact.mp h
   norm_num at hx
+  have hchoose : Nat.choose 4 2 = 6 := by decide
+  norm_num [hchoose] at hx
 
 #print axioms ResearchMutations.mrg03_exact
 #print axioms ResearchMutations.mrg03_refuted

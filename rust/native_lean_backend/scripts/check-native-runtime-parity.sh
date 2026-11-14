@@ -64,7 +64,7 @@ done
   echo "rust_revision=$(rustc --version)"
   echo "source_revision=$(git rev-parse --verify HEAD 2>/dev/null || echo unavailable)"
   echo "case=Property.hop"
-  echo "iterations=16384"
+  echo "iterations=1048576"
   echo "inputs=matching_64bit_lcg_and_i_mod_17"
   echo "lean_native_uses_lean_runtime=yes"
   echo "rust_native_uses_lean_runtime=no"

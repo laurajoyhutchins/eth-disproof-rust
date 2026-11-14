@@ -22,6 +22,7 @@ while IFS=#![forbid(unsafe_code)]
 include!("generated_semantic_cases.rs");
 RUST
 checks="$(grep -c 'assert_eq!' examples/generated_semantic_cases.rs)"
+cp examples/generated_semantic_cases.rs artifacts/item30-oracles.rs
 if [[ "$checks" -ne 91 ]]; then
   echo "expected 91 real Lean type-semantic cases, received $checks" >&2; exit 1
 fi

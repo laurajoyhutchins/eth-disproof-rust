@@ -51,6 +51,28 @@ struct EmitContext<'a> {
     started: &'a Instant,
 }
 
+fn validate_rust_function_name(rust_name: &str) -> Result<(), String> {
+    if rust_name.is_empty()
+        || !rust_name.as_bytes()[0].is_ascii_alphabetic()
+        || !rust_name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        return Err("unsafe Rust function name".into());
+    }
+    const KEYWORDS: &[&str] = &[
+        "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
+        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
+        "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
+        "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
+        "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
+    ];
+    if KEYWORDS.contains(&rust_name) || rust_name == "_" {
+        return Err("reserved Rust function name".into());
+    }
+    Ok(())
+}
+
 struct Reader;
 impl Reader {
     unsafe fn scalar(x: Obj) -> Result<usize, String> {
@@ -461,24 +483,7 @@ impl Reader {
             return Err("extern declaration without executable body".into());
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
-        if rust_name.is_empty()
-            || !rust_name.as_bytes()[0].is_ascii_alphabetic()
-            || !rust_name
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        {
-            return Err("unsafe Rust function name".into());
-        }
-        const KEYWORDS: &[&str] = &[
-            "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-            "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
-            "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
-            "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
-            "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
-        ];
-        if KEYWORDS.contains(&rust_name) || rust_name == "_" {
-            return Err("reserved Rust function name".into());
-        }
+        validate_rust_function_name(rust_name)?;
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
@@ -586,7 +591,9 @@ impl Reader {
         let started = Instant::now();
         let root = Self::string(root)?;
         let public_name = Self::string(public_name)?;
-        // Public name is validated by the same strict emitter before publishing.
+        validate_rust_function_name(&public_name)
+            .map_err(|e| format!("declaration={root}; {e}"))?;
+        // Public function name is validated before any output construction.
         let entries = Self::array(decls)?;
         let mut definitions = BTreeMap::<String, Obj>::new();
         for decl in entries {
@@ -665,16 +672,6 @@ impl Reader {
             write!(result, "p_{i}").unwrap();
         }
         result.push_str(")\n}\n");
-        // Invalid public Rust identifiers fail at generation, not only when
-        // rustc later parses the output. Reuse existing validation via an
-        // in-memory synthetic wrapper is unnecessary: emit_function accepts
-        // an actual root declaration under the public name and validates it.
-        let _ = Self::emit_function(
-            *closure.get(&root).unwrap(),
-            &public_name,
-            Some(&signatures),
-        )
-        .map_err(|e| format!("declaration={root}; {e}"))?;
         if result.len() > safety::MAX_OUTPUT_BYTES {
             return Err("generated Rust closure output byte limit exceeded".into());
         }
@@ -982,6 +979,20 @@ mod tests {
         }
         assert_eq!(seen.len(), 30);
         assert!(!super::is_primitive("UInt64.shiftLeft"));
+    }
+
+    #[test]
+    fn public_identifiers_reject_tokens_keywords_and_embedded_nul() {
+        use super::validate_rust_function_name;
+        for accepted in ["hello", "my_function", "f4", "internal_f"] {
+            validate_rust_function_name(accepted).unwrap();
+        }
+        for rejected in ["", "fn", "_", "bad-name", "my name", "a::b", "x); unsafe {}", "safe\u{0}evil"] {
+            assert!(
+                validate_rust_function_name(rejected).is_err(),
+                "invalid public Rust identifier unexpectedly accepted"
+            );
+        }
     }
 
     #[test]

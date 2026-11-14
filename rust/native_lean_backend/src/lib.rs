@@ -539,17 +539,27 @@ impl Reader {
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
-                if matches!(name.as_str(), "Nat.decEq" | "Nat.decLt" | "Nat.decLe")
-                    && args.iter().all(|arg| {
-                        if Self::checked_tag(*arg, "Arg").ok() != Some(0) {
-                            return false;
+                // Lean emits tagged small Nat comparisons in array bounds
+                // checks. Use the exact tagged object representation, while
+                // all boxed Nat comparisons retain GMP behavior below.
+                let mut both_tagged = matches!(
+                    name.as_str(),
+                    "Nat.decEq" | "Nat.decLt" | "Nat.decLe"
+                );
+                if both_tagged {
+                    for arg in &args {
+                        if Self::checked_tag(*arg, "Arg")? != 0 {
+                            both_tagged = false;
+                            break;
                         }
-                        let Ok(id) = Self::var(Self::field(*arg, 0).unwrap_or(std::ptr::null())) else {
-                            return false;
-                        };
-                        env.get(&id) == Some(&"tagged")
-                    })
-                {
+                        let id = Self::var(Self::field(*arg, 0)?)?;
+                        if env.get(&id) != Some(&"tagged") {
+                            both_tagged = false;
+                            break;
+                        }
+                    }
+                }
+                if both_tagged {
                     if var_ty != "u8" {
                         return Err("tagged Nat comparison requires UInt8 result".into());
                     }

@@ -42,9 +42,9 @@ run_cmd do
     return output
   let generated ← liftCoreM do
     let names := #[
-      ``FunctionProbe.runIndirect._lam_0._boxed,
-      ``FunctionProbe.runIndirect._lam_0,
-      ``FunctionProbe.pack._lam_0._boxed
+      `FunctionProbe.runIndirect._lam_0._boxed,
+      `FunctionProbe.runIndirect._lam_0,
+      `FunctionProbe.pack._lam_0._boxed
     ]
     let mut found : Array (Lean.Name × String) := #[]
     for name in names do

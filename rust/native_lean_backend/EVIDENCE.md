@@ -44,6 +44,38 @@ For #193 item 36, extend this harness only after constructing a **shared support
 
 The exact pinned original Lean 4.34.1 source is exercised without hand-copying or rewriting implementations. `examples/ProbeNatGcd.lean`, `ProbeListReverse.lean`, and `ProbeStringIntercalate.lean` independently check real original Lean behavior, then attempt native in-process extraction. All three **explicitly refuse** unsupported compiled IR in [native CI 43507863090](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43507863090), commit `714524c06e8ee2b47a74957722abf052f9831e72`. Their original behavior is valid, but generated Rust does **not** exist. Precise refusals, prior-output preservation, and peak RSS/time are saved in `artifacts/imported-probes/`. This provides a reproducible negative coverage baseline. It **does not** satisfy checklist item 32's requirement for three nontrivial independent projects actually building and running.
 
+## Independent external-project acceptance matrix
+
+`scripts/check-external-projects.sh` checks out exact, reviewed Git commits (shallow partial sparse clones) from **three separate independent Lean 4.34.1 projects**. It does **not** edit their algorithms. It runs each original Lake module and a separate original-Lean `#guard`, then asks this in-process compiler to extract the actual original executable IR. An unsupported declaration must refuse and leave a preexisting Rust output unchanged. Every case records upstream SHA/tree, module hash, compiler binary hash, exact source/toolchain revision, build/oracle/codegen result, precise refusal and GNU-time wall/RSS measurements.
+
+Baseline on the pre-integration #199 branch: [native CI 43611081595](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43611081595), [raw artifact 14120635627](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43611081595/artifacts/14120635627).
+
+| External original project | Pinned source and module | Original Lean build/oracle | Rust extraction outcome | Original build / compiler refusal wall |
+| --- | --- | --- | --- | --- |
+| Newspeak semantics | `newspeaklanguage/newspeak@8e8ed029`, `Newspeak.PEG` (185 lines), `Newspeak.ConcreteTree.span` | PASS / PASS | REFUSED object IR type tag 7 | 1.24s / 0.26s |
+| Armada scheduler | `AshishKumar4/armada@c12b4a57`, `Sched.Basic` (450 lines), `Sched.argLeastLoad` | PASS / PASS | REFUSED ambiguous Lean.Name segment | 0.94s / 0.26s |
+| Keboola sync model | `keboola/cli@e29d2cb3`, `SyncModel.Pull` (211 lines), `SyncModel.pullDecide` | PASS / PASS | REFUSED object IR type tag 7 | 1.03s / 0.26s |
+
+This matrix is a **negative coverage result**, not three successful generated Rust executions. Original Lean semantics were checked, but cross-language semantic parity does not exist for these roots. **Checklist #193 item 32 remains open** until real generated Rust execution on independent projects is verified, including unsupported behaviors/refusals.
+
+### Structured `Lean.Name` identity
+
+The integrated compiler now receives the actual borrowed `Lean.Name` object, not `Name.toString`, for both single-root and multi-root FFI. Source-origin segment identity is preserved by an injective canonical key: ordinary ASCII segments retain familiar names; nonstandard UTF-8 strings are encoded as `~s` and hex bytes; numeric segments use a distinct `~n` prefix. Rust's generated internal symbols are then hex-encoded from this canonical key. NUL-containing Lean strings are length-delimited via a pinned `lean_string_size` accessor. Malformed/oversized names still fail closed. Primitive lookup for existing ASCII names remains unchanged.
+
+### Verified integrated baseline at PR #213
+
+At [exact head `264262d63fd83e43897750fce22ff4683c586b03`](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/213/commits/264262d63fd83e43897750fce22ff4683c586b03), [native Lean/Rust CI 43612404552](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43612404552) **PASS**. [Artifact 14120597576](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43612404552/artifacts/14120597576) contains the three unmodified original-module builds, independent original-Lean `#guard` executions, codegen refusals, source/backend identity hashes and time/RSS observations.
+
+| Project | Original build + oracle | Integrated in-process compiler result |
+| --- | --- | --- |
+| Newspeak | PASS + PASS | **REFUSED**, pinned IRType constructor tag 7 (`object`) |
+| Armada | PASS + PASS | **REFUSED**, pinned IRType constructor tag 8 (`tobject`); previously failed earlier at `Lean.Name` decoding |
+| Keboola | PASS + PASS | **REFUSED**, pinned IRType constructor tag 7 (`object`) |
+
+The new borrowed structured-name FFI and name-encoding Rust unit test passed alongside the integrated native suite. The Armada refusal **moved from ambiguous name identity to its actual unsupported typed-object value**. This is a concrete improvement in truthful diagnostic coverage, but **zero external Rust programs executed**. No general object/typed-object semantics have been implemented by this change, and checklist item 32 is still open.
+
+This fixes **only identity fidelity**, not support for the data type or execution semantics of any original project. The new branch re-runs the external matrix on the integrated core, with the hardened workspace-relative source publisher and stricter original-IR inventory. A refusal that moves deeper into the compiler is not a success unless the emitted Rust actually compiles and agrees with the original Lean program.
+
 ## Atomic bundle publication and build receipts
 
 `scripts/compile-bundle.sh` is a reproducible build wrapper around the existing in-process Lean compiler. It does not replace its backend or introduce serialized JSON IR. A successful invocation accepts an imported module, actual root, source file, new destination directory, and optional Rust export name:

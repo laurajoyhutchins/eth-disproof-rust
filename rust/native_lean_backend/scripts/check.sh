@@ -11,6 +11,7 @@ export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_
 cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
+lean examples/FunctionProbe.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"
 lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
 # Compile an imported Lean module separately, then compile its transitive

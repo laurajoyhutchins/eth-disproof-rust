@@ -5,7 +5,9 @@ on:
     branches: ['experiment/latex-to-lean-pilot']
     paths:
       - '.github/workflows/latex-to-lean-pilot.yml'
-      - 'benchmark/latex-to-lean/**'
+      - 'benchmark/latex-to-lean/cases/**'
+      - 'benchmark/latex-to-lean/oracle/**'
+      - 'benchmark/latex-to-lean/summarize.mjs'
 
 concurrency:
   group: latex-to-lean-${{ github.ref }}

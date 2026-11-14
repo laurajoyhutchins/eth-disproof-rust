@@ -4,7 +4,7 @@
 //! It does not serialize or clone the IR. Only an explicitly accepted subset is
 //! lowered; unknown instructions and types are errors, never substitutions.
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_char, c_void, CString};
 use std::fmt::Write;
 use std::time::{Duration, Instant};
 
@@ -30,6 +30,7 @@ extern "C" {
     fn lr_array_len(x: Obj) -> usize;
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
+    fn lr_string_bytes_len(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
 }
 
@@ -122,9 +123,15 @@ impl Reader {
         if ptr.is_null() {
             return Err("expected Lean String".into());
         }
-        Ok(CStr::from_ptr(ptr)
-            .to_str()
-            .map_err(|_| "invalid UTF-8")?
+        // lean_string_size includes the runtime terminator, not just C-string
+        // bytes before the first zero. Do not truncate embedded U+0000.
+        let len = lr_string_bytes_len(x);
+        if len > safety::MAX_OUTPUT_BYTES {
+            return Err("Lean string input exceeds compiler resource limit".into());
+        }
+        let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
+        Ok(std::str::from_utf8(bytes)
+            .map_err(|_| "invalid Lean UTF-8 String")?
             .to_owned())
     }
     unsafe fn nat(x: Obj) -> Result<usize, String> {

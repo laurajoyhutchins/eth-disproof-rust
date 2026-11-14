@@ -273,9 +273,7 @@ impl Reader {
                         }
                         // Lean's unsigned division and remainder are total.
                         // Rust's raw / and % panic on zero: never substitute them.
-                        (_, "checked_div") => {
-                            Ok(format!("{lhs}.checked_div({rhs}).unwrap_or(0)"))
-                        }
+                        (_, "checked_div") => Ok(format!("{lhs}.checked_div({rhs}).unwrap_or(0)")),
                         (_, "checked_rem") => {
                             Ok(format!("{lhs}.checked_rem({rhs}).unwrap_or({lhs})"))
                         }
@@ -1040,7 +1038,22 @@ mod tests {
                 "unsupported primitive family: {family}"
             );
             assert!(
-                ["add", "sub", "mul", "decEq", "decLt", "decLe", "div", "mod", "land", "lor", "xor", "shiftLeft", "shiftRight"].contains(&operation),
+                [
+                    "add",
+                    "sub",
+                    "mul",
+                    "decEq",
+                    "decLt",
+                    "decLe",
+                    "div",
+                    "mod",
+                    "land",
+                    "lor",
+                    "xor",
+                    "shiftLeft",
+                    "shiftRight"
+                ]
+                .contains(&operation),
                 "unreviewed primitive operation: {operation}"
             );
             let spec = primitive_spec(name).expect("registered primitive cannot disappear");
@@ -1049,7 +1062,21 @@ mod tests {
             assert_eq!(spec.comparison, parts[3] == "comparison");
         }
         for family in ["UInt8", "UInt16", "UInt32", "UInt64", "USize"] {
-            for operation in ["add", "sub", "mul", "decEq", "decLt", "decLe", "div", "mod", "land", "lor", "xor", "shiftLeft", "shiftRight"] {
+            for operation in [
+                "add",
+                "sub",
+                "mul",
+                "decEq",
+                "decLt",
+                "decLe",
+                "div",
+                "mod",
+                "land",
+                "lor",
+                "xor",
+                "shiftLeft",
+                "shiftRight",
+            ] {
                 let name = format!("{family}.{operation}");
                 assert!(seen.contains(name.as_str()), "primitive missing: {name}");
             }

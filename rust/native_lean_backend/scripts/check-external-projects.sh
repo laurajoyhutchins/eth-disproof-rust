@@ -166,6 +166,30 @@ LEAN
           tr '\t\r\n' '   ' |
           cut -c1-240)"
         rm -f "$target"
+        # Preserve real source-specific compiler IR for future backend work.
+        # This does not turn a refusal into successful Rust extraction.
+        cat > "$case_dir/inspect-ir.lean" <<LEAN
+import NativeRust
+import $module
+open Lean Elab Command
+run_cmd do
+  let root : Lean.Name := `$root
+  if (← Lean.IR.findDecl root).isNone then
+    liftCoreM <| Lean.Compiler.compile #[root]
+  let some decl ← liftCoreM <| Lean.IR.findDecl root
+    | throwError "Original executable Lean IR not available for {root}"
+  let source := toString decl
+  if source.utf8ByteSize > 262144 then
+    throwError "Original IR snapshot exceeds 256 KiB diagnostic budget"
+  liftIO <| IO.FS.writeFile "$case_dir/original-ir.txt" source
+LEAN
+        if (cd "$native" && timeout 45s lean "$case_dir/inspect-ir.lean") \
+             > "$case_dir/inspect-ir.log" 2>&1 &&
+           [[ -s "$case_dir/original-ir.txt" ]]; then
+          echo "original_compiler_ir_snapshot=PINNED_SOURCE_IR" >> "$case_dir/identity.txt"
+        else
+          echo "original_compiler_ir_snapshot=UNAVAILABLE_DIAGNOSTIC_ONLY" >> "$case_dir/identity.txt"
+        fi
       fi
     fi
   fi
@@ -179,7 +203,7 @@ LEAN
     echo "generated_rust_build=$rustbuild"
     echo "generated_rust_semantic_parity=NOT_VERIFIED"
     echo "status=$reason"
-    for f in "$case_dir"/*.lean "$case_dir"/*.log "$case_dir"/generated.rs; do
+    for f in "$case_dir"/*.lean "$case_dir"/*.log "$case_dir"/*.txt "$case_dir"/generated.rs; do
       if [[ -f "$f" ]]; then sha256sum "$f"; fi
     done
   } >> "$case_dir/identity.txt"

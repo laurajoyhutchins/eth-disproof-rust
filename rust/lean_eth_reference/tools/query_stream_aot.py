@@ -306,19 +306,28 @@ def compile_query(args):
         # importing QueryStream causes otherwise avoidable environment pressure.
         # The helper is a compiled Lean module, not a JSON compiler backend.
         exporter_module = "OriginalSourceGraphExporter"
-        exporter_source = tmp / (exporter_module + ".lean")
-        exporter_source.write_bytes(SOURCE_GRAPH_EXPORTER.read_bytes())
+        # Lean -o enforces the Lake package root for a compiled module.
+        # An ordinary temporary file outside the root fails before parsing.
+        exporter_source = args.lake_root / (exporter_module + ".lean")
+        if exporter_source.exists() or exporter_source.is_symlink():
+            refuse("source-graph-exporter-module-collision",
+                   "refuse to replace an existing Lake-root exporter source")
         exporter_olean = (args.lake_root / ".lake/build/lib/lean" /
                           (exporter_module + ".olean"))
         exporter_olean.parent.mkdir(parents=True, exist_ok=True)
         exporter_olean.unlink(missing_ok=True)
         try:
-            compiled_exporter = run_bounded(
-                ["lake", "env", "lean", "-o", str(exporter_olean),
-                 str(exporter_source)], args.lake_root, args.timeout,
-                log_base=out / "source-graph-exporter-build")
-        except (TimeoutError, ResourceLimitError) as error:
-            refuse("source-graph-exporter-build-resource-limit", str(error))
+            with exporter_source.open("xb") as output:
+                output.write(SOURCE_GRAPH_EXPORTER.read_bytes())
+            try:
+                compiled_exporter = run_bounded(
+                    ["lake", "env", "lean", "-o", str(exporter_olean),
+                     str(exporter_source)], args.lake_root, args.timeout,
+                    log_base=out / "source-graph-exporter-build")
+            except (TimeoutError, ResourceLimitError) as error:
+                refuse("source-graph-exporter-build-resource-limit", str(error))
+        finally:
+            exporter_source.unlink(missing_ok=True)
         if compiled_exporter.returncode or not exporter_olean.is_file():
             refuse("source-graph-exporter-build",
                    f"exit={compiled_exporter.returncode} "

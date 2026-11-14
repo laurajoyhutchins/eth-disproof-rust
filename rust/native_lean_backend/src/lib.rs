@@ -1540,8 +1540,10 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 0)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Alt", 1)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 28);
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 30);
     }
 
     #[test]
@@ -1558,9 +1560,11 @@ mod tests {
             assert!(seen.insert(cells[0]));
             assert!(primitive_spec(cells[0]).is_some());
         }
-        assert_eq!(seen.len(), 30);
+        assert_eq!(seen.len(), 68);
         assert!(primitive_spec("UInt64.add").is_some());
         assert!(primitive_spec("USize.decLe").is_some());
+        assert!(primitive_spec("Float.mul").is_some());
+        assert!(primitive_spec("UInt64.shiftRight").is_some());
         assert!(primitive_spec("Int.add").is_none());
     }
 }

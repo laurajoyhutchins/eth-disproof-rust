@@ -1,5 +1,7 @@
 import Mathlib
 
+open scoped Matrix
+
 /- Independent reference mathematics, NOT candidate compiler output.
    Group actions: coordinate transpositions on products.
    Spectral: eigenvalue ±1 splitting of a pair swap.

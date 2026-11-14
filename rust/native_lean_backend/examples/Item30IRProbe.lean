@@ -26,8 +26,8 @@ run_cmd do
   ]
   let mut report := "# Lean 4.34.1 generated executable IR for item 30 probes\n"
   for name in targets do
-    Lean.Compiler.compile #[name]
-    let some decl ← Lean.IR.findDecl name
+    liftCoreM <| Lean.Compiler.compile #[name]
+    let some decl ← liftCoreM <| Lean.IR.findDecl name
       | throwError "Missing pinned executable IR for {name}"
     report := report ++ s!"\n## {name}\n{toString decl}\n"
   liftIO <| IO.FS.createDirAll "artifacts"

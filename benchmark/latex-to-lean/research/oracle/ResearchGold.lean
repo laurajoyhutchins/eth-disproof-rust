@@ -35,8 +35,8 @@ theorem swap_matrix_square : swapMatrix * swapMatrix = 1 := by
   fin_cases i <;> fin_cases j <;>
     norm_num [swapMatrix, Matrix.mul_apply, Fin.sum_univ_succ]
 
-def evenCoord (x y : ℝ) : ℝ := (x + y) / 2
-def oddCoord (x y : ℝ) : ℝ := (x - y) / 2
+noncomputable def evenCoord (x y : ℝ) : ℝ := (x + y) / 2
+noncomputable def oddCoord (x y : ℝ) : ℝ := (x - y) / 2
 
 theorem spectral_reconstruction (x y : ℝ) :
     evenCoord x y + oddCoord x y = x ∧

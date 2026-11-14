@@ -9,12 +9,12 @@ Lean.IR.IRType.uint32	3	implemented_bounded	scalar_u32	matrix_or_baseline_fixtur
 Lean.IR.IRType.uint64	4	implemented_bounded	scalar_u64	matrix_or_baseline_fixture
 Lean.IR.IRType.usize	5	implemented_bounded	scalar_usize_linux_x86_64	matrix_or_baseline_fixture
 Lean.IR.IRType.erased	6	explicitly_unsupported	default_refusal	no_positive_semantics_claim
-Lean.IR.IRType.object	7	explicitly_unsupported	default_refusal	no_positive_semantics_claim
-Lean.IR.IRType.tobject	8	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.IRType.object	7	implemented_bounded	object_value_runtime	Item30IRProbe_Lean_rust_differential
+Lean.IR.IRType.tobject	8	implemented_bounded	boxed_or_tagged_value_runtime	Item30IRProbe_Lean_rust_differential
 Lean.IR.IRType.float32	9	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.IRType.struct	10	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.IRType.union	11	explicitly_unsupported	default_refusal	no_positive_semantics_claim
-Lean.IR.IRType.tagged	12	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.IRType.tagged	12	implemented_bounded	tagged_nat_value_runtime	Item30IRProbe_Lean_rust_differential
 Lean.IR.IRType.void	13	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.Arg.var	0	implemented_bounded	typed_variable_operand	matrix_or_baseline_fixture
 Lean.IR.Arg.erased	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
@@ -29,7 +29,7 @@ Lean.IR.Expr.sproj	5	explicitly_unsupported	default_refusal	no_positive_semantic
 Lean.IR.Expr.fap	6	implemented_bounded	direct_typed_call_or_registered_primitive	matrix_or_baseline_fixture
 Lean.IR.Expr.pap	7	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.Expr.ap	8	explicitly_unsupported	default_refusal	no_positive_semantics_claim
-Lean.IR.Expr.box	9	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.Expr.box	9	implemented_bounded	boxing_uint64_only	Item30IRProbe_Lean_rust_differential
 Lean.IR.Expr.unbox	10	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.Expr.lit	11	implemented_bounded	small_tagged_natural_literal	matrix_or_baseline_fixture
 Lean.IR.Expr.isShared	12	explicitly_unsupported	default_refusal	no_positive_semantics_claim

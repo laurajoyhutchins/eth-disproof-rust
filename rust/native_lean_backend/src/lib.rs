@@ -282,6 +282,7 @@ impl Reader {
     unsafe fn ty(x: Obj) -> Result<&'static str, String> {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
         match Self::checked_tag(x, "IRType")? {
+            0 => Ok("f64"), // finite source-checked arithmetic, not float object semantics
             1 => Ok("u8"),
             2 => Ok("u16"),
             3 => Ok("u32"),
@@ -326,6 +327,31 @@ impl Reader {
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
+                // Source-pinned zero-field scalar inductives do not allocate a heap.
+                // Object constructors retain the independently verified Rc model.
+                if matches!(var_ty, "u8" | "usize") {
+                    // ctor(info, fields). Only nullary scalar constructors are
+                    // representable without a Lean heap. No field-packing shortcut.
+                    if !matches!(var_ty, "u8" | "usize") {
+                        return Err("heap-backed or non-scalar constructor is unsupported".into());
+                    }
+                    let info = Self::field(x, 0)?;
+                    let fields = Self::array(Self::field(x, 1)?)?;
+                    if !fields.is_empty() {
+                        return Err("constructor with fields requires an object runtime".into());
+                    }
+                    for field in 2..=4 {
+                        if Self::nat(Self::field(info, field)?)? != 0 {
+                            return Err("constructor with pointer/scalar layout is unsupported".into());
+                        }
+                    }
+                    let _name = Self::name(Self::field(info, 0)?, 0)?;
+                    let index = Self::nat(Self::field(info, 1)?)?;
+                    if index > 255 {
+                        return Err("constructor tag exceeds nullary enum bound".into());
+                    }
+                    return Ok(format!("{index}{var_ty}"));
+                }
                 // ctor: only immutable, pointer-field constructors with
                 // verified metadata. Scalar-field layouts are not yet mapped.
                 if !is_value_type(var_ty) {
@@ -453,6 +479,9 @@ impl Reader {
                 if is_value_type(ty) {
                     return Err("box expects a scalar IR type".into());
                 }
+                if ty == "f64" {
+                    return Err("Float boxing requires an unsupported runtime adapter".into());
+                }
                 let id = Self::var(Self::field(x, 1)?)?;
                 if env.get(&id) != Some(&ty) {
                     return Err("box scalar input type mismatch".into());
@@ -516,7 +545,27 @@ impl Reader {
                             "{name}: result type mismatch: expected {expected_ty}, got {var_ty}"
                         ));
                     }
-                    Ok(format!("{lhs}.{op}({rhs})"))
+                    match (expected_ty, op) {
+                        ("f64", "+" | "-" | "*") => Ok(format!("{lhs} {op} {rhs}")),
+                        (_, "wrapping_add" | "wrapping_sub" | "wrapping_mul") => {
+                            Ok(format!("{lhs}.{op}({rhs})"))
+                        }
+                        // Lean's unsigned division and remainder are total.
+                        // Rust's raw / and % panic on zero: never substitute them.
+                        (_, "checked_div") => Ok(format!("{lhs}.checked_div({rhs}).unwrap_or(0)")),
+                        (_, "checked_rem") => {
+                            Ok(format!("{lhs}.checked_rem({rhs}).unwrap_or({lhs})"))
+                        }
+                        (_, "&" | "|" | "^") => Ok(format!("{lhs} {op} {rhs}")),
+                        (_, "wrapping_shl" | "wrapping_shr") => {
+                            // Lean shifts modulo the bit width, including counts
+                            // beyond 64 and on the platform-sized USize type.
+                            Ok(format!(
+                                "{lhs}.{op}(({rhs} % ({expected_ty}::BITS as {expected_ty})) as u32)"
+                            ))
+                        }
+                        _ => Err(format!("{name}: unreviewed primitive operation {op}")),
+                    }
                 }
             }
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),

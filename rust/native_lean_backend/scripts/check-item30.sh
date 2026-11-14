@@ -28,7 +28,7 @@ for name in nat_add nat_sub nat_mul; do
   fi
 done
 cat > examples/item30-run.rs <<'RUST'
-# Canonical GMP Nat uses audited FFI in standalone Rust; no Lean runtime linked.
+// Canonical GMP Nat uses audited FFI in standalone Rust; no Lean runtime linked.
 #[allow(dead_code)] mod nat_add { include!("generated_sem_nat_add.rs"); }
 #[allow(dead_code)] mod nat_add_closure { include!("generated_sem_nat_add_closure.rs"); }
 #[allow(dead_code)] mod nat_sub { include!("generated_sem_nat_sub.rs"); }

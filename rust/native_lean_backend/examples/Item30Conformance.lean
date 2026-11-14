@@ -11,6 +11,7 @@ import Item30IRProbe
 #native_rust Item30Probe.arrayPush as "sem_array_push" to "examples/generated_sem_array_push.rs"
 #native_rust Item30Probe.arraySize as "sem_array_size" to "examples/generated_sem_array_size.rs"
 #native_rust Item30Probe.listReverse as "sem_list_reverse" to "examples/generated_sem_list_reverse.rs"
+#native_rust_closure Item30Probe.natAdd as "sem_nat_add_closure" to "examples/generated_sem_nat_add_closure.rs"
 
 open Lean Elab Command
 
@@ -76,6 +77,9 @@ run_cmd do
     out := out ++ s!"    assert_eq!(array_size::sem_array_size({bInput}), array_size::Value::nat(\"{Item30Probe.arraySize a}\"));\n"
     let list := a.toList
     out := out ++ s!"    assert_eq!(list_reverse::sem_list_reverse({valueListExpr "list_reverse" list}), {valueListExpr "list_reverse" (Item30Probe.listReverse list)});\n"
+  let closureA : Nat := 2^512 + 123
+  let closureB : Nat := 2^256 + 17
+  out := out ++ s!"    assert_eq!(nat_add_closure::sem_nat_add_closure(nat_add_closure::Value::nat(\"{closureA}\"), nat_add_closure::Value::nat(\"{closureB}\")), nat_add_closure::Value::nat(\"{Item30Probe.natAdd closureA closureB}\"));\n"
   out := out ++ "}\n"
   liftIO <| IO.FS.writeFile "examples/generated_semantic_cases.rs" out
-  logInfo "Generated 100 original-Lean arbitrary precision, Unicode, collection and edge cases"
+  logInfo "Generated 101 original-Lean arbitrary precision, Unicode, collection and edge cases"

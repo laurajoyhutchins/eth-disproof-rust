@@ -114,3 +114,40 @@ versioned IR coverage contract and exact test boundaries.
 This prototype is independent of the 4.35.0 leanfran experiment in PR #184.
 It is intended to establish a working in-process ABI and production-quality
 fail-closed boundary before extending coverage.
+
+
+## Standalone Cargo packaging and safety
+
+For the supported scalar/direct-call closure subset, generate Rust with
+`#native_rust_closure`, then run:
+
+```sh
+bash scripts/package_crate.sh examples/generated_closure.rs native_pipeline artifacts/standalone_pipeline
+cargo test --offline --manifest-path artifacts/standalone_pipeline/Cargo.toml
+```
+
+This creates a dependency-free Cargo library with no Lean runtime requirement
+for its compiled code. Existing package directories are never overwritten.
+Generated `.rs` paths must be relative, within real (non-symlink) existing
+directories, with no traversal components. On successful code generation the
+explicit `.rs` destination may replace an existing regular file via same-
+directory atomic rename; refusals preserve prior output.
+
+The native result protocol is `OK\n<source>` or
+`ERROR\n{"status":"refused","declaration":"...","construct":"...","reason":"..."}`.
+Lean-side missing IR and sorry-axiom errors use the same structured keys.
+Resource caps, ABI ownership assumptions, panic behavior, and remaining
+G1 release obligations are detailed in [SAFETY.md](SAFETY.md).
+
+## Machine-derived IR and primitive conformance
+
+The pinned Lean environment is inspected to enumerate **48 IR constructors**
+across seven inductive families. The classifier implements 14 bounded variants
+and refuses 34; its tags are enforced in the production decoder. The single
+primitive registry drives 30 supported operations, each independently
+compared with 64 original-Lean oracle vectors. This adds 1,920 assertions to
+the previous 1,984, for **3,904** exact-head differential comparisons.
+
+See [CONFORMANCE.md](CONFORMANCE.md) for the generation and refusal contract.
+Unsupported large integers, Unicode strings, arrays, and general runtime
+sharing remain outside this version's semantic equivalence claims.

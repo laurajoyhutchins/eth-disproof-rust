@@ -4,8 +4,14 @@
 //! It does not serialize or clone the IR. Only an explicitly accepted subset is
 //! lowered; unknown instructions and types are errors, never substitutions.
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_char, c_void, CString};
 use std::fmt::Write;
+use std::time::{Duration, Instant};
+
+mod safety;
+
+// Generated at build time from the pinned constructor classification.
+include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));
 
 #[repr(C)]
 pub struct LeanObject {
@@ -13,6 +19,7 @@ pub struct LeanObject {
 }
 type Obj = *const LeanObject;
 extern "C" {
+    fn lr_abi_probe() -> i32;
     fn lr_is_scalar(x: Obj) -> i32;
     fn lr_scalar_value(x: Obj) -> usize;
     fn lr_is_ctor(x: Obj) -> i32;
@@ -23,6 +30,7 @@ extern "C" {
     fn lr_array_len(x: Obj) -> usize;
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
+    fn lr_string_bytes_len(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
 }
 
@@ -33,6 +41,33 @@ struct Signature {
 }
 
 type FunctionTable = BTreeMap<String, Signature>;
+
+struct EmitContext<'a> {
+    functions: Option<&'a FunctionTable>,
+    started: &'a Instant,
+}
+
+fn validate_rust_function_name(rust_name: &str) -> Result<(), String> {
+    if rust_name.is_empty()
+        || !rust_name.as_bytes()[0].is_ascii_alphabetic()
+        || !rust_name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        return Err("unsafe Rust function name".into());
+    }
+    const KEYWORDS: &[&str] = &[
+        "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
+        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move",
+        "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait",
+        "true", "type", "unsafe", "use", "where", "while", "abstract", "become", "box", "gen",
+        "try", "typeof", "unsized", "virtual", "yield",
+    ];
+    if KEYWORDS.contains(&rust_name) || rust_name == "_" {
+        return Err("reserved Rust function name".into());
+    }
+    Ok(())
+}
 
 struct Reader;
 impl Reader {
@@ -51,6 +86,16 @@ impl Reader {
             return Err("expected inductive constructor".into());
         }
         Ok(lr_tag(x) as usize)
+    }
+    unsafe fn checked_tag(x: Obj, family: &str) -> Result<usize, String> {
+        let tag = Self::tag(x)?;
+        if SUPPORTED_IR_TAGS.contains(&(family, tag)) {
+            Ok(tag)
+        } else {
+            Err(format!(
+                "{family} constructor tag {tag} explicitly unsupported by pinned IR coverage contract"
+            ))
+        }
     }
     unsafe fn field(x: Obj, index: usize) -> Result<Obj, String> {
         if lr_is_ctor(x) == 0 || index >= lr_field_count(x) {
@@ -78,9 +123,15 @@ impl Reader {
         if ptr.is_null() {
             return Err("expected Lean String".into());
         }
-        Ok(CStr::from_ptr(ptr)
-            .to_str()
-            .map_err(|_| "invalid UTF-8")?
+        // lean_string_size includes the runtime terminator, not just C-string
+        // bytes before the first zero. Do not truncate embedded U+0000.
+        let len = lr_string_bytes_len(x);
+        if len > safety::MAX_OUTPUT_BYTES {
+            return Err("Lean string input exceeds compiler resource limit".into());
+        }
+        let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
+        Ok(std::str::from_utf8(bytes)
+            .map_err(|_| "invalid Lean UTF-8 String")?
             .to_owned())
     }
     unsafe fn nat(x: Obj) -> Result<usize, String> {
@@ -131,7 +182,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         expected: &str,
     ) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "Arg")? {
             0 => {
                 let id = Self::var(Self::field(x, 0)?)?;
                 let found = env
@@ -148,7 +199,7 @@ impl Reader {
     }
     unsafe fn ty(x: Obj) -> Result<&'static str, String> {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "IRType")? {
             1 => Ok("u8"),
             2 => Ok("u16"),
             3 => Ok("u32"),
@@ -160,7 +211,7 @@ impl Reader {
         }
     }
     unsafe fn lit(x: Obj, ty: &str) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "LitVal")? {
             0 => {
                 let n = Self::nat(Self::field(x, 0)?)?;
                 let max = match ty {
@@ -185,7 +236,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
-        match Self::tag(x)? {
+        match Self::checked_tag(x, "Expr")? {
             6 => {
                 // fap, preserving the exact known primitive semantics.
                 let name = Self::name(Self::field(x, 0)?, 0)?;
@@ -213,32 +264,11 @@ impl Reader {
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
-                let (op, comparison) = match name.as_str() {
-                    "UInt8.add" | "UInt16.add" | "UInt32.add" | "UInt64.add" | "USize.add" => {
-                        ("wrapping_add", false)
-                    }
-                    "UInt8.sub" | "UInt16.sub" | "UInt32.sub" | "UInt64.sub" | "USize.sub" => {
-                        ("wrapping_sub", false)
-                    }
-                    "UInt8.mul" | "UInt16.mul" | "UInt32.mul" | "UInt64.mul" | "USize.mul" => {
-                        ("wrapping_mul", false)
-                    }
-                    "UInt8.decEq" | "UInt16.decEq" | "UInt32.decEq" | "UInt64.decEq"
-                    | "USize.decEq" => ("==", true),
-                    "UInt8.decLt" | "UInt16.decLt" | "UInt32.decLt" | "UInt64.decLt"
-                    | "USize.decLt" => ("<", true),
-                    "UInt8.decLe" | "UInt16.decLe" | "UInt32.decLe" | "UInt64.decLe"
-                    | "USize.decLe" => ("<=", true),
-                    _ => return Err(format!("unrecognized primitive call: {name}")),
-                };
-                let expected_ty = match name.split('.').next() {
-                    Some("UInt8") => "u8",
-                    Some("UInt16") => "u16",
-                    Some("UInt32") => "u32",
-                    Some("UInt64") => "u64",
-                    Some("USize") => "usize",
-                    _ => return Err(format!("invalid primitive namespace: {name}")),
-                };
+                let spec = primitive_spec(&name)
+                    .ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
+                let op = spec.rust_op;
+                let comparison = spec.comparison;
+                let expected_ty = spec.operand_type;
                 let lhs = Self::arg(args[0], env, expected_ty)?;
                 let rhs = Self::arg(args[1], env, expected_ty)?;
                 if comparison {
@@ -270,7 +300,7 @@ impl Reader {
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
-        functions: Option<&FunctionTable>,
+        context: &EmitContext<'_>,
     ) -> Result<(), String> {
         // Lean 4.34.1 IR uses the *storage type* name UInt8 here,
         // not the source Bool name. Validate Bool constructor names below.
@@ -291,7 +321,7 @@ impl Reader {
         let mut seen = [false; 2];
         writeln!(code, "    match x_{scrutinee} {{").unwrap();
         for alt in alts {
-            if Self::tag(alt)? != 0 {
+            if Self::checked_tag(alt, "Alt")? != 0 {
                 return Err("Bool default case is not yet supported".into());
             }
             let info = Self::field(alt, 0)?;
@@ -314,7 +344,7 @@ impl Reader {
                 count,
                 env,
                 ret_ty,
-                functions,
+                context,
             )?;
             writeln!(code, "        }}").unwrap();
         }
@@ -337,7 +367,7 @@ impl Reader {
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
-        functions: Option<&FunctionTable>,
+        context: &EmitContext<'_>,
     ) -> Result<(), String> {
         if depth > 128 {
             return Err("IR control-flow nesting limit".into());
@@ -347,12 +377,18 @@ impl Reader {
             if *count > 100_000 {
                 return Err("IR instruction limit exceeded".into());
             }
-            match Self::tag(x)? {
+            if code.len() > safety::MAX_OUTPUT_BYTES {
+                return Err("generated Rust output byte limit exceeded".into());
+            }
+            if context.started.elapsed() > Duration::from_secs(10) {
+                return Err("IR code generation time budget exceeded".into());
+            }
+            match Self::checked_tag(x, "FnBody")? {
                 0 => {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
-                    let value = Self::expr(Self::field(x, 2)?, ty, env, functions)?;
+                    let value = Self::expr(Self::field(x, 2)?, ty, env, context.functions)?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }
@@ -361,7 +397,7 @@ impl Reader {
                 }
                 9 => {
                     // case(tid, scrutinee, type, alts)
-                    Self::boolean_case(x, code, depth, count, env, ret_ty, functions)?;
+                    Self::boolean_case(x, code, depth, count, env, ret_ty, context)?;
                     return Ok(());
                 }
                 10 => {
@@ -379,7 +415,12 @@ impl Reader {
         }
     }
     unsafe fn emit(decl: Obj, rust_name: Obj) -> Result<String, String> {
+        if lr_abi_probe() == 0 {
+            return Err("Lean C ABI runtime probe failed".into());
+        }
+        let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
         Self::emit_function(decl, &Self::string(rust_name)?, None)
+            .map_err(|e| format!("declaration={declared_name}; {e}"))
     }
 
     unsafe fn emit_function(
@@ -387,28 +428,11 @@ impl Reader {
         rust_name: &str,
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
-        if Self::tag(decl)? != 0 {
+        if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern declaration without executable body".into());
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
-        if rust_name.is_empty()
-            || !rust_name.as_bytes()[0].is_ascii_alphabetic()
-            || !rust_name
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        {
-            return Err("unsafe Rust function name".into());
-        }
-        const KEYWORDS: &[&str] = &[
-            "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-            "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
-            "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
-            "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
-            "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
-        ];
-        if KEYWORDS.contains(&rust_name) || rust_name == "_" {
-            return Err("reserved Rust function name".into());
-        }
+        validate_rust_function_name(rust_name)?;
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
@@ -428,8 +452,16 @@ impl Reader {
             write!(result, "x_{var}: {ty}").unwrap();
         }
         writeln!(result, ") -> {ret} {{").unwrap();
-        Self::body(body, &mut result, 0, &mut 0, &mut env, ret, functions)?;
+        let started = Instant::now();
+        let context = EmitContext {
+            functions,
+            started: &started,
+        };
+        Self::body(body, &mut result, 0, &mut 0, &mut env, ret, &context)?;
         result.push_str("}\n");
+        if result.len() > safety::MAX_OUTPUT_BYTES {
+            return Err("generated Rust output byte limit exceeded".into());
+        }
         Ok(result)
     }
 }
@@ -445,7 +477,7 @@ fn internal_name(lean_name: &str) -> String {
 
 impl Reader {
     unsafe fn signature(decl: Obj) -> Result<Signature, String> {
-        if Self::tag(decl)? != 0 {
+        if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
         let mut params = Vec::new();
@@ -464,22 +496,26 @@ impl Reader {
     unsafe fn body_calls(x: Obj, calls: &mut BTreeSet<String>) -> Result<(), String> {
         let mut pending = vec![x];
         let mut count = 0;
+        let started = Instant::now();
         while let Some(body) = pending.pop() {
             count += 1;
             if count > 100_000 {
                 return Err("dependency IR traversal exceeded 100000 instructions".into());
             }
-            match Self::tag(body)? {
+            if started.elapsed() > Duration::from_secs(10) {
+                return Err("dependency IR traversal time budget exceeded".into());
+            }
+            match Self::checked_tag(body, "FnBody")? {
                 0 => {
                     let expr = Self::field(body, 2)?;
-                    if Self::tag(expr)? == 6 {
+                    if Self::checked_tag(expr, "Expr")? == 6 {
                         calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
                     }
                     pending.push(Self::field(body, 3)?);
                 }
                 9 => {
                     for alt in Self::array(Self::field(body, 3)?)? {
-                        match Self::tag(alt)? {
+                        match Self::checked_tag(alt, "Alt")? {
                             0 => pending.push(Self::field(alt, 1)?),
                             1 => pending.push(Self::field(alt, 0)?),
                             t => return Err(format!("unknown alternative constructor {t}")),
@@ -498,9 +534,15 @@ impl Reader {
     }
 
     unsafe fn emit_module(decls: Obj, root: Obj, public_name: Obj) -> Result<String, String> {
+        if lr_abi_probe() == 0 {
+            return Err("Lean C ABI runtime probe failed".into());
+        }
+        let started = Instant::now();
         let root = Self::string(root)?;
         let public_name = Self::string(public_name)?;
-        // Public name is validated by the same strict emitter before publishing.
+        validate_rust_function_name(&public_name)
+            .map_err(|e| format!("declaration={root}; {e}"))?;
+        // Public function name is validated before any output construction.
         let entries = Self::array(decls)?;
         let mut definitions = BTreeMap::<String, Obj>::new();
         for decl in entries {
@@ -520,11 +562,15 @@ impl Reader {
             if visited.len() > 2048 {
                 return Err("native declaration closure exceeds 2048 functions".into());
             }
+            if started.elapsed() > Duration::from_secs(15) {
+                return Err("declaration closure code generation time budget exceeded".into());
+            }
             let decl = *definitions.get(&name).ok_or_else(||
-                format!("dependency {name} has no compiled IR in the current module; no external fallback"))?;
-            let sig = Self::signature(decl).map_err(|e| format!("{name}: {e}"))?;
+                format!("declaration={name}; dependency {name} has no compiled IR in the current module; no external fallback"))?;
+            let sig = Self::signature(decl).map_err(|e| format!("declaration={name}; {e}"))?;
             let mut called = BTreeSet::new();
-            Self::body_calls(Self::field(decl, 3)?, &mut called)?;
+            Self::body_calls(Self::field(decl, 3)?, &mut called)
+                .map_err(|e| format!("declaration={name}; {e}"))?;
             for callee in called {
                 if !is_primitive(&callee) {
                     pending.push(callee);
@@ -540,12 +586,17 @@ impl Reader {
             "// Native in-process Lean IR closure; no JSON or Lean runtime dependency.\n",
         );
         for (name, decl) in &closure {
-            result.push_str(&Self::emit_function(
-                *decl,
-                &internal_name(name),
-                Some(&signatures),
-            )?);
+            if started.elapsed() > Duration::from_secs(15) {
+                return Err("declaration closure code generation time budget exceeded".into());
+            }
+            result.push_str(
+                &Self::emit_function(*decl, &internal_name(name), Some(&signatures))
+                    .map_err(|e| format!("declaration={name}; {e}"))?,
+            );
             result.push('\n');
+            if result.len() > safety::MAX_OUTPUT_BYTES {
+                return Err("generated Rust closure output byte limit exceeded".into());
+            }
         }
         // Keep the existing external API for a single public root while
         // exposing all internal callees using stable, collision-free names.
@@ -570,60 +621,53 @@ impl Reader {
             write!(result, "p_{i}").unwrap();
         }
         result.push_str(")\n}\n");
-        // Invalid public Rust identifiers fail at generation, not only when
-        // rustc later parses the output. Reuse existing validation via an
-        // in-memory synthetic wrapper is unnecessary: emit_function accepts
-        // an actual root declaration under the public name and validates it.
-        let _ = Self::emit_function(
-            *closure.get(&root).unwrap(),
-            &public_name,
-            Some(&signatures),
-        )?;
+        if result.len() > safety::MAX_OUTPUT_BYTES {
+            return Err("generated Rust closure output byte limit exceeded".into());
+        }
         Ok(result)
     }
 }
 
+// The release coverage registry is the same table consulted by production
+// codegen and dependency-closure discovery, not a second documentation list.
+const PRIMITIVE_REGISTRY: &str = include_str!("../primitive-registry.tsv");
+
+struct PrimitiveSpec<'a> {
+    operand_type: &'a str,
+    rust_op: &'a str,
+    comparison: bool,
+}
+
+fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
+    PRIMITIVE_REGISTRY
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .find_map(|line| {
+            let mut cells = line.split('\t');
+            let id = cells.next()?;
+            let operand_type = cells.next()?;
+            let rust_op = cells.next()?;
+            let kind = cells.next()?;
+            if cells.next().is_some() || id != name {
+                return None;
+            }
+            Some(PrimitiveSpec {
+                operand_type,
+                rust_op,
+                comparison: kind == "comparison",
+            })
+        })
+}
+
 fn is_primitive(name: &str) -> bool {
-    matches!(
-        name,
-        "UInt8.add"
-            | "UInt16.add"
-            | "UInt32.add"
-            | "UInt64.add"
-            | "USize.add"
-            | "UInt8.sub"
-            | "UInt16.sub"
-            | "UInt32.sub"
-            | "UInt64.sub"
-            | "USize.sub"
-            | "UInt8.mul"
-            | "UInt16.mul"
-            | "UInt32.mul"
-            | "UInt64.mul"
-            | "USize.mul"
-            | "UInt8.decEq"
-            | "UInt16.decEq"
-            | "UInt32.decEq"
-            | "UInt64.decEq"
-            | "USize.decEq"
-            | "UInt8.decLt"
-            | "UInt16.decLt"
-            | "UInt32.decLt"
-            | "UInt64.decLt"
-            | "USize.decLt"
-            | "UInt8.decLe"
-            | "UInt16.decLe"
-            | "UInt32.decLe"
-            | "UInt64.decLe"
-            | "USize.decLe"
-    )
+    primitive_spec(name).is_some()
 }
 
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit_module(decls, root, public_name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     let text = text.replace('\0', "\\0");
     let cstr = CString::new(text).expect("replaced NUL");
@@ -658,14 +702,52 @@ pub unsafe extern "C" fn l_NativeRust_emitModule___boxed(
 unsafe fn reply(decl: Obj, name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit(decl, name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => format!("ERROR\n{e}"),
-        Err(_) => "ERROR\nbackend panic (no code emitted)".into(),
+        Ok(Err(e)) => safety::refusal("requested-root", &e),
+        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
     };
     // Lean strings do not contain NUL bytes. Sanitizing inputs prevents interior
     // NUL from causing an FFI panic; diagnostics remain safely in the error channel.
     let text = text.replace('\0', "\\0");
     let cstr = CString::new(text).expect("replaced NUL");
     lean_mk_string(cstr.as_ptr())
+}
+
+unsafe fn reply_publish(path: Obj, source: Obj) -> *mut c_void {
+    let report = match std::panic::catch_unwind(|| {
+        let path = Reader::string(path)?;
+        let source = Reader::string(source)?;
+        safety::publish(&path, &source)
+    }) {
+        Ok(Ok(())) => "OK\npublished".to_string(),
+        Ok(Err(e)) => safety::refusal("output", &e),
+        Err(_) => safety::refusal("output", "publisher panic (no output accepted)"),
+    };
+    let report = report.replace('\0', "\\0");
+    let encoded = CString::new(report).expect("NUL sanitized");
+    lean_mk_string(encoded.as_ptr())
+}
+
+/// # Safety
+/// Borrowed path and source must be live Lean Strings from the pinned runtime.
+#[no_mangle]
+pub unsafe extern "C" fn rs_publish_source(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
+}
+
+/// # Safety
+/// Interpreter alias for rs_publish_source.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_publishSource(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
+}
+
+/// # Safety
+/// Boxed interpreter alias for rs_publish_source.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_publishSource___boxed(path: Obj, source: Obj) -> *mut c_void {
+    reply_publish(path, source)
 }
 
 // `rs_emit_ir` is the native compiled ABI; the l_* names let Lean's
@@ -703,6 +785,82 @@ mod tests {
         assert_ne!(internal_name("X.A"), internal_name("X.a"));
         assert!(internal_name("X.a").starts_with("lean_"));
     }
+    #[test]
+    fn source_versioned_ir_constructor_whitelist_is_enforced() {
+        use super::SUPPORTED_IR_TAGS;
+        assert!(SUPPORTED_IR_TAGS.contains(&("Decl", 0)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("Decl", 1)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 4)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 6)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("Expr", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 14);
+    }
+
+    #[test]
+    fn registry_is_complete_and_unambiguous() {
+        use super::{primitive_spec, PRIMITIVE_REGISTRY};
+        use std::collections::BTreeSet;
+        let mut seen = BTreeSet::new();
+        for line in PRIMITIVE_REGISTRY.lines() {
+            if line.starts_with('#') || line.is_empty() {
+                continue;
+            }
+            let cells: Vec<_> = line.split('\t').collect();
+            assert_eq!(cells.len(), 4, "malformed registry line: {line}");
+            assert!(seen.insert(cells[0]), "duplicate primitive {}", cells[0]);
+            let (namespace, operation) = cells[0].split_once('.').unwrap();
+            assert!(
+                ["UInt8", "UInt16", "UInt32", "UInt64", "USize"].contains(&namespace),
+                "unsupported primitive namespace {namespace}"
+            );
+            assert!(
+                ["add", "sub", "mul", "decEq", "decLt", "decLe"].contains(&operation),
+                "unexpected primitive operation {operation}"
+            );
+            let spec = primitive_spec(cells[0]).expect("registered primitive missing");
+            assert_eq!(spec.operand_type, cells[1]);
+            assert_eq!(spec.rust_op, cells[2]);
+            assert_eq!(spec.comparison, cells[3] == "comparison");
+        }
+        for namespace in ["UInt8", "UInt16", "UInt32", "UInt64", "USize"] {
+            for operation in ["add", "sub", "mul", "decEq", "decLt", "decLe"] {
+                let id = format!("{namespace}.{operation}");
+                assert!(
+                    seen.contains(id.as_str()),
+                    "missing supported primitive {id}"
+                );
+            }
+        }
+        assert_eq!(seen.len(), 30);
+        assert!(!super::is_primitive("UInt64.shiftLeft"));
+    }
+
+    #[test]
+    fn public_identifiers_reject_tokens_keywords_and_embedded_nul() {
+        use super::validate_rust_function_name;
+        for accepted in ["hello", "my_function", "f4", "internal_f"] {
+            validate_rust_function_name(accepted).unwrap();
+        }
+        for rejected in [
+            "",
+            "fn",
+            "_",
+            "bad-name",
+            "my name",
+            "a::b",
+            "x); unsafe {}",
+            "safe\u{0}evil",
+        ] {
+            assert!(
+                validate_rust_function_name(rejected).is_err(),
+                "invalid public Rust identifier unexpectedly accepted"
+            );
+        }
+    }
+
     #[test]
     fn permitted_rust_identacters_only() {
         for s in ["a", "a_1", "Fn2"] {

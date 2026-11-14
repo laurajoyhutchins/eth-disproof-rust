@@ -73,3 +73,16 @@ jobs:
             echo "Tested source SHA: ${{ github.event.pull_request.head.sha || github.sha }}"
             echo 'G1 general compiler and G2 ETH physical equivalence: NOT ESTABLISHED'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish exact-head native compiler conformance ledger
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-lean-g1-ledger-${{ github.event.pull_request.head.sha || github.sha }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            rust/native_lean_backend/artifacts/ir-constructors.tsv
+            rust/native_lean_backend/artifacts/ir-coverage.tsv
+            rust/native_lean_backend/artifacts/primitive-conformance.tsv
+            rust/native_lean_backend/artifacts/native-smoke-receipt.txt

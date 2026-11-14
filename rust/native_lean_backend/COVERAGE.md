@@ -69,3 +69,33 @@ separate ETH symbolic/physical semantics obligations remain open.
   indirect applications, closures, join points, and general runtime types
   remain unsupported. Recursive functions with supported bodies compile, but
   no guarantee of stack safety or tail-call optimization is claimed.
+
+
+## Native response and publication contract (G1 hardening)
+
+The compiler now reports supported-IR refusals as a JSON object following
+the `ERROR\n` prefix. Fields: `status`, `declaration`, `construct`, `reason`.
+A native C ABI host-runtime probe verifies small tagged scalars, a two-field
+constructor, and Lean String operations before lowering. Rust codegen has an
+explicit per-body traversal/time budget and a 4 MiB output cap. Output paths
+are validated and staged adjacent to the destination for atomic rename.
+
+A generated supported root may be packaged into a standalone Cargo library
+with `scripts/package_crate.sh`, then built/tested without Lean runtime
+environment variables. This does not yet implement compiler-native
+multi-root crate generation. See [SAFETY.md](SAFETY.md) for the full trust
+boundary and remaining checklist items 21–30. In particular, a comprehensive
+automatically-derived conformance matrix is still open.
+
+## Derived constructor and primitive conformance
+
+The pinned Lean environment emits a constructor inventory which must exactly
+match `ir-coverage-classification.tsv`. Rust `build.rs` converts the 14
+`implemented_bounded` entries into the production decoder's allowed tag set;
+all other constructor variants fail closed. `primitive-registry.tsv` is the
+shared production primitive list, not a parallel prose table. The native
+smoke suite generates 1,920 extra original-Lean oracle checks (30 primitives ×
+64 inputs), alongside the existing 1,984, and verifies exact-source receipts.
+
+[CONFORMANCE.md](CONFORMANCE.md) describes the machine-readable ledgers,
+coverage scope, and what testing does *not* establish.

@@ -53,3 +53,6 @@ int lr_abi_probe(void) {
     lean_dec(embedded);
     return good;
 }
+
+/* Preserve upstream exact-runtime byte-length observation for independent identity fixtures. */
+size_t lr_string_size(b_lean_obj_arg o) { return o && lean_is_string((lean_object *)o) ? lean_string_size(o) : 0; }

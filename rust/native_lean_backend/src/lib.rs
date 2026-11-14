@@ -51,6 +51,12 @@ struct LoweringContext<'a> {
     joins: &'a JoinTable,
 }
 
+#[derive(Clone, Copy)]
+struct ImmutableCaseContext<'a> {
+    lowering: LoweringContext<'a>,
+    family: &'static str,
+}
+
 // Standalone immutable object model for the supported Lean IR subset.
 // Rc cloning models shared immutable values; source inc/dec instructions are
 // redundant only while mutation, isShared, reset and reuse remain unsupported.
@@ -651,7 +657,15 @@ impl Reader {
                         "object case source family {family} contradicts storage type {type_name}"
                     ));
                 }
-                Self::immutable_case(x, code, depth, count, env, ret_ty, ctx, family)
+                Self::immutable_case(
+                    x,
+                    code,
+                    depth,
+                    count,
+                    env,
+                    ret_ty,
+                    ImmutableCaseContext { lowering: ctx, family },
+                )
             }
             _ => {
                 let alts = Self::array(Self::field(x, 3)?)?;
@@ -773,10 +787,11 @@ impl Reader {
         count: &mut usize,
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
-        ctx: LoweringContext<'_>,
-        family: &str,
+        scoped: ImmutableCaseContext<'_>,
     ) -> Result<(), String> {
-        if !is_value_type(Self::ty(Self::field(x, 2)?)?) {
+        let family = scoped.family;
+        let ctx = scoped.lowering;
+        if !is_value_type(Self::ty(Self::field(x, 2)?)?)? {
             return Err(format!("{family} case scrutinee must be object-valued"));
         }
         let id = Self::var(Self::field(x, 1)?)?;

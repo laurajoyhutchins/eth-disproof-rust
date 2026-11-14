@@ -1,4 +1,5 @@
 """Offline fail-closed contracts for the *original* QueryStream AOT probe."""
+import hashlib
 import json
 import sys
 import tempfile
@@ -6,7 +7,8 @@ from pathlib import Path
 import time
 import unittest
 
-from query_stream_aot import validate_query, run_bounded, SOURCE_COMMIT, DECLARATION, IDENTIFIER
+from query_stream_aot import (validate_query, run_bounded, verify_query_import_receipt,
+                              MODULE, SOURCE_COMMIT, DECLARATION, IDENTIFIER)
 
 BLOB = "f" * 40
 
@@ -62,6 +64,62 @@ class QueryAotContract(unittest.TestCase):
                 item[field] = value
             with self.subTest(field=field), self.assertRaises(ValueError):
                 validate_query(raw(item), BLOB)
+
+    def test_pinned_full_query_receipt_checks_exact_olean_bytes(self):
+        with tempfile.TemporaryDirectory(prefix="original-query-receipt-") as p:
+            root = Path(p)
+            artifact = root / ".lake/build/lib/lean" / Path(
+                MODULE.replace(".", "/") + ".olean")
+            artifact.parent.mkdir(parents=True)
+            artifact.write_bytes(b"original-source-lean-olean-test-fixture")
+            pin = {
+                "mathlib_commit": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+                "lean": "Lean (version 4.34.1, fixture)",
+            }
+            good = {
+                "status": "PINNED_ORIGINAL_LEAN_IMPORT_VERIFIED",
+                "stage": "query", "module": MODULE,
+                "source_commit": SOURCE_COMMIT,
+                "source_git_blob": BLOB,
+                "mathlib_commit": pin["mathlib_commit"],
+                "lean_toolchain": "leanprover/lean4:v4.34.1",
+                "lean_version": pin["lean"],
+                "module_olean_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                "query_stream_executable": False,
+                "source_graph_compiled": False,
+                "independent_lean_rust_parity": False,
+                "math_or_resource_theorem": False,
+            }
+            receipt = root / "stage.receipt.json"
+            receipt.write_text(json.dumps(good))
+            verify_query_import_receipt(receipt, root, BLOB, pin)
+            for key, bad in [
+                    ("stage", "signature"),
+                    ("module", MODULE + ".Substituted"),
+                    ("source_commit", "0" * 40),
+                    ("source_git_blob", "0" * 40),
+                    ("mathlib_commit", "0" * 40),
+                    ("module_olean_sha256", "0" * 64),
+                    ("query_stream_executable", True)]:
+                with self.subTest(field=key):
+                    altered = dict(good)
+                    altered[key] = bad
+                    receipt.write_text(json.dumps(altered))
+                    with self.assertRaisesRegex(ValueError, "mismatch|differ"):
+                        verify_query_import_receipt(receipt, root, BLOB, pin)
+            receipt.write_text(json.dumps(good))
+            artifact.write_bytes(b"mutated module bytes")
+            with self.assertRaisesRegex(ValueError, "bytes differ"):
+                verify_query_import_receipt(receipt, root, BLOB, pin)
+
+    def test_receipt_rejects_duplicate_json_fields(self):
+        with tempfile.TemporaryDirectory(prefix="original-query-duplicate-") as p:
+            receipt = Path(p) / "receipt.json"
+            receipt.write_text('{"status":"good","status":"forged"}')
+            with self.assertRaisesRegex(ValueError, "duplicate"):
+                verify_query_import_receipt(receipt, Path(p), BLOB, {
+                    "mathlib_commit": "any", "lean": "any",
+                })
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "POSIX process-group test")
     def test_timeout_reaps_subprocess_tree_before_success_receipt(self):

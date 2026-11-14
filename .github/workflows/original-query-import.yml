@@ -1,0 +1,253 @@
+name: Original QueryStream staged Lean imports
+
+on:
+  # Advance the verified SignatureTupleCommand dependency gate to the full
+  # original QueryStream import, reusing its source-pinned .olean checkpoint.
+  # A trusted branch ref gives the compiled-module cache a stable scope.
+  # Pull-request merge-ref caches were saved but did not restore on rerun.
+  push:
+    branches:
+      - feat/query-aot-source-20261113
+    paths:
+      - 'rust/lean_eth_reference/src/bin/original-query-build.rs'
+      - 'rust/lean_eth_reference/tools/query_stream_aot.py'
+      - 'rust/lean_eth_reference/tools/export_source_graph.lean'
+      - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
+      - 'rust/lean_eth_reference/tools/verify_source_graph.py'
+      - '.github/workflows/original-query-import.yml'
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'One original source-defined module import (no Rust query output)'
+        required: true
+        default: query
+        type: choice
+        options:
+          - signature
+          - pairs
+          - layout
+          - head
+          - finish
+          - reconstruction
+          - query
+
+permissions:
+  contents: read
+
+# Do not cancel running source builds: each run preserves completed pinned
+# .olean modules for the next stage or run.
+concurrency:
+  group: original-query-import-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-one-pinned-import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      LEAN_ROOT: instrumentation/lean-env
+      ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+      IMPORT_STAGE: ${{ inputs.stage || 'query' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Test native Rust stage builder and strict refusal
+        run: |
+          cargo fetch --locked
+          cargo test --locked --offline --bin original-query-build
+          cargo run --locked --offline --bin original-query-build -- --list-stages
+
+      - name: Checkout original pinned OpenAI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth=1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test -z "$(git -C upstream/openai-math status --porcelain --untracked-files=no)"
+          ln -s "$ORIGINAL_SOURCE/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Restore pinned Lean 4.34.1 and Mathlib from locked Lake manifest
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Verify Mathlib pin before restoring original build artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$LEAN_ROOT/lean-toolchain")" = 'leanprover/lean4:v4.34.1'
+          test "$(git -C "$LEAN_ROOT/.lake/packages/mathlib" rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+          (
+            cd "$LEAN_ROOT"
+            lake env lean --version | grep -F 'Lean (version 4.34.1,'
+          )
+
+      - name: Restore last available pinned original OAI modules
+        id: restore-oai
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          # Immutable per-attempt key; fallback restores the latest previous
+          # compilation checkpoint in the trusted feature-branch cache scope.
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-
+            original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
+
+      - name: Verify restored compilation checkpoint identity and size
+        shell: bash
+        env:
+          RESTORED_CACHE_KEY: ${{ steps.restore-oai.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          root="$LEAN_ROOT/.lake/build/lib/lean/OAI"
+          restored="$(find "$root" -type f -name '*.olean' 2>/dev/null | wc -l || true)"
+          echo "ORIGINAL_LEAN_CACHE_RESTORED_KEY=$RESTORED_CACHE_KEY"
+          echo "ORIGINAL_LEAN_CACHE_INITIAL_OLEANS=$restored"
+          if [[ -z "$RESTORED_CACHE_KEY" ]]; then
+            echo "WARNING: no original OAI cache available; starting from pinned Mathlib alone"
+          fi
+
+      - name: Resume original module import in bounded chunks on this runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/original-query-stage"
+          echo "STAGE=$IMPORT_STAGE"
+          echo "SOURCE_HEAD=${{ github.sha }}"
+          root="$LEAN_ROOT/.lake/build/lib/lean/OAI"
+          prior="$(find "$root" -type f -name '*.olean' 2>/dev/null | wc -l || true)"
+          accepted=0
+          # Three independent 20-minute slices share the SAME runner and .lake
+          # directory. An expired slice is not a success. A later slice must
+          # make real .olean progress or the workflow stops rather than looping.
+          for round in 1 2 3; do
+            output="$RUNNER_TEMP/original-query-stage/round-$round"
+            mkdir -p "$output"
+            echo "ORIGINAL_LEAN_ROUND_START round=$round completed_oleans=$prior"
+            if cargo run --locked --offline --bin original-query-build -- \
+              --upstream "$ORIGINAL_SOURCE" \
+              --lake-root "$LEAN_ROOT" \
+              --output-dir "$output" \
+              --stage "$IMPORT_STAGE" \
+              --max-jobs 4 \
+              --timeout-seconds 1200; then
+              test -f "$output/stage.receipt.json"
+              accepted=1
+              echo "ORIGINAL_LEAN_ROUND_SUCCEEDED round=$round"
+              break
+            fi
+            # Parse the REFUSED report, not the shell exit code or an arbitrary
+            # substring in a log. Retry ONLY the bounded timeout case.
+            if ! python3 - "$output/stage.report.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          p=Path(sys.argv[1])
+          if not p.is_file():
+              raise SystemExit("missing explicit Lean refusal report")
+          x=json.loads(p.read_text())
+          if x.get("status")!="REFUSED" or not x.get("reason","").startswith(
+                  "original Lean build/import failed with exit status: 124;"):
+              raise SystemExit("original Lean refused for a non-timeout reason: "+str(x))
+          PY
+            then
+              echo "ORIGINAL_LEAN_NON_TIMEOUT_REFUSAL round=$round" >&2
+              exit 1
+            fi
+            current="$(find "$root" -type f -name '*.olean' 2>/dev/null | wc -l || true)"
+            echo "ORIGINAL_LEAN_ROUND_PROGRESS round=$round before=$prior after=$current"
+            if (( current <= prior )); then
+              echo "ORIGINAL_LEAN_STALLED: no new .olean modules in bounded round" >&2
+              exit 1
+            fi
+            prior="$current"
+          done
+          if (( accepted != 1 )); then
+            echo "ORIGINAL_LEAN_BUDGET_EXHAUSTED: three progressing bounded rounds, no verified import" >&2
+            exit 1
+          fi
+
+      - name: Attempt original QueryStream source graph and native Rust AOT
+        if: env.IMPORT_STAGE == 'query'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Only the verified *query* stage can reach this step. A successful
+          # signature stage or restored cache is never sufficient.
+          shopt -s nullglob
+          receipts=("$RUNNER_TEMP"/original-query-stage/round-*/stage.receipt.json)
+          if (( ${#receipts[@]} != 1 )); then
+            echo "Expected exactly one verified full QueryStream import receipt" >&2
+            exit 1
+          fi
+          cargo fetch --locked
+          mkdir -p "$RUNNER_TEMP/original-query-aot"
+          python3 rust/lean_eth_reference/tools/query_stream_aot.py \
+            --upstream "$ORIGINAL_SOURCE" \
+            --lake-root "$LEAN_ROOT" \
+            --rust-crate rust/lean_eth_reference \
+            --import-receipt "${receipts[0]}" \
+            --output-dir "$RUNNER_TEMP/original-query-aot" \
+            --timeout 900 \
+            --max-jobs 4 \
+            --max-source-labels 1000000000
+          echo 'Original source AOT generated: still requires independent Lean/Rust physical parity.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve source graph, Rust and typed AOT refusals
+        if: always() && env.IMPORT_STAGE == 'query'
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-query-aot-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/original-query-aot/
+          retention-days: 14
+          if-no-files-found: warn
+
+      # Save complete .olean dependencies even after a bounded refusal.
+      # This is a compilation checkpoint, never a semantic success receipt.
+      - name: Save pinned original dependency checkpoint
+        if: always() && steps.restore-oai.outcome == 'success'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Preserve stage log and true success/refusal report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-query-import-${{ env.IMPORT_STAGE }}-${{ github.sha }}
+          path: ${{ runner.temp }}/original-query-stage/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Record separation from ETH acceptance
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Original QueryStream dependency checkpoint"
+            echo "- Stage: $IMPORT_STAGE"
+            echo "- Source: $ORIGINAL_SOURCE_SHA"
+            echo "- Complete stage receipt: only if the original .olean and fresh Lean import passed"
+            echo "- QueryStream Rust executable: NOT ESTABLISHED"
+            echo "- Original Lean/Rust physical parity: NOT ESTABLISHED"
+          } >> "$GITHUB_STEP_SUMMARY"

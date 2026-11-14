@@ -66,6 +66,7 @@ jobs:
           set -euo pipefail
           python3 -m compileall -q rust/lean_eth_reference/tools
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_stream_aot.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_source_graph_kernel_certificate.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_physical_differential.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_compute_l_structural_acceptance.py' -v
@@ -112,7 +113,18 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: instrumentation/lean-env/.lake/build
-          key: original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
+          # A unique attempt key preserves completed query modules even when
+          # a prior immutable baseline cache was restored (a v1 hit would
+          # otherwise suppress all new cache saves).
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-
+            original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
+
+      # QueryStream module compilation now has a separate staged, cache-preserving
+      # workflow. This generic source-graph gate must not redundantly spend
+      # 3000 seconds building the entire original QueryStream closure.
+      # See original-query-import.yml for authentic pinned imports.
 
       - name: Export independent physical original Lean tables
         if: env.SOURCE_SUITE != 'fixtures'
@@ -224,7 +236,7 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: instrumentation/lean-env/.lake/build
-          key: original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Preserve source tables, graph, Rust and refusals
         if: always()
@@ -237,5 +249,6 @@ jobs:
             ${{ runner.temp }}/source-physical/
             ${{ runner.temp }}/compute-l-graph/
             ${{ runner.temp }}/named-repeat-proof/
+            ${{ runner.temp }}/query-stream/
           if-no-files-found: warn
           retention-days: 14

@@ -1,0 +1,138 @@
+name: Structural LaTeX typed backend
+
+on:
+  push:
+    branches: ['experiment/latex-typed-structural-backend', 'experiment/latex-structural-slim-imports', 'experiment/latex-to-lean-pilot']
+    paths:
+      - 'benchmark/latex-to-lean/structural/**'
+      - '.github/workflows/latex-structural-backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: latex-structural-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-checkpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install exact Rust compiler (no third-party crates)
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          rustup component add --toolchain 1.99.1 rustfmt clippy
+          cargo +1.99.1 --version
+          rustc +1.99.1 --version
+      - name: Rust correctness, formatting, and static analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd benchmark/latex-to-lean/structural
+          cargo +1.99.1 test --offline --locked
+          cargo +1.99.1 fmt -- --check
+          cargo +1.99.1 clippy --offline --locked --all-targets -- -D warnings
+          /usr/bin/time -v -o "$GITHUB_WORKSPACE/structural-rust-build.time" \
+            cargo +1.99.1 build --release --offline --locked
+      - name: Compile untouched research cases and held-out dimensions in one native binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="benchmark/latex-to-lean/structural/target/release/structural-latex"
+          root="benchmark/latex-to-lean/structural"
+          mkdir -p evidence/structural/generated
+          for id in RG02 RG04 RS01 RC04; do
+            "$binary" "benchmark/latex-to-lean/research/cases/$id.tex" \
+              "evidence/structural/generated/Structural$id.lean" "Structural$id"
+          done
+          /usr/bin/time -v -o evidence/structural/holdouts.time \
+            "$binary" --batch "$root/holdouts" evidence/structural/generated
+          for f in "$root"/rejected/*.tex; do
+            name="$(basename "$f" .tex)"
+            if "$binary" "$f" "evidence/structural/generated/Rejected$name.lean" "Rejected$name" \
+                > "evidence/structural/$name.stdout" 2> "evidence/structural/$name.stderr"; then
+              echo "ERROR: wrongly accepted bad input: $f" >&2
+              exit 1
+            fi
+            test ! -e "evidence/structural/generated/Rejected$name.lean"
+          done
+          cp structural-rust-build.time evidence/structural/
+          sha256sum benchmark/latex-to-lean/research/cases/{RG02,RG04,RS01,RC04}.tex \
+            "$root"/holdouts/*.tex > evidence/structural/source-sha256.txt
+          sha256sum evidence/structural/generated/*.lean > evidence/structural/generated-sha256.txt
+          printf '%s\n' "1.99.1" > evidence/structural/rust-version.txt
+          test "$(find evidence/structural/generated -name 'Structural*.lean' | wc -l)" -eq 10
+      - name: Upload generated code and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: structural-latex-rust-verified
+          path: evidence/structural/
+          if-no-files-found: error
+
+  lean-acceptance:
+    needs: rust-checkpoint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: structural-latex-rust-verified
+          path: evidence/structural/
+      - name: Checkout pinned Leanify only to reuse its Mathlib dependency lock
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Corrram/leanify.git vendor/leanify
+          git -C vendor/leanify checkout --detach 134da59ae02e9fffc011a5ea89acf4320268d220
+          test "$(git -C vendor/leanify rev-parse HEAD)" = "134da59ae02e9fffc011a5ea89acf4320268d220"
+          mkdir -p evidence/structural/lean
+          git -C vendor/leanify rev-parse HEAD > evidence/structural/lean/vendor-sha.txt
+          cat vendor/leanify/lean-toolchain > evidence/structural/lean/toolchain.txt
+      - name: Restore native Lean and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: vendor/leanify
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Independently elaborate, prove, and refute the generated source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          lake exe cache get
+          proof="$GITHUB_WORKSPACE/benchmark/latex-to-lean/structural/tests/StructuralGold.lean"
+          combined="$GITHUB_WORKSPACE/evidence/structural/lean/GeneratedWithProofs.lean"
+          printf 'import Mathlib.Basic.Real.Basic\nimport Mathlib.LinearAlgebra.Matrix.Notation\nimport Mathlib.Data.Fintype.BigOperators\nimport Mathlib.Tactic.NormNum\nimport Mathlib.Tactic.FinCases\nopen scoped Matrix\n\n' > "$combined"
+          for file in "$GITHUB_WORKSPACE"/evidence/structural/generated/Structural*.lean; do
+            head -1 "$file" | grep -Fxq 'import Mathlib.Basic.Real.Basic'
+            tail -n +5 "$file" >> "$combined"
+            printf '\n' >> "$combined"
+          done
+          cat "$proof" >> "$combined"
+          /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/structural/lean/proofs.time" \
+            timeout 300s lake env lean "$combined" \
+            > "$GITHUB_WORKSPACE/evidence/structural/lean/proofs.stdout" \
+            2> "$GITHUB_WORKSPACE/evidence/structural/lean/proofs.stderr"
+          cat "$GITHUB_WORKSPACE/evidence/structural/lean/proofs.stdout"
+          test "$(grep -Ec "(depends on axioms:|does not depend on any axioms)" "$GITHUB_WORKSPACE/evidence/structural/lean/proofs.stdout")" -eq 15
+          ! grep -q 'sorryAx' "$GITHUB_WORKSPACE/evidence/structural/lean/proofs.stdout"
+      - name: Upload independent Lean verification receipts, even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: structural-latex-kernel-receipts
+          path: evidence/structural/lean/
+          if-no-files-found: warn

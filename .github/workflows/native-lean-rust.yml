@@ -126,3 +126,6 @@ jobs:
             rust/native_lean_backend/artifacts/external-projects/*/positive-package/Cargo.toml
             rust/native_lean_backend/artifacts/external-projects/*/positive-package/src/*.rs
             rust/native_lean_backend/artifacts/external-projects/*/positive-package/tests/*.rs
+            rust/native_lean_backend/artifacts/external-projects/*/fullpull-crate/Cargo.toml
+            rust/native_lean_backend/artifacts/external-projects/*/fullpull-crate/src/*.rs
+            rust/native_lean_backend/artifacts/external-projects/*/fullpull-crate/oracles/*.rs

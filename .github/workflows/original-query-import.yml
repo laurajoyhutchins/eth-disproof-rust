@@ -39,7 +39,7 @@ concurrency:
 jobs:
   build-one-pinned-import:
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 90
     env:
       ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
       ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
@@ -181,6 +181,41 @@ jobs:
             echo "ORIGINAL_LEAN_BUDGET_EXHAUSTED: three progressing bounded rounds, no verified import" >&2
             exit 1
           fi
+
+      - name: Attempt original QueryStream source graph and native Rust AOT
+        if: env.IMPORT_STAGE == 'query'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Only the verified *query* stage can reach this step. A successful
+          # signature stage or restored cache is never sufficient.
+          shopt -s nullglob
+          receipts=("$RUNNER_TEMP"/original-query-stage/round-*/stage.receipt.json)
+          if (( ${#receipts[@]} != 1 )); then
+            echo "Expected exactly one verified full QueryStream import receipt" >&2
+            exit 1
+          fi
+          cargo fetch --locked
+          mkdir -p "$RUNNER_TEMP/original-query-aot"
+          python3 rust/lean_eth_reference/tools/query_stream_aot.py \
+            --upstream "$ORIGINAL_SOURCE" \
+            --lake-root "$LEAN_ROOT" \
+            --rust-crate rust/lean_eth_reference \
+            --import-receipt "${receipts[0]}" \
+            --output-dir "$RUNNER_TEMP/original-query-aot" \
+            --timeout 900 \
+            --max-jobs 4 \
+            --max-source-labels 1000000000
+          echo 'Original source AOT generated: still requires independent Lean/Rust physical parity.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve source graph, Rust and typed AOT refusals
+        if: always() && env.IMPORT_STAGE == 'query'
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-query-aot-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/original-query-aot/
+          retention-days: 14
+          if-no-files-found: warn
 
       # Save complete .olean dependencies even after a bounded refusal.
       # This is a compilation checkpoint, never a semantic success receipt.

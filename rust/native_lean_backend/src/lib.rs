@@ -478,7 +478,7 @@ impl Reader {
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
         let code = Self::emit_function(decl, &Self::string(rust_name)?, None)
             .map_err(|e| format!("declaration={declared_name}; {e}"))?;
-        Ok(with_runtime_if_needed(code))
+        with_runtime_if_needed(code)
     }
 
     unsafe fn emit_function(
@@ -682,7 +682,7 @@ impl Reader {
         if result.len() > safety::MAX_OUTPUT_BYTES {
             return Err("generated Rust closure output byte limit exceeded".into());
         }
-        Ok(with_runtime_if_needed(result))
+        with_runtime_if_needed(result)
     }
 }
 
@@ -747,15 +747,23 @@ fn runtime_primitive_spec(name: &str) -> Option<RuntimePrimitiveSpec<'static>> {
         })
 }
 
-fn with_runtime_if_needed(source: String) -> String {
-    if source.contains("Value") || source.contains("native_runtime::") {
+fn with_runtime_if_needed(source: String) -> Result<String, String> {
+    let needs_runtime = source.contains("native_runtime::")
+        || source.contains(": Value")
+        || source.contains("-> Value")
+        || source.contains("Value::");
+    let output = if needs_runtime {
         format!(
             "mod native_runtime {{\n{}\n}}\npub use native_runtime::Value;\n{source}",
             include_str!("standalone_runtime.rs")
         )
     } else {
         source
+    };
+    if output.len() > safety::MAX_OUTPUT_BYTES {
+        return Err("complete generated Rust, including embedded value runtime, exceeds output byte limit".into());
     }
+    Ok(output)
 }
 
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
@@ -896,6 +904,15 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
         assert_eq!(SUPPORTED_IR_TAGS.len(), 19);
+    }
+
+    #[test]
+    fn embedded_runtime_is_included_in_the_output_size_cap() {
+        let tiny = super::with_runtime_if_needed("pub fn tiny() -> u64 { 2 }".to_owned())
+            .expect("scalar-only function");
+        assert!(!tiny.contains("mod native_runtime"));
+        let source = format!("// input\nlet x_1: Value = Value::nat(\"1\");\n{}", "a".repeat(super::safety::MAX_OUTPUT_BYTES));
+        assert!(super::with_runtime_if_needed(source).is_err());
     }
 
     #[test]

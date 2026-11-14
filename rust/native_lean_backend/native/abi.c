@@ -21,3 +21,7 @@ b_lean_obj_res lr_array_at(b_lean_obj_arg o, size_t n) {
 int lr_is_array(b_lean_obj_arg o) { return o && lean_is_array((lean_object *)o); }
 int lr_is_string(b_lean_obj_arg o) { return o && lean_is_string((lean_object *)o); }
 const char *lr_string_ptr(b_lean_obj_arg o) { return o && lean_is_string((lean_object *)o) ? lean_string_cstr((lean_object *)o) : NULL; }
+
+/* Includes the NUL terminator, allowing the Rust side to preserve embedded
+ * NUL bytes instead of truncating and colliding distinct Lean.Name strings. */
+size_t lr_string_size(b_lean_obj_arg o) { return o && lean_is_string((lean_object *)o) ? lean_string_size(o) : 0; }

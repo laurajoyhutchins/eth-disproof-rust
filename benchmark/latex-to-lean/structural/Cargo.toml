@@ -8,3 +8,5 @@ description = "Deterministic, fail-closed typed structural LaTeX fragment compil
 [[bin]]
 name = "structural-latex"
 path = "src/main.rs"
+
+[workspace]

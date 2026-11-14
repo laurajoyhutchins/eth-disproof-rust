@@ -97,7 +97,7 @@ capturing Rust closures, including jumps from Boolean branches. Recursive
 joins, non-scalar join parameters, and unsupported runtime operations refuse.
 
 **Not implemented:** general Lean/Rust compilation; arbitrary-precision
-`Nat`; indirect calls, closures, non-Boolean cases, recursive joins, arrays,
+general `Nat` APIs; indirect calls, closures, non-Boolean cases, recursive joins, generic arrays,
 structures, general external primitives, and
 noncomputable expressions without compiler IR. The current generated functions are checked
 on examples but there is not yet a general semantic refinement theorem.
@@ -142,4 +142,8 @@ examples within a **bounded subset**, not proof of general compiler correctness.
 
 ## Pinned source-derived conformance matrix
 
-The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 16-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
+The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 21-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
+
+## Integrated original-source value runtime
+
+The combined compiler preserves source-native lexical joins and multi-root Cargo generation, while also recognizing ten pinned original-Lean `Nat`, `Int`, `String`, `Array UInt64` and `List UInt64` primitive calls. The generated Rust embeds an exact bounded, crate-free value runtime only when required. Its original-Lean differential suite adds 101 assertions, for **5,029** core conformance comparisons in `scripts/check.sh` (plus the separately reported 1,024-property-case suite). The runtime is a trusted typed-input boundary, not a general Lean heap or IO implementation. See [SEMANTICS.md](SEMANTICS.md) and [CONFORMANCE.md](CONFORMANCE.md).

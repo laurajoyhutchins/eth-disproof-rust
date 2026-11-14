@@ -22,6 +22,8 @@ b_lean_obj_res lr_array_at(b_lean_obj_arg o, size_t n) {
 int lr_is_array(b_lean_obj_arg o) { return o && lean_is_array((lean_object *)o); }
 int lr_is_string(b_lean_obj_arg o) { return o && lean_is_string((lean_object *)o); }
 const char *lr_string_ptr(b_lean_obj_arg o) { return o && lean_is_string((lean_object *)o) ? lean_string_cstr((lean_object *)o) : NULL; }
+/* Includes all bytes before the trailing runtime terminator, even embedded NUL. */
+size_t lr_string_bytes_len(b_lean_obj_arg o) { return o && lean_is_string((lean_object *)o) ? lean_string_size(o) - 1 : 0; }
 
 /* Executed in the actual Lean host, not against a synthetic Rust layout.
  * The header supplies tag, scalar, ctor allocation and field access APIs.
@@ -43,5 +45,11 @@ int lr_abi_probe(void) {
     good = good && lean_is_string(str)
         && strcmp(lean_string_cstr(str), "abi-probe") == 0;
     lean_dec(str);
+    lean_object *embedded = lean_mk_string("x");
+    embedded = lean_string_push(embedded, 0);
+    embedded = lean_string_push(embedded, 'y');
+    good = good && lean_string_size(embedded) == 4
+        && memcmp(lean_string_cstr(embedded), "x\0y", 3) == 0;
+    lean_dec(embedded);
     return good;
 }

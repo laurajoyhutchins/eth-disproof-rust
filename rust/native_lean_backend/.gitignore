@@ -24,22 +24,29 @@
 /examples/test-join
 /examples/test-join.rs
 /examples/RefusalPackage*.log
-/examples/rejected-io-package/
-/examples/RefusalPackageIO.log
 
-/examples/test-float
-/examples/test-float.rs
+# Generated primitive matrix orchestration
+/examples/matrix_run.rs
 
-/examples/test-tagged
-/examples/test-tagged.rs
-/examples/rejected_tagged_heap.rs
-/examples/RefusalTaggedHeap.log
+/examples/object-package/
+/examples/function-package/
+/examples/rejected-object-package/
+/examples/rejected-function-package/
+/examples/RefusalFunctionValues.log
 
-/examples/test-bitwise
-/examples/test-bitwise.rs
+/examples/nat-package/
+/examples/rejected-nat-package/
+/examples/RefusalNatBitwise.log
 
 /examples/native-binary/
 /examples/native-binary-small/
 /examples/rejected-binary/
+/examples/rejected_tagged_heap.rs
+/examples/test-float
+/examples/test-float.rs
+/examples/test-tagged
+/examples/test-tagged.rs
+/examples/test-bitwise
+/examples/test-bitwise.rs
 /examples/RefusalBinaryArguments.log
 /examples/RefusalBinaryOverwrite.log

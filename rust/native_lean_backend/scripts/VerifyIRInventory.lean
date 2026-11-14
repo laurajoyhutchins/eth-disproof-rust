@@ -22,7 +22,6 @@ private def expectedConstructors : Array (Name × Array Name) := #[
 private def conditionalConstructors : Array Name := #[
   ``Lean.IR.Decl.fdecl,
   ``Lean.IR.IRType.float,
-  ``Lean.IR.IRType.tagged,
   ``Lean.IR.IRType.uint8,
   ``Lean.IR.IRType.uint16,
   ``Lean.IR.IRType.uint32,
@@ -30,16 +29,29 @@ private def conditionalConstructors : Array Name := #[
   ``Lean.IR.IRType.usize,
   ``Lean.IR.Arg.var,
   ``Lean.IR.LitVal.num,
-  ``Lean.IR.Expr.ctor,
   ``Lean.IR.Expr.fap,
   ``Lean.IR.Expr.lit,
   ``Lean.IR.Alt.ctor,
   ``Lean.IR.Alt.default,
   ``Lean.IR.FnBody.vdecl,
+  -- Restricted non-recursive, typed, scalar join continuations from #202.
   ``Lean.IR.FnBody.jdecl,
   ``Lean.IR.FnBody.jmp,
   ``Lean.IR.FnBody.case,
   ``Lean.IR.FnBody.ret,
+  -- Bounded immutable object and source-defined all-boxed PAP/AP constructs.
+  ``Lean.IR.IRType.object,
+  ``Lean.IR.IRType.tobject,
+  ``Lean.IR.IRType.tagged,
+  ``Lean.IR.Expr.ctor,
+  ``Lean.IR.Expr.proj,
+  ``Lean.IR.Expr.pap,
+  ``Lean.IR.Expr.ap,
+  ``Lean.IR.Expr.box,
+  ``Lean.IR.Expr.unbox,
+  ``Lean.IR.FnBody.inc,
+  ``Lean.IR.FnBody.dec,
+  ``Lean.IR.FnBody.del,
 ]
 
 run_cmd do
@@ -54,14 +66,12 @@ run_cmd do
       let status := if conditionalConstructors.contains constructor then "conditional" else "refused"
       ledger := ledger ++ s!"{family}\t{constructor}\t{status}\tpinned-subset\n"
   let widths := #["UInt8", "UInt16", "UInt32", "UInt64", "USize"]
-  let operations := #["add", "sub", "mul", "decEq", "decLt", "decLe"]
+  let operations := #["add", "sub", "mul", "decEq", "decLt", "decLe",
+    "div", "mod", "land", "lor", "xor", "shiftLeft", "shiftRight"]
   for width in widths do
     for operation in operations do
       ledger := ledger ++ s!"primitive\t{width}.{operation}\tconditional\ttyped-binary-only\n"
   for operation in #["add", "sub", "mul"] do
-    ledger := ledger ++ s!"primitive\tFloat.{operation}\tconditional\tfinite-f64-binary-only\n"
-  for width in widths do
-    for operation in #["div", "mod", "land", "lor", "xor", "shiftLeft", "shiftRight"] do
-      ledger := ledger ++ s!"primitive\t{width}.{operation}\tconditional\ttyped-unsigned-binary-only\n"
+    ledger := ledger ++ s!"primitive\tFloat.{operation}\tconditional\tfinite-f64-only\n"
   ledger := ledger ++ "primitive\t*\trefused\tunknown-or-external\n"
-  liftIO <| IO.FS.writeFile "artifacts/ir-coverage.tsv" ledger
+  liftIO <| IO.FS.writeFile "artifacts/ir-constructor-summary.tsv" ledger

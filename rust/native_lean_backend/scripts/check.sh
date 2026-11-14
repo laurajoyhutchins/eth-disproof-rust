@@ -8,15 +8,21 @@ fi
 export PATH="${LEAN_PREFIX}/bin:${PATH}"
 export LEAN_PATH="${LEAN_PREFIX}/lib/lean${LEAN_PATH:+:${LEAN_PATH}}"
 export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-# The actual Lean environment, not handwritten Rust indices, verifies the
-# complete pinned IR constructor inventory and emits a machine-readable ledger.
+# Derive the complete IR constructor inventory from the actual pinned Lean environment.
+# The ledger is fail-closed on tag/order drift and documents conditional semantics.
 mkdir -p artifacts
 lean scripts/VerifyIRInventory.lean
-# There is one production primitive registry. CI compares it against the
-# independently derived Lean coverage ledger to prevent coverage drift.
-diff -u \
-  <(awk -F '\t' '$1 == "primitive" && $3 == "conditional" { print $2 }' artifacts/ir-coverage.tsv | sort) \
-  <(awk -F '\t' '!/^#/ && NF >= 4 { print $1 }' primitive-registry.tsv | sort)
+test "$(awk -F '\t' 'NR>1 && $1=="primitive" && $3=="conditional" {n++} END {print n+0}' artifacts/ir-constructor-summary.tsv)" -eq 68
+awk -F '\t' '
+  $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jdecl" && $3=="conditional" {a=1}
+  $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jmp" && $3=="conditional" {b=1}
+  $1=="Lean.IR.Expr" && $2=="Lean.IR.Expr.pap" && $3=="conditional" {c=1}
+  END {exit !(a && b && c)}
+' artifacts/ir-constructor-summary.tsv
+if grep -Eq 'rs_emit_ir_bundle|#native_rust_bundle' NativeRust.lean src/lib.rs; then
+  echo 'multiple competing multi-root compiler interfaces detected' >&2
+  exit 2
+fi
 cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
@@ -83,6 +89,21 @@ for pair in "RefusalClosure:rejected_closure" "RefusalClosureSorry:rejected_sorr
   fi
   rm -f "examples/${destination}.rs" "examples/${destination}.log"
 done
+# A refused source declaration must not poison later calls in the same host.
+rm -f examples/recovery_bad.rs examples/recovery_good.rs
+if timeout --kill-after=3s 90s lean --load-dynlib="$NATIVE_LIB" examples/Recovery.lean > artifacts/recovery.log 2>&1; then
+  echo 'recovery fixture unexpectedly accepted an unsupported String' >&2; exit 1
+fi
+if [[ -e examples/recovery_bad.rs || ! -f examples/recovery_good.rs ]]; then
+  cat artifacts/recovery.log >&2
+  echo 'refusal corrupted later valid emission' >&2; exit 1
+fi
+if ! grep -q '"status":"refused"' artifacts/recovery.log; then
+  cat artifacts/recovery.log >&2
+  echo 'missing machine-readable refusal' >&2; exit 1
+fi
+rustc --edition=2021 --crate-type=lib -o artifacts/recovery_good.rlib examples/recovery_good.rs
+rm -f examples/recovery_good.rs artifacts/recovery_good.rlib
 cat > examples/run.rs <<'RUST'
 include!("generated_add_one.rs");
 include!("generated_times_three.rs");
@@ -145,7 +166,6 @@ if [[ "$(cat examples/rejected_tagged_heap.rs)" != "preserve-previous-tagged-out
   echo "failed tagged refusal modified existing output" >&2; exit 1
 fi
 rm -f examples/rejected_tagged_heap.rs examples/RefusalTaggedHeap.log
-# Real Lean IR join continuations (jdecl/jmp), including captured locals.
 # Float is accepted only for three finite typed-scalar operations.
 # Test oracle results computed by original Lean Float, never by the Rust backend.
 lean --load-dynlib="$NATIVE_LIB" examples/FloatFixture.lean
@@ -211,6 +231,7 @@ fn main() { include!("generated_bitwise_differential.rs"); }
 RUST
 rustc --edition=2024 -o examples/test-bitwise examples/test-bitwise.rs
 examples/test-bitwise
+# Real Lean IR join continuations (jdecl/jmp), including captured locals.
 lean --load-dynlib="$NATIVE_LIB" examples/JoinFixture.lean
 cat > examples/test-join.rs <<'RUST'
 include!("generated_join.rs");
@@ -252,6 +273,55 @@ if [[ "$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)" != "$pac
   echo "refused overwrite modified the published Cargo package" >&2; exit 1
 fi
 rm -f examples/RefusalPackageOverwrite.log
+# Integrated with main's exact pinned IR whitelist, structured refusals, and
+# atomic publisher. New object and callable tests share one Rust backend.
+rm -rf examples/object-package examples/function-package
+lean --load-dynlib="$NATIVE_LIB" examples/Objects.lean
+cargo test --offline --manifest-path examples/object-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/object-package/Cargo.toml --all-targets -- -D warnings
+if [[ "$(grep -c "Generated directly from Lean IR declaration: ObjectFixture.mkOpt" examples/object-package/src/lib.rs)" != 1 ]]; then
+  echo "immutable object closure was duplicated or omitted" >&2; exit 1
+fi
+for fixture in RefusalObjectNat RefusalObjectCtor; do
+  rm -rf examples/rejected-object-package
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then
+    echo "invalid object runtime accepted: ${fixture}" >&2; exit 1
+  fi
+  if [[ -e examples/rejected-object-package ]] || ! grep -q "Rust native backend refused" "examples/${fixture}.log"; then
+    cat "examples/${fixture}.log" >&2
+    echo "object runtime refusal failed" >&2; exit 1
+  fi
+  rm -f "examples/${fixture}.log"
+done
+lean --load-dynlib="$NATIVE_LIB" examples/FunctionValues.lean
+if ! grep -Fq '__LeanValue::pap(' examples/function-package/src/lib.rs || ! grep -Fq '.apply(vec![' examples/function-package/src/lib.rs; then
+  echo 'real boxed PAP/AP was not lowered' >&2; exit 1
+fi
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --offline --manifest-path examples/function-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/function-package/Cargo.toml --all-targets -- -D warnings
+rm -rf examples/rejected-function-package
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalFunctionValues.lean > examples/RefusalFunctionValues.log 2>&1; then
+  echo 'unsupported function runtime accepted' >&2; exit 1
+fi
+if [[ -e examples/rejected-function-package ]] || ! grep -q "Rust native backend refused" examples/RefusalFunctionValues.log; then
+  cat examples/RefusalFunctionValues.log >&2
+  echo 'unsupported function dependency did not refuse' >&2; exit 1
+fi
+rm -f examples/RefusalFunctionValues.log
+# Bounded GMP-backed Nat over actual source IR: >1024-bit input operands,
+# saturated subtraction, totalized division/modulo by zero and comparisons.
+rm -rf examples/nat-package examples/rejected-nat-package
+lean --load-dynlib="$NATIVE_LIB" examples/NatFixture.lean
+cargo test --offline --manifest-path examples/nat-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/nat-package/Cargo.toml --lib -- -D warnings
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalNatBitwise.lean > examples/RefusalNatBitwise.log 2>&1; then
+  echo 'unreviewed Nat bitwise primitive was accepted' >&2; exit 1
+fi
+if [[ -e examples/rejected-nat-package ]] || ! grep -q "Rust native backend refused" examples/RefusalNatBitwise.log; then
+  cat examples/RefusalNatBitwise.log >&2
+  echo 'unsupported Nat compilation failed to refuse cleanly' >&2; exit 1
+fi
+rm -f examples/RefusalNatBitwise.log
 # A zero-argument Lean scalar entrypoint can be packaged as a standalone
 # executable. No Lean shared library or environment is needed at execution.
 rm -rf examples/native-binary examples/native-binary-small
@@ -287,6 +357,10 @@ rm -f examples/RefusalBinaryOverwrite.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
+# Validate every pinned constructor against the complete source-derived tag
+# matrix, then execute all 30 registered primitives against 64 Lean oracles.
+# This richer ledger is separate from VerifyIRInventory's initial drift gate.
+bash scripts/check-coverage.sh
 # Receipt exists only after *all* end-to-end and negative checks pass.
 mkdir -p artifacts
 {
@@ -296,12 +370,30 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=6016"
-  echo "unsigned_total_division_shift_width=PASS"
-  echo "standalone_cargo_binary_no_lean_runtime=PASS"
-  echo "constructor_inventory=PASS"
-  echo "primitive_registry=PASS"
-  echo "external_io_boundary=REFUSED"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/FloatFixture.lean examples/TaggedFixture.lean examples/RefusalTaggedHeap.lean examples/BitwiseFixture.lean examples/BinaryFixture.lean examples/RefusalBinaryArguments.lean examples/RefusalBinaryOverwrite.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/native-binary/src/main.rs examples/native-binary/Cargo.toml examples/native-binary-small/src/main.rs examples/native-binary-small/Cargo.toml artifacts/binary-expected.txt examples/generated_*.rs
+  echo "differential_assertions=16344"
+  echo "expanded_primitive_registry=68"
+  echo "bitwise_differential=2240"
+  echo "finite_float_differential=384"
+  echo "nullary_enum_differential=384"
+  echo "standalone_cargo_binary=PASS"
+  echo "gmp_nat_differential=5208"
+  echo "immutable_object_differential=3072"
+  echo "pap_ap_differential=2048"
+  echo "safety_and_primitive_matrix=PASS"
+  echo "ir_constructor_inventory=PASS"
+  echo "runtime_tag_whitelist=30_scoped_IR_constructors"
+  echo "primitive_conformance=30_operations_x_64_original_Lean_oracles"
+  sha256sum ir-coverage-classification.tsv primitive-registry.tsv scripts/coverage-ledger.rs \
+    scripts/check-coverage.sh examples/IRInventory.lean examples/PrimitiveMatrix.lean \
+    artifacts/ir-constructors.tsv artifacts/ir-coverage.tsv \
+    artifacts/primitive-conformance.tsv
+  echo "structured_refusal_recovery=PASS"
+  echo "atomic_publisher=PASS"
+  sha256sum src/safety.rs
+  sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
+  sha256sum examples/FloatFixture.lean examples/TaggedFixture.lean examples/BitwiseFixture.lean examples/RefusalTaggedHeap.lean examples/BinaryFixture.lean examples/RefusalBinaryArguments.lean examples/RefusalBinaryOverwrite.lean examples/RefusalPackageIO.lean examples/native-binary/src/main.rs examples/native-binary-small/src/main.rs examples/native-binary/Cargo.toml examples/native-binary-small/Cargo.toml artifacts/binary-expected.txt
+  sha256sum examples/NatFixture.lean examples/RefusalNatBitwise.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml
+  sha256sum examples/Objects.lean examples/FunctionValues.lean examples/RefusalObjectNat.lean examples/RefusalObjectCtor.lean examples/RefusalFunctionValues.lean examples/object-package/src/lib.rs examples/function-package/src/lib.rs
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

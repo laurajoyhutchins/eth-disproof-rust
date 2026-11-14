@@ -9,12 +9,12 @@ refuse. Constructor/tag identities below are pinned to
 | IR family | Supported | Explicitly unsupported |
 | --- | --- | --- |
 | `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
-| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize`; `float` only for finite arithmetic; `tagged` only for nullary scalar enum | `float32`, `erased`, `object`, `tobject`, `void`, `struct`, `union`; other `float`/`tagged` shapes |
+| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize` | `float`, `float32`, `erased`, `object`, `tobject`, `tagged`, `void`, `struct`, `union` |
 | `Arg` | `var` with known, matching type | `erased` in runtime position |
-| `Expr` | bounded `lit.num`, selected `fap` primitives, typed direct calls, nullary scalar `ctor` | heap `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
-| `FnBody` | `vdecl`, `ret`, typed scalar `case` on Bool/finite nullary inductives, non-recursive scalar `jdecl`/`jmp` | recursive/general joins, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, heap `case`, `unreachable` |
-| `Alt` | exact Bool `ctor`, nullary scalar inductive `ctor` and `default` | unsupported/heap alternatives |
-| Primitive operations | `UInt8/16/32/64`, `USize`: 13 typed arithmetic/comparison/bitwise/shift/div/mod operations; `Float.add/sub/mul` on finite dyadics | all other runtime calls |
+| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls to supported compiled declarations | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
+| `FnBody` | `vdecl`, `ret`, Bool-only `case`, and bounded nonrecursive typed scalar `jdecl`/`jmp` | recursive/non-scalar joins, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, other `case`, `unreachable` |
+| `Alt` | two exact Bool `ctor` alternatives | `default`, other constructors |
+| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
 Lean `Bool` is emitted as the compiler's `u8` representation (`0=false`,
@@ -87,95 +87,53 @@ separate ETH symbolic/physical semantics obligations remain open.
   general control-flow completion gate nor general data/runtime semantics is
   established by this subset.
 
-## Exhaustive pinned IR-constructor inventory and primitive registry
+## Source-derived constructor inventory (integration of PR #200)
 
-The exact-head native CI executes `scripts/VerifyIRInventory.lean` before
-compiling the Rust backend. The Lean compiler itself enumerates constructors
-of `IR.Decl`, `IRType`, `Arg`, `LitVal`, `Expr`, `Alt`, and `FnBody`.
-It refuses any changed membership **or constructor order** relative to the
-pinned Lean 4.34.1 ABI. The generated `artifacts/ir-coverage.tsv` records
-each constructor as `conditional` or `refused`; `jdecl/jmp` are conditional
-only for the typed scalar non-recursive join subset.
+`scripts/VerifyIRInventory.lean` asks the **actual pinned Lean 4.34.1 environment** for constructor identities and order in `Decl`, `IRType`, `Arg`, `LitVal`, `Expr`, `Alt`, and `FnBody`. `scripts/check.sh` runs this inspection **before native codegen** and fails if a pinned IR family has changed. It emits `artifacts/ir-coverage.tsv` and includes its SHA-256 and the generator SHA-256 in the smoke receipt. Exactly 30 selected typed binary primitives are recorded; all others remain refused. `FnBody.jdecl` and `FnBody.jmp` are marked *conditional* only for the scoped nonrecursive scalar joins exercised in this branch.
 
-The backend now uses one `primitive-registry.tsv` for primitive codegen and
-dependency classification. CI independently compares its set of 68 entries
-with the Lean-generated coverage ledger. Unlisted operations and all
-extern/IO/effect boundaries have no default adapter and must refuse. A real
-`IO.println` fixture exercises this refusal through the public package API.
+This inventory is a constructor **membership/order** check, not a complete ABI layout audit or proof of Rust semantic correspondence. No duplicate `#native_rust_bundle` route is added: `#native_rust_package` remains the one multi-root Cargo-producing interface, with real Lean/Rust join and three-root differential fixtures. The imported subset claims only what the combined smoke actually tests; G1 requirements 13, 23, 29 and release 41 remain open.
 
-`conditional` is not synonymous with complete semantics. Arbitrary heap
-objects, closures, full pattern matching, Nat/Int/Unicode collections,
-floating-point conversions, mutation and reference counting remain
-explicitly unsupported by this compiler version. This protects against
-partial builds, but it does **not** complete checklist #193 items 16–19.
+## Runtime-gated IR whitelist and primitive matrix (#201 integration)
 
-## Finite Float scalar arithmetic subset
+The real pinned Lean 4.34.1 constructor inventory is first checked by `scripts/VerifyIRInventory.lean` and recorded in `artifacts/ir-constructor-summary.tsv`. Separately, `examples/IRInventory.lean` and `scripts/coverage-ledger.rs` verify the complete 48-constructor tag classification, publishing `artifacts/ir-constructors.tsv` and `artifacts/ir-coverage.tsv`. The Rust `build.rs` compiles the same checked classification into `SUPPORTED_IR_TAGS`, and **production readers refuse unclassified tags**.
 
-For Lean IR `IRType.float`, the backend maps inputs, results and intermediates
-to Rust `f64`. Only exact `Float.add`, `Float.sub` and `Float.mul`
-primitives are permitted, lowered to Rust IEEE-754 `+`, `-` and `*`.
-A real original-Lean oracle fixture compares generated functions on finite,
-exact dyadic inputs including negatives and zeros.
+Of those 48 constructors, **16** are bounded-supported, including `FnBody.jdecl` and `FnBody.jmp` strictly for nonrecursive, typed scalar lexical joins. The other **32** are explicitly unsupported. No unsupported branch is allowed to become accepted just because a Rust `match` arm is added. The `primitive-registry.tsv` is now the production lookup for exactly 30 typed unsigned operations. A generated 30 × 64 matrix of independent original-Lean results (1,920 comparisons) is executed from source IR. The legacy fixture gate still independently covers 3,008 base/join/multi-root comparisons. These checks do **not** establish semantic correctness of general collections, arbitrary-precision `Nat`/`Int`, effects, or whole ETH-source compilation.
 
-This is **not** unrestricted floating-point semantics. NaN/signalling,
-infinity/overflow, conversions, Float32, exception flags, unusual rounding
-modes and other operations remain outside the verified domain and refuse.
+## Integrated immutable object and callable subset
 
-## Nullary inductive / tagged-scalar subset
+IRType.object/tobject/tagged and the supported Expr.ctor/proj/box/unbox
+forms are accepted only for verified immutable Option/Prod layouts.
+Expr.pap and Expr.ap accept statically compiled, source-defined
+all-boxed call signatures and preserve captured values in immutable Rc
+objects. FnBody.inc/dec/del are non-observable only while mutation,
+reuse/reset/isShared and unknown heap layouts are prohibited.
+Source-differential evidence: 3,072 object + 2,048 callable results.
 
-A Lean inductive constructor with **no object, usize or scalar fields**
-can be lowered to its `IRType.tagged` constructor index, carried in Rust as
-`usize`. Generated `FnBody.case` checks constructor identity against the
-declared inductive type; branch-local values cannot leak across arms.
-`Alt.default` is supported for this tagged-scalar case. Unknown tags trap,
-rather than being silently interpreted as a different constructor.
+## GMP Nat exact operation subset
 
-The native suite independently evaluates 384 Rust checks from original Lean
-source for a three-constructor nullary inductive. A separate field-carrying
-inductive is refused and the previous output preserved. **This is not**
-general constructor allocation, heap-backed pattern matching, closures,
-captured variables, arrays or sharing semantics; those require a separately
-specified object runtime and are still unsupported.
+Nat.add/sub/mul/div/mod/decEq/decLt/decLe are recognized only
+with actual pinned compiler IR and known object/scalar return types.
+Generated Rc-backed Nat values store arbitrary-precision GMP integers.
+Lean Nat subtraction is saturating, and division/remainder by zero
+are total. All other Nat primitives refuse (including Nat.land).
+The original Lean runtime supplies 5,208 numerical oracles with
+0 to 1024-bit inputs; no machine-width truncation or synthesized
+finite-table implementation is accepted. GMP must be installed on
+supported Linux x86-64 execution hosts; no Lean runtime is linked.
 
-**Pinned compiler observation:** For the three-constructor fixture, Lean 4.34.1
-actually uses `IRType.uint8` storage. The lowerer therefore also handles
-nullary `UInt8`-backed inductives, using original constructor identities
-to distinguish them from Bool. No generic `usize` coercion is performed;
-the original IR storage type determines the Rust scalar type.
 
-## Unsigned total arithmetic and shift semantics (Lean 4.34.1)
+## Expanded scalar and binary subset
 
-In addition to add/sub/mul and comparisons, the pinned primitive registry
-now supports `div`, `mod`, `land`, `lor`, `xor`, `shiftLeft`
-and `shiftRight` for each of `UInt8`, `UInt16`, `UInt32`,
-`UInt64` and `USize`. The 65 fixed-width primitives plus three
-finite `Float` primitives are explicitly represented in the production
-registry and Lean-derived coverage inventory.
+The pinned primitive registry contains 68 operations, of which 30 original
+fixed-width calls retain the independent 64-input matrix verification. An
+additional 35 unsigned shift/bitwise/division/modulo operations have 2,240
+original-Lean comparisons; three finite Float.add/sub/mul calls have 384.
+The UInt8 nullary-constructor and case branch subset has 384 independent
+comparisons. IRType.tagged remains a distinct immutable Rc value, not a
+usize coercion. Only verified UInt8-backed nullary inductives use scalar
+case lowering. Alt.default is accepted in that restricted context.
 
-Correctness cannot be delegated to raw Rust operators at the boundaries:
-Lean defines unsigned division by zero as **zero**, remainder by zero as
-**the dividend**, and unsigned shift counts modulo the operand bit width.
-We use Rust's `checked_div`/`checked_rem` with their exact fallback
-values and `wrapping_shl`/`wrapping_shr` with explicit width reduction.
-Each operand/result type must match exactly.
-
-The `BitwiseFixture.lean` suite compiles 35 real Lean roots and replays
-2,240 independently evaluated assertions against standalone generated Rust.
-Vectors include zero divisors, zero/maximum operands, 1-, 8-, 16-, 32-,
-64-, and 65-bit shift counts, plus seeded values. This is still not
-general `Nat`/`Int`, signed bitwise, arbitrary-precision computation
-or cross-platform `USize` verification. There is no formal compiler
-semantic-preservation theorem.
-
-## Standalone Cargo binary output
-
-`#native_rust_binary Root.answer to "new/dir"` requires a zero-argument
-compiled IR function returning a supported printable scalar. It produces a
-Cargo executable with its own main function, using the same production
-dependency-closure backend as the library API. Runtime does not load Lean.
-
-This is intentionally **not** a generic `IO` compilation path. Arbitrary
-parameters and return object/heap types refuse before writing anything.
-An existing destination refuses and is preserved. Exact-head acceptance
-executes two independently generated binaries and checks stdout against
-original-Lean-evaluated results with all Lean runtime variables removed.
+The standalone Cargo binary path requires a zero-argument declaration with
+supported printable scalar return; generated Rust is runnable without Lean.
+The compiler does not implement general IO, effectful main, arbitrary
+Float/Float32, mutable heap objects, or a universal extraction theorem.

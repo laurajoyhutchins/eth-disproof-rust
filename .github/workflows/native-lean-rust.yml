@@ -48,6 +48,11 @@ jobs:
           lint: false
           mk_all-check: false
 
+      - name: Install GMP development library for source-refined Nat arithmetic
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libgmp-dev
+
       - name: Run in-process Lean ABI, Rust codegen and executable conformance
         shell: bash
         run: |
@@ -64,12 +69,49 @@ jobs:
             cd rust/native_lean_backend
             lake build
             ./scripts/check.sh
+            bash ./scripts/check-evidence.sh
+            bash ./scripts/check-imported-probes.sh
+            bash ./scripts/check-bundle.sh
+            bash ./scripts/check-native-runtime-parity.sh
+            bash ./scripts/check-external-projects.sh
           )
           # Keep the exact-head provenance and all generated-code hashes in the job log.
           cat rust/native_lean_backend/artifacts/native-smoke-receipt.txt
+          cat rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
+          cat rust/native_lean_backend/artifacts/imported-probes/manifest.tsv
+          cat rust/native_lean_backend/artifacts/native-compiler-bundle-receipt.txt
+          cat rust/native_lean_backend/artifacts/parity-native/receipt.txt
+          cat rust/native_lean_backend/artifacts/external-projects/manifest.tsv
+          cat rust/native_lean_backend/artifacts/external-projects/receipt.txt
           {
             echo 'NATIVE_LEAN_G0=REAL_IN_PROCESS_FFI_AND_GENERATED_RUST'
             echo 'Lean=4.34.1'
             echo "Tested source SHA: ${{ github.event.pull_request.head.sha || github.sha }}"
             echo 'G1 general compiler and G2 ETH physical equivalence: NOT ESTABLISHED'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve exact-head combined compiler evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-integrated-g1-evidence
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            rust/native_lean_backend/artifacts/native-smoke-receipt.txt
+            rust/native_lean_backend/artifacts/ir-coverage.tsv
+            rust/native_lean_backend/artifacts/ir-constructor-summary.tsv
+            rust/native_lean_backend/artifacts/ir-constructors.tsv
+            rust/native_lean_backend/artifacts/primitive-conformance.tsv
+            rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
+            rust/native_lean_backend/artifacts/imported-probes/*
+            rust/native_lean_backend/artifacts/native-compiler-bundle-*.txt
+            rust/native_lean_backend/artifacts/parity-native/*.txt
+            rust/native_lean_backend/artifacts/parity-native/*.tsv
+            rust/native_lean_backend/artifacts/parity-native/*.log
+            rust/native_lean_backend/artifacts/external-projects/*.tsv
+            rust/native_lean_backend/artifacts/external-projects/*.txt
+            rust/native_lean_backend/artifacts/external-projects/*/*.lean
+            rust/native_lean_backend/artifacts/external-projects/*/*.txt
+            rust/native_lean_backend/artifacts/external-projects/*/*.log
+            rust/native_lean_backend/artifacts/external-projects/*/*.time

@@ -140,69 +140,43 @@ crate emission, public-name collision refusal, unsupported type refusal, and
 no modification of previously published directories. These are successful
 examples within a **bounded subset**, not proof of general compiler correctness.
 
-## Verified coverage inventory
+## Pinned source-derived conformance matrix
 
-`scripts/check.sh` now derives a pinned constructor inventory from the live
-Lean 4.34.1 environment into `artifacts/ir-coverage.tsv`. Production lowering
-and call-closure discovery share `primitive-registry.tsv`; the regression
-suite compares both primitive sets and fails on drift. The inventory lists
-**conditional** support for the currently tested scalar/direct-call/join
-shapes and explicit refusal for all other runtime types and IR variants.
+The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 16-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
 
-The generated multi-root Cargo package has no Lean runtime dependency; the
-source generation itself still runs in the pinned Lean process. The test
-suite explicitly refuses an `IO` root rather than providing a host-side
-substitute. Neither this inventory nor the finite differential fixtures
-establishes general Lean program semantics.
+## Integrated immutable objects and callable values
 
-### Finite Float arithmetic
+The compiler now supports bounded immutable Option/Prod values, boxing,
+projections, and first-class callable values using Rc-backed closures.
+The same pinned native backend retains main's ABI checks, refusals,
+publisher and independent 30 x 64 primitive conformance matrix.
+The new fixtures provide 3,072 object and 2,048 function-value
+independently evaluated Lean/Rust comparisons.
 
-`examples/FloatFixture.lean` now exercises original Lean `Float` addition,
-subtraction and multiplication compiled to Rust `f64`, checking 384 generated
-results against original-Lean evaluations on exactly representable finite
-inputs. This is a deliberately narrow IEEE-754 subset, not generic Float,
-Float32, casting, exceptional-value or mathematical-runtime support.
+Mutation, full heap semantics, IO and arbitrary closure layouts still refuse.
 
-### Nullary tagged inductives
+## Arbitrary-precision Nat (GMP, bounded source-defined subset)
 
-`examples/TaggedFixture.lean` exercises Lean nullary enum constructors,
-scalar pattern matches, and returns through Rust `usize` tags. The test
-replays 384 values computed by original Lean and explicitly refuses a
-heap-backed constructor. Constructor allocation with fields, object layout,
-reference counting and indirect applications remain unsupported.
+The generated standalone Rust runtime now includes a GMP-backed immutable
+Nat value and a source-refined subset: Nat.add/sub/mul/div/mod and
+Nat.decEq/decLt/decLe. Large naturals are not truncated to u64.
+Subtraction saturates at zero. Division by zero returns zero, and
+remainder by zero returns the dividend. Real pinned Lean IR and
+5,208 independently evaluated cases (including 1024-bit operands)
+are checked by examples/NatFixture.lean. Nonregistered Nat operations
+refuse, and generated binaries require libgmp at runtime.
+General Nat semantics, signed Int, IO and portability are not established.
 
-The three-constructor nullary fixture is `UInt8`-backed in the pinned Lean
-compiler, not `IRType.tagged`; both accepted scalar encodings are checked
-against the actual compiled IR. Heap-backed representations continue to
-fail closed without partial output.
 
-### Total unsigned operations
+## Extended typed primitives and standalone binary output
 
-The public native compiler now supports `div`, `mod`, bitwise AND/OR/XOR,
-and shifts across UInt8/16/32/64 and USize, with original Lean's **total**
-divide-by-zero/remainder-by-zero semantics and modulo-width shifts. The
-standalone fixture `examples/BitwiseFixture.lean` checks 35 compiled roots
-over 2,240 independent original-Lean comparisons. The production compiler
-uses the same 68-operation coverage registry consulted by CI.
-
-### Executable output (zero-argument scalar roots)
-
-The command
-
-```lean
-#native_rust_binary MyModule.answer to "artifacts/my-binary"
-```
-
-produces a standalone Cargo binary (`Cargo.toml` and `src/main.rs`) with a
-generated Rust `main()` that prints the function's scalar return value.
-Only compiled Lean declarations with **zero runtime parameters** and a
-`UInt8/16/32/64`, `USize`, or `Float` scalar result are accepted. Functions
-requiring arguments, heap-backed outputs, unsupported dependencies, or
-pre-existing package destinations fail before publication. Execute using
-`cargo run --offline --manifest-path artifacts/my-binary/Cargo.toml` without
-Lean installed. This is a minimal scalar CLI, not a general IO adapter or
-serialization format.
-
-`examples/BinaryFixture.lean` compares two independently compiled Cargo
-executables against values evaluated by original Lean. Negative fixtures
-check argument refusal and preservation of an existing binary.
+The single versioned primitive registry now covers 68 reviewed calls: 65
+operations over UInt8/16/32/64 and USize, plus Float.add/sub/mul on finite
+dyadics. Lean's totalized divide/remainder semantics and modulo-width shifts
+are preserved using checked Rust operations. The compiler supports nullary
+UInt8-backed inductives with exact constructor identities. The narrow
+`#native_rust_binary Root.answer to "new/directory"` command generates a
+standalone Cargo binary for zero-argument scalar roots, refusing effects,
+heap returns and preexisting destinations. The suite adds 2,240 bitwise,
+384 Float and 384 enum original-Lean differential checks, plus two executed
+binaries. Full Float32/NaN/cast/exception/heap or IO semantics are not claimed.

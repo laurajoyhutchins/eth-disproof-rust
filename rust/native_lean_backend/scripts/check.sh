@@ -414,7 +414,7 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   cargo test --offline --manifest-path examples/array-package/Cargo.toml
 cargo clippy --offline --manifest-path examples/array-package/Cargo.toml --lib -- -D warnings
 array_test="$(find examples/array-package/target/debug/deps -maxdepth 1 -type f -name 'arrays-*' -executable -print -quit)"
-if [[ -z "$array_test" ]] || ldd "$array_test" | grep -Eq 'lib(Lean|lean)\\.'; then
+if [[ -z "$array_test" ]] || ldd "$array_test" | grep -Eq 'lib(Lean|lean)\.'; then
   echo 'Array test missing or unexpectedly linked Lean runtime' >&2; exit 1
 fi
 array_hash_before="$(sha256sum examples/array-package/src/lib.rs | cut -d' ' -f1)"
@@ -462,7 +462,7 @@ mkdir -p artifacts
   echo "large_nat_literal_oracles=76"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-    echo "gmp_nat_differential=5208"
+  echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
   echo "safety_and_primitive_matrix=PASS"

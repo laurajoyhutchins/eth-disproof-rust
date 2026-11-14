@@ -1,0 +1,86 @@
+name: Research mathematics LaTeX-to-Lean
+on:
+  push:
+    branches: ['experiment/latex-to-lean-pilot']
+    paths:
+      - 'benchmark/latex-to-lean/research/**'
+      - '.github/workflows/latex-to-lean-research.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: latex-lean-research-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  research-reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned Leanify source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Corrram/leanify.git vendor/leanify
+          git -C vendor/leanify checkout --detach 134da59ae02e9fffc011a5ea89acf4320268d220
+          mkdir -p evidence/research
+          git -C vendor/leanify rev-parse HEAD > evidence/research/vendor.sha
+          grep -qx 134da59ae02e9fffc011a5ea89acf4320268d220 evidence/research/vendor.sha
+          cat vendor/leanify/lean-toolchain > evidence/research/toolchain.txt
+          sha256sum benchmark/latex-to-lean/research/cases/*.tex > evidence/research/source-sha256.txt
+      - name: Restore Lean 4.34.0 and pinned Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: vendor/leanify
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Execute unaltered research LaTeX corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          lake exe cache get
+          lake build leanify
+          for file in "$GITHUB_WORKSPACE"/benchmark/latex-to-lean/research/cases/*.tex; do
+            id="$(basename "$file" .tex)"
+            set +e
+            /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/research/${id}.time" \
+              timeout 90s lake exe leanify check "$file" --claims --defined \
+              > "$GITHUB_WORKSPACE/evidence/research/${id}.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/research/${id}.stderr"
+            status=$?
+            set -e
+            echo "$status" > "$GITHUB_WORKSPACE/evidence/research/${id}.exit"
+          done
+          cd "$GITHUB_WORKSPACE"
+          node benchmark/latex-to-lean/research/summarize.mjs \
+            benchmark/latex-to-lean/research evidence/research evidence/research/summary.json
+      - name: Verify independent research theorems and axioms with Lean kernel
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          /usr/bin/time -v -o "$GITHUB_WORKSPACE/evidence/research/gold.time" \
+            timeout 180s lake env lean "$GITHUB_WORKSPACE/benchmark/latex-to-lean/research/oracle/ResearchGold.lean" \
+            > "$GITHUB_WORKSPACE/evidence/research/gold.stdout" \
+            2> "$GITHUB_WORKSPACE/evidence/research/gold.stderr"
+          cat "$GITHUB_WORKSPACE/evidence/research/gold.stdout"
+          test "$(grep -Ec '(depends on axioms:|does not depend on any axioms)' "$GITHUB_WORKSPACE/evidence/research/gold.stdout")" -eq 11
+          ! grep -q 'sorryAx' "$GITHUB_WORKSPACE/evidence/research/gold.stdout"
+      - name: Upload raw evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latex-lean-research-receipts
+          path: evidence/research/
+          if-no-files-found: warn

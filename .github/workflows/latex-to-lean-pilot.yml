@@ -1,10 +1,15 @@
 name: LaTeX-to-Lean upstream pilot
 on:
+  workflow_dispatch:
   push:
     branches: ['experiment/latex-to-lean-pilot']
     paths:
       - '.github/workflows/latex-to-lean-pilot.yml'
       - 'benchmark/latex-to-lean/**'
+
+concurrency:
+  group: latex-to-lean-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -61,6 +66,24 @@ jobs:
           node benchmark/latex-to-lean/summarize.mjs \
             evidence/leanify benchmark/latex-to-lean/cases evidence/leanify/coverage.json all
           node -e 'const r=require("./evidence/leanify/coverage.json"); if(r.records.length!==32) process.exit(1);'
+      - name: Author-visible convention ablation (separate from primary 32)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          mkdir -p "$GITHUB_WORKSPACE/evidence/leanify/ablations"
+          for file in "$GITHUB_WORKSPACE"/benchmark/latex-to-lean/ablations/natural-number/*.tex; do
+            id="$(basename "$file" .tex)"
+            set +e
+            lake exe leanify check "$file" --claims --defined \
+              > "$GITHUB_WORKSPACE/evidence/leanify/ablations/${id}.stdout" \
+              2> "$GITHUB_WORKSPACE/evidence/leanify/ablations/${id}.stderr"
+            status=$?
+            set -e
+            echo "$status" > "$GITHUB_WORKSPACE/evidence/leanify/ablations/${id}.exit"
+            echo "Convention ${id}: exit=$status"
+            cat "$GITHUB_WORKSPACE/evidence/leanify/ablations/${id}.stdout"
+          done
       - name: Validate exact Mathlib gold oracles and axioms
         shell: bash
         run: |
@@ -116,6 +139,7 @@ jobs:
           if-no-files-found: warn
 
   paperformalizer-smoke:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -158,6 +182,7 @@ jobs:
           if-no-files-found: warn
 
   autoformbot-smoke:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:

@@ -10,7 +10,11 @@ lean --load-dynlib="$NATIVE_LIB" examples/Item30Conformance.lean
 adapter_count=0
 while IFS=$'\t' read -r lean_name method shape; do
   [[ -z "$lean_name" || "$lean_name" == \#* ]] && continue
-  if ! grep -Fq ".${method}(" examples/generated_sem_*.rs; then
+  # Last-use lowering may select the canonical owned Array entrypoint.
+  # Both emitted methods implement the same source Array.push primitive.
+  if ! grep -Fq ".${method}(" examples/generated_sem_*.rs &&
+     { [[ "$lean_name" != "Array.push" ]] ||
+       ! grep -Fq '.array_push_owned(' examples/generated_sem_*.rs; }; then
     echo "runtime method missing its original-source fixture: $lean_name" >&2
     exit 1
   fi

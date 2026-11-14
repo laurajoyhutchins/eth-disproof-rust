@@ -60,7 +60,7 @@ run_cmd do
     let aInput := valueArrayExpr "array_push" a
     let aExpected := valueArrayExpr "array_push" (a.push element)
     let bInput := valueArrayExpr "array_size" a
-    let elementInput := s!"array_push::Value::UInt64({element.toNat}u64)"
+    let elementInput := s!"{element.toNat}u64"
     out := out ++ s!"    assert_eq!(array_push::sem_array_push({aInput}, {elementInput}), {aExpected});\n"
     out := out ++ s!"    assert_eq!(array_size::sem_array_size({bInput}), array_size::Value::nat(\"{a.size}\"));\n"
     let list := a.toList

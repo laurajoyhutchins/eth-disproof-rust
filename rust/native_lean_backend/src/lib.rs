@@ -928,7 +928,10 @@ mod tests {
         use super::{primitive_spec, PRIMITIVE_REGISTRY};
         use std::collections::BTreeSet;
         let mut seen = BTreeSet::new();
-        for line in PRIMITIVE_REGISTRY.lines().filter(|s| !s.starts_with('#') && !s.is_empty()) {
+        for line in PRIMITIVE_REGISTRY
+            .lines()
+            .filter(|s| !s.starts_with('#') && !s.is_empty())
+        {
             let cells: Vec<_> = line.split('\t').collect();
             assert_eq!(cells.len(), 4);
             assert!(seen.insert(cells[0]));
@@ -939,5 +942,4 @@ mod tests {
         assert!(primitive_spec("USize.decLe").is_some());
         assert!(primitive_spec("Int.add").is_none());
     }
-
 }

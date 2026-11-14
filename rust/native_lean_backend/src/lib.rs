@@ -296,27 +296,119 @@ impl Reader {
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
-                // ctor(info, fields). Only nullary scalar constructors are
-                // representable without a Lean heap. No field-packing shortcut.
-                if !matches!(var_ty, "u8" | "usize") {
-                    return Err("heap-backed or non-scalar constructor is unsupported".into());
-                }
-                let info = Self::field(x, 0)?;
-                let fields = Self::array(Self::field(x, 1)?)?;
-                if !fields.is_empty() {
-                    return Err("constructor with fields requires an object runtime".into());
-                }
-                for field in 2..=4 {
-                    if Self::nat(Self::field(info, field)?)? != 0 {
-                        return Err("constructor with pointer/scalar layout is unsupported".into());
+                if is_value_type(var_ty) {
+                    // ctor: only immutable, pointer-field constructors with
+                    // verified metadata. Scalar-field layouts are not yet mapped.
+                    if !is_value_type(var_ty) {
+                        return Err("ctor result is not an object-valued IR type".into());
                     }
+                    let info = Self::field(x, 0)?;
+                    let name = Self::name(Self::field(info, 0)?, 0)?;
+                    let tag = Self::nat(Self::field(info, 1)?)?;
+                    let fields = Self::array(Self::field(x, 1)?)?;
+                    let size = Self::nat(Self::field(info, 2)?)?;
+                    let usize_count = Self::nat(Self::field(info, 3)?)?;
+                    let ssize = Self::nat(Self::field(info, 4)?)?;
+                    if !matches!(name.as_str(), "Option.none" | "Option.some" | "Prod.mk") {
+                        return Err(format!(
+                            "constructor {name} is not in the verified runtime subset"
+                        ));
+                    }
+                    let expected_arity = match name.as_str() {
+                        "Option.none" => (0, 0),
+                        "Option.some" => (1, 1),
+                        "Prod.mk" => (0, 2),
+                        _ => unreachable!(),
+                    };
+                    if (tag, fields.len()) != expected_arity
+                        || size != fields.len()
+                        || usize_count != 0
+                        || ssize != 0
+                    {
+                        return Err(format!("constructor {name} layout unsupported"));
+                    }
+                    if name == "Option.none" {
+                        if var_ty != "tagged" {
+                            return Err("Option.none must be tagged in pinned IR".into());
+                        }
+                        return Ok("__LeanValue::tagged(0)".into());
+                    }
+                    if var_ty != "obj" {
+                        return Err("heap constructor has unexpected IR result type".into());
+                    }
+                    let mut args = Vec::new();
+                    for arg in fields {
+                        args.push(Self::arg(arg, env, "tobj")?);
+                    }
+                    Ok(format!(
+                        "__LeanValue::ctor({tag}, \"{name}\", vec![{}])",
+                        args.join(", ")
+                    ))
+
+                } else {
+                    // ctor(info, fields). Only nullary scalar constructors are
+                    // representable without a Lean heap. No field-packing shortcut.
+                    if !matches!(var_ty, "u8" | "usize") {
+                        return Err("heap-backed or non-scalar constructor is unsupported".into());
+                    }
+                    let info = Self::field(x, 0)?;
+                    let fields = Self::array(Self::field(x, 1)?)?;
+                    if !fields.is_empty() {
+                        return Err("constructor with fields requires an object runtime".into());
+                    }
+                    for field in 2..=4 {
+                        if Self::nat(Self::field(info, field)?)? != 0 {
+                            return Err("constructor with pointer/scalar layout is unsupported".into());
+                        }
+                    }
+                    let _name = Self::name(Self::field(info, 0)?, 0)?;
+                    let index = Self::nat(Self::field(info, 1)?)?;
+                    if index > 255 {
+                        return Err("constructor tag exceeds nullary enum bound".into());
+                    }
+                    Ok(format!("{index}{var_ty}"))
+
                 }
-                let _name = Self::name(Self::field(info, 0)?, 0)?;
-                let index = Self::nat(Self::field(info, 1)?)?;
-                if index > 255 {
-                    return Err("constructor tag exceeds nullary enum bound".into());
+            }
+            3 => {
+                // proj(index, object)
+                if !is_value_type(var_ty) {
+                    return Err("object projection result has non-object type".into());
                 }
-                Ok(format!("{index}{var_ty}"))
+                let index = Self::nat(Self::field(x, 0)?)?;
+                let id = Self::var(Self::field(x, 1)?)?;
+                let found = env.get(&id).ok_or("projection of undefined variable")?;
+                if !is_value_type(found) {
+                    return Err("projection from scalar variable".into());
+                }
+                Ok(format!("x_{id}.field({index})"))
+            }
+            9 => {
+                // box(scalar type, variable)
+                if !is_value_type(var_ty) {
+                    return Err("boxed scalar result must be object-valued".into());
+                }
+                let ty = Self::ty(Self::field(x, 0)?)?;
+                if is_value_type(ty) {
+                    return Err("box expects a scalar IR type".into());
+                }
+                let id = Self::var(Self::field(x, 1)?)?;
+                if env.get(&id) != Some(&ty) {
+                    return Err("box scalar input type mismatch".into());
+                }
+                Ok(format!("__LeanValue::boxed_{ty}(x_{id})"))
+            }
+            10 => {
+                // unbox(object variable) to a statically known scalar.
+                if is_value_type(var_ty) {
+                    return Err("unbox result type must be scalar".into());
+                }
+                let id = Self::var(Self::field(x, 0)?)?;
+                let found = env.get(&id).ok_or("unbox of undefined variable")?;
+                if !is_value_type(found) {
+                    return Err("unbox from non-object variable".into());
+                }
+                Ok(format!("x_{id}.unbox_{var_ty}()"))
             }
             6 => {
                 // fap, preserving the exact known primitive semantics.

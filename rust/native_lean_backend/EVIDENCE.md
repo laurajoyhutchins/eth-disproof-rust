@@ -14,6 +14,8 @@ bash scripts/check.sh
 bash scripts/check-evidence.sh
 # Optional performance observation, NOT a backend speedup comparison:
 bash scripts/bench-evidence.sh
+# Three-way executable runtime parity and high-resolution measurements:
+bash scripts/check-native-runtime-parity.sh
 ```
 
 The normal public API remains `#native_rust Name as "export" to "file.rs"` (single executable declaration) and `#native_rust_closure Name as "export" to "file.rs"` (direct-call closure through imported executable IR). Both require loading the built native shared library into the same Lean process with `--load-dynlib`. `scripts/check.sh` provides the reproducible invocation and configures environment paths. This is **not yet** a one-command general-purpose installation or a multi-root Cargo emitter; see #193 G1-A.
@@ -75,6 +77,21 @@ Replacing `import Lean` with `Lean.Compiler.Main`, `Lean.Compiler.IR.CompilerM` 
 
 The pinned Lean C source-generation control remains around 0.19–0.20 s and ~490 MB on the post-change runner, but no performance superiority/inferiority is claimed across backends. Source elaboration, caching, artifact boundaries, and executable runtime differ. The legacy JSON/source-graph path has no equal supported `UInt64` input here, so the required three-way end-to-end comparison is still **open**.
 
+### Executable runtime parity: original Lean, Lean C, generated Rust
+
+`scripts/check-native-runtime-parity.sh` uses the **original** `Property.hop` declaration from `PropertyDef.lean`. `PropertyNativeBenchmark.lean` is an input-loop adapter, not a rewrite of the function. The script generates native Lean C for the original module and the adapter, links with the pinned Lean 4.34.1 `leanc` wrapper, compiles the in-process-backend's standalone emitted Rust with `rustc -O`, and executes the original Lean source directly as an independent third oracle.
+
+All three paths process **1,048,576 identical deterministic inputs**. The checksum is `1595490202785243536` for original Lean execution, compiled Lean C, and standalone generated Rust, on [exact-head CI 43572940012](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43572940012), commit `a8fcb62eadc5d3e6656d88aff2e21f4892b33a89`. The [raw artifact 14104703827](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43572940012/artifacts/14104703827) contains exact source hashes, original generated C and Rust hashes, executable hashes, checksums, 3 peak RSS observations per backend, and 30 independently checksum-validated subprocess elapsed-time samples per backend. All tests in the existing native suite also passed.
+
+| Executable backend | Median subprocess wall, 30 trials | Important distinction |
+| --- | ---: | --- |
+| Lean 4.34.1 native C | 30.88 ms | Links to and starts the Lean runtime |
+| Rust generated from live Lean compiler IR | 7.72 ms | No Lean runtime dependency |
+
+This is an **observed 4.0× subprocess wall-time ratio on one authored supported program**, not a general performance result, pure function throughput, controlled cold/warm comparison, or translation theorem. Process startup, allocator, library loading, cache/frequency effects, and generated code differ. GNU `/usr/bin/time` has only 0.01-second resolution for this workload, so `examples/bench_subprocess.rs` uses `Instant` with 30 alternating-order, checksum-validated subprocess runs and records nanoseconds. This is standard-library-only Rust, with no Python or third-party benchmark framework.
+
+**Still missing for item 36:** a common end-to-end accepted program on the legacy JSON/source-graph path, fair same-phase cold and warm compilation accounting, and independent substantial-project data. For item 37, the in-process path demonstrably avoids serialized JSON IR, but no valid end-to-end speedup relative to the legacy path is established.
+
 ## Checklist evidence matrix
 
 | # | Requirement | This branch | Release status |
@@ -84,8 +101,8 @@ The pinned Lean C source-generation control remains around 0.19–0.20 s and ~49
 | 33 | Generated code: Cargo, Clippy and runtime checks | Standalone generated Cargo binary, `cargo test`, strict Clippy, and Rust executable comparisons | **Exact-head 43510481607:** debug and optimized release Cargo tests (2 each), strict Clippy, emitted-code unsafe forbidden, no Lean dynamic link, runtime + peak RSS; future heap/unsafe features remain outside contract |
 | 34 | Tested vs formally proved | This ledger and explicit declarations below | **Documented**, no new theorem |
 | 35 | Exact-head CI native, unit, conformance, differential, clean generation, negative cases | Extended existing path-scoped native workflow to run `check.sh` then `check-evidence.sh`; receipts uploaded | **Verified on 43504031394** for the current bounded subset |
-| 36 | Comparative cold/warm compilation, RSS, size, run performance across Lean C, JSON path and native FFI | Three trials with import control, native IR, Lean C, CC, RustC and Rust runtime timings/RSS; no fair full three-backend parity | **Open** |
-| 37 | Quantify in-process overhead reduction without mandatory JSON IR | Measured 51% lower median wall time and 48% lower RSS after import narrowing on one supported fixture; no comparison to equivalent legacy JSON backend | **Open** |
+| 36 | Comparative cold/warm compilation, RSS, size, run performance across Lean C, JSON path and native FFI | Import/codegen measurements plus original Lean vs native-C vs emitted-Rust checksum parity on 1,048,576 inputs; 30 checked subprocess samples each; JSON path/cold-warm parity missing | **Open** |
+| 37 | Quantify in-process overhead reduction without mandatory JSON IR | Observed 51% lower native codegen median and 48% lower RSS after narrower imports; measured compiled Lean C/Rust runtime on one checksum-checked fixture; no equivalent legacy JSON baseline | **Open** |
 | 38 | Public API, versions, examples, refusals, troubleshooting | README, COVERAGE and this runbook | **Partially documented**; single-invocation ergonomics/open features remain |
 | 39 | Per-build source/closure/toolchain/artifact hashes and receipts | Verified atomic bundle with source/compiled module/closure/backend/toolchain/output hashes and no-overwrite tests; raw commands still lack automatic receipts | **Partial**; not yet emitted for *every* compiler build |
 | 40 | Reviewed, merged, exact-head release example and coverage | Candidate evidence branch, not a release | **Open** |

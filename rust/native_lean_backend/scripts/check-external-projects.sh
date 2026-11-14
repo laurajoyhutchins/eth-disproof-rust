@@ -170,6 +170,35 @@ LEAN
     fi
   fi
 
+  # Source-pinned, read-only diagnostic for Armada's transitive List helpers.
+  # These names are emitted by the original Sched.argLeastLoad compiler IR.
+  # A missing diagnostic is reported separately and never accepted as Rust.
+  if [[ "$name" == "armada" ]]; then
+    cat > "$case_dir/inspect-list-deps.lean" <<'LEAN'
+import Sched.Basic
+open Lean Elab Command
+run_cmd do
+  let names : Array Lean.Name := #[
+    `List.min?._at_.Sched.argLeastLoad.spec_0,
+    `List.idxOf._at_.Sched.argLeastLoad.spec_1
+  ]
+  let mut snapshot := ""
+  for name in names do
+    let some decl ← liftCoreM <| Lean.IR.findDecl name
+      | throwError "original Lean IR helper unavailable: {name}"
+    snapshot := snapshot ++ s!"NAME {name}\n{decl}\nEND {name}\n"
+  if snapshot.utf8ByteSize > 262144 then
+    throwError "original imported List IR exceeded 256 KiB"
+  liftIO <| IO.FS.writeFile "artifacts/external-projects/armada/list-deps-ir.txt" snapshot
+LEAN
+    if (cd "$native" && timeout 45s lean "$case_dir/inspect-list-deps.lean") \
+        > "$case_dir/inspect-list-deps.log" 2>&1 && [[ -s "$case_dir/list-deps-ir.txt" ]]; then
+      echo "original_armada_list_dependencies=PINNED_SOURCE_IR" >> "$case_dir/identity.txt"
+    else
+      echo "original_armada_list_dependencies=UNAVAILABLE_DIAGNOSTIC_ONLY" >> "$case_dir/identity.txt"
+    fi
+  fi
+
   # A successful C/Rust build with no cross-runtime typed adapter is NOT
   # semantic verification. Never upgrade this status implicitly.
   {

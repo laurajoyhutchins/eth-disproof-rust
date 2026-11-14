@@ -406,6 +406,36 @@ for output in examples/object-package/src/lib.rs examples/function-package/src/l
   fi
 done
 echo 'canonical_nat_immutable_and_closure_runtime=ONE_IDENTICAL_SOURCE'
+# Source-compiled persistent Array constructors, indexed access, update,
+# no-Lean Cargo execution and explicit unsupported-operation refusals.
+rm -rf examples/array-package
+lean --load-dynlib="$NATIVE_LIB" examples/ArrayFixture.lean
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path examples/array-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/array-package/Cargo.toml --lib -- -D warnings
+array_test="$(find examples/array-package/target/debug/deps -maxdepth 1 -type f -name 'arrays-*' -executable -print -quit)"
+if [[ -z "$array_test" ]] || ldd "$array_test" | grep -Eq 'lib(Lean|lean)\\.'; then
+  echo 'Array test missing or unexpectedly linked Lean runtime' >&2; exit 1
+fi
+array_hash_before="$(sha256sum examples/array-package/src/lib.rs | cut -d' ' -f1)"
+rm -rf examples/array-package
+lean --load-dynlib="$NATIVE_LIB" examples/ArrayFixture.lean > /dev/null
+array_hash_after="$(sha256sum examples/array-package/src/lib.rs | cut -d' ' -f1)"
+if [[ "$array_hash_before" != "$array_hash_after" ]]; then
+  echo 'Array code generation was not deterministic' >&2; exit 1
+fi
+for fixture in RefusalArrayPop RefusalArrayBang; do
+  rm -rf examples/rejected-array-package
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then
+    echo "unsupported Array operation accepted: $fixture" >&2; exit 1
+  fi
+  if [[ -e examples/rejected-array-package ]] ||
+     ! grep -q 'Rust native backend refused' "examples/${fixture}.log"; then
+    cat "examples/${fixture}.log" >&2
+    echo "unsupported Array operation did not fail closed: $fixture" >&2; exit 1
+  fi
+  rm -f "examples/${fixture}.log"
+done
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -426,12 +456,13 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=16521"
+  echo "differential_assertions=17801"
+  echo "persistent_array_original_lean_oracles=1280"
+  echo "core_and_matrix_oracles=19721"
   echo "large_nat_literal_oracles=76"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-  echo "core_and_matrix_oracles=18441"
-  echo "gmp_nat_differential=5208"
+    echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
   echo "safety_and_primitive_matrix=PASS"
@@ -455,6 +486,9 @@ mkdir -p artifacts
     artifacts/item30-oracles.rs artifacts/item30-ir-probes.txt artifacts/item30-rejection.log
   sha256sum src/safety.rs
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
+  sha256sum examples/ArrayFixture.lean examples/RefusalArrayPop.lean examples/RefusalArrayBang.lean \
+    examples/array-package/src/lib.rs examples/array-package/Cargo.toml \
+    examples/array-package/tests/arrays.rs
   sha256sum examples/NatFixture.lean examples/RefusalNatBitwise.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml \
     examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/large-nat-package/Cargo.toml \
     examples/large-nat-package/tests/literals.rs

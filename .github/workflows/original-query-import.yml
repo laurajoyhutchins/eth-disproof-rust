@@ -1,6 +1,8 @@
 name: Original QueryStream staged Lean imports
 
 on:
+  # Advance the verified SignatureTupleCommand dependency gate to the full
+  # original QueryStream import, reusing its source-pinned .olean checkpoint.
   # A trusted branch ref gives the compiled-module cache a stable scope.
   # Pull-request merge-ref caches were saved but did not restore on rerun.
   push:
@@ -14,7 +16,7 @@ on:
       stage:
         description: 'One original source-defined module import (no Rust query output)'
         required: true
-        default: signature
+        default: query
         type: choice
         options:
           - signature
@@ -43,7 +45,7 @@ jobs:
       ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
       LEAN_ROOT: instrumentation/lean-env
       ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
-      IMPORT_STAGE: ${{ inputs.stage || 'signature' }}
+      IMPORT_STAGE: ${{ inputs.stage || 'query' }}
     steps:
       - uses: actions/checkout@v4
         with:

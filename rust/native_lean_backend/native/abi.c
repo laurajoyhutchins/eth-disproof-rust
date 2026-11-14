@@ -45,3 +45,7 @@ int lr_abi_probe(void) {
     lean_dec(str);
     return good;
 }
+
+/* Include terminating NUL in byte length so Rust can distinguish names with
+ * embedded zeros rather than accepting a truncated declaration identity. */
+size_t lr_string_size(b_lean_obj_arg o) { return o && lean_is_string((lean_object *)o) ? lean_string_size(o) : 0; }

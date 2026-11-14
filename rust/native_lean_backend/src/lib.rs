@@ -1031,11 +1031,6 @@ impl Reader {
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
                     let expr = Self::field(x, 2)?;
-                    if Self::tag(expr)? == 0 && !matches!(Self::tag(Self::field(x, 1)?)?, 1 | 12) {
-                        return Err(
-                            "nullary constructor needs UInt8 or tagged scalar IRType".into()
-                        );
-                    }
                     let value = Self::expr(expr, ty, env, ctx.functions)?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));

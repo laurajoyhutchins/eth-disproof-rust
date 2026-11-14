@@ -98,3 +98,13 @@ This inventory is a constructor **membership/order** check, not a complete ABI l
 The real pinned Lean 4.34.1 constructor inventory is first checked by `scripts/VerifyIRInventory.lean` and recorded in `artifacts/ir-constructor-summary.tsv`. Separately, `examples/IRInventory.lean` and `scripts/coverage-ledger.rs` verify the complete 48-constructor tag classification, publishing `artifacts/ir-constructors.tsv` and `artifacts/ir-coverage.tsv`. The Rust `build.rs` compiles the same checked classification into `SUPPORTED_IR_TAGS`, and **production readers refuse unclassified tags**.
 
 Of those 48 constructors, **16** are bounded-supported, including `FnBody.jdecl` and `FnBody.jmp` strictly for nonrecursive, typed scalar lexical joins. The other **32** are explicitly unsupported. No unsupported branch is allowed to become accepted just because a Rust `match` arm is added. The `primitive-registry.tsv` is now the production lookup for exactly 30 typed unsigned operations. A generated 30 × 64 matrix of independent original-Lean results (1,920 comparisons) is executed from source IR. The legacy fixture gate still independently covers 3,008 base/join/multi-root comparisons. These checks do **not** establish semantic correctness of general collections, arbitrary-precision `Nat`/`Int`, effects, or whole ETH-source compilation.
+
+## Integrated immutable object and callable subset
+
+IRType.object/tobject/tagged and the supported Expr.ctor/proj/box/unbox
+forms are accepted only for verified immutable Option/Prod layouts.
+Expr.pap and Expr.ap accept statically compiled, source-defined
+all-boxed call signatures and preserve captured values in immutable Rc
+objects. FnBody.inc/dec/del are non-observable only while mutation,
+reuse/reset/isShared and unknown heap layouts are prohibited.
+Source-differential evidence: 3,072 object + 2,048 callable results.

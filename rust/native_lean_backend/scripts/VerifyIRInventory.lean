@@ -37,6 +37,19 @@ private def conditionalConstructors : Array Name := #[
   ``Lean.IR.FnBody.jmp,
   ``Lean.IR.FnBody.case,
   ``Lean.IR.FnBody.ret,
+  -- Bounded immutable object and source-defined all-boxed PAP/AP constructs.
+  ``Lean.IR.IRType.object,
+  ``Lean.IR.IRType.tobject,
+  ``Lean.IR.IRType.tagged,
+  ``Lean.IR.Expr.ctor,
+  ``Lean.IR.Expr.proj,
+  ``Lean.IR.Expr.pap,
+  ``Lean.IR.Expr.ap,
+  ``Lean.IR.Expr.box,
+  ``Lean.IR.Expr.unbox,
+  ``Lean.IR.FnBody.inc,
+  ``Lean.IR.FnBody.dec,
+  ``Lean.IR.FnBody.del,
 ]
 
 run_cmd do

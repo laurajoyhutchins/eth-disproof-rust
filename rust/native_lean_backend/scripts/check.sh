@@ -16,7 +16,7 @@ test "$(awk -F '\t' 'NR>1 && $1=="primitive" && $3=="conditional" {n++} END {pri
 awk -F '\t' '
   $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jdecl" && $3=="conditional" {a=1}
   $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jmp" && $3=="conditional" {b=1}
-  $1=="Lean.IR.Expr" && $2=="Lean.IR.Expr.pap" && $3=="refused" {c=1}
+  $1=="Lean.IR.Expr" && $2=="Lean.IR.Expr.pap" && $3=="conditional" {c=1}
   END {exit !(a && b && c)}
 ' artifacts/ir-constructor-summary.tsv
 if grep -Eq 'rs_emit_ir_bundle|#native_rust_bundle' NativeRust.lean src/lib.rs; then
@@ -195,6 +195,41 @@ if [[ "$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)" != "$pac
   echo "refused overwrite modified the published Cargo package" >&2; exit 1
 fi
 rm -f examples/RefusalPackageOverwrite.log
+# Integrated with main's exact pinned IR whitelist, structured refusals, and
+# atomic publisher. New object and callable tests share one Rust backend.
+rm -rf examples/object-package examples/function-package
+lean --load-dynlib="$NATIVE_LIB" examples/Objects.lean
+cargo test --offline --manifest-path examples/object-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/object-package/Cargo.toml --all-targets -- -D warnings
+if [[ "$(grep -c "Generated directly from Lean IR declaration: ObjectFixture.mkOpt" examples/object-package/src/lib.rs)" != 1 ]]; then
+  echo "immutable object closure was duplicated or omitted" >&2; exit 1
+fi
+for fixture in RefusalObjectNat RefusalObjectCtor; do
+  rm -rf examples/rejected-object-package
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then
+    echo "invalid object runtime accepted: ${fixture}" >&2; exit 1
+  fi
+  if [[ -e examples/rejected-object-package ]] || ! grep -q "Rust native backend refused" "examples/${fixture}.log"; then
+    cat "examples/${fixture}.log" >&2
+    echo "object runtime refusal failed" >&2; exit 1
+  fi
+  rm -f "examples/${fixture}.log"
+done
+lean --load-dynlib="$NATIVE_LIB" examples/FunctionValues.lean
+if ! grep -Fq '__LeanValue::pap(' examples/function-package/src/lib.rs || ! grep -Fq '.apply(vec![' examples/function-package/src/lib.rs; then
+  echo 'real boxed PAP/AP was not lowered' >&2; exit 1
+fi
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --offline --manifest-path examples/function-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/function-package/Cargo.toml --all-targets -- -D warnings
+rm -rf examples/rejected-function-package
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalFunctionValues.lean > examples/RefusalFunctionValues.log 2>&1; then
+  echo 'unsupported function runtime accepted' >&2; exit 1
+fi
+if [[ -e examples/rejected-function-package ]] || ! grep -q "Rust native backend refused" examples/RefusalFunctionValues.log; then
+  cat examples/RefusalFunctionValues.log >&2
+  echo 'unsupported function dependency did not refuse' >&2; exit 1
+fi
+rm -f examples/RefusalFunctionValues.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -211,9 +246,12 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=3008"
+  echo "differential_assertions=8128"
+  echo "immutable_object_differential=3072"
+  echo "pap_ap_differential=2048"
+  echo "safety_and_primitive_matrix=PASS"
   echo "ir_constructor_inventory=PASS"
-  echo "runtime_tag_whitelist=16_scoped_IR_constructors"
+  echo "runtime_tag_whitelist=28_scoped_IR_constructors"
   echo "primitive_conformance=30_operations_x_64_original_Lean_oracles"
   sha256sum ir-coverage-classification.tsv primitive-registry.tsv scripts/coverage-ledger.rs \
     scripts/check-coverage.sh examples/IRInventory.lean examples/PrimitiveMatrix.lean \
@@ -223,6 +261,7 @@ mkdir -p artifacts
   echo "atomic_publisher=PASS"
   sha256sum src/safety.rs
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
+  sha256sum examples/Objects.lean examples/FunctionValues.lean examples/RefusalObjectNat.lean examples/RefusalObjectCtor.lean examples/RefusalFunctionValues.lean examples/object-package/src/lib.rs examples/function-package/src/lib.rs
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

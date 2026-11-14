@@ -48,6 +48,114 @@ struct LoweringContext<'a> {
     joins: &'a JoinTable,
 }
 
+// Standalone immutable object model for the supported Lean IR subset.
+// Rc cloning models shared immutable values; source inc/dec instructions are
+// redundant only while mutation, isShared, reset and reuse remain unsupported.
+const RUNTIME_SOURCE: &str = r#"
+#[derive(Clone, Debug)]
+pub struct __LeanValue(std::rc::Rc<__LeanValueRepr>);
+
+#[derive(Debug)]
+enum __LeanValueRepr {
+    Tagged(usize),
+    U8(u8), U16(u16), U32(u32), U64(u64), USize(usize),
+    Ctor { tag: usize, name: &'static str, fields: Vec<__LeanValue> },
+    // Immutable first-class functions, represented by a statically generated
+    // object-argument thunk and an Rc-shared vector of captured values.
+    Closure {
+        arity: usize,
+        captures: Vec<__LeanValue>,
+        invoke: fn(Vec<__LeanValue>) -> __LeanValue,
+    },
+}
+
+#[allow(dead_code)]
+impl __LeanValue {
+    fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
+    fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }
+    fn boxed_u16(v: u16) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U16(v))) }
+    fn boxed_u32(v: u32) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U32(v))) }
+    fn boxed_u64(v: u64) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U64(v))) }
+    fn boxed_usize(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::USize(v))) }
+    fn ctor(tag: usize, name: &'static str, fields: Vec<Self>) -> Self {
+        Self(std::rc::Rc::new(__LeanValueRepr::Ctor { tag, name, fields }))
+    }
+    fn tag(&self) -> usize {
+        match self.0.as_ref() {
+            __LeanValueRepr::Tagged(v) => *v,
+            __LeanValueRepr::Ctor { tag, .. } => *tag,
+            _ => panic!("tried to case-analyze a boxed scalar"),
+        }
+    }
+    fn has_ctor(&self, tag: usize, name: &str, arity: usize) -> bool {
+        matches!(self.0.as_ref(), __LeanValueRepr::Ctor {tag: t, name: n, fields}
+            if *t == tag && *n == name && fields.len() == arity)
+    }
+    fn has_tagged(&self, value: usize) -> bool {
+        matches!(self.0.as_ref(), __LeanValueRepr::Tagged(v) if *v == value)
+    }
+    fn field(&self, index: usize) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Ctor { fields, .. } => fields.get(index).expect("constructor field absent").clone(),
+            _ => panic!("projection from a non-constructor"),
+        }
+    }
+    fn unbox_u8(&self) -> u8 { match self.0.as_ref() {__LeanValueRepr::U8(x) => *x, _ => panic!("incorrect boxed u8") } }
+    fn unbox_u16(&self) -> u16 { match self.0.as_ref() {__LeanValueRepr::U16(x) => *x, _ => panic!("incorrect boxed u16") } }
+    fn unbox_u32(&self) -> u32 { match self.0.as_ref() {__LeanValueRepr::U32(x) => *x, _ => panic!("incorrect boxed u32") } }
+    fn unbox_u64(&self) -> u64 { match self.0.as_ref() {__LeanValueRepr::U64(x) => *x, _ => panic!("incorrect boxed u64") } }
+    fn unbox_usize(&self) -> usize { match self.0.as_ref() {__LeanValueRepr::USize(x) => *x, _ => panic!("incorrect boxed usize") } }
+
+    fn pap(invoke: fn(Vec<Self>) -> Self, arity: usize, captures: Vec<Self>) -> Self {
+        assert!(arity > 0 && captures.len() < arity, "invalid source PAP arity");
+        Self(std::rc::Rc::new(__LeanValueRepr::Closure { arity, captures, invoke }))
+    }
+
+    // Preserve declaration-order captures and permit additional partial
+    // application. No mutation or runtime lookup of untrusted pointers.
+    fn apply(&self, args: Vec<Self>) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Closure { arity, captures, invoke } => {
+                assert!(!args.is_empty(), "empty source AP");
+                let mut all = captures.clone();
+                all.extend(args);
+                assert!(all.len() <= *arity, "oversaturated source AP");
+                if all.len() == *arity {
+                    invoke(all)
+                } else {
+                    Self::pap(*invoke, *arity, all)
+                }
+            }
+            _ => panic!("tried to apply a non-function Lean value"),
+        }
+    }
+}
+"#;
+
+fn is_value_type(ty: &str) -> bool {
+    matches!(ty, "obj" | "tobj" | "tagged")
+}
+
+fn rust_type(ty: &str) -> &str {
+    if is_value_type(ty) {
+        "__LeanValue"
+    } else {
+        ty
+    }
+}
+
+fn ir_type_compatible(found: &str, expected: &str) -> bool {
+    found == expected || (expected == "tobj" && matches!(found, "obj" | "tagged"))
+}
+
+fn include_value_runtime(source: String) -> String {
+    if source.contains("__LeanValue") {
+        format!("{RUNTIME_SOURCE}\n{source}")
+    } else {
+        source
+    }
+}
+
 struct Reader;
 impl Reader {
     unsafe fn scalar(x: Obj) -> Result<usize, String> {
@@ -161,10 +269,14 @@ impl Reader {
                 let found = env
                     .get(&id)
                     .ok_or_else(|| format!("unknown input variable x_{id}"))?;
-                if *found != expected {
+                if !ir_type_compatible(found, expected) {
                     return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }
-                Ok(format!("x_{id}"))
+                Ok(if is_value_type(found) {
+                    format!("x_{id}.clone()")
+                } else {
+                    format!("x_{id}")
+                })
             }
             1 => Err("erased value used as runtime operand".into()),
             t => Err(format!("unknown Arg constructor {t}")),
@@ -178,8 +290,11 @@ impl Reader {
             3 => Ok("u32"),
             4 => Ok("u64"),
             5 => Ok("usize"),
+            7 => Ok("obj"),
+            8 => Ok("tobj"),
+            12 => Ok("tagged"),
             t => Err(format!(
-                "IR type tag {t} unsupported (supported u8/u16/u32/u64/usize)"
+                "IR type tag {t} unsupported (supported fixed integers and immutable values)"
             )),
         }
     }
@@ -187,6 +302,9 @@ impl Reader {
         match Self::checked_tag(x, "LitVal")? {
             0 => {
                 let n = Self::nat(Self::field(x, 0)?)?;
+                if ty == "tagged" {
+                    return Ok(format!("__LeanValue::tagged({n})"));
+                }
                 let max = match ty {
                     "u8" => u8::MAX as usize,
                     "u16" => u16::MAX as usize,
@@ -210,6 +328,152 @@ impl Reader {
         functions: Option<&FunctionTable>,
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
+            0 => {
+                // ctor: only immutable, pointer-field constructors with
+                // verified metadata. Scalar-field layouts are not yet mapped.
+                if !is_value_type(var_ty) {
+                    return Err("ctor result is not an object-valued IR type".into());
+                }
+                let info = Self::field(x, 0)?;
+                let name = Self::name(Self::field(info, 0)?, 0)?;
+                let tag = Self::nat(Self::field(info, 1)?)?;
+                let fields = Self::array(Self::field(x, 1)?)?;
+                let size = Self::nat(Self::field(info, 2)?)?;
+                let usize_count = Self::nat(Self::field(info, 3)?)?;
+                let ssize = Self::nat(Self::field(info, 4)?)?;
+                if !matches!(name.as_str(), "Option.none" | "Option.some" | "Prod.mk") {
+                    return Err(format!(
+                        "constructor {name} is not in the verified runtime subset"
+                    ));
+                }
+                let expected_arity = match name.as_str() {
+                    "Option.none" => (0, 0),
+                    "Option.some" => (1, 1),
+                    "Prod.mk" => (0, 2),
+                    _ => unreachable!(),
+                };
+                if (tag, fields.len()) != expected_arity
+                    || size != fields.len()
+                    || usize_count != 0
+                    || ssize != 0
+                {
+                    return Err(format!("constructor {name} layout unsupported"));
+                }
+                if name == "Option.none" {
+                    if var_ty != "tagged" {
+                        return Err("Option.none must be tagged in pinned IR".into());
+                    }
+                    return Ok("__LeanValue::tagged(0)".into());
+                }
+                if var_ty != "obj" {
+                    return Err("heap constructor has unexpected IR result type".into());
+                }
+                let mut args = Vec::new();
+                for arg in fields {
+                    args.push(Self::arg(arg, env, "tobj")?);
+                }
+                Ok(format!(
+                    "__LeanValue::ctor({tag}, \"{name}\", vec![{}])",
+                    args.join(", ")
+                ))
+            }
+            3 => {
+                // proj(index, object)
+                if !is_value_type(var_ty) {
+                    return Err("object projection result has non-object type".into());
+                }
+                let index = Self::nat(Self::field(x, 0)?)?;
+                let id = Self::var(Self::field(x, 1)?)?;
+                let found = env.get(&id).ok_or("projection of undefined variable")?;
+                if !is_value_type(found) {
+                    return Err("projection from scalar variable".into());
+                }
+                Ok(format!("x_{id}.field({index})"))
+            }
+
+            7 => {
+                // PAP(callee, captured operands). For this first subset, each
+                // source callee must be compiled and its ABI must consist
+                // solely of boxed values, both parameters and return.
+                if !is_value_type(var_ty) {
+                    return Err("PAP result must be an object".into());
+                }
+                let name = Self::name(Self::field(x, 0)?, 0)?;
+                let signature = functions
+                    .and_then(|table| table.get(&name))
+                    .ok_or_else(|| format!("PAP {name} lacks reachable executable IR"))?;
+                let args = Self::array(Self::field(x, 1)?)?;
+                if signature.params.is_empty()
+                    || args.len() >= signature.params.len()
+                    || !signature.params.iter().all(|ty| is_value_type(ty))
+                    || !is_value_type(signature.result)
+                {
+                    return Err(format!("PAP {name} has unsupported typed/arity layout"));
+                }
+                let mut captured = Vec::new();
+                for arg in args {
+                    // A generated helper may accept tagged while its source
+                    // PAP operand is tobj (boxed Bool). Both map to the same
+                    // immutable value model; scalar operands still refuse.
+                    captured.push(Self::arg(arg, env, "tobj")?);
+                }
+                Ok(format!(
+                    "__LeanValue::pap({}, {}, vec![{}])",
+                    internal_closure_name(&name),
+                    signature.params.len(),
+                    captured.join(", ")
+                ))
+            }
+            8 => {
+                // AP(f, arguments): supported as 1..16 boxed-value operands.
+                // A dynamic closure may be partially applied again.
+                if !is_value_type(var_ty) {
+                    return Err("AP scalar result requires an unsupported ABI adapter".into());
+                }
+                let fun = Self::var(Self::field(x, 0)?)?;
+                let found = env
+                    .get(&fun)
+                    .ok_or_else(|| format!("undefined AP function x_{fun}"))?;
+                if !is_value_type(found) {
+                    return Err("AP function must have an object representation".into());
+                }
+                let args = Self::array(Self::field(x, 1)?)?;
+                if args.is_empty() || args.len() > 16 {
+                    return Err("AP requires 1..16 object arguments".into());
+                }
+                let mut lowered = Vec::new();
+                for arg in args {
+                    lowered.push(Self::arg(arg, env, "tobj")?);
+                }
+                Ok(format!("x_{fun}.apply(vec![{}])", lowered.join(", ")))
+            }
+            9 => {
+                // box(scalar type, variable)
+                if !is_value_type(var_ty) {
+                    return Err("boxed scalar result must be object-valued".into());
+                }
+                let ty = Self::ty(Self::field(x, 0)?)?;
+                if is_value_type(ty) {
+                    return Err("box expects a scalar IR type".into());
+                }
+                let id = Self::var(Self::field(x, 1)?)?;
+                if env.get(&id) != Some(&ty) {
+                    return Err("box scalar input type mismatch".into());
+                }
+                Ok(format!("__LeanValue::boxed_{ty}(x_{id})"))
+            }
+            10 => {
+                // unbox(object variable) to a statically known scalar.
+                if is_value_type(var_ty) {
+                    return Err("unbox result type must be scalar".into());
+                }
+                let id = Self::var(Self::field(x, 0)?)?;
+                let found = env.get(&id).ok_or("unbox of undefined variable")?;
+                if !is_value_type(found) {
+                    return Err("unbox from non-object variable".into());
+                }
+                Ok(format!("x_{id}.unbox_{var_ty}()"))
+            }
             6 => {
                 // fap, preserving the exact known primitive semantics.
                 let name = Self::name(Self::field(x, 0)?, 0)?;
@@ -266,6 +530,95 @@ impl Reader {
     // Only Boolean pattern matches are supported. Lean represents Bool as
     // UInt8 at this compiler stage. Never interpret a different inductive
     // datatype's constructor index as a Boolean branch.
+    unsafe fn case_body(
+        x: Obj,
+        code: &mut String,
+        depth: usize,
+        count: &mut usize,
+        env: &mut BTreeMap<usize, &'static str>,
+        ret_ty: &str,
+        ctx: LoweringContext<'_>,
+    ) -> Result<(), String> {
+        let type_name = Self::name(Self::field(x, 0)?, 0)?;
+        match type_name.as_str() {
+            "UInt8" => Self::boolean_case(x, code, depth, count, env, ret_ty, ctx),
+            "Option" | "tobj" | "obj" => Self::option_case(x, code, depth, count, env, ret_ty, ctx),
+            _ => Err(format!("unsupported case type {type_name}")),
+        }
+    }
+
+    unsafe fn option_case(
+        x: Obj,
+        code: &mut String,
+        depth: usize,
+        count: &mut usize,
+        env: &mut BTreeMap<usize, &'static str>,
+        ret_ty: &str,
+        ctx: LoweringContext<'_>,
+    ) -> Result<(), String> {
+        if !is_value_type(Self::ty(Self::field(x, 2)?)?) {
+            return Err("Option case scrutinee must be object-valued".into());
+        }
+        let id = Self::var(Self::field(x, 1)?)?;
+        if !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
+            return Err("Option case scrutinee not object-valued".into());
+        }
+        let alts = Self::array(Self::field(x, 3)?)?;
+        if alts.len() != 2 {
+            return Err("Option case requires exactly two constructors".into());
+        }
+        let mut seen = [false; 2];
+        writeln!(code, "    match x_{id}.tag() {{").unwrap();
+        for alt in alts {
+            if Self::tag(alt)? != 0 {
+                return Err("Option default alternative unsupported".into());
+            }
+            let info = Self::field(alt, 0)?;
+            let ctor = Self::name(Self::field(info, 0)?, 0)?;
+            let idx = Self::nat(Self::field(info, 1)?)?;
+            let expected = match idx {
+                0 => "Option.none",
+                1 => "Option.some",
+                _ => return Err("invalid Option constructor index".into()),
+            };
+            if expected != ctor || seen[idx] {
+                return Err("incorrect Option constructor metadata".into());
+            }
+            let pointer_fields = Self::nat(Self::field(info, 2)?)?;
+            let usize_fields = Self::nat(Self::field(info, 3)?)?;
+            let scalar_bytes = Self::nat(Self::field(info, 4)?)?;
+            if pointer_fields != idx || usize_fields != 0 || scalar_bytes != 0 {
+                return Err(format!(
+                    "Option alternative {ctor} has unsupported field layout"
+                ));
+            }
+            seen[idx] = true;
+            writeln!(code, "        {idx} => {{").unwrap();
+            if idx == 0 {
+                writeln!(code, "            assert!(x_{id}.has_tagged(0), \"invalid Option.none representation\");").unwrap();
+            } else {
+                writeln!(code, "            assert!(x_{id}.has_ctor(1, \"Option.some\", 1), \"invalid Option.some representation\");").unwrap();
+            }
+            let mut arm_env = env.clone();
+            Self::body(
+                Self::field(alt, 1)?,
+                code,
+                depth + 1,
+                count,
+                &mut arm_env,
+                ret_ty,
+                ctx,
+            )?;
+            writeln!(code, "        }}").unwrap();
+        }
+        if !seen.into_iter().all(|b| b) {
+            return Err("incomplete Option case".into());
+        }
+        writeln!(code, "        _ => unreachable!(\"invalid Option tag\"),").unwrap();
+        writeln!(code, "    }}").unwrap();
+        Ok(())
+    }
+
     unsafe fn boolean_case(
         x: Obj,
         code: &mut String,
@@ -361,7 +714,7 @@ impl Reader {
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }
-                    writeln!(code, "    let x_{name}: {ty} = {value};").unwrap();
+                    writeln!(code, "    let x_{name}: {} = {value};", rust_type(ty)).unwrap();
                     x = Self::field(x, 3)?;
                 }
                 1 => {
@@ -384,13 +737,14 @@ impl Reader {
                                 "join parameter x_{var} reused a visible variable"
                             ));
                         }
-                        param_code.push(format!("x_{var}: {ty}"));
+                        param_code.push(format!("x_{var}: {}", rust_type(ty)));
                         param_types.push(ty);
                     }
                     writeln!(
                         code,
-                        "    let j_{id} = |{}| -> {ret_ty} {{",
-                        param_code.join(", ")
+                        "    let j_{id} = |{}| -> {} {{",
+                        param_code.join(", "),
+                        rust_type(ret_ty)
                     )
                     .unwrap();
                     Self::body(
@@ -419,9 +773,23 @@ impl Reader {
                     )?;
                     return Ok(());
                 }
+                6..=8 => {
+                    // Immutable Rc-backed emitted values own their references;
+                    // Lean's inc/dec/del bookkeeping is non-observable in this
+                    // subset because reset/reuse/isShared are refused.
+                    let id = Self::var(Self::field(x, 0)?)?;
+                    let ty = env
+                        .get(&id)
+                        .ok_or("reference bookkeeping for undefined variable")?;
+                    if !is_value_type(ty) {
+                        return Err("reference bookkeeping on non-object variable".into());
+                    }
+                    let body_index = if Self::tag(x)? == 8 { 1 } else { 2 };
+                    x = Self::field(x, body_index)?;
+                }
                 9 => {
                     // case(tid, scrutinee, type, alts)
-                    Self::boolean_case(x, code, depth, count, env, ret_ty, ctx)?;
+                    Self::case_body(x, code, depth, count, env, ret_ty, ctx)?;
                     return Ok(());
                 }
                 11 => {
@@ -459,7 +827,11 @@ impl Reader {
         if lr_abi_probe() == 0 {
             return Err("Lean C ABI runtime probe failed".into());
         }
-        Self::emit_function(decl, &Self::string(rust_name)?, None)
+        Ok(include_value_runtime(Self::emit_function(
+            decl,
+            &Self::string(rust_name)?,
+            None,
+        )?))
     }
 
     unsafe fn emit_function(
@@ -495,6 +867,9 @@ impl Reader {
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
+        // Preserve the explicit terminal forms from Lean IR, including in
+        // nested join and branch bodies. This is intentional generated code.
+        result.push_str("#[allow(clippy::needless_return)]\n");
         write!(result, "pub fn {rust_name}(").unwrap();
         for (i, param) in params.iter().enumerate() {
             if i > 0 {
@@ -505,9 +880,9 @@ impl Reader {
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}"));
             }
-            write!(result, "x_{var}: {ty}").unwrap();
+            write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
         }
-        writeln!(result, ") -> {ret} {{").unwrap();
+        writeln!(result, ") -> {} {{", rust_type(ret)).unwrap();
         Self::body(
             body,
             &mut result,
@@ -526,6 +901,10 @@ impl Reader {
 }
 
 // Naming is injective over UTF-8 bytes and independent of declaration ordering.
+fn internal_closure_name(lean_name: &str) -> String {
+    format!("__pap_{}", internal_name(lean_name))
+}
+
 fn internal_name(lean_name: &str) -> String {
     let mut out = String::from("lean_");
     for byte in lean_name.as_bytes() {
@@ -563,7 +942,7 @@ impl Reader {
             match Self::checked_tag(body, "FnBody")? {
                 0 => {
                     let expr = Self::field(body, 2)?;
-                    if Self::checked_tag(expr, "Expr")? == 6 {
+                    if matches!(Self::checked_tag(expr, "Expr")?, 6 | 7) {
                         calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
                     }
                     pending.push(Self::field(body, 3)?);
@@ -581,6 +960,8 @@ impl Reader {
                         }
                     }
                 }
+                6 | 7 => pending.push(Self::field(body, 2)?),
+                8 => pending.push(Self::field(body, 1)?),
                 10 | 11 => (),
                 t => {
                     return Err(format!(
@@ -674,6 +1055,32 @@ impl Reader {
             )?);
             result.push('\n');
         }
+        // Only callable object ABI declarations receive generated thunks.
+        // No raw address is ever read out of a Lean or Rust heap object.
+        for (name, sig) in &signatures {
+            if sig.params.is_empty()
+                || !sig.params.iter().all(|ty| is_value_type(ty))
+                || !is_value_type(sig.result)
+            {
+                continue;
+            }
+            result.push_str("#[allow(dead_code)]\n");
+            writeln!(
+                result,
+                "fn {}(args: Vec<__LeanValue>) -> __LeanValue {{",
+                internal_closure_name(name)
+            )
+            .unwrap();
+            writeln!(result, "    assert_eq!(args.len(), {});", sig.params.len()).unwrap();
+            write!(result, "    {}(", internal_name(name)).unwrap();
+            for i in 0..sig.params.len() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+                write!(result, "args[{i}].clone()").unwrap();
+            }
+            result.push_str(")\n}\n");
+        }
         // Exact same dependency closure is shared by all public wrappers.
         for (root, public_name) in roots {
             let sig = signatures
@@ -685,17 +1092,20 @@ impl Reader {
                 &public_name,
                 Some(&signatures),
             )?;
+            // Preserve the original Lean root name as the public API; Rust's
+            // naming lint must not force an observable symbol rename.
+            result.push_str("#[allow(non_snake_case)]\n");
             write!(result, "pub fn {public_name}(").unwrap();
             for (i, ty) in sig.params.iter().enumerate() {
                 if i > 0 {
                     result.push_str(", ");
                 }
-                write!(result, "p_{i}: {ty}").unwrap();
+                write!(result, "p_{i}: {}", rust_type(ty)).unwrap();
             }
             write!(
                 result,
                 ") -> {} {{\n    {}(",
-                sig.result,
+                rust_type(sig.result),
                 internal_name(&root)
             )
             .unwrap();
@@ -707,7 +1117,7 @@ impl Reader {
             }
             result.push_str(")\n}\n");
         }
-        Ok(result)
+        Ok(include_value_runtime(result))
     }
 }
 
@@ -915,12 +1325,18 @@ mod tests {
         assert!(!SUPPORTED_IR_TAGS.contains(&("Decl", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 6)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 11)));
-        assert!(!SUPPORTED_IR_TAGS.contains(&("Expr", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 8)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 0)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 3)));
+        assert!(!SUPPORTED_IR_TAGS.contains(&("Expr", 1)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 6)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 16);
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 28);
     }
 
     #[test]

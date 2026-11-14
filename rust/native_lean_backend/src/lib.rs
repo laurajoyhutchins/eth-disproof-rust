@@ -508,6 +508,67 @@ impl Reader {
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
                 }
+                // These exact compiler externs are added to the canonical
+                // object runtime. Existing Array.push and boxed Array.size
+                // stay in the source-reviewed primitive adapter registry.
+                if matches!(
+                    name.as_str(),
+                    "Array.mkEmpty"
+                        | "Array.getInternal"
+                        | "Array.getInternalBorrowed"
+                        | "Array.set!"
+                ) {
+                    let expected = match name.as_str() {
+                        "Array.mkEmpty" => 2,
+                        _ => 4,
+                    };
+                    if args.len() != expected {
+                        return Err(format!(
+                            "{name}: expected {expected} operands, got {}",
+                            args.len()
+                        ));
+                    }
+                    let erased = |index: usize| -> Result<(), String> {
+                        if Self::checked_tag(args[index], "Arg")? == 1 {
+                            Ok(())
+                        } else {
+                            Err(format!(
+                                "{name}: expected erased source type/proof at {index}"
+                            ))
+                        }
+                    };
+                    erased(0)?;
+                    return match name.as_str() {
+                        "Array.mkEmpty" => {
+                            if var_ty != "obj" {
+                                return Err("Array.mkEmpty requires object result".into());
+                            }
+                            let capacity = Self::arg(args[1], env, "tagged")?;
+                            Ok(format!("__LeanValue::empty_array({capacity}.tagged_nat())"))
+                        }
+                        "Array.getInternal" | "Array.getInternalBorrowed" => {
+                            if var_ty != "tobj" {
+                                return Err(format!("{name} requires object element result"));
+                            }
+                            erased(3)?;
+                            let array = Self::arg(args[1], env, "obj")?;
+                            let index = Self::arg(args[2], env, "tagged")?;
+                            Ok(format!("{array}.array_get_tagged({index}.tagged_nat())"))
+                        }
+                        "Array.set!" => {
+                            if var_ty != "obj" {
+                                return Err("Array.set! requires object result".into());
+                            }
+                            let array = Self::arg(args[1], env, "obj")?;
+                            let index = Self::arg(args[2], env, "tagged")?;
+                            let value = Self::arg(args[3], env, "tobj")?;
+                            Ok(format!(
+                                "{array}.array_set_tagged({index}.tagged_nat(), {value})"
+                            ))
+                        }
+                        _ => unreachable!(),
+                    };
+                }
                 if let Some(runtime) = runtime_primitive_spec(&name) {
                     if !is_value_type(var_ty) {
                         return Err(format!("{name}: object result required for native runtime"));
@@ -545,6 +606,38 @@ impl Reader {
                 }
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
+                }
+                // Statically tagged immediate Nat comparisons do not require
+                // GMP. Boxed arbitrary Nat continues through the GMP path.
+                let mut both_tagged =
+                    matches!(name.as_str(), "Nat.decEq" | "Nat.decLt" | "Nat.decLe");
+                if both_tagged {
+                    for arg in &args {
+                        if Self::checked_tag(*arg, "Arg")? != 0 {
+                            both_tagged = false;
+                            break;
+                        }
+                        let id = Self::var(Self::field(*arg, 0)?)?;
+                        if env.get(&id) != Some(&"tagged") {
+                            both_tagged = false;
+                            break;
+                        }
+                    }
+                }
+                if both_tagged {
+                    if var_ty != "u8" {
+                        return Err(format!("{name}: tagged Nat comparison must return UInt8"));
+                    }
+                    let lhs = Self::arg(args[0], env, "tagged")?;
+                    let rhs = Self::arg(args[1], env, "tagged")?;
+                    let op = match name.as_str() {
+                        "Nat.decEq" => "==",
+                        "Nat.decLt" => "<",
+                        _ => "<=",
+                    };
+                    return Ok(format!(
+                        "u8::from({lhs}.tagged_nat() {op} {rhs}.tagged_nat())"
+                    ));
                 }
                 if is_nat_primitive(&name) {
                     let lhs = Self::arg(args[0], env, "tobj")?;
@@ -1178,7 +1271,7 @@ fn encode_name_str(component: &str) -> Result<String, String> {
         && !component.as_bytes()[0].is_ascii_digit()
         && component
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'!')
     {
         return Ok(component.to_owned());
     }
@@ -1460,6 +1553,10 @@ fn is_primitive(name: &str) -> bool {
     primitive_spec(name).is_some()
         || is_nat_primitive(name)
         || runtime_primitive_spec(name).is_some()
+        || matches!(
+            name,
+            "Array.mkEmpty" | "Array.getInternal" | "Array.getInternalBorrowed" | "Array.set!"
+        )
 }
 
 const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");

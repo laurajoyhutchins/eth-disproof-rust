@@ -400,6 +400,36 @@ bash scripts/check-coverage.sh
 # signed Int, UTF-8, persistent array/list and the transitive Nat closure.
 lean -o examples/Item30IRProbe.olean examples/Item30IRProbe.lean
 bash scripts/check-item30.sh
+# Exact original Lean Array programs: five unchanged roots, 256 input pairs
+# each. All object values share the same canonical persistent Rc representation.
+rm -rf examples/array-package examples/rejected-array-package
+lean --load-dynlib="$NATIVE_LIB" examples/ArrayFixture.lean
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path examples/array-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/array-package/Cargo.toml --all-targets -- -D warnings
+array_hash_before="$(sha256sum examples/array-package/src/lib.rs | cut -d' ' -f1)"
+rm -rf examples/array-package
+lean --load-dynlib="$NATIVE_LIB" examples/ArrayFixture.lean > /dev/null
+if [[ "$array_hash_before" != "$(sha256sum examples/array-package/src/lib.rs | cut -d' ' -f1)" ]]; then
+  echo "source-derived Array Rust is non-deterministic" >&2; exit 1
+fi
+for fixture in RefusalArrayPop RefusalArrayBang; do
+  rm -rf examples/rejected-array-package
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then
+    echo "unsupported source Array instruction accepted: ${fixture}" >&2; exit 1
+  fi
+  if [[ -e examples/rejected-array-package ]] || ! grep -q 'Rust native backend refused' "examples/${fixture}.log"; then
+    cat "examples/${fixture}.log" >&2
+    echo "unsupported Array refused incorrectly: ${fixture}" >&2; exit 1
+  fi
+  rm -f "examples/${fixture}.log"
+done
+# Emitted programs must include precisely the one canonical value runtime.
+runtime_bytes="$(wc -c < src/runtime/immutable_value.rs)"
+cmp -n "$runtime_bytes" src/runtime/immutable_value.rs examples/array-package/src/lib.rs
+if ldd examples/array-package/target/debug/deps/lean_generated-* 2>/dev/null | grep -i 'lean4\|liblean'; then
+  echo "standalone source Array unexpectedly links Lean" >&2; exit 1
+fi
 # Receipt exists only after *all* end-to-end and negative checks pass.
 mkdir -p artifacts
 {
@@ -409,10 +439,11 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=16445"
+  echo "differential_assertions=17725"
+  echo "original_array_oracles=1280"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-  echo "core_and_matrix_oracles=18365"
+  echo "core_and_matrix_oracles=19645"
   echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
@@ -435,6 +466,8 @@ mkdir -p artifacts
     examples/Item30IRProbe.lean examples/Item30Conformance.lean \
     examples/Item30Errors.lean examples/RefusalNameNul.lean examples/RefusalPublicName.lean \
     artifacts/item30-oracles.rs artifacts/item30-ir-probes.txt artifacts/item30-rejection.log
+  sha256sum examples/ArrayFixture.lean examples/RefusalArrayPop.lean examples/RefusalArrayBang.lean \
+    examples/array-package/src/lib.rs examples/array-package/tests/arrays.rs
   sha256sum src/safety.rs
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
   sha256sum examples/NatFixture.lean examples/RefusalNatBitwise.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml

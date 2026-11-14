@@ -103,6 +103,13 @@ private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.
     if let some decl ← Lean.IR.findDecl name then
       if let some blame := decl.getInfo.sorryDep? then
         throwError "{refusalMessage name "SorryAxiom" s!"dependency on sorry axiom {blame}"}"
+      -- Only these exact version-pinned Array runtime externs have an
+      -- independently reviewed Rust adapter. Their signatures and erased
+      -- proof slots are rechecked when lowering the original IR.
+      if let .extern .. := decl then
+        if #["Array.mkEmpty", "Array.push", "Array.size", "Array.getInternal",
+              "Array.getInternalBorrowed", "Array.set!"].contains name.toString then
+          continue
       decls := decls.push decl
       if let .fdecl _ _ _ body _ := decl then
         queue := queue ++ callsInBody body

@@ -761,7 +761,10 @@ fn with_runtime_if_needed(source: String) -> Result<String, String> {
         source
     };
     if output.len() > safety::MAX_OUTPUT_BYTES {
-        return Err("complete generated Rust, including embedded value runtime, exceeds output byte limit".into());
+        return Err(
+            "complete generated Rust, including embedded value runtime, exceeds output byte limit"
+                .into(),
+        );
     }
     Ok(output)
 }
@@ -911,7 +914,10 @@ mod tests {
         let tiny = super::with_runtime_if_needed("pub fn tiny() -> u64 { 2 }".to_owned())
             .expect("scalar-only function");
         assert!(!tiny.contains("mod native_runtime"));
-        let source = format!("// input\nlet x_1: Value = Value::nat(\"1\");\n{}", "a".repeat(super::safety::MAX_OUTPUT_BYTES));
+        let source = format!(
+            "// input\nlet x_1: Value = Value::nat(\"1\");\n{}",
+            "a".repeat(super::safety::MAX_OUTPUT_BYTES)
+        );
         assert!(super::with_runtime_if_needed(source).is_err());
     }
 

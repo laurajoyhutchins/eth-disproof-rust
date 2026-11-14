@@ -76,10 +76,10 @@ scripts/check-coverage.sh rejects a missing fixture or generated function,
 compiles all emitted Rust functions into one test binary, and runs all 1,920
 assertions. The execution ledger is artifacts/primitive-conformance.tsv.
 
-The integrated regression fixtures now provide **16,445** independently
+The integrated regression fixtures now provide **17,725** independently
 original-Lean-evaluated Rust comparisons: 3,008 scalar/Bool/joins/multi-root,
 3,072 immutable Option/Prod, 2,048 source-defined boxed closure/PAP/AP, 5,208 GMP-backed arbitrary-width Nat tests, 3,008 extended Float/enum/unsigned cases, and 101 additional original-Lean Int/Unicode/collection/closure operations. Together with the separate 1,920
-fixed-width primitive matrix assertions, this is **18,365** compared results.
+fixed-width primitive matrix assertions, this is **19,645** compared results.
 The additional 1,024-case randomized Lean/Rust property suite is reported
 separately. These counts describe different tested subsets, not universal
 compiler equivalence.
@@ -116,3 +116,7 @@ The runtime backing these tests is the canonical post-#218 `src/runtime/immutabl
 The canonical `src/runtime/immutable_value.rs` is extended with seven source-identified adapters: `Int.add`, `String.append`, `String.utf8ByteSize`, `String.length`, `Array.push`, `Array.size`, and `List.reverse._redArg`. An additional **101** original Lean differential cases cover signed GMP integers, UTF-8 including embedded NUL, immutable arrays/lists, and exact Nat closure calls. The Nat operations reuse the existing GMP implementation rather than a second arithmetic kernel.
 
 `Lean.IR.Arg.erased` is conditionally admitted **only for the source-verified type-proof operand of listed Array externs**. All other erased runtime arguments still refuse. This raises the source-checked bounded constructor whitelist from 30 to **31 of 48**. This acceptance does not imply general Lean heap/exception/IO support or successful independent upstream project compilation. Source-to-Rust CI must pass the combined head before this scope is considered verified.
+
+## Source-derived persistent Array programs (integration candidate)
+
+Five unchanged original Lean functions in `examples/ArrayFixture.lean` cover construction, append, indexed reads, persistent updates, array-size branching, and composition through `Option`. The canonical immutable `Rc`-backed Array implementation is reused, not forked. The additional **1,280** expected results come from Lean 4.34.1 and are required to match independently compiled standalone Cargo tests. `Array.pop` and `Array.get!Internal` still refuse. Source-derived tagged indices, erased type proofs and fixed ABI signatures are validated before code generation. Full generic arrays, mutable sharing, and general Lean compiler correctness are not established.

@@ -17,7 +17,6 @@ import signal
 import subprocess
 import tempfile
 import time
-import resource
 
 from export_compiled_batch import atomic_write, ensure_pinned
 from extract_compiled_catalog import blob_hash
@@ -36,7 +35,7 @@ SOURCE_COMMIT = "4eaee87548250b2682affda7d05d947c05554bae"
 
 
 MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
-MAX_PROCESS_ADDRESS_BYTES = 6 * 1024 * 1024 * 1024
+MAX_EXPORT_RSS_BYTES = 5 * 1024 * 1024 * 1024
 
 
 class OutputLimitError(RuntimeError):
@@ -50,9 +49,34 @@ def _tail(path: Path, maximum: int = 2400) -> str:
         return stream.read(maximum).decode("utf8", errors="replace")
 
 
+def _process_group_rss_bytes(pgid: int) -> int:
+    """Best-effort Linux resident-memory guard, not virtual address space."""
+    if not Path("/proc").is_dir():
+        return 0
+    total = 0
+    for process in Path("/proc").iterdir():
+        if not process.name.isdigit():
+            continue
+        try:
+            stat = (process / "stat").read_text()
+            # Linux stat fields after the closing command parenthesis:
+            # state, ppid, pgrp. The command itself may contain spaces.
+            fields = stat.rsplit(") ", 1)[1].split()
+            if len(fields) < 3 or int(fields[2]) != pgid:
+                continue
+            for line in (process / "status").read_text().splitlines():
+                if line.startswith("VmRSS:"):
+                    total += int(line.split()[1]) * 1024
+                    break
+        except (OSError, ValueError, IndexError):
+            continue
+    return total
+
+
 def run_bounded(argv: list[str], cwd: Path, timeout: int,
                 env: dict[str, str] | None = None,
-                log_base: Path | None = None) -> subprocess.CompletedProcess[str]:
+                log_base: Path | None = None,
+                rss_limit_bytes: int | None = None) -> subprocess.CompletedProcess[str]:
     """Supervise a whole process group without unbounded output or pipe waits.
 
     A child in a different session can inherit a pipe and survive group kill.
@@ -67,14 +91,10 @@ def run_bounded(argv: list[str], cwd: Path, timeout: int,
         stdout_path.parent.mkdir(parents=True, exist_ok=True)
         stderr_path.parent.mkdir(parents=True, exist_ok=True)
 
-        def limit_address_space() -> None:
-            resource.setrlimit(resource.RLIMIT_AS,
-                               (MAX_PROCESS_ADDRESS_BYTES, MAX_PROCESS_ADDRESS_BYTES))
-
         with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
             child = subprocess.Popen(
                 argv, cwd=cwd, env=env, stdout=stdout_file, stderr=stderr_file,
-                start_new_session=True, preexec_fn=limit_address_space,
+                start_new_session=True,
             )
             started = time.monotonic()
             heartbeat = 30
@@ -87,6 +107,12 @@ def run_bounded(argv: list[str], cwd: Path, timeout: int,
                         raise OutputLimitError(
                             f"bounded output exceeded {MAX_PROCESS_OUTPUT_BYTES} bytes "
                             f"(stdout={out_size} stderr={err_size})")
+                    if rss_limit_bytes is not None:
+                        resident = _process_group_rss_bytes(child.pid)
+                        if resident > rss_limit_bytes:
+                            raise OutputLimitError(
+                                f"original exporter RSS budget exceeded "
+                                f"{rss_limit_bytes} bytes: observed {resident}")
                     if elapsed >= timeout:
                         raise TimeoutError(f"timeout {timeout}s: {argv[0]} {argv[1:3]}")
                     if log_base is not None and elapsed >= heartbeat:
@@ -229,7 +255,10 @@ def compile_query(args):
                 checked = run_bounded(
                     ["lake", "env", "lean", str(import_check)], args.lake_root, 180)
                 if checked.returncode:
-                    refuse("original-module-fresh-import", checked.stderr[-3500:])
+                    refuse("original-module-fresh-import",
+                           f"exit={checked.returncode} "
+                           f"stdout_tail={checked.stdout[-2400:]} "
+                           f"stderr_tail={checked.stderr[-1000:]}")
             atomic_write(out / "lean-build.log",
                          "verified original query .olean and independent fresh import\n")
         except (ValueError, OSError, TimeoutError, OutputLimitError, json.JSONDecodeError) as error:
@@ -268,7 +297,8 @@ def compile_query(args):
                                   args.lake_root, args.timeout,
                                   {**os.environ, "ORIGINAL_MAX_LABELS": str(args.max_source_labels),
                                    "ORIGINAL_SOURCE_GRAPH_TRACE": "1"},
-                                  log_base=out / "original-command")
+                                  log_base=out / "original-command",
+                                  rss_limit_bytes=MAX_EXPORT_RSS_BYTES)
         except (TimeoutError, OutputLimitError) as error:
             refuse("original-command-export-resource-limit", str(error))
         atomic_write(out / "lean-export.log", exported.stdout + "\n" + exported.stderr)

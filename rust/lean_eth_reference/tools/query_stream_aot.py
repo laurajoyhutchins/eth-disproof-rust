@@ -98,7 +98,8 @@ def verify_query_import_receipt(receipt: Path, lake_root: Path, blob: str,
                 Path(MODULE.replace(".", "/") + ".olean"))
     if not artifact.is_file() or artifact.is_symlink():
         raise ValueError("original QueryStream .olean missing or linked")
-    observed = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    with artifact.open("rb") as binary:
+        observed = hashlib.file_digest(binary, "sha256").hexdigest()
     if observed != digest:
         raise ValueError("original QueryStream .olean bytes differ from verified import receipt")
 
@@ -168,6 +169,17 @@ def compile_query(args):
                 refuse("original-module-build", built.stderr[-3500:])
         except TimeoutError as error:
             refuse("original-module-build-timeout", str(error))
+
+    # Bind the eventual native AOT report to the exact original module bytes,
+    # not merely to a source file's Git blob or an untrusted JSON receipt.
+    original_olean = (args.lake_root / ".lake/build/lib/lean" /
+                      Path(MODULE.replace(".", "/") + ".olean"))
+    if not original_olean.is_file() or original_olean.is_symlink():
+        refuse("original-module-artifact", "verified original QueryStream .olean is missing")
+    with original_olean.open("rb") as binary:
+        original_olean_digest = hashlib.file_digest(binary, "sha256").hexdigest()
+    import_receipt_digest = (hashlib.sha256(args.import_receipt.read_bytes()).hexdigest()
+                             if args.import_receipt is not None else None)
 
     with tempfile.TemporaryDirectory(prefix="original-query-aot-") as scratch:
         tmp = Path(scratch)
@@ -240,6 +252,11 @@ def compile_query(args):
             "source_commit": SOURCE_COMMIT,
             "lean_version": pin["lean"],
             "source_blob": blob,
+            "original_module_olean_sha256": original_olean_digest,
+            "original_module_import_receipt_sha256": import_receipt_digest,
+            "original_module_import_method": (
+                "verified-stage-receipt" if args.import_receipt is not None
+                else "direct-pinned-Lake-build"),
             "declaration": DECLARATION,
             "id": IDENTIFIER,
             "graph_sha256": digest,

@@ -146,7 +146,7 @@ across seven inductive families. The classifier implements 19 bounded variants
 and refuses 29; its tags are enforced in the production decoder. The single
 primitive registry drives 30 supported operations, each independently
 compared with 64 original-Lean oracle vectors. This adds 1,920 assertions to
-the previous 1,984, with 91 new cross-type checks, for **3,995**
+the previous 1,984, with 100 new cross-type checks, for **4,004**
 exact-head differential comparisons.
 
 See [CONFORMANCE.md](CONFORMANCE.md) for the generation and refusal contract.
@@ -160,7 +160,7 @@ arbitrary-precision Nat and Int, valid UTF-8 String, Array UInt64 and
 List UInt64 into a **dependency-free embedded Rust value runtime**.
 The separate item-30 conformance fixture compiles original Lean IR and runs
 original-Lean oracle comparisons for values beyond 512 bits, negative Int,
-Unicode code points, and persistent collections. It also verifies structured
+Unicode code points (including embedded NUL, quotes, backslashes and line breaks), and persistent collections. It also verifies structured
 refusal without output modification for unsupported operations.
 
 Run `bash scripts/check.sh` to execute the historical scalar suite and the

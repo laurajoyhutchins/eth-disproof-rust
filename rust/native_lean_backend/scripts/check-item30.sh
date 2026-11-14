@@ -50,5 +50,26 @@ if ldd artifacts/item30-standalone/target/release/lean_native_item30_conformance
   echo "emitted item30 executable unexpectedly links Lean runtime" >&2; exit 1
 fi
 cargo clippy --offline --manifest-path artifacts/item30-standalone/Cargo.toml --all-targets -- -D warnings
+# Verify unsupported operations and failed compilation preserve every artifact.
+for kind in nat_div string_push array_get; do
+  printf 'preexisting-source-must-survive\n' > "examples/sem_rejected_${kind}.rs"
+done
+if lean --load-dynlib="$NATIVE_LIB" examples/Item30Errors.lean \
+    > artifacts/item30-rejection.log 2>&1; then
+  echo "item30 unsupported operations incorrectly reported success" >&2; exit 1
+fi
+for kind in nat_div string_push array_get; do
+  if [[ "$(cat "examples/sem_rejected_${kind}.rs")" != "preexisting-source-must-survive" ]]; then
+    echo "item30 refusal damaged ${kind} output artifact" >&2; exit 1
+  fi
+done
+for declaration in unsupportedNatDiv unsupportedStringPush unsupportedArrayGet; do
+  if ! grep -Fq "\"declaration\":\"Item30Errors.${declaration}\"" \
+      artifacts/item30-rejection.log; then
+    cat artifacts/item30-rejection.log >&2
+    echo "item30 missing named JSON refusal for ${declaration}" >&2; exit 1
+  fi
+done
+rm -f examples/sem_rejected_nat_div.rs examples/sem_rejected_string_push.rs examples/sem_rejected_array_get.rs
 echo "item30 supported object semantics=PASS"
 echo "item30 value_oracle_assertions=$checks"

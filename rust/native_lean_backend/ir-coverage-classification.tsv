@@ -17,7 +17,7 @@ Lean.IR.IRType.union	11	explicitly_unsupported	default_refusal	no_positive_seman
 Lean.IR.IRType.tagged	12	implemented_bounded	tagged_nat_value_runtime	Item30IRProbe_Lean_rust_differential
 Lean.IR.IRType.void	13	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.Arg.var	0	implemented_bounded	typed_variable_operand	matrix_or_baseline_fixture
-Lean.IR.Arg.erased	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.Arg.erased	1	implemented_bounded	Array_push_size_proof_only	Item30_primitive_adapter_tests
 Lean.IR.LitVal.num	0	implemented_bounded	small_tagged_natural_literal	matrix_or_baseline_fixture
 Lean.IR.LitVal.str	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.Expr.ctor	0	explicitly_unsupported	default_refusal	no_positive_semantics_claim

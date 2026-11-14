@@ -87,7 +87,7 @@ jobs:
           set -euo pipefail
           cd vendor/leanify
           mkdir -p "$GITHUB_WORKSPACE/evidence/research/generated"
-          for id in RG03 RS02 RC02; do
+          for id in RG01 RG03 RS02 RS03 RS04 RC01 RC02 RC03; do
             ns="Research${id}"
             mkdir -p "$ns"
             cp "$GITHUB_WORKSPACE/benchmark/latex-to-lean/research/cases/${id}.tex" "$ns/article.tex"

@@ -34,3 +34,6 @@
 /examples/test-tagged.rs
 /examples/rejected_tagged_heap.rs
 /examples/RefusalTaggedHeap.log
+
+/examples/test-bitwise
+/examples/test-bitwise.rs

@@ -266,13 +266,28 @@ impl Reader {
                             "{name}: result type mismatch: expected {expected_ty}, got {var_ty}"
                         ));
                     }
-                    if expected_ty == "f64" {
-                        if !matches!(op, "+" | "-" | "*") {
-                            return Err(format!("{name}: unsupported floating operation {op}"));
+                    match (expected_ty, op) {
+                        ("f64", "+" | "-" | "*") => Ok(format!("{lhs} {op} {rhs}")),
+                        (_, "wrapping_add" | "wrapping_sub" | "wrapping_mul") => {
+                            Ok(format!("{lhs}.{op}({rhs})"))
                         }
-                        Ok(format!("{lhs} {op} {rhs}"))
-                    } else {
-                        Ok(format!("{lhs}.{op}({rhs})"))
+                        // Lean's unsigned division and remainder are total.
+                        // Rust's raw / and % panic on zero: never substitute them.
+                        (_, "checked_div") => {
+                            Ok(format!("{lhs}.checked_div({rhs}).unwrap_or(0)"))
+                        }
+                        (_, "checked_rem") => {
+                            Ok(format!("{lhs}.checked_rem({rhs}).unwrap_or({lhs})"))
+                        }
+                        (_, "&" | "|" | "^") => Ok(format!("{lhs} {op} {rhs}")),
+                        (_, "wrapping_shl" | "wrapping_shr") => {
+                            // Lean shifts modulo the bit width, including counts
+                            // beyond 64 and on the platform-sized USize type.
+                            Ok(format!(
+                                "{lhs}.{op}(({rhs} % ({expected_ty}::BITS as {expected_ty})) as u32)"
+                            ))
+                        }
+                        _ => Err(format!("{name}: unreviewed primitive operation {op}")),
                     }
                 }
             }
@@ -1025,7 +1040,7 @@ mod tests {
                 "unsupported primitive family: {family}"
             );
             assert!(
-                ["add", "sub", "mul", "decEq", "decLt", "decLe"].contains(&operation),
+                ["add", "sub", "mul", "decEq", "decLt", "decLe", "div", "mod", "land", "lor", "xor", "shiftLeft", "shiftRight"].contains(&operation),
                 "unreviewed primitive operation: {operation}"
             );
             let spec = primitive_spec(name).expect("registered primitive cannot disappear");
@@ -1034,7 +1049,7 @@ mod tests {
             assert_eq!(spec.comparison, parts[3] == "comparison");
         }
         for family in ["UInt8", "UInt16", "UInt32", "UInt64", "USize"] {
-            for operation in ["add", "sub", "mul", "decEq", "decLt", "decLe"] {
+            for operation in ["add", "sub", "mul", "decEq", "decLt", "decLe", "div", "mod", "land", "lor", "xor", "shiftLeft", "shiftRight"] {
                 let name = format!("{family}.{operation}");
                 assert!(seen.contains(name.as_str()), "primitive missing: {name}");
             }
@@ -1046,7 +1061,7 @@ mod tests {
                 "missing finite-f64 primitive: {name}"
             );
         }
-        assert_eq!(seen.len(), 33);
+        assert_eq!(seen.len(), 68);
         assert!(primitive_spec("UInt64.shiftLeft").is_none());
         assert!(primitive_spec("IO.println").is_none());
     }

@@ -60,5 +60,8 @@ run_cmd do
       ledger := ledger ++ s!"primitive\t{width}.{operation}\tconditional\ttyped-binary-only\n"
   for operation in #["add", "sub", "mul"] do
     ledger := ledger ++ s!"primitive\tFloat.{operation}\tconditional\tfinite-f64-binary-only\n"
+  for width in widths do
+    for operation in #["div", "mod", "land", "lor", "xor", "shiftLeft", "shiftRight"] do
+      ledger := ledger ++ s!"primitive\t{width}.{operation}\tconditional\ttyped-unsigned-binary-only\n"
   ledger := ledger ++ "primitive\t*\trefused\tunknown-or-external\n"
   liftIO <| IO.FS.writeFile "artifacts/ir-coverage.tsv" ledger

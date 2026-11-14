@@ -168,6 +168,49 @@ fn main() { include!("generated_tagged_differential.rs"); }
 RUST
 rustc --edition=2024 -o examples/test-tagged examples/test-tagged.rs
 examples/test-tagged
+# Typed bitwise operations, mod-width shifts and total unsigned div/mod.
+# All 2,240 expectations originate in the original pinned Lean evaluator.
+lean --load-dynlib="$NATIVE_LIB" examples/BitwiseFixture.lean
+cat > examples/test-bitwise.rs <<'RUST'
+include!("generated_bw_and8.rs");
+include!("generated_bw_or8.rs");
+include!("generated_bw_xor8.rs");
+include!("generated_bw_left8.rs");
+include!("generated_bw_right8.rs");
+include!("generated_bw_div8.rs");
+include!("generated_bw_mod8.rs");
+include!("generated_bw_and16.rs");
+include!("generated_bw_or16.rs");
+include!("generated_bw_xor16.rs");
+include!("generated_bw_left16.rs");
+include!("generated_bw_right16.rs");
+include!("generated_bw_div16.rs");
+include!("generated_bw_mod16.rs");
+include!("generated_bw_and32.rs");
+include!("generated_bw_or32.rs");
+include!("generated_bw_xor32.rs");
+include!("generated_bw_left32.rs");
+include!("generated_bw_right32.rs");
+include!("generated_bw_div32.rs");
+include!("generated_bw_mod32.rs");
+include!("generated_bw_and64.rs");
+include!("generated_bw_or64.rs");
+include!("generated_bw_xor64.rs");
+include!("generated_bw_left64.rs");
+include!("generated_bw_right64.rs");
+include!("generated_bw_div64.rs");
+include!("generated_bw_mod64.rs");
+include!("generated_bw_andSize.rs");
+include!("generated_bw_orSize.rs");
+include!("generated_bw_xorSize.rs");
+include!("generated_bw_leftSize.rs");
+include!("generated_bw_rightSize.rs");
+include!("generated_bw_divSize.rs");
+include!("generated_bw_modSize.rs");
+fn main() { include!("generated_bitwise_differential.rs"); }
+RUST
+rustc --edition=2024 -o examples/test-bitwise examples/test-bitwise.rs
+examples/test-bitwise
 lean --load-dynlib="$NATIVE_LIB" examples/JoinFixture.lean
 cat > examples/test-join.rs <<'RUST'
 include!("generated_join.rs");
@@ -221,10 +264,11 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=3776"
+  echo "differential_assertions=6016"
+  echo "unsigned_total_division_shift_width=PASS"
   echo "constructor_inventory=PASS"
   echo "primitive_registry=PASS"
   echo "external_io_boundary=REFUSED"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/FloatFixture.lean examples/TaggedFixture.lean examples/RefusalTaggedHeap.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
+  sha256sum NativeRust.lean native/abi.c src/lib.rs primitive-registry.tsv scripts/VerifyIRInventory.lean artifacts/ir-coverage.tsv examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/FloatFixture.lean examples/TaggedFixture.lean examples/RefusalTaggedHeap.lean examples/BitwiseFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

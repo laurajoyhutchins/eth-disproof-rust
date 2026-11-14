@@ -175,3 +175,12 @@ The three-constructor nullary fixture is `UInt8`-backed in the pinned Lean
 compiler, not `IRType.tagged`; both accepted scalar encodings are checked
 against the actual compiled IR. Heap-backed representations continue to
 fail closed without partial output.
+
+### Total unsigned operations
+
+The public native compiler now supports `div`, `mod`, bitwise AND/OR/XOR,
+and shifts across UInt8/16/32/64 and USize, with original Lean's **total**
+divide-by-zero/remainder-by-zero semantics and modulo-width shifts. The
+standalone fixture `examples/BitwiseFixture.lean` checks 35 compiled roots
+over 2,240 independent original-Lean comparisons. The production compiler
+uses the same 68-operation coverage registry consulted by CI.

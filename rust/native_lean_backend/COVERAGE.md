@@ -9,12 +9,12 @@ refuse. Constructor/tag identities below are pinned to
 | IR family | Supported | Explicitly unsupported |
 | --- | --- | --- |
 | `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
-| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize` | `float`, `float32`, `erased`, `object`, `tobject`, `tagged`, `void`, `struct`, `union` |
+| `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize`; `float` only for finite arithmetic; `tagged` only for nullary scalar enum | `float32`, `erased`, `object`, `tobject`, `void`, `struct`, `union`; other `float`/`tagged` shapes |
 | `Arg` | `var` with known, matching type | `erased` in runtime position |
-| `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls to supported compiled declarations | `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
-| `FnBody` | `vdecl`, `ret`, `case` on Bool-as-UInt8 with exactly `Bool.false` and `Bool.true` arms | `jdecl`, `jmp`, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, other `case`, `unreachable` |
-| `Alt` | two exact Bool `ctor` alternatives | `default`, other constructors |
-| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
+| `Expr` | bounded `lit.num`, selected `fap` primitives, typed direct calls, nullary scalar `ctor` | heap `ctor`, `reset`, `reuse`, `proj`, `uproj`, `sproj`, `pap`, `ap`, `box`, `unbox`, `lit.str`, `isShared`, other `fap` |
+| `FnBody` | `vdecl`, `ret`, typed scalar `case` on Bool/finite nullary inductives, non-recursive scalar `jdecl`/`jmp` | recursive/general joins, `set`, `setTag`, `uset`, `sset`, `inc`, `dec`, `del`, heap `case`, `unreachable` |
+| `Alt` | exact Bool `ctor`, nullary scalar inductive `ctor` and `default` | unsupported/heap alternatives |
+| Primitive operations | `UInt8/16/32/64`, `USize`: 13 typed arithmetic/comparison/bitwise/shift/div/mod operations; `Float.add/sub/mul` on finite dyadics | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
 Lean `Bool` is emitted as the compiler's `u8` representation (`0=false`,
@@ -98,7 +98,7 @@ each constructor as `conditional` or `refused`; `jdecl/jmp` are conditional
 only for the typed scalar non-recursive join subset.
 
 The backend now uses one `primitive-registry.tsv` for primitive codegen and
-dependency classification. CI independently compares its set of 30 entries
+dependency classification. CI independently compares its set of 68 entries
 with the Lean-generated coverage ledger. Unlisted operations and all
 extern/IO/effect boundaries have no default adapter and must refuse. A real
 `IO.println` fixture exercises this refusal through the public package API.
@@ -142,3 +142,27 @@ actually uses `IRType.uint8` storage. The lowerer therefore also handles
 nullary `UInt8`-backed inductives, using original constructor identities
 to distinguish them from Bool. No generic `usize` coercion is performed;
 the original IR storage type determines the Rust scalar type.
+
+## Unsigned total arithmetic and shift semantics (Lean 4.34.1)
+
+In addition to add/sub/mul and comparisons, the pinned primitive registry
+now supports `div`, `mod`, `land`, `lor`, `xor`, `shiftLeft`
+and `shiftRight` for each of `UInt8`, `UInt16`, `UInt32`,
+`UInt64` and `USize`. The 65 fixed-width primitives plus three
+finite `Float` primitives are explicitly represented in the production
+registry and Lean-derived coverage inventory.
+
+Correctness cannot be delegated to raw Rust operators at the boundaries:
+Lean defines unsigned division by zero as **zero**, remainder by zero as
+**the dividend**, and unsigned shift counts modulo the operand bit width.
+We use Rust's `checked_div`/`checked_rem` with their exact fallback
+values and `wrapping_shl`/`wrapping_shr` with explicit width reduction.
+Each operand/result type must match exactly.
+
+The `BitwiseFixture.lean` suite compiles 35 real Lean roots and replays
+2,240 independently evaluated assertions against standalone generated Rust.
+Vectors include zero divisors, zero/maximum operands, 1-, 8-, 16-, 32-,
+64-, and 65-bit shift counts, plus seeded values. This is still not
+general `Nat`/`Int`, signed bitwise, arbitrary-precision computation
+or cross-platform `USize` verification. There is no formal compiler
+semantic-preservation theorem.

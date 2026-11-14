@@ -365,11 +365,17 @@ elab_rules : command
       liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=infer-original-type"
     let graph ← liftTermElabM do
       let tp ← inferType (mkConst programName)
+      if diagnose then
+        liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=original-program-type-observed"
       let a := tp.getAppArgs
       if a.size != 3 then throwError m!"expected a closed BitProgram.Program: {tp}"
       let r ← number a[0]!
       let s ← number a[1]!
+      if diagnose then
+        liftIO <| IO.eprintln s!"SOURCE_GRAPH_PHASE=normalize-type-level-label-count r={r} s={s}"
       let l ← number a[2]!
+      if diagnose then
+        liftIO <| IO.eprintln s!"SOURCE_GRAPH_PHASE=type-level-label-count-complete labels={l}"
       if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
         throwError m!"source machine out of bounded test dimensions: {r} {s} {l}"
       -- A compiled command and a linked physical Program are both legitimate

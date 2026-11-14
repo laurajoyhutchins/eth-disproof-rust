@@ -369,6 +369,14 @@ impl __LeanValue {
             _ => false,
         }
     }
+    fn is_valid_option(&self) -> bool {
+        match self.0.as_ref() {
+            __LeanValueRepr::Tagged(0) => true,
+            __LeanValueRepr::Ctor { tag: 1, name: "Option.some", fields } =>
+                fields.len() == 1,
+            _ => false,
+        }
+    }
     fn has_tagged(&self, value: usize) -> bool {
         matches!(self.0.as_ref(), __LeanValueRepr::Tagged(v) if *v == value)
     }

@@ -69,6 +69,7 @@ jobs:
             bash ./scripts/check-bundle.sh
             bash ./scripts/bench-evidence.sh
             bash ./scripts/check-native-runtime-parity.sh
+            bash ./scripts/check-external-projects.sh
           )
           # Keep the exact-head provenance and all generated-code hashes in the job log.
           cat rust/native_lean_backend/artifacts/native-smoke-receipt.txt
@@ -78,6 +79,8 @@ jobs:
           cat rust/native_lean_backend/artifacts/bench-native/measurements.tsv
           cat rust/native_lean_backend/artifacts/parity-native/measurements.tsv
           cat rust/native_lean_backend/artifacts/parity-native/receipt.txt
+          cat rust/native_lean_backend/artifacts/external-projects/manifest.tsv
+          cat rust/native_lean_backend/artifacts/external-projects/receipt.txt
           {
             echo 'NATIVE_LEAN_G0=REAL_IN_PROCESS_FFI_AND_GENERATED_RUST'
             echo 'Lean=4.34.1'
@@ -102,3 +105,9 @@ jobs:
             rust/native_lean_backend/artifacts/parity-native/*.txt
             rust/native_lean_backend/artifacts/parity-native/*.tsv
             rust/native_lean_backend/artifacts/parity-native/*.log
+            rust/native_lean_backend/artifacts/external-projects/*.tsv
+            rust/native_lean_backend/artifacts/external-projects/*.txt
+            rust/native_lean_backend/artifacts/external-projects/*/*.lean
+            rust/native_lean_backend/artifacts/external-projects/*/*.txt
+            rust/native_lean_backend/artifacts/external-projects/*/*.log
+            rust/native_lean_backend/artifacts/external-projects/*/*.time

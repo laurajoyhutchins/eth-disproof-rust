@@ -145,7 +145,9 @@ impl Reader {
     unsafe fn nat(x: Obj) -> Result<usize, String> {
         Self::scalar(x).map_err(|_| "large Nat unsupported by v0 compiler".into())
     }
-    // Lean.Name: anonymous=0, str(parent, string)=1, num(parent, nat)=2.
+    // Name paths retain an injective identity, not a lossy pretty-print.
+    // Plain ASCII segments keep historical spelling for pinned primitives;
+    // special UTF-8 strings use ~s<hex bytes>, numeric segments use ~n<nat>.
     unsafe fn name(x: Obj, depth: usize) -> Result<String, String> {
         if depth > 128 {
             return Err("name nesting limit".into());
@@ -153,24 +155,16 @@ impl Reader {
         match Self::tag(x)? {
             0 => Ok(String::new()),
             1 => {
-                let p = Self::name(Self::field(x, 0)?, depth + 1)?;
-                let s = Self::string(Self::field(x, 1)?)?;
-                // Restrict names to unambiguous ASCII segments until the
-                // backend uses structured Name identity throughout. Without
-                // this, a quoted segment containing '.' could collide with
-                // a nested Lean name in the call graph.
-                if s.is_empty()
-                    || !s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
-                    || s.as_bytes()[0].is_ascii_digit()
-                {
-                    return Err(
-                        "unsupported Lean.Name segment; refusing ambiguous dependency identity"
-                            .into(),
-                    );
-                }
-                Ok(if p.is_empty() { s } else { format!("{p}.{s}") })
+                let parent = Self::name(Self::field(x, 0)?, depth + 1)?;
+                let component = Self::string(Self::field(x, 1)?)?;
+                let encoded = encode_name_str(&component)?;
+                Ok(append_name_component(&parent, &encoded))
             }
-            2 => Err("numeric Lean.Name components require a structured identity adapter".into()),
+            2 => {
+                let parent = Self::name(Self::field(x, 0)?, depth + 1)?;
+                let number = Self::nat(Self::field(x, 1)?)?;
+                Ok(append_name_component(&parent, &format!("~n{number}")))
+            }
             t => Err(format!("unknown Lean.Name tag {t}")),
         }
     }
@@ -612,6 +606,36 @@ impl Reader {
     }
 }
 
+// The path separators cannot occur inside a canonical component: plain
+// ASCII components exclude '.', '~'; special strings and Nat segments use
+// disjoint prefixed encodings. The original Lean.Name object crosses FFI.
+fn append_name_component(parent: &str, component: &str) -> String {
+    if parent.is_empty() {
+        component.to_owned()
+    } else {
+        format!("{parent}.{component}")
+    }
+}
+
+fn encode_name_str(component: &str) -> Result<String, String> {
+    if component.len() > 4096 {
+        return Err("Lean.Name string component exceeds safety cap".into());
+    }
+    if !component.is_empty()
+        && !component.as_bytes()[0].is_ascii_digit()
+        && component
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        return Ok(component.to_owned());
+    }
+    let mut encoded = String::from("~s");
+    for byte in component.as_bytes() {
+        write!(&mut encoded, "{byte:02x}").unwrap();
+    }
+    Ok(encoded)
+}
+
 // Naming is injective over UTF-8 bytes and independent of declaration ordering.
 fn internal_name(lean_name: &str) -> String {
     let mut out = String::from("lean_");
@@ -684,7 +708,7 @@ impl Reader {
     }
 
     unsafe fn emit_module(decls: Obj, root: Obj, public_name: Obj) -> Result<String, String> {
-        let root = Self::string(root)?;
+        let root = Self::name(root, 0)?;
         let public_name = Self::string(public_name)?;
         Self::emit_roots(decls, vec![(root, public_name)])
     }
@@ -692,7 +716,7 @@ impl Reader {
     unsafe fn emit_module_many(decls: Obj, roots: Obj) -> Result<String, String> {
         let mut public_roots = Vec::new();
         for item in Self::array(roots)? {
-            let root = Self::string(item)?;
+            let root = Self::name(item, 0)?;
             // In v1 we expose the final Lean identifier as the Rust public API.
             // Any collisions (e.g. Foo.run and Bar.run) must refuse.
             let public = root.rsplit('.').next().unwrap_or("").to_owned();
@@ -1042,7 +1066,7 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
 
 #[cfg(test)]
 mod tests {
-    use super::{internal_name, SUPPORTED_IR_TAGS};
+    use super::{append_name_component, encode_name_str, internal_name, SUPPORTED_IR_TAGS};
     #[test]
     fn closure_symbol_mangling_is_injective_on_ascii_names() {
         assert_ne!(internal_name("X.ab"), internal_name("X.a_b"));
@@ -1133,6 +1157,26 @@ mod tests {
                 "invalid public Rust identifier unexpectedly accepted"
             );
         }
+    }
+
+    #[test]
+    fn structured_name_identity_is_injective() {
+        assert_eq!(encode_name_str("Sched").unwrap(), "Sched");
+        assert_eq!(encode_name_str("argLeastLoad").unwrap(), "argLeastLoad");
+        assert_eq!(encode_name_str("a.b").unwrap(), "~s612e62");
+        assert_eq!(encode_name_str("1").unwrap(), "~s31");
+        assert_eq!(encode_name_str("").unwrap(), "~s");
+        assert_eq!(encode_name_str("a\u{0}b").unwrap(), "~s610062");
+        assert_ne!(encode_name_str("~n9").unwrap(), "~n9");
+        assert_ne!(
+            append_name_component("X", &encode_name_str("a.b").unwrap()),
+            append_name_component("X.a", "b")
+        );
+        assert_ne!(
+            append_name_component("X", "~n9"),
+            append_name_component("X", "~s39")
+        );
+        assert!(encode_name_str(&"x".repeat(4097)).is_err());
     }
 
     #[test]

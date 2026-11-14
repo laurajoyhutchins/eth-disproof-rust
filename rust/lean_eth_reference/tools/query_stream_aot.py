@@ -102,6 +102,7 @@ def run_bounded(argv: list[str], cwd: Path, timeout: int,
             )
             started = time.monotonic()
             heartbeat = 30
+            peak_resident_bytes = 0
             try:
                 while child.poll() is None:
                     elapsed = time.monotonic() - started
@@ -111,17 +112,19 @@ def run_bounded(argv: list[str], cwd: Path, timeout: int,
                         raise OutputLimitError(
                             f"bounded output exceeded {MAX_PROCESS_OUTPUT_BYTES} bytes "
                             f"(stdout={out_size} stderr={err_size})")
-                    if rss_limit_bytes is not None:
-                        resident = _process_group_rss_bytes(child.pid)
-                        if resident > rss_limit_bytes:
-                            raise OutputLimitError(
-                                f"original exporter RSS budget exceeded "
-                                f"{rss_limit_bytes} bytes: observed {resident}")
+                    resident = (_process_group_rss_bytes(child.pid)
+                                if (rss_limit_bytes is not None or log_base is not None) else 0)
+                    peak_resident_bytes = max(peak_resident_bytes, resident)
+                    if rss_limit_bytes is not None and resident > rss_limit_bytes:
+                        raise ResourceLimitError(
+                            f"original exporter RSS budget exceeded "
+                            f"{rss_limit_bytes} bytes: observed {resident}")
                     if elapsed >= timeout:
                         raise TimeoutError(f"timeout {timeout}s: {argv[0]} {argv[1:3]}")
                     if log_base is not None and elapsed >= heartbeat:
                         print(f"ORIGINAL_AOT_PROCESS_PROGRESS elapsed={int(elapsed)}s "
-                              f"stdout_bytes={out_size} stderr_bytes={err_size}", flush=True)
+                              f"stdout_bytes={out_size} stderr_bytes={err_size} "
+                              f"peak_rss_bytes={peak_resident_bytes}", flush=True)
                         heartbeat += 30
                     time.sleep(0.2)
                 if (os.fstat(stdout_file.fileno()).st_size > MAX_PROCESS_OUTPUT_BYTES
@@ -151,6 +154,9 @@ def run_bounded(argv: list[str], cwd: Path, timeout: int,
                         os.killpg(child.pid, signal.SIGKILL)
                     except ProcessLookupError:
                         pass
+                if log_base is not None:
+                    print(f"ORIGINAL_AOT_PROCESS_END elapsed={int(time.monotonic()-started)}s "
+                          f"exit={child.returncode} peak_rss_bytes={peak_resident_bytes}", flush=True)
         stdout = stdout_path.read_bytes().decode("utf8", errors="replace")
         stderr = stderr_path.read_bytes().decode("utf8", errors="replace")
         return subprocess.CompletedProcess(argv, child.returncode, stdout, stderr)
@@ -257,7 +263,8 @@ def compile_query(args):
                 import_check = Path(scratch) / "CheckQueryStream.lean"
                 import_check.write_text(f"import {MODULE}\n", encoding="utf8")
                 checked = run_bounded(
-                    ["lake", "env", "lean", str(import_check)], args.lake_root, 180)
+                    ["lake", "env", "lean", str(import_check)], args.lake_root, 180,
+                    log_base=out / "original-fresh-import")
                 if checked.returncode:
                     refuse("original-module-fresh-import",
                            f"exit={checked.returncode} "

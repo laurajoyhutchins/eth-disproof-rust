@@ -933,16 +933,22 @@ impl Reader {
             return Err(format!("{family} case scrutinee is not object-valued"));
         }
         let alts = Self::array(Self::field(x, 3)?)?;
-        if alts.len() != 2 {
-            return Err(format!(
-                "{family} case requires exactly two constructor alternatives"
-            ));
+        if alts.is_empty() || alts.len() > 3 {
+            return Err(format!("{family} case has unsupported alternative count"));
         }
         let mut seen = [false; 2];
+        let mut default = None;
         writeln!(code, "    match x_{id}.tag() {{").unwrap();
         for alt in alts {
-            if Self::checked_tag(alt, "Alt")? != 0 {
-                return Err(format!("{family} default case alternative unsupported"));
+            match Self::checked_tag(alt, "Alt")? {
+                1 if family == "Option" => {
+                    if default.replace(Self::field(alt, 0)?).is_some() {
+                        return Err("duplicate Option default case".into());
+                    }
+                    continue;
+                }
+                0 => (),
+                _ => return Err(format!("{family} default case alternative unsupported")),
             }
             let info = Self::field(alt, 0)?;
             let name = Self::name(Self::field(info, 0)?, 0)?;
@@ -1002,10 +1008,25 @@ impl Reader {
             )?;
             writeln!(code, "        }}").unwrap();
         }
-        if !seen.into_iter().all(|b| b) {
-            return Err(format!("incomplete {family} case"));
+        if let Some(body) = default {
+            if family != "Option" || !seen.iter().any(|b| *b) {
+                return Err("Option default case lacks source constructor identity".into());
+            }
+            writeln!(code, "        _ => {{").unwrap();
+            writeln!(
+                code,
+                "            assert!(x_{id}.is_valid_option(), \"invalid Option default representation\");"
+            )
+            .unwrap();
+            let mut branch_env = env.clone();
+            Self::body(body, code, depth + 1, count, &mut branch_env, ret_ty, ctx)?;
+            writeln!(code, "        }}").unwrap();
+        } else {
+            if !seen.into_iter().all(|b| b) {
+                return Err(format!("incomplete {family} case"));
+            }
+            writeln!(code, "        _ => unreachable!(\"invalid {family} tag\"),").unwrap();
         }
-        writeln!(code, "        _ => unreachable!(\"invalid {family} tag\"),").unwrap();
         writeln!(code, "    }}").unwrap();
         Ok(())
     }

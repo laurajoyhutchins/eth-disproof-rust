@@ -809,7 +809,10 @@ impl Reader {
         if lr_abi_probe() == 0 {
             return Err("Lean C ABI runtime probe failed".into());
         }
-        include_value_runtime(Self::emit_function(decl, &Self::string(rust_name)?, None)?)
+        let declaration = Self::name(Self::field(decl, 0)?, 0)?;
+        let generated = Self::emit_function(decl, &Self::string(rust_name)?, None)
+            .map_err(|reason| format!("declaration={declaration}; {reason}"))?;
+        include_value_runtime(generated)
     }
 
     unsafe fn emit_function(

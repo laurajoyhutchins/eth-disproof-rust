@@ -27,3 +27,8 @@
 
 # Generated primitive matrix orchestration
 /examples/matrix_run.rs
+
+# Immutable object conformance outputs
+/examples/object-package/
+/examples/object-lean.log
+/examples/RefusalObject*.log

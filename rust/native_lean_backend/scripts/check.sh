@@ -8,18 +8,121 @@ fi
 export PATH="${LEAN_PREFIX}/bin:${PATH}"
 export LEAN_PATH="${LEAN_PREFIX}/lib/lean${LEAN_PATH:+:${LEAN_PATH}}"
 export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+# Derive the complete IR constructor inventory from the actual pinned Lean environment.
+# The ledger is fail-closed on tag/order drift and documents conditional semantics.
+mkdir -p artifacts
+lean scripts/VerifyIRInventory.lean
+test "$(awk -F '\t' 'NR>1 && $1=="primitive" && $3=="conditional" {n++} END {print n+0}' artifacts/ir-constructor-summary.tsv)" -eq 30
+awk -F '\t' '
+  $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jdecl" && $3=="conditional" {a=1}
+  $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jmp" && $3=="conditional" {b=1}
+  $1=="Lean.IR.Expr" && $2=="Lean.IR.Expr.pap" && $3=="refused" {c=1}
+  END {exit !(a && b && c)}
+' artifacts/ir-constructor-summary.tsv
+if grep -Eq 'rs_emit_ir_bundle|#native_rust_bundle' NativeRust.lean src/lib.rs; then
+  echo 'multiple competing multi-root compiler interfaces detected' >&2
+  exit 2
+fi
 cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"
 lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
+# Compile an imported Lean module separately, then compile its transitive
+# dependency graph (including diamond sharing and recursive call cycles).
+export LEAN_PATH="$(pwd)/examples:${LEAN_PATH}"
+lean -o examples/Library.olean examples/Library.lean
+lean --load-dynlib="$NATIVE_LIB" examples/Closure.lean
+if [[ "$(grep -c 'Generated directly from Lean IR declaration: Library.bump' examples/generated_closure.rs)" != 1 ]]; then
+  echo "shared Lean dependency was duplicated in Rust" >&2; exit 1
+fi
+# The backend must be deterministic even if Lean has already compiled roots.
+closure_hash_before="$(sha256sum examples/generated_closure.rs | cut -d' ' -f1)"
+lean --load-dynlib="$NATIVE_LIB" examples/Closure.lean > /dev/null
+closure_hash_after="$(sha256sum examples/generated_closure.rs | cut -d' ' -f1)"
+if [[ "$closure_hash_before" != "$closure_hash_after" ]]; then
+  echo "non-deterministic in-process closure code generation" >&2; exit 1
+fi
 lean --load-dynlib="$NATIVE_LIB" examples/Refusal.lean
+# Exercise the public *command* refusal path, not only a direct FFI call.
+printf 'preserve-existing-artifact\n' > examples/rejected.rs
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalCommand.lean > examples/rejected.log 2>&1; then
+  echo "unsupported Lean declaration was accepted" >&2; exit 1
+fi
+if ! grep -q "Rust native backend refused" examples/rejected.log; then
+  cat examples/rejected.log >&2
+  echo "missing structured native compiler refusal" >&2; exit 1
+fi
+if [[ "$(cat examples/rejected.rs)" != "preserve-existing-artifact" ]]; then
+  echo "failed compilation modified preexisting Rust output" >&2; exit 1
+fi
+rm -f examples/rejected.rs examples/rejected.log
+# Even an elaborated executable declaration must refuse if its source
+# depends on sorryAx. Do not publish code for untrusted proof holes.
+printf 'preserve-sorry-output\n' > examples/rejected_sorry.rs
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalSorry.lean > examples/rejected_sorry.log 2>&1; then
+  echo "sorry-dependent declaration was accepted" >&2; exit 1
+fi
+if ! grep -q "dependency on sorry axiom" examples/rejected_sorry.log; then
+  cat examples/rejected_sorry.log >&2
+  echo "missing sorry-dependency refusal" >&2; exit 1
+fi
+if [[ "$(cat examples/rejected_sorry.rs)" != "preserve-sorry-output" ]]; then
+  echo "sorry-dependent compilation changed existing output" >&2; exit 1
+fi
+rm -f examples/rejected_sorry.rs examples/rejected_sorry.log
+# An unsupported primitive in a *transitive* callee must be refused,
+# preserving previously generated output; no implicit host fallback.
+for pair in "RefusalClosure:rejected_closure" "RefusalClosureSorry:rejected_sorry_closure"; do
+  fixture="${pair%%:*}"
+  destination="${pair##*:}"
+  printf 'preserve-closure-artifact\n' > "examples/${destination}.rs"
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${destination}.log" 2>&1; then
+    echo "unsupported ${fixture} dependency closure was accepted" >&2; exit 1
+  fi
+  if ! grep -q 'Rust native backend refused' "examples/${destination}.log"; then
+    cat "examples/${destination}.log" >&2
+    echo "missing structured refusal for ${fixture}" >&2; exit 1
+  fi
+  if [[ "$(cat "examples/${destination}.rs")" != 'preserve-closure-artifact' ]]; then
+    echo "failed ${fixture} changed existing Rust output" >&2; exit 1
+  fi
+  rm -f "examples/${destination}.rs" "examples/${destination}.log"
+done
+# A refused source declaration must not poison later calls in the same host.
+rm -f examples/recovery_bad.rs examples/recovery_good.rs
+if timeout --kill-after=3s 90s lean --load-dynlib="$NATIVE_LIB" examples/Recovery.lean > artifacts/recovery.log 2>&1; then
+  echo 'recovery fixture unexpectedly accepted an unsupported String' >&2; exit 1
+fi
+if [[ -e examples/recovery_bad.rs || ! -f examples/recovery_good.rs ]]; then
+  cat artifacts/recovery.log >&2
+  echo 'refusal corrupted later valid emission' >&2; exit 1
+fi
+if ! grep -q '"status":"refused"' artifacts/recovery.log; then
+  cat artifacts/recovery.log >&2
+  echo 'missing machine-readable refusal' >&2; exit 1
+fi
+rustc --edition=2021 --crate-type=lib -o artifacts/recovery_good.rlib examples/recovery_good.rs
+rm -f examples/recovery_good.rs artifacts/recovery_good.rlib
 cat > examples/run.rs <<'RUST'
 include!("generated_add_one.rs");
 include!("generated_times_three.rs");
 include!("generated_subtract_seven.rs");
 include!("generated_two_args.rs");
 include!("generated_multi.rs");
+include!("generated_choose.rs");
+include!("generated_clamp.rs");
+include!("generated_minus_if.rs");
+include!("generated_eq_uint.rs");
+include!("generated_add32.rs");
+include!("generated_add_size.rs");
+include!("generated_tiny8.rs");
+include!("generated_tiny16.rs");
+include!("generated_less32.rs");
+include!("generated_leq64.rs");
+include!("generated_closure.rs");
+include!("generated_descend.rs");
+include!("generated_mutual.rs");
 fn main() {
     assert_eq!(add_one(41), 42);
     assert_eq!(times_three(7), 21);
@@ -28,10 +131,98 @@ fn main() {
     assert_eq!(two_args(2, 3), 5);
     assert_eq!(multi(7), 36);
     assert_eq!(times_three(u64::MAX), u64::MAX - 2);
+    assert_eq!(choose(0), 1);
+    assert_eq!(choose(4), 4);
+    assert_eq!(clamp(8, 2), 2);
+    assert_eq!(clamp(2, 8), 2);
+    assert_eq!(minus_if(0), 0);
+    assert_eq!(minus_if(8), 7);
+    assert_eq!(eq_uint(4, 4), 1);
+    assert_eq!(eq_uint(4, 5), 0);
+    assert_eq!(add32(u32::MAX), u32::MAX);
+    assert_eq!(add_size(usize::MAX), 6);
+    assert_eq!(tiny8(u8::MAX), 4);
+    assert_eq!(tiny16(u16::MAX), 11);
+    assert_eq!(less32(2, 3), 1);
+    assert_eq!(less32(3, 3), 0);
+    assert_eq!(leq64(3, 3), 1);
+    assert_eq!(leq64(4, 3), 0);
+    include!("generated_differential.rs");
+    include!("generated_closure_differential.rs");
 }
 RUST
 rustc --edition=2021 -o examples/native-test examples/run.rs
 examples/native-test
+# Real Lean IR join continuations (jdecl/jmp), including captured locals.
+lean --load-dynlib="$NATIVE_LIB" examples/JoinFixture.lean
+cat > examples/test-join.rs <<'RUST'
+include!("generated_join.rs");
+include!("generated_nested_join.rs");
+fn main() { include!("generated_join_differential.rs"); }
+RUST
+rustc --edition=2024 -o examples/test-join examples/test-join.rs
+examples/test-join
+# One *standalone Cargo package*, three public roots, shared dependencies.
+rm -rf examples/native-package
+lean --load-dynlib="$NATIVE_LIB" examples/MultiRoot.lean
+cargo test --offline --manifest-path examples/native-package/Cargo.toml
+# Exactly one shared imported dependency in the emitted library.
+if [[ "$(grep -c 'Generated directly from Lean IR declaration: Library.bump' examples/native-package/src/lib.rs)" != 1 ]]; then
+  echo "multi-root emitter duplicated a shared dependency" >&2; exit 1
+fi
+package_hash_before="$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)"
+rm -rf examples/native-package
+lean --load-dynlib="$NATIVE_LIB" examples/MultiRoot.lean > /dev/null
+package_hash_after="$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)"
+if [[ "$package_hash_before" != "$package_hash_after" ]]; then
+  echo "multi-root Cargo source is not deterministic" >&2; exit 1
+fi
+for name in RefusalPackageCollision RefusalPackageUnsupported; do
+  rm -rf examples/rejected-package
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${name}.lean" > "examples/${name}.log" 2>&1; then
+    echo "invalid multi-root package was accepted: $name" >&2; exit 1
+  fi
+  if [[ -e examples/rejected-package ]] || ! grep -q 'Rust native backend refused' "examples/${name}.log"; then
+    echo "multi-root failure published partial code or lacked refusal: $name" >&2; exit 1
+  fi
+  rm -f "examples/${name}.log"
+done
+package_hash_before="$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)"
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalPackageOverwrite.lean > examples/RefusalPackageOverwrite.log 2>&1; then
+  echo "Cargo package overwrote existing destination" >&2; exit 1
+fi
+if [[ "$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)" != "$package_hash_before" ]]; then
+  echo "refused overwrite modified the published Cargo package" >&2; exit 1
+fi
+rm -f examples/RefusalPackageOverwrite.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
+# Validate every pinned constructor against the complete source-derived tag
+# matrix, then execute all 30 registered primitives against 64 Lean oracles.
+# This richer ledger is separate from VerifyIRInventory's initial drift gate.
+bash scripts/check-coverage.sh
+# Receipt exists only after *all* end-to-end and negative checks pass.
+mkdir -p artifacts
+{
+  echo "status=PASS"
+  echo "source_revision=$(git rev-parse --verify HEAD 2>/dev/null || echo local-uncommitted)"
+  echo "lean_toolchain=$(cat lean-toolchain)"
+  "$LEAN_PREFIX/bin/lean" --version
+  rustc --version
+  cargo --version
+  echo "differential_assertions=3008"
+  echo "ir_constructor_inventory=PASS"
+  echo "runtime_tag_whitelist=16_scoped_IR_constructors"
+  echo "primitive_conformance=30_operations_x_64_original_Lean_oracles"
+  sha256sum ir-coverage-classification.tsv primitive-registry.tsv scripts/coverage-ledger.rs \
+    scripts/check-coverage.sh examples/IRInventory.lean examples/PrimitiveMatrix.lean \
+    artifacts/ir-constructors.tsv artifacts/ir-coverage.tsv \
+    artifacts/primitive-conformance.tsv
+  echo "structured_refusal_recovery=PASS"
+  echo "atomic_publisher=PASS"
+  sha256sum src/safety.rs
+  sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
+} > artifacts/native-smoke-receipt.txt
+cat artifacts/native-smoke-receipt.txt | head -9

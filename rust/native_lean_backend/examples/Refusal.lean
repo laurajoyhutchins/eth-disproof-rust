@@ -2,16 +2,17 @@ import NativeRust
 open Lean Elab Command
 
 def nontrivialBranch (x : UInt64) : UInt64 := if x == 0 then 1 else x
+def unsupportedString (x : String) : String := x ++ "!"
 def unsupportedNat (x : Nat) : Nat := x + 1
 
 run_cmd do
-  liftCoreM <| Lean.Compiler.compile #[`nontrivialBranch]
-  let some decl ← liftCoreM <| Lean.IR.findDecl `nontrivialBranch
+  liftCoreM <| Lean.Compiler.compile #[`unsupportedString]
+  let some decl ← liftCoreM <| Lean.IR.findDecl `unsupportedString
     | throwError "no IR to test refusal"
   let report := NativeRust.emit decl "nontrivial_branch"
   unless report.startsWith "ERROR\n" do
-    throwError "unsupported branch was silently accepted"
-  logInfo "Unsupported branch refused by native Rust backend"
+    throwError "unsupported String was silently accepted"
+  logInfo "Unsupported String refused by native Rust backend"
   liftCoreM <| Lean.Compiler.compile #[`unsupportedNat]
   let some natDecl ← liftCoreM <| Lean.IR.findDecl `unsupportedNat
     | throwError "no Nat IR to test refusal"

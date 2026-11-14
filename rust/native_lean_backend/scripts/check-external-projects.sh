@@ -275,6 +275,42 @@ LEAN
         fi
   fi
 
+  # Capture unmodified IR and scalar field offsets of the original Keboola
+  # PullIn program. This is a bounded diagnostic only, never a replacement.
+  if [[ "$name" == "keboola" && "$oracle" == "PASS" ]]; then
+    cat > "$case_dir/inspect-pull-deps.lean" <<'LEAN'
+import NativeRust
+import SyncModel.Pull
+open Lean Elab Command
+run_cmd do
+  let names : Array Lean.Name := #[
+    `SyncModel.forceConflict, `SyncModel.locallyModified,
+    `SyncModel.ymlModified, `SyncModel.remoteUnchanged,
+    `SyncModel.bytesMatch, `SyncModel.pSqlEdit
+  ]
+  let mut source := ""
+  for name in names do
+    let decl ← liftCoreM do
+      if (← Lean.IR.findDecl name).isNone then
+        Lean.Compiler.compile #[name]
+      let some decl ← Lean.IR.findDecl name
+        | throwError "no original executable IR for {name}"
+      return decl
+    source := source ++ s!"ORIGINAL_DECL {name}\n{decl}\nEND_DECL {name}\n"
+  if source.utf8ByteSize > 262144 then
+    throwError "original dependency IR exceeds 256 KiB diagnostic cap"
+  liftIO <| IO.FS.writeFile "artifacts/external-projects/keboola/pull-deps-ir.txt" source
+  logInfo "Captured 6 original source-bound PullIn constructor/projection dependencies"
+LEAN
+    if (cd "$native" && timeout 60s lean "$case_dir/inspect-pull-deps.lean") \
+       > "$case_dir/inspect-pull-deps.log" 2>&1 &&
+       [[ -s "$case_dir/pull-deps-ir.txt" ]]; then
+      echo "original_keboola_pull_dependencies=PINNED_SOURCE_IR" >> "$case_dir/identity.txt"
+    else
+      echo "original_keboola_pull_dependencies=UNAVAILABLE_DIAGNOSTIC_ONLY" >> "$case_dir/identity.txt"
+    fi
+  fi
+
   # Source-pinned, read-only diagnostic for Armada's transitive List helpers.
   # These names are emitted by the original Sched.argLeastLoad compiler IR.
   # A missing diagnostic is reported separately and never accepted as Rust.

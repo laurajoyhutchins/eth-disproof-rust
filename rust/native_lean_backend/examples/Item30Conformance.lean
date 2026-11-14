@@ -74,7 +74,7 @@ run_cmd do
     let bInput := valueArrayExpr "array_size" a
     let elementInput := s!"{element.toNat}u64"
     out := out ++ s!"    assert_eq!(array_push::sem_array_push({aInput}, {elementInput}), {aExpected});\n"
-    out := out ++ s!"    assert_eq!(array_size::sem_array_size({bInput}), array_size::__LeanValue::nat(\"{Item30Probe.arraySize a}\"));\n"
+    out := out ++ s!"    assert_eq!(array_size::sem_array_size({bInput}), array_size::__LeanValue::tagged({Item30Probe.arraySize a}usize));\n"
     let list := a.toList
     out := out ++ s!"    assert_eq!(list_reverse::sem_list_reverse({valueListExpr "list_reverse" list}), {valueListExpr "list_reverse" (Item30Probe.listReverse list)});\n"
   let closureA : Nat := 2^512 + 123

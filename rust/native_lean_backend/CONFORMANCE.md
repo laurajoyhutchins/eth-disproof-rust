@@ -26,13 +26,13 @@ reading the constructors and positions of all these inductive definitions:
 | Lean IR family | Constructors | Bounded supported |
 | --- | ---: | ---: |
 | Decl | 2 | 1 |
-| IRType | 14 | 8 |
+| IRType | 14 | 9 |
 | Arg | 2 | 1 |
 | LitVal | 2 | 1 |
 | Expr | 13 | 8 |
-| Alt | 2 | 1 |
+| Alt | 2 | 2 |
 | FnBody | 13 | 8 |
-| **Total** | **48** | **28** |
+| **Total** | **48** | **30** |
 
 Bounded-supported `FnBody.jdecl`/`FnBody.jmp` are **only** tested nonrecursive typed lexical joins. The separate `Expr.pap`/`Expr.ap` implementation supports only exact statically compiled, boxed capture/argument signatures; unrestricted recursive joins and arbitrary indirect calls remain refused. The source-derived list is emitted to artifacts/ir-constructors.tsv.
 scripts/coverage-ledger.rs requires an exact name, tag and supported/refused
@@ -52,7 +52,7 @@ The supported entries are *bounded*: e.g. Alt.ctor and FnBody.case mean only
 an exact two-constructor Bool or Option match; Expr.ctor/proj/box/unbox and
 Expr.pap/ap require verified immutable object/boxed closure metadata.
 LitVal.num accepts only small tagged Nat literals; IRType.usize has Linux
-x86-64 semantics. The 20 refused variants
+x86-64 semantics. The 18 refused variants
 have no positive semantic-equivalence claim. The whitelist test checks tags,
 not a theorem about runtime ABI layout or Lean reference counting.
 
@@ -76,11 +76,10 @@ scripts/check-coverage.sh rejects a missing fixture or generated function,
 compiles all emitted Rust functions into one test binary, and runs all 1,920
 assertions. The execution ledger is artifacts/primitive-conformance.tsv.
 
-The integrated regression fixtures now provide **13,336** independently
+The integrated regression fixtures now provide **16,344** independently
 original-Lean-evaluated Rust comparisons: 3,008 scalar/Bool/joins/multi-root,
-3,072 immutable Option/Prod, 2,048 source-defined boxed closure/PAP/AP, and
-5,208 GMP-backed arbitrary-width Nat tests. Together with the separate 1,920
-fixed-width primitive matrix assertions, this is **15,256** compared results.
+3,072 immutable Option/Prod, 2,048 source-defined boxed closure/PAP/AP, 5,208 GMP-backed arbitrary-width Nat tests, and 3,008 extended Float/enum/unsigned cases. Together with the separate 1,920
+fixed-width primitive matrix assertions, this is **18,264** compared results.
 The additional 1,024-case randomized Lean/Rust property suite is reported
 separately. These counts describe different tested subsets, not universal
 compiler equivalence.
@@ -103,3 +102,11 @@ semantically correct. The automated guards ensure complete enumeration,
 prevent unsupported tag acceptance, and require executable evidence for each
 registered primitive. They do not turn finite differential tests into a
 semantic-preservation theorem.
+
+## Extended scalar and executable G1 layer (PR #221)
+
+The same production `primitive-registry.tsv` expands to **68** source-approved operation names: 30 original unsigned add/sub/mul/comparisons, 35 total unsigned div/mod/bitwise/width-masked shifts, and 3 precisely scoped finite Float add/sub/mul operations. The original 30 × 64 independently evaluated Lean fixtures are retained; the 38 additional primitive calls have dedicated source-derived Lean/Rust fixtures, including zero divisors and wide shift counts. Unsupported Float transcedentals, NaN-specific equivalence and nontrivial casts remain refused; finite dyadic operand tests alone cannot prove IEEE behavior generally.
+
+The exact IR whitelist contains **30 bounded-supported / 18 explicitly refused** constructors: it retains the immutable Option/Prod + PAP/AP semantics from #216 and adds only `IRType.float` (finite scalar) and `Alt.default` (nullary UInt8 enum default), with layout validation for scalar constructors. A standalone Cargo binary is generated only from zero-argument scalar roots and checked without a Lean runtime. Neither a checked constructor tag nor a finite differential test establishes general Lean semantic preservation.
+
+The runtime backing these tests is the canonical post-#218 `src/runtime/immutable_value.rs` with GMP-backed `Nat` and `Rc`-backed immutable values. The compiler maintains a single Rust codegen/FFI path. This status is an integration **candidate** pending exact-head CI and three independent successful original Lean project builds into Rust.

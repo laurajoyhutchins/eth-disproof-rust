@@ -199,8 +199,8 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=4004"
-  echo "item30_supported_value_cases=100"
+  echo "differential_assertions=4005"
+  echo "item30_supported_value_cases=101"
   echo "primitive_conformance=30_operations_x_64_cases"
   echo "IR_constructor_inventory=environment_reflected_and_tag_verified"
   echo "host_abi_probe=PASS"

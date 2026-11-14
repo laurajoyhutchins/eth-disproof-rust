@@ -37,7 +37,7 @@ theorem rs01_proved : StructuralRS01.claim := by
     norm_num [StructuralRS01.P, pow_two, Matrix.mul_apply, Fin.sum_univ_succ]
 
 theorem rc04_proved : StructuralRC04.claim := by
-  decide
+  norm_num [StructuralRC04.claim, Fintype.card_fun]
 
 theorem holdout_reverse_faithful :
     StructuralHVector5.claim ↔
@@ -58,10 +58,10 @@ theorem holdout_matrix_proved : StructuralHMatrix3.claim := by
   fin_cases i <;> fin_cases j <;>
     norm_num [StructuralHMatrix3.Q, pow_two, Matrix.mul_apply, Fin.sum_univ_succ]
 theorem holdout_count_proved : StructuralHWords3.claim := by
-  decide
+  norm_num [StructuralHWords3.claim, Fintype.card_fun]
 
 theorem holdout_false_count_refuted : ¬ StructuralHFalseWords3.claim := by
-  decide
+  norm_num [StructuralHFalseWords3.claim, Fintype.card_fun]
 theorem holdout_false_swap_refuted : ¬ StructuralHFalseSwap.claim := by
   intro h
   have hx := h 0 1

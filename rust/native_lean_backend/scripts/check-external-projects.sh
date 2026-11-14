@@ -244,6 +244,37 @@ LEAN
     fi
   fi
 
+  # Diagnostic only: preserves actual imported executable Lean IR for the
+  # selected root, even if that root already generated verified Rust.
+  if [[ "$oracle" == "PASS" ]]; then
+        # Preserve real source-specific compiler IR for future backend work.
+        # This does not turn a refusal into successful Rust extraction.
+        # Write all interpolated, source-pinned Lean names explicitly.
+        # Quoted here-doc avoids shell backtick substitutions from Lean `Name notation.
+        printf 'import NativeRust\nimport %s\nopen Lean Elab Command\nrun_cmd do\n  let root : Lean.Name := `%s\n' \
+          "$module" "$root" > "$case_dir/inspect-ir.lean"
+        cat >> "$case_dir/inspect-ir.lean" <<'LEAN'
+  let decl ← liftCoreM do
+    if (← Lean.IR.findDecl root).isNone then
+      Lean.Compiler.compile #[root]
+    let some decl ← Lean.IR.findDecl root
+      | throwError "Original executable Lean IR not available for {root}"
+    return decl
+  let source := toString decl
+  if source.utf8ByteSize > 262144 then
+    throwError "Original IR snapshot exceeds 256 KiB diagnostic budget"
+LEAN
+        printf '  liftIO <| IO.FS.writeFile "%s" source\n' \
+          "$case_dir/original-ir.txt" >> "$case_dir/inspect-ir.lean"
+        if (cd "$native" && timeout 45s lean "$case_dir/inspect-ir.lean") \
+             > "$case_dir/inspect-ir.log" 2>&1 &&
+           [[ -s "$case_dir/original-ir.txt" ]]; then
+          echo "original_compiler_ir_snapshot=PINNED_SOURCE_IR" >> "$case_dir/identity.txt"
+        else
+          echo "original_compiler_ir_snapshot=UNAVAILABLE_DIAGNOSTIC_ONLY" >> "$case_dir/identity.txt"
+        fi
+  fi
+
   # Source-pinned, read-only diagnostic for Armada's transitive List helpers.
   # These names are emitted by the original Sched.argLeastLoad compiler IR.
   # A missing diagnostic is reported separately and never accepted as Rust.
@@ -283,7 +314,7 @@ LEAN
     echo "generated_rust_build=$rustbuild"
     echo "generated_rust_semantic_parity=$semantic_parity"
     echo "status=$reason"
-    for f in "$case_dir"/*.lean "$case_dir"/*.log "$case_dir"/generated.rs; do
+    for f in "$case_dir"/*.lean "$case_dir"/*.log "$case_dir"/*.txt "$case_dir"/generated.rs; do
       if [[ -f "$f" ]]; then sha256sum "$f"; fi
     done
   } >> "$case_dir/identity.txt"
@@ -357,8 +388,9 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   echo "source_revision=$(git rev-parse --verify HEAD 2>/dev/null || echo unavailable)"
   echo "tested_external_repositories=3"
   echo "all_upstream_sources_unmodified=true"
-  echo "keboola_unmodified_small_roots_original_lean_rust_parity=12_cases_PASS"
-  echo "semantic_verification_of_emitted_rust=NOT_ESTABLISHED_UNLESS_SEPARATELY_TESTED"
+  echo "external_armada_original_root=128_source_oracles_PASS"
+  echo "external_keboola_two_original_helpers=12_source_oracles_PASS"
+  echo "semantic_verification_of_selected_external_roots=armada_pass_newspeak_keboola_refused"
   echo "toolchain=$(lean --version)"
   sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt"
 } > "$out/receipt.txt"

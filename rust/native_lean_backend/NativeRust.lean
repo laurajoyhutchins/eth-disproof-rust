@@ -18,11 +18,11 @@ private def refusalMessage (decl : Lean.Name) (construct reason : String) : Stri
 
 /-- Emit a closed executable dependency graph in-process (no JSON IR). -/
 @[extern "rs_emit_ir_module"] opaque emitModule
-  (decls : @& Array Lean.IR.Decl) (root : @& String) (rustName : @& String) : String
+  (decls : @& Array Lean.IR.Decl) (root : @& Lean.Name) (rustName : @& String) : String
 
 /-- Emit several public roots through one shared, deduplicated IR closure. -/
 @[extern "rs_emit_ir_module_many"] opaque emitModuleMany
-  (decls : @& Array Lean.IR.Decl) (roots : @& Array String) : String
+  (decls : @& Array Lean.IR.Decl) (roots : @& Array Lean.Name) : String
 
 
 /-- Compile one executable declaration with the pinned Lean compiler and emit Rust.
@@ -110,7 +110,7 @@ private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.
 
 def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   let decls ← gatherClosure #[root]
-  let report := emitModule decls root.toString rustName
+  let report := emitModule decls root rustName
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
   else if report.startsWith "ERROR\n" then
@@ -121,7 +121,7 @@ def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String :=
 /-- Produce a complete standalone Rust library, sharing any overlapping roots. -/
 def compileMany (roots : Array Lean.Name) : Lean.CoreM String := do
   let decls ← gatherClosure roots
-  let report := emitModuleMany decls (roots.map Lean.Name.toString)
+  let report := emitModuleMany decls roots
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
   else if report.startsWith "ERROR\n" then

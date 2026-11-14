@@ -24,6 +24,11 @@ printf 'primitive\tfunction\tassertions\toracle\n' > artifacts/primitive-conform
 count=0
 while IFS=$'\t' read -r primitive rust_type operation kind; do
   [[ -z "$primitive" || "$primitive" == \#* ]] && continue
+  # The original 30-operation oracle matrix is a stable baseline. The
+  # additional 38 typed operations have independent Float/bitwise fixtures.
+  if [[ "$rust_type" == "f64" || ( "$kind" != "arithmetic" && "$kind" != "comparison" ) ]]; then
+    continue
+  fi
   suffix="${primitive##*.}"
   slug="${suffix,,}"
   function="matrix_${rust_type}_${slug}"

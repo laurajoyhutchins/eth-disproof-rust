@@ -12,4 +12,4 @@ def checksum (iterations : Nat) : UInt64 := Id.run do
   return result
 
 def main : IO Unit := do
-  IO.println (checksum 16384).toNat
+  IO.println (checksum 1048576).toNat

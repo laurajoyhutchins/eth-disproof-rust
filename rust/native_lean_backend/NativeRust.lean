@@ -131,7 +131,7 @@ def publishTarget (destination : System.FilePath) (source : String)
   let kind := if binary then "[bin]" else "lib"
   let filename := if binary then "main.rs" else "lib.rs"
   let manifest := "[package]\nname = \"lean_generated\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[" ++
-    kind ++ "]\npath = \"src/" ++ filename ++ "\"\n\n[workspace]\n"
+    kind ++ "]\nname = \"lean_generated\"\npath = \"src/" ++ filename ++ "\"\n\n[workspace]\n"
   let temp ← IO.FS.createTempDir
   try
     IO.FS.createDirAll (temp / "src")

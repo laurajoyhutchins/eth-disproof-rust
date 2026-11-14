@@ -198,7 +198,13 @@ def compile_query(args):
             refuse("original-command-export-timeout", str(error))
         atomic_write(out / "lean-export.log", exported.stdout + "\n" + exported.stderr)
         if exported.returncode:
-            refuse("original-command-export", exported.stderr[-5000:])
+            # Lean elaboration errors often appear on stdout, not stderr.
+            # Preserve both channels so a typed refusal names the actual
+            # reduction/normalization phase rather than an empty reason.
+            refuse("original-command-export",
+                   f"exit={exported.returncode} "
+                   f"stdout_tail={exported.stdout[-3500:]} "
+                   f"stderr_tail={exported.stderr[-1500:]}")
         raw = exported.stdout.encode("utf8")
         try:
             root, abi = validate_query(raw, blob)

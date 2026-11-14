@@ -4,10 +4,15 @@
 //! It does not serialize or clone the IR. Only an explicitly accepted subset is
 //! lowered; unknown instructions and types are errors, never substitutions.
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_char, c_void, CString};
+use std::time::{Duration, Instant};
 use std::fmt::Write;
 
 mod safety;
+
+#[cfg(test)]
+#[allow(dead_code)]
+mod standalone_runtime;
 
 // Generated from the complete reviewed pinned Lean IR constructor contract.
 include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));
@@ -29,6 +34,7 @@ extern "C" {
     fn lr_array_len(x: Obj) -> usize;
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
+    fn lr_string_bytes_len(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
 }
 
@@ -46,6 +52,29 @@ type JoinTable = BTreeMap<usize, Vec<&'static str>>;
 struct LoweringContext<'a> {
     functions: Option<&'a FunctionTable>,
     joins: &'a JoinTable,
+    started: &'a Instant,
+}
+
+fn validate_rust_function_name(rust_name: &str) -> Result<(), String> {
+    if rust_name.is_empty()
+        || !rust_name.as_bytes()[0].is_ascii_alphabetic()
+        || !rust_name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        return Err("unsafe Rust function name".into());
+    }
+    const KEYWORDS: &[&str] = &[
+        "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
+        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move",
+        "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait",
+        "true", "type", "unsafe", "use", "where", "while", "abstract", "become", "box", "gen",
+        "try", "typeof", "unsized", "virtual", "yield",
+    ];
+    if KEYWORDS.contains(&rust_name) || rust_name == "_" {
+        return Err("reserved Rust function name".into());
+    }
+    Ok(())
 }
 
 struct Reader;
@@ -102,9 +131,15 @@ impl Reader {
         if ptr.is_null() {
             return Err("expected Lean String".into());
         }
-        Ok(CStr::from_ptr(ptr)
-            .to_str()
-            .map_err(|_| "invalid UTF-8")?
+        // lean_string_size includes the runtime terminator, not just C-string
+        // bytes before the first zero. Do not truncate embedded U+0000.
+        let len = lr_string_bytes_len(x);
+        if len > safety::MAX_OUTPUT_BYTES {
+            return Err("Lean string input exceeds compiler resource limit".into());
+        }
+        let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
+        Ok(std::str::from_utf8(bytes)
+            .map_err(|_| "invalid Lean UTF-8 String")?
             .to_owned())
     }
     unsafe fn nat(x: Obj) -> Result<usize, String> {
@@ -164,7 +199,11 @@ impl Reader {
                 if *found != expected {
                     return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }
-                Ok(format!("x_{id}"))
+                Ok(if expected == "Value" {
+                    format!("x_{id}.clone()")
+                } else {
+                    format!("x_{id}")
+                })
             }
             1 => Err("erased value used as runtime operand".into()),
             t => Err(format!("unknown Arg constructor {t}")),
@@ -178,6 +217,7 @@ impl Reader {
             3 => Ok("u32"),
             4 => Ok("u64"),
             5 => Ok("usize"),
+            7 | 8 | 12 => Ok("Value"),
             t => Err(format!(
                 "IR type tag {t} unsupported (supported u8/u16/u32/u64/usize)"
             )),
@@ -193,6 +233,11 @@ impl Reader {
                     "u32" => u32::MAX as usize,
                     "u64" => usize::MAX, // Pinned Linux x86-64 Lean ABI.
                     "usize" => usize::MAX,
+                    "Value" => {
+                        return Ok(format!(
+                            "Value::Nat(native_runtime::BigNat::from_u64({n}u64))"
+                        ))
+                    }
                     _ => return Err(format!("literal type {ty} unsupported")),
                 };
                 if n > max {
@@ -234,6 +279,43 @@ impl Reader {
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
                 }
+                if let Some(runtime) = runtime_primitive_spec(&name) {
+                    if var_ty != "Value" {
+                        return Err(format!(
+                            "{name}: expected object-valued result, got {var_ty}"
+                        ));
+                    }
+                    let required = match runtime.shape {
+                        "unary" => 1,
+                        "binary" => 2,
+                        "erased_unary" => 2,
+                        "erased_binary" => 3,
+                        _ => return Err(format!("{name}: unsupported runtime primitive shape")),
+                    };
+                    if args.len() != required {
+                        return Err(format!(
+                            "{name}: expected {required} IR operands, got {}",
+                            args.len()
+                        ));
+                    }
+                    let start = if runtime.shape.starts_with("erased_") {
+                        if Self::checked_tag(args[0], "Arg")? != 1 {
+                            return Err(format!("{name}: missing exact erased type argument"));
+                        }
+                        1
+                    } else {
+                        0
+                    };
+                    let mut values = Vec::new();
+                    for arg in &args[start..] {
+                        values.push(format!("&{}", Self::arg(*arg, env, "Value")?));
+                    }
+                    return Ok(format!(
+                        "native_runtime::{}({})",
+                        runtime.rust_function,
+                        values.join(", ")
+                    ));
+                }
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
                 }
@@ -257,6 +339,16 @@ impl Reader {
                     }
                     Ok(format!("{lhs}.{op}({rhs})"))
                 }
+            }
+            9 => {
+                if var_ty != "Value" || Self::ty(Self::field(x, 0)?)? != "u64" {
+                    return Err("box supports only UInt64 into object Value".into());
+                }
+                let id = Self::var(Self::field(x, 1)?)?;
+                if env.get(&id) != Some(&"u64") {
+                    return Err(format!("box UInt64 operand x_{id} has wrong type"));
+                }
+                Ok(format!("native_runtime::box_uint64(x_{id})"))
             }
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
             t => Err(format!("IR expression constructor {t} unsupported")),
@@ -352,6 +444,12 @@ impl Reader {
             if *count > 100_000 {
                 return Err("IR instruction limit exceeded".into());
             }
+            if code.len() > safety::MAX_OUTPUT_BYTES {
+                return Err("generated Rust output byte limit exceeded".into());
+            }
+            if ctx.started.elapsed() > Duration::from_secs(10) {
+                return Err("IR code generation time budget exceeded".into());
+            }
             match Self::checked_tag(x, "FnBody")? {
                 0 => {
                     // vdecl(x, ty, expr, body)
@@ -415,6 +513,7 @@ impl Reader {
                         LoweringContext {
                             functions: ctx.functions,
                             joins: &scoped_joins,
+                            started: ctx.started,
                         },
                     )?;
                     return Ok(());
@@ -459,7 +558,10 @@ impl Reader {
         if lr_abi_probe() == 0 {
             return Err("Lean C ABI runtime probe failed".into());
         }
-        Self::emit_function(decl, &Self::string(rust_name)?, None)
+        let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
+        let code = Self::emit_function(decl, &Self::string(rust_name)?, None)
+            .map_err(|e| format!("declaration={declared_name}; {e}"))?;
+        with_runtime_if_needed(code)
     }
 
     unsafe fn emit_function(
@@ -471,24 +573,7 @@ impl Reader {
             return Err("extern declaration without executable body".into());
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
-        if rust_name.is_empty()
-            || !rust_name.as_bytes()[0].is_ascii_alphabetic()
-            || !rust_name
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        {
-            return Err("unsafe Rust function name".into());
-        }
-        const KEYWORDS: &[&str] = &[
-            "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-            "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
-            "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
-            "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
-            "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
-        ];
-        if KEYWORDS.contains(&rust_name) || rust_name == "_" {
-            return Err("reserved Rust function name".into());
-        }
+        validate_rust_function_name(rust_name)?;
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
@@ -508,6 +593,7 @@ impl Reader {
             write!(result, "x_{var}: {ty}").unwrap();
         }
         writeln!(result, ") -> {ret} {{").unwrap();
+        let started = Instant::now();
         Self::body(
             body,
             &mut result,
@@ -518,6 +604,7 @@ impl Reader {
             LoweringContext {
                 functions,
                 joins: &JoinTable::new(),
+                started: &started,
             },
         )?;
         result.push_str("}\n");
@@ -555,10 +642,14 @@ impl Reader {
     unsafe fn body_calls(x: Obj, calls: &mut BTreeSet<String>) -> Result<(), String> {
         let mut pending = vec![x];
         let mut count = 0;
+        let started = Instant::now();
         while let Some(body) = pending.pop() {
             count += 1;
             if count > 100_000 {
                 return Err("dependency IR traversal exceeded 100000 instructions".into());
+            }
+            if started.elapsed() > Duration::from_secs(10) {
+                return Err("dependency IR traversal time budget exceeded".into());
             }
             match Self::checked_tag(body, "FnBody")? {
                 0 => {
@@ -617,6 +708,7 @@ impl Reader {
         if roots.is_empty() || roots.len() > 128 {
             return Err("expected 1..128 public Lean root declarations".into());
         }
+        let started = Instant::now();
         let entries = Self::array(decls)?;
         let mut definitions = BTreeMap::<String, Obj>::new();
         for decl in entries {
@@ -650,6 +742,9 @@ impl Reader {
             if visited.len() > 2048 {
                 return Err("native declaration closure exceeds 2048 functions".into());
             }
+            if started.elapsed() > Duration::from_secs(15) {
+                return Err("declaration closure code generation time budget exceeded".into());
+            }
             let decl = *definitions.get(&name).ok_or_else(||
                 format!("dependency {name} has no compiled IR in the current module; no external fallback"))?;
             let sig = Self::signature(decl).map_err(|e| format!("{name}: {e}"))?;
@@ -667,24 +762,27 @@ impl Reader {
             "// Native in-process Lean IR closure; no JSON or Lean runtime dependency.\n",
         );
         for (name, decl) in &closure {
+            if started.elapsed() > Duration::from_secs(15) {
+                return Err("declaration closure code generation time budget exceeded".into());
+            }
             result.push_str(&Self::emit_function(
                 *decl,
                 &internal_name(name),
                 Some(&signatures),
             )?);
             result.push('\n');
+            if result.len() > safety::MAX_OUTPUT_BYTES {
+                return Err("generated Rust closure output byte limit exceeded".into());
+            }
         }
         // Exact same dependency closure is shared by all public wrappers.
         for (root, public_name) in roots {
             let sig = signatures
                 .get(&root)
                 .ok_or("requested root missing from closure")?;
-            // Validate the identifier, including Rust reserved words.
-            let _ = Self::emit_function(
-                *closure.get(&root).unwrap(),
-                &public_name,
-                Some(&signatures),
-            )?;
+            // Validate public names before output, without redundant root codegen.
+            validate_rust_function_name(&public_name)
+                .map_err(|e| format!("declaration={root}; {e}"))?;
             write!(result, "pub fn {public_name}(").unwrap();
             for (i, ty) in sig.params.iter().enumerate() {
                 if i > 0 {
@@ -707,7 +805,7 @@ impl Reader {
             }
             result.push_str(")\n}\n");
         }
-        Ok(result)
+        with_runtime_if_needed(result)
     }
 }
 
@@ -741,7 +839,55 @@ fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
 }
 
 fn is_primitive(name: &str) -> bool {
-    primitive_spec(name).is_some()
+    primitive_spec(name).is_some() || runtime_primitive_spec(name).is_some()
+}
+
+const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");
+
+struct RuntimePrimitiveSpec<'a> {
+    rust_function: &'a str,
+    shape: &'a str,
+}
+
+fn runtime_primitive_spec(name: &str) -> Option<RuntimePrimitiveSpec<'static>> {
+    RUNTIME_PRIMITIVE_REGISTRY
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .find_map(|line| {
+            let mut cells = line.split('\t');
+            let id = cells.next()?;
+            let rust_function = cells.next()?;
+            let shape = cells.next()?;
+            if cells.next().is_some() || id != name {
+                return None;
+            }
+            Some(RuntimePrimitiveSpec {
+                rust_function,
+                shape,
+            })
+        })
+}
+
+fn with_runtime_if_needed(source: String) -> Result<String, String> {
+    let needs_runtime = source.contains("native_runtime::")
+        || source.contains(": Value")
+        || source.contains("-> Value")
+        || source.contains("Value::");
+    let output = if needs_runtime {
+        format!(
+            "mod native_runtime {{\n{}\n}}\npub use native_runtime::Value;\n{source}",
+            include_str!("standalone_runtime.rs")
+        )
+    } else {
+        source
+    };
+    if output.len() > safety::MAX_OUTPUT_BYTES {
+        return Err(
+            "complete generated Rust, including embedded value runtime, exceeds output byte limit"
+                .into(),
+        );
+    }
+    Ok(output)
 }
 
 unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
@@ -904,6 +1050,92 @@ mod tests {
         assert!(internal_name("X.a").starts_with("lean_"));
     }
     #[test]
+    fn embedded_runtime_is_included_in_the_output_size_cap() {
+        let tiny = super::with_runtime_if_needed("pub fn tiny() -> u64 { 2 }".to_owned())
+            .expect("scalar-only function");
+        assert!(!tiny.contains("mod native_runtime"));
+        let source = format!(
+            "// input\nlet x_1: Value = Value::nat(\"1\");\n{}",
+            "a".repeat(super::safety::MAX_OUTPUT_BYTES)
+        );
+        assert!(super::with_runtime_if_needed(source).is_err());
+    }
+
+    #[test]
+    fn value_registry_covers_only_explicitly_tested_lean_runtime_adapters() {
+        use super::{runtime_primitive_spec, RUNTIME_PRIMITIVE_REGISTRY};
+        use std::collections::BTreeSet;
+        let expected: BTreeSet<_> = [
+            "Nat.add",
+            "Nat.sub",
+            "Nat.mul",
+            "Int.add",
+            "String.append",
+            "String.utf8ByteSize",
+            "String.length",
+            "Array.push",
+            "Array.size",
+            "List.reverse._redArg",
+        ]
+        .into_iter()
+        .collect();
+        let source = include_str!("standalone_runtime.rs");
+        let mut actual = BTreeSet::new();
+        for row in RUNTIME_PRIMITIVE_REGISTRY
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        {
+            let cells: Vec<_> = row.split('\t').collect();
+            assert_eq!(cells.len(), 3, "malformed runtime primitive row: {row}");
+            assert!(
+                actual.insert(cells[0]),
+                "duplicate source primitive: {}",
+                cells[0]
+            );
+            let spec = runtime_primitive_spec(cells[0]).unwrap();
+            assert_eq!(spec.rust_function, cells[1]);
+            assert_eq!(spec.shape, cells[2]);
+            assert!(
+                ["binary", "unary", "erased_binary", "erased_unary"].contains(&spec.shape),
+                "invalid runtime primitive shape: {}",
+                spec.shape
+            );
+            assert!(
+                source.contains(&format!("pub fn {}(", spec.rust_function)),
+                "missing dependency-free adapter: {}",
+                spec.rust_function
+            );
+        }
+        assert_eq!(
+            actual, expected,
+            "primitive coverage changed without corresponding tests"
+        );
+    }
+
+    #[test]
+    fn public_identifiers_reject_tokens_keywords_and_embedded_nul() {
+        use super::validate_rust_function_name;
+        for accepted in ["hello", "my_function", "f4", "internal_f"] {
+            validate_rust_function_name(accepted).unwrap();
+        }
+        for rejected in [
+            "",
+            "fn",
+            "_",
+            "bad-name",
+            "my name",
+            "a::b",
+            "x); unsafe {}",
+            "safe\u{0}evil",
+        ] {
+            assert!(
+                validate_rust_function_name(rejected).is_err(),
+                "invalid public Rust identifier unexpectedly accepted"
+            );
+        }
+    }
+
+    #[test]
     fn permitted_rust_identacters_only() {
         for s in ["a", "a_1", "Fn2"] {
             assert!(s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
@@ -920,7 +1152,12 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 16);
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 7)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 8)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 12)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Expr", 9)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 21);
     }
 
     #[test]

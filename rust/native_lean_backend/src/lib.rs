@@ -29,6 +29,8 @@ extern "C" {
     fn lr_array_len(x: Obj) -> usize;
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
+    fn lr_nat_decimal(x: Obj) -> *mut c_char;
+    fn lr_free_string(x: *mut c_char);
     fn lr_string_size(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
 }
@@ -143,6 +145,20 @@ impl Reader {
         let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len - 1);
         String::from_utf8(bytes.to_vec()).map_err(|_| "invalid UTF-8".into())
     }
+    // Convert an arbitrary-precision source Nat through Lean's pinned public
+    // runtime API, never by interpreting GMP limbs or truncating to usize.
+    unsafe fn decimal_nat(x: Obj) -> Result<String, String> {
+        let raw = lr_nat_decimal(x);
+        if raw.is_null() {
+            return Err("large Nat literal rejected (invalid or over 4 KiB)".into());
+        }
+        let decoded = CStr::from_ptr(raw)
+            .to_str()
+            .map(str::to_owned)
+            .map_err(|_| "invalid Nat literal decimal representation".to_owned());
+        lr_free_string(raw);
+        decoded
+    }
     unsafe fn nat(x: Obj) -> Result<usize, String> {
         Self::scalar(x).map_err(|_| "large Nat unsupported by v0 compiler".into())
     }
@@ -224,6 +240,12 @@ impl Reader {
     unsafe fn lit(x: Obj, ty: &str) -> Result<String, String> {
         match Self::checked_tag(x, "LitVal")? {
             0 => {
+                // A decimal Nat constant in Lean.IR.LitVal.num can be an
+                // unbounded runtime object. Preserve its exact source value.
+                if matches!(ty, "obj" | "tobj") {
+                    let value = Self::decimal_nat(Self::field(x, 0)?)?;
+                    return Ok(format!("__LeanValue::nat_from_decimal(\"{value}\")"));
+                }
                 let n = Self::nat(Self::field(x, 0)?)?;
                 if ty == "tagged" {
                     return Ok(format!("__LeanValue::tagged({n})"));

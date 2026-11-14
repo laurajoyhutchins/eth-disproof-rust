@@ -43,3 +43,4 @@
 /examples/unsafe-public-name.rs
 /examples/sem_rejected_*.rs
 /examples/list-package/
+/examples/option-default-package/

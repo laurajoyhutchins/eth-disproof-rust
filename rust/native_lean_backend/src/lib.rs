@@ -1051,28 +1051,68 @@ impl Reader {
                 "{family} case requires exactly two constructor alternatives"
             ));
         }
+        // A pinned two-constructor Option/List may have one source Alt.default.
+        // Only the *other* source-checked constructor identity is admissible.
+        let mut named_index = None;
+        let mut defaults = 0usize;
+        for alt in &alts {
+            match Self::checked_tag(*alt, "Alt")? {
+                0 => {
+                    let info = Self::field(*alt, 0)?;
+                    let name = Self::name(Self::field(info, 0)?, 0)?;
+                    let idx = Self::nat(Self::field(info, 1)?)?;
+                    immutable_case_ctor(family, idx, &name)?;
+                    named_index = Some(idx);
+                }
+                1 => defaults += 1,
+                _ => unreachable!(),
+            }
+        }
+        if defaults > 1 || (defaults == 1 && named_index.is_none()) {
+            return Err(format!("{family} case has unverified default alternatives"));
+        }
+        let missing_index = if defaults == 1 {
+            Some(1 - named_index.unwrap())
+        } else {
+            None
+        };
         let mut seen = [false; 2];
         writeln!(code, "    match x_{id}.tag() {{").unwrap();
         for alt in alts {
-            if Self::checked_tag(alt, "Alt")? != 0 {
-                return Err(format!("{family} default case alternative unsupported"));
-            }
-            let info = Self::field(alt, 0)?;
-            let name = Self::name(Self::field(info, 0)?, 0)?;
-            let idx = Self::nat(Self::field(info, 1)?)?;
+            let is_default = Self::checked_tag(alt, "Alt")? == 1;
+            let (name, idx) = if is_default {
+                let idx = missing_index.ok_or("unexpected default case alternative")?;
+                let name = match (family, idx) {
+                    ("Option", 0) => "Option.none",
+                    ("Option", 1) => "Option.some",
+                    ("List", 0) => "List.nil",
+                    ("List", 1) => "List.cons",
+                    _ => return Err(format!("{family} default case has unknown source layout")),
+                };
+                (name.to_owned(), idx)
+            } else {
+                let info = Self::field(alt, 0)?;
+                (
+                    Self::name(Self::field(info, 0)?, 0)?,
+                    Self::nat(Self::field(info, 1)?)?,
+                )
+            };
             let expected_pointers = immutable_case_ctor(family, idx, &name)?;
             if seen[idx] {
                 return Err(format!(
                     "duplicate {family} case constructor {name} at tag {idx}"
                 ));
             }
-            let pointer_fields = Self::nat(Self::field(info, 2)?)?;
-            let usize_fields = Self::nat(Self::field(info, 3)?)?;
-            let scalar_bytes = Self::nat(Self::field(info, 4)?)?;
-            if pointer_fields != expected_pointers || usize_fields != 0 || scalar_bytes != 0 {
-                return Err(format!(
-                    "{family} alternative {name} has unsupported field layout"
-                ));
+            if !is_default {
+                let info = Self::field(alt, 0)?;
+                let pointer_fields = Self::nat(Self::field(info, 2)?)?;
+                let usize_fields = Self::nat(Self::field(info, 3)?)?;
+                let scalar_bytes = Self::nat(Self::field(info, 4)?)?;
+                if pointer_fields != expected_pointers || usize_fields != 0 || scalar_bytes != 0 {
+                    return Err(format!(
+                        "{family} alternative {name} has unsupported field layout"
+                    ));
+                }
             }
             seen[idx] = true;
             writeln!(code, "        {idx} => {{").unwrap();
@@ -1109,7 +1149,7 @@ impl Reader {
             }
             let mut arm_env = env.clone();
             Self::body(
-                Self::field(alt, 1)?,
+                Self::field(alt, if is_default { 0 } else { 1 })?,
                 code,
                 depth + 1,
                 count,

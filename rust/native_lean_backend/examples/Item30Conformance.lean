@@ -60,10 +60,11 @@ run_cmd do
     let aInput := valueArrayExpr "array_push" a
     let aExpected := valueArrayExpr "array_push" (a.push element)
     let bInput := valueArrayExpr "array_size" a
-    out := out ++ s!"    assert_eq!(array_push::sem_array_push({aInput}, {s!"array_push::Value::UInt64({element.toNat}u64)"}), {aExpected});\n"
+    let elementInput := s!"array_push::Value::UInt64({element.toNat}u64)"
+    out := out ++ s!"    assert_eq!(array_push::sem_array_push({aInput}, {elementInput}), {aExpected});\n"
     out := out ++ s!"    assert_eq!(array_size::sem_array_size({bInput}), array_size::Value::nat(\"{a.size}\"));\n"
     let list := a.toList
     out := out ++ s!"    assert_eq!(list_reverse::sem_list_reverse({valueListExpr "list_reverse" list}), {valueListExpr "list_reverse" list.reverse});\n"
   out := out ++ "}\n"
   liftIO <| IO.FS.writeFile "examples/generated_semantic_cases.rs" out
-  logInfo "Generated 89 original-Lean arbitrary precision, Unicode, collection and edge cases"
+  logInfo "Generated 91 original-Lean arbitrary precision, Unicode, collection and edge cases"

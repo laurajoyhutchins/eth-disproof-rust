@@ -641,9 +641,7 @@ impl Reader {
                     } else if name.starts_with("List.") {
                         "List"
                     } else {
-                        return Err(format!(
-                            "unsupported object-valued case constructor {name}"
-                        ));
+                        return Err(format!("unsupported object-valued case constructor {name}"));
                     });
                     break;
                 }

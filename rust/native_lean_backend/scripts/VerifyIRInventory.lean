@@ -56,4 +56,4 @@ run_cmd do
     for operation in operations do
       ledger := ledger ++ s!"primitive\t{width}.{operation}\tconditional\ttyped-binary-only\n"
   ledger := ledger ++ "primitive\t*\trefused\tunknown-or-external\n"
-  liftIO <| IO.FS.writeFile "artifacts/ir-coverage.tsv" ledger
+  liftIO <| IO.FS.writeFile "artifacts/ir-constructor-summary.tsv" ledger

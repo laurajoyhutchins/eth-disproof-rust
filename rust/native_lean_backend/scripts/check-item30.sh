@@ -10,7 +10,14 @@ lean --load-dynlib="$NATIVE_LIB" examples/Item30Conformance.lean
 adapter_count=0
 while IFS=$'\t' read -r lean_name method shape; do
   [[ -z "$lean_name" || "$lean_name" == \#* ]] && continue
-  if ! grep -Fq ".${method}(" examples/generated_sem_*.rs; then
+  # Array.size has two genuine pinned IR ABIs. Source-level Nat may lower
+  # to immediate tagged storage; boxed-Nat consumers retain array_size().
+  # Both methods share the same canonical immutable Array representation.
+  if [[ "$lean_name" == "Array.size" ]]; then
+    if ! grep -Eq '\.array_size(_tagged)?\(' examples/generated_sem_*.rs; then
+      echo "source Array.size was not represented in generated Rust" >&2; exit 1
+    fi
+  elif ! grep -Fq ".${method}(" examples/generated_sem_*.rs; then
     echo "runtime method missing its original-source fixture: $lean_name" >&2
     exit 1
   fi

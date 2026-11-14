@@ -920,7 +920,11 @@ mod tests {
         {
             let cells: Vec<_> = row.split('\t').collect();
             assert_eq!(cells.len(), 3, "malformed runtime primitive row: {row}");
-            assert!(actual.insert(cells[0]), "duplicate source primitive: {}", cells[0]);
+            assert!(
+                actual.insert(cells[0]),
+                "duplicate source primitive: {}",
+                cells[0]
+            );
             let spec = runtime_primitive_spec(cells[0]).unwrap();
             assert_eq!(spec.rust_function, cells[1]);
             assert_eq!(spec.shape, cells[2]);
@@ -935,7 +939,10 @@ mod tests {
                 spec.rust_function
             );
         }
-        assert_eq!(actual, expected, "primitive coverage changed without corresponding tests");
+        assert_eq!(
+            actual, expected,
+            "primitive coverage changed without corresponding tests"
+        );
     }
 
     #[test]

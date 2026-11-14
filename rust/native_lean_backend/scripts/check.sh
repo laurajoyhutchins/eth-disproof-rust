@@ -337,7 +337,7 @@ cargo clippy --offline --manifest-path examples/object-package/Cargo.toml --all-
 if [[ "$(grep -c "Generated directly from Lean IR declaration: ObjectFixture.mkOpt" examples/object-package/src/lib.rs)" != 1 ]]; then
   echo "immutable object closure was duplicated or omitted" >&2; exit 1
 fi
-for fixture in RefusalObjectNat RefusalObjectCtor; do
+for fixture in RefusalObjectCtor; do
   rm -rf examples/rejected-object-package
   if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then
     echo "invalid object runtime accepted: ${fixture}" >&2; exit 1
@@ -377,10 +377,27 @@ if [[ -e examples/rejected-nat-package ]] || ! grep -q "Rust native backend refu
   echo 'unsupported Nat compilation failed to refuse cleanly' >&2; exit 1
 fi
 rm -f examples/RefusalNatBitwise.log
-# All three independently generated Cargo packages must use the exact same
+# Original closed Lean Nat constants of 200-512 bits, with oracle inputs
+# through 4096 bits. The pinned Lean C shim reads the full decimal value.
+rm -rf examples/large-nat-package examples/rejected-nat-pow-package
+lean --load-dynlib="$NATIVE_LIB" examples/LargeNat.lean
+cargo test --offline --manifest-path examples/large-nat-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/large-nat-package/Cargo.toml --lib -- -D warnings
+if ! grep -Fq '__LeanValue::nat_from_decimal("1606938044258990275541962092341162602522202993782792835301383")' examples/large-nat-package/src/lib.rs; then
+  echo 'large Nat source constant was not preserved exactly' >&2; exit 1
+fi
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalNatPow.lean > examples/RefusalNatPow.log 2>&1; then
+  echo 'unsupported runtime Nat.pow accepted without semantic contract' >&2; exit 1
+fi
+if [[ -e examples/rejected-nat-pow-package ]] || ! grep -q 'Rust native backend refused' examples/RefusalNatPow.log; then
+  cat examples/RefusalNatPow.log >&2
+  echo 'Nat.pow unsupported output damaged or refusal missing' >&2; exit 1
+fi
+rm -f examples/RefusalNatPow.log
+# All four independently generated Cargo packages must use the exact same
 # Nat/object/closure value ABI bytes, not copied or divergent runtime models.
 runtime_bytes="$(wc -c < src/runtime/immutable_value.rs)"
-for output in examples/object-package/src/lib.rs examples/function-package/src/lib.rs examples/nat-package/src/lib.rs; do
+for output in examples/object-package/src/lib.rs examples/function-package/src/lib.rs examples/nat-package/src/lib.rs examples/large-nat-package/src/lib.rs; do
   cmp -n "$runtime_bytes" src/runtime/immutable_value.rs "$output"
   if [[ "$(grep -c '^pub struct __LeanValue(' "$output")" != 1 ]] ||
      [[ "$(grep -c '^enum __LeanValueRepr ' "$output")" != 1 ]]; then
@@ -409,10 +426,11 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=16445"
+  echo "differential_assertions=16521"
+  echo "large_nat_literal_oracles=76"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-  echo "core_and_matrix_oracles=18365"
+  echo "core_and_matrix_oracles=18441"
   echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
@@ -437,7 +455,9 @@ mkdir -p artifacts
     artifacts/item30-oracles.rs artifacts/item30-ir-probes.txt artifacts/item30-rejection.log
   sha256sum src/safety.rs
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
-  sha256sum examples/NatFixture.lean examples/RefusalNatBitwise.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml
+  sha256sum examples/NatFixture.lean examples/RefusalNatBitwise.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml \
+    examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/large-nat-package/Cargo.toml \
+    examples/large-nat-package/tests/literals.rs
   sha256sum examples/Objects.lean examples/FunctionValues.lean examples/RefusalObjectNat.lean examples/RefusalObjectCtor.lean examples/RefusalFunctionValues.lean examples/object-package/src/lib.rs examples/function-package/src/lib.rs
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt

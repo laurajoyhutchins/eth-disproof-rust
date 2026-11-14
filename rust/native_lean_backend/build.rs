@@ -2,6 +2,7 @@ use std::{env, fmt::Write as _, fs, path::PathBuf, process::Command};
 fn main() {
     println!("cargo:rerun-if-changed=native/abi.c");
     println!("cargo:rerun-if-changed=ir-coverage-classification.tsv");
+    println!("cargo:rerun-if-changed=runtime-primitive-registry.tsv");
     println!("cargo:rerun-if-env-changed=LEAN_PREFIX");
     let prefix =
         env::var_os("LEAN_PREFIX").expect("LEAN_PREFIX must point to pinned Lean distribution");

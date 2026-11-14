@@ -70,12 +70,16 @@ fn ir_type_compatible(found: &str, expected: &str) -> bool {
     found == expected || (expected == "tobj" && matches!(found, "obj" | "tagged"))
 }
 
-fn include_value_runtime(source: String) -> String {
-    if source.contains("__LeanValue") {
+fn include_value_runtime(source: String) -> Result<String, String> {
+    let code = if source.contains("__LeanValue") {
         format!("{RUNTIME_SOURCE}\n{source}")
     } else {
         source
+    };
+    if code.len() > safety::MAX_OUTPUT_BYTES {
+        return Err("complete standalone Rust source exceeds maximum output bytes".into());
     }
+    Ok(code)
 }
 
 struct Reader;
@@ -415,6 +419,39 @@ impl Reader {
                         lowered.push(Self::arg(arg, env, ty)?);
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
+                }
+                if let Some(runtime) = runtime_primitive_spec(&name) {
+                    if !is_value_type(var_ty) {
+                        return Err(format!("{name}: object result required for native runtime"));
+                    }
+                    let expected = match runtime.shape {
+                        "unary" => 1,
+                        "binary" => 2,
+                        "erased_unary" => 2,
+                        "erased_binary" => 3,
+                        _ => return Err(format!("{name}: unrecognized runtime call shape")),
+                    };
+                    if args.len() != expected {
+                        return Err(format!(
+                            "{name}: expected {expected} operands, got {}",
+                            args.len()
+                        ));
+                    }
+                    let begin = if runtime.shape.starts_with("erased_") {
+                        if Self::checked_tag(args[0], "Arg")? != 1 {
+                            return Err(format!("{name}: missing erased source type proof"));
+                        }
+                        1
+                    } else { 0 };
+                    let mut operands = Vec::new();
+                    for arg in &args[begin..] {
+                        operands.push(Self::arg(*arg, env, "tobj")?);
+                    }
+                    return match operands.as_slice() {
+                        [value] => Ok(format!("{value}.{}()", runtime.rust_function)),
+                        [lhs, rhs] => Ok(format!("{lhs}.{}(&{rhs})", runtime.rust_function)),
+                        _ => Err(format!("{name}: inconsistent runtime operand count")),
+                    };
                 }
                 if args.len() != 2 {
                     return Err(format!("{name}: expected binary operands"));
@@ -770,11 +807,7 @@ impl Reader {
         if lr_abi_probe() == 0 {
             return Err("Lean C ABI runtime probe failed".into());
         }
-        Ok(include_value_runtime(Self::emit_function(
-            decl,
-            &Self::string(rust_name)?,
-            None,
-        )?))
+        include_value_runtime(Self::emit_function(decl, &Self::string(rust_name)?, None)?)
     }
 
     unsafe fn emit_function(
@@ -1091,7 +1124,7 @@ impl Reader {
             }
             result.push_str(")\n}\n");
         }
-        Ok(include_value_runtime(result))
+        include_value_runtime(result)
     }
 }
 
@@ -1141,7 +1174,26 @@ fn is_nat_primitive(name: &str) -> bool {
 }
 
 fn is_primitive(name: &str) -> bool {
-    primitive_spec(name).is_some() || is_nat_primitive(name)
+    primitive_spec(name).is_some() || is_nat_primitive(name) || runtime_primitive_spec(name).is_some()
+}
+
+const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");
+struct RuntimePrimitiveSpec<'a> {
+    rust_function: &'a str,
+    shape: &'a str,
+}
+fn runtime_primitive_spec(name: &str) -> Option<RuntimePrimitiveSpec<'static>> {
+    RUNTIME_PRIMITIVE_REGISTRY
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.is_empty())
+        .find_map(|line| {
+            let mut cells = line.split('\t');
+            let id = cells.next()?;
+            let rust_function = cells.next()?;
+            let shape = cells.next()?;
+            if cells.next().is_some() || id != name { return None; }
+            Some(RuntimePrimitiveSpec { rust_function, shape })
+        })
 }
 
 unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
@@ -1339,6 +1391,32 @@ mod tests {
     }
 
     #[test]
+    fn supplemental_value_registry_has_no_second_nat_implementation() {
+        let registry = super::RUNTIME_PRIMITIVE_REGISTRY;
+        let expected = [
+            "Int.add",
+            "String.append",
+            "String.utf8ByteSize",
+            "String.length",
+            "Array.push",
+            "Array.size",
+            "List.reverse._redArg",
+        ];
+        let mut seen = std::collections::BTreeSet::new();
+        for line in registry.lines().filter(|line| !line.is_empty() && !line.starts_with('#')) {
+            let fields: Vec<_> = line.split('\t').collect();
+            assert_eq!(fields.len(), 3, "malformed adapter registry");
+            assert!(seen.insert(fields[0]), "duplicate primitive {}", fields[0]);
+            assert!(super::runtime_primitive_spec(fields[0]).is_some());
+            assert!(super::RUNTIME_SOURCE.contains(&format!("fn {}(", fields[1])));
+            assert!(!fields[0].starts_with("Nat."), "Nat must use mainline GMP");
+        }
+        assert_eq!(seen, expected.into_iter().collect());
+        assert!(super::is_nat_primitive("Nat.add"));
+        assert!(super::is_nat_primitive("Nat.div"));
+    }
+
+    #[test]
     fn permitted_rust_identacters_only() {
         for s in ["a", "a_1", "Fn2"] {
             assert!(s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'));
@@ -1361,7 +1439,8 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 11)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 28);
+        assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 29);
     }
 
     #[test]

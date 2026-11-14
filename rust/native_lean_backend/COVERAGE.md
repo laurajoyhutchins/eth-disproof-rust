@@ -14,7 +14,7 @@ refuse. Constructor/tag identities below are pinned to
 | `Expr` | bounded `lit.num`, selected `fap` primitives and typed direct calls; immutable `Option.none`, `Option.some`, `Prod.mk` constructors, `box`, `unbox`, object `proj` | `reset`, `reuse`, `uproj`, `sproj`, `pap`, `ap`, `lit.str`, `isShared`, unverified constructors, other `fap` |
 | `FnBody` | `vdecl`, `ret`, Bool cases, `Option.none`/`Option.some` cases, nonrecursive `jdecl`/`jmp`, object-only `inc`/`dec`/`del` erased under immutable `Rc` ownership | `set`, `setTag`, `uset`, `sset`, other `case`, `unreachable`, recursive joins |
 | `Alt` | two exact Bool alternatives or two exact `Option` constructors | `default`, other constructors |
-| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
+| Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe`; GMP-backed `Nat` subset detailed below | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
 Lean `Bool` is emitted as the compiler's `u8` representation (`0=false`,
@@ -108,11 +108,11 @@ separate ETH symbolic/physical semantics obligations remain open.
 - `examples/Objects.lean` builds three interconnected roots containing nested
   Options and pairs. It checks 3,072 original-Lean-evaluated results on edges
   and seeded vectors. `RefusalObjectNat.lean` and `RefusalObjectCtor.lean`
-  prove that arbitrary-precision `Nat` and unknown `Sum` layouts still fail
-  closed without publishing a Cargo package.
-- Total smoke suite: **6,080** differential assertions, not a general
-  semantic-refinement theorem. Arbitrary-precision Nat, String, Array, and
-  mutable object semantics remain entirely unsupported.
+  show that large closed Nat constant graphs and unknown `Sum` layouts still
+  fail closed without publishing a Cargo package.
+- The original immutable-value smoke suite had **6,080** differential
+  assertions. Arbitrary-precision Nat primitives are now covered separately
+  below; String, Array, and mutable object semantics remain unsupported.
 
 ## Extension: GMP-backed arbitrary-precision Nat (post #204)
 

@@ -51,6 +51,58 @@ def run_bounded(argv: list[str], cwd: Path, timeout: int,
     return subprocess.CompletedProcess(argv, child.returncode, stdout, stderr)
 
 
+
+def verify_query_import_receipt(receipt: Path, lake_root: Path, blob: str,
+                                pin: dict[str, str]) -> None:
+    """Verify a fresh pinned original .olean before skipping a redundant build.
+
+    The JSON is not a certificate. Independently check the exact module bytes
+    and import again in a fresh Lean process after this function returns.
+    """
+    if not receipt.is_file() or receipt.stat().st_size > 65536:
+        raise ValueError("missing or over-budget original Lean import receipt")
+
+    def unique(pairs):
+        out = {}
+        for name, value in pairs:
+            if name in out:
+                raise ValueError("duplicate original Lean import receipt field")
+            out[name] = value
+        return out
+
+    report = json.loads(receipt.read_text(encoding="utf8"), object_pairs_hook=unique)
+    if not isinstance(report, dict):
+        raise ValueError("invalid original Lean import receipt")
+    exact = {
+        "status": "PINNED_ORIGINAL_LEAN_IMPORT_VERIFIED",
+        "stage": "query",
+        "module": MODULE,
+        "source_commit": SOURCE_COMMIT,
+        "source_git_blob": blob,
+        "mathlib_commit": pin["mathlib_commit"],
+        "lean_toolchain": "leanprover/lean4:v4.34.1",
+        "lean_version": pin["lean"],
+        "query_stream_executable": False,
+        "source_graph_compiled": False,
+        "independent_lean_rust_parity": False,
+        "math_or_resource_theorem": False,
+    }
+    for key, expected in exact.items():
+        if type(report.get(key)) is not type(expected) or report[key] != expected:
+            raise ValueError(f"original Lean import receipt mismatch: {key}")
+    digest = report.get("module_olean_sha256")
+    if not isinstance(digest, str) or len(digest) != 64 or any(
+            c not in "0123456789abcdef" for c in digest):
+        raise ValueError("invalid original Lean module .olean digest")
+    artifact = (lake_root / ".lake/build/lib/lean" /
+                Path(MODULE.replace(".", "/") + ".olean"))
+    if not artifact.is_file() or artifact.is_symlink():
+        raise ValueError("original QueryStream .olean missing or linked")
+    observed = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    if observed != digest:
+        raise ValueError("original QueryStream .olean bytes differ from verified import receipt")
+
+
 def validate_query(raw: bytes, blob: str):
     graph = parse_source_graph_json(raw)
     closed_keys(graph, {"kind", "source_commit", "source_blob",
@@ -93,14 +145,29 @@ def compile_query(args):
         refuse("pin", str(error))
     record = {"id": IDENTIFIER, "fqn": DECLARATION,
               "module": MODULE, "git_blob": blob}
-    try:
-        built = run_bounded(["lake", "-K", f"maxJobs={args.max_jobs}", "build", MODULE],
-                            args.lake_root, args.build_timeout)
-        atomic_write(out / "lean-build.log", built.stdout + "\n" + built.stderr)
-        if built.returncode:
-            refuse("original-module-build", built.stderr[-3500:])
-    except TimeoutError as error:
-        refuse("original-module-build-timeout", str(error))
+    if args.import_receipt is not None:
+        try:
+            verify_query_import_receipt(args.import_receipt, args.lake_root, blob, pin)
+            with tempfile.TemporaryDirectory(prefix="original-query-import-") as scratch:
+                import_check = Path(scratch) / "CheckQueryStream.lean"
+                import_check.write_text(f"import {MODULE}\n", encoding="utf8")
+                checked = run_bounded(
+                    ["lake", "env", "lean", str(import_check)], args.lake_root, 180)
+                if checked.returncode:
+                    refuse("original-module-fresh-import", checked.stderr[-3500:])
+            atomic_write(out / "lean-build.log",
+                         "verified original query .olean and independent fresh import\n")
+        except (ValueError, OSError, TimeoutError, json.JSONDecodeError) as error:
+            refuse("original-module-import-receipt", str(error))
+    else:
+        try:
+            built = run_bounded(["lake", "-K", f"maxJobs={args.max_jobs}", "build", MODULE],
+                                args.lake_root, args.build_timeout)
+            atomic_write(out / "lean-build.log", built.stdout + "\n" + built.stderr)
+            if built.returncode:
+                refuse("original-module-build", built.stderr[-3500:])
+        except TimeoutError as error:
+            refuse("original-module-build-timeout", str(error))
 
     with tempfile.TemporaryDirectory(prefix="original-query-aot-") as scratch:
         tmp = Path(scratch)
@@ -211,6 +278,8 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=1200)
     parser.add_argument("--build-timeout", type=int, default=3600)
+    parser.add_argument("--import-receipt", type=Path,
+                        help="Require an independently verified full QueryStream Lean stage receipt; never blindly skip Lake")
     parser.add_argument("--max-jobs", type=int, default=4)
     parser.add_argument("--max-source-labels", type=int, default=1_000_000_000)
     args = parser.parse_args()
@@ -221,6 +290,8 @@ def main():
     args.rust_crate = args.rust_crate.resolve()
     args.upstream = args.upstream.resolve()
     args.output_dir = args.output_dir.resolve()
+    if args.import_receipt is not None:
+        args.import_receipt = args.import_receipt.resolve()
     compile_query(args)
 
 

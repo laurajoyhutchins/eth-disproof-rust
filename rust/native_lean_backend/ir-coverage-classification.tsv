@@ -36,7 +36,7 @@ Lean.IR.Expr.isShared	12	explicitly_unsupported	default_refusal	no_positive_sema
 Lean.IR.Alt.ctor	0	implemented_bounded	Bool_false_true_only	matrix_or_baseline_fixture
 Lean.IR.Alt.default	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.FnBody.vdecl	0	implemented_bounded	typed_local_assignment	matrix_or_baseline_fixture
-Lean.IR.FnBody.jdecl	1	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.FnBody.jdecl	1	implemented_bounded	nonrecursive_typed_scalar_join	JoinFixture_256
 Lean.IR.FnBody.set	2	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.FnBody.setTag	3	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.FnBody.uset	4	explicitly_unsupported	default_refusal	no_positive_semantics_claim
@@ -46,5 +46,5 @@ Lean.IR.FnBody.dec	7	explicitly_unsupported	default_refusal	no_positive_semantic
 Lean.IR.FnBody.del	8	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.FnBody.case	9	implemented_bounded	Bool_two_exact_ctors_only	matrix_or_baseline_fixture
 Lean.IR.FnBody.ret	10	implemented_bounded	typed_return	matrix_or_baseline_fixture
-Lean.IR.FnBody.jmp	11	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.FnBody.jmp	11	implemented_bounded	nonrecursive_typed_scalar_jump	JoinFixture_256
 Lean.IR.FnBody.unreachable	12	explicitly_unsupported	default_refusal	no_positive_semantics_claim

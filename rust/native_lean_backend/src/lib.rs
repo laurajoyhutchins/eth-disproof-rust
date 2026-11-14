@@ -201,7 +201,11 @@ impl Reader {
                     "u32" => u32::MAX as usize,
                     "u64" => usize::MAX, // Pinned Linux x86-64 Lean ABI.
                     "usize" => usize::MAX,
-                    "Value" => return Ok(format!("Value::Nat(native_runtime::BigNat::from_u64({n}u64))")),
+                    "Value" => {
+                        return Ok(format!(
+                            "Value::Nat(native_runtime::BigNat::from_u64({n}u64))"
+                        ))
+                    }
                     _ => return Err(format!("literal type {ty} unsupported")),
                 };
                 if n > max {
@@ -245,7 +249,9 @@ impl Reader {
                 }
                 if let Some(runtime) = runtime_primitive_spec(&name) {
                     if var_ty != "Value" {
-                        return Err(format!("{name}: expected object-valued result, got {var_ty}"));
+                        return Err(format!(
+                            "{name}: expected object-valued result, got {var_ty}"
+                        ));
                     }
                     let required = match runtime.shape {
                         "unary" => 1,
@@ -255,7 +261,10 @@ impl Reader {
                         _ => return Err(format!("{name}: unsupported runtime primitive shape")),
                     };
                     if args.len() != required {
-                        return Err(format!("{name}: expected {required} IR operands, got {}", args.len()));
+                        return Err(format!(
+                            "{name}: expected {required} IR operands, got {}",
+                            args.len()
+                        ));
                     }
                     let start = if runtime.shape.starts_with("erased_") {
                         if Self::checked_tag(args[0], "Arg")? != 1 {

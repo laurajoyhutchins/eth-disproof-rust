@@ -1,10 +1,8 @@
 import NativeRust
 namespace RefusalObjectCtor
-  def produce (x : UInt64) : Sum UInt64 UInt64 := Sum.inl x
-  def consume (x : Sum UInt64 UInt64) : UInt64 :=
-    match x with
-    | .inl n => n + 1
-    | .inr n => n + 2
-  def run (x : UInt64) : UInt64 := consume (produce x)
+  inductive Unverified where
+    | pack (x y : UInt64)
+    | empty
+  def produce (x : UInt64) : Unverified := .pack x (x + 1)
 end RefusalObjectCtor
-#native_rust_package [RefusalObjectCtor.run] to "examples/rejected-object-package"
+#native_rust_package [RefusalObjectCtor.produce] to "examples/rejected-object-package"

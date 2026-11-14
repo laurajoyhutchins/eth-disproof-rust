@@ -11,9 +11,9 @@ refuse. Constructor/tag identities below are pinned to
 | `Decl` | `fdecl` (chosen root and reachable executable dependencies, including imported IR) | unsupported `extern` dependencies |
 | `IRType` | `uint8`, `uint16`, `uint32`, `uint64`, `usize`, plus `object`, `tobject`, `tagged` for the verified immutable runtime | `float`, `float32`, `erased`, `void`, `struct`, `union` |
 | `Arg` | `var` with known, matching type | `erased` in runtime position |
-| `Expr` | bounded `lit.num` (including large boxed Nat literals <= 4 KiB), selected `fap` primitives and typed direct calls; immutable `Option.none`, `Option.some`, `Prod.mk` constructors, `box`, `unbox`, object `proj` | `reset`, `reuse`, `uproj`, `sproj`, `pap`, `ap`, `lit.str`, `isShared`, unverified constructors, other `fap` |
-| `FnBody` | `vdecl`, `ret`, Bool cases, `Option.none`/`Option.some` cases, nonrecursive `jdecl`/`jmp`, object-only `inc`/`dec`/`del` erased under immutable `Rc` ownership | `set`, `setTag`, `uset`, `sset`, other `case`, `unreachable`, recursive joins |
-| `Alt` | two exact Bool alternatives or two exact `Option` constructors | `default`, other constructors |
+| `Expr` | bounded `lit.num` (including large boxed Nat literals <= 4 KiB), selected `fap` primitives and typed direct calls; immutable `Option.none`, `Option.some`, `Prod.mk`, `Sum.inl`, `Sum.inr` constructors, `box`, `unbox`, object `proj` | `reset`, `reuse`, `uproj`, `sproj`, `pap`, `ap`, `lit.str`, `isShared`, unverified constructors, other `fap` |
+| `FnBody` | `vdecl`, `ret`, Bool cases, `Option.none`/`Option.some` and `Sum.inl`/`Sum.inr` cases, nonrecursive `jdecl`/`jmp`, object-only `inc`/`dec`/`del` erased under immutable `Rc` ownership | `set`, `setTag`, `uset`, `sset`, other `case`, `unreachable`, recursive joins |
+| `Alt` | two exact Bool alternatives or two exact `Option` or `Sum` constructors | `default`, other constructors |
 | Primitive operations | `UInt8/16/32/64` and `USize` `.add`, `.sub`, `.mul`, `.decEq`, `.decLt`, `.decLe` | all other runtime calls |
 
 **Semantic restrictions:** scalar inputs/outputs use Rust integer representations;
@@ -162,3 +162,25 @@ separate ETH symbolic/physical semantics obligations remain open.
   all preceding compiler fixtures and the Array extension. No general array
   API, arbitrary-size source program, mutation ownership equivalence, or
   proof of semantic refinement is implied.
+
+## Extension: copy-on-write ownership and Sum constructors (post #220)
+
+- Generated array push/set take owned values and invoke `Rc::get_mut` to
+  reuse a uniquely owned allocation; the shared case clones the vector
+  shallowly and preserves earlier aliased values. This is a *value* semantics
+  improvement, not a full model of Lean's mutable runtime.
+- The in-process IR lowering uses a conservative last-use scan of the
+  remaining `FnBody` to decide when a source array operand can be moved rather
+  than cloned. It scans reachable later expressions and branches, and refuses
+  optimization around unknown instructions or lexical join captures. The same
+  strict unsupported-IR policy remains in effect.
+- Generated-Rust runtime unit tests assert `Rc` pointer identity for unique
+  pushes/sets, and allocation divergence plus old-value preservation for
+  shared sets. `OwnershipFixture.lean` compares 768 original Lean results.
+- Exact pinned constructor layouts are accepted for `Sum.inl` (tag 0, one
+  pointer) and `Sum.inr` (tag 1, one pointer). Matching checks both indices
+  and full constructor identity; unrelated or mixed constructor families
+  refuse. `SumFixture.lean` adds 1,024 source-evaluated comparisons, including
+  `Option (Sum UInt64 UInt64)`. General scalar-layout ADTs are unsupported.
+- New total differential suite: **14,436** tests (prior 12,644 + 768 + 1,024).
+  No general semantic preservation proof or resource-equivalence claim.

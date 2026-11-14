@@ -82,10 +82,14 @@ impl __LeanValue {
         let items = Vec::with_capacity(capacity.min(1024));
         Self(std::rc::Rc::new(__LeanValueRepr::Array(items)))
     }
-    // Pure, copy-on-write semantics: every write returns a fresh value.
-    // An earlier reference to the input remains unchanged. This currently
-    // copies the vector; it does NOT claim Lean's unique-buffer fast path.
-    fn array_push(&self, value: Self) -> Self {
+    // Ownership-aware COW. The lowering passes the last IR use by move;
+    // on aliases it retains the original and clones the Vec shallowly.
+    // All elements remain immutable, Rc-shared Lean values.
+    fn array_push(mut self, value: Self) -> Self {
+        if let Some(__LeanValueRepr::Array(items)) = std::rc::Rc::get_mut(&mut self.0) {
+            items.push(value);
+            return self;
+        }
         match self.0.as_ref() {
             __LeanValueRepr::Array(items) => {
                 let mut updated = items.clone();
@@ -107,7 +111,11 @@ impl __LeanValue {
             _ => panic!("Array.getInternal on non-array object"),
         }
     }
-    fn array_set(&self, index: usize, value: Self) -> Self {
+    fn array_set(mut self, index: usize, value: Self) -> Self {
+        if let Some(__LeanValueRepr::Array(items)) = std::rc::Rc::get_mut(&mut self.0) {
+            *items.get_mut(index).expect("Array.set!: out of bounds") = value;
+            return self;
+        }
         match self.0.as_ref() {
             __LeanValueRepr::Array(items) => {
                 let mut updated = items.clone();
@@ -145,6 +153,41 @@ impl __LeanValue {
     fn unbox_u32(&self) -> u32 { match self.0.as_ref() {__LeanValueRepr::U32(x) => *x, _ => panic!("incorrect boxed u32") } }
     fn unbox_u64(&self) -> u64 { match self.0.as_ref() {__LeanValueRepr::U64(x) => *x, _ => panic!("incorrect boxed u64") } }
     fn unbox_usize(&self) -> usize { match self.0.as_ref() {__LeanValueRepr::USize(x) => *x, _ => panic!("incorrect boxed usize") } }
+}
+
+"#;
+
+const ARRAY_RUNTIME_TEST_SOURCE: &str = r#"
+// These tests run against the actual emitted runtime, not a separately
+// reimplemented model. Pointer identity verifies the unique-owner fast path;
+// the shared test checks that the old observable value remains unchanged.
+#[cfg(test)]
+mod __lean_array_ownership_tests {
+    use super::__LeanValue;
+    use std::rc::Rc;
+
+    #[test]
+    fn unique_owner_reuses_array_allocation() {
+        let empty = __LeanValue::empty_array(2);
+        let before = Rc::as_ptr(&empty.0);
+        let pushed = empty.array_push(__LeanValue::tagged(7));
+        assert!(std::ptr::eq(before, Rc::as_ptr(&pushed.0)));
+        let before = Rc::as_ptr(&pushed.0);
+        let updated = pushed.array_set(0, __LeanValue::tagged(11));
+        assert!(std::ptr::eq(before, Rc::as_ptr(&updated.0)));
+        assert_eq!(updated.array_get(0).tagged_nat(), 11);
+    }
+
+    #[test]
+    fn shared_owner_copies_before_update() {
+        let old = __LeanValue::empty_array(2).array_push(__LeanValue::tagged(3));
+        let alias = old.clone();
+        let original = Rc::as_ptr(&old.0);
+        let updated = old.array_set(0, __LeanValue::tagged(17));
+        assert!(!std::ptr::eq(original, Rc::as_ptr(&updated.0)));
+        assert_eq!(alias.array_get(0).tagged_nat(), 3);
+        assert_eq!(updated.array_get(0).tagged_nat(), 17);
+    }
 }
 "#;
 
@@ -327,10 +370,17 @@ fn include_value_runtime(source: String) -> String {
         "// __NAT_RUNTIME_VARIANT__",
         if needs_nat { "Nat(__LeanBigNat)," } else { "" },
     );
-    if needs_nat {
-        format!("{core}\n{NAT_RUNTIME_SOURCE}\n{source}")
+    // Tests come *after* generated functions: strict Clippy disallows
+    // ordinary items following a test module.
+    let tests = if source.contains(".array_push(") || source.contains(".array_set(") {
+        ARRAY_RUNTIME_TEST_SOURCE
     } else {
-        format!("{core}\n{source}")
+        ""
+    };
+    if needs_nat {
+        format!("{core}\n{NAT_RUNTIME_SOURCE}\n{source}\n{tests}")
+    } else {
+        format!("{core}\n{source}\n{tests}")
     }
 }
 
@@ -510,11 +560,117 @@ impl Reader {
             t => Err(format!("literal constructor {t} unsupported")),
         }
     }
+    unsafe fn arg_uses(x: Obj, id: usize) -> Result<bool, String> {
+        Ok(Self::tag(x)? == 0 && Self::var(Self::field(x, 0)?)? == id)
+    }
+    unsafe fn args_use(args: Obj, id: usize) -> Result<bool, String> {
+        for arg in Self::array(args)? {
+            if Self::arg_uses(arg, id)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+    // Unknown forms conservatively count as uses: this pass is only an
+    // optimization and must never expand the accepted IR language.
+    unsafe fn expr_uses(x: Obj, id: usize) -> Result<bool, String> {
+        Ok(match Self::tag(x)? {
+            0 => Self::args_use(Self::field(x, 1)?, id)?, // ctor
+            1 | 2 => true, // reset/reuse are not in the supported subset
+            3 => Self::var(Self::field(x, 1)?)? == id,
+            4 => Self::var(Self::field(x, 1)?)? == id,
+            5 => Self::var(Self::field(x, 2)?)? == id,
+            6 | 7 => Self::args_use(Self::field(x, 1)?, id)?,
+            8 => true, // ap not supported
+            9 => Self::var(Self::field(x, 1)?)? == id,
+            10 | 12 => Self::var(Self::field(x, 0)?)? == id,
+            11 => false, // literal
+            _ => true,
+        })
+    }
+    unsafe fn body_uses(mut x: Obj, id: usize, depth: usize) -> Result<bool, String> {
+        if depth > 128 {
+            return Ok(true);
+        }
+        let mut remaining = 100_000usize;
+        loop {
+            if remaining == 0 {
+                return Ok(true);
+            }
+            remaining -= 1;
+            match Self::tag(x)? {
+                0 => {
+                    if Self::expr_uses(Self::field(x, 2)?, id)? {
+                        return Ok(true);
+                    }
+                    x = Self::field(x, 3)?;
+                }
+                1 => {
+                    if Self::body_uses(Self::field(x, 2)?, id, depth + 1)? {
+                        return Ok(true);
+                    }
+                    x = Self::field(x, 3)?;
+                }
+                2..=5 => return Ok(true), // mutating forms are not yet supported
+                6 | 7 => x = Self::field(x, 2)?, // compact Lean runtime layout for inc/dec
+                8 => x = Self::field(x, 1)?, // non-observable del
+                9 => {
+                    if Self::var(Self::field(x, 1)?)? == id {
+                        return Ok(true);
+                    }
+                    for alt in Self::array(Self::field(x, 3)?)? {
+                        let body = match Self::tag(alt)? {
+                            0 => Self::field(alt, 1)?,
+                            1 => Self::field(alt, 0)?,
+                            _ => return Ok(true),
+                        };
+                        if Self::body_uses(body, id, depth + 1)? {
+                            return Ok(true);
+                        }
+                    }
+                    return Ok(false);
+                }
+                10 => return Self::arg_uses(Self::field(x, 0)?, id),
+                11 => return Self::args_use(Self::field(x, 1)?, id),
+                12 => return Ok(false),
+                _ => return Ok(true),
+            }
+        }
+    }
+    unsafe fn consumable_array(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
+        if Self::tag(expr)? != 6 {
+            return Ok(None);
+        }
+        let name = Self::name(Self::field(expr, 0)?, 0)?;
+        if name != "Array.push" && name != "Array.set!" {
+            return Ok(None);
+        }
+        let args = Self::array(Self::field(expr, 1)?)?;
+        if args.len() != if name == "Array.push" { 3 } else { 4 } {
+            return Ok(None);
+        }
+        if Self::tag(args[1])? != 0 {
+            return Ok(None);
+        }
+        let id = Self::var(Self::field(args[1], 0)?)?;
+        // A source used twice within the same primitive invocation must be
+        // cloned before one of the uses can be consumed.
+        for arg in args.iter().skip(2) {
+            if Self::arg_uses(*arg, id)? {
+                return Ok(None);
+            }
+        }
+        if Self::body_uses(tail, id, 0)? {
+            return Ok(None);
+        }
+        Ok(Some(id))
+    }
     unsafe fn expr(
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
+        consumed_array: Option<usize>,
     ) -> Result<String, String> {
         match Self::tag(x)? {
             0 => {
@@ -530,7 +686,10 @@ impl Reader {
                 let size = Self::nat(Self::field(info, 2)?)?;
                 let usize_count = Self::nat(Self::field(info, 3)?)?;
                 let ssize = Self::nat(Self::field(info, 4)?)?;
-                if !matches!(name.as_str(), "Option.none" | "Option.some" | "Prod.mk") {
+                if !matches!(
+                    name.as_str(),
+                    "Option.none" | "Option.some" | "Prod.mk" | "Sum.inl" | "Sum.inr"
+                ) {
                     return Err(format!(
                         "constructor {name} is not in the verified runtime subset"
                     ));
@@ -539,6 +698,8 @@ impl Reader {
                     "Option.none" => (0, 0),
                     "Option.some" => (1, 1),
                     "Prod.mk" => (0, 2),
+                    "Sum.inl" => (0, 1),
+                    "Sum.inr" => (1, 1),
                     _ => unreachable!(),
                 };
                 if (tag, fields.len()) != expected_arity
@@ -661,7 +822,11 @@ impl Reader {
                         "Array.push" => {
                             check(3, "obj")?;
                             erased(0)?;
-                            let array = Self::arg(args[1], env, "obj")?;
+                            let array = if let Some(id) = consumed_array {
+                                format!("x_{id}")
+                            } else {
+                                Self::arg(args[1], env, "obj")?
+                            };
                             let item = Self::arg(args[2], env, "tobj")?;
                             Ok(format!("{array}.array_push({item})"))
                         }
@@ -682,7 +847,11 @@ impl Reader {
                         "Array.set!" => {
                             check(4, "obj")?;
                             erased(0)?;
-                            let array = Self::arg(args[1], env, "obj")?;
+                            let array = if let Some(id) = consumed_array {
+                                format!("x_{id}")
+                            } else {
+                                Self::arg(args[1], env, "obj")?
+                            };
                             let index = Self::arg(args[2], env, "tagged")?;
                             let item = Self::arg(args[3], env, "tobj")?;
                             Ok(format!("{array}.array_set({index}.tagged_nat(), {item})"))
@@ -821,12 +990,16 @@ impl Reader {
         let type_name = Self::name(Self::field(x, 0)?, 0)?;
         match type_name.as_str() {
             "UInt8" => Self::boolean_case(x, code, depth, count, env, ret_ty, ctx),
-            "Option" | "tobj" | "obj" => Self::option_case(x, code, depth, count, env, ret_ty, ctx),
+            "Option" | "Sum" | "tobj" | "obj" => {
+                Self::algebraic_case(x, code, depth, count, env, ret_ty, ctx)
+            }
             _ => Err(format!("unsupported case type {type_name}")),
         }
     }
 
-    unsafe fn option_case(
+    // Constructor family is determined from the *actual pinned IR metadata*,
+    // not guessed from a generic `obj` scrutinee's runtime tag.
+    unsafe fn algebraic_case(
         x: Obj,
         code: &mut String,
         depth: usize,
@@ -836,47 +1009,62 @@ impl Reader {
         ctx: LoweringContext<'_>,
     ) -> Result<(), String> {
         if !is_value_type(Self::ty(Self::field(x, 2)?)?) {
-            return Err("Option case scrutinee must be object-valued".into());
+            return Err("algebraic case scrutinee must be object-valued".into());
         }
         let id = Self::var(Self::field(x, 1)?)?;
         if !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
-            return Err("Option case scrutinee not object-valued".into());
+            return Err("algebraic case scrutinee not object-valued".into());
         }
         let alts = Self::array(Self::field(x, 3)?)?;
         if alts.len() != 2 {
-            return Err("Option case requires exactly two constructors".into());
+            return Err("supported algebraic case requires exactly two constructors".into());
         }
-        let mut seen = [false; 2];
-        writeln!(code, "    match x_{id}.tag() {{").unwrap();
-        for alt in alts {
+        let mut constructors = Vec::new();
+        for &alt in &alts {
             if Self::tag(alt)? != 0 {
-                return Err("Option default alternative unsupported".into());
+                return Err("default algebraic case alternative unsupported".into());
             }
             let info = Self::field(alt, 0)?;
             let ctor = Self::name(Self::field(info, 0)?, 0)?;
             let idx = Self::nat(Self::field(info, 1)?)?;
-            let expected = match idx {
-                0 => "Option.none",
-                1 => "Option.some",
-                _ => return Err("invalid Option constructor index".into()),
+            constructors.push((ctor, idx, info, alt));
+        }
+        let is_option = constructors
+            .iter()
+            .all(|(name, _, _, _)| name.starts_with("Option."));
+        let is_sum = constructors
+            .iter()
+            .all(|(name, _, _, _)| name.starts_with("Sum."));
+        if !is_option && !is_sum {
+            return Err("unsupported or mixed algebraic constructor family".into());
+        }
+        let mut seen = [false; 2];
+        writeln!(code, "    match x_{id}.tag() {{").unwrap();
+        for (ctor, idx, info, alt) in constructors {
+            let expected = match (is_sum, idx) {
+                (false, 0) => "Option.none",
+                (false, 1) => "Option.some",
+                (true, 0) => "Sum.inl",
+                (true, 1) => "Sum.inr",
+                _ => return Err("invalid constructor index".into()),
             };
-            if expected != ctor || seen[idx] {
-                return Err("incorrect Option constructor metadata".into());
+            if ctor != expected || seen[idx] {
+                return Err(format!(
+                    "incorrect or repeated constructor metadata: {ctor}"
+                ));
             }
-            let pointer_fields = Self::nat(Self::field(info, 2)?)?;
+            let ptrs = Self::nat(Self::field(info, 2)?)?;
             let usize_fields = Self::nat(Self::field(info, 3)?)?;
             let scalar_bytes = Self::nat(Self::field(info, 4)?)?;
-            if pointer_fields != idx || usize_fields != 0 || scalar_bytes != 0 {
-                return Err(format!(
-                    "Option alternative {ctor} has unsupported field layout"
-                ));
+            if ptrs != usize::from(is_sum || idx == 1) || usize_fields != 0 || scalar_bytes != 0 {
+                return Err(format!("unsupported constructor field layout: {ctor}"));
             }
             seen[idx] = true;
             writeln!(code, "        {idx} => {{").unwrap();
-            if idx == 0 {
+            if !is_sum && idx == 0 {
                 writeln!(code, "            assert!(x_{id}.has_tagged(0), \"invalid Option.none representation\");").unwrap();
             } else {
-                writeln!(code, "            assert!(x_{id}.has_ctor(1, \"Option.some\", 1), \"invalid Option.some representation\");").unwrap();
+                writeln!(code, "            assert!(x_{id}.has_ctor({idx}, \"{ctor}\", 1), \"invalid {ctor} representation\");").unwrap();
             }
             let mut arm_env = env.clone();
             Self::body(
@@ -890,10 +1078,14 @@ impl Reader {
             )?;
             writeln!(code, "        }}").unwrap();
         }
-        if !seen.into_iter().all(|b| b) {
-            return Err("incomplete Option case".into());
+        if !seen.into_iter().all(|s| s) {
+            return Err("incomplete algebraic case".into());
         }
-        writeln!(code, "        _ => unreachable!(\"invalid Option tag\"),").unwrap();
+        writeln!(
+            code,
+            "        _ => unreachable!(\"invalid Lean algebraic tag\"),"
+        )
+        .unwrap();
         writeln!(code, "    }}").unwrap();
         Ok(())
     }
@@ -989,7 +1181,14 @@ impl Reader {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
-                    let value = Self::expr(Self::field(x, 2)?, ty, env, ctx.functions)?;
+                    let expr = Self::field(x, 2)?;
+                    let consumed_array = if ctx.joins.is_empty() {
+                        Self::consumable_array(expr, Self::field(x, 3)?)?
+                    } else {
+                        // An earlier lexical join closure may borrow this value.
+                        None
+                    };
+                    let value = Self::expr(expr, ty, env, ctx.functions, consumed_array)?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }

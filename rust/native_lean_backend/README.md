@@ -35,9 +35,9 @@ export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 `check.sh` builds a Rust shared library and `NativeRust.olean`, then loads the
 backend into Lean's interpreter. It compiles **15 isolated declarations and
 three transitive closure roots**, generates standalone Rust, and executes
-**11,288 independently evaluated Lean/Rust assertions**, including 256 join-point
+**14,436 independently evaluated Lean/Rust assertions**, including 256 join-point
 cases, 768 multi-root Cargo library cases, 3,072 immutable object
-constructor/projection cases, and 5,208 arbitrary-precision `Nat` cases. It also checks
+constructor/projection cases, and 5,208 arbitrary-precision `Nat` cases, 1,280 array cases, 768 ownership cases, and 1,024 `Sum` cases. It also checks
 fail-closed behavior, preserved outputs, stable output hashes, Cargo tests,
 formatting, and strict Clippy. `lake build`
 also builds the Lean module without any Mathlib dependency. The dedicated
@@ -101,14 +101,14 @@ capturing Rust closures, including jumps from Boolean branches. Recursive
 joins, non-scalar join parameters, and unsupported runtime operations refuse.
 
 A further opt-in immutable-value subset supports `Option UInt64`, nested
-`Option`, and `UInt64 × UInt64` constructions and pattern matching through an
+`Option`, `UInt64 × UInt64` and `Sum UInt64 UInt64` constructions and pattern matching through an
 `Rc`-backed generated Rust runtime. See `examples/Objects.lean`. This representation
 is not a full Lean runtime: its constructor names and layouts are validated,
 and all mutation and observable reference-count primitives remain refused.
 
 **Not implemented:** general Lean/Rust compilation; full `Nat` primitive
 coverage or large closed `Nat` constant graphs; indirect calls, closures,
-non-Boolean cases, recursive joins, arrays, structures, general external
+unverified inductive cases, recursive joins, unsupported array primitives, structures, general external
 primitives, and
 noncomputable expressions without compiler IR. The current generated functions are checked
 on examples but there is not yet a general semantic refinement theorem.
@@ -220,3 +220,24 @@ Lean nor GMP. Two additional fixtures refuse unsupported array primitives
 without publishing a partial package. The cumulative checked suite now
 contains **12,644** Lean-derived assertions. This is not a proof of complete
 array semantics, exact resource behavior, or compiler correctness.
+
+## Ownership-aware arrays and `Sum` (next native G1 slice)
+
+For the supported `Array` operations, generated Rust reuses an allocation when
+the array has a unique owner, but clones it before modification when shared.
+The source IR's remaining-body liveness is scanned conservatively to avoid
+moving an object that will still be used. An earlier lexical join-point
+continuation disables this optimization, since it may capture a reference.
+This reproduces tested array *values* and efficient common unique-owner updates,
+not Lean's full reference-counting or mutation resource model.
+
+The backend also supports exact pinned `Sum.inl` and `Sum.inr` heap layouts
+(two one-pointer constructors), both as returned values and under matching,
+including a nested `Option`. Custom inductives, scalar-field constructor
+layouts, general type parameter representations and indirect applications
+still fail closed.
+
+`examples/OwnershipFixture.lean` and `examples/SumFixture.lean` cover 1,792
+more Lean-derived comparisons; the emitted Rust runtime has direct pointer
+identity tests for unique and aliased arrays. Total: **14,436** source-evaluated
+comparisons, with no semantic refinement theorem claimed.

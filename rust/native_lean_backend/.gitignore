@@ -45,3 +45,7 @@
 /examples/rejected-array-package/
 /examples/RefusalArrayPop.log
 /examples/RefusalArrayBang.log
+
+# Native ownership and Sum algebraic-data-type conformance outputs
+/examples/ownership-package/
+/examples/sum-package/

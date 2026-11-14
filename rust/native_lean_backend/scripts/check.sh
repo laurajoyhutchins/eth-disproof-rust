@@ -262,6 +262,30 @@ for fixture in RefusalArrayPop RefusalArrayBang; do
   fi
   rm -f "examples/${fixture}.log"
 done
+# Ownership-aware array fast path and structural non-aliasing proof by tests.
+# The generated runtime tests assert actual Rc pointer identity on unique input
+# and distinct allocations + preserved values on aliased input.
+rm -rf examples/ownership-package
+lean --load-dynlib="$NATIVE_LIB" examples/OwnershipFixture.lean
+cargo test --offline --manifest-path examples/ownership-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/ownership-package/Cargo.toml --lib -- -D warnings
+if ! grep -Eq 'x_[0-9]+\.array_push\(' examples/ownership-package/src/lib.rs; then
+  echo 'no last-use array move emitted into ownership fixture' >&2; exit 1
+fi
+if ! grep -Eq 'x_[0-9]+\.clone\(\)\.array_set\(' examples/ownership-package/src/lib.rs; then
+  echo 'no shared array clone emitted into ownership fixture' >&2; exit 1
+fi
+# Verified two-constructor Sum layout + exhaustive pattern matching, including
+# nested Option (Sum UInt64 UInt64) and source-defined helper functions.
+rm -rf examples/sum-package
+lean --load-dynlib="$NATIVE_LIB" examples/SumFixture.lean
+cargo test --offline --manifest-path examples/sum-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/sum-package/Cargo.toml --lib -- -D warnings
+for package in examples/ownership-package examples/sum-package; do
+  if ldd "$(find "$package/target/debug/deps" -maxdepth 1 -type f -executable -name '*-*' -print -quit)" | grep -Eq 'lib(gmp|Lean|lean)\.'; then
+    echo 'generated standalone program unexpectedly links GMP/Lean' >&2; exit 1
+  fi
+done
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -274,7 +298,7 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=12644"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/NatFixture.lean examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml examples/ArrayFixture.lean examples/RefusalArrayPop.lean examples/RefusalArrayBang.lean examples/array-package/src/lib.rs examples/array-package/Cargo.toml examples/generated_*.rs
+  echo "differential_assertions=14436"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/NatFixture.lean examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml examples/ArrayFixture.lean examples/RefusalArrayPop.lean examples/RefusalArrayBang.lean examples/array-package/src/lib.rs examples/array-package/Cargo.toml examples/SumFixture.lean examples/sum-package/src/lib.rs examples/sum-package/Cargo.toml examples/OwnershipFixture.lean examples/ownership-package/src/lib.rs examples/ownership-package/Cargo.toml examples/RefusalObjectCtor.lean examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

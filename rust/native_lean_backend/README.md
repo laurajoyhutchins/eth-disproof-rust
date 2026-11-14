@@ -146,3 +146,15 @@ The exact test suite verifies shared dependency deduplication, deterministic
 crate emission, public-name collision refusal, unsupported type refusal, and
 no modification of previously published directories. These are successful
 examples within a **bounded subset**, not proof of general compiler correctness.
+
+### Bounded first-class function values
+
+The in-process compiler now lowers genuine compiler IR `pap` and `ap`
+for source-defined, fully boxed callable signatures, reusing the same
+immutable `Rc`-backed value runtime as `Option` and `Prod`.
+`examples/FunctionValues.lean` demonstrates indirect invocation,
+a function stored in an `Option`, and one shared function applied
+twice. The test verifies 1,536 original-Lean/Rust comparisons and
+checks that generated code contains both PAP construction and AP
+invocation. Any unknown callee, unsupported scalar ABI or effectful
+runtime must refuse. See `COVERAGE.md` for precise accepted forms.

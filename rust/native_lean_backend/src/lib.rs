@@ -54,6 +54,13 @@ enum __LeanValueRepr {
     Tagged(usize),
     U8(u8), U16(u16), U32(u32), U64(u64), USize(usize),
     Ctor { tag: usize, name: &'static str, fields: Vec<__LeanValue> },
+    // Immutable first-class functions, represented by a statically generated
+    // object-argument thunk and an Rc-shared vector of captured values.
+    Closure {
+        arity: usize,
+        captures: Vec<__LeanValue>,
+        invoke: fn(Vec<__LeanValue>) -> __LeanValue,
+    },
 }
 
 #[allow(dead_code)]
@@ -92,6 +99,30 @@ impl __LeanValue {
     fn unbox_u32(&self) -> u32 { match self.0.as_ref() {__LeanValueRepr::U32(x) => *x, _ => panic!("incorrect boxed u32") } }
     fn unbox_u64(&self) -> u64 { match self.0.as_ref() {__LeanValueRepr::U64(x) => *x, _ => panic!("incorrect boxed u64") } }
     fn unbox_usize(&self) -> usize { match self.0.as_ref() {__LeanValueRepr::USize(x) => *x, _ => panic!("incorrect boxed usize") } }
+
+    fn pap(invoke: fn(Vec<Self>) -> Self, arity: usize, captures: Vec<Self>) -> Self {
+        assert!(arity > 0 && captures.len() < arity, "invalid source PAP arity");
+        Self(std::rc::Rc::new(__LeanValueRepr::Closure { arity, captures, invoke }))
+    }
+
+    // Preserve declaration-order captures and permit additional partial
+    // application. No mutation or runtime lookup of untrusted pointers.
+    fn apply(&self, args: Vec<Self>) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Closure { arity, captures, invoke } => {
+                assert!(!args.is_empty(), "empty source AP");
+                let mut all = captures.clone();
+                all.extend(args);
+                assert!(all.len() <= *arity, "oversaturated source AP");
+                if all.len() == *arity {
+                    invoke(all)
+                } else {
+                    Self::pap(*invoke, *arity, all)
+                }
+            }
+            _ => panic!("tried to apply a non-function Lean value"),
+        }
+    }
 }
 "#;
 
@@ -342,6 +373,60 @@ impl Reader {
                     return Err("projection from scalar variable".into());
                 }
                 Ok(format!("x_{id}.field({index})"))
+            }
+
+            7 => {
+                // PAP(callee, captured operands). For this first subset, each
+                // source callee must be compiled and its ABI must consist
+                // solely of boxed values, both parameters and return.
+                if !is_value_type(var_ty) {
+                    return Err("PAP result must be an object".into());
+                }
+                let name = Self::name(Self::field(x, 0)?, 0)?;
+                let signature = functions
+                    .and_then(|table| table.get(&name))
+                    .ok_or_else(|| format!("PAP {name} lacks reachable executable IR"))?;
+                let args = Self::array(Self::field(x, 1)?)?;
+                if signature.params.is_empty()
+                    || args.len() >= signature.params.len()
+                    || !signature.params.iter().all(|ty| is_value_type(ty))
+                    || !is_value_type(signature.result)
+                {
+                    return Err(format!("PAP {name} has unsupported typed/arity layout"));
+                }
+                let mut captured = Vec::new();
+                for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
+                    captured.push(Self::arg(arg, env, ty)?);
+                }
+                Ok(format!(
+                    "__LeanValue::pap({}, {}, vec![{}])",
+                    internal_closure_name(&name),
+                    signature.params.len(),
+                    captured.join(", ")
+                ))
+            }
+            8 => {
+                // AP(f, arguments): supported as 1..16 boxed-value operands.
+                // A dynamic closure may be partially applied again.
+                if !is_value_type(var_ty) {
+                    return Err("AP scalar result requires an unsupported ABI adapter".into());
+                }
+                let fun = Self::var(Self::field(x, 0)?)?;
+                let found = env
+                    .get(&fun)
+                    .ok_or_else(|| format!("undefined AP function x_{fun}"))?;
+                if !is_value_type(found) {
+                    return Err("AP function must have an object representation".into());
+                }
+                let args = Self::array(Self::field(x, 1)?)?;
+                if args.is_empty() || args.len() > 16 {
+                    return Err("AP requires 1..16 object arguments".into());
+                }
+                let mut lowered = Vec::new();
+                for arg in args {
+                    lowered.push(Self::arg(arg, env, "tobj")?);
+                }
+                Ok(format!("x_{fun}.apply(vec![{}])", lowered.join(", ")))
             }
             9 => {
                 // box(scalar type, variable)
@@ -820,6 +905,10 @@ impl Reader {
 }
 
 // Naming is injective over UTF-8 bytes and independent of declaration ordering.
+fn internal_closure_name(lean_name: &str) -> String {
+    format!("__pap_{}", internal_name(lean_name))
+}
+
 fn internal_name(lean_name: &str) -> String {
     let mut out = String::from("lean_");
     for byte in lean_name.as_bytes() {
@@ -857,7 +946,7 @@ impl Reader {
             match Self::tag(body)? {
                 0 => {
                     let expr = Self::field(body, 2)?;
-                    if Self::tag(expr)? == 6 {
+                    if matches!(Self::tag(expr)?, 6 | 7) {
                         calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
                     }
                     pending.push(Self::field(body, 3)?);
@@ -966,6 +1055,32 @@ impl Reader {
                 Some(&signatures),
             )?);
             result.push('\n');
+        }
+        // Only callable object ABI declarations receive generated thunks.
+        // No raw address is ever read out of a Lean or Rust heap object.
+        for (name, sig) in &signatures {
+            if sig.params.is_empty()
+                || !sig.params.iter().all(|ty| is_value_type(ty))
+                || !is_value_type(sig.result)
+            {
+                continue;
+            }
+            result.push_str("#[allow(dead_code)]\n");
+            writeln!(
+                result,
+                "fn {}(args: Vec<__LeanValue>) -> __LeanValue {{",
+                internal_closure_name(name)
+            )
+            .unwrap();
+            writeln!(result, "    assert_eq!(args.len(), {});", sig.params.len()).unwrap();
+            write!(result, "    {}(", internal_name(name)).unwrap();
+            for i in 0..sig.params.len() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+                write!(result, "args[{i}].clone()").unwrap();
+            }
+            result.push_str(")\n}\n");
         }
         // Exact same dependency closure is shared by all public wrappers.
         for (root, public_name) in roots {

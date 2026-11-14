@@ -11,7 +11,6 @@ export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_
 cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
-lean examples/FunctionProbe.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"
 lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
 # Compile an imported Lean module separately, then compile its transitive
@@ -187,6 +186,28 @@ for fixture in RefusalObjectNat RefusalObjectCtor; do
   fi
   rm -f "examples/${fixture}.log"
 done
+# First-class closures must survive Lean IR: pap allocates a captured value;
+# app invokes the exact source-defined compiled boxed helper.
+rm -rf examples/function-package examples/rejected-function-package
+lean --load-dynlib="$NATIVE_LIB" examples/FunctionValues.lean
+if ! grep -Fq "__LeanValue::pap(" examples/function-package/src/lib.rs; then
+  echo "first-class PAP lowering was not exercised" >&2; exit 1
+fi
+if ! grep -Fq ".apply(vec![" examples/function-package/src/lib.rs; then
+  echo "first-class AP lowering was not exercised" >&2; exit 1
+fi
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path examples/function-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/function-package/Cargo.toml --all-targets -- -D warnings
+# Unknown external/heap representations must still refuse before publishing.
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalFunctionValues.lean > examples/RefusalFunctionValues.log 2>&1; then
+  echo "unsupported function runtime accepted" >&2; exit 1
+fi
+if [[ -e examples/rejected-function-package ]] || ! grep -q "Rust native backend refused" examples/RefusalFunctionValues.log; then
+  cat examples/RefusalFunctionValues.log >&2
+  echo "unsupported first-class function did not refuse" >&2; exit 1
+fi
+rm -f examples/RefusalFunctionValues.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -199,7 +220,9 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=6080"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/generated_*.rs
+  echo "differential_assertions=7616"
+  echo "source_defined_pap_ap=PASS"
+  echo "first_class_function_runtime=Rc-immutable-boxed-objects"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/FunctionValues.lean examples/RefusalFunctionValues.lean examples/function-package/src/lib.rs examples/function-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

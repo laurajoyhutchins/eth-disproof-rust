@@ -113,3 +113,36 @@ separate ETH symbolic/physical semantics obligations remain open.
 - Total smoke suite: **6,080** differential assertions, not a general
   semantic-refinement theorem. Arbitrary-precision Nat, String, Array, and
   mutable object semantics remain entirely unsupported.
+
+## First-class source-defined function objects (bounded PAP/AP)
+
+The compiler now handles actual pinned Lean IR `Expr.pap` (partial
+application) and `Expr.ap` (indirect application) for one explicitly
+restricted ABI: **all captured arguments, remaining arguments and return
+values must have `object`/`tobject`/`tagged` storage**. The compiler
+must find a complete source-defined transitive IR closure for the PAP
+target. An emitted Rust function thunk accepts an ordered
+`Vec<__LeanValue>` and invokes the corresponding compiled declaration
+with statically checked arity and types. The runtime stores the thunk and
+captured immutable `__LeanValue` objects in an `Rc`-backed
+`Closure` variant; application either returns a further partial
+closure or calls the complete target. No unsafe function-pointer casts,
+Lean runtime dependency or arbitrary host callback substitute are used.
+
+The acceptance fixture deliberately forces *real* boxed PAP/AP through
+a source-defined higher-order function boundary and an `Option`
+carrying a function. Lean 4.34.1's actual IR for this fixture includes
+`pap ..._lam_0._boxed` with two boxed captures (one tagged Bool,
+one boxed UInt64) and `app` with a separately boxed UInt64 argument.
+The boxed generated helper itself unboxes, calls the original scalar
+function, boxes the result, and returns it. Another fixture reuses a
+shared callable twice to exercise immutable capture sharing.
+
+CI compares 1,536 independently original-Lean-evaluated results over
+512 edge/seeded inputs for each of three source-root functions, alongside
+all previous 6,080 assertions. Full object polymorphism, heterogeneous
+scalar PAP, overapplication, mutable closures, general higher-order
+callbacks, exceptions and noncomputable declarations are **not supported**.
+Runtime calls with intentionally ill-typed `__LeanValue` arguments may
+panic; the generated ABI is intended for callers obeying the published
+Lean function's types. No universal compiler refinement theorem is claimed.

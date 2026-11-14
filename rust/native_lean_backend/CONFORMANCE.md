@@ -120,3 +120,12 @@ The canonical `src/runtime/immutable_value.rs` is extended with seven source-ide
 ## Closed arbitrary-precision Nat literals (candidate)
 
 The pinned Lean C API converts source `Lean.IR.LitVal.num` objects to decimal without machine-word truncation; emitted Rust constructs the same canonical GMP-backed `__LeanValue::nat_from_decimal`. Constants with more than 4 KiB of Lean integer storage refuse. `LargeNat.lean` supplies **76** original-Lean oracle comparisons, including large literals and up to 4096-bit external inputs; unknown `Nat.pow` remains a structured refusal. No competing generated GMP runtime is introduced. This feature requires a clean exact-head and post-merge acceptance run.
+
+## Source-typed immutable List Nat and independent Armada acceptance
+
+The native emitted value model now preserves verified `List.nil`/`List.cons` source identities and exact 0/2 pointer-field layouts, handles two-alternative List cases, and uses the existing canonical immutable `Rc` runtime. This adds **no IR constructor tags** beyond the existing bounded 31/48 inventory. It does not permit general List operations, custom ADTs, mutable heaps or observable `isShared`.
+
+`examples/ListFixture.lean` generates **512 independently evaluated Lean→Rust assertions** in a standalone Cargo library; debug and release suites plus strict Clippy pass. Total core source oracle cases are **17,033**, with **1,920** primitive-matrix assertions separate. The actual unchanged [Armada `Sched.argLeastLoad`](https://github.com/AshishKumar4/armada/blob/c12b4a57bab0c055ab734438249e9510dfc8f970/lean/Sched/Basic.lean) is now executable in standalone Rust, with **128 additional original-Lean oracle comparisons passed**. [Exact-head evidence](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43639021692/artifacts/14131273459).
+
+This is one substantial independent external-project pass, **not** the three required by G1 item #193-32. Newspeak and Keboola remain explicit refusals. The source-level GMP Nat and List/Option contracts are finite-tested, not universally proved for arbitrary heaps and inputs.
+

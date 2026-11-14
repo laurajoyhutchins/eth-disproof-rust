@@ -17,8 +17,10 @@ mkdir -p artifacts/parity-native
 out="$(pwd)/artifacts/parity-native"
 lean -o examples/PropertyDef.olean examples/PropertyDef.lean
 lean --load-dynlib="$NATIVE_LIB" examples/PropertyCodegen.lean > "$out/emitter.log"
-lean -c "$out/PropertyDef.c" examples/PropertyDef.lean > "$out/property-c.log"
-lean -c "$out/PropertyNativeBenchmark.c" examples/PropertyNativeBenchmark.lean > "$out/bench-c.log"
+# Preserve the Lean module identity (PropertyDef), not examples.PropertyDef.
+# Import resolution in PropertyNativeBenchmark expects initialize_PropertyDef.
+(cd examples && lean -c "$out/PropertyDef.c" PropertyDef.lean) > "$out/property-c.log"
+(cd examples && lean -c "$out/PropertyNativeBenchmark.c" PropertyNativeBenchmark.lean) > "$out/bench-c.log"
 
 # leanc is the pinned Lean 4.34.1 linker wrapper; generated C depends on
 # Lean at runtime, unlike the emitted Rust. Both execute Property.hop.

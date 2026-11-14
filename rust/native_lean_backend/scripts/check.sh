@@ -42,6 +42,27 @@ if [[ "$(cat examples/rejected.rs)" != "preserve-existing-artifact" ]]; then
   echo "failed compilation modified preexisting Rust output" >&2; exit 1
 fi
 rm -f examples/rejected.rs examples/rejected.log
+# Real Lean-to-Rust FFI validation: a NUL cannot shorten a symbol name,
+# and a closure public identifier must refuse before touching old output.
+printf 'existing-name-artifact\n' > examples/unsafe-public-name.rs
+for fixture in RefusalNameNul RefusalPublicName; do
+  if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" \
+      > "artifacts_name_${fixture}.log" 2>&1; then
+    echo "$fixture unexpectedly accepted an unsafe public Rust name" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'unsafe Rust function name' "artifacts_name_${fixture}.log"; then
+    cat "artifacts_name_${fixture}.log" >&2
+    echo "$fixture did not refuse at the correct FFI name boundary" >&2
+    exit 1
+  fi
+  rm -f "artifacts_name_${fixture}.log"
+done
+if [[ "$(cat examples/unsafe-public-name.rs)" != "existing-name-artifact" ]]; then
+  echo "rejected public closure name modified a prior output" >&2
+  exit 1
+fi
+rm -f examples/unsafe-public-name.rs
 # Even an elaborated executable declaration must refuse if its source
 # depends on sorryAx. Do not publish code for untrusted proof holes.
 printf 'preserve-sorry-output\n' > examples/rejected_sorry.rs
@@ -185,6 +206,6 @@ mkdir -p artifacts
   echo "host_abi_probe=PASS"
   echo "refusal_schema=status-declaration-construct-reason-v1"
   echo "standalone_cargo_with_no_lean_runtime=PASS"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs src/safety.rs scripts/package_crate.sh scripts/check-coverage.sh scripts/check-item30.sh scripts/coverage-ledger.rs primitive-registry.tsv runtime-primitive-registry.tsv src/standalone_runtime.rs examples/Item30IRProbe.lean examples/Item30Conformance.lean examples/generated_semantic_cases.rs ir-coverage-classification.tsv examples/IRInventory.lean examples/PrimitiveMatrix.lean examples/Example.lean examples/Refusal.lean examples/generated_*.rs artifacts/standalone_pipeline/Cargo.toml artifacts/ir-coverage.tsv artifacts/primitive-conformance.tsv
+  sha256sum NativeRust.lean native/abi.c src/lib.rs src/safety.rs scripts/package_crate.sh scripts/check-coverage.sh scripts/check-item30.sh scripts/coverage-ledger.rs primitive-registry.tsv runtime-primitive-registry.tsv src/standalone_runtime.rs examples/Item30IRProbe.lean examples/Item30Conformance.lean examples/generated_semantic_cases.rs ir-coverage-classification.tsv examples/IRInventory.lean examples/PrimitiveMatrix.lean examples/Example.lean examples/Refusal.lean examples/RefusalNameNul.lean examples/RefusalPublicName.lean examples/generated_*.rs artifacts/standalone_pipeline/Cargo.toml artifacts/ir-coverage.tsv artifacts/primitive-conformance.tsv
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

@@ -77,7 +77,7 @@ assertions. The execution ledger is artifacts/primitive-conformance.tsv.
 The existing regression fixtures provide 1,984 additional original-Lean
 comparisons over supported scalar, Bool, imported-direct-call and recursive
 programs. Baseline scalar/direct-call comparisons: **3,904**. The item-30 suite adds
-**100** original-Lean object-value cases for **4,004** in total.
+**101** original-Lean object-value cases for **4,005** in total.
 
 ## Explicit limitations
 
@@ -104,7 +104,7 @@ semantic-preservation theorem.
 The ten runtime primitives are enumerated in
 `runtime-primitive-registry.tsv`, separately from the 30 scalar arithmetic
 operations. `scripts/check-item30.sh` requires every runtime adapter to
-appear in emitted code and executes **100** identical-input comparisons
+appear in emitted code and executes **101** identical-input comparisons
 against original Lean results. The generated runtime is standalone Rust
 with no Lean runtime or third-party crates. [SEMANTICS.md](SEMANTICS.md)
 records the precise feature boundary and negative refusal conditions.

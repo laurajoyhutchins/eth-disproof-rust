@@ -142,7 +142,7 @@ examples within a **bounded subset**, not proof of general compiler correctness.
 
 ## Pinned source-derived conformance matrix
 
-The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 29-constructor bounded whitelist (including the scoped joins), and executes all 30 registered primitives on 64 independently Lean-evaluated cases each. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
+The mandatory `scripts/check.sh` run also checks the 48 real Lean IR constructors against a complete pinned classification, gates production object decoding on a generated 31-constructor bounded whitelist (including narrowly scoped erased Array type-proofs), and executes the original 30 primitive × 64 Lean-oracle matrix plus 38 additional source-derived Float/unsigned primitive operations. The constructor inventory and primitive matrix refuse on drift, missing fixtures, or unsupported operations; no serialized JSON IR is involved. See [CONFORMANCE.md](CONFORMANCE.md) and [COVERAGE.md](COVERAGE.md). This remains a bounded compiler, not a general-purpose release.
 
 ## Integrated immutable objects and callable values
 
@@ -169,4 +169,4 @@ Unrestricted Nat/Int APIs, IO and portability remain unsupported; the signed Int
 
 ## Unified GMP-backed value operations
 
-A single `__LeanValue` immutable runtime now supports the mainline GMP Nat arithmetic, the original verified Option/Prod constructors and callable values, and seven supplementary source-native Int, Unicode String, Array UInt64 and List UInt64 operations. No duplicate native source compiler or BigNat arithmetic engine is maintained. The Lean original-source oracle fixture adds 101 comparisons to mainline's 13,336 source-based cases, plus the separate 1,920 fixed-width matrix. These **15,357** total comparisons are the target for combined exact-head verification, not a completed G1 claim. [SEMANTICS.md](SEMANTICS.md) gives exact supported and unsupported semantics.
+A single `__LeanValue` immutable runtime now supports the mainline GMP Nat arithmetic, the original verified Option/Prod constructors and callable values, and seven supplementary source-native Int, Unicode String, Array UInt64 and List UInt64 operations. No duplicate native source compiler or BigNat arithmetic engine is maintained. The Lean original-source oracle fixture adds 101 comparisons to mainline's 16,344 source-based cases, plus the separate 1,920 fixed-width matrix. These **18,365** total comparisons are the target for combined exact-head verification, not a completed G1 claim. [SEMANTICS.md](SEMANTICS.md) gives exact supported and unsupported semantics.

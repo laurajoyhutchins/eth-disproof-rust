@@ -12,13 +12,17 @@ export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_
 # The ledger is fail-closed on tag/order drift and documents conditional semantics.
 mkdir -p artifacts
 lean scripts/VerifyIRInventory.lean
-test "$(awk -F '\t' 'NR>1 && $1=="primitive" && $3=="conditional" {n++} END {print n+0}' artifacts/ir-constructor-summary.tsv)" -eq 30
+test "$(awk -F '\t' 'NR>1 && $1=="primitive" && $3=="conditional" {n++} END {print n+0}' artifacts/ir-constructor-summary.tsv)" -eq 68
 awk -F '\t' '
   $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jdecl" && $3=="conditional" {a=1}
   $1=="Lean.IR.FnBody" && $2=="Lean.IR.FnBody.jmp" && $3=="conditional" {b=1}
   $1=="Lean.IR.Expr" && $2=="Lean.IR.Expr.pap" && $3=="refused" {c=1}
   END {exit !(a && b && c)}
 ' artifacts/ir-constructor-summary.tsv
+# Require exact agreement between original-Lean inventory and one production registry.
+diff -u \
+  <(awk -F '\t' '$1=="primitive" && $3=="conditional" {print $2}' artifacts/ir-constructor-summary.tsv | LC_ALL=C sort) \
+  <(awk -F '\t' '!/^#/ && NF==4 {print $1}' primitive-registry.tsv | LC_ALL=C sort)
 if grep -Eq 'rs_emit_ir_bundle|#native_rust_bundle' NativeRust.lean src/lib.rs; then
   echo 'multiple competing multi-root compiler interfaces detected' >&2
   exit 2
@@ -153,6 +157,19 @@ fn main() {
 RUST
 rustc --edition=2021 -o examples/native-test examples/run.rs
 examples/native-test
+# Any inductive carrying a field requires the object runtime and must refuse.
+printf 'preserve-previous-tagged-output\n' > examples/rejected_tagged_heap.rs
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalTaggedHeap.lean > examples/RefusalTaggedHeap.log 2>&1; then
+  echo "heap-backed tagged constructor was incorrectly accepted" >&2; exit 1
+fi
+if ! grep -q "Rust native backend refused" examples/RefusalTaggedHeap.log; then
+  cat examples/RefusalTaggedHeap.log >&2
+  echo "heap-backed tagged refusal missing" >&2; exit 1
+fi
+if [[ "$(cat examples/rejected_tagged_heap.rs)" != "preserve-previous-tagged-output" ]]; then
+  echo "failed tagged refusal modified existing output" >&2; exit 1
+fi
+rm -f examples/rejected_tagged_heap.rs examples/RefusalTaggedHeap.log
 # Real Lean IR join continuations (jdecl/jmp), including captured locals.
 lean --load-dynlib="$NATIVE_LIB" examples/JoinFixture.lean
 cat > examples/test-join.rs <<'RUST'
@@ -177,7 +194,7 @@ package_hash_after="$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -
 if [[ "$package_hash_before" != "$package_hash_after" ]]; then
   echo "multi-root Cargo source is not deterministic" >&2; exit 1
 fi
-for name in RefusalPackageCollision RefusalPackageUnsupported; do
+for name in RefusalPackageCollision RefusalPackageUnsupported RefusalPackageIO; do
   rm -rf examples/rejected-package
   if lean --load-dynlib="$NATIVE_LIB" "examples/${name}.lean" > "examples/${name}.log" 2>&1; then
     echo "invalid multi-root package was accepted: $name" >&2; exit 1
@@ -195,6 +212,38 @@ if [[ "$(sha256sum examples/native-package/src/lib.rs | cut -d' ' -f1)" != "$pac
   echo "refused overwrite modified the published Cargo package" >&2; exit 1
 fi
 rm -f examples/RefusalPackageOverwrite.log
+# A zero-argument Lean scalar entrypoint can be packaged as a standalone
+# executable. No Lean shared library or environment is needed at execution.
+rm -rf examples/native-binary examples/native-binary-small
+lean --load-dynlib="$NATIVE_LIB" examples/BinaryFixture.lean
+mapfile -t binary_expected < artifacts/binary-expected.txt
+for entry in "native-binary:0" "native-binary-small:1"; do
+  package="${entry%%:*}"
+  position="${entry##*:}"
+  observed="$(env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+    cargo run --quiet --offline --manifest-path "examples/${package}/Cargo.toml")"
+  if [[ "$observed" != "${binary_expected[$position]}" ]]; then
+    echo "standalone binary ${package} disagrees with Lean: ${observed}" >&2; exit 1
+  fi
+done
+# A parameterized root is NOT silently turned into a guessed CLI.
+rm -rf examples/rejected-binary
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalBinaryArguments.lean > examples/RefusalBinaryArguments.log 2>&1; then
+  echo "accepted a parameterized binary without an argument contract" >&2; exit 1
+fi
+if [[ -e examples/rejected-binary ]] || ! grep -q "entry requires zero arguments" examples/RefusalBinaryArguments.log; then
+  echo "parameterized binary refusal failed closed" >&2; exit 1
+fi
+rm -f examples/RefusalBinaryArguments.log
+# An existing package can never be clobbered by another generated binary.
+binary_hash_before="$(sha256sum examples/native-binary/src/main.rs | cut -d' ' -f1)"
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalBinaryOverwrite.lean > examples/RefusalBinaryOverwrite.log 2>&1; then
+  echo "binary command overwrote a previous package" >&2; exit 1
+fi
+if [[ "$(sha256sum examples/native-binary/src/main.rs | cut -d' ' -f1)" != "$binary_hash_before" ]]; then
+  echo "refused binary overwrite changed a published source" >&2; exit 1
+fi
+rm -f examples/RefusalBinaryOverwrite.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -213,8 +262,11 @@ mkdir -p artifacts
   cargo --version
   echo "differential_assertions=3008"
   echo "ir_constructor_inventory=PASS"
-  echo "runtime_tag_whitelist=16_scoped_IR_constructors"
-  echo "primitive_conformance=30_operations_x_64_original_Lean_oracles"
+  echo "runtime_tag_whitelist=20_scoped_IR_constructors"
+  echo "primitive_conformance=30_baseline_x_64_plus_38_extended_primitive_oracles"
+  echo "full_registry_68=PASS"
+  echo "standalone_binary=PASS"
+  echo "finite_float_enum_and_total_unsigned=PASS"
   sha256sum ir-coverage-classification.tsv primitive-registry.tsv scripts/coverage-ledger.rs \
     scripts/check-coverage.sh examples/IRInventory.lean examples/PrimitiveMatrix.lean \
     artifacts/ir-constructors.tsv artifacts/ir-coverage.tsv \

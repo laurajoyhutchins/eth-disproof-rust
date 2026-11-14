@@ -28,12 +28,12 @@ With pinned Lean 4.34.1 commit `5045d0056413266e57c625dcd7c365b10e377c52`, Linux
     lake build
     bash scripts/check.sh
 
-The pre-existing combined suite covers 13,336 mainline scalar, join, multi-root, immutable object, first-class function and GMP Nat comparisons, plus a separate 1,920 fixed-width primitive matrix. The new 101 source-level comparisons bring these totals to **13,437** and **15,357** respectively, **subject to successful exact-head integrated CI**. Randomized property tests and independent upstream project probes are separate.
+The post-#221 combined mainline suite covers **16,344** scalar, join, multi-root, immutable-object, first-class function, GMP Nat, finite Float, enum and extended unsigned comparisons, plus the **separate 1,920** fixed-width primitive matrix. The new 101 original-source comparisons produce **16,445** core assertions and **18,365** with the separate primitive matrix, **subject to successful exact-head integrated CI**. Randomized property tests and independent upstream project probes are separate.
 
 `check-item30.sh` independently compiles the generated Rust using `rustc` and Cargo in debug/release, with Lean runtime environment variables removed, executes identical inputs, enforces strict Clippy, and checks that the final executable does not link Lean. GMP uses intentional audited FFI unsafe code; forbidding all unsafe code in generated Rust would be incorrect.
 
 ## Boundaries and exclusions
 
-The checked IR coverage ledger permits only **29 bounded constructor variants out of 48**. Erased arguments are accepted solely as type parameters for Array primitives, never as runtime values. All unsupported IR must produce structured refusal; negative cases cover unsupported Nat bitwise operations, String mutation and Array indexing, with previous output files preserved.
+The checked IR coverage ledger permits only **31 bounded constructor variants out of 48**. Erased arguments are accepted solely as type parameters for Array primitives, never as runtime values. All unsupported IR must produce structured refusal; negative cases cover unsupported Nat bitwise operations, String mutation and Array indexing, with previous output files preserved.
 
 Dynamic Rust `__LeanValue` inputs are a trusted caller boundary: wrong enum variants may panic. The tests do **not** establish general memory-sharing, mutation, exceptions/IO, arbitrary Char APIs, generic collections, malformed UTF-8, unrestricted first-class functions, or the original noncomputable ETH counting program. Finite differential testing is not a semantic-preservation theorem. G1/G2 remain separate acceptance gates.

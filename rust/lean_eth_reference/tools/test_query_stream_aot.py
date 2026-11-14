@@ -1,6 +1,8 @@
 """Offline fail-closed contracts for the *original* QueryStream AOT probe."""
 import hashlib
 import json
+import os
+import signal
 import sys
 import tempfile
 from pathlib import Path
@@ -8,6 +10,7 @@ import time
 import unittest
 
 from query_stream_aot import (validate_query, run_bounded, verify_query_import_receipt,
+                              OutputLimitError, MAX_PROCESS_OUTPUT_BYTES,
                               MODULE, SOURCE_COMMIT, DECLARATION, IDENTIFIER)
 
 BLOB = "f" * 40
@@ -138,6 +141,51 @@ class QueryAotContract(unittest.TestCase):
                 run_bounded([sys.executable, "-c", script], root, 1)
             time.sleep(0.8)
             self.assertFalse(marker.exists(), "timed-out Lean descendant survived")
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "POSIX supervision test")
+    def test_detached_grandchild_cannot_hold_a_pipe_open_past_timeout(self):
+        with tempfile.TemporaryDirectory(prefix="query-aot-detached-") as path:
+            root = Path(path)
+            pid_path = root / "detached.pid"
+            child = "import time; time.sleep(8)"
+            script = (
+                "import pathlib,subprocess,sys,time\\n"
+                f"child=subprocess.Popen([sys.executable, '-c', {child!r}], "
+                "start_new_session=True, stdout=sys.stdout, stderr=sys.stderr)\\n"
+                f"pathlib.Path({str(pid_path)!r}).write_text(str(child.pid))\\n"
+                "print('DETACHED_MARKER',flush=True)\\n"
+                "time.sleep(8)\\n"
+            )
+            start = time.monotonic()
+            try:
+                with self.assertRaisesRegex(TimeoutError, "timeout 1s"):
+                    run_bounded([sys.executable, "-c", script], root, 1,
+                                log_base=root / "captured")
+            finally:
+                if pid_path.exists():
+                    pid = int(pid_path.read_text())
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            self.assertLess(time.monotonic() - start, 5,
+                            "supervisor blocked on a detached inherited pipe")
+            self.assertIn("DETACHED_MARKER",
+                          (root / "captured.stdout.log").read_text())
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "POSIX supervision test")
+    def test_oversized_output_is_refused_without_collecting_into_memory(self):
+        with tempfile.TemporaryDirectory(prefix="query-aot-overoutput-") as path:
+            root = Path(path)
+            script = (f"import os; os.write(1, b'X'*"
+                      f"({MAX_PROCESS_OUTPUT_BYTES}+100000))")
+            start = time.monotonic()
+            with self.assertRaisesRegex(OutputLimitError, "bounded output exceeded"):
+                run_bounded([sys.executable, "-c", script], root, 20,
+                            log_base=root / "large")
+            self.assertLess(time.monotonic() - start, 6)
+            self.assertGreater((root / "large.stdout.log").stat().st_size,
+                               MAX_PROCESS_OUTPUT_BYTES)
 
     def test_does_not_claim_kernel_certification_from_derived_digest(self):
         code = (Path(__file__).parent / "query_stream_aot.py").read_text()

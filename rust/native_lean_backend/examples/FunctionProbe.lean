@@ -40,6 +40,21 @@ run_cmd do
         | throwError "missing IR {root}"
       output := output.push (root, toString decl)
     return output
+  let generated ← liftCoreM do
+    let names := #[
+      ``FunctionProbe.runIndirect._lam_0._boxed,
+      ``FunctionProbe.runIndirect._lam_0,
+      ``FunctionProbe.pack._lam_0._boxed
+    ]
+    let mut found : Array (Lean.Name × String) := #[]
+    for name in names do
+      if let some decl ← Lean.IR.findDecl name then
+        found := found.push (name, toString decl)
+    return found
+  for (name, ir) in generated do
+    logInfo m!"GENERATED_CLOSURE_IR_START {name}"
+    logInfo m!"{ir}"
+    logInfo m!"GENERATED_CLOSURE_IR_END {name}"
   for (root, ir) in snapshots do
     logInfo m!"FUNCTION_IR_PROBE_START {root}"
     logInfo m!"{ir}"

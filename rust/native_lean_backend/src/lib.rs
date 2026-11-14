@@ -1257,9 +1257,16 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
         assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
         for (family, tag) in [
-            ("IRType", 7), ("IRType", 8), ("IRType", 12),
-            ("Expr", 0), ("Expr", 3), ("Expr", 9), ("Expr", 10),
-            ("FnBody", 6), ("FnBody", 7), ("FnBody", 8),
+            ("IRType", 7),
+            ("IRType", 8),
+            ("IRType", 12),
+            ("Expr", 0),
+            ("Expr", 3),
+            ("Expr", 9),
+            ("Expr", 10),
+            ("FnBody", 6),
+            ("FnBody", 7),
+            ("FnBody", 8),
         ] {
             assert!(SUPPORTED_IR_TAGS.contains(&(family, tag)));
         }

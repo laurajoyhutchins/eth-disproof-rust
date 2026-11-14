@@ -377,6 +377,27 @@ if [[ -e examples/rejected-nat-package ]] || ! grep -q "Rust native backend refu
   echo 'unsupported Nat compilation failed to refuse cleanly' >&2; exit 1
 fi
 rm -f examples/RefusalNatBitwise.log
+# Source-defined immutable List Nat constructor/case/projection semantics.
+# Independently compute 512 original Lean values (including 1024-bit Nat),
+# then compile one standalone multi-root Cargo library and run the oracles.
+rm -rf examples/list-package
+lean --load-dynlib="$NATIVE_LIB" examples/ListFixture.lean
+if ! grep -q 'Generated directly from Lean IR declaration: ListFixture.headOrZero' examples/list-package/src/lib.rs ||
+   ! grep -q 'Generated directly from Lean IR declaration: ListFixture.prependSecond' examples/list-package/src/lib.rs; then
+  echo 'original List Nat source declarations missing from generated Rust' >&2
+  exit 1
+fi
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path examples/list-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --release --offline --manifest-path examples/list-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo clippy --offline --manifest-path examples/list-package/Cargo.toml --all-targets -- -D warnings
+# The compiler must lower source List.cons, not replace the source algorithm.
+if ! grep -Fq '__LeanValue::list_cons(' examples/list-package/src/lib.rs; then
+  echo 'original source List.cons was silently optimized or substituted' >&2
+  exit 1
+fi
 # Original closed Lean Nat constants of 200-512 bits, with oracle inputs
 # through 4096 bits. The pinned Lean C shim reads the full decimal value.
 rm -rf examples/large-nat-package examples/rejected-nat-pow-package
@@ -426,11 +447,12 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=16521"
+  echo "differential_assertions=17033"
+  echo "list_nat_original_lean_oracles=512"
   echo "large_nat_literal_oracles=76"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-  echo "core_and_matrix_oracles=18441"
+  echo "core_and_matrix_oracles=18953"
   echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
@@ -455,6 +477,7 @@ mkdir -p artifacts
     artifacts/item30-oracles.rs artifacts/item30-ir-probes.txt artifacts/item30-rejection.log
   sha256sum src/safety.rs
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
+  sha256sum examples/ListFixture.lean examples/list-package/src/lib.rs examples/list-package/tests/list_nat_oracle.rs examples/list-package/Cargo.toml
   sha256sum examples/NatFixture.lean examples/RefusalNatBitwise.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml \
     examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/large-nat-package/Cargo.toml \
     examples/large-nat-package/tests/literals.rs

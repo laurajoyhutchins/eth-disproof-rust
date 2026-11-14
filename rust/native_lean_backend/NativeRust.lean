@@ -10,7 +10,7 @@ namespace NativeRust
 
 /-- Emit a closed executable dependency graph in-process (no JSON IR). -/
 @[extern "rs_emit_ir_module"] opaque emitModule
-  (decls : @& Array Lean.IR.Decl) (root : @& String) (rustName : @& String) : String
+  (decls : @& Array Lean.IR.Decl) (root : @& Lean.Name) (rustName : @& String) : String
 
 
 /-- Compile one executable declaration with the pinned Lean compiler and emit Rust.
@@ -88,7 +88,7 @@ def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String :=
       decls := decls.push decl
       if let .fdecl _ _ _ body _ := decl then
         queue := queue ++ callsInBody body
-  let report := emitModule decls root.toString rustName
+  let report := emitModule decls root rustName
   if report.startsWith "OK\n" then
     return (report.drop 3).toString
   else if report.startsWith "ERROR\n" then

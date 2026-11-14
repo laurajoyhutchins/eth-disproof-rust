@@ -49,7 +49,7 @@ fn main() -> Result<(), String> {
     }
     let lean = Path::new(&args[1]);
     let rust = Path::new(&args[2]);
-    let expected = fs::read(&args[3]).map_err(|e| format!("read oracle: {e}"))?;
+    let expected = fs::read(Path::new(&args[3])).map_err(|e| format!("read oracle: {e}"))?;
     if expected.is_empty() || !expected.iter().all(|b| b.is_ascii_digit() || *b == b'\n') {
         return Err("expected stdout must contain a nonempty numeric checksum".into());
     }

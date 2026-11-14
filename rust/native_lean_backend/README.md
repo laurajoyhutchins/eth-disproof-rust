@@ -173,3 +173,21 @@ unsupported. Public Nat results use the generated `__LeanValue` wrapper;
 `nat_from_decimal` and `nat_to_decimal` are the explicit Rust boundary for
 this subset. Generated packages containing the immutable-value runtime need
 `libgmp` at build and run time. No semantic-preservation theorem is claimed.
+
+### Large compile-time Nat literals and optional GMP
+
+Large integer literals are decoded from **live** `Lean.IR.LitVal.num` values
+using Lean 4.34.1's public `lean_nat_div`/`lean_nat_mod` operations in the
+version-pinned C shim. No JSON, generated source substitution, or conversion
+through a machine word is involved. Constants above 4 KiB of Lean bigint
+storage are refused to cap the quadratic decimal extraction cost.
+
+The emitted immutable constructor runtime no longer includes GMP by default.
+The generator injects its GMP-backed Nat implementation only when emitted
+Rust calls a Nat primitive or constructs a boxed Nat literal.
+`Option UInt64`/`Prod` generated tests verify the **linked** executable has
+no `libgmp` or Lean runtime dependency. Arithmetic over Nat retains GMP.
+
+`examples/LargeNat.lean` checks 76 independently Lean-evaluated results on
+inputs up to 4,096 bits. This handles literal constants, **not** general
+constant folding: `Nat.pow` expressions remaining as IR calls still refuse.

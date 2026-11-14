@@ -171,11 +171,19 @@ rm -rf examples/object-package
 lean --load-dynlib="$NATIVE_LIB" examples/Objects.lean
 cargo test --offline --manifest-path examples/object-package/Cargo.toml
 cargo clippy --offline --manifest-path examples/object-package/Cargo.toml --all-targets -- -D warnings
+# An immutable object program using no Nat primitives must have no implicit
+# dependency on GMP or Lean. Check the actual linked test executable, not just
+# a source-level guess: the old all-in-one runtime pulled in libgmp here.
+object_exe="$(find examples/object-package/target/debug/deps -maxdepth 1 -type f -name 'objects-*' -executable -print -quit)"
+if [[ -z "$object_exe" ]] || ldd "$object_exe" | grep -Eq 'lib(gmp|Lean|lean)\.'; then
+  echo 'non-Nat object executable depends on GMP/Lean or is missing' >&2; exit 1
+fi
 if [[ "$(grep -c 'Generated directly from Lean IR declaration: ObjectFixture.mkOpt' examples/object-package/src/lib.rs)" != 1 ]]; then
   echo "object constructor dependency was not emitted exactly once" >&2; exit 1
 fi
-# Keep unsupported arbitrary Nat and non-Option sum constructors fail closed.
-for fixture in RefusalObjectNat RefusalObjectCtor; do
+# Nat literals are now supported (see LargeNat), but non-Option
+# sum constructors remain outside the verified immutable runtime.
+for fixture in RefusalObjectCtor; do
   rm -rf examples/rejected-object-package
   if lean --load-dynlib="$NATIVE_LIB" "examples/${fixture}.lean" > "examples/${fixture}.log" 2>&1; then
     echo "unsupported object program accepted: ${fixture}" >&2; exit 1
@@ -193,6 +201,15 @@ rm -rf examples/nat-package
 lean --load-dynlib="$NATIVE_LIB" examples/NatFixture.lean
 cargo test --offline --manifest-path examples/nat-package/Cargo.toml
 cargo clippy --offline --manifest-path examples/nat-package/Cargo.toml --lib -- -D warnings
+# Closed Nat decimal literals up to the pinned 4 KiB compile-time bound
+# must survive exact in-process IR extraction without usize/u64 truncation.
+rm -rf examples/large-nat-package
+lean --load-dynlib="$NATIVE_LIB" examples/LargeNat.lean
+cargo test --offline --manifest-path examples/large-nat-package/Cargo.toml
+cargo clippy --offline --manifest-path examples/large-nat-package/Cargo.toml --lib -- -D warnings
+if ! grep -q '__LeanValue::nat_from_decimal("1606938044258990275541962092341162602522202993782792835301383")' examples/large-nat-package/src/lib.rs; then
+  echo '200-bit compiler IR literal was not preserved exactly' >&2; exit 1
+fi
 # A Nat operation outside the supported primitive set must refuse the entire
 # dependency closure and must not publish a partial Cargo package.
 rm -rf examples/rejected-nat-package
@@ -204,6 +221,16 @@ if [[ -e examples/rejected-nat-package ]] || ! grep -q 'Rust native backend refu
   echo 'unsupported Nat compilation published partial output or lacked refusal' >&2; exit 1
 fi
 rm -f examples/RefusalNatBitwise.log
+# Computed exponentiation that remains an opaque IR call must be rejected.
+rm -rf examples/rejected-nat-pow-package
+if lean --load-dynlib="$NATIVE_LIB" examples/RefusalNatPow.lean > examples/RefusalNatPow.log 2>&1; then
+  echo 'unsupported Nat.pow was silently accepted' >&2; exit 1
+fi
+if [[ -e examples/rejected-nat-pow-package ]] || ! grep -q 'Rust native backend refused' examples/RefusalNatPow.log; then
+  cat examples/RefusalNatPow.log >&2
+  echo 'Nat.pow refusal published partial output or lacked diagnostic' >&2; exit 1
+fi
+rm -f examples/RefusalNatPow.log
 cargo test --offline
 cargo fmt -- --check
 cargo clippy --offline --all-targets -- -D warnings
@@ -216,7 +243,7 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=11288"
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/NatFixture.lean examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml examples/generated_*.rs
+  echo "differential_assertions=11364"
+  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/NatFixture.lean examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/nat-package/src/lib.rs examples/nat-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

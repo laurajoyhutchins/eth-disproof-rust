@@ -33,3 +33,9 @@
 # Arbitrary-precision Nat GMP conformance artifacts
 /examples/nat-package/
 /examples/RefusalNatBitwise.log
+
+# Closed arbitrary-precision Nat literal conformance artifacts
+/examples/large-nat-package/
+
+/examples/rejected-nat-pow-package/
+/examples/RefusalNatPow.log

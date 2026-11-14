@@ -47,3 +47,30 @@ The workflow now runs `verify-receipts.mjs` after all eight audits. It refuses t
 **Interpretation:** The reference mathematical theorems and selected generated claims have proofs, but the vendor itself has not generated those proofs. Report `vendor_produced_mathematical_proofs: 0` and `model_tokens: 0`; PaperFormalizer and AutoformBot agent trials remain unrun.
 
 The fully passing verified-ledger CI run publishes `evidence/research/verified.json` in its `latex-lean-research-receipts` artifact (43586 bytes ZIP), including each source SHA-256, corresponding generated-claim theorem names, and the per-article compiler audit theorem. This report is produced after all eight kernel audits pass and was independently checked for ZIP integrity. The scorer's six negative/positive regression tests pass on the same run.
+
+
+## False-theorem mutation checks
+
+Three adversarial fixtures make exactly one mathematical clause change to an
+accepted original paper. The mutation is checked byte-for-byte against the
+immutable source using `benchmark/latex-to-lean/research/mutations/validate.mjs`.
+
+| Mutant | Single changed assertion | Generated Lean result |
+| --- | --- | --- |
+| `MRG03` | `ac+bd = bd-ac` instead of commutativity | Original false statement preserved and refuted |
+| `MRS02` | `e-o=x` instead of `e-o=y` | Altered claim refuted; unchanged companion claim verified |
+| `MRC02` | `binom(4,2)=5` instead of `=6` | Original false statement preserved and refuted |
+
+**[Verified negative-case CI run](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43643205816)**:
+all three mutated articles compile and elaborate, all three pass Leanify's
+kernel source-to-document audit, and Lean proves all three altered claims
+**false**. Eight independent proof/axiom receipts were checked; none contains
+`sorryAx` or an unexpected axiom. Raw compiler, generated-module, proof and
+audit receipts are available in the run's `latex-lean-mutation-evidence`
+artifact.
+
+The mutation suite is **separate from the positive 8/12 parser coverage score**.
+Rejecting unsupported wording is distinct from preserving a false claim
+faithfully. In this suite the stronger property was established for three
+supported false mathematical statements. PaperFormalizer and AutoformBot remain
+unmeasured on these negative cases.

@@ -275,6 +275,45 @@ LEAN
         fi
   fi
 
+  # Capture source-defined executable IR from original Keboola declarations.
+  # The constructor metadata lives in PullIn-producing IR, not in a standalone
+  # executable PullIn.mk declaration; source constructors are not functions.
+  if [[ "$name" == "keboola" ]]; then
+    cat > "$case_dir/inspect-pull-deps.lean" <<'LEAN'
+import NativeRust
+import SyncModel.Pull
+open Lean Elab Command
+run_cmd do
+  let roots : Array Lean.Name := #[
+    `SyncModel.pSqlEdit,
+    `SyncModel.forceConflict,
+    `SyncModel.locallyModified,
+    `SyncModel.remoteUnchanged,
+    `SyncModel.ymlModified,
+    `SyncModel.bytesMatch
+  ]
+  let mut snapshot := ""
+  for root in roots do
+    let decl ← liftCoreM do
+      if (← Lean.IR.findDecl root).isNone then
+        Lean.Compiler.compile #[root]
+      let some d ← Lean.IR.findDecl root
+        | throwError "original source-compiled Lean IR unavailable: {root}"
+      return d
+    snapshot := snapshot ++ s!"NAME {root}\n{decl}\nEND {root}\n"
+  if snapshot.utf8ByteSize > 262144 then
+    throwError "original Keboola structure IR exceeds 256 KiB"
+  liftIO <| IO.FS.writeFile
+    "artifacts/external-projects/keboola/pull-deps-ir.txt" snapshot
+LEAN
+    if (cd "$native" && timeout 45s lean "$case_dir/inspect-pull-deps.lean") \
+        > "$case_dir/inspect-pull-deps.log" 2>&1 && [[ -s "$case_dir/pull-deps-ir.txt" ]]; then
+      echo "original_keboola_structure_dependencies=PINNED_SOURCE_IR" >> "$case_dir/identity.txt"
+    else
+      echo "original_keboola_structure_dependencies=UNAVAILABLE_DIAGNOSTIC_ONLY" >> "$case_dir/identity.txt"
+    fi
+  fi
+
   # Source-pinned, read-only diagnostic for Armada's transitive List helpers.
   # These names are emitted by the original Sched.argLeastLoad compiler IR.
   # A missing diagnostic is reported separately and never accepted as Rust.

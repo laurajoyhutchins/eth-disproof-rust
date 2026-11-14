@@ -173,17 +173,17 @@ impl __LeanValue {
         Self::array(Vec::with_capacity(capacity.min(1024)))
     }
     fn tagged_nat(&self) -> usize {
+        // The Lean IR variable may be statically tagged while the canonical
+        // standalone Value representation contains a GMP-backed Nat.
+        // Read the *exact* numeric value; never truncate an arbitrary Nat.
         match self.0.as_ref() {
             __LeanValueRepr::Tagged(n) => *n,
-            _ => panic!("expected a source-verified tagged Nat"),
+            __LeanValueRepr::Nat(n) => n
+                .decimal()
+                .parse::<usize>()
+                .expect("source Nat index does not fit usize"),
+            _ => panic!("expected a source-verified small Nat"),
         }
-    }
-    // Lean IR can lower Array.size to an immediate tagged Nat or to
-    // a boxed Nat. Keep the existing boxed adapter intact.
-    fn array_size_tagged(&self) -> Self {
-        let __LeanValueRepr::Array(values) = self.0.as_ref()
-        else { panic!("Array.size expected an Array"); };
-        Self::tagged(values.len())
     }
     fn array_get_tagged(&self, index: usize) -> Self {
         let __LeanValueRepr::Array(values) = self.0.as_ref()

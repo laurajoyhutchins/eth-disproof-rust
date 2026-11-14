@@ -23,6 +23,7 @@ fi
 cat > examples/item30-run.rs <<'RUST'
 #![forbid(unsafe_code)]
 #[allow(dead_code)] mod nat_add { include!("generated_sem_nat_add.rs"); }
+#[allow(dead_code)] mod nat_add_closure { include!("generated_sem_nat_add_closure.rs"); }
 #[allow(dead_code)] mod nat_sub { include!("generated_sem_nat_sub.rs"); }
 #[allow(dead_code)] mod nat_mul { include!("generated_sem_nat_mul.rs"); }
 #[allow(dead_code)] mod int_add { include!("generated_sem_int_add.rs"); }
@@ -36,8 +37,8 @@ include!("generated_semantic_cases.rs");
 RUST
 checks="$(grep -c 'assert_eq!' examples/generated_semantic_cases.rs)"
 cp examples/generated_semantic_cases.rs artifacts/item30-oracles.rs
-if [[ "$checks" -ne 100 ]]; then
-  echo "expected 100 real Lean type-semantic cases, received $checks" >&2; exit 1
+if [[ "$checks" -ne 101 ]]; then
+  echo "expected 101 real Lean type-semantic cases, received $checks" >&2; exit 1
 fi
 rustc --edition=2021 -D warnings -F unsafe-code -o artifacts/item30-conformance examples/item30-run.rs
 artifacts/item30-conformance

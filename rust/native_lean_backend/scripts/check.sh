@@ -220,7 +220,7 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=7616"
+  echo "differential_assertions=8128"
   echo "source_defined_pap_ap=PASS"
   echo "first_class_function_runtime=Rc-immutable-boxed-objects"
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/object-package/src/lib.rs examples/object-package/Cargo.toml examples/Objects.lean examples/FunctionValues.lean examples/RefusalFunctionValues.lean examples/function-package/src/lib.rs examples/function-package/Cargo.toml examples/generated_*.rs

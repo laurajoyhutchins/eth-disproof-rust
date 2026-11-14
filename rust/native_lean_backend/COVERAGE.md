@@ -138,9 +138,10 @@ The boxed generated helper itself unboxes, calls the original scalar
 function, boxes the result, and returns it. Another fixture reuses a
 shared callable twice to exercise immutable capture sharing.
 
-CI compares 1,536 independently original-Lean-evaluated results over
-512 edge/seeded inputs for each of three source-root functions, alongside
-all previous 6,080 assertions. Full object polymorphism, heterogeneous
+CI compares 2,048 independently original-Lean-evaluated results over
+512 edge/seeded inputs for each of four source-root functions, alongside
+all previous 6,080 assertions. The fourth checks two-stage higher-order
+application. Full object polymorphism, heterogeneous
 scalar PAP, overapplication, mutable closures, general higher-order
 callbacks, exceptions and noncomputable declarations are **not supported**.
 Runtime calls with intentionally ill-typed `__LeanValue` arguments may

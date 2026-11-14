@@ -61,7 +61,7 @@ theorem boolean_words_length_two :
 
 theorem choose_sum (n : ℕ) :
     (Finset.range (n + 1)).sum (fun k => Nat.choose n k) = 2 ^ n := by
-  simpa using Nat.sum_choose_eq_pow_two n
+  simpa using Nat.sum_range_choose n
 
 #print axioms LatexLeanResearchGold.swap_involution
 #print axioms LatexLeanResearchGold.independent_swaps_commute

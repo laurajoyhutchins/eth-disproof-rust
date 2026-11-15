@@ -39,7 +39,8 @@ theorem group_sum_product
     {X : G → Type*} [∀ g, Fintype (X g)]
     {R : Type*} [CommSemiring R]
     (entry : (g : G) → X g → R) :
-    (∑ settings : (∀ g : G, X g), ∏ g, entry g (settings g)) =
+    (∑ settings ∈ Fintype.piFinset (fun g => (Finset.univ : Finset (X g))),
+      ∏ g, entry g (settings g)) =
       ∏ g, ∑ setting : X g, entry g setting := by
   classical
   rw [Finset.prod_univ_sum]
@@ -55,7 +56,8 @@ theorem conditional_group_contraction
     {R : Type*} [CommSemiring R]
     (outer : O → R) (entry : O → (g : G) → X g → R) :
     (∑ o : O, outer o *
-      (∑ settings : (∀ g : G, X g), ∏ g, entry o g (settings g))) =
+      (∑ settings ∈ Fintype.piFinset (fun g => (Finset.univ : Finset (X g))),
+        ∏ g, entry o g (settings g))) =
     ∑ o : O, outer o * (∏ g, ∑ setting : X g, entry o g setting) := by
   classical
   apply Finset.sum_congr rfl

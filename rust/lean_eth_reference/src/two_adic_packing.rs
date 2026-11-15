@@ -196,13 +196,12 @@ mod tests {
             let audit = RootPackingAudit::new(expected, groups, 1, 8).unwrap();
             assert_eq!(audit.minimum_root_edges_any_degree_cap(), Some(expected));
             assert_eq!(audit.packet_inequalities_hold(), true);
-            assert_eq!(
-                audit.original_child_shrink_bound_holds(),
-                groups > 48
+            assert_eq!(audit.original_child_shrink_bound_holds(), groups > 48);
+            assert!(
+                !RootPackingAudit::new(expected - 1, groups, 1, 8)
+                    .unwrap()
+                    .packet_inequalities_hold()
             );
-            assert!(!RootPackingAudit::new(expected - 1, groups, 1, 8)
-                .unwrap()
-                .packet_inequalities_hold());
         }
 
         // An unattainably huge lower bound must not wrap around to zero.

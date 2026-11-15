@@ -105,15 +105,7 @@ impl Reader {
                         rust_type(ret_ty)
                     )
                     .unwrap();
-                    Self::body(
-                        value,
-                        code,
-                        depth + 1,
-                        count,
-                        &mut value_env,
-                        ret_ty,
-                        ctx,
-                    )?;
+                    Self::body(value, code, depth + 1, count, &mut value_env, ret_ty, ctx)?;
                     writeln!(code, "    }};").unwrap();
                     let mut scoped_joins = ctx.joins.clone();
                     scoped_joins.insert(id, param_types);

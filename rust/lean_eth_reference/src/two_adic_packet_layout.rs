@@ -12,7 +12,12 @@
 //! equal symbols use that bit to select a copy from the padded class.
 
 use crate::Error;
-use crate::two_adic_matching_labels::BipartiteEdge;
+/// Edge identity retained while assembling packet slots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BipartiteEdge {
+    pub left: usize,
+    pub right: usize,
+}
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -256,7 +261,7 @@ pub fn pack_bounded(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::two_adic_matching_labels::construct_bounded;
+    use crate::matching_packing::{BipartiteGraph, construct_matching_labels};
 
     #[test]
     fn constructed_matching_labels_pack_all_edges_with_original_slots() {
@@ -264,9 +269,15 @@ mod tests {
         let edges = (0..16)
             .map(|i| BipartiteEdge { left: i, right: i })
             .collect::<Vec<_>>();
-        let labels = construct_bounded(16, 16, &edges, 2).unwrap();
-        let layout =
-            pack_bounded(&edges, &labels.left_labels, &labels.right_labels, 2, 1, 4).unwrap();
+        let graph = BipartiteGraph {
+            left_vertices: 16,
+            right_vertices: 16,
+            edges: edges.iter().map(|e| (e.left, e.right)).collect(),
+        };
+        let labels = construct_matching_labels(&graph, 2).unwrap();
+        let left = labels.left_labels.iter().map(|&x| x as usize).collect::<Vec<_>>();
+        let right = labels.right_labels.iter().map(|&x| x as usize).collect::<Vec<_>>();
+        let layout = pack_bounded(&edges, &left, &right, 2, 1, 4).unwrap();
         assert_eq!(layout.slots_per_packet, 2);
         assert!(layout.packets.len() <= 3 * edges.len() / 2);
         assert_eq!(

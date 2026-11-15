@@ -87,6 +87,19 @@ maximum degree* is a genuinely different assumption, not a free parameter.
 See [the root-packing obstruction and exact hypothetical schedule checker](root-packing-feasibility.md).
 No full recursion or new complexity bound is claimed.
 
+### Bounded orbit-sparse packet layout
+
+A [new finite packet-layout witness](two-adic-orbit-sparse-layout.md)
+groups only occupied coordinatewise-swap orbits, retains the
+original orientation and copy-index bits, and verifies all source
+edge identities. It yields the exact per-instance packet budget
+\(PL=M+E+R\), rather than the all-class uniform padding cost
+\(H_{\rm pad}D\). A paired exact finite check establishes
+the source Cauchy \(W(0)=I\) and a coupled-factor
+\(F(0)\) identity. The modified \(W(T)\) away from zero,
+weighted modes, precision and group factorization still need
+source-facing Lean proof. No active recursive count is claimed.
+
 ### Exact depth ceiling under the source leaf cutoff
 
 Even after replacing collision packing, the original \(r=64\),

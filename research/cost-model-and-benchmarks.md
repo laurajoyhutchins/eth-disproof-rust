@@ -81,6 +81,15 @@ uncovered active-size ranges after one or two recursive levels
 depending on \(r\). Changing the leaf cutoff without a new packing
 or base-case theorem cannot certify the complete pipeline.
 
+The [joint orbit/port labeling reference](two-adic-joint-orbit-balance.md)
+records both deterministic degree-weighted symbol balancing and
+bounded coordinate-relabel evaluations. The port theorem is
+\(r C\le M+(r-1)\Delta\); its sufficient degree condition
+does **not** imply the independent packet waste inequality
+\(E+R\le2M\). Any complete cost model must include the
+labeling search and explicit failures, not only the produced
+sparse packet count.
+
 Five places worth instrumenting first:
 
 | Stage | What to record |

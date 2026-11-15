@@ -113,12 +113,20 @@ already-verified source mutation programs without improving their
 reference-count correspondence.
 
 `examples/ReferenceBookkeepingFixture.lean` constructs actual Lean
-`IR.FnBody` terms. It tests six negative cases (each bookkeeping
+`IR.FnBody` terms. It tests seven negative cases (each bookkeeping
 instruction, possible alias across distinct IDs, paired increments and
-decrements, and a nested join) and four positive emissions (bookkeeping with no `isShared`,
+decrements, and a nested join) and seven positive emissions (bookkeeping with no `isShared`,
 `isShared` without bookkeeping, a sharing check followed by an
 increment, and the same ordering across a lexical join). These are
 emitter-contract checks, not a source execution trace theorem.
+
+The C-emitter source also bypasses `inc` and `dec` with
+`persistent = true`. The native Lean 4.34.1 ABI shim now reads the packed
+`check` and `persistent` flags from the actual `Lean.IR.FnBody`
+constructor layout. The audit keeps earlier nonpersistent effects but does
+not invent an RC effect for persistent no-ops. Three positive source-IR
+fixtures and one mixed-effect refusal enforce the distinction. This does
+not make arbitrary `isShared` calls semantically equivalent to Lean C.
 
 **Still unverified:** reference-count effects flowing through other
 called declarations, runtime alias identity across values and closures,

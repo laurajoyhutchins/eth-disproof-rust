@@ -44,6 +44,32 @@ run_cmd do
       (joined.splitOn "inc/dec/del").length > 1 do
     throwError "join-scoped RC observation was not refused: {joined}"
 
+  -- The pinned Lean C emitter does not execute RC increments or
+  -- decrements marked persistent. They must not taint a later isShared.
+  -- The packed C ABI flag decoder is exercised through real Lean.IR terms.
+  let persistentCases : Array (String × Lean.IR.FnBody) := #[
+    ("persistent-inc", .inc ⟨0⟩ 1 true true observed),
+    ("persistent-dec", .dec ⟨0⟩ 1 true true observed),
+    ("persistent-pair",
+      .inc ⟨0⟩ 1 false true
+        (.dec ⟨1⟩ 1 false true observed))
+  ]
+  for (label, body) in persistentCases do
+    let declaration : Lean.IR.Decl := .fdecl name #[x, y] .uint8 body info
+    let result := NativeRust.emit declaration "persistent_rc_probe"
+    unless result.startsWith "OK\n" do
+      throwError "Lean-C-omitted RC effect {label} unexpectedly refused: {result}"
+
+  -- One genuine RC effect still matters even when adjacent operations are
+  -- statically persistent. Source-CFG order cannot be erased by a noop.
+  let mixed : Lean.IR.FnBody :=
+    .inc ⟨0⟩ 1 true true
+      (.dec ⟨1⟩ 1 true false observed)
+  let mixedResult := NativeRust.emit (.fdecl name #[x, y] .uint8 mixed info) "mixed_rc_probe"
+  unless mixedResult.startsWith "ERROR\n" &&
+      (mixedResult.splitOn "inc/dec/del").length > 1 do
+    throwError "real RC effect after persistent noop was accepted: {mixedResult}"
+
   -- Reference bookkeeping without an RC observation remains in the
   -- bounded value-semantic subset. This checks emission, not a physical
   -- reference-count trace or an executable ownership correspondence.
@@ -75,4 +101,4 @@ run_cmd do
     NativeRust.emit (.fdecl name #[x] .uint8 orderedJoin info) "rc_join_after_observation"
   unless acceptedJoin.startsWith "OK\n" do
     throwError "ordered join RC after sharing check unexpectedly refused: {acceptedJoin}"
-  logInfo "Source RC effect observations: 6 refusals, 4 bounded positive emissions"
+  logInfo "Source RC effect observations: 7 refusals, 7 bounded positive emissions"

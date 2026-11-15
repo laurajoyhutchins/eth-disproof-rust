@@ -41,6 +41,7 @@ extern "C" {
     fn lr_string_ptr(x: Obj) -> *const c_char;
     fn lr_nat_decimal(x: Obj) -> *mut c_char;
     fn lr_param_borrow(x: Obj) -> i32;
+    fn lr_ir_rc_flags(x: Obj) -> i32;
     fn lr_free_string(x: *mut c_char);
     fn lr_string_size(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;

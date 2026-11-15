@@ -83,9 +83,17 @@ impl Reader {
                 FnBodyView::Set { next, .. } | FnBodyView::ScalarSet { next, .. } => {
                     pending.push((next, prior_rc, scope, depth));
                 }
-                FnBodyView::Inc { next, .. }
-                | FnBodyView::Dec { next, .. }
-                | FnBodyView::Delete { next, .. } => {
+                FnBodyView::Inc {
+                    persistent, next, ..
+                }
+                | FnBodyView::Dec {
+                    persistent, next, ..
+                } => {
+                    // Upstream LCNF.EmitC omits reference bookkeeping on
+                    // statically persistent objects. No RC effect is executed.
+                    pending.push((next, prior_rc || !persistent, scope, depth));
+                }
+                FnBodyView::Delete { next, .. } => {
                     pending.push((next, true, scope, depth));
                 }
                 FnBodyView::Case { alternatives, .. } => {

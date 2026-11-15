@@ -25,6 +25,21 @@ int lr_param_borrow(b_lean_obj_arg o) {
     return value <= 1 ? (int)value : -1;
 }
 
+/* Lean.IR.FnBody.inc/dec carry three object fields (x, n, body), then
+ * packed Bool c and persistent. These flags direct C code emission:
+ * persistent increments/decrements are omitted entirely.
+ * Reject unrecognized source tags or layouts rather than reading past them.
+ */
+int lr_ir_rc_flags(b_lean_obj_arg o) {
+    if (!o || !lean_is_ctor((lean_object *)o)) return -1;
+    unsigned tag = lean_obj_tag((lean_object *)o);
+    if ((tag != 6 && tag != 7) || lean_ctor_num_objs((lean_object *)o) != 3) return -1;
+    uint8_t checked = lean_ctor_get_uint8((lean_object *)o, 3 * sizeof(void *));
+    uint8_t persistent = lean_ctor_get_uint8((lean_object *)o, 3 * sizeof(void *) + 1);
+    if (checked > 1 || persistent > 1) return -1;
+    return (int)checked | ((int)persistent << 1);
+}
+
 size_t lr_array_len(b_lean_obj_arg o) { return o && lean_is_array((lean_object *)o) ? lean_array_size((lean_object *)o) : 0; }
 b_lean_obj_res lr_array_at(b_lean_obj_arg o, size_t n) {
     if (!o || !lean_is_array((lean_object *)o) || n >= lean_array_size((lean_object *)o)) return NULL;

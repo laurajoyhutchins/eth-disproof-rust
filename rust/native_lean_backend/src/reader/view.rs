@@ -34,10 +34,12 @@ pub(super) enum FnBodyView {
     },
     Inc {
         target: Obj,
+        persistent: bool,
         next: Obj,
     },
     Dec {
         target: Obj,
+        persistent: bool,
         next: Obj,
     },
     Delete {
@@ -63,6 +65,17 @@ pub(super) enum AltView {
 }
 
 impl Reader {
+    // Pinned, source-native packed Bool fields. The C shim checks the exact
+    // FnBody.inc/dec tag and object field count before accessing the bytes.
+    unsafe fn rc_persistent(x: Obj) -> Result<bool, String> {
+        let flags = lr_ir_rc_flags(x);
+        match flags {
+            0 | 1 => Ok(false),
+            2 | 3 => Ok(true),
+            _ => Err("invalid pinned Lean.IR inc/dec packed Bool flags".into()),
+        }
+    }
+
     pub(super) unsafe fn body_view(x: Obj) -> Result<FnBodyView, String> {
         Ok(match Self::checked_tag(x, "FnBody")? {
             0 => FnBodyView::Decl {
@@ -93,10 +106,12 @@ impl Reader {
             },
             6 => FnBodyView::Inc {
                 target: Self::field(x, 0)?,
+                persistent: Self::rc_persistent(x)?,
                 next: Self::field(x, 2)?,
             },
             7 => FnBodyView::Dec {
                 target: Self::field(x, 0)?,
+                persistent: Self::rc_persistent(x)?,
                 next: Self::field(x, 2)?,
             },
             8 => FnBodyView::Delete {

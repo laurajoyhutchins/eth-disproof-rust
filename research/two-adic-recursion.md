@@ -73,6 +73,33 @@ H=\left\lceil\frac{s}{\lfloor\sqrt\lambda\rfloor}\right\rceil
 
 A direct \(2^H\) leaf is not computationally practical at this scale. This is a limitation of the **stated sufficient schedule**, not a proof that no tighter admissible schedule exists.
 
+### Executable necessary-condition preflight
+
+For every positive edge count `s` representable in a Rust `u128`,
+`lambda = ceil(log2 s) <= 128`. Thus `u_0 = floor(lambda / 131072) = 0`.
+The stated active root condition `u_0 >= lambda^(4/5)` cannot hold.
+More generally, it implies the necessary condition `lambda >= 2^85`,
+before packing, precision and child-shrinkage constraints. It does not
+prove that a different schedule cannot work.
+
+The checked Rust audit reports this obstruction without constructing a field,
+generating packets, enumerating `2^H` leaves or returning a #SAT count:
+
+```sh
+cargo run --locked -p lean-eth-reference --bin appendix-admission -- 1000000
+```
+
+This prints `lambda=20`, `root_u=0`, `extension_degree=80`,
+`leaf_edge_exponent=250000` in a JSON refusal receipt, with exit code 2.
+The input is a **tensor-network edge count**, not a variable count.
+The leaf exponent is from the paper's *nominal threshold*, not measured work.
+
+The preflight checks a **necessary** condition only. It must never be
+interpreted as successful recursion, an independent Lean/Rust differential
+or a comparison against brute force. A new finite-size schedule would need
+the full packing/precision/shrinkage proof and one complete exact count
+before any performance claim.
+
 At a node, one specified interpolation construction uses
 
 \[

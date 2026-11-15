@@ -6,7 +6,7 @@
 
 The canonical executable Lean-to-Rust route is the in-process compiler in [`rust/native_lean_backend`](../../native_lean_backend/README.md). It receives borrowed `Lean.IR.Decl` objects from the pinned Lean 4.34.1 process and emits standalone Rust. The `eth-compiler` frontend calls its existing `scripts/compile-bundle.sh` publisher. There is **no second runtime or emitter** in the ETH CLI.
 
-The earlier `leanfran 0.6.0` adapter from PR #184 is retained in Git history and acknowledged in [NOTICE](../../../NOTICE.md). It used Lean 4.35.0 and was never a verified production ETH compiler. The public `compiler-ir` route no longer invokes it; old leanfran-generated receipts are rejected by the native bundle validator.
+The earlier `leanfran 0.6.0` adapter from PR #184 is retained in Git history and acknowledged in [NOTICE](../../../NOTICE). It used Lean 4.35.0 and was never a verified production ETH compiler. The public `compiler-ir` route no longer invokes it; old leanfran-generated receipts are rejected by the native bundle validator.
 
 ## Current invocation
 

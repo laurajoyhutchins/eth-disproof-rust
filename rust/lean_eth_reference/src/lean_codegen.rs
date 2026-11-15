@@ -584,7 +584,7 @@ fn native_bundle_fields(raw: &str) -> Result<HashMap<&str, &str>> {
         let (key, value) = line.split_once('=').ok_or("malformed native bundle receipt")?;
         ensure(
             !key.is_empty() && !value.is_empty()
-                && key.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'),
+                && key.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
             "invalid native bundle receipt field",
         )?;
         ensure(fields.insert(key, value).is_none(), "duplicate native bundle receipt field")?;

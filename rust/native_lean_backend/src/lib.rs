@@ -257,6 +257,7 @@ const ERASED_JOIN_TEST_SOURCE: &str = r#"
 #[cfg(test)]
 mod erased_join_safety_tests {
     use super::__LeanValue;
+    use std::rc::Rc;
 
     #[test]
     #[should_panic(expected = "erased join value was read")]
@@ -274,6 +275,37 @@ mod erased_join_safety_tests {
     #[should_panic(expected = "erased join value was read")]
     fn erased_equality_refuses() {
         assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
+    }
+
+    #[test]
+    fn small_tagged_adapters_share_only_unobservable_storage() {
+        for value in [0, 1, 2, 7, 31] {
+            let a = __LeanValue::tagged(value);
+            let b = __LeanValue::tagged(value);
+            assert!(Rc::ptr_eq(&a.0, &b.0), "small tagged adapter was reallocated");
+            assert_eq!(a.tagged_nat(), value);
+            assert_eq!(a, b);
+        }
+        let a = __LeanValue::tagged(32);
+        let b = __LeanValue::tagged(32);
+        assert!(!Rc::ptr_eq(&a.0, &b.0), "outside cache must not be interned");
+        assert_eq!(a.tagged_nat(), 32);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    #[should_panic(expected = "isShared requires a heap-backed Lean value")]
+    fn tagged_cache_refuses_observable_reference_count() {
+        let _ = __LeanValue::tagged(3).is_shared();
+    }
+
+    #[test]
+    fn boxed_heap_reference_counts_remain_observable() {
+        let heap = __LeanValue::boxed_u64(17);
+        assert_eq!(heap.is_shared(), 0);
+        let alias = heap.clone();
+        assert_eq!(heap.is_shared(), 1);
+        assert_eq!(alias.unbox_u64(), 17);
     }
 }
 

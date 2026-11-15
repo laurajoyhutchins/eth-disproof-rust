@@ -139,7 +139,7 @@ The pinned Lean C source-generation control remains around 0.19–0.20 s and ~49
 
 The CI receipt is **evidence of a run at a commit**, not a mathematical proof. Mark a G1 item complete only after an accepted source change and a successful exact-head report, or a reviewed documentary-only contract.
 
-## First substantial original third-party Rust execution: Armada
+## Armada third-party program execution
 
 [Exact-head native run 43639021692](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43639021692) and [root Rust workspace run 43639021752](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43639021752) **PASS** at `59e067854ec1a7d2b8294b361846669f6354c243`. The [immutable evidence artifact 14131273459](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43639021692/artifacts/14131273459) contains actual generated standalone source, original upstream Lean IR snapshots, Cargo manifest, independently Lean-evaluated oracle test source, debug/release test logs and SHA-256 identity receipts.
 
@@ -157,7 +157,7 @@ Two original, unchanged [Keboola](https://github.com/keboola/cli/tree/e29d2cb338
 
 With the [#230](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/230) Armada integration already in main, two independent source repositories now have **positive** executable Rust evidence: **128** cases for the substantial Armada scheduler and **12** for the smaller Keboola helpers. This does **not** satisfy G1's requirement of three substantial unchanged external programs; Newspeak still refuses `Expr.isShared`, and the primary Keboola root still refuses `Expr.sproj`. All original Lean sources remain unedited.
 
-## Actual original Lean Alt.default and Rust execution acceptance
+## Lean Alt.default and Rust execution comparison
 
 At `138f70f640c5c66a7f6df13704c92da67b8a5ac6`, [native Lean CI 43643490357](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43643490357) and [root Rust CI 43643490376](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43643490376) **PASS**. Independently inspected [artifact 14133486120](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43643490357/artifacts/14133486120) contains original compiler IR: `onSome` uses `Option.some → ...; default → ...`; `onNone` uses `Option.none → ...; default → ...`. The emitted safe Rust checks only the opposite verified constructor representation, and **512 original-Lean-evaluated GMP oracles** pass in debug/release plus strict Clippy.
 

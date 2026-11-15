@@ -79,6 +79,7 @@ impl Reader {
                     defined,
                     expr,
                     next,
+                    ..
                 } => {
                     if Self::var(defined)? == id || Self::expr_refs(expr, id)? {
                         return Ok(false);
@@ -105,6 +106,7 @@ impl Reader {
                     target,
                     value,
                     next,
+                    ..
                 } => {
                     if Self::var(target)? == id || Self::arg_refs(value, id)? {
                         return Ok(false);
@@ -115,6 +117,7 @@ impl Reader {
                     target,
                     value,
                     next,
+                    ..
                 } => {
                     if Self::var(target)? == id || Self::var(value)? == id {
                         return Ok(false);

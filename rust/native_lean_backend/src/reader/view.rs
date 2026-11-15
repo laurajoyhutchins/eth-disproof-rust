@@ -8,6 +8,7 @@ use super::*;
 pub(super) enum FnBodyView {
     Decl {
         defined: Obj,
+        ty: Obj,
         expr: Obj,
         next: Obj,
     },
@@ -19,12 +20,16 @@ pub(super) enum FnBodyView {
     },
     Set {
         target: Obj,
+        index: Obj,
         value: Obj,
         next: Obj,
     },
     ScalarSet {
         target: Obj,
+        pointers: Obj,
+        offset: Obj,
         value: Obj,
+        ty: Obj,
         next: Obj,
     },
     Inc {
@@ -62,6 +67,7 @@ impl Reader {
         Ok(match Self::checked_tag(x, "FnBody")? {
             0 => FnBodyView::Decl {
                 defined: Self::field(x, 0)?,
+                ty: Self::field(x, 1)?,
                 expr: Self::field(x, 2)?,
                 next: Self::field(x, 3)?,
             },
@@ -73,12 +79,16 @@ impl Reader {
             },
             2 => FnBodyView::Set {
                 target: Self::field(x, 0)?,
+                index: Self::field(x, 1)?,
                 value: Self::field(x, 2)?,
                 next: Self::field(x, 3)?,
             },
             5 => FnBodyView::ScalarSet {
                 target: Self::field(x, 0)?,
+                pointers: Self::field(x, 1)?,
+                offset: Self::field(x, 2)?,
                 value: Self::field(x, 3)?,
+                ty: Self::field(x, 4)?,
                 next: Self::field(x, 5)?,
             },
             6 => FnBodyView::Inc {

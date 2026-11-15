@@ -21,6 +21,11 @@ The in-process Lean 4.34.1 compiler is one compiler, not a family of backends. I
 | `src/names.rs` | Injective generated Rust identifier encoding |
 | `src/runtime/immutable_value.rs` | Sole emitted GMP/Nat/Rc value representation; not a compiler IR data model |
 
+The production `Reader::body` emitter now also consumes that same
+borrowed `FnBodyView`. Source-tag layout and field offsets are decoded in
+one place. Case layout verification and recursion remain in the original
+case/body lowerers, preserving their mutually recursive grammar.
+
 The borrowed control-flow view centralizes tag-to-field interpretation for dependency
 discovery, ownership/use analysis, and source-CFG reference-count auditing.
 Those traversals remain separate because lexical syntax, executable CFG paths

@@ -209,7 +209,7 @@ mod tests {
 
     #[test]
     fn small_base_case_has_distinct_port_and_packet_thresholds() {
-        let a = JointPotentialArithmetic::new(24, 2, 1, 1, 2).unwrap();
+        let a = JointPotentialArithmetic::new(24, 2, 1, 1, 4).unwrap();
         assert_eq!(a.minimum_edges_for_packet_cap, Some(12));
         assert_eq!(a.minimum_edges_for_port_cap, Some(24));
         assert!(a.simultaneous_sufficient_arithmetic);

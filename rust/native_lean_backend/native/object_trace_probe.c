@@ -69,13 +69,9 @@ lean_obj_res lr_object_trace_run(lean_obj_arg first, lean_obj_arg second) {
     printf("TRACE closure %llu %llu %llu %llu\n",
            (unsigned long long)lr_object_trace_id(left), (unsigned long long)lr_object_trace_rc(left),
            (unsigned long long)lr_object_trace_id(captured), (unsigned long long)lr_object_trace_rc(captured));
-    lean_dec(a);
-    lean_dec(same);
-    lean_dec(b);
-    lean_dec(left);
-    lean_dec(right);
-    lean_dec(captured);
-
+    // Keep all previously observed objects alive through the nested test.
+    // Otherwise Lean's allocator may reuse a freed address and make the
+    // first-observation ID table falsely identify a new allocation as old.
     // Avoid relying on unspecified C argument evaluation order for IDs.
     // The root, intermediate fork, grandchild, and right leaf are first
     // observed in this explicit order, matching the Rust observation driver.
@@ -100,5 +96,11 @@ lean_obj_res lr_object_trace_run(lean_obj_arg first, lean_obj_arg second) {
            sibling_id, (unsigned long long)lr_object_trace_rc(sibling));
     lean_dec(grandchild);
     lean_dec(sibling);
+    lean_dec(a);
+    lean_dec(same);
+    lean_dec(b);
+    lean_dec(left);
+    lean_dec(right);
+    lean_dec(captured);
     return lean_box(0);
 }

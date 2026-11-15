@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "id": "mode-product-contraction",
+  "requested_lean_goal": "ETH.LiteratureImports.mode_product_contraction",
+  "problem": "For a fixed tensor-network mode, factor the routed global assignment sum into independent child contractions.",
+  "literature": {
+    "title": "Simulating Quantum Computation by Contracting Tensor Networks",
+    "authors": [
+      "Igor L. Markov",
+      "Yaoyun Shi"
+    ],
+    "doi": "10.1137/050644756",
+    "url": "https://epubs.siam.org/doi/10.1137/050644756",
+    "role": "contraction-framework-reference",
+    "qualification": "The paper motivates the sum-of-products tensor-network model. The precise finite distributivity theorem imported here is from Mathlib, not a theorem attributed to Markov and Shi."
+  },
+  "formal_source": {
+    "repository": "leanprover-community/mathlib4",
+    "commit": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+    "module": "Mathlib.Algebra.BigOperators.Ring.Finset",
+    "declarations": [
+      "Finset.prod_univ_sum",
+      "Finset.sum_equiv",
+      "Fintype.sum_mul_sum"
+    ],
+    "reuse": "direct reuse of already formalized math; no generated paper proof"
+  },
+  "bridge": {
+    "path": "instrumentation/lean-env/LiteratureImports/ModeProductContraction.lean",
+    "declaration": "ETH.LiteratureImports.mode_product_contraction",
+    "proof_status": "must_verify_with_pinned_lean",
+    "assumptions": [
+      "[Fintype Group]",
+      "[CommSemiring R]",
+      "route : Global ≃ (∀ g, Choice g)",
+      "hvalid : exact correspondence of allowed global and routed assignments",
+      "hfactor : global contribution equals product of routed child contributions"
+    ],
+    "unresolved": [
+      "Construct source-specific routing equivalence and prove its validity",
+      "Prove original packet weights factor in each fixed-mode group",
+      "Connect original OAI packet and coefficient maps to this abstract interface"
+    ],
+    "nonclaims": [
+      "full ETH recursive identity",
+      "a proved source-specific group routing map",
+      "any time or space complexity theorem",
+      "paper theorem semantics independently human audited"
+    ]
+  }
+}

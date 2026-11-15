@@ -432,12 +432,11 @@ impl Reader {
         }
     }
 
-    // Ownership is transferable only when *every* subsequent path is free of
-    // accesses to this IR VarId. Unlike the original straight-line check,
-    // this bounded traversal sees nested join bodies and case alternatives.
-    // An unfamiliar instruction/expression, reference-count operation, or
-    // shadowed binding refuses the optimization. This is not an acceptance
-    // expansion: no unsupported IR can pass merely because it is never run.
+    // Last-use analysis only permits moves through a straight-line tail.
+    // Any join, branch, unknown expression, or reference bookkeeping for the
+    // candidate is conservatively considered an additional use. This avoids
+    // unnecessary transient Rc aliases, but does not prove Lean's physical
+    // reference-count trace equals Rust's trace.
     unsafe fn arg_refs(x: Obj, id: usize) -> Result<bool, String> {
         Ok(match Self::checked_tag(x, "Arg")? {
             0 => Self::var(Self::field(x, 0)?)? == id,
@@ -467,9 +466,34 @@ impl Reader {
         })
     }
 
-    // Full-tail lexical use search. All paths are checked even if a branch is
-    // unreachable with the current inputs; it must be safe for *any* input.
-    // The body pointer is a pinned Lean object borrowed during this FFI call.
+    unsafe fn straight_tail_unused(mut x: Obj, id: usize) -> Result<bool, String> {
+        for _ in 0..100_000 {
+            match Self::checked_tag(x, "FnBody")? {
+                0 => {
+                    if Self::expr_refs(Self::field(x, 2)?, id)? {
+                        return Ok(false);
+                    }
+                    x = Self::field(x, 3)?;
+                }
+                6 | 7 => {
+                    if Self::var(Self::field(x, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    x = Self::field(x, 2)?;
+                }
+                8 => {
+                    if Self::var(Self::field(x, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    x = Self::field(x, 1)?;
+                }
+                10 => return Ok(!Self::arg_refs(Self::field(x, 0)?, id)?),
+                _ => return Ok(false),
+            }
+        }
+        Ok(false)
+    }
+
     unsafe fn tail_unused_on_all_paths(body: Obj, id: usize) -> Result<bool, String> {
         let mut pending = vec![(body, 0usize)];
         let mut steps = 0usize;
@@ -593,12 +617,53 @@ impl Reader {
         Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
     }
 
+    // A direct callee takes ownership of its argument. Moving an object at
+    // its unique final use avoids manufacturing a temporary Rust Rc alias.
+    // Do not extend this analysis through joins, branches, indirect calls,
+    // bookkeeping, or unrecognized expressions.
+    unsafe fn consumable_call(
+        expr: Obj,
+        tail: Obj,
+        functions: Option<&FunctionTable>,
+    ) -> Result<BTreeSet<usize>, String> {
+        let mut consumed = BTreeSet::new();
+        if Self::checked_tag(expr, "Expr")? != 6 {
+            return Ok(consumed);
+        }
+        let name = Self::name(Self::field(expr, 0)?, 0)?;
+        let Some(signature) = functions.and_then(|f| f.get(&name)) else {
+            return Ok(consumed);
+        };
+        let args = Self::array(Self::field(expr, 1)?)?;
+        if args.len() != signature.params.len() {
+            return Ok(consumed);
+        }
+        let mut counts = BTreeMap::<usize, usize>::new();
+        for arg in &args {
+            if Self::checked_tag(*arg, "Arg")? == 0 {
+                let id = Self::var(Self::field(*arg, 0)?)?;
+                *counts.entry(id).or_default() += 1;
+            }
+        }
+        for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
+            if !is_value_type(ty) || Self::checked_tag(arg, "Arg")? != 0 {
+                continue;
+            }
+            let id = Self::var(Self::field(arg, 0)?)?;
+            if counts.get(&id) == Some(&1) && Self::straight_tail_unused(tail, id)? {
+                consumed.insert(id);
+            }
+        }
+        Ok(consumed)
+    }
+
     unsafe fn expr(
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
         consumed_array: Option<usize>,
+        consumed_calls: &BTreeSet<usize>,
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
@@ -835,7 +900,15 @@ impl Reader {
                     }
                     let mut lowered = Vec::with_capacity(args.len());
                     for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
-                        lowered.push(Self::arg(arg, env, ty)?);
+                        let typed = Self::arg(arg, env, ty)?;
+                        if is_value_type(ty) && Self::checked_tag(arg, "Arg")? == 0 {
+                            let id = Self::var(Self::field(arg, 0)?)?;
+                            if consumed_calls.contains(&id) {
+                                lowered.push(format!("x_{id}"));
+                                continue;
+                            }
+                        }
+                        lowered.push(typed);
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
                 }
@@ -1583,15 +1656,29 @@ impl Reader {
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
                     let expr = Self::field(x, 2)?;
-                    // Only top-level candidates are consumed. The full-tail
-                    // analysis scans joins and branches for captures/aliases;
-                    // nested candidates remain conservative until proven safe.
-                    let consumed_array = if depth == 0 && ctx.joins.is_empty() {
-                        Self::consumable_array(expr, Self::field(x, 3)?)?
+                    // Only top-level array candidates can transfer ownership.
+                    // Their full tails are scanned for references through
+                    // branch and join bodies, conservatively preserving aliases.
+                    let straight_line = depth == 0 && ctx.joins.is_empty();
+                    let tail = Self::field(x, 3)?;
+                    let consumed_array = if straight_line {
+                        Self::consumable_array(expr, tail)?
                     } else {
                         None
                     };
-                    let value = Self::expr(expr, ty, env, ctx.functions, consumed_array)?;
+                    let consumed_calls = if straight_line {
+                        Self::consumable_call(expr, tail, ctx.functions)?
+                    } else {
+                        BTreeSet::new()
+                    };
+                    let value = Self::expr(
+                        expr,
+                        ty,
+                        env,
+                        ctx.functions,
+                        consumed_array,
+                        &consumed_calls,
+                    )?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }

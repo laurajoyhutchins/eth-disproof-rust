@@ -570,3 +570,7 @@ pub mod tm2_resources;
 /// Necessary conditions for the appendix's fixed two-adic recursion schedule.
 /// This is an audit, not a counting program or sufficiency certificate.
 pub mod two_adic_admission;
+
+/// Exact necessary packing inequalities for hypothetical two-adic root schedules.
+/// Arithmetic feasibility is not source proof or active recursion.
+pub mod two_adic_packing;

@@ -10,7 +10,7 @@ impl Reader {
         consumed_array: Option<usize>,
         consumed_calls: &BTreeSet<usize>,
         consumed_ap: Option<usize>,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         if is_value_type(var_ty) {
             RuntimeFeatures::mark(ctx.features, RuntimeFeatures::VALUE);
         }
@@ -33,7 +33,10 @@ impl Reader {
             ),
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
             12 => Self::lower_shared_observation(x, var_ty, env),
-            t => Err(format!("IR expression constructor {t} unsupported")),
+            t => Err(CompilerError::new(
+                RefusalKind::Expr,
+                format!("IR expression constructor {t} unsupported"),
+            )),
         }
     }
 }

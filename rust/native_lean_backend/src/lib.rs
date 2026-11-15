@@ -19,6 +19,7 @@ use primitives::{
     RUNTIME_PRIMITIVE_REGISTRY,
 };
 use reader::Reader;
+use safety::{CompilerError, CompilerResult, RefusalKind};
 
 // Generated from the complete reviewed pinned Lean IR constructor contract.
 include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));
@@ -353,7 +354,7 @@ fn immutable_case_ctor(family: &str, index: usize, actual: &str) -> Result<usize
     Ok(pointers)
 }
 
-fn include_value_runtime(source: String, features: RuntimeFeatures) -> Result<String, String> {
+fn include_value_runtime(source: String, features: RuntimeFeatures) -> CompilerResult<String> {
     let code = if features.has(RuntimeFeatures::VALUE) {
         // The runtime is canonical; only fixture modules are conditional.
         let tests = if features.has(RuntimeFeatures::ARRAY_TESTS) {
@@ -390,7 +391,10 @@ unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit_module_many(decls, roots)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
         Ok(Err(e)) => safety::refusal("requested-root", &e),
-        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
+        Err(_) => safety::refusal(
+            "requested-root",
+            &CompilerError::new(RefusalKind::Compiler, "backend panic (no code emitted)"),
+        ),
     };
     lean_mk_string(
         CString::new(text.replace('\0', "\\0"))
@@ -427,7 +431,10 @@ unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit_module(decls, root, public_name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
         Ok(Err(e)) => safety::refusal("requested-root", &e),
-        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
+        Err(_) => safety::refusal(
+            "requested-root",
+            &CompilerError::new(RefusalKind::Compiler, "backend panic (no code emitted)"),
+        ),
     };
     let text = text.replace('\0', "\\0");
     let cstr = CString::new(text).expect("replaced NUL");
@@ -463,7 +470,10 @@ unsafe fn reply(decl: Obj, name: Obj) -> *mut c_void {
     let text = match std::panic::catch_unwind(|| Reader::emit(decl, name)) {
         Ok(Ok(s)) => format!("OK\n{s}"),
         Ok(Err(e)) => safety::refusal("requested-root", &e),
-        Err(_) => safety::refusal("requested-root", "backend panic (no code emitted)"),
+        Err(_) => safety::refusal(
+            "requested-root",
+            &CompilerError::new(RefusalKind::Compiler, "backend panic (no code emitted)"),
+        ),
     };
     // Lean strings do not contain NUL bytes. Sanitizing inputs prevents interior
     // NUL from causing an FFI panic; diagnostics remain safely in the error channel.
@@ -473,14 +483,18 @@ unsafe fn reply(decl: Obj, name: Obj) -> *mut c_void {
 }
 
 unsafe fn reply_publish(path: Obj, source: Obj) -> *mut c_void {
-    let report = match std::panic::catch_unwind(|| {
+    let report = match std::panic::catch_unwind(|| -> CompilerResult<()> {
         let path = Reader::string(path)?;
         let source = Reader::string(source)?;
         safety::publish(&path, &source)
+            .map_err(|reason| CompilerError::new(RefusalKind::Output, reason))
     }) {
         Ok(Ok(())) => "OK\npublished".to_string(),
         Ok(Err(e)) => safety::refusal("output", &e),
-        Err(_) => safety::refusal("output", "publisher panic (no output accepted)"),
+        Err(_) => safety::refusal(
+            "output",
+            &CompilerError::new(RefusalKind::Output, "publisher panic (no output accepted)"),
+        ),
     };
     let report = report.replace('\0', "\\0");
     let encoded = CString::new(report).expect("NUL sanitized");

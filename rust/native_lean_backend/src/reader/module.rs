@@ -2,14 +2,17 @@
 use super::*;
 
 impl Reader {
-    pub(crate) unsafe fn emit(decl: Obj, rust_name: Obj) -> Result<String, String> {
+    pub(crate) unsafe fn emit(decl: Obj, rust_name: Obj) -> CompilerResult<String> {
         if lr_abi_probe() == 0 {
-            return Err("Lean C ABI runtime probe failed".into());
+            return Err(CompilerError::new(
+                RefusalKind::Abi,
+                "Lean C ABI runtime probe failed",
+            ));
         }
         let declaration = Self::name(Self::field(decl, 0)?, 0)?;
         let features = Cell::new(RuntimeFeatures::default());
         let generated = Self::emit_function(decl, &Self::string(rust_name)?, None, &features)
-            .map_err(|reason| format!("declaration={declaration}; {reason}"))?;
+            .map_err(|reason| reason.with_declaration(declaration))?;
         include_value_runtime(generated, features.get())
     }
 
@@ -18,7 +21,7 @@ impl Reader {
         rust_name: &str,
         functions: Option<&FunctionTable>,
         features: &Cell<RuntimeFeatures>,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern declaration without executable body".into());
         }
@@ -74,10 +77,11 @@ impl Reader {
             if Self::param_borrow(*param)? && shared.contains(&var) {
                 return Err(format!(
                     "borrowed parameter x_{var} has unverified isShared ownership semantics"
-                ));
+                )
+                .into());
             }
             if env.insert(var, ty).is_some() {
-                return Err(format!("duplicate parameter x_{var}"));
+                return Err(format!("duplicate parameter x_{var}").into());
             }
             write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
         }
@@ -98,9 +102,12 @@ impl Reader {
         result.push_str("}\n");
         Ok(result)
     }
-    pub(super) unsafe fn signature(decl: Obj) -> Result<Signature, String> {
+    pub(super) unsafe fn signature(decl: Obj) -> CompilerResult<Signature> {
         if Self::checked_tag(decl, "Decl")? != 0 {
-            return Err("extern or opaque declaration in native dependency closure".into());
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                "extern or opaque declaration in native dependency closure",
+            ));
         }
         let mut params = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
@@ -114,7 +121,7 @@ impl Reader {
     }
 
     // Source-bound, iterative reachability of directly called functions.
-    pub(super) unsafe fn body_calls(x: Obj, calls: &mut BTreeSet<String>) -> Result<(), String> {
+    pub(super) unsafe fn body_calls(x: Obj, calls: &mut BTreeSet<String>) -> CompilerResult<()> {
         let mut pending = vec![x];
         let mut count = 0;
         while let Some(body) = pending.pop() {
@@ -156,13 +163,13 @@ impl Reader {
         decls: Obj,
         root: Obj,
         public_name: Obj,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         let root = Self::name(root, 0)?;
         let public_name = Self::string(public_name)?;
         Self::emit_roots(decls, vec![(root, public_name)])
     }
 
-    pub(crate) unsafe fn emit_module_many(decls: Obj, roots: Obj) -> Result<String, String> {
+    pub(crate) unsafe fn emit_module_many(decls: Obj, roots: Obj) -> CompilerResult<String> {
         let mut public_roots = Vec::new();
         for item in Self::array(roots)? {
             let root = Self::name(item, 0)?;
@@ -177,9 +184,12 @@ impl Reader {
     pub(super) unsafe fn emit_roots(
         decls: Obj,
         roots: Vec<(String, String)>,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         if lr_abi_probe() == 0 {
-            return Err("Lean C ABI runtime probe failed".into());
+            return Err(CompilerError::new(
+                RefusalKind::Abi,
+                "Lean C ABI runtime probe failed",
+            ));
         }
         if roots.is_empty() || roots.len() > 128 {
             return Err("expected 1..128 public Lean root declarations".into());
@@ -189,7 +199,7 @@ impl Reader {
         for decl in entries {
             let name = Self::name(Self::field(decl, 0)?, 0)?;
             if definitions.insert(name.clone(), decl).is_some() {
-                return Err(format!("duplicate IR declaration in closure: {name}"));
+                return Err(format!("duplicate IR declaration in closure: {name}").into());
             }
         }
         let mut pending = Vec::new();
@@ -197,13 +207,16 @@ impl Reader {
         let mut root_names = BTreeSet::new();
         for (root, public) in &roots {
             if !root_names.insert(root.clone()) {
-                return Err(format!("duplicate public Lean root: {root}"));
+                return Err(format!("duplicate public Lean root: {root}").into());
             }
             if !public_names.insert(public.clone()) {
-                return Err(format!("duplicate Rust public API name: {public}"));
+                return Err(format!("duplicate Rust public API name: {public}").into());
             }
             if !definitions.contains_key(root) {
-                return Err(format!("requested Lean root {root} has no compiler IR"));
+                return Err(CompilerError::new(
+                    RefusalKind::Dependency,
+                    format!("requested Lean root {root} has no compiler IR"),
+                ));
             }
             pending.push(root.clone());
         }
@@ -215,7 +228,10 @@ impl Reader {
                 continue;
             }
             if visited.len() > 2048 {
-                return Err("native declaration closure exceeds 2048 functions".into());
+                return Err(CompilerError::new(
+                    RefusalKind::ResourceLimit,
+                    "native declaration closure exceeds 2048 functions",
+                ));
             }
             let decl = *definitions.get(&name).ok_or_else(||
                 format!("dependency {name} has no compiled IR in the current module; no external fallback"))?;

@@ -9,7 +9,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
         features: &Cell<RuntimeFeatures>,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         // PAP(callee, captured operands). For this first subset, each
         // source callee must be compiled and its ABI must consist
         // solely of boxed values, both parameters and return.
@@ -26,7 +26,7 @@ impl Reader {
             || !signature.params.iter().all(|ty| is_value_type(ty))
             || !is_value_type(signature.result)
         {
-            return Err(format!("PAP {name} has unsupported typed/arity layout"));
+            return Err(format!("PAP {name} has unsupported typed/arity layout").into());
         }
         let mut captured = Vec::new();
         for arg in args {
@@ -69,7 +69,7 @@ impl Reader {
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
         consumed_ap: Option<usize>,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         // AP(f, arguments): supported as 1..16 boxed-value operands.
         // A dynamic closure may be partially applied again.
         if !is_value_type(var_ty) {
@@ -109,7 +109,7 @@ impl Reader {
         consumed_array: Option<usize>,
         consumed_calls: &BTreeSet<usize>,
         features: &Cell<RuntimeFeatures>,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         // fap, preserving the exact known primitive semantics.
         let name = Self::name(Self::field(x, 0)?, 0)?;
         let args = Self::array(Self::field(x, 1)?)?;
@@ -119,13 +119,15 @@ impl Reader {
                     "{name}: expected {} arguments, got {}",
                     signature.params.len(),
                     args.len()
-                ));
+                )
+                .into());
             }
             if var_ty != signature.result {
                 return Err(format!(
                     "{name}: expected result type {}, got {var_ty}",
                     signature.result
-                ));
+                )
+                .into());
             }
             let mut lowered = Vec::with_capacity(args.len());
             for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
@@ -153,18 +155,15 @@ impl Reader {
                 _ => 4,
             };
             if args.len() != expected {
-                return Err(format!(
-                    "{name}: expected {expected} operands, got {}",
-                    args.len()
-                ));
+                return Err(
+                    format!("{name}: expected {expected} operands, got {}", args.len()).into(),
+                );
             }
-            let erased = |index: usize| -> Result<(), String> {
+            let erased = |index: usize| -> CompilerResult<()> {
                 if Self::checked_tag(args[index], "Arg")? == 1 {
                     Ok(())
                 } else {
-                    Err(format!(
-                        "{name}: expected erased source type/proof at {index}"
-                    ))
+                    Err(format!("{name}: expected erased source type/proof at {index}").into())
                 }
             };
             erased(0)?;
@@ -178,7 +177,7 @@ impl Reader {
                 }
                 "Array.getInternal" | "Array.getInternalBorrowed" => {
                     if var_ty != "tobj" {
-                        return Err(format!("{name} requires object element result"));
+                        return Err(format!("{name} requires object element result").into());
                     }
                     erased(3)?;
                     let array = Self::arg(args[1], env, "obj")?;
@@ -208,24 +207,23 @@ impl Reader {
         }
         if let Some(runtime) = runtime_primitive_spec(&name) {
             if !is_value_type(var_ty) {
-                return Err(format!("{name}: object result required for native runtime"));
+                return Err(format!("{name}: object result required for native runtime").into());
             }
             let expected = match runtime.shape {
                 "unary" => 1,
                 "binary" => 2,
                 "erased_unary" => 2,
                 "erased_binary" => 3,
-                _ => return Err(format!("{name}: unrecognized runtime call shape")),
+                _ => return Err(format!("{name}: unrecognized runtime call shape").into()),
             };
             if args.len() != expected {
-                return Err(format!(
-                    "{name}: expected {expected} operands, got {}",
-                    args.len()
-                ));
+                return Err(
+                    format!("{name}: expected {expected} operands, got {}", args.len()).into(),
+                );
             }
             let begin = if runtime.shape.starts_with("erased_") {
                 if Self::checked_tag(args[0], "Arg")? != 1 {
-                    return Err(format!("{name}: missing erased source type proof"));
+                    return Err(format!("{name}: missing erased source type proof").into());
                 }
                 1
             } else {
@@ -247,11 +245,11 @@ impl Reader {
             return match operands.as_slice() {
                 [value] => Ok(format!("{value}.{}()", runtime.rust_function)),
                 [lhs, rhs] => Ok(format!("{lhs}.{}(&{rhs})", runtime.rust_function)),
-                _ => Err(format!("{name}: inconsistent runtime operand count")),
+                _ => Err(format!("{name}: inconsistent runtime operand count").into()),
             };
         }
         if args.len() != 2 {
-            return Err(format!("{name}: expected binary operands"));
+            return Err(format!("{name}: expected binary operands").into());
         }
         // Statically tagged immediate Nat comparisons do not require
         // GMP. Boxed arbitrary Nat continues through the GMP path.
@@ -271,7 +269,7 @@ impl Reader {
         }
         if both_tagged {
             if var_ty != "u8" {
-                return Err(format!("{name}: tagged Nat comparison must return UInt8"));
+                return Err(format!("{name}: tagged Nat comparison must return UInt8").into());
             }
             let lhs = Self::arg(args[0], env, "tagged")?;
             let rhs = Self::arg(args[1], env, "tagged")?;
@@ -290,14 +288,14 @@ impl Reader {
             return match name.as_str() {
                 "Nat.add" | "Nat.sub" | "Nat.mul" | "Nat.div" | "Nat.mod" => {
                     if !is_value_type(var_ty) {
-                        return Err(format!("{name}: result must be object-valued"));
+                        return Err(format!("{name}: result must be object-valued").into());
                     }
                     let op = name.strip_prefix("Nat.").unwrap();
                     Ok(format!("{lhs}.nat_binary(&{rhs}, \"{op}\")"))
                 }
                 "Nat.decEq" | "Nat.decLt" | "Nat.decLe" => {
                     if var_ty != "u8" {
-                        return Err(format!("{name}: result must be u8"));
+                        return Err(format!("{name}: result must be u8").into());
                     }
                     let operator = match name.as_str() {
                         "Nat.decEq" => "== 0",
@@ -309,8 +307,12 @@ impl Reader {
                 _ => unreachable!(),
             };
         }
-        let spec =
-            primitive_spec(&name).ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
+        let spec = primitive_spec(&name).ok_or_else(|| {
+            CompilerError::new(
+                RefusalKind::Primitive,
+                format!("unrecognized primitive call: {name}"),
+            )
+        })?;
         let op = spec.rust_op;
         let comparison = spec.comparison;
         let expected_ty = spec.operand_type;
@@ -318,14 +320,15 @@ impl Reader {
         let rhs = Self::arg(args[1], env, expected_ty)?;
         if comparison {
             if var_ty != "u8" {
-                return Err(format!("{name}: comparison must produce u8, got {var_ty}"));
+                return Err(format!("{name}: comparison must produce u8, got {var_ty}").into());
             }
             Ok(format!("u8::from({lhs} {op} {rhs})"))
         } else {
             if var_ty != expected_ty {
                 return Err(format!(
                     "{name}: result type mismatch: expected {expected_ty}, got {var_ty}"
-                ));
+                )
+                .into());
             }
             match (expected_ty, op) {
                 ("f64", "+" | "-" | "*") => Ok(format!("{lhs} {op} {rhs}")),
@@ -344,7 +347,7 @@ impl Reader {
                         "{lhs}.{op}(({rhs} % ({expected_ty}::BITS as {expected_ty})) as u32)"
                     ))
                 }
-                _ => Err(format!("{name}: unreviewed primitive operation {op}")),
+                _ => Err(format!("{name}: unreviewed primitive operation {op}").into()),
             }
         }
     }

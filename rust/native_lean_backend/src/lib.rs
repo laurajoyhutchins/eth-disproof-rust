@@ -1829,9 +1829,11 @@ impl Reader {
                     x = Self::field(x, 5)?;
                 }
                 6..=8 => {
-                    // Immutable Rc-backed emitted values own their references;
-                    // Lean's inc/dec/del bookkeeping is non-observable in this
-                    // subset because reset/reuse/isShared are refused.
+                    // Erasing Lean's reference bookkeeping is permitted
+                    // only inside the bounded value-semantic subset. A
+                    // preflight refuses any declaration that also observes
+                    // physical sharedness through isShared; this is not a
+                    // claim of RC equivalence across function boundaries.
                     let id = Self::var(Self::field(x, 0)?)?;
                     let ty = env
                         .get(&id)
@@ -1941,6 +1943,14 @@ impl Reader {
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
         let shared = Self::shared_observations(body)?;
+        // Source inc/dec/del are currently erased by the emitted runtime.
+        // Refuse any declaration with both physical sharing observations
+        // and explicit RC effects; even distinct variable IDs may alias.
+        if !shared.is_empty() && Self::has_reference_bookkeeping(body)? {
+            return Err(
+                "unverified isShared with source inc/dec/del reference bookkeeping".into(),
+            );
+        }
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
@@ -2069,6 +2079,46 @@ impl Reader {
             }
         }
         Ok(observed)
+    }
+
+    // An IR inc/dec/del changes Lean's physical reference count. These are
+    // intentionally erased in the immutable Rust value path, so any same-
+    // declaration isShared can observe a different count. Scan every branch
+    // and join body, not merely the linear continuation: aliases and calls
+    // can make differently named variables refer to the same allocation.
+    // Returning true is conservative; it is not an alias-equivalence proof.
+    unsafe fn has_reference_bookkeeping(body: Obj) -> Result<bool, String> {
+        let mut pending = vec![body];
+        let mut count = 0usize;
+        while let Some(current) = pending.pop() {
+            count += 1;
+            if count > 100_000 {
+                return Err("reference-count audit exceeds 100000 IR instructions".into());
+            }
+            match Self::checked_tag(current, "FnBody")? {
+                0 => pending.push(Self::field(current, 3)?),
+                1 => {
+                    pending.push(Self::field(current, 2)?);
+                    pending.push(Self::field(current, 3)?);
+                }
+                2 => pending.push(Self::field(current, 3)?),
+                5 => pending.push(Self::field(current, 5)?),
+                6..=8 => return Ok(true),
+                9 => {
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let idx = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1,
+                            1 => 0,
+                            t => return Err(format!("unsupported RC audit Alt {t}")),
+                        };
+                        pending.push(Self::field(alt, idx)?);
+                    }
+                }
+                10 | 11 => {}
+                t => return Err(format!("unsupported RC audit FnBody {t}")),
+            }
+        }
+        Ok(false)
     }
 
     unsafe fn signature(decl: Obj) -> Result<Signature, String> {

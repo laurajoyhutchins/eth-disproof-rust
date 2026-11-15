@@ -27,18 +27,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Checkout pinned Excession
-        uses: actions/checkout@v4
-        with:
-          repository: laurajoyhutchins/excession
-          ref: 21d2e0fd52b6099bb88eae1456bfe3a4681b963d
-          path: .excession-review-tool
-          persist-credentials: false
       - name: Build exact Excession CLI
         run: |
           set -euo pipefail
+          EXCESSION_SHA=21d2e0fd52b6099bb88eae1456bfe3a4681b963d
+          git init -q "$RUNNER_TEMP/excession"
+          git -C "$RUNNER_TEMP/excession" remote add origin https://github.com/laurajoyhutchins/excession.git
+          git -C "$RUNNER_TEMP/excession" fetch -q --depth=1 origin "$EXCESSION_SHA"
+          git -C "$RUNNER_TEMP/excession" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/excession" rev-parse HEAD)" = "$EXCESSION_SHA"
           rustup toolchain install 1.99.1 --profile minimal
-          cargo +1.99.1 build --locked --manifest-path .excession-review-tool/core/Cargo.toml --bin excession
+          cargo +1.99.1 build --locked --manifest-path "$RUNNER_TEMP/excession/core/Cargo.toml" --bin excession
       - name: Locate source, inspect base, verify candidate
         shell: bash
         env:
@@ -48,7 +47,7 @@ jobs:
           set -euo pipefail
           OUT="$RUNNER_TEMP/excession-native-refactor"
           mkdir -p "$OUT"
-          TOOL="$GITHUB_WORKSPACE/.excession-review-tool/core/target/debug/excession"
+          TOOL="$RUNNER_TEMP/excession/core/target/debug/excession"
           test "$(git rev-parse HEAD)" = "$HEAD_SHA"
           git cat-file -e "${BASE_SHA}^{commit}"
           git diff --check "$BASE_SHA" "$HEAD_SHA" -- rust/native_lean_backend

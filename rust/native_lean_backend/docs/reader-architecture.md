@@ -17,7 +17,7 @@ The in-process Lean 4.34.1 compiler is one compiler, not a family of backends. I
 | `src/names.rs` | Injective generated Rust identifier encoding |
 | `src/runtime/immutable_value.rs` | Sole emitted GMP/Nat/Rc value representation; not a compiler IR data model |
 
-The reader stage methods are `pub(super)` within the reader module. Only the three exported operations consumed by the crate's FFI wrappers are `pub(crate)`. Root and helper entrypoints remain unchanged, and there is no user-facing Rust API expansion.
+Reader stage methods are `pub(super)` within the reader module, except for the three FFI-facing emission methods and the bounded `Reader::string` decoder used when publishing source. Those four crate-visible methods are `pub(crate)`. Root and helper entrypoints remain unchanged; there is no user-facing Rust API expansion.
 
 The source definition of a supported constructor, primitive or Lean IR tag remains authoritative. Source `sproj` is distinct from pointer-field `proj`. Unknown effects, missing declarations, unsupported constructor layouts, erased runtime operands and noncomputable source with unavailable IR must still fail closed.
 
@@ -43,3 +43,15 @@ bash scripts/check-external-projects.sh
 The pull-request workflows run these checks and preserve independent provenance. The Excession check additionally executes `agent locate`, `agent context` at the original and candidate revisions, and `agent verify`, leaving coverage gaps in the output. Excession's static dependency analysis is not a complete Rust call graph and its replay is not behavioral equivalence. Exact-head external Lean/Rust tests remain necessary.
 
 This structural refactor does **not** establish the G2 source equivalence or resource bounds of the original noncomputable ETH counting program.
+
+## Compared native receipts
+
+The exact-head baseline `52fa5e8a544e278eb9fc9beff3dfb0e1da22dd93` and split-reader revision `924c96b8e19c11d3c556d3006f140d7b8ce0f1a3` independently passed all three PR workflows. We compared the two preserved `native-integrated-g1-evidence` ZIP artifacts directly:
+
+- All **251 artifact paths** were present in both runs.
+- All **24 matching `.rs` and `.c` files** were byte-identical.
+- `native-compiler-bundle-receipt.txt` retained the same `generated_rust_sha256`: `c43f5f4dc112af456e53dc4b650f48f6e2b3649a377aa580470464d77c2b5dfa`.
+- Both native smoke receipts reported **21,131 Lean differential assertions** and **23,051 core/matrix oracle cases**.
+- The native backend/shared-library SHA-256 values changed, as expected from the refactored compiler source. Identity of the emitted Rust is an observed property of these checked inputs, not a universal equivalence proof.
+
+The Excession output for the candidate retained `PARTIAL` source coverage, including `UNSUPPORTED_LANGUAGE` for Rust; its independent test/build obligations were not fabricated as completed receipts.

@@ -168,6 +168,20 @@ impl __LeanValue {
             _ => panic!("constructor field set on non-constructor"),
         }
     }
+    // Lean IR tobj is a heap object OR a tagged value. Refine it to an
+    // obj only when the actual runtime representation is a constructor.
+    // Other heap representations need their own source-checked contract.
+    // This guard is also the backstop against reading an erased join arg.
+    fn require_constructor_object(self) -> Self {
+        assert!(
+            matches!(
+                self.0.as_ref(),
+                __LeanValueRepr::Ctor { .. } | __LeanValueRepr::PullIn { .. }
+            ),
+            "tobject join requires a heap constructor"
+        );
+        self
+    }
     fn erased() -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Erased)) }
     fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
     fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }

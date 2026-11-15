@@ -11,9 +11,9 @@ const fields={
   research:["total","covered","leanify","structural","conflicts","unverified"],
   holdout:["total","covered","leanify","structural","conflicts","unverified"],
   external:["total","covered","leanify","structural","conflicts","unverified"],
-  discovery:["total","covered","overlap","equivalent","comparison_unresolved",
+  discovery:["total","covered","overlap","equivalent","normalized_equivalent","comparison_unresolved",
     "source_faithfulness_assessed","proofs_completed"],
-  author_holdout:["total","covered","overlap","equivalent","comparison_unresolved",
+  author_holdout:["total","covered","overlap","equivalent","normalized_equivalent","comparison_unresolved",
     "source_faithfulness_assessed","proofs_completed"],
   oracle:["total","generated_translations","reference_matches","no_definitional_match",
     "tool_errors","audited_source_faithfulness"]

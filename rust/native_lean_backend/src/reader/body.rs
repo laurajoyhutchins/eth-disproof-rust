@@ -168,9 +168,10 @@ impl Reader {
                     x = Self::field(x, 5)?;
                 }
                 6..=8 => {
-                    // Immutable Rc-backed emitted values own their references;
-                    // Lean's inc/dec/del bookkeeping is non-observable in this
-                    // subset because reset/reuse/isShared are refused.
+                    // In the bounded value-semantic subset, Rc aliases own
+                    // their Rust references. A source-CFG preflight refuses
+                    // isShared after a possible earlier inc/dec/del effect.
+                    // This is not Lean/Rust reference-count equivalence.
                     let id = Self::var(Self::field(x, 0)?)?;
                     let ty = env
                         .get(&id)

@@ -99,10 +99,11 @@ Rust operation.
 
 The compiler now refuses a later `isShared` when source `inc`,
 `dec`, or `del` may have occurred **earlier on the same execution
-path**. Cases are scanned separately, without assuming that distinct
-variable IDs denote different allocations. Joins conservatively refuse
-when bookkeeping and observations coexist, because the current analysis
-does not model all jump-to-join control-flow edges.
+path**, including a path through a join point. Cases are scanned separately, without assuming that distinct variable
+IDs denote different allocations. The audit follows `jmp` into lexical
+`jdecl` bodies, with the reference-count history at each jump. Merely
+declaring a join does not execute it. Nonrecursive lexical join scopes
+and a bounded traversal match the canonical emitter's supported CFG.
 
 This ordering matters: optimized Lean constructor code may inspect
 `isShared` and *then* increment a field reference as it creates a
@@ -114,14 +115,18 @@ reference-count correspondence.
 `examples/ReferenceBookkeepingFixture.lean` constructs actual Lean
 `IR.FnBody` terms. It tests six negative cases (each bookkeeping
 instruction, possible alias across distinct IDs, paired increments and
-decrements, and a nested join) and three positive emissions (bookkeeping with no `isShared`,
-`isShared` without bookkeeping, and a sharing check followed by an
-increment). These are emitter-contract checks, not a source execution
-trace theorem.
+decrements, and a nested join) and four positive emissions (bookkeeping with no `isShared`,
+`isShared` without bookkeeping, a sharing check followed by an
+increment, and the same ordering across a lexical join). These are
+emitter-contract checks, not a source execution trace theorem.
 
-**Still unverified:** source reference-count effects flowing through
-other called declarations, runtime alias identity across values and closures,
+**Still unverified:** reference-count effects flowing through other
+called declarations, runtime alias identity across values and closures,
 and physical uniqueness decisions in optimized mutation. This local
 gate does not authorize accepting those general cases. A subsequent
 interprocedural ownership analysis or a faithful logical RC model is needed
-before broadening supported observations.
+before broadening supported observations. The source-defined
+`MutFixture.rotate` remains an important regression: its `isShared`
+precedes the field increments in the shared branch, even though the
+code includes nested join declarations. Its existing original-Lean
+differential tests must continue to pass.

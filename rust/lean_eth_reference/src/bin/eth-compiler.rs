@@ -185,7 +185,6 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>> {
     fs::read(path).map_err(|e| e.to_string())
 }
 fn run_process(
-    opts: &Options,
     work: &Path,
     label: &str,
     program: &str,
@@ -252,7 +251,7 @@ fn run_process(
 }
 fn run_command(opts: &Options, work: &Path, label: &str, args: &[&str]) -> Result<Vec<u8>> {
     run_process(
-        opts, work, label, &opts.lake_bin, &opts.lake_root, args,
+        work, label, &opts.lake_bin, &opts.lake_root, args,
         opts.timeout, None,
     )
 }
@@ -362,7 +361,6 @@ fn compiler_ir(
         .checked_mul(4)
         .ok_or("native project timeout overflow")?;
     run_process(
-        opts,
         &stage.0,
         "native-inprocess-ir",
         "bash",
@@ -529,7 +527,8 @@ fn execute(opts: &Options) -> Result<()> {
     }
     if opts.mode == Mode::Compile {
         ensure(
-            !opts.artifact.exists(),
+            fs::symlink_metadata(&opts.artifact)
+                .is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound),
             "refusing to overwrite existing compiled artifact",
         )?;
         if opts.backend == Backend::CompilerIr {

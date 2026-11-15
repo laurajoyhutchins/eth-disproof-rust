@@ -40,6 +40,7 @@ extern "C" {
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
     fn lr_nat_decimal(x: Obj) -> *mut c_char;
+    fn lr_param_borrow(x: Obj) -> i32;
     fn lr_free_string(x: *mut c_char);
     fn lr_string_size(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
@@ -277,6 +278,12 @@ mod erased_join_safety_tests {
     #[should_panic(expected = "erased join value was read")]
     fn erased_equality_refuses() {
         assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "isShared requires a heap-backed Lean value")]
+    fn tagged_immediate_sharedness_refuses() {
+        let _ = __LeanValue::tagged(0).is_shared();
     }
 }
 

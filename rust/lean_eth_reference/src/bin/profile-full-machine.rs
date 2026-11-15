@@ -1,8 +1,8 @@
 //! Observational native Rust BitProgram profiler for the imported-Lean
 //! full-machine differential. No instruction or state semantics are changed.
 //! Timings include instrumentation overhead and are NOT TM2 primitive costs.
-use lean_eth_reference::Cnf;
-use lean_eth_reference::bit_program::{Config, RunLimits};
+use lean_eth_reference::{Cnf, Error};
+use lean_eth_reference::bit_program::{Config, RunLimits, RunStats};
 use lean_eth_reference::bit_program::{Instr, Program};
 use lean_eth_reference::native_answer;
 use lean_eth_reference::native_frontend;
@@ -162,7 +162,7 @@ fn profile_terminal_stage(
     state: &mut Config<80, 1220>,
     case: &str,
     cap: u64,
-) -> Result<u64, Box<dyn std::error::Error>> {
+) -> Result<RunStats, Box<dyn std::error::Error>> {
     state.pc = Some(p.entry());
     let mut measures = [Measure::default(); 12];
     let mut peak_bits = state.stack_bits()?;
@@ -239,7 +239,10 @@ fn profile_terminal_stage(
             peak_capacity,
         );
     }
-    Ok(steps)
+    Ok(RunStats {
+        instructions: steps,
+        peak_stack_bits: peak_bits,
+    })
 }
 
 /// The terminal test cases have complete source-produced counts and are
@@ -269,15 +272,16 @@ fn profile_terminal_cases() -> Result<(), Box<dyn std::error::Error>> {
         let mut n = 0;
         for (i, (stage, program)) in stages.iter().enumerate() {
             let before = n;
-            n += profile_terminal_stage(
+            let measured = profile_terminal_stage(
                 program,
                 &mut state,
                 &format!("{name}_{stage}"),
                 limits.max_steps - n,
             )?;
-            if n - before != unobserved.stages[i].instructions {
+            n += measured.instructions;
+            if measured != unobserved.stages[i] || n - before != measured.instructions {
                 return Err(format!(
-                    "{name}/{stage}: instrumented and ordinary stage instruction counts disagree"
+                    "{name}/{stage}: instrumented and ordinary stage resource counts disagree"
                 )
                 .into());
             }
@@ -297,17 +301,85 @@ fn profile_terminal_cases() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let terminal = match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
-        [] => false,
-        [flag] if flag == "--terminal" => true,
-        _ => return Err("usage: profile-full-machine [--terminal]".into()),
+/// This is the strongest currently executable nonterminal source-defined
+/// *prefix*: frontend then terminal classification on the SAME physical state.
+/// The original QueryStream/high/leaf/DFS/outer count does not yet run.
+///
+/// An independent uninstrumented replay checks every register, stack, PC,
+/// source instruction count and peak stack bit count at both boundaries.
+/// The production counter MUST refuse the nonterminal result. In particular
+/// the independent small-CNF SAT oracle is never invoked in this observer.
+fn profile_nonterminal_cases() -> Result<(), Box<dyn std::error::Error>> {
+    let stages: [(&str, Program<80, 1220>); 2] = [
+        ("frontend", native_frontend::program()?),
+        ("terminal", native_terminal_classifier::ready_program()?),
+    ];
+    let cases = [
+        ("two_unit", Cnf::from_signed(2, &[&[1]])?),
+        (
+            "three_two_clause",
+            Cnf::from_signed(3, &[&[1, 2], &[1, 3]])?,
+        ),
+    ];
+    let limits = RunLimits {
+        max_steps: 20_000_000,
+        max_stack_bits: 300_000,
     };
-    if terminal {
+    for (name, cnf) in cases {
+        if !matches!(count_terminal(&cnf, limits), Err(Error::NotImplemented(_))) {
+            return Err(format!("{name}: unsupported nonterminal accepted as source count").into());
+        }
+        let mut state = stages[0]
+            .1
+            .initial(cnf.encode_lean().bytes().map(|x| x == b'1'));
+        let mut total = 0;
+        for (stage, program) in &stages {
+            // This replay uses the ordinary product interpreter and no
+            // profiling instrumentation, preserving the complete machine state.
+            let mut normal = state.clone();
+            normal.pc = Some(program.entry());
+            let baseline = program.run(
+                &mut normal,
+                RunLimits {
+                    max_steps: limits.max_steps - total,
+                    max_stack_bits: limits.max_stack_bits,
+                },
+            )?;
+            let observed = profile_terminal_stage(
+                program,
+                &mut state,
+                &format!("{name}_{stage}"),
+                limits.max_steps - total,
+            )?;
+            if state != normal || observed != baseline {
+                return Err(format!("{name}/{stage}: physical state or resource mismatch").into());
+            }
+            total += observed.instructions;
+        }
+        if state.regs[0] || !state.regs[7] || !state.stacks[263].is_empty() {
+            return Err(format!("{name}: nonterminal count port or classifier invalid").into());
+        }
+        println!("# case={name} status=unsupported_nonterminal_count source_steps={total} count=NA");
+    }
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mode = match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
+        [] => "branch",
+        [flag] if flag == "--terminal" => "terminal",
+        [flag] if flag == "--nonterminal" => "nonterminal",
+        _ => return Err("usage: profile-full-machine [--terminal | --nonterminal]".into()),
+    };
+    if mode == "terminal" || mode == "nonterminal" {
         println!(
             "case,opcode,transitions,elapsed_ns,allocation_calls,reallocation_calls,requested_bytes,peak_stack_bits,peak_stack_capacity_bits,max_integer_bits"
         );
-        return profile_terminal_cases();
+        return if mode == "terminal" {
+            profile_terminal_cases()
+        } else {
+            profile_nonterminal_cases()
+        };
     }
     let p = branch_program()?;
     // No commas occur in the case names. These are physical source-op counts,

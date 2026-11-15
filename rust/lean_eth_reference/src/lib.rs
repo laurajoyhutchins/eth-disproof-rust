@@ -574,3 +574,7 @@ pub mod two_adic_admission;
 /// Exact necessary packing inequalities for hypothetical two-adic root schedules.
 /// Arithmetic feasibility is not source proof or active recursion.
 pub mod two_adic_packing;
+
+/// Bounded, exact research reference for deterministic matching-potential labels.
+/// Not a production packet constructor or recursive counter.
+pub mod two_adic_matching_labels;

@@ -43,8 +43,7 @@ fn verify(graph: &BipartiteGraph, cert: &MatchingLabelCertificate) {
         assert!(cert.matching_count <= 2 * cert.maximum_degree - 1);
     }
     assert!(
-        u128::try_from(cert.maximum_pair_class_load).unwrap()
-            * cert.exact_load_bound_denominator
+        u128::try_from(cert.maximum_pair_class_load).unwrap() * cert.exact_load_bound_denominator
             <= cert.exact_load_bound_numerator,
         "reported load violates rational potential bound"
     );
@@ -70,8 +69,18 @@ fn multiedges_and_stars_keep_colors_proper() {
         left_vertices: 3,
         right_vertices: 7,
         edges: vec![
-            (0, 0), (0, 0), (0, 1), (0, 2), (0, 3), (0, 4),
-            (0, 5), (0, 6), (1, 0), (1, 3), (2, 2), (2, 6),
+            (0, 0),
+            (0, 0),
+            (0, 1),
+            (0, 2),
+            (0, 3),
+            (0, 4),
+            (0, 5),
+            (0, 6),
+            (1, 0),
+            (1, 3),
+            (2, 2),
+            (2, 6),
         ],
     };
     let receipt = construct_matching_labels(&graph, 4).unwrap();

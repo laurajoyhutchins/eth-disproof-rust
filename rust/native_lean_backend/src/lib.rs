@@ -176,6 +176,12 @@ mod __lean_closure_inline_tests {
         __LeanValue::boxed_u64(a.unbox_u64().wrapping_add(b.unbox_u64()))
     }
 
+    fn ternary(a: __LeanValue, b: __LeanValue, c: __LeanValue) -> __LeanValue {
+        __LeanValue::boxed_u64(
+            a.unbox_u64().wrapping_add(b.unbox_u64()).wrapping_add(c.unbox_u64())
+        )
+    }
+
     fn triple(args: Vec<__LeanValue>) -> __LeanValue {
         assert_eq!(args.len(), 3);
         __LeanValue::boxed_u64(
@@ -202,6 +208,22 @@ mod __lean_closure_inline_tests {
         assert_eq!(shared.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 23);
         assert_eq!(alias.apply1(__LeanValue::boxed_u64(4)).unbox_u64(), 24);
         assert_eq!(alias.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 25);
+    }
+
+    #[test]
+    fn two_inline_captures_remain_ordered_and_alias_safe() {
+        let original = __LeanValue::pap3(
+            ternary, __LeanValue::boxed_u64(10), __LeanValue::boxed_u64(20)
+        );
+        assert!(matches!(original.0.as_ref(), __LeanValueRepr::Closure3 { .. }));
+        assert_eq!(original.apply1(__LeanValue::boxed_u64(3)).unbox_u64(), 33);
+        let alias = original.clone();
+        assert_eq!(original.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 35);
+        assert_eq!(alias.apply1_owned(__LeanValue::boxed_u64(7)).unbox_u64(), 37);
+        let unique = __LeanValue::pap3(
+            ternary, __LeanValue::boxed_u64(1), __LeanValue::boxed_u64(2)
+        );
+        assert_eq!(unique.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 6);
     }
 
     #[test]
@@ -304,7 +326,7 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        let closure_tests = if source.contains("__LeanValue::pap2(") {
+        let closure_tests = if source.contains("__LeanValue::pap2(") || source.contains("__LeanValue::pap3(") {
             CLOSURE_INLINE_TEST_SOURCE
         } else {
             ""
@@ -918,12 +940,21 @@ impl Reader {
                     captured.push(Self::arg(arg, env, "tobj")?);
                 }
                 if signature.params.len() == 2 && captured.len() == 1 {
-                    // Source binary PAP binds one argument. Keep it inline
-                    // in the Rc-backed closure object; avoid allocating a Vec.
+                    // Original binary PAP with one bound value.
                     return Ok(format!(
                         "__LeanValue::pap2({}_binary, {})",
                         internal_closure_name(&name),
                         captured[0]
+                    ));
+                }
+                if signature.params.len() == 3 && captured.len() == 2 {
+                    // The pinned Lean boxed-lambda IR for the benchmark
+                    // binds two values of a generated ternary helper. Embed
+                    // both captures in the Rc closure; no heap capture Vec.
+                    return Ok(format!(
+                        "__LeanValue::pap3({}_ternary, {}, {})",
+                        internal_closure_name(&name),
+                        captured[0], captured[1]
                     ));
                 }
                 Ok(format!(
@@ -2251,8 +2282,9 @@ impl Reader {
             {
                 continue;
             }
-            // Binary functions can be invoked without an argument Vec.
-            // Preserve the original general thunk for zero-capture PAPs.
+            // Full-application helpers can take stack arguments directly
+            // when one source AP operand remains. The original Vec thunk
+            // remains available for general PAPs and multi-arg applications.
             if sig.params.len() == 2 {
                 result.push_str("#[allow(dead_code)]\n");
                 writeln!(
@@ -2261,6 +2293,15 @@ impl Reader {
                     internal_closure_name(name)
                 ).unwrap();
                 writeln!(result, "    {}(capture, arg)\n}}", internal_name(name)).unwrap();
+            }
+            if sig.params.len() == 3 {
+                result.push_str("#[allow(dead_code)]\n");
+                writeln!(
+                    result,
+                    "fn {}_ternary(a: __LeanValue, b: __LeanValue, c: __LeanValue) -> __LeanValue {{",
+                    internal_closure_name(name)
+                ).unwrap();
+                writeln!(result, "    {}(a, b, c)\n}}", internal_name(name)).unwrap();
             }
             result.push_str("#[allow(dead_code)]\n");
             writeln!(
@@ -2587,6 +2628,7 @@ mod tests {
         assert!(RUNTIME_SOURCE.contains("fn apply("));
         assert!(RUNTIME_SOURCE.contains("Closure2 {"));
         assert!(RUNTIME_SOURCE.contains("fn pap2("));
+        assert!(RUNTIME_SOURCE.contains("fn pap3("));
         assert!(RUNTIME_SOURCE.contains("fn apply1("));
         assert!(RUNTIME_SOURCE.contains("fn apply1_owned("));
         assert_eq!(RUNTIME_SOURCE.matches("fn is_shared(").count(), 1);

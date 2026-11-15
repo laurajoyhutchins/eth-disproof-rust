@@ -71,9 +71,11 @@ run the second step in the same pinned Leanify checkout:
 
 Automatic equivalence checking currently requires both frontends to accept exactly one claim.
 The comparator checks the native Leanify `Article.lean` and `Compiled.lean` hashes, rebuilds
-the native module, and uses the actual imported declaration. It hoists structural imports
-ahead of the unchanged declaration body so both propositions elaborate in one pinned Lean
-environment. The comparison theorem is:
+the native module, and uses the actual imported declaration. The structural module is
+compiled independently from its unchanged source before both modules are imported into
+a common pinned Lean environment. This preserves each declaration's original imports,
+notation and typeclass-resolution context. Temporary Lake targets are restored afterward.
+The comparison theorem is:
 
     private def left : Prop := UnifiedSOURCE.claim0
     private def right : Prop := StructSOURCE.claim

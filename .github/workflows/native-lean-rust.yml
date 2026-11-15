@@ -202,6 +202,13 @@ jobs:
             rust/native_lean_backend/artifacts/bench-matrix/generated-package/src/main.rs
             rust/native_lean_backend/artifacts/external-projects/*.tsv
             rust/native_lean_backend/artifacts/external-projects/*.txt
+            rust/native_lean_backend/artifacts/external-projects/*/unified-cli.*
+            rust/native_lean_backend/artifacts/external-projects/*/unified-oracle-cargo.log
+            rust/native_lean_backend/artifacts/external-projects/*/unified-cli-package/Cargo.toml
+            rust/native_lean_backend/artifacts/external-projects/*/unified-cli-package/src/lib.rs
+            rust/native_lean_backend/artifacts/external-projects/*/unified-cli-package/receipt.txt
+            rust/native_lean_backend/artifacts/external-projects/unified-cli-*.tsv
+            rust/native_lean_backend/artifacts/external-projects/unified-cli-*.txt
             rust/native_lean_backend/artifacts/external-projects/*/*.lean
             rust/native_lean_backend/artifacts/external-projects/*/*.txt
             rust/native_lean_backend/artifacts/external-projects/*/*.log

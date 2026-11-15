@@ -32,6 +32,9 @@ export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"
 lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
+# Physical reference-count observations must be source checked.
+lean --load-dynlib="$NATIVE_LIB" examples/BorrowFlagFixture.lean
+lean --load-dynlib="$NATIVE_LIB" examples/ReferenceBookkeepingFixture.lean
 # Compile an imported Lean module separately, then compile its transitive
 # dependency graph (including diamond sharing and recursive call cycles).
 export LEAN_PATH="$(pwd)/examples:${LEAN_PATH}"
@@ -487,13 +490,12 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   cargo test --release --offline --manifest-path examples/cross-call-package/Cargo.toml
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   cargo clippy --offline --manifest-path examples/cross-call-package/Cargo.toml --all-targets -- -D warnings
-# Original-source erased proof parameter: no runtime proof object.
-# Other erased runtime values, locals, returns and joins remain unsupported.
+# Source-derived proof erasure: ordinary runtime objects remain untouched.
 rm -rf examples/erased-proof-package
 lean --load-dynlib="$NATIVE_LIB" examples/ErasedParamFixture.lean
 test -s examples/erased-proof-package/original-ir.txt
 if ! grep -Eq '^pub fn acceptErased\(.*: \(\)' examples/erased-proof-package/src/lib.rs; then
-  echo 'original erased parameter was not zero-sized in emitted Rust' >&2
+  echo 'original erased parameter missing zero-sized public Rust slot' >&2
   exit 1
 fi
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
@@ -585,6 +587,9 @@ mkdir -p artifacts
   echo "constructor_field_set_original_lean_oracles=176"
   echo "cross_call_ownership_original_lean_oracles=512"
   echo "erased_proof_param_source_oracles=128"
+  echo "pinned_param_borrow_abi_and_sharedness_refusal=PASS"
+  echo "source_rc_bookkeeping_sharedness_refusals=6"
+  echo "source_rc_value_only_positive_emissions=4"
   echo "source_option_default_oracles=512"
   echo "generic_inductive_original_lean_oracles=338"
   echo "array_ownership_original_lean_oracles=768"
@@ -631,6 +636,7 @@ mkdir -p artifacts
   sha256sum examples/CrossCallFixture.lean examples/cross-call-package/src/lib.rs examples/cross-call-package/tests/cross_call.rs examples/cross-call-package/Cargo.toml
   sha256sum examples/ErasedParamFixture.lean examples/erased-proof-package/original-ir.txt examples/erased-proof-package/src/lib.rs examples/erased-proof-package/tests/erasure.rs examples/erased-proof-package/Cargo.toml
   sha256sum examples/Objects.lean examples/FunctionValues.lean examples/RefusalObjectNat.lean examples/RefusalObjectCtor.lean examples/RefusalFunctionValues.lean examples/object-package/src/lib.rs examples/function-package/src/lib.rs
+  sha256sum examples/BorrowFlagFixture.lean examples/ReferenceBookkeepingFixture.lean
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

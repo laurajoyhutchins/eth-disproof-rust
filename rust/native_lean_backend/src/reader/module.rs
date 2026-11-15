@@ -45,6 +45,14 @@ impl Reader {
             return Err("erased function result has no executable meaning".into());
         }
         let body = Self::field(decl, 3)?;
+        let shared = Self::shared_observations(body)?;
+        // Source RC effects are erased in the bounded value runtime;
+        // reject physical observations after an earlier CFG effect.
+        if !shared.is_empty() && Self::rc_may_precede_sharedness(body)? {
+            return Err(
+                "unverified isShared after source inc/dec/del reference bookkeeping".into(),
+            );
+        }
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
@@ -58,12 +66,16 @@ impl Reader {
             }
             let var = Self::var(Self::field(*param, 0)?)?;
             let ty = Self::ty(Self::field(*param, 1)?)?;
+            if Self::param_borrow(*param)? && shared.contains(&var) {
+                return Err(format!(
+                    "borrowed parameter x_{var} has unverified isShared ownership semantics"
+                ));
+            }
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}"));
             }
             if ty == "erased" {
-                // The source proof argument has zero runtime data and is never
-                // read. Keep its ABI slot, but avoid an unused-parameter warning.
+                // Preserve the zero-sized ABI slot without unused-variable warnings.
                 write!(result, "_x_{var}: ()").unwrap();
             } else {
                 write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
@@ -91,6 +103,7 @@ impl Reader {
         }
         let mut params = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
+            let _ = Self::param_borrow(param)?;
             params.push(Self::ty(Self::field(param, 1)?)?);
         }
         Ok(Signature {

@@ -4,7 +4,7 @@ use super::*;
 impl Reader {
     pub(super) unsafe fn scalar(x: Obj) -> CompilerResult<usize> {
         if lr_is_scalar(x) == 0 {
-            Err("expected tagged scalar".into())
+            Err(CompilerError::new(RefusalKind::Abi, "expected tagged scalar"))
         } else {
             Ok(lr_scalar_value(x))
         }
@@ -14,7 +14,7 @@ impl Reader {
             return Ok(lr_scalar_value(x));
         }
         if lr_is_ctor(x) == 0 {
-            return Err("expected inductive constructor".into());
+            return Err(CompilerError::new(RefusalKind::Abi, "expected inductive constructor"));
         }
         Ok(lr_tag(x) as usize)
     }
@@ -33,34 +33,33 @@ impl Reader {
     }
     pub(super) unsafe fn field(x: Obj, index: usize) -> CompilerResult<Obj> {
         if lr_is_ctor(x) == 0 || index >= lr_field_count(x) {
-            return Err(format!(
+            return Err(CompilerError::new(RefusalKind::Abi, format!(
                 "constructor field {index} unavailable (tag={}, fields={}, scalar={})",
                 lr_tag(x),
                 lr_field_count(x),
                 lr_is_scalar(x)
-            )
-            .into());
+            )));
         }
         Ok(lr_field(x, index))
     }
     pub(super) unsafe fn array(x: Obj) -> CompilerResult<Vec<Obj>> {
         if lr_is_array(x) == 0 {
-            return Err("expected Lean Array".into());
+            return Err(CompilerError::new(RefusalKind::Abi, "expected Lean Array"));
         }
         let count = lr_array_len(x);
         if count > 1_000_000 {
-            return Err("IR node array exceeds safety cap".into());
+            return Err(CompilerError::new(RefusalKind::Abi, "IR node array exceeds safety cap"));
         }
         Ok((0..count).map(|i| lr_array_at(x, i)).collect())
     }
     pub(crate) unsafe fn string(x: Obj) -> CompilerResult<String> {
         let ptr = lr_string_ptr(x);
         if ptr.is_null() {
-            return Err("expected Lean String".into());
+            return Err(CompilerError::new(RefusalKind::Abi, "expected Lean String"));
         }
         let len = lr_string_size(x);
         if len == 0 || len > 1_048_577 {
-            return Err("Lean String byte length outside supported bound".into());
+            return Err(CompilerError::new(RefusalKind::Abi, "Lean String byte length outside supported bound"));
         }
         let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len - 1);
         String::from_utf8(bytes.to_vec()).map_err(|_| "invalid UTF-8".into())
@@ -70,7 +69,7 @@ impl Reader {
     pub(super) unsafe fn decimal_nat(x: Obj) -> CompilerResult<String> {
         let raw = lr_nat_decimal(x);
         if raw.is_null() {
-            return Err("large Nat literal rejected (invalid or over 4 KiB)".into());
+            return Err(CompilerError::new(RefusalKind::LitVal, "large Nat literal rejected (invalid or over 4 KiB)"));
         }
         let decoded = CStr::from_ptr(raw)
             .to_str()
@@ -87,7 +86,7 @@ impl Reader {
     // special UTF-8 strings use ~s<hex bytes>, numeric segments use ~n<nat>.
     pub(super) unsafe fn name(x: Obj, depth: usize) -> CompilerResult<String> {
         if depth > 128 {
-            return Err("name nesting limit".into());
+            return Err(CompilerError::new(RefusalKind::Decl, "name nesting limit"));
         }
         match Self::tag(x)? {
             0 => Ok(String::new()),
@@ -102,7 +101,7 @@ impl Reader {
                 let number = Self::nat(Self::field(x, 1)?)?;
                 Ok(append_name_component(&parent, &format!("~n{number}")))
             }
-            t => Err(format!("unknown Lean.Name tag {t}").into()),
+            t => Err(CompilerError::new(RefusalKind::Decl, format!("unknown Lean.Name tag {t}"))),
         }
     }
     // Param.borrow is an unboxed Bool in pinned Lean IR.Param, not one of
@@ -111,7 +110,7 @@ impl Reader {
         match lr_param_borrow(x) {
             0 => Ok(false),
             1 => Ok(true),
-            _ => Err("unsupported Lean IR.Param borrowed-flag layout".into()),
+            _ => Err(CompilerError::new(RefusalKind::Abi, "unsupported Lean IR.Param borrowed-flag layout")),
         }
     }
 
@@ -124,7 +123,7 @@ impl Reader {
         if lr_is_ctor(x) != 0 && lr_field_count(x) == 1 {
             return Self::nat(Self::field(x, 0)?);
         }
-        Err("unsupported VarId runtime representation".into())
+        Err(CompilerError::new(RefusalKind::Abi, "unsupported VarId runtime representation"))
     }
     pub(super) unsafe fn arg(
         x: Obj,
@@ -138,7 +137,7 @@ impl Reader {
                     .get(&id)
                     .ok_or_else(|| format!("unknown input variable x_{id}"))?;
                 if !ir_type_compatible(found, expected) {
-                    return Err(format!("x_{id}: expected {expected}, got {found}").into());
+                    return Err(CompilerError::new(RefusalKind::Arg, format!("x_{id}: expected {expected}, got {found}")));
                 }
                 Ok(if is_value_type(found) {
                     format!("x_{id}.clone()")
@@ -146,7 +145,7 @@ impl Reader {
                     format!("x_{id}")
                 })
             }
-            1 => Err("erased value used as runtime operand".into()),
+            1 => Err(CompilerError::new(RefusalKind::Arg, "erased value used as runtime operand")),
             t => Err(CompilerError::new(
                 RefusalKind::Arg,
                 format!("unknown Arg constructor {t}"),
@@ -165,10 +164,9 @@ impl Reader {
             7 => Ok("obj"),
             8 => Ok("tobj"),
             12 => Ok("tagged"),
-            t => Err(format!(
+            t => Err(CompilerError::new(RefusalKind::IRType, format!(
                 "IR type tag {t} unsupported (supported fixed integers and immutable values)"
-            )
-            .into()),
+            ))),
         }
     }
     pub(super) unsafe fn lit(x: Obj, ty: &str) -> CompilerResult<String> {
@@ -190,14 +188,14 @@ impl Reader {
                     "u32" => u32::MAX as usize,
                     "u64" => usize::MAX, // Pinned Linux x86-64 Lean ABI.
                     "usize" => usize::MAX,
-                    _ => return Err(format!("literal type {ty} unsupported").into()),
+                    _ => return Err(CompilerError::new(RefusalKind::LitVal, format!("literal type {ty} unsupported"))),
                 };
                 if n > max {
-                    return Err(format!("literal {n} exceeds type {ty}").into());
+                    return Err(CompilerError::new(RefusalKind::LitVal, format!("literal {n} exceeds type {ty}")));
                 }
                 Ok(format!("{n}{ty}"))
             }
-            t => Err(format!("literal constructor {t} unsupported").into()),
+            t => Err(CompilerError::new(RefusalKind::LitVal, format!("literal constructor {t} unsupported"))),
         }
     }
 }

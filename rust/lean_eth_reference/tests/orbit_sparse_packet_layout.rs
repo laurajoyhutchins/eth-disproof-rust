@@ -31,11 +31,11 @@ fn verify_independently(
     );
     assert_eq!(
         layout.packets.len(),
-        layout.occupied_orbits.iter().map(|o| o.packets).sum()
+        layout.occupied_orbits.iter().map(|o| o.packets).sum::<usize>()
     );
     assert_eq!(
         edges.len(),
-        layout.occupied_orbits.iter().map(|o| o.real_edges).sum()
+        layout.occupied_orbits.iter().map(|o| o.real_edges).sum::<usize>()
     );
     assert!(layout.occupied_orbits.iter().all(|o| o.real_edges > 0));
 
@@ -375,11 +375,11 @@ fn sparse_slots_preserve_exact_source_cauchy_identity_and_coupled_f_zero() {
     // Include interactions between edges in BOTH tensor products.
     // This is deliberately not a rank-one factorization test.
     fn tensor_row(mask: usize) -> i128 {
-        let b = |i| i128::try_from((mask >> i) & 1).unwrap();
+        let b = |i| i128::try_from((mask >> i) & 1usize).unwrap();
         3 - b(0) + 2 * b(1) * b(2) - 5 * b(3)
     }
     fn tensor_column(mask: usize) -> i128 {
-        let b = |i| i128::try_from((mask >> i) & 1).unwrap();
+        let b = |i| i128::try_from((mask >> i) & 1usize).unwrap();
         2 + 7 * b(0) * b(3) - 3 * b(1) + b(2)
     }
     let mut deformed_at_zero = 0i128;

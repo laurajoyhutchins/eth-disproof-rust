@@ -69,7 +69,10 @@ impl Reader {
         match lr_ir_rc_flags(x) {
             0 | 1 => Ok(false),
             2 | 3 => Ok(true),
-            _ => Err("invalid pinned Lean.IR inc/dec packed Bool flags".into()),
+            _ => Err(CompilerError::new(
+                RefusalKind::FnBody,
+                "invalid pinned Lean.IR inc/dec packed Bool flags",
+            )),
         }
     }
 

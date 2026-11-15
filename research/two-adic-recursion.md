@@ -87,6 +87,18 @@ maximum degree* is a genuinely different assumption, not a free parameter.
 See [the root-packing obstruction and exact hypothetical schedule checker](root-packing-feasibility.md).
 No full recursion or new complexity bound is claimed.
 
+### Per-coordinate port balancing can now be certified independently
+
+A [deterministic weighted vertex-label theorem](two-adic-joint-orbit-balance.md)
+proves \(r C\le M+(r-1)\Delta\) for each row/column
+symbol load. Thus \((r-1)\Delta\le2M\) is sufficient
+for the appendix's source port caps, and \(r\Delta\le3M\)
+is necessary for *any* labeling. Right-shore cyclic coordinate
+permutations leave these loads invariant while optimizing exact
+orbit-sparse padding with a bounded local search. The source
+weighted-mode recursion, nonzero deformation and all-depth
+degree/precision constraints are **not** thereby discharged.
+
 ### Bounded orbit-sparse packet layout
 
 A [new finite packet-layout witness](two-adic-orbit-sparse-layout.md)

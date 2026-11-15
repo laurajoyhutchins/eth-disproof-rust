@@ -104,17 +104,12 @@ impl CompilerError {
         self.declaration = Some(declaration);
         self
     }
-}
 
-impl From<String> for CompilerError {
-    fn from(message: String) -> Self {
-        Self::new(RefusalKind::Compiler, message)
-    }
-}
-
-impl From<&str> for CompilerError {
-    fn from(message: &str) -> Self {
-        Self::new(RefusalKind::Compiler, message)
+    // Preserve the original refusal kind when adding a call-chain identity.
+    // This previously round-tripped through String and lost typed provenance.
+    pub(crate) fn with_context(mut self, caller: &str) -> Self {
+        self.message = format!("{caller}: {}", self.message);
+        self
     }
 }
 
@@ -238,6 +233,17 @@ mod tests {
         assert!(msg.contains("\"construct\":\"FnBody\""));
         assert!(msg.contains("\\\"quoted\\\"\\nline"));
         assert!(!msg.contains("quoted\"\nline"));
+    }
+
+    #[test]
+    fn nested_declaration_context_preserves_typed_error_provenance() {
+        let error = CompilerError::new(RefusalKind::IRType, "unsupported storage")
+            .with_context("Module.callee")
+            .with_declaration("Module.root".to_owned());
+        let report = refusal("fallback", &error);
+        assert!(report.contains("\"construct\":\"IRType\""));
+        assert!(report.contains("\"declaration\":\"Module.root\""));
+        assert!(report.contains("\"reason\":\"Module.callee: unsupported storage\""));
     }
 
     #[test]

@@ -138,6 +138,23 @@ Tests independently enumerate all 15 nonempty simple 2-by-2 bipartite edge subse
 
 Materializing the packets takes \(O(Ma+PLa)\) operations up to balanced-tree map overhead, since unoccupied signatures are never enumerated. But this **excludes the cost of finding a labeling that passes both bounds**, exact packet tensor entry generation, coefficient arithmetic, field setup, interpolation, weighted-mode enumeration, recursion and leaves. Those must enter any end-to-end cost receipt. The current bounded reference is not a proof of a useful worst-case time bound.
 
+## Degree-weighted simultaneous port balancing
+
+A [deterministic joint labeler](two-adic-joint-orbit-balance.md)
+now provides an independent, universal **per-symbol port theorem**:
+\(rC\le M+(r-1)\Delta\). Consequently
+\((r-1)\Delta\le2M\) suffices for both shore port bounds
+in every coordinate. A necessary obstruction for **any** vertex
+labeling is \(r\Delta\le3M\). Both apply to multigraphs.
+
+The labeler then tries only polynomially many coordinatewise cyclic
+relabelings of the right shore. Every trial preserves the port
+loads but can reduce the exact orbit waste \(E+R\). For a
+32-edge, \(r=4,a=2\) shifted matching, this reduces 32
+sparse packets to eight without changing port counts.
+**No universal orbit-waste bound is proved**; structural admission
+still checks the exact packet and child bounds and refuses failures.
+
 ## Mathematical next steps
 
 1. Formalize `OrbitSparsePacketLayout` and the exact `PL=M+E+R` count, assignment bijection, slot-orientation and port-count invariants in Lean. Admit only verified degree/packet/port receipts.

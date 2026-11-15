@@ -114,7 +114,7 @@ private partial def reifyBody (env : Bindings)
     let condition ← env.tests x.idx
     let mut falseBranch : Option Program := none
     let mut trueBranch : Option Program := none
-    let mut text := s!"    match x_{x.idx} {{\n"
+    let mut text := "    match x_" ++ toString x.idx ++ " {\n"
     for alt in alts do
       match alt with
       | .ctor info branch =>
@@ -129,7 +129,7 @@ private partial def reifyBody (env : Bindings)
         else
           let _ ← require trueBranch.isNone
           trueBranch := some program
-        text := text ++ s!"        {index} => {{\n" ++ rendered ++ "        }\n"
+        text := text ++ "        " ++ toString index ++ " => {\n" ++ rendered ++ "        }\n"
       | .default _ => none
     let f ← falseBranch
     let t ← trueBranch

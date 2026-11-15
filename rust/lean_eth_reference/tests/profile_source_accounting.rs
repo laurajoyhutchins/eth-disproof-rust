@@ -25,7 +25,10 @@ fn instruction_totals(csv: &str, case: &str, stage: &str) -> u64 {
         .filter(|row| row.first().copied() == Some(&format!("{case}_{stage}")[..]))
         .map(|row| {
             assert_eq!(row.len(), 10, "each accounting row has a stable schema");
-            assert_eq!(row[9], "NA", "source BitProgram has no integer coefficient observation");
+            assert_eq!(
+                row[9], "NA",
+                "source BitProgram has no integer coefficient observation"
+            );
             row[2].parse::<u64>().expect("source instruction tally")
         })
         .sum()
@@ -56,7 +59,12 @@ fn nonterminal_source_accounting_preserves_refusal_and_actual_work() {
 fn terminal_source_accounting_replays_all_four_stages() {
     let output = profile("--terminal");
     assert!(output.lines().next() == Some(HEADER));
-    for case in ["zero_empty", "three_empty", "three_empty_clause", "two_tautology"] {
+    for case in [
+        "zero_empty",
+        "three_empty",
+        "three_empty_clause",
+        "two_tautology",
+    ] {
         for stage in ["frontend", "terminal", "transfer_adapter", "answer"] {
             assert!(
                 instruction_totals(&output, case, stage) > 0,

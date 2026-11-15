@@ -150,8 +150,11 @@ impl __LeanValue {
     // Lean constructor pointer-field set: unique mutation, alias-safe COW.
     // Rc ownership is used only to choose a safe implementation path.
     // This is not a claim of identical Lean/Rust reference-count traces.
-    fn is_shared(&self) -> u8 {
+    fn assert_not_erased(&self) {
         assert!(!matches!(self.0.as_ref(), __LeanValueRepr::Erased), "erased join value was read");
+    }
+    fn is_shared(&self) -> u8 {
+        self.assert_not_erased();
         u8::from(std::rc::Rc::strong_count(&self.0) > 1)
     }
     fn with_field(mut self, index: usize, value: Self) -> Self {
@@ -410,6 +413,7 @@ impl __LeanValue {
         }
     }
     fn has_ctor(&self, tag: usize, name: &str, arity: usize) -> bool {
+        self.assert_not_erased();
         match self.0.as_ref() {
             __LeanValueRepr::Ctor {tag: t, name: n, fields} =>
                 *t == tag && *n == name && fields.len() == arity,
@@ -419,6 +423,7 @@ impl __LeanValue {
         }
     }
     fn has_tagged(&self, value: usize) -> bool {
+        self.assert_not_erased();
         matches!(self.0.as_ref(), __LeanValueRepr::Tagged(v) if *v == value)
     }
     fn field(&self, index: usize) -> Self {
@@ -468,6 +473,8 @@ impl __LeanValue {
 
 impl PartialEq for __LeanValue {
     fn eq(&self, other: &Self) -> bool {
+        self.assert_not_erased();
+        other.assert_not_erased();
         use __LeanValueRepr::*;
         match (self.0.as_ref(), other.0.as_ref()) {
             (Nat(a), Nat(b)) | (Int(a), Int(b)) =>

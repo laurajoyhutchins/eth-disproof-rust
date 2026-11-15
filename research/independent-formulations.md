@@ -181,7 +181,7 @@ A successful finite comparison is useful regression evidence. It is not a theore
 
 ## Packet factors versus Anthropic factors: strict correspondence boundary
 
-The original OpenAI appendix is [`quantitative-contraction.tex`](https://github.com/openai/math/blob/main/preprints/The-Exponential-Time-Hypothesis-is-False-October-25-2026/build/quantitative-contraction.tex) in the October 25 manuscript. Its exact packet construction has three independent layers:
+The original OpenAI appendix is [`quantitative-contraction.tex`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/The-Exponential-Time-Hypothesis-is-False-October-25-2026/build/quantitative-contraction.tex) in the October 25 manuscript. Its pinned TeX blob is `51ba54efc29f51bbc0426f848003030da484f354`. Its exact packet construction has three independent layers:
 
 1. The collision-packing lemma labels ports and embeds each real edge in one slot of a packet of length `L=2^a`, with uniform orientation rules and at most `3M/L` packets.
 2. The Cauchy kernel is `W_xy(T)=C(T)/(C'(0)(T-(y-x)))`; at `T=0` it is the original edge identity. At `T=t+2^(a+1) ζ`, crossing rows have a geometric expansion in tile moments `L_Z(X)=Σ j^b X_y`, with coefficient divisible by `2^(b+1)`.

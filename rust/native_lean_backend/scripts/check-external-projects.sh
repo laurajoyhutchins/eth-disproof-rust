@@ -225,8 +225,8 @@ LEAN
             >> "$case_dir/identity.txt"
         fi
         # A third independent source project: the original Newspeak tree
-        # projection. Exercise both branches of its optimizer's isShared
-        # reuse path; do not infer RC-equivalence from the returned offsets.
+        # projection. Test aliased and non-aliased inputs around its isShared
+        # reuse path; do not infer RC-equivalence or branch coverage from returned offsets.
         if [[ "$name" == "newspeak" && "$rustbuild" == "PASS" ]]; then
           verified="$case_dir/verified-crate"
           mkdir -p "$verified/src" "$verified/oracles"
@@ -626,6 +626,11 @@ if ! grep -Fqx 'generated_rust_semantic_parity=256_original_Lean_Keboola_pullDec
   echo 'FATAL: full original Keboola pullDecide parity receipt missing or incomplete' >&2
   exit 1
 fi
+if ! grep -Fqx 'generated_rust_semantic_parity=256_original_Lean_Newspeak_span_cases_PASS' \
+    "$out/newspeak/identity.txt"; then
+  echo 'FATAL: original Newspeak span parity or checked heap join is incomplete' >&2
+  exit 1
+fi
 {
   echo "status=COMPLETE_OBSERVATIONS_NOT_G1_ACCEPTANCE"
   echo "source_revision=$(git rev-parse --verify HEAD 2>/dev/null || echo unavailable)"
@@ -634,8 +639,10 @@ fi
   echo "external_armada_original_root=128_source_oracles_PASS"
   echo "external_keboola_two_original_helpers=12_source_oracles_PASS"
   echo "external_keboola_original_root=256_source_oracles_PASS"
+  echo "external_newspeak_original_root=256_source_oracles_PASS"
+  echo "independent_external_source_roots_with_parity=3"
   echo "substantial_external_project_roots_verified=2_of_3"
-  echo "semantic_verification_of_selected_external_roots=armada_pass_keboola_pass_newspeak_refused"
+  echo "semantic_verification_of_selected_external_roots=armada_pass_keboola_pass_newspeak_span_pass"
   echo "toolchain=$(lean --version)"
   sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt"
 } > "$out/receipt.txt"

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "source_snapshot_commit": "a0d26681cee5d7af46e5b2d8b172fd1c3bf5c428",
+  "git_blob_sha1": {
+    "D01": "498dc1a6ca2133b5a8b7c02ec9963a00b8cd0386",
+    "D02": "93b777b81acaa18d60abb73c5da5692ed025854c",
+    "D03": "5c3655a3d4e5cf0aa4840d2f7dcbb67dd6dc92cc",
+    "N01": "946772e760e8f4d2dac3bf65bd627b7ed96b9e11",
+    "N02": "ad46e334e5084b26ace1c6eb4e109b7395945dc4",
+    "O01": "958f85262349069122aa765272fc0975c0b00a24",
+    "O02": "4aaaaf68245dea4f860a3dc515b188615f3f6d56",
+    "O03": "d975dab719812e6ba0c4fe1e39b7283743ce8aa2",
+    "O04": "95a9e19b39814b2358ed3b8ff16bff6969c278d5",
+    "O05": "c566ce6fa934034a074887bb6b66cdde776948e4",
+    "O06": "8c9ced882ad8b9da321e2bcde66ca537ae591fb1",
+    "O07": "e2d42bc7d0471198f6ffbaeb8b6dab1d3edf27f8"
+  },
+  "warning": "Git blob SHA-1 pins exact bytes. Runtime evidence includes SHA-256 separately. Do not rewrite author_holdout files."
+}

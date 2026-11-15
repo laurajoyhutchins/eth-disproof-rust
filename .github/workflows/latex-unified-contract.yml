@@ -5,6 +5,8 @@ on:
     branches: ['experiment/latex-unified-contract']
     paths:
       - 'benchmark/latex-to-lean/unified/**'
+      - 'benchmark/latex-to-lean/research/summarize.mjs'
+      - 'benchmark/latex-to-lean/research/summarize.test.mjs'
       - '.github/workflows/latex-unified-contract.yml'
   workflow_dispatch:
 
@@ -28,11 +30,13 @@ jobs:
           node-version: '22.16.0'
       - name: Test shared mathematical evidence contract
         run: |
-          node --test benchmark/latex-to-lean/unified/*.test.mjs
+          node --test benchmark/latex-to-lean/unified/*.test.mjs benchmark/latex-to-lean/research/summarize.test.mjs
           node --check benchmark/latex-to-lean/unified/run.mjs
           node --check benchmark/latex-to-lean/unified/verify.mjs
+          node --check benchmark/latex-to-lean/unified/generate-leanify.mjs
 
   corpus-integration:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deep]')
     needs: contract-checkpoint
     runs-on: ubuntu-24.04
     timeout-minutes: 35

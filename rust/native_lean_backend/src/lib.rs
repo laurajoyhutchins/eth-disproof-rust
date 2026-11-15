@@ -52,6 +52,9 @@ extern "C" {
 #[derive(Debug, Clone)]
 struct Signature {
     params: Vec<&'static str>,
+    // This is the actual unboxed Bool from pinned Lean.IR.Param, not an
+    // inference from how many temporary Rust Rc handles currently exist.
+    borrows: Vec<bool>,
     result: &'static str,
 }
 

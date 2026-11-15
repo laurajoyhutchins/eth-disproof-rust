@@ -26,11 +26,14 @@ mod source_object_trace_tests {
     fn trace() {
         let mut seen = Vec::new();
         let mut result = String::new();
-        let a = create(__LeanValue::tagged(17));
+        let first: usize = std::env::var("OWNERSHIP_OBJECT_TRACE_A").unwrap().parse().unwrap();
+        let second: usize = std::env::var("OWNERSHIP_OBJECT_TRACE_B").unwrap().parse().unwrap();
+        assert!(first < (usize::MAX >> 1) && second < (usize::MAX >> 1));
+        let a = create(__LeanValue::tagged(first));
         writeln!(result, "TRACE create {}", inspect(&a, &mut seen)).unwrap();
         let same = identity(a.clone());
         writeln!(result, "TRACE direct {} {}", inspect(&a, &mut seen), inspect(&same, &mut seen)).unwrap();
-        let b = create(__LeanValue::tagged(23));
+        let b = create(__LeanValue::tagged(second));
         writeln!(result, "TRACE second {}", inspect(&b, &mut seen)).unwrap();
         let left = select(1u8, same.clone(), b.clone());
         writeln!(result, "TRACE branch-left {} {} {}", inspect(&same, &mut seen), inspect(&left, &mut seen), inspect(&b, &mut seen)).unwrap();

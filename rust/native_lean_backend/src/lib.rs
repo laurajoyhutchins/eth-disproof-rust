@@ -488,7 +488,7 @@ impl Reader {
                     {
                         return Ok(false);
                     }
-                    pending.push((Self::field(current, 3)?, next_depth));
+                    pending.push((Self::field(current, 3)?, depth));
                 }
                 1 => {
                     // jdecl: the generated Rust lexical closure may capture
@@ -500,7 +500,7 @@ impl Reader {
                         }
                     }
                     pending.push((Self::field(current, 2)?, next_depth));
-                    pending.push((Self::field(current, 3)?, next_depth));
+                    pending.push((Self::field(current, 3)?, depth));
                 }
                 2 => {
                     // Constructor pointer-field set mutates/observes its target.
@@ -509,7 +509,7 @@ impl Reader {
                     {
                         return Ok(false);
                     }
-                    pending.push((Self::field(current, 3)?, next_depth));
+                    pending.push((Self::field(current, 3)?, depth));
                 }
                 5 => {
                     // Packed-field sset reads its object and byte-value IDs.
@@ -518,7 +518,7 @@ impl Reader {
                     {
                         return Ok(false);
                     }
-                    pending.push((Self::field(current, 5)?, next_depth));
+                    pending.push((Self::field(current, 5)?, depth));
                 }
                 6 | 7 => {
                     // inc/dec: conservatively retain variables involved in
@@ -526,7 +526,7 @@ impl Reader {
                     if Self::var(Self::field(current, 0)?)? == id {
                         return Ok(false);
                     }
-                    pending.push((Self::field(current, 2)?, next_depth));
+                    pending.push((Self::field(current, 2)?, depth));
                 }
                 8 => {
                     // del: likewise, don't transfer when source bookkeeping
@@ -534,7 +534,7 @@ impl Reader {
                     if Self::var(Self::field(current, 0)?)? == id {
                         return Ok(false);
                     }
-                    pending.push((Self::field(current, 1)?, next_depth));
+                    pending.push((Self::field(current, 1)?, depth));
                 }
                 9 => {
                     // case: scan scrutinee plus every constructor/default arm.

@@ -148,6 +148,11 @@ jobs:
             rust/native_lean_backend/examples/option-default-package/Cargo.toml
             rust/native_lean_backend/examples/option-default-package/src/*.rs
             rust/native_lean_backend/examples/option-default-package/tests/*.rs
+            rust/native_lean_backend/examples/ErasedParamFixture.lean
+            rust/native_lean_backend/examples/erased-proof-package/original-ir.txt
+            rust/native_lean_backend/examples/erased-proof-package/Cargo.toml
+            rust/native_lean_backend/examples/erased-proof-package/src/*.rs
+            rust/native_lean_backend/examples/erased-proof-package/tests/*.rs
             rust/native_lean_backend/artifacts/external-projects/*/positive-package/Cargo.toml
             rust/native_lean_backend/artifacts/external-projects/*/cli-package/receipt.txt
             rust/native_lean_backend/artifacts/external-projects/*/cli-package/src/lib.rs

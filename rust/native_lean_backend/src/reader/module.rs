@@ -1,5 +1,4 @@
-//! Declaration emission, transitive dependency closure and requested-root API.
-//! Refuse unsupported closure members before publishing generated code.
+//! Source-refined function emission, sharing audits, and module roots.
 use super::*;
 
 impl Reader {
@@ -43,6 +42,7 @@ impl Reader {
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
+        let shared = Self::shared_observations(body)?;
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
@@ -56,6 +56,11 @@ impl Reader {
             }
             let var = Self::var(Self::field(*param, 0)?)?;
             let ty = Self::ty(Self::field(*param, 1)?)?;
+            if Self::param_borrow(*param)? && shared.contains(&var) {
+                return Err(format!(
+                    "borrowed parameter x_{var} has unverified isShared ownership semantics"
+                ));
+            }
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}"));
             }
@@ -77,12 +82,57 @@ impl Reader {
         result.push_str("}\n");
         Ok(result)
     }
+    // Gather all physical sharing observations in one declaration body.
+    // IR variable identities are unique; unsupported shapes fail closed.
+    pub(super) unsafe fn shared_observations(body: Obj) -> Result<BTreeSet<usize>, String> {
+        let mut observed = BTreeSet::new();
+        let mut pending = vec![body];
+        let mut count = 0usize;
+        while let Some(current) = pending.pop() {
+            count += 1;
+            if count > 100_000 {
+                return Err("sharedness audit exceeds 100000 IR instructions".into());
+            }
+            match Self::checked_tag(current, "FnBody")? {
+                0 => {
+                    let expr = Self::field(current, 2)?;
+                    if Self::checked_tag(expr, "Expr")? == 12 {
+                        observed.insert(Self::var(Self::field(expr, 0)?)?);
+                    }
+                    pending.push(Self::field(current, 3)?);
+                }
+                1 => {
+                    pending.push(Self::field(current, 2)?);
+                    pending.push(Self::field(current, 3)?);
+                }
+                2 => pending.push(Self::field(current, 3)?),
+                5 => pending.push(Self::field(current, 5)?),
+                6 | 7 => pending.push(Self::field(current, 2)?),
+                8 => pending.push(Self::field(current, 1)?),
+                9 => {
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let idx = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1,
+                            1 => 0,
+                            t => return Err(format!("unsupported sharedness audit Alt {t}")),
+                        };
+                        pending.push(Self::field(alt, idx)?);
+                    }
+                }
+                10 | 11 => {}
+                t => return Err(format!("unsupported sharedness audit FnBody {t}")),
+            }
+        }
+        Ok(observed)
+    }
+
     pub(super) unsafe fn signature(decl: Obj) -> Result<Signature, String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
         let mut params = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
+            let _ = Self::param_borrow(param)?;
             params.push(Self::ty(Self::field(param, 1)?)?);
         }
         Ok(Signature {
@@ -138,11 +188,7 @@ impl Reader {
         Ok(())
     }
 
-    pub(crate) unsafe fn emit_module(
-        decls: Obj,
-        root: Obj,
-        public_name: Obj,
-    ) -> Result<String, String> {
+    pub(crate) unsafe fn emit_module(decls: Obj, root: Obj, public_name: Obj) -> Result<String, String> {
         let root = Self::name(root, 0)?;
         let public_name = Self::string(public_name)?;
         Self::emit_roots(decls, vec![(root, public_name)])
@@ -160,10 +206,7 @@ impl Reader {
         Self::emit_roots(decls, public_roots)
     }
 
-    pub(super) unsafe fn emit_roots(
-        decls: Obj,
-        roots: Vec<(String, String)>,
-    ) -> Result<String, String> {
+    pub(super) unsafe fn emit_roots(decls: Obj, roots: Vec<(String, String)>) -> Result<String, String> {
         if lr_abi_probe() == 0 {
             return Err("Lean C ABI runtime probe failed".into());
         }
@@ -290,5 +333,4 @@ impl Reader {
             result.push_str(")\n}\n");
         }
         include_value_runtime(result)
-    }
-}
+    }}

@@ -40,6 +40,7 @@ extern "C" {
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
     fn lr_nat_decimal(x: Obj) -> *mut c_char;
+    fn lr_param_borrow(x: Obj) -> i32;
     fn lr_free_string(x: *mut c_char);
     fn lr_string_size(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
@@ -102,6 +103,27 @@ mod __lean_constructor_set_tests {
     }
 }
 "#;
+const HEAP_JOIN_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_heap_join_refinement_tests {
+    use super::__LeanValue;
+    #[test]
+    fn constructor_heap_refines_tobject() {
+        let value = __LeanValue::ctor(0, "Probe.ctor", vec![]);
+        assert_eq!(value.require_constructor_object().tag(), 0);
+    }
+    #[test]
+    #[should_panic(expected = "tobject join requires a heap constructor")]
+    fn tagged_value_is_not_a_heap_constructor() {
+        let _ = __LeanValue::tagged(0).require_constructor_object();
+    }
+    #[test]
+    #[should_panic(expected = "tobject join requires a heap constructor")]
+    fn erased_join_argument_is_not_a_heap_constructor() {
+        let _ = __LeanValue::erased().require_constructor_object();
+    }
+}
+"#;
 const ARRAY_OWNERSHIP_TEST_SOURCE: &str = r#"
 #[cfg(test)]
 mod __lean_array_ownership_tests {
@@ -118,6 +140,25 @@ mod __lean_array_ownership_tests {
         let updated = pushed.array_set_tagged_owned(0, __LeanValue::tagged(11));
         assert!(std::ptr::eq(original, Rc::as_ptr(&updated.0)));
         assert_eq!(updated.array_get_tagged(0).tagged_nat(), 11);
+    }
+
+    #[test]
+    fn array_size_uses_exact_tagged_nat_without_gmp_allocation() {
+        let input = __LeanValue::array(vec![
+            __LeanValue::tagged(11),
+            __LeanValue::tagged(13),
+            __LeanValue::tagged(17),
+        ]);
+        let size = input.array_size();
+        assert!(size.has_tagged(3), "small array size must be a tagged Nat");
+        assert_eq!(size.tagged_nat(), 3);
+        assert_eq!(size.nat_to_decimal(), "3");
+        assert_eq!(size, __LeanValue::nat_from_decimal("3"));
+        assert_eq!(__LeanValue::nat_from_decimal("3"), size);
+        let zero = __LeanValue::array(Vec::new()).array_size();
+        assert_eq!(zero.tagged_nat(), 0);
+        assert_eq!(zero, __LeanValue::nat_from_decimal("0"));
+        assert_ne!(zero, __LeanValue::nat_from_decimal("1"));
     }
 
     #[test]
@@ -159,6 +200,12 @@ mod erased_join_safety_tests {
     #[should_panic(expected = "erased join value was read")]
     fn erased_equality_refuses() {
         assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "isShared requires a heap-backed Lean value")]
+    fn tagged_immediate_sharedness_refuses() {
+        let _ = __LeanValue::tagged(0).is_shared();
     }
 }
 
@@ -223,7 +270,12 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}")
+        let heap_join_tests = if source.contains(".require_constructor_object()") {
+            HEAP_JOIN_TEST_SOURCE
+        } else {
+            ""
+        };
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}")
     } else {
         source
     };

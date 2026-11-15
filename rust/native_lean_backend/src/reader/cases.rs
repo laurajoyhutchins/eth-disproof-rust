@@ -1,12 +1,11 @@
-//! Family-checked cases, pattern alternatives and constructor layouts.
+//! Source-checked constructor case families and alternative lowering.
 use super::*;
 
 impl Reader {
-    // A case arm sees its caller's variable types but cannot export its own
-    // bindings to sibling arms or the enclosing body. The instruction budget
-    // remains shared across every arm; only the lexical environment is cloned.
-    // Keep the recursion edge to body() explicit: Lean FnBody.case and its
-    // branch FnBody values are mutually recursive by construction.
+    // Each case alternative receives the visible variable types, but changes
+    // to an arm-local environment must not escape to its siblings.
+    // Recursive bodies retain the original shared instruction counter and
+    // advance the depth budget exactly once.
     unsafe fn lower_case_arm(
         arm: Obj,
         code: &mut String,
@@ -497,4 +496,5 @@ impl Reader {
         writeln!(code, "    }}").unwrap();
         Ok(())
     }
+
 }

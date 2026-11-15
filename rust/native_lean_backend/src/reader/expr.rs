@@ -1,12 +1,12 @@
-//! Typed expression lowering and conservative last-use analysis.
-//! This pass changes no source-IR accepted set or ownership policy.
+//! Expression lowering and conservative ownership/last-use analysis.
 use super::*;
 
 impl Reader {
     // Last-use analysis only permits moves through a straight-line tail.
     // Any join, branch, unknown expression, or reference bookkeeping for the
-    // candidate is conservatively considered an additional use. This is a
-    // performance optimization; it never extends accepted source semantics.
+    // candidate is conservatively considered an additional use. This avoids
+    // unnecessary transient Rc aliases, but does not prove Lean's physical
+    // reference-count trace equals Rust's trace.
     pub(super) unsafe fn arg_refs(x: Obj, id: usize) -> Result<bool, String> {
         Ok(match Self::checked_tag(x, "Arg")? {
             0 => Self::var(Self::field(x, 0)?)? == id,
@@ -64,6 +64,106 @@ impl Reader {
         Ok(false)
     }
 
+    pub(super) unsafe fn tail_unused_on_all_paths(body: Obj, id: usize) -> Result<bool, String> {
+        let mut pending = vec![(body, 0usize)];
+        let mut steps = 0usize;
+        while let Some((current, depth)) = pending.pop() {
+            steps += 1;
+            if steps > 100_000 || depth > 128 {
+                return Ok(false);
+            }
+            let next_depth = depth + 1;
+            match Self::checked_tag(current, "FnBody")? {
+                0 => {
+                    // vdecl: both the expression and all subsequent uses matter.
+                    // Reject shadowing rather than reasoning across renamings.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::expr_refs(Self::field(current, 2)?, id)?
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 3)?, depth));
+                }
+                1 => {
+                    // jdecl: the generated Rust lexical closure may capture
+                    // variables from its environment. Scan its whole body,
+                    // all parameters and the continuation, not just the jump.
+                    for param in Self::array(Self::field(current, 1)?)? {
+                        if Self::var(Self::field(param, 0)?)? == id {
+                            return Ok(false);
+                        }
+                    }
+                    pending.push((Self::field(current, 2)?, next_depth));
+                    pending.push((Self::field(current, 3)?, depth));
+                }
+                2 => {
+                    // Constructor pointer-field set mutates/observes its target.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::arg_refs(Self::field(current, 2)?, id)?
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 3)?, depth));
+                }
+                5 => {
+                    // Packed-field sset reads its object and byte-value IDs.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::var(Self::field(current, 3)?)? == id
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 5)?, depth));
+                }
+                6 | 7 => {
+                    // inc/dec: conservatively retain variables involved in
+                    // source reference-count operations, even if IR is erased.
+                    if Self::var(Self::field(current, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 2)?, depth));
+                }
+                8 => {
+                    // del: likewise, don't transfer when source bookkeeping
+                    // mentions this value after the candidate consuming call.
+                    if Self::var(Self::field(current, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 1)?, depth));
+                }
+                9 => {
+                    // case: scan scrutinee plus every constructor/default arm.
+                    if Self::var(Self::field(current, 1)?)? == id {
+                        return Ok(false);
+                    }
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let body_index = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1, // constructor alternative
+                            1 => 0, // default alternative
+                            _ => return Ok(false),
+                        };
+                        pending.push((Self::field(alt, body_index)?, next_depth));
+                    }
+                }
+                10 => {
+                    if Self::arg_refs(Self::field(current, 0)?, id)? {
+                        return Ok(false);
+                    }
+                }
+                11 => {
+                    // A typed jump can pass the value to a join even though
+                    // that join's body doesn't mention the original VarId.
+                    if Self::args_ref(Self::field(current, 1)?, id)? {
+                        return Ok(false);
+                    }
+                }
+                // setTag, uset and other unsupported forms are never
+                // a reason to silently consume an array.
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
     pub(super) unsafe fn consumable_array(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
         if Self::checked_tag(expr, "Expr")? != 6 {
             return Ok(None);
@@ -84,7 +184,47 @@ impl Reader {
                 return Ok(None);
             }
         }
-        Ok(Self::straight_tail_unused(tail, id)?.then_some(id))
+        Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
+    }
+
+    // A direct callee takes ownership of its argument. Moving an object at
+    // its unique final use avoids manufacturing a temporary Rust Rc alias.
+    // Do not extend this analysis through joins, branches, indirect calls,
+    // bookkeeping, or unrecognized expressions.
+    pub(super) unsafe fn consumable_call(
+        expr: Obj,
+        tail: Obj,
+        functions: Option<&FunctionTable>,
+    ) -> Result<BTreeSet<usize>, String> {
+        let mut consumed = BTreeSet::new();
+        if Self::checked_tag(expr, "Expr")? != 6 {
+            return Ok(consumed);
+        }
+        let name = Self::name(Self::field(expr, 0)?, 0)?;
+        let Some(signature) = functions.and_then(|f| f.get(&name)) else {
+            return Ok(consumed);
+        };
+        let args = Self::array(Self::field(expr, 1)?)?;
+        if args.len() != signature.params.len() {
+            return Ok(consumed);
+        }
+        let mut counts = BTreeMap::<usize, usize>::new();
+        for arg in &args {
+            if Self::checked_tag(*arg, "Arg")? == 0 {
+                let id = Self::var(Self::field(*arg, 0)?)?;
+                *counts.entry(id).or_default() += 1;
+            }
+        }
+        for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
+            if !is_value_type(ty) || Self::checked_tag(arg, "Arg")? != 0 {
+                continue;
+            }
+            let id = Self::var(Self::field(arg, 0)?)?;
+            if counts.get(&id) == Some(&1) && Self::straight_tail_unused(tail, id)? {
+                consumed.insert(id);
+            }
+        }
+        Ok(consumed)
     }
 
     pub(super) unsafe fn expr(
@@ -93,6 +233,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
         consumed_array: Option<usize>,
+        consumed_calls: &BTreeSet<usize>,
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
@@ -329,7 +470,15 @@ impl Reader {
                     }
                     let mut lowered = Vec::with_capacity(args.len());
                     for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
-                        lowered.push(Self::arg(arg, env, ty)?);
+                        let typed = Self::arg(arg, env, ty)?;
+                        if is_value_type(ty) && Self::checked_tag(arg, "Arg")? == 0 {
+                            let id = Self::var(Self::field(arg, 0)?)?;
+                            if consumed_calls.contains(&id) {
+                                lowered.push(format!("x_{id}"));
+                                continue;
+                            }
+                        }
+                        lowered.push(typed);
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
                 }

@@ -187,3 +187,26 @@ The external-project matrix now compiles the **unmodified original Armada schedu
 
 Only one of three substantial original external roots has full generated Rust execution evidence. Newspeak and Keboola are still unsupported at their selected roots, so G1 release is not declared complete.
 
+
+
+## Compile an unchanged Lake project
+
+The script below builds the original Lake module, compiles multiple original
+roots through the same-process Lean IR backend, and publishes a standalone
+Cargo library. It does not edit the Lean source or use JSON IR:
+
+```sh
+scripts/compile-project.sh /path/to/lake-project My.Module \
+  'My.Module.first,My.Module.second' \
+  /path/to/lake-project/My/Module.lean /path/to/new-cargo-output
+```
+
+The output must not exist. The command verifies exact Lean 4.34.1 and Rust
+1.99.1 pins, builds the canonical native backend, and checks generated Rust
+with offline Cargo. The receipt stores hashes and explicitly states that
+semantic parity and transitive source identity have not yet been verified.
+Run scripts/check-project-cli.sh for a separate imported-Lake-project smoke
+and refusal matrix. This advances #193 G1-A and G1-F item 50, but does
+not satisfy either release gate or the three substantial-project requirement.
+
+Compilation phases have a 300-second default timeout; set NATIVE_PROJECT_TIMEOUT_SECONDS to a positive integer below 10000 to change it. The original module source is hashed before compilation and checked again before publication. A changing source file or an expired phase budget refuses without a success receipt.

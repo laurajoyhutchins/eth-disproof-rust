@@ -12,12 +12,12 @@ mod reader;
 mod safety;
 
 use names::{append_name_component, encode_name_str, internal_name};
-use reader::Reader;
 #[cfg(test)]
 use primitives::{
     is_nat_primitive, primitive_spec, runtime_primitive_spec, PRIMITIVE_REGISTRY,
     RUNTIME_PRIMITIVE_REGISTRY,
 };
+use reader::Reader;
 
 // Generated from the complete reviewed pinned Lean IR constructor contract.
 include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));

@@ -8,8 +8,8 @@ use std::fmt::Write;
 
 pub(super) struct Reader;
 
+mod body;
+mod cases;
 mod decode;
 mod expr;
-mod cases;
-mod body;
 mod module;

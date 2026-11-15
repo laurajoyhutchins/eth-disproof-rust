@@ -493,5 +493,4 @@ impl Reader {
         writeln!(code, "    }}").unwrap();
         Ok(())
     }
-
 }

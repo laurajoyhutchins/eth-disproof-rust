@@ -231,6 +231,9 @@ mod __lean_closure_inline_tests {
     fn binary_pap_is_one_heap_object_without_capture_vec() {
         let f = __LeanValue::pap2(plus, __LeanValue::boxed_u64(11));
         assert!(matches!(f.0.as_ref(), __LeanValueRepr::Closure2 { .. }));
+        // lean_apply_1 consumes one closure reference. The first call is
+        // borrowed only because this source program explicitly retains f.
+        f.source_inc(1, true, false);
         assert_eq!(f.apply1(__LeanValue::boxed_u64(5)).unbox_u64(), 16);
         assert_eq!(f.apply1(__LeanValue::boxed_u64(7)).unbox_u64(), 18);
     }
@@ -242,6 +245,7 @@ mod __lean_closure_inline_tests {
         let shared = __LeanValue::pap2(plus, __LeanValue::boxed_u64(20));
         let alias = shared.clone();
         assert_eq!(shared.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 23);
+        alias.source_inc(1, true, false);
         assert_eq!(alias.apply1(__LeanValue::boxed_u64(4)).unbox_u64(), 24);
         assert_eq!(alias.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 25);
     }
@@ -252,6 +256,7 @@ mod __lean_closure_inline_tests {
             ternary, __LeanValue::boxed_u64(10), __LeanValue::boxed_u64(20)
         );
         assert!(matches!(original.0.as_ref(), __LeanValueRepr::Closure3 { .. }));
+        original.source_inc(1, true, false);
         assert_eq!(original.apply1(__LeanValue::boxed_u64(3)).unbox_u64(), 33);
         let alias = original.clone();
         assert_eq!(original.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 35);
@@ -265,6 +270,7 @@ mod __lean_closure_inline_tests {
     #[test]
     fn general_closure_partial_application_remains_source_ordered() {
         let base = __LeanValue::pap(triple, 3, vec![__LeanValue::boxed_u64(1)]);
+        base.source_inc(1, true, false);
         let partial = base.apply1(__LeanValue::boxed_u64(2));
         assert_eq!(partial.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 6);
         assert_eq!(base.apply(vec![

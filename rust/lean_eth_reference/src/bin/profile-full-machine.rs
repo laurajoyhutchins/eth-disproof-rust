@@ -1,7 +1,6 @@
 //! Observational native Rust BitProgram profiler for the imported-Lean
 //! full-machine differential. No instruction or state semantics are changed.
 //! Timings include instrumentation overhead and are NOT TM2 primitive costs.
-use lean_eth_reference::{Cnf, Error};
 use lean_eth_reference::bit_program::{Config, RunLimits, RunStats};
 use lean_eth_reference::bit_program::{Instr, Program};
 use lean_eth_reference::native_answer;
@@ -9,6 +8,7 @@ use lean_eth_reference::native_frontend;
 use lean_eth_reference::native_high::branch_program;
 use lean_eth_reference::native_terminal_classifier;
 use lean_eth_reference::native_terminal_count::{count_terminal, count_to_answer_input_program};
+use lean_eth_reference::{Cnf, Error};
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -359,7 +359,9 @@ fn profile_nonterminal_cases() -> Result<(), Box<dyn std::error::Error>> {
         if state.regs[0] || !state.regs[7] || !state.stacks[263].is_empty() {
             return Err(format!("{name}: nonterminal count port or classifier invalid").into());
         }
-        println!("# case={name} status=unsupported_nonterminal_count source_steps={total} count=NA");
+        println!(
+            "# case={name} status=unsupported_nonterminal_count source_steps={total} count=NA"
+        );
     }
     Ok(())
 }

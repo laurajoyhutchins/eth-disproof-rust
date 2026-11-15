@@ -31,6 +31,23 @@ fn degree_bounded_candidate_is_a_nonterminal_refusal() {
 }
 
 #[test]
+fn improved_collision_threshold_is_not_an_active_recursion_claim() {
+    let (code, value) = observe(&["6106906624", "64", "1", "8"]);
+    assert_eq!(code, 2);
+    assert_eq!(value["matching_potential_required_edges"], "6106906624");
+    assert_eq!(value["matching_packing_arithmetic_holds"], true);
+    assert_eq!(value["packing_arithmetic_holds"], false);
+    assert_eq!(value["original_child_shrink_bound_holds"], true);
+    assert_eq!(value["source_asymptotic_u_bound_holds"], false);
+    assert_eq!(value["source_degree_invariant_verified"], false);
+    assert_eq!(value["active_recursion_executed"], false);
+    assert!(value["sat_count"].is_null());
+
+    let (_, below) = observe(&["6106906623", "64", "1", "8"]);
+    assert_eq!(below["matching_packing_arithmetic_holds"], false);
+}
+
+#[test]
 fn published_envelope_cannot_be_bypassed_with_an_optimistic_cap() {
     let (_, value) = observe(&["1000000", "64", "1", "8"]);
     assert_eq!(value["packing_arithmetic_holds"], false);

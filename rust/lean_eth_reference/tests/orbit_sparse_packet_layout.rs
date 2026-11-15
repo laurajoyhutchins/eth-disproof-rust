@@ -292,6 +292,92 @@ fn source_r64_positive_width_succeeds_structurally_without_uniform_d_classes() {
     verify_independently(&edges, &labels, &labels, &receipt);
 }
 
+/// Independently evaluate the source Cauchy polynomial at T=0:
+/// C(T)=product_{t=-L}^{L-1}(T-t);
+/// W_xy(T)=C(T)/(C'(0)*(T-(y-x))), cancellation before evaluation.
+fn exact_cauchy_at_zero(row_slot: usize, col_slot: usize, l: usize) -> i128 {
+    let delta = i128::try_from(col_slot).unwrap() - i128::try_from(row_slot).unwrap();
+    let l = i128::try_from(l).unwrap();
+    let mut numerator = 1i128;
+    let mut derivative = 1i128;
+    for t in -l..l {
+        if t != delta {
+            numerator *= -t;
+        }
+        if t != 0 {
+            derivative *= -t;
+        }
+    }
+    assert_ne!(derivative, 0);
+    assert_eq!(numerator % derivative, 0);
+    numerator / derivative
+}
+
+#[test]
+fn sparse_slots_preserve_exact_source_cauchy_identity_and_coupled_f_zero() {
+    // Every real edge is identified with its row and column port in
+    // the same slot. The source formula therefore has W(0)=I.
+    let edges = (0..4)
+        .map(|i| BipartiteEdge { left: i, right: i })
+        .collect::<Vec<_>>();
+    let left = [0, 1, 2, 3];
+    let right = [3, 2, 1, 0];
+    let layout = construct_orbit_sparse_admitted(&edges, &left, &right, 2, 2, 8).unwrap();
+    let mut positions = vec![(usize::MAX, usize::MAX); edges.len()];
+    for (packet_i, packet) in layout.packets.iter().enumerate() {
+        for (slot, index) in packet.slots.iter().enumerate() {
+            if let Some(i) = index {
+                positions[*i] = (packet_i, slot);
+            }
+        }
+    }
+    let w = (0..4)
+        .map(|i| {
+            (0..4)
+                .map(|j| {
+                    if positions[i].0 != positions[j].0 {
+                        0i128
+                    } else {
+                        exact_cauchy_at_zero(positions[i].1, positions[j].1, 4)
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    for (i, row) in w.iter().enumerate() {
+        for (j, &entry) in row.iter().enumerate() {
+            assert_eq!(entry, i128::from(i == j));
+        }
+    }
+
+    // Include interactions between edges in BOTH tensor products.
+    // This is deliberately not a rank-one factorization test.
+    fn tensor_row(mask: usize) -> i128 {
+        let b = |i| i128::try_from((mask >> i) & 1).unwrap();
+        3 - b(0) + 2 * b(1) * b(2) - 5 * b(3)
+    }
+    fn tensor_column(mask: usize) -> i128 {
+        let b = |i| i128::try_from((mask >> i) & 1).unwrap();
+        2 + 7 * b(0) * b(3) - 3 * b(1) + b(2)
+    }
+    let mut deformed_at_zero = 0i128;
+    for x in 0..16usize {
+        for y in 0..16usize {
+            let mut polynomial_product = 1i128;
+            for (i, row) in w.iter().enumerate() {
+                let wx = row.iter().enumerate().map(|(j, &v)| {
+                    v * i128::try_from((x >> j) & 1).unwrap()
+                }).sum::<i128>();
+                let ybit = (y >> i) & 1;
+                polynomial_product *= if ybit == 0 { 1 - wx } else { wx };
+            }
+            deformed_at_zero += tensor_row(y) * tensor_column(x) * polynomial_product;
+        }
+    }
+    let direct = (0..16usize).map(|x| tensor_row(x) * tensor_column(x)).sum::<i128>();
+    assert_eq!(deformed_at_zero, direct);
+}
+
 #[test]
 fn validates_labels_endpoints_degrees_and_capacity() {
     let small = [BipartiteEdge { left: 0, right: 0 }];

@@ -1,0 +1,67 @@
+name: Documentation (MkDocs)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - mkdocs.yml
+      - docs/**
+      - tools/mkdocs_hooks.py
+      - tools/test_mkdocs_hooks.py
+      - README.md
+      - CONTRIBUTING.md
+      - research/**
+      - rust/lean_eth_reference/README.md
+      - rust/lean_eth_reference/docs/**
+      - rust/native_lean_backend/*.md
+      - .github/workflows/docs.yml
+  pull_request:
+    paths:
+      - mkdocs.yml
+      - docs/**
+      - tools/mkdocs_hooks.py
+      - tools/test_mkdocs_hooks.py
+      - README.md
+      - CONTRIBUTING.md
+      - research/**
+      - rust/lean_eth_reference/README.md
+      - rust/lean_eth_reference/docs/**
+      - rust/native_lean_backend/*.md
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A documentation edit has no reason to run the full Rust/Lean proof suite.
+concurrency:
+  group: docs-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  mkdocs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+      - name: Install pinned docs tools
+        run: python -m pip install -r docs/requirements.txt
+      - name: Verify canonical Markdown mounting and link rewriting
+        run: python -m unittest tools/test_mkdocs_hooks.py -v
+      - name: Strict site build
+        run: python -m mkdocs build --strict
+      - name: Upload generated site
+        uses: actions/upload-artifact@v4
+        with:
+          name: mkdocs-site
+          path: site/
+          if-no-files-found: error
+          retention-days: 7

@@ -53,6 +53,30 @@ rather than supply a synthetic answer.
 
 The [research notebook](research/README.md) consolidates the [dated decision ledger](research/2026-10-31-to-2026-11-14-ledger.md), [spectral/group-action research](research/spectral-group-actions.md), [two-adic recursion proof map](research/two-adic-recursion.md), [Lean-to-Rust G1/G2 acceptance](research/lean-rust-acceptance.md), [end-to-end cost/benchmarks](research/cost-model-and-benchmarks.md), [annotated literature](research/literature.md) and [LaTeX-to-Lean evaluation plan](research/formalization-evaluation.md). Research results and open PRs are deliberately not presented as accepted native counting capabilities.
 
+## Documentation site
+
+The MkDocs site has navigation, search, light/dark themes and math rendering.
+The Markdown in the repository remains canonical: a MkDocs hook mounts
+research notes, the Rust port documentation and native compiler references
+directly, without copying their content into a second tree.
+
+Run from the repository root:
+
+```sh
+python3 -m pip install -r docs/requirements.txt
+python3 -m unittest tools/test_mkdocs_hooks.py -v
+python3 -m mkdocs serve
+# For a reproducible production build:
+python3 -m mkdocs build --strict
+```
+
+The generated site is under ignored `site/`. CI runs the hook tests and a
+strict build on documentation changes and publishes the site as a workflow
+artifact. Hosting on GitHub Pages can be enabled separately; a successful
+artifact build does not imply that a public Pages URL exists.
+
+See [the site introduction](docs/index.md) and [site configuration](mkdocs.yml).
+
 ## Source, checks and history
 
 - [Rust crate and CLI guide](rust/lean_eth_reference/README.md)

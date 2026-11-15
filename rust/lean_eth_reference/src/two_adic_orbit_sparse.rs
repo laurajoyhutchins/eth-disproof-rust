@@ -120,8 +120,8 @@ pub fn construct_orbit_sparse_bounded(
     a: u32,
     degree_cap: usize,
 ) -> Result<OrbitSparsePacketLayout, Error> {
-    if edges.is_empty() || r < 2 || a == 0 || a > 3 {
-        return Err(invalid("nonempty graph, r>=2, 1<=a<=3 required"));
+    if edges.is_empty() || !(2..=64).contains(&r) || a == 0 || a > 3 {
+        return Err(invalid("nonempty graph, 2<=r<=64, 1<=a<=3 required"));
     }
     if edges.len() > MAX_EDGES
         || left_labels.len() > MAX_VERTICES_PER_SHORE

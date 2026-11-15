@@ -38,6 +38,9 @@ jobs:
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
           rustup default 1.99.1
 
+      - name: Restore locked ETH workspace dependencies
+        run: cargo fetch --locked
+
       - name: Restore exact Lean 4.34.1 toolchain
         uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
         with:
@@ -102,16 +105,12 @@ jobs:
             --module PropertyDef --root Property.hop \
             --artifact "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.rs" \
             --receipt "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json"
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          p = Path("rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json")
-          data = json.loads(p.read_text())
-          assert data["backend"] == "compiler-ir"
-          assert data["backend_report"]["compiler"] == "native-lean-4.34.1"
-          assert data["executable_approved"] is False
-          assert data["checks"]["lean_rust_semantic_refinement"] == "not-established"
-          PY
+          jq -e '
+            .backend == "compiler-ir"
+            and .backend_report.compiler == "native-lean-4.34.1"
+            and .executable_approved == false
+            and .checks.lean_rust_semantic_refinement == "not-established"
+          ' rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json
           # Keep the exact-head provenance and all generated-code hashes in the job log.
           cat rust/native_lean_backend/artifacts/native-smoke-receipt.txt
           cat rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt

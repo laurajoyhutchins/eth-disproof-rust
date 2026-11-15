@@ -180,5 +180,21 @@ run_cmd do
   unless orderedAccepted.startsWith "OK\n" do
     throwError "observation before effectful direct call unexpectedly refused: {orderedAccepted}"
 
-  logInfo "Source ownership boundary: 5 cross-call/branch/closure refusals, 2 ordered or pure admissions"
+  -- Real Lean's copy-on-write optimizer may inspect sharing while returning
+  -- an object. Existing source programs remain in the value-semantic subset;
+  -- this admission is *not* a physical-RC certificate.
+  let objectObserverName := `ReferenceBookkeepingFixture.valueObserver
+  let objectObserver : Lean.IR.Decl :=
+    .fdecl objectObserverName #[x] .object
+      (.vdecl ⟨5⟩ .uint8 (.isShared ⟨0⟩) (.ret (.var ⟨0⟩))) info
+  let objectCaller : Lean.IR.Decl :=
+    .fdecl callerName #[x] .object
+      (.inc ⟨0⟩ 1 true false
+        (.vdecl ⟨6⟩ .object (.fap objectObserverName #[.var ⟨0⟩])
+          (.ret (.var ⟨6⟩)))) info
+  let valueAccepted := NativeRust.emitModule #[objectObserver, objectCaller] callerName "value_only"
+  unless valueAccepted.startsWith "OK\n" do
+    throwError "object-returning value-only source observation unexpectedly refused: {valueAccepted}"
+
+  logInfo "Source ownership boundary: 5 cross-call/branch/closure refusals, 3 ordered or value admissions"
   logInfo "Source RC effect observations: 7 refusals, 7 bounded positive emissions"

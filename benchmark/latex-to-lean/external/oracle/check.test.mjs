@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
-import {probeSource} from "./check.mjs";
+import {probeSource,newTargets} from "./check.mjs";
 const dir=path.dirname(fileURLToPath(import.meta.url));
 test("external oracle definitions are independent of frontend modules",()=>{
  const src=fs.readFileSync(path.join(dir,"ExternalGold.lean"),"utf8");
@@ -26,4 +26,13 @@ test("oracle checks use actual generated declarations rather than text",()=>{
  assert.match(s,/ExternalGold.N01 ↔ Struct0123456789abcdef.claim/);
  for(const x of ["../../bad","O01\\naxiom k : False"])
    assert.throws(()=>probeSource(x,"Safe","structural"));
+});
+
+test("only exactly matching existing Lake registrations may be reused",()=>{
+ const name="Unifiedabc123";
+ const exact='[[lean_lib]]\nname = "'+name+'"\nsrcDir = "."\nglobs = ["'+name+'.+"]\n';
+ assert.deepEqual(newTargets(exact,[[name,name+".+"]]),[]);
+ assert.deepEqual(newTargets(exact,[[name,name+".+"],["Another","Another"]]),[["Another","Another"]]);
+ assert.throws(()=>newTargets('[[lean_lib]]\nname = "'+name+'"\nsrcDir = "elsewhere"\nglobs = ["*"]\n',
+    [[name,name+".+"]]),/unexpected preexisting/);
 });

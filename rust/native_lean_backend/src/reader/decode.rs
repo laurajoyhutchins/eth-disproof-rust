@@ -2,14 +2,14 @@
 use super::*;
 
 impl Reader {
-    pub(super) unsafe fn scalar(x: Obj) -> CompilerResult<usize> {
+    pub(super) unsafe fn scalar(x: Obj) -> Result<usize, String> {
         if lr_is_scalar(x) == 0 {
             Err("expected tagged scalar".into())
         } else {
             Ok(lr_scalar_value(x))
         }
     }
-    pub(super) unsafe fn tag(x: Obj) -> CompilerResult<usize> {
+    pub(super) unsafe fn tag(x: Obj) -> Result<usize, String> {
         if lr_is_scalar(x) != 0 {
             return Ok(lr_scalar_value(x));
         }
@@ -18,32 +18,28 @@ impl Reader {
         }
         Ok(lr_tag(x) as usize)
     }
-    pub(super) unsafe fn checked_tag(x: Obj, family: &str) -> CompilerResult<usize> {
+    pub(super) unsafe fn checked_tag(x: Obj, family: &str) -> Result<usize, String> {
         let tag = Self::tag(x)?;
         if SUPPORTED_IR_TAGS.contains(&(family, tag)) {
             Ok(tag)
         } else {
-            Err(CompilerError::new(
-                RefusalKind::ir_family(family),
-                format!(
-                    "{family} constructor tag {tag} explicitly unsupported by pinned IR coverage contract"
-                ),
+            Err(format!(
+                "{family} constructor tag {tag} explicitly unsupported by pinned IR coverage contract"
             ))
         }
     }
-    pub(super) unsafe fn field(x: Obj, index: usize) -> CompilerResult<Obj> {
+    pub(super) unsafe fn field(x: Obj, index: usize) -> Result<Obj, String> {
         if lr_is_ctor(x) == 0 || index >= lr_field_count(x) {
             return Err(format!(
                 "constructor field {index} unavailable (tag={}, fields={}, scalar={})",
                 lr_tag(x),
                 lr_field_count(x),
                 lr_is_scalar(x)
-            )
-            .into());
+            ));
         }
         Ok(lr_field(x, index))
     }
-    pub(super) unsafe fn array(x: Obj) -> CompilerResult<Vec<Obj>> {
+    pub(super) unsafe fn array(x: Obj) -> Result<Vec<Obj>, String> {
         if lr_is_array(x) == 0 {
             return Err("expected Lean Array".into());
         }
@@ -53,7 +49,7 @@ impl Reader {
         }
         Ok((0..count).map(|i| lr_array_at(x, i)).collect())
     }
-    pub(crate) unsafe fn string(x: Obj) -> CompilerResult<String> {
+    pub(crate) unsafe fn string(x: Obj) -> Result<String, String> {
         let ptr = lr_string_ptr(x);
         if ptr.is_null() {
             return Err("expected Lean String".into());
@@ -67,7 +63,7 @@ impl Reader {
     }
     // Convert an arbitrary-precision source Nat through Lean's pinned public
     // runtime API, never by interpreting GMP limbs or truncating to usize.
-    pub(super) unsafe fn decimal_nat(x: Obj) -> CompilerResult<String> {
+    pub(super) unsafe fn decimal_nat(x: Obj) -> Result<String, String> {
         let raw = lr_nat_decimal(x);
         if raw.is_null() {
             return Err("large Nat literal rejected (invalid or over 4 KiB)".into());
@@ -77,15 +73,15 @@ impl Reader {
             .map(str::to_owned)
             .map_err(|_| "invalid Nat literal decimal representation".to_owned());
         lr_free_string(raw);
-        Ok(decoded?)
+        decoded
     }
-    pub(super) unsafe fn nat(x: Obj) -> CompilerResult<usize> {
+    pub(super) unsafe fn nat(x: Obj) -> Result<usize, String> {
         Self::scalar(x).map_err(|_| "large Nat unsupported by v0 compiler".into())
     }
     // Name paths retain an injective identity, not a lossy pretty-print.
     // Plain ASCII segments keep historical spelling for pinned primitives;
     // special UTF-8 strings use ~s<hex bytes>, numeric segments use ~n<nat>.
-    pub(super) unsafe fn name(x: Obj, depth: usize) -> CompilerResult<String> {
+    pub(super) unsafe fn name(x: Obj, depth: usize) -> Result<String, String> {
         if depth > 128 {
             return Err("name nesting limit".into());
         }
@@ -102,12 +98,12 @@ impl Reader {
                 let number = Self::nat(Self::field(x, 1)?)?;
                 Ok(append_name_component(&parent, &format!("~n{number}")))
             }
-            t => Err(format!("unknown Lean.Name tag {t}").into()),
+            t => Err(format!("unknown Lean.Name tag {t}")),
         }
     }
     // Param.borrow is an unboxed Bool in pinned Lean IR.Param, not one of
     // its two pointer fields. The Lean C ABI verifies its actual layout.
-    pub(super) unsafe fn param_borrow(x: Obj) -> CompilerResult<bool> {
+    pub(super) unsafe fn param_borrow(x: Obj) -> Result<bool, String> {
         match lr_param_borrow(x) {
             0 => Ok(false),
             1 => Ok(true),
@@ -115,7 +111,7 @@ impl Reader {
         }
     }
 
-    pub(super) unsafe fn var(x: Obj) -> CompilerResult<usize> {
+    pub(super) unsafe fn var(x: Obj) -> Result<usize, String> {
         // A Lean single-field structure may be represented as its single field
         // after erasure; accept both representations, reject all other cases.
         if lr_is_scalar(x) != 0 {
@@ -130,7 +126,7 @@ impl Reader {
         x: Obj,
         env: &BTreeMap<usize, &'static str>,
         expected: &str,
-    ) -> CompilerResult<String> {
+    ) -> Result<String, String> {
         match Self::checked_tag(x, "Arg")? {
             0 => {
                 let id = Self::var(Self::field(x, 0)?)?;
@@ -138,7 +134,7 @@ impl Reader {
                     .get(&id)
                     .ok_or_else(|| format!("unknown input variable x_{id}"))?;
                 if !ir_type_compatible(found, expected) {
-                    return Err(format!("x_{id}: expected {expected}, got {found}").into());
+                    return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }
                 Ok(if is_value_type(found) {
                     format!("x_{id}.clone()")
@@ -147,13 +143,10 @@ impl Reader {
                 })
             }
             1 => Err("erased value used as runtime operand".into()),
-            t => Err(CompilerError::new(
-                RefusalKind::Arg,
-                format!("unknown Arg constructor {t}"),
-            )),
+            t => Err(format!("unknown Arg constructor {t}")),
         }
     }
-    pub(super) unsafe fn ty(x: Obj) -> CompilerResult<&'static str> {
+    pub(super) unsafe fn ty(x: Obj) -> Result<&'static str, String> {
         // The tag ordering comes from the pinned Lean.Compiler.IR.Basic.
         match Self::checked_tag(x, "IRType")? {
             0 => Ok("f64"), // finite source-checked arithmetic, not float object semantics
@@ -167,11 +160,10 @@ impl Reader {
             12 => Ok("tagged"),
             t => Err(format!(
                 "IR type tag {t} unsupported (supported fixed integers and immutable values)"
-            )
-            .into()),
+            )),
         }
     }
-    pub(super) unsafe fn lit(x: Obj, ty: &str) -> CompilerResult<String> {
+    pub(super) unsafe fn lit(x: Obj, ty: &str) -> Result<String, String> {
         match Self::checked_tag(x, "LitVal")? {
             0 => {
                 // A decimal Nat constant in Lean.IR.LitVal.num can be an
@@ -190,14 +182,14 @@ impl Reader {
                     "u32" => u32::MAX as usize,
                     "u64" => usize::MAX, // Pinned Linux x86-64 Lean ABI.
                     "usize" => usize::MAX,
-                    _ => return Err(format!("literal type {ty} unsupported").into()),
+                    _ => return Err(format!("literal type {ty} unsupported")),
                 };
                 if n > max {
-                    return Err(format!("literal {n} exceeds type {ty}").into());
+                    return Err(format!("literal {n} exceeds type {ty}"));
                 }
                 Ok(format!("{n}{ty}"))
             }
-            t => Err(format!("literal constructor {t} unsupported").into()),
+            t => Err(format!("literal constructor {t} unsupported")),
         }
     }
 }

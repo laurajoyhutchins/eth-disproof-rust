@@ -10,15 +10,17 @@ impl Reader {
             ));
         }
         let declaration = Self::name(Self::field(decl, 0)?, 0)?;
-        let generated = Self::emit_function(decl, &Self::string(rust_name)?, None)
+        let features = Cell::new(RuntimeFeatures::default());
+        let generated = Self::emit_function(decl, &Self::string(rust_name)?, None, &features)
             .map_err(|reason| reason.with_declaration(declaration))?;
-        include_value_runtime(generated)
+        include_value_runtime(generated, features.get())
     }
 
     pub(super) unsafe fn emit_function(
         decl: Obj,
         rust_name: &str,
         functions: Option<&FunctionTable>,
+        features: &Cell<RuntimeFeatures>,
     ) -> CompilerResult<String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern declaration without executable body".into());
@@ -45,6 +47,9 @@ impl Reader {
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
+        if is_value_type(ret) {
+            RuntimeFeatures::mark(features, RuntimeFeatures::VALUE);
+        }
         let shared = Self::shared_observations(body)?;
         // Source RC effects are erased in the bounded value runtime;
         // reject physical observations after an earlier CFG effect.
@@ -66,6 +71,9 @@ impl Reader {
             }
             let var = Self::var(Self::field(*param, 0)?)?;
             let ty = Self::ty(Self::field(*param, 1)?)?;
+            if is_value_type(ty) {
+                RuntimeFeatures::mark(features, RuntimeFeatures::VALUE);
+            }
             if Self::param_borrow(*param)? && shared.contains(&var) {
                 return Err(format!(
                     "borrowed parameter x_{var} has unverified isShared ownership semantics"
@@ -88,6 +96,7 @@ impl Reader {
             LoweringContext {
                 functions,
                 joins: &JoinTable::new(),
+                features,
             },
         )?;
         result.push_str("}\n");
@@ -237,6 +246,7 @@ impl Reader {
             signatures.insert(name.clone(), sig);
             closure.insert(name, decl);
         }
+        let features = Cell::new(RuntimeFeatures::default());
         let mut result = String::from(
             "// Native in-process Lean IR closure; no JSON or Lean runtime dependency.\n",
         );
@@ -245,6 +255,7 @@ impl Reader {
                 *decl,
                 &internal_name(name),
                 Some(&signatures),
+                &features,
             )?);
             result.push('\n');
         }
@@ -306,6 +317,7 @@ impl Reader {
                 *closure.get(&root).unwrap(),
                 &public_name,
                 Some(&signatures),
+                &features,
             )?;
             // Preserve the original Lean root name as the public API; Rust's
             // naming lint must not force an observable symbol rename.
@@ -332,6 +344,6 @@ impl Reader {
             }
             result.push_str(")\n}\n");
         }
-        include_value_runtime(result)
+        include_value_runtime(result, features.get())
     }
 }

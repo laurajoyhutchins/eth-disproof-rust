@@ -7,7 +7,7 @@ impl Reader {
     // candidate is conservatively considered an additional use. This avoids
     // unnecessary transient Rc aliases, but does not prove Lean's physical
     // reference-count trace equals Rust's trace.
-    pub(super) unsafe fn arg_refs(x: Obj, id: usize) -> CompilerResult<bool> {
+    pub(super) unsafe fn arg_refs(x: Obj, id: usize) -> Result<bool, String> {
         Ok(match Self::checked_tag(x, "Arg")? {
             0 => Self::var(Self::field(x, 0)?)? == id,
             1 => false,
@@ -15,7 +15,7 @@ impl Reader {
         })
     }
 
-    pub(super) unsafe fn args_ref(args: Obj, id: usize) -> CompilerResult<bool> {
+    pub(super) unsafe fn args_ref(args: Obj, id: usize) -> Result<bool, String> {
         for arg in Self::array(args)? {
             if Self::arg_refs(arg, id)? {
                 return Ok(true);
@@ -24,7 +24,7 @@ impl Reader {
         Ok(false)
     }
 
-    pub(super) unsafe fn expr_refs(x: Obj, id: usize) -> CompilerResult<bool> {
+    pub(super) unsafe fn expr_refs(x: Obj, id: usize) -> Result<bool, String> {
         Ok(match Self::checked_tag(x, "Expr")? {
             0 => Self::args_ref(Self::field(x, 1)?, id)?,
             3 | 9 => Self::var(Self::field(x, 1)?)? == id,
@@ -36,7 +36,7 @@ impl Reader {
         })
     }
 
-    pub(super) unsafe fn straight_tail_unused(mut x: Obj, id: usize) -> CompilerResult<bool> {
+    pub(super) unsafe fn straight_tail_unused(mut x: Obj, id: usize) -> Result<bool, String> {
         for _ in 0..100_000 {
             match Self::body_view(x)? {
                 FnBodyView::Decl { expr, next, .. } => {
@@ -65,7 +65,7 @@ impl Reader {
         Ok(false)
     }
 
-    pub(super) unsafe fn tail_unused_on_all_paths(body: Obj, id: usize) -> CompilerResult<bool> {
+    pub(super) unsafe fn tail_unused_on_all_paths(body: Obj, id: usize) -> Result<bool, String> {
         let mut pending = vec![(body, 0usize)];
         let mut steps = 0usize;
         while let Some((current, depth)) = pending.pop() {
@@ -165,7 +165,7 @@ impl Reader {
         Ok(true)
     }
 
-    pub(super) unsafe fn consumable_array(expr: Obj, tail: Obj) -> CompilerResult<Option<usize>> {
+    pub(super) unsafe fn consumable_array(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
         if Self::checked_tag(expr, "Expr")? != 6 {
             return Ok(None);
         }
@@ -191,7 +191,7 @@ impl Reader {
     // An indirect AP can consume its closure only at its proven last IR
     // use. All branches and lexical joins are scanned; unknown constructs
     // refuse the optimization. Arguments may not alias the function itself.
-    pub(super) unsafe fn consumable_ap(expr: Obj, tail: Obj) -> CompilerResult<Option<usize>> {
+    pub(super) unsafe fn consumable_ap(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
         if Self::checked_tag(expr, "Expr")? != 8 {
             return Ok(None);
         }
@@ -212,7 +212,7 @@ impl Reader {
         expr: Obj,
         tail: Obj,
         functions: Option<&FunctionTable>,
-    ) -> CompilerResult<BTreeSet<usize>> {
+    ) -> Result<BTreeSet<usize>, String> {
         let mut consumed = BTreeSet::new();
         if Self::checked_tag(expr, "Expr")? != 6 {
             return Ok(consumed);

@@ -7,7 +7,7 @@ impl Reader {
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
-    ) -> CompilerResult<String> {
+    ) -> Result<String, String> {
         // Source-pinned zero-field scalar inductives do not allocate a heap.
         // Object constructors retain the independently verified Rc model.
         if matches!(var_ty, "u8" | "usize") {
@@ -75,13 +75,13 @@ impl Reader {
             || usize_count != 0
             || ssize != 0
         {
-            return Err(
-                format!("constructor {name} has unsupported scalar, tag or field layout").into(),
-            );
+            return Err(format!(
+                "constructor {name} has unsupported scalar, tag or field layout"
+            ));
         }
         if size == 0 {
             if var_ty != "tagged" {
-                return Err(format!("zero-field constructor {name} is not tagged").into());
+                return Err(format!("zero-field constructor {name} is not tagged"));
             }
             return Ok(format!("__LeanValue::tagged({tag})"));
         }
@@ -105,7 +105,7 @@ impl Reader {
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
-    ) -> CompilerResult<String> {
+    ) -> Result<String, String> {
         // proj(index, object)
         if !is_value_type(var_ty) {
             return Err("object projection result has non-object type".into());
@@ -123,7 +123,7 @@ impl Reader {
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
-    ) -> CompilerResult<String> {
+    ) -> Result<String, String> {
         // Lean sproj(n,offset,x): only pinned original PullIn.mk's
         // four object pointers and eight source Bool bytes.
         if var_ty != "u8" {
@@ -135,8 +135,7 @@ impl Reader {
         if pointers != 4 || offset >= 8 || !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
             return Err(format!(
                 "unverified sproj layout n={pointers}, offset={offset}, operand=x_{id}"
-            )
-            .into());
+            ));
         }
         Ok(format!("x_{id}.pull_in_sproj_u8({pointers}, {offset})"))
     }
@@ -145,7 +144,7 @@ impl Reader {
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
-    ) -> CompilerResult<String> {
+    ) -> Result<String, String> {
         // box(scalar type, variable)
         if !is_value_type(var_ty) {
             return Err("boxed scalar result must be object-valued".into());
@@ -168,7 +167,7 @@ impl Reader {
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
-    ) -> CompilerResult<String> {
+    ) -> Result<String, String> {
         // unbox(object variable) to a statically known scalar.
         if is_value_type(var_ty) {
             return Err("unbox result type must be scalar".into());
@@ -185,7 +184,7 @@ impl Reader {
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
-    ) -> CompilerResult<String> {
+    ) -> Result<String, String> {
         if var_ty != "u8" {
             return Err("isShared must yield uint8".into());
         }

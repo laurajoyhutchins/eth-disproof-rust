@@ -3,6 +3,7 @@
 //! This entry point receives `Lean.IR.Decl` *directly* as a borrowed Lean object.
 //! It does not serialize or clone the IR. Only an explicitly accepted subset is
 //! lowered; unknown instructions and types are errors, never substitutions.
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::ffi::{c_char, c_void, CStr, CString};
 
@@ -57,10 +58,32 @@ type FunctionTable = BTreeMap<String, Signature>;
 // Lexically visible, typed IR join points. Each body has its own scope.
 type JoinTable = BTreeMap<usize, Vec<&'static str>>;
 
+// Requirements are marked by the source-checked operation that emits them,
+// never reconstructed by searching the generated source text.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeFeatures(u8);
+
+impl RuntimeFeatures {
+    const VALUE: u8 = 1;
+    const ARRAY_TESTS: u8 = 2;
+    const INLINE_CLOSURE_TESTS: u8 = 4;
+    const CONSTRUCTOR_SET_TESTS: u8 = 8;
+    const HEAP_JOIN_TESTS: u8 = 16;
+
+    fn mark(state: &Cell<Self>, flag: u8) {
+        state.set(Self(state.get().0 | flag));
+    }
+
+    fn has(self, flag: u8) -> bool {
+        self.0 & flag != 0
+    }
+}
+
 #[derive(Clone, Copy)]
 struct LoweringContext<'a> {
     functions: Option<&'a FunctionTable>,
     joins: &'a JoinTable,
+    features: &'a Cell<RuntimeFeatures>,
 }
 
 #[derive(Clone, Copy)]
@@ -331,31 +354,25 @@ fn immutable_case_ctor(family: &str, index: usize, actual: &str) -> Result<usize
     Ok(pointers)
 }
 
-fn include_value_runtime(source: String) -> CompilerResult<String> {
-    let code = if source.contains("__LeanValue") {
-        // Runtime identity is shared by every generated package. Tests are
-        // appended after functions so Clippy sees no items after a test module.
-        let tests = if source.contains(".array_push(")
-            || source.contains(".array_push_owned(")
-            || source.contains(".array_set_tagged(")
-            || source.contains(".array_set_tagged_owned(")
-        {
+fn include_value_runtime(source: String, features: RuntimeFeatures) -> CompilerResult<String> {
+    let code = if features.has(RuntimeFeatures::VALUE) {
+        // The runtime is canonical; only fixture modules are conditional.
+        let tests = if features.has(RuntimeFeatures::ARRAY_TESTS) {
             ARRAY_OWNERSHIP_TEST_SOURCE
         } else {
             ""
         };
-        let closure_tests =
-            if source.contains("__LeanValue::pap2(") || source.contains("__LeanValue::pap3(") {
-                CLOSURE_INLINE_TEST_SOURCE
-            } else {
-                ""
-            };
-        let set_tests = if source.contains(".with_field(") {
+        let closure_tests = if features.has(RuntimeFeatures::INLINE_CLOSURE_TESTS) {
+            CLOSURE_INLINE_TEST_SOURCE
+        } else {
+            ""
+        };
+        let set_tests = if features.has(RuntimeFeatures::CONSTRUCTOR_SET_TESTS) {
             CONSTRUCTOR_SET_TEST_SOURCE
         } else {
             ""
         };
-        let heap_join_tests = if source.contains(".require_constructor_object()") {
+        let heap_join_tests = if features.has(RuntimeFeatures::HEAP_JOIN_TESTS) {
             HEAP_JOIN_TEST_SOURCE
         } else {
             ""
@@ -539,6 +556,28 @@ mod tests {
         append_name_component, encode_name_str, immutable_case_ctor, internal_name, RUNTIME_SOURCE,
         SUPPORTED_IR_TAGS,
     };
+    #[test]
+    fn explicit_runtime_features_do_not_search_generated_rust_text() {
+        use super::{include_value_runtime, RuntimeFeatures, RUNTIME_SOURCE};
+        use std::cell::Cell;
+
+        // This text resembles generated runtime operations, but it has not
+        // passed source-checked Lean IR emission. It selects no features.
+        let deceptive = "fn demo() { let _ = \"__LeanValue::pap2(.array_push(.with_field(\"; }";
+        assert_eq!(
+            include_value_runtime(deceptive.to_owned(), RuntimeFeatures::default()).unwrap(),
+            deceptive
+        );
+        let flags = Cell::new(RuntimeFeatures::default());
+        RuntimeFeatures::mark(&flags, RuntimeFeatures::VALUE);
+        RuntimeFeatures::mark(&flags, RuntimeFeatures::INLINE_CLOSURE_TESTS);
+        let generated = include_value_runtime("fn example() {}".to_owned(), flags.get()).unwrap();
+        assert!(generated.starts_with(RUNTIME_SOURCE));
+        assert!(generated.contains("fn example() {}"));
+        assert!(generated.contains("specialized_closure_refuses_oversaturation"));
+        assert!(!generated.contains("unique_owner_reuses_array_allocation"));
+    }
+
     #[test]
     fn list_and_option_cases_require_source_constructor_identity_and_layout() {
         assert_eq!(immutable_case_ctor("Option", 0, "Option.none").unwrap(), 0);

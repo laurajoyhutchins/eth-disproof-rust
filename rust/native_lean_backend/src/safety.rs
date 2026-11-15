@@ -31,106 +31,46 @@ fn json_string(input: &str) -> String {
     out
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum RefusalKind {
-    Compiler,
-    FnBody,
-    Expr,
-    IRType,
-    Arg,
-    Alt,
-    LitVal,
-    Decl,
-    Primitive,
-    Dependency,
-    Abi,
-    ResourceLimit,
-    Output,
-}
-
-impl RefusalKind {
-    // This is the source-pinned IR constructor family, not the diagnostic message.
-    pub(crate) fn ir_family(family: &str) -> Self {
-        match family {
-            "FnBody" => Self::FnBody,
-            "Expr" => Self::Expr,
-            "IRType" => Self::IRType,
-            "Arg" => Self::Arg,
-            "Alt" => Self::Alt,
-            "LitVal" => Self::LitVal,
-            "Decl" => Self::Decl,
-            _ => Self::Compiler,
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Compiler => "Compiler",
-            Self::FnBody => "FnBody",
-            Self::Expr => "Expr",
-            Self::IRType => "IRType",
-            Self::Arg => "Arg",
-            Self::Alt => "Alt",
-            Self::LitVal => "LitVal",
-            Self::Decl => "Decl",
-            Self::Primitive => "Primitive",
-            Self::Dependency => "Dependency",
-            Self::Abi => "ABI",
-            Self::ResourceLimit => "ResourceLimit",
-            Self::Output => "Output",
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CompilerError {
-    pub(crate) kind: RefusalKind,
-    declaration: Option<String>,
-    message: String,
-}
-
-pub(crate) type CompilerResult<T> = Result<T, CompilerError>;
-
-impl CompilerError {
-    pub(crate) fn new(kind: RefusalKind, message: impl Into<String>) -> Self {
-        Self {
-            kind,
-            declaration: None,
-            message: message.into(),
-        }
-    }
-
-    pub(crate) fn with_declaration(mut self, declaration: String) -> Self {
-        self.declaration = Some(declaration);
-        self
-    }
-}
-
-impl From<String> for CompilerError {
-    fn from(message: String) -> Self {
-        Self::new(RefusalKind::Compiler, message)
-    }
-}
-
-impl From<&str> for CompilerError {
-    fn from(message: &str) -> Self {
-        Self::new(RefusalKind::Compiler, message)
-    }
-}
-
-impl std::fmt::Display for CompilerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-pub(crate) fn refusal(default_declaration: &str, error: &CompilerError) -> String {
-    let declaration = error.declaration.as_deref().unwrap_or(default_declaration);
+pub(crate) fn refusal(default_declaration: &str, detail: &str) -> String {
+    let (decl, reason) = detail
+        .strip_prefix("declaration=")
+        .and_then(|s| s.split_once("; "))
+        .unwrap_or((default_declaration, detail));
+    let construct = if reason.contains("FnBody constructor")
+        || reason.contains("IR body constructor")
+    {
+        "FnBody"
+    } else if reason.contains("Expr constructor") || reason.contains("IR expression constructor") {
+        "Expr"
+    } else if reason.contains("IRType constructor") || reason.contains("IR type tag") {
+        "IRType"
+    } else if reason.contains("Arg constructor") {
+        "Arg"
+    } else if reason.contains("Alt constructor")
+        || reason.contains("alternative")
+        || reason.contains("Bool case")
+    {
+        "Alt"
+    } else if reason.contains("LitVal constructor") {
+        "LitVal"
+    } else if reason.contains("Decl constructor") {
+        "Decl"
+    } else if reason.contains("primitive") || reason.contains("operands") {
+        "Primitive"
+    } else if reason.contains("dependency") || reason.contains("compiled IR") {
+        "Dependency"
+    } else if reason.contains("ABI") {
+        "ABI"
+    } else if reason.contains("limit") || reason.contains("budget") {
+        "ResourceLimit"
+    } else {
+        "Compiler"
+    };
     format!(
         "ERROR\n{{\"status\":\"refused\",\"declaration\":{},\"construct\":{},\"reason\":{}}}",
-        json_string(declaration),
-        json_string(error.kind.as_str()),
-        json_string(&error.message)
+        json_string(decl),
+        json_string(construct),
+        json_string(reason)
     )
 }
 
@@ -220,35 +160,20 @@ pub(crate) fn publish(path: &str, source: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{publish, refusal, CompilerError, RefusalKind};
+    use super::{publish, refusal};
     use std::fs;
 
     #[test]
     fn refusals_escape_arbitrary_ir_diagnostics() {
         let msg = refusal(
             "Root",
-            &CompilerError::new(
-                RefusalKind::FnBody,
-                "IR body constructor 7 unsupported: \"quoted\"\nline",
-            )
-            .with_declaration("Module.foo".to_owned()),
+            "declaration=Module.foo; IR body constructor 7 unsupported: \"quoted\"\nline",
         );
         assert!(msg.starts_with("ERROR\n{\"status\":\"refused\""));
         assert!(msg.contains("\"declaration\":\"Module.foo\""));
         assert!(msg.contains("\"construct\":\"FnBody\""));
         assert!(msg.contains("\\\"quoted\\\"\\nline"));
         assert!(!msg.contains("quoted\"\nline"));
-    }
-
-    #[test]
-    fn refusal_category_does_not_depend_on_message_words() {
-        let error = CompilerError::new(
-            RefusalKind::Expr,
-            "FnBody constructor 7; primitive ABI resource limit",
-        );
-        let output = refusal("Root", &error);
-        assert!(output.contains("\"construct\":\"Expr\""));
-        assert!(!output.contains("\"construct\":\"FnBody\""));
     }
 
     #[test]

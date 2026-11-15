@@ -13,7 +13,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         ret_ty: &str,
         ctx: LoweringContext<'_>,
-    ) -> CompilerResult<()> {
+    ) -> Result<(), String> {
         let mut arm_env = env.clone();
         Self::body(arm, code, depth + 1, count, &mut arm_env, ret_ty, ctx)
     }
@@ -26,7 +26,7 @@ impl Reader {
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
         ctx: LoweringContext<'_>,
-    ) -> CompilerResult<()> {
+    ) -> Result<(), String> {
         let type_name = Self::name(Self::field(x, 0)?, 0)?;
         match type_name.as_str() {
             "Option" | "List" | "Sum" | "tobj" | "obj" => {
@@ -50,8 +50,7 @@ impl Reader {
                         if matches!(type_name.as_str(), "Option" | "List" | "Sum") {
                             return Err(format!(
                                 "constructor {name} disagrees with source case family {type_name}"
-                            )
-                            .into());
+                            ));
                         }
                         return Self::generic_object_case(x, code, depth, count, env, ret_ty, ctx);
                     });
@@ -61,8 +60,7 @@ impl Reader {
                 if matches!(type_name.as_str(), "Option" | "List" | "Sum") && type_name != family {
                     return Err(format!(
                         "object case source family {family} contradicts storage type {type_name}"
-                    )
-                    .into());
+                    ));
                 }
                 Self::immutable_case(
                     x,
@@ -111,7 +109,7 @@ impl Reader {
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
         ctx: LoweringContext<'_>,
-    ) -> CompilerResult<()> {
+    ) -> Result<(), String> {
         let repr = match Self::checked_tag(Self::field(x, 2)?, "IRType")? {
             1 => "u8",
             12 => return Err("object-tagged enum requires a typed object case adapter".into()),
@@ -143,15 +141,14 @@ impl Reader {
                         if prior != parent {
                             return Err(format!(
                                 "mixed inductive constructor families: {prior} and {parent}"
-                            )
-                            .into());
+                            ));
                         }
                     } else {
                         constructor_parent = Some(parent.to_owned());
                     }
                     let index = Self::nat(Self::field(info, 1)?)?;
                     if index > 255 || !seen.insert(index) {
-                        return Err(format!("invalid or repeated tagged constructor {name}").into());
+                        return Err(format!("invalid or repeated tagged constructor {name}"));
                     }
                     writeln!(code, "        {index} => {{").unwrap();
                     Self::lower_case_arm(
@@ -170,7 +167,7 @@ impl Reader {
                         return Err("multiple tagged default alternatives".into());
                     }
                 }
-                t => return Err(format!("unknown tagged alternative constructor {t}").into()),
+                t => return Err(format!("unknown tagged alternative constructor {t}")),
             }
         }
         if constructor_parent.is_none() {
@@ -199,21 +196,21 @@ impl Reader {
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
         scoped: ImmutableCaseContext<'_>,
-    ) -> CompilerResult<()> {
+    ) -> Result<(), String> {
         let family = scoped.family;
         let ctx = scoped.lowering;
         if !is_value_type(Self::ty(Self::field(x, 2)?)?) {
-            return Err(format!("{family} case scrutinee must be object-valued").into());
+            return Err(format!("{family} case scrutinee must be object-valued"));
         }
         let id = Self::var(Self::field(x, 1)?)?;
         if !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
-            return Err(format!("{family} case scrutinee is not object-valued").into());
+            return Err(format!("{family} case scrutinee is not object-valued"));
         }
         let alts = Self::array(Self::field(x, 3)?)?;
         if alts.len() != 2 {
-            return Err(
-                format!("{family} case requires exactly two constructor alternatives").into(),
-            );
+            return Err(format!(
+                "{family} case requires exactly two constructor alternatives"
+            ));
         }
         // A pinned two-constructor Option/List may have one source Alt.default.
         // Only the *other* source-checked constructor identity is admissible.
@@ -233,7 +230,7 @@ impl Reader {
             }
         }
         if defaults > 1 || (defaults == 1 && named_index.is_none()) {
-            return Err(format!("{family} case has unverified default alternatives").into());
+            return Err(format!("{family} case has unverified default alternatives"));
         }
         let missing_index = if defaults == 1 {
             Some(1 - named_index.unwrap())
@@ -251,11 +248,7 @@ impl Reader {
                     ("Option", 1) => "Option.some",
                     ("List", 0) => "List.nil",
                     ("List", 1) => "List.cons",
-                    _ => {
-                        return Err(
-                            format!("{family} default case has unknown source layout").into()
-                        )
-                    }
+                    _ => return Err(format!("{family} default case has unknown source layout")),
                 };
                 (name.to_owned(), idx)
             } else {
@@ -267,9 +260,9 @@ impl Reader {
             };
             let expected_pointers = immutable_case_ctor(family, idx, &name)?;
             if seen[idx] {
-                return Err(
-                    format!("duplicate {family} case constructor {name} at tag {idx}").into(),
-                );
+                return Err(format!(
+                    "duplicate {family} case constructor {name} at tag {idx}"
+                ));
             }
             if !is_default {
                 let info = Self::field(alt, 0)?;
@@ -279,8 +272,7 @@ impl Reader {
                 if pointer_fields != expected_pointers || usize_fields != 0 || scalar_bytes != 0 {
                     return Err(format!(
                         "{family} alternative {name} has unsupported field layout"
-                    )
-                    .into());
+                    ));
                 }
             }
             seen[idx] = true;
@@ -328,7 +320,7 @@ impl Reader {
             writeln!(code, "        }}").unwrap();
         }
         if !seen.into_iter().all(|b| b) {
-            return Err(format!("incomplete {family} case").into());
+            return Err(format!("incomplete {family} case"));
         }
         writeln!(code, "        _ => unreachable!(\"invalid {family} tag\"),").unwrap();
         writeln!(code, "    }}").unwrap();
@@ -346,7 +338,7 @@ impl Reader {
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
         ctx: LoweringContext<'_>,
-    ) -> CompilerResult<()> {
+    ) -> Result<(), String> {
         if !is_value_type(Self::ty(Self::field(x, 2)?)?) {
             return Err("user inductive case requires object-valued storage".into());
         }
@@ -374,7 +366,7 @@ impl Reader {
                         .rsplit_once('.')
                         .ok_or_else(|| format!("constructor {name} has no family identity"))?;
                     if family.as_deref().is_some_and(|f| f != parent) {
-                        return Err(format!("mixed user inductive families: {name}").into());
+                        return Err(format!("mixed user inductive families: {name}"));
                     }
                     family = Some(parent.to_owned());
                     let tag = Self::nat(Self::field(info, 1)?)?;
@@ -387,9 +379,9 @@ impl Reader {
                         || scalar_bytes != 0
                         || !seen.insert(tag)
                     {
-                        return Err(
-                            format!("unsupported or duplicate constructor layout: {name}").into(),
-                        );
+                        return Err(format!(
+                            "unsupported or duplicate constructor layout: {name}"
+                        ));
                     }
                     writeln!(code, "        {tag} => {{").unwrap();
                     if pointers == 0 {
@@ -427,7 +419,7 @@ impl Reader {
                     )?;
                     writeln!(code, "        }}").unwrap();
                 }
-                t => return Err(format!("unknown user inductive alternative {t}").into()),
+                t => return Err(format!("unknown user inductive alternative {t}")),
             }
         }
         if family.is_none() {
@@ -452,7 +444,7 @@ impl Reader {
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
         ctx: LoweringContext<'_>,
-    ) -> CompilerResult<()> {
+    ) -> Result<(), String> {
         // Lean 4.34.1 IR uses the *storage type* name UInt8 here,
         // not the source Bool name. Validate Bool constructor names below.
         if Self::name(Self::field(x, 0)?, 0)? != "UInt8" {
@@ -481,10 +473,10 @@ impl Reader {
             let expected = match cidx {
                 0 => "Bool.false",
                 1 => "Bool.true",
-                _ => return Err(format!("invalid Bool constructor index {cidx}").into()),
+                _ => return Err(format!("invalid Bool constructor index {cidx}")),
             };
             if name != expected || seen[cidx] {
-                return Err(format!("invalid or repeated Bool alternative {name}").into());
+                return Err(format!("invalid or repeated Bool alternative {name}"));
             }
             seen[cidx] = true;
             writeln!(code, "        {cidx} => {{").unwrap();

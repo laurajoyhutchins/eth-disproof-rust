@@ -8,6 +8,7 @@ impl Reader {
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
+        features: &Cell<RuntimeFeatures>,
     ) -> CompilerResult<String> {
         // PAP(callee, captured operands). For this first subset, each
         // source callee must be compiled and its ABI must consist
@@ -36,6 +37,7 @@ impl Reader {
         }
         if signature.params.len() == 2 && captured.len() == 1 {
             // Original binary PAP with one bound value.
+            RuntimeFeatures::mark(features, RuntimeFeatures::INLINE_CLOSURE_TESTS);
             return Ok(format!(
                 "__LeanValue::pap2({}_binary, {})",
                 internal_closure_name(&name),
@@ -46,6 +48,7 @@ impl Reader {
             // The pinned Lean boxed-lambda IR for the benchmark
             // binds two values of a generated ternary helper. Embed
             // both captures in the Rc closure; no heap capture Vec.
+            RuntimeFeatures::mark(features, RuntimeFeatures::INLINE_CLOSURE_TESTS);
             return Ok(format!(
                 "__LeanValue::pap3({}_ternary, {}, {})",
                 internal_closure_name(&name),
@@ -105,6 +108,7 @@ impl Reader {
         functions: Option<&FunctionTable>,
         consumed_array: Option<usize>,
         consumed_calls: &BTreeSet<usize>,
+        features: &Cell<RuntimeFeatures>,
     ) -> CompilerResult<String> {
         // fap, preserving the exact known primitive semantics.
         let name = Self::name(Self::field(x, 0)?, 0)?;
@@ -187,6 +191,7 @@ impl Reader {
                     let array = Self::arg(args[1], env, "obj")?;
                     let index = Self::arg(args[2], env, "tagged")?;
                     let value = Self::arg(args[3], env, "tobj")?;
+                    RuntimeFeatures::mark(features, RuntimeFeatures::ARRAY_TESTS);
                     if let Some(id) = consumed_array {
                         Ok(format!(
                             "x_{id}.array_set_tagged_owned({index}.tagged_nat(), {value})"
@@ -229,6 +234,7 @@ impl Reader {
                 operands.push(Self::arg(*arg, env, "tobj")?);
             }
             if name == "Array.push" {
+                RuntimeFeatures::mark(features, RuntimeFeatures::ARRAY_TESTS);
                 if let Some(id) = consumed_array {
                     if operands.len() != 2 {
                         return Err("Array.push ownership operands malformed".into());

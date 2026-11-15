@@ -35,7 +35,7 @@ This is the exact mathematical shape of Anthropic's "sums inside the
 tables", without a claim that its source network is OpenAI's packet network.
 -/
 theorem group_sum_product
-    {G : Type*} [Fintype G]
+    {G : Type*} [Fintype G] [DecidableEq G]
     {X : G → Type*} [∀ g, Fintype (X g)]
     {R : Type*} [CommSemiring R]
     (entry : (g : G) → X g → R) :
@@ -51,7 +51,7 @@ its group-local settings can be summed independently. This permits arbitrary
 coupling through the outer assignment.
 -/
 theorem conditional_group_contraction
-    {O G : Type*} [Fintype O] [Fintype G]
+    {O G : Type*} [Fintype O] [Fintype G] [DecidableEq G]
     {X : G → Type*} [∀ g, Fintype (X g)]
     {R : Type*} [CommSemiring R]
     (outer : O → R) (entry : O → (g : G) → X g → R) :

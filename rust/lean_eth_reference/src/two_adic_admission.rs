@@ -47,7 +47,7 @@ impl ScheduleAudit {
             None
         } else {
             let divisor = u128::from(root_sqrt);
-            Some(edges / divisor + u128::from(edges % divisor != 0))
+            Some(edges / divisor + u128::from(!edges.is_multiple_of(divisor)))
         };
         Ok(Self {
             edges,

@@ -62,6 +62,36 @@ struct ImmutableCaseContext<'a> {
 // redundant only while mutation, isShared, reset and reuse remain unsupported.
 const RUNTIME_SOURCE: &str = include_str!("runtime/immutable_value.rs");
 
+const CONSTRUCTOR_SET_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_constructor_set_tests {
+    use super::__LeanValue;
+    use std::rc::Rc;
+    #[test]
+    fn unique_reuses_allocation() {
+        let original = __LeanValue::ctor(2, "PairLike.two", vec![__LeanValue::nat("3"), __LeanValue::nat("5")]);
+        let before = Rc::as_ptr(&original.0);
+        let updated = original.with_field(0, __LeanValue::nat("7"));
+        assert!(std::ptr::eq(before, Rc::as_ptr(&updated.0)));
+        assert_eq!(updated.ctor_field(0).nat_to_decimal(), "7");
+    }
+    #[test]
+    fn shared_keeps_alias() {
+        let original = __LeanValue::ctor(2, "PairLike.two", vec![__LeanValue::nat("3"), __LeanValue::nat("5")]);
+        let alias = original.clone();
+        let before = Rc::as_ptr(&original.0);
+        let updated = original.with_field(1, __LeanValue::nat("11"));
+        assert!(!std::ptr::eq(before, Rc::as_ptr(&updated.0)));
+        assert_eq!(alias.ctor_field(1).nat_to_decimal(), "5");
+        assert_eq!(updated.ctor_field(1).nat_to_decimal(), "11");
+    }
+    #[test]
+    #[should_panic(expected = "constructor field set on non-constructor")]
+    fn tagged_refuses() {
+        let _ = __LeanValue::tagged(0).with_field(0, __LeanValue::nat("1"));
+    }
+}
+"#;
 const ARRAY_OWNERSHIP_TEST_SOURCE: &str = r#"
 #[cfg(test)]
 mod __lean_array_ownership_tests {
@@ -151,7 +181,12 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}")
+        let set_tests = if source.contains(".with_field(") {
+            CONSTRUCTOR_SET_TEST_SOURCE
+        } else {
+            ""
+        };
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}")
     } else {
         source
     };
@@ -1441,6 +1476,22 @@ impl Reader {
                     )?;
                     return Ok(());
                 }
+                2 => {
+                    // Source FnBody.set on pointer fields; preserve aliases.
+                    let id = Self::var(Self::field(x, 0)?)?;
+                    let ty = env.get(&id).ok_or("set on undefined variable")?;
+                    if !matches!(*ty, "obj" | "tobj") {
+                        return Err("constructor set requires heap object".into());
+                    }
+                    let index = Self::nat(Self::field(x, 1)?)?;
+                    if index >= 1024 {
+                        return Err("constructor pointer index exceeds bound".into());
+                    }
+                    let value = Self::arg(Self::field(x, 2)?, env, "tobj")?;
+                    writeln!(code, "    let x_{id} = x_{id}.with_field({index}, {value});").unwrap();
+                    env.insert(id, "obj");
+                    x = Self::field(x, 3)?;
+                }
                 6..=8 => {
                     // Immutable Rc-backed emitted values own their references;
                     // Lean's inc/dec/del bookkeeping is non-observable in this
@@ -2168,9 +2219,9 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
         assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 0)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Alt", 1)));
-        assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 31);
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 32);
     }
 
     #[test]

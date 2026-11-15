@@ -37,7 +37,7 @@ Lean.IR.Alt.ctor	0	implemented_bounded	Bool_false_true_only	matrix_or_baseline_f
 Lean.IR.Alt.default	1	implemented_bounded	UInt8_nullary_enum_default_only	TaggedFixture_384
 Lean.IR.FnBody.vdecl	0	implemented_bounded	typed_local_assignment	matrix_or_baseline_fixture
 Lean.IR.FnBody.jdecl	1	implemented_bounded	nonrecursive_typed_scalar_join	JoinFixture_256
-Lean.IR.FnBody.set	2	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.FnBody.set	2	implemented_bounded	pointer_only_heap_constructor_COW	MutFixture_original_Lean_176
 Lean.IR.FnBody.setTag	3	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.FnBody.uset	4	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.FnBody.sset	5	explicitly_unsupported	default_refusal	no_positive_semantics_claim

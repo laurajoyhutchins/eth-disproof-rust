@@ -31,6 +31,7 @@
     "proof_status": "must_verify_with_pinned_lean",
     "assumptions": [
       "[Fintype Group]",
+      "[DecidableEq Group] for effective dependent assignment enumeration",
       "[CommSemiring R]",
       "route : Global ≃ (∀ g, Choice g)",
       "hvalid : exact correspondence of allowed global and routed assignments",

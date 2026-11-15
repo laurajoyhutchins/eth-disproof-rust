@@ -104,7 +104,16 @@ fn one_node_composition_equals_independent_source_stage_replay() {
         assert!(state.stacks[323].is_empty(), "no fabricated query count");
         assert_eq!(state.stacks[300], fixture(has_node).stacks[300]);
         assert_eq!(state.stacks[338], fixture(has_node).stacks[338]);
-        assert!(stats.instructions >= stage_steps);
+        // Separate programs each execute their own terminal Halt.
+        // The one composed source command has a single Halt and one
+        // conditional branch, so the staged replay pays four additional
+        // source instructions on the node-present path (none on no-node).
+        let staged_halt_overhead = if has_node { 4 } else { 0 };
+        assert_eq!(
+            stats.instructions + staged_halt_overhead,
+            stage_steps,
+            "source instruction accounting must include the exact call boundary"
+        );
         println!(
             "query_first_node has_node={has_node} source_instructions={} peak_live_stack_bits={} status=partial_before_signed_pairs count=NA",
             stats.instructions, stats.peak_stack_bits

@@ -451,6 +451,16 @@ for pair in "CustomCtor:custom-package" "RecursiveCtor:recursive-package"; do
   env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
     cargo clippy --offline --manifest-path "examples/$package/Cargo.toml" --all-targets -- -D warnings
 done
+# Original Lean optimized constructor mutation and alias checks.
+rm -rf examples/mut-package
+lean --load-dynlib="$NATIVE_LIB" examples/MutFixture.lean
+if ! grep -Fq '.with_field(' examples/mut-package/src/lib.rs; then
+  echo 'source constructor set was not emitted' >&2
+  exit 1
+fi
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --offline --manifest-path examples/mut-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --release --offline --manifest-path examples/mut-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo clippy --offline --manifest-path examples/mut-package/Cargo.toml --all-targets -- -D warnings
 # Original closed Lean Nat constants of 200-512 bits, with oracle inputs
 # through 4096 bits. The pinned Lean C shim reads the full decimal value.
 rm -rf examples/large-nat-package examples/rejected-nat-pow-package
@@ -530,7 +540,8 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=20955"
+  echo "differential_assertions=21131"
+  echo "constructor_field_set_original_lean_oracles=176"
   echo "source_option_default_oracles=512"
   echo "generic_inductive_original_lean_oracles=338"
   echo "array_ownership_original_lean_oracles=768"
@@ -540,7 +551,7 @@ mkdir -p artifacts
   echo "large_nat_literal_oracles=76"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-  echo "core_and_matrix_oracles=22875"
+  echo "core_and_matrix_oracles=23051"
   echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"
@@ -548,7 +559,7 @@ mkdir -p artifacts
   echo "canonical_value_runtime=ONE_IDENTICAL_SOURCE_NAT_OBJECT_CLOSURE"
   sha256sum src/runtime/immutable_value.rs
   echo "ir_constructor_inventory=PASS"
-  echo "runtime_tag_whitelist=33_scoped_IR_constructors"
+  echo "runtime_tag_whitelist=35_scoped_IR_constructors"
   echo "primitive_conformance=30_baseline_x_64_plus_38_extended_oracles"
   echo "extended_float_enum_bitwise_div_shift=PASS"
   echo "standalone_cargo_binary=PASS"
@@ -573,6 +584,7 @@ mkdir -p artifacts
     examples/LargeNat.lean examples/RefusalNatPow.lean examples/large-nat-package/src/lib.rs examples/large-nat-package/Cargo.toml \
     examples/large-nat-package/tests/literals.rs
   sha256sum examples/OptionDefaultFixture.lean examples/option-default-package/original-ir.txt examples/option-default-package/src/lib.rs examples/option-default-package/tests/oracle.rs examples/option-default-package/Cargo.toml
+  sha256sum examples/MutFixture.lean examples/mut-package/src/lib.rs examples/mut-package/tests/optimized_mutation.rs
   sha256sum examples/Objects.lean examples/FunctionValues.lean examples/RefusalObjectNat.lean examples/RefusalObjectCtor.lean examples/RefusalFunctionValues.lean examples/object-package/src/lib.rs examples/function-package/src/lib.rs
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt

@@ -58,10 +58,40 @@ struct ImmutableCaseContext<'a> {
 }
 
 // Standalone immutable object model for the supported Lean IR subset.
-// Rc cloning models shared immutable values; source inc/dec instructions are
-// redundant only while mutation, isShared, reset and reuse remain unsupported.
+// Rc retains aliases for the bounded accepted value subset. Ownership-
+// observable programs still require Lean/Rust cross-call conformance.
 const RUNTIME_SOURCE: &str = include_str!("runtime/immutable_value.rs");
 
+const CONSTRUCTOR_SET_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_constructor_set_tests {
+    use super::__LeanValue;
+    use std::rc::Rc;
+    #[test]
+    fn unique_reuses_allocation() {
+        let original = __LeanValue::ctor(2, "PairLike.two", vec![__LeanValue::nat("3"), __LeanValue::nat("5")]);
+        let before = Rc::as_ptr(&original.0);
+        let updated = original.with_field(0, __LeanValue::nat("7"));
+        assert!(std::ptr::eq(before, Rc::as_ptr(&updated.0)));
+        assert_eq!(updated.field(0).nat_to_decimal(), "7");
+    }
+    #[test]
+    fn shared_keeps_alias() {
+        let original = __LeanValue::ctor(2, "PairLike.two", vec![__LeanValue::nat("3"), __LeanValue::nat("5")]);
+        let alias = original.clone();
+        let before = Rc::as_ptr(&original.0);
+        let updated = original.with_field(1, __LeanValue::nat("11"));
+        assert!(!std::ptr::eq(before, Rc::as_ptr(&updated.0)));
+        assert_eq!(alias.field(1).nat_to_decimal(), "5");
+        assert_eq!(updated.field(1).nat_to_decimal(), "11");
+    }
+    #[test]
+    #[should_panic(expected = "constructor field set on non-constructor")]
+    fn tagged_refuses() {
+        let _ = __LeanValue::tagged(0).with_field(0, __LeanValue::nat("1"));
+    }
+}
+"#;
 const ARRAY_OWNERSHIP_TEST_SOURCE: &str = r#"
 #[cfg(test)]
 mod __lean_array_ownership_tests {
@@ -95,6 +125,33 @@ mod __lean_array_ownership_tests {
         assert_eq!(appended.array_size().nat_to_decimal(), "2");
     }
 }
+"#;
+
+// Embedded at the end of generated code; tests must follow emitted declarations.
+const ERASED_JOIN_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod erased_join_safety_tests {
+    use super::__LeanValue;
+
+    #[test]
+    #[should_panic(expected = "erased join value was read")]
+    fn erased_constructor_predicate_refuses() {
+        assert!(!__LeanValue::erased().has_ctor(0, "Unit", 0));
+    }
+
+    #[test]
+    #[should_panic(expected = "erased join value was read")]
+    fn erased_tagged_predicate_refuses() {
+        assert!(!__LeanValue::erased().has_tagged(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "erased join value was read")]
+    fn erased_equality_refuses() {
+        assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
+    }
+}
+
 "#;
 
 fn is_value_type(ty: &str) -> bool {
@@ -151,7 +208,12 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}")
+        let set_tests = if source.contains(".with_field(") {
+            CONSTRUCTOR_SET_TEST_SOURCE
+        } else {
+            ""
+        };
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}")
     } else {
         source
     };
@@ -886,6 +948,16 @@ impl Reader {
                 }
             }
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
+            12 => {
+                if var_ty != "u8" {
+                    return Err("isShared must yield uint8".into());
+                }
+                let id = Self::var(Self::field(x, 0)?)?;
+                if !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
+                    return Err("isShared requires a value object".into());
+                }
+                Ok(format!("x_{id}.is_shared()"))
+            }
             t => Err(format!("IR expression constructor {t} unsupported")),
         }
     }
@@ -1479,6 +1551,26 @@ impl Reader {
                     )?;
                     return Ok(());
                 }
+                2 => {
+                    // Source FnBody.set on pointer fields; preserve aliases.
+                    let id = Self::var(Self::field(x, 0)?)?;
+                    let ty = env.get(&id).ok_or("set on undefined variable")?;
+                    if !matches!(*ty, "obj" | "tobj") {
+                        return Err("constructor set requires heap object".into());
+                    }
+                    let index = Self::nat(Self::field(x, 1)?)?;
+                    if index >= 1024 {
+                        return Err("constructor pointer index exceeds bound".into());
+                    }
+                    let value = Self::arg(Self::field(x, 2)?, env, "tobj")?;
+                    writeln!(
+                        code,
+                        "    let x_{id} = x_{id}.with_field({index}, {value});"
+                    )
+                    .unwrap();
+                    env.insert(id, "obj");
+                    x = Self::field(x, 3)?;
+                }
                 5 => {
                     // Source sset is legal only for a unique constructor.
                     // The emitted runtime consumes the Rc and rejects aliases.
@@ -1540,7 +1632,17 @@ impl Reader {
                     }
                     let mut lowered = Vec::new();
                     for (arg, ty) in args.into_iter().zip(types.iter()) {
-                        lowered.push(Self::arg(arg, env, ty)?);
+                        if Self::checked_tag(arg, "Arg")? == 1 {
+                            if !is_value_type(ty) {
+                                return Err("erased scalar join argument not supported".into());
+                            }
+                            // Source-optimized guard-dependent parameters are
+                            // physically absent. Any later read must fail,
+                            // never silently materialize an arbitrary value.
+                            lowered.push("__LeanValue::erased()".into());
+                        } else {
+                            lowered.push(Self::arg(arg, env, ty)?);
+                        }
                     }
                     writeln!(code, "    j_{id}({})", lowered.join(", ")).unwrap();
                     return Ok(());
@@ -1721,6 +1823,7 @@ impl Reader {
                         }
                     }
                 }
+                2 => pending.push(Self::field(body, 3)?),
                 5 => pending.push(Self::field(body, 5)?),
                 6 | 7 => pending.push(Self::field(body, 2)?),
                 8 => pending.push(Self::field(body, 1)?),
@@ -2149,7 +2252,7 @@ mod tests {
         assert!(RUNTIME_SOURCE.contains("Closure {"));
         assert!(RUNTIME_SOURCE.contains("fn pap("));
         assert!(RUNTIME_SOURCE.contains("fn apply("));
-        assert!(!RUNTIME_SOURCE.contains("fn is_shared"));
+        assert_eq!(RUNTIME_SOURCE.matches("fn is_shared(").count(), 1);
         assert!(!RUNTIME_SOURCE.contains("fn mutate"));
     }
 
@@ -2234,9 +2337,9 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 9)));
         assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 0)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Alt", 1)));
-        assert!(!SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
+        assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 33);
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 35);
     }
 
     #[test]

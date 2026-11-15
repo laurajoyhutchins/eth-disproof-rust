@@ -76,7 +76,7 @@ impl Reader {
             .map(str::to_owned)
             .map_err(|_| "invalid Nat literal decimal representation".to_owned());
         lr_free_string(raw);
-        decoded
+        Ok(decoded?)
     }
     pub(super) unsafe fn nat(x: Obj) -> CompilerResult<usize> {
         Self::scalar(x).map_err(|_| "large Nat unsupported by v0 compiler".into())

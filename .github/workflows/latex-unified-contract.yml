@@ -35,6 +35,7 @@ jobs:
           node --check benchmark/latex-to-lean/unified/verify.mjs
           node --check benchmark/latex-to-lean/unified/generate-leanify.mjs
           node --check benchmark/latex-to-lean/unified/semantic-check.mjs
+          node --check benchmark/latex-to-lean/unified/semantic-verify.mjs
           node --check benchmark/latex-to-lean/unified/semantic-fixture.mjs
 
   corpus-integration:
@@ -111,6 +112,8 @@ jobs:
             node benchmark/latex-to-lean/unified/semantic-check.mjs \
               --source "$file" --receipt-dir "evidence/unified/research/$id" \
               --leanify-dir "$GITHUB_WORKSPACE/vendor/leanify"
+            node benchmark/latex-to-lean/unified/semantic-verify.mjs \
+              --source "$file" --receipt-dir "evidence/unified/research/$id"
           done
       - name: Exercise independent held-out mathematical examples
         shell: bash
@@ -140,6 +143,8 @@ jobs:
             node benchmark/latex-to-lean/unified/semantic-check.mjs \
               --source "$file" --receipt-dir "evidence/unified/holdouts/$id" \
               --leanify-dir "$GITHUB_WORKSPACE/vendor/leanify"
+            node benchmark/latex-to-lean/unified/semantic-verify.mjs \
+              --source "$file" --receipt-dir "evidence/unified/holdouts/$id"
           done
       - name: Check that no parser receives proof credit
         run: |

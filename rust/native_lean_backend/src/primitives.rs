@@ -56,7 +56,7 @@ pub(super) fn is_primitive(name: &str) -> bool {
         )
 }
 
-const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");
+pub(super) const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");
 pub(super) struct RuntimePrimitiveSpec<'a> {
     pub(super) rust_function: &'a str,
     pub(super) shape: &'a str,

@@ -10,3 +10,7 @@ require mathlib from git
   "https://github.com/leanprover-community/mathlib4.git" @ "d13f23b723b8a846827a245b89c10fc7d3f11612"
 
 @[default_target] lean_lib OAI
+
+-- Imported unchanged from Anthropic's pinned Groundwork/Net modules.
+-- Build only the explicit network dependency closure in this test workflow.
+lean_lib Groundwork

@@ -132,6 +132,34 @@ This is not yet an algorithm-equivalence theorem: neither source-specific value-
 - Prove a divisibility/valuation lemma for every discarded mode from the *actual coefficient construction*; exercise weights `p-1` and `p`, odd entries, and noninvertible denominators.
 - Test a deliberately wrong routing, a shared outer assignment, and a non-divisible singlet correction as negative controls.
 
+## Original Anthropic network source adapter
+
+[IndependentAnthropicNetworkAdapter.lean](../rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean) imports three **unchanged** source modules from Anthropic's pinned repository:
+
+| Original source | Git blob SHA |
+| --- | --- |
+| [Groundwork/Net/Defs.lean](https://github.com/anthropics/formal-math/blob/16a5ce41304fcdaea4e0be7c132e1c361dc26da5/eth/proof/networks/Groundwork/Net/Defs.lean) | e927df137cf9c335d46656ae57c20bb96ace178d |
+| [Groundwork/Net/Calculus.lean](https://github.com/anthropics/formal-math/blob/16a5ce41304fcdaea4e0be7c132e1c361dc26da5/eth/proof/networks/Groundwork/Net/Calculus.lean) | 89eba2cb319592a55d208a093c830c00cbd9be26 |
+| [Groundwork/Net/Net.lean](https://github.com/anthropics/formal-math/blob/16a5ce41304fcdaea4e0be7c132e1c361dc26da5/eth/proof/networks/Groundwork/Net/Net.lean) | 47e67d78888e45cb9af7b171bb3894e13fb288c9 |
+
+The CI workflow checks the upstream commit and every Git blob and builds these declarations under the pinned Lean and Mathlib environment. Anthropic's Paper.Network is an abbreviation of Groundwork.Network: this is the actual underlying network model in the paper's grouping proof.
+
+The common interface is an explicit finite factor contraction over node settings and pair labels:
+
+\[
+\sum_{z\in\prod_a S_a}
+\left(\prod_a W_a(z_a)\right)
+\left(\prod_{a<b}
+\sum_{\theta\in\Theta_{a,b}}
+f_{a,b}(z_a,\theta)f_{b,a}(z_b,\theta)\right).
+\]
+
+No abstract value-preservation property is postulated. The adapter identifies the original Groundwork.Network.value with this expression by unfolding the original source. It then uses the **proved original-source** Groundwork.Network.value_merge for arbitrary color-group merging and Groundwork.Network.Z_toInst for the edge-label instance encoding under an explicit per-edge decoder bijection.
+
+A combined theorem composes both original transformations, from the source network through grouping and instance encoding to the same integer value. A two-node negative test drops the only permitted edge code: the original value is 1 but the encoded instance is 0. This shows why the decoder-bijection condition cannot be omitted.
+
+**Remaining seam:** This is an Anthropic network adapter, not yet an equivalence with OpenAI packets. The original printed Eight.SecNetworks.Net needs the source theorem Eight.SecNetworks.Net.value_toPaperNetwork, and the OpenAI packet implementation needs its own factor-preserving conversion. The source grouping proof gives neither a 2-adic valuation certificate nor a complexity improvement.
+
 ## Required adversarial corpus
 
 1. Empty clause (unsatisfiable), empty formula (all assignments), unused declared variables (factor of two per unused variable).
@@ -146,7 +174,7 @@ For an actual independent executable comparison, run the **original Anthropic ma
 
 1. **Complete:** Pinned source-level CNF meaning bridge, all formulas; local signed-swap identity; finite Rust oracle.
 2. **Complete:** Exact-head Lean kernel verification of arbitrary finite signed network contractions, including Hamming-weight grouping; no extra axioms.
-3. **Next mathematical bridge:** Construct a total, source-defined translation from Anthropic's grouped network objects to OpenAI's packet-mode objects; state a common contraction value and prove equality or a correctly justified `2^p` congruence. Keep Hamming weight and 2-adic precision distinct.
+3. **In progress:** Original Anthropic network grouping and instance routing into a common finite contraction. Connect the printed Eight.SecNetworks.Net and construct a separate OpenAI source-to-contraction adapter; only compare values after matching source factors and coefficient rings. Keep Hamming weight and 2-adic precision distinct.
 4. **Independently required:** Finish [OpenAI source-to-Rust acceptance](lean-rust-acceptance.md), including the nonterminal query/leaf/DFS/outer chain, noncomputable finite fallback refusal, exact original traces and primitive TM2 accounting.
 
 A successful finite comparison is useful regression evidence. It is not a theorem acceptance receipt, a faithful ETH executable witness, or an ETH complexity benchmark.

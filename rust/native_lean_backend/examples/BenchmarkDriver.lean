@@ -33,9 +33,8 @@ def natChecksum (iterations : Nat) : Nat := Id.run do
 
 end BenchmarkDriver
 
-def main : IO Unit := do
-  let args ← IO.getArgs
-  match args.toList with
+def main (args : List String) : IO Unit := do
+  match args with
   | [kind, count] =>
     let some n := count.toNat?
       | throw <| IO.userError "count must be a Nat"

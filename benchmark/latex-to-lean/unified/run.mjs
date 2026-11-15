@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import {spawnSync} from "node:child_process";
+import {generateLeanify} from "./generate-leanify.mjs";
 import {sha256,validateSource,classifyLeanify,classifyStructural,receipt,
   LEANIFY_COMMIT,MAX_LOG_BYTES} from "./contract.mjs";
 
@@ -54,10 +55,26 @@ function main(){
     if(structuralRun.launchError){
       structural.status="tool_error";structural.diagnostics.push(structuralRun.launchError);
     }
+    if(sha256(fs.readFileSync(identicalSource))!==identity.sha256)
+      throw Error("source modified by structural backend");
     const leanRun=run("lake",["exe","leanify","check",identicalSource,"--claims","--defined"],{cwd:vendor});
     const leanify=classifyLeanify(leanRun);
     if(leanRun.launchError){
       leanify.status="tool_error";leanify.diagnostics.push(leanRun.launchError);
+    }
+    if(sha256(fs.readFileSync(identicalSource))!==identity.sha256)
+      throw Error("source modified by Leanify backend");
+    let native=null;
+    if(leanify.status==="parsed"){
+      try{native=generateLeanify({vendor,source,sourceSha:identity.sha256,run});}
+      catch(error){
+        leanify.status="tool_error";
+        leanify.diagnostics.push("native Leanify elaboration: "+String(error));
+      }
+      if(native&&!native.ok){
+        leanify.status="tool_error";
+        leanify.diagnostics.push("Leanify native "+native.stage+" failed");
+      }
     }
     const files={};
     if(structural.status==="parsed"){
@@ -65,19 +82,48 @@ function main(){
       exclusive(path.join(output,file),generated);
       files.structural={name:file,sha256:sha256(Buffer.from(generated))};
     }
+    if(native?.ok){
+      const dir=path.join(output,native.namespace);
+      fs.mkdirSync(dir);
+      const modules={};
+      for(const name of ["Article.lean","Compiled.lean"]){
+        const bytes=native.modules[name];
+        exclusive(path.join(dir,name),bytes);
+        modules[name]={name:native.namespace+"/"+name,sha256:sha256(bytes)};
+      }
+      files.leanify={namespace:native.namespace,modules};
+    }
+    if(native){
+      exclusive(path.join(output,"leanify.init.stdout"),native.init.stdout);
+      exclusive(path.join(output,"leanify.init.stderr"),native.init.stderr);
+      if(native.build){
+        exclusive(path.join(output,"leanify.build.stdout"),native.build.stdout);
+        exclusive(path.join(output,"leanify.build.stderr"),native.build.stderr);
+      }
+    }
     exclusive(path.join(output,"leanify.stdout"),leanRun.stdout);
     exclusive(path.join(output,"leanify.stderr"),leanRun.stderr);
     exclusive(path.join(output,"structural.stdout"),structuralRun.stdout);
     exclusive(path.join(output,"structural.stderr"),structuralRun.stderr);
+    const logs={
+      leanify_stdout_sha256:sha256(Buffer.from(leanRun.stdout)),
+      leanify_stderr_sha256:sha256(Buffer.from(leanRun.stderr)),
+      structural_stdout_sha256:sha256(Buffer.from(structuralRun.stdout)),
+      structural_stderr_sha256:sha256(Buffer.from(structuralRun.stderr))
+    };
+    if(native){
+      logs.leanify_init_stdout_sha256=sha256(Buffer.from(native.init.stdout));
+      logs.leanify_init_stderr_sha256=sha256(Buffer.from(native.init.stderr));
+      if(native.build){
+        logs.leanify_build_stdout_sha256=sha256(Buffer.from(native.build.stdout));
+        logs.leanify_build_stderr_sha256=sha256(Buffer.from(native.build.stderr));
+      }
+    }
     const result=receipt({
       source:identity,observations:[leanify,structural],
-      tools:{leanify:{commit:LEANIFY_COMMIT,command:"lake exe leanify check --claims --defined"},
+      tools:{leanify:{commit:LEANIFY_COMMIT,command:"lake exe leanify check --claims --defined / init / build"},
         structural:{binary_sha256:binarySha}},
-      generated:files,
-      logs:{leanify_stdout_sha256:sha256(Buffer.from(leanRun.stdout)),
-        leanify_stderr_sha256:sha256(Buffer.from(leanRun.stderr)),
-        structural_stdout_sha256:sha256(Buffer.from(structuralRun.stdout)),
-        structural_stderr_sha256:sha256(Buffer.from(structuralRun.stderr))}
+      generated:files,logs
     });
     exclusive(path.join(output,"receipt.json"),JSON.stringify(result,null,2)+"\n");
     console.log(JSON.stringify({source_sha256:identity.sha256,

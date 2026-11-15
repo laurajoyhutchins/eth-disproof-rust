@@ -92,6 +92,27 @@ mod __lean_constructor_set_tests {
     }
 }
 "#;
+const HEAP_JOIN_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_heap_join_refinement_tests {
+    use super::__LeanValue;
+    #[test]
+    fn constructor_heap_refines_tobject() {
+        let value = __LeanValue::ctor(0, "Probe.ctor", vec![]);
+        assert_eq!(value.require_constructor_object().tag(), 0);
+    }
+    #[test]
+    #[should_panic(expected = "tobject join requires a heap constructor")]
+    fn tagged_value_is_not_a_heap_constructor() {
+        let _ = __LeanValue::tagged(0).require_constructor_object();
+    }
+    #[test]
+    #[should_panic(expected = "tobject join requires a heap constructor")]
+    fn erased_join_argument_is_not_a_heap_constructor() {
+        let _ = __LeanValue::erased().require_constructor_object();
+    }
+}
+"#;
 const ARRAY_OWNERSHIP_TEST_SOURCE: &str = r#"
 #[cfg(test)]
 mod __lean_array_ownership_tests {
@@ -186,7 +207,12 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}")
+        let heap_join_tests = if source.contains(".require_constructor_object()") {
+            HEAP_JOIN_TEST_SOURCE
+        } else {
+            ""
+        };
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{heap_join_tests}")
     } else {
         source
     };
@@ -319,6 +345,14 @@ impl Reader {
                 let found = env
                     .get(&id)
                     .ok_or_else(|| format!("unknown input variable x_{id}"))?;
+                if *found == "tobj" && expected == "obj" {
+                    // A source-typed tagged-or-heap value may enter a heap-only
+                    // join. Do not reclassify all tobj values as object pointers:
+                    // the generated runtime checks the actual constructor.
+                    // Missing or erased values refuse instead of fabricating
+                    // an object, as in original Lean's guarded reuse path.
+                    return Ok(format!("x_{id}.clone().require_constructor_object()"));
+                }
                 if !ir_type_compatible(found, expected) {
                     return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }

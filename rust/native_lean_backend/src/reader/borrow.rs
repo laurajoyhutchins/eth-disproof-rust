@@ -59,12 +59,19 @@ impl Reader {
     // primitive calls with direct borrowed objects are refused.
     fn primitive_borrows(name: &str, index: usize) -> bool {
         match name {
-            "Nat.add" | "Nat.sub" | "Nat.mul" | "Nat.div" | "Nat.mod"
-            | "Nat.decEq" | "Nat.decLt" | "Nat.decLe"
-            | "Int.add" | "String.append" | "String.length"
+            "Nat.add"
+            | "Nat.sub"
+            | "Nat.mul"
+            | "Nat.div"
+            | "Nat.mod"
+            | "Nat.decEq"
+            | "Nat.decLt"
+            | "Nat.decLe"
+            | "Int.add"
+            | "String.append"
+            | "String.length"
             | "String.utf8ByteSize" => true,
-            "Array.size" | "Array.getInternal" | "Array.getInternalBorrowed" =>
-                index == 1,
+            "Array.size" | "Array.getInternal" | "Array.getInternalBorrowed" => index == 1,
             _ => false,
         }
     }
@@ -94,8 +101,10 @@ impl Reader {
                     && runtime_primitive_spec(&name).is_none()
                     && !matches!(
                         name.as_str(),
-                        "Array.mkEmpty" | "Array.getInternal"
-                            | "Array.getInternalBorrowed" | "Array.set!"
+                        "Array.mkEmpty"
+                            | "Array.getInternal"
+                            | "Array.getInternalBorrowed"
+                            | "Array.set!"
                     )
                 {
                     return Ok(());
@@ -114,7 +123,11 @@ impl Reader {
                         |sig| sig.borrows[index],
                     );
                     if !borrows {
-                        Self::borrow_take(arg, rights, &format!("call to {name} argument {index}"))?;
+                        Self::borrow_take(
+                            arg,
+                            rights,
+                            &format!("call to {name} argument {index}"),
+                        )?;
                     }
                 }
             }
@@ -131,7 +144,9 @@ impl Reader {
                 if rights.contains_key(&id) {
                     return Err(CompilerError::new(
                         RefusalKind::Decl,
-                        format!("borrowed parameter x_{id}: unverified indirect closure consumption"),
+                        format!(
+                            "borrowed parameter x_{id}: unverified indirect closure consumption"
+                        ),
                     ));
                 }
                 for arg in Self::array(Self::field(expr, 1)?)? {
@@ -171,26 +186,39 @@ impl Reader {
                     Self::borrow_expr(expr, rights, functions)?;
                     body = next;
                 }
-                FnBodyView::Inc { target, persistent, next, .. } => {
+                FnBodyView::Inc {
+                    target,
+                    persistent,
+                    next,
+                    ..
+                } => {
                     let id = Self::var(target)?;
                     if !persistent {
                         if let Some(owned) = rights.get_mut(&id) {
                             let n = Self::nat(Self::field(body, 1)?)?;
                             *owned = owned.checked_add(n).ok_or(CompilerError::new(
-                                RefusalKind::ResourceLimit, "borrowed parameter inc overflow"
+                                RefusalKind::ResourceLimit,
+                                "borrowed parameter inc overflow",
                             ))?;
                         }
                     }
                     body = next;
                 }
-                FnBodyView::Dec { target, persistent, next, .. } => {
+                FnBodyView::Dec {
+                    target,
+                    persistent,
+                    next,
+                    ..
+                } => {
                     if !persistent {
                         let id = Self::var(target)?;
                         if let Some(owned) = rights.get_mut(&id) {
                             if *owned == 0 {
                                 return Err(CompilerError::new(
                                     RefusalKind::Decl,
-                                    format!("borrowed parameter x_{id}: source dec without owned inc"),
+                                    format!(
+                                        "borrowed parameter x_{id}: source dec without owned inc"
+                                    ),
                                 ));
                             }
                             *owned -= 1;
@@ -235,9 +263,7 @@ impl Reader {
                             AltView::Constructor { body } | AltView::Default { body } => body,
                         };
                         let mut branch_rights = rights.clone();
-                        Self::borrow_body(
-                            branch, &mut branch_rights, functions, depth + 1, steps,
-                        )?;
+                        Self::borrow_body(branch, &mut branch_rights, functions, depth + 1, steps)?;
                     }
                     return Ok(());
                 }

@@ -636,6 +636,22 @@ impl Reader {
         Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
     }
 
+    // An indirect AP can consume its closure only at its proven last IR
+    // use. All branches and lexical joins are scanned; unknown constructs
+    // refuse the optimization. Arguments may not alias the function itself.
+    unsafe fn consumable_ap(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
+        if Self::checked_tag(expr, "Expr")? != 8 {
+            return Ok(None);
+        }
+        let id = Self::var(Self::field(expr, 0)?)?;
+        for arg in Self::array(Self::field(expr, 1)?)? {
+            if Self::arg_refs(arg, id)? {
+                return Ok(None);
+            }
+        }
+        Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
+    }
+
     // A direct callee takes ownership of its argument. Moving an object at
     // its unique final use avoids manufacturing a temporary Rust Rc alias.
     // Do not extend this analysis through joins, branches, indirect calls,
@@ -683,6 +699,7 @@ impl Reader {
         functions: Option<&FunctionTable>,
         consumed_array: Option<usize>,
         consumed_calls: &BTreeSet<usize>,
+        consumed_ap: Option<usize>,
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
@@ -839,6 +856,15 @@ impl Reader {
                     // immutable value model; scalar operands still refuse.
                     captured.push(Self::arg(arg, env, "tobj")?);
                 }
+                if signature.params.len() == 2 && captured.len() == 1 {
+                    // Source binary PAP binds one argument. Keep it inline
+                    // in the Rc-backed closure object; avoid allocating a Vec.
+                    return Ok(format!(
+                        "__LeanValue::pap2({}_binary, {})",
+                        internal_closure_name(&name),
+                        captured[0]
+                    ));
+                }
                 Ok(format!(
                     "__LeanValue::pap({}, {}, vec![{}])",
                     internal_closure_name(&name),
@@ -862,6 +888,14 @@ impl Reader {
                 let args = Self::array(Self::field(x, 1)?)?;
                 if args.is_empty() || args.len() > 16 {
                     return Err("AP requires 1..16 object arguments".into());
+                }
+                if args.len() == 1 {
+                    let arg = Self::arg(args[0], env, "tobj")?;
+                    return if consumed_ap == Some(fun) {
+                        Ok(format!("x_{fun}.apply1_owned({arg})"))
+                    } else {
+                        Ok(format!("x_{fun}.apply1({arg})"))
+                    };
                 }
                 let mut lowered = Vec::new();
                 for arg in args {
@@ -1690,6 +1724,11 @@ impl Reader {
                     } else {
                         BTreeSet::new()
                     };
+                    let consumed_ap = if straight_line {
+                        Self::consumable_ap(expr, tail)?
+                    } else {
+                        None
+                    };
                     let value = Self::expr(
                         expr,
                         ty,
@@ -1697,6 +1736,7 @@ impl Reader {
                         ctx.functions,
                         consumed_array,
                         &consumed_calls,
+                        consumed_ap,
                     )?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
@@ -2149,6 +2189,17 @@ impl Reader {
                 || !is_value_type(sig.result)
             {
                 continue;
+            }
+            // Binary functions can be invoked without an argument Vec.
+            // Preserve the original general thunk for zero-capture PAPs.
+            if sig.params.len() == 2 {
+                result.push_str("#[allow(dead_code)]\n");
+                writeln!(
+                    result,
+                    "fn {}_binary(capture: __LeanValue, arg: __LeanValue) -> __LeanValue {{",
+                    internal_closure_name(name)
+                ).unwrap();
+                writeln!(result, "    {}(capture, arg)\n}}", internal_name(name)).unwrap();
             }
             result.push_str("#[allow(dead_code)]\n");
             writeln!(

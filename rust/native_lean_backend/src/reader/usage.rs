@@ -232,8 +232,15 @@ impl Reader {
                 *counts.entry(id).or_default() += 1;
             }
         }
-        for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
-            if !is_value_type(ty) || Self::checked_tag(arg, "Arg")? != 0 {
+        for ((arg, ty), borrowed) in args
+            .into_iter()
+            .zip(signature.params.iter())
+            .zip(signature.borrows.iter())
+        {
+            // Borrowed inputs do not consume the source caller's ownership.
+            // Last-use move optimization is admitted only at an owned ABI
+            // slot, irrespective of Rust Rc's current handle count.
+            if *borrowed || !is_value_type(ty) || Self::checked_tag(arg, "Arg")? != 0 {
                 continue;
             }
             let id = Self::var(Self::field(arg, 0)?)?;

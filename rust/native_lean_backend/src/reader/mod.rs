@@ -9,6 +9,7 @@ use std::fmt::Write;
 pub(super) struct Reader;
 
 mod body;
+mod borrow;
 mod cases;
 mod decode;
 mod expr;

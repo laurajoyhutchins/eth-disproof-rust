@@ -155,6 +155,12 @@ impl __LeanValue {
     }
     fn is_shared(&self) -> u8 {
         self.assert_not_erased();
+        // Tagged immediates have no Lean heap reference count. A Rust Rc
+        // allocation for the tagged adapter must not make them observable.
+        assert!(
+            !matches!(self.0.as_ref(), __LeanValueRepr::Tagged(_)),
+            "isShared requires a heap-backed Lean value"
+        );
         u8::from(std::rc::Rc::strong_count(&self.0) > 1)
     }
     fn with_field(mut self, index: usize, value: Self) -> Self {
@@ -170,6 +176,20 @@ impl __LeanValue {
             }
             _ => panic!("constructor field set on non-constructor"),
         }
+    }
+    // Lean IR tobj is a heap object OR a tagged value. Refine it to an
+    // obj only when the actual runtime representation is a constructor.
+    // Other heap representations need their own source-checked contract.
+    // This guard is also the backstop against reading an erased join arg.
+    fn require_constructor_object(self) -> Self {
+        assert!(
+            matches!(
+                self.0.as_ref(),
+                __LeanValueRepr::Ctor { .. } | __LeanValueRepr::PullIn { .. }
+            ),
+            "tobject join requires a heap constructor"
+        );
+        self
     }
     fn erased() -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Erased)) }
     fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
@@ -369,7 +389,16 @@ impl __LeanValue {
     fn array_size(&self) -> Self {
         let __LeanValueRepr::Array(values) = self.0.as_ref()
         else { panic!("Array.size expects Array"); };
-        Self::nat_from_decimal(&values.len().to_string())
+        // Lean's array length is a small Nat on pinned x86-64. The old
+        // implementation allocated a GMP integer and formatted the length
+        // in decimal on every size probe, including Array.getD bounds checks.
+        // Keep a total fallback at the tagged Nat cutoff rather than truncate.
+        let len = values.len();
+        if len <= usize::MAX >> 1 {
+            Self::tagged(len)
+        } else {
+            Self::nat_from_decimal(&len.to_string())
+        }
     }
     fn list_reverse(&self) -> Self {
         let mut values = self.list_items();
@@ -479,6 +508,10 @@ impl PartialEq for __LeanValue {
         match (self.0.as_ref(), other.0.as_ref()) {
             (Nat(a), Nat(b)) | (Int(a), Int(b)) =>
                 unsafe { __gmpz_cmp(a.ptr(), b.ptr()) == 0 },
+            // Lean's small Nat is an immediate tagged value. A source Nat
+            // may also be produced by an arbitrary-precision GMP primitive.
+            // Compare numeric meaning, not just the Rust storage variant.
+            (Tagged(_), Nat(_)) | (Nat(_), Tagged(_)) => self.nat_cmp(other) == 0,
             (Str(a), Str(b)) => a == b,
             (Array(a), Array(b)) | (List(a), List(b)) => a == b,
             (Tagged(a), Tagged(b)) => a == b,

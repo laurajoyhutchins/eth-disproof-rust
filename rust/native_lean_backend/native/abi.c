@@ -14,6 +14,17 @@ b_lean_obj_res lr_field(b_lean_obj_arg o, size_t n) {
     if (!o || !lean_is_ctor((lean_object *)o) || n >= lean_ctor_num_objs((lean_object *)o)) return NULL;
     return lean_ctor_get((lean_object *)o, (unsigned)n);
 }
+/* Lean 4.34.1 IR.Param has two pointer fields (x, ty) and a packed
+ * Bool borrow flag following them. Do not infer borrowing from Rust clones.
+ * A malformed source representation is explicitly rejected. */
+int lr_param_borrow(b_lean_obj_arg o) {
+    if (!o || !lean_is_ctor((lean_object *)o) ||
+        lean_obj_tag((lean_object *)o) != 0 ||
+        lean_ctor_num_objs((lean_object *)o) != 2) return -1;
+    uint8_t value = lean_ctor_get_uint8((lean_object *)o, 2 * sizeof(void *));
+    return value <= 1 ? (int)value : -1;
+}
+
 size_t lr_array_len(b_lean_obj_arg o) { return o && lean_is_array((lean_object *)o) ? lean_array_size((lean_object *)o) : 0; }
 b_lean_obj_res lr_array_at(b_lean_obj_arg o, size_t n) {
     if (!o || !lean_is_array((lean_object *)o) || n >= lean_array_size((lean_object *)o)) return NULL;

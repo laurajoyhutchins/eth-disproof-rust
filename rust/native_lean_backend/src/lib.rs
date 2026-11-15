@@ -37,6 +37,7 @@ extern "C" {
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
     fn lr_nat_decimal(x: Obj) -> *mut c_char;
+    fn lr_param_borrow(x: Obj) -> i32;
     fn lr_free_string(x: *mut c_char);
     fn lr_string_size(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
@@ -99,6 +100,27 @@ mod __lean_constructor_set_tests {
     }
 }
 "#;
+const HEAP_JOIN_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_heap_join_refinement_tests {
+    use super::__LeanValue;
+    #[test]
+    fn constructor_heap_refines_tobject() {
+        let value = __LeanValue::ctor(0, "Probe.ctor", vec![]);
+        assert_eq!(value.require_constructor_object().tag(), 0);
+    }
+    #[test]
+    #[should_panic(expected = "tobject join requires a heap constructor")]
+    fn tagged_value_is_not_a_heap_constructor() {
+        let _ = __LeanValue::tagged(0).require_constructor_object();
+    }
+    #[test]
+    #[should_panic(expected = "tobject join requires a heap constructor")]
+    fn erased_join_argument_is_not_a_heap_constructor() {
+        let _ = __LeanValue::erased().require_constructor_object();
+    }
+}
+"#;
 const ARRAY_OWNERSHIP_TEST_SOURCE: &str = r#"
 #[cfg(test)]
 mod __lean_array_ownership_tests {
@@ -115,6 +137,25 @@ mod __lean_array_ownership_tests {
         let updated = pushed.array_set_tagged_owned(0, __LeanValue::tagged(11));
         assert!(std::ptr::eq(original, Rc::as_ptr(&updated.0)));
         assert_eq!(updated.array_get_tagged(0).tagged_nat(), 11);
+    }
+
+    #[test]
+    fn array_size_uses_exact_tagged_nat_without_gmp_allocation() {
+        let input = __LeanValue::array(vec![
+            __LeanValue::tagged(11),
+            __LeanValue::tagged(13),
+            __LeanValue::tagged(17),
+        ]);
+        let size = input.array_size();
+        assert!(size.has_tagged(3), "small array size must be a tagged Nat");
+        assert_eq!(size.tagged_nat(), 3);
+        assert_eq!(size.nat_to_decimal(), "3");
+        assert_eq!(size, __LeanValue::nat_from_decimal("3"));
+        assert_eq!(__LeanValue::nat_from_decimal("3"), size);
+        let zero = __LeanValue::array(Vec::new()).array_size();
+        assert_eq!(zero.tagged_nat(), 0);
+        assert_eq!(zero, __LeanValue::nat_from_decimal("0"));
+        assert_ne!(zero, __LeanValue::nat_from_decimal("1"));
     }
 
     #[test]
@@ -156,6 +197,12 @@ mod erased_join_safety_tests {
     #[should_panic(expected = "erased join value was read")]
     fn erased_equality_refuses() {
         assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "isShared requires a heap-backed Lean value")]
+    fn tagged_immediate_sharedness_refuses() {
+        let _ = __LeanValue::tagged(0).is_shared();
     }
 }
 
@@ -220,7 +267,12 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}")
+        let heap_join_tests = if source.contains(".require_constructor_object()") {
+            HEAP_JOIN_TEST_SOURCE
+        } else {
+            ""
+        };
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}")
     } else {
         source
     };
@@ -331,6 +383,16 @@ impl Reader {
             t => Err(format!("unknown Lean.Name tag {t}")),
         }
     }
+    // Param.borrow is an unboxed Bool in pinned Lean IR.Param, not one of
+    // its two pointer fields. The Lean C ABI verifies its actual layout.
+    unsafe fn param_borrow(x: Obj) -> Result<bool, String> {
+        match lr_param_borrow(x) {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err("unsupported Lean IR.Param borrowed-flag layout".into()),
+        }
+    }
+
     unsafe fn var(x: Obj) -> Result<usize, String> {
         // A Lean single-field structure may be represented as its single field
         // after erasure; accept both representations, reject all other cases.
@@ -415,8 +477,9 @@ impl Reader {
 
     // Last-use analysis only permits moves through a straight-line tail.
     // Any join, branch, unknown expression, or reference bookkeeping for the
-    // candidate is conservatively considered an additional use. This is a
-    // performance optimization; it never extends accepted source semantics.
+    // candidate is conservatively considered an additional use. This avoids
+    // unnecessary transient Rc aliases, but does not prove Lean's physical
+    // reference-count trace equals Rust's trace.
     unsafe fn arg_refs(x: Obj, id: usize) -> Result<bool, String> {
         Ok(match Self::checked_tag(x, "Arg")? {
             0 => Self::var(Self::field(x, 0)?)? == id,
@@ -474,6 +537,106 @@ impl Reader {
         Ok(false)
     }
 
+    unsafe fn tail_unused_on_all_paths(body: Obj, id: usize) -> Result<bool, String> {
+        let mut pending = vec![(body, 0usize)];
+        let mut steps = 0usize;
+        while let Some((current, depth)) = pending.pop() {
+            steps += 1;
+            if steps > 100_000 || depth > 128 {
+                return Ok(false);
+            }
+            let next_depth = depth + 1;
+            match Self::checked_tag(current, "FnBody")? {
+                0 => {
+                    // vdecl: both the expression and all subsequent uses matter.
+                    // Reject shadowing rather than reasoning across renamings.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::expr_refs(Self::field(current, 2)?, id)?
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 3)?, depth));
+                }
+                1 => {
+                    // jdecl: the generated Rust lexical closure may capture
+                    // variables from its environment. Scan its whole body,
+                    // all parameters and the continuation, not just the jump.
+                    for param in Self::array(Self::field(current, 1)?)? {
+                        if Self::var(Self::field(param, 0)?)? == id {
+                            return Ok(false);
+                        }
+                    }
+                    pending.push((Self::field(current, 2)?, next_depth));
+                    pending.push((Self::field(current, 3)?, depth));
+                }
+                2 => {
+                    // Constructor pointer-field set mutates/observes its target.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::arg_refs(Self::field(current, 2)?, id)?
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 3)?, depth));
+                }
+                5 => {
+                    // Packed-field sset reads its object and byte-value IDs.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::var(Self::field(current, 3)?)? == id
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 5)?, depth));
+                }
+                6 | 7 => {
+                    // inc/dec: conservatively retain variables involved in
+                    // source reference-count operations, even if IR is erased.
+                    if Self::var(Self::field(current, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 2)?, depth));
+                }
+                8 => {
+                    // del: likewise, don't transfer when source bookkeeping
+                    // mentions this value after the candidate consuming call.
+                    if Self::var(Self::field(current, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 1)?, depth));
+                }
+                9 => {
+                    // case: scan scrutinee plus every constructor/default arm.
+                    if Self::var(Self::field(current, 1)?)? == id {
+                        return Ok(false);
+                    }
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let body_index = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1, // constructor alternative
+                            1 => 0, // default alternative
+                            _ => return Ok(false),
+                        };
+                        pending.push((Self::field(alt, body_index)?, next_depth));
+                    }
+                }
+                10 => {
+                    if Self::arg_refs(Self::field(current, 0)?, id)? {
+                        return Ok(false);
+                    }
+                }
+                11 => {
+                    // A typed jump can pass the value to a join even though
+                    // that join's body doesn't mention the original VarId.
+                    if Self::args_ref(Self::field(current, 1)?, id)? {
+                        return Ok(false);
+                    }
+                }
+                // setTag, uset and other unsupported forms are never
+                // a reason to silently consume an array.
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
     unsafe fn consumable_array(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
         if Self::checked_tag(expr, "Expr")? != 6 {
             return Ok(None);
@@ -494,7 +657,47 @@ impl Reader {
                 return Ok(None);
             }
         }
-        Ok(Self::straight_tail_unused(tail, id)?.then_some(id))
+        Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
+    }
+
+    // A direct callee takes ownership of its argument. Moving an object at
+    // its unique final use avoids manufacturing a temporary Rust Rc alias.
+    // Do not extend this analysis through joins, branches, indirect calls,
+    // bookkeeping, or unrecognized expressions.
+    unsafe fn consumable_call(
+        expr: Obj,
+        tail: Obj,
+        functions: Option<&FunctionTable>,
+    ) -> Result<BTreeSet<usize>, String> {
+        let mut consumed = BTreeSet::new();
+        if Self::checked_tag(expr, "Expr")? != 6 {
+            return Ok(consumed);
+        }
+        let name = Self::name(Self::field(expr, 0)?, 0)?;
+        let Some(signature) = functions.and_then(|f| f.get(&name)) else {
+            return Ok(consumed);
+        };
+        let args = Self::array(Self::field(expr, 1)?)?;
+        if args.len() != signature.params.len() {
+            return Ok(consumed);
+        }
+        let mut counts = BTreeMap::<usize, usize>::new();
+        for arg in &args {
+            if Self::checked_tag(*arg, "Arg")? == 0 {
+                let id = Self::var(Self::field(*arg, 0)?)?;
+                *counts.entry(id).or_default() += 1;
+            }
+        }
+        for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
+            if !is_value_type(ty) || Self::checked_tag(arg, "Arg")? != 0 {
+                continue;
+            }
+            let id = Self::var(Self::field(arg, 0)?)?;
+            if counts.get(&id) == Some(&1) && Self::straight_tail_unused(tail, id)? {
+                consumed.insert(id);
+            }
+        }
+        Ok(consumed)
     }
 
     unsafe fn expr(
@@ -503,6 +706,7 @@ impl Reader {
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
         consumed_array: Option<usize>,
+        consumed_calls: &BTreeSet<usize>,
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
@@ -739,7 +943,15 @@ impl Reader {
                     }
                     let mut lowered = Vec::with_capacity(args.len());
                     for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
-                        lowered.push(Self::arg(arg, env, ty)?);
+                        let typed = Self::arg(arg, env, ty)?;
+                        if is_value_type(ty) && Self::checked_tag(arg, "Arg")? == 0 {
+                            let id = Self::var(Self::field(arg, 0)?)?;
+                            if consumed_calls.contains(&id) {
+                                lowered.push(format!("x_{id}"));
+                                continue;
+                            }
+                        }
+                        lowered.push(typed);
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
                 }
@@ -1487,15 +1699,29 @@ impl Reader {
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
                     let expr = Self::field(x, 2)?;
-                    // A lexical join or nested control-flow arm may capture
-                    // this variable. Only top-level straight-line tails can
-                    // transfer ownership to the Rc array fast path.
-                    let consumed_array = if depth == 0 && ctx.joins.is_empty() {
-                        Self::consumable_array(expr, Self::field(x, 3)?)?
+                    // Only top-level array candidates can transfer ownership.
+                    // Their full tails are scanned for references through
+                    // branch and join bodies, conservatively preserving aliases.
+                    let straight_line = depth == 0 && ctx.joins.is_empty();
+                    let tail = Self::field(x, 3)?;
+                    let consumed_array = if straight_line {
+                        Self::consumable_array(expr, tail)?
                     } else {
                         None
                     };
-                    let value = Self::expr(expr, ty, env, ctx.functions, consumed_array)?;
+                    let consumed_calls = if straight_line {
+                        Self::consumable_call(expr, tail, ctx.functions)?
+                    } else {
+                        BTreeSet::new()
+                    };
+                    let value = Self::expr(
+                        expr,
+                        ty,
+                        env,
+                        ctx.functions,
+                        consumed_array,
+                        &consumed_calls,
+                    )?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }
@@ -1512,11 +1738,17 @@ impl Reader {
                         return Err(format!("join point {id} shadows a visible join"));
                     }
                     let mut param_types = Vec::new();
+                    let join_shared = Self::shared_observations(Self::field(x, 2)?)?;
                     let mut value_env = env.clone();
                     let mut param_code = Vec::new();
                     for param in Self::array(Self::field(x, 1)?)? {
                         let var = Self::var(Self::field(param, 0)?)?;
                         let ty = Self::ty(Self::field(param, 1)?)?;
+                        if Self::param_borrow(param)? && join_shared.contains(&var) {
+                            return Err(format!(
+                                "borrowed join parameter x_{var} has unverified isShared ownership semantics"
+                            ));
+                        }
                         if value_env.insert(var, ty).is_some() {
                             return Err(format!(
                                 "join parameter x_{var} reused a visible variable"
@@ -1647,6 +1879,18 @@ impl Reader {
                             // physically absent. Any later read must fail,
                             // never silently materialize an arbitrary value.
                             lowered.push("__LeanValue::erased()".into());
+                        } else if *ty == "obj" && Self::checked_tag(arg, "Arg")? == 0 {
+                            // Only a typed join argument may refine tobj
+                            // (tagged-or-heap) to a heap-only constructor.
+                            // All other IR uses keep the strict object type
+                            // contract; the runtime checks the actual value.
+                            let var = Self::var(Self::field(arg, 0)?)?;
+                            if env.get(&var) == Some(&"tobj") {
+                                lowered
+                                    .push(format!("x_{var}.clone().require_constructor_object()"));
+                            } else {
+                                lowered.push(Self::arg(arg, env, ty)?);
+                            }
                         } else {
                             lowered.push(Self::arg(arg, env, ty)?);
                         }
@@ -1703,6 +1947,7 @@ impl Reader {
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
+        let shared = Self::shared_observations(body)?;
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
@@ -1716,6 +1961,11 @@ impl Reader {
             }
             let var = Self::var(Self::field(*param, 0)?)?;
             let ty = Self::ty(Self::field(*param, 1)?)?;
+            if Self::param_borrow(*param)? && shared.contains(&var) {
+                return Err(format!(
+                    "borrowed parameter x_{var} has unverified isShared ownership semantics"
+                ));
+            }
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}"));
             }
@@ -1740,12 +1990,57 @@ impl Reader {
 }
 
 impl Reader {
+    // Gather all physical sharing observations in one declaration body.
+    // IR variable identities are unique; unsupported shapes fail closed.
+    unsafe fn shared_observations(body: Obj) -> Result<BTreeSet<usize>, String> {
+        let mut observed = BTreeSet::new();
+        let mut pending = vec![body];
+        let mut count = 0usize;
+        while let Some(current) = pending.pop() {
+            count += 1;
+            if count > 100_000 {
+                return Err("sharedness audit exceeds 100000 IR instructions".into());
+            }
+            match Self::checked_tag(current, "FnBody")? {
+                0 => {
+                    let expr = Self::field(current, 2)?;
+                    if Self::checked_tag(expr, "Expr")? == 12 {
+                        observed.insert(Self::var(Self::field(expr, 0)?)?);
+                    }
+                    pending.push(Self::field(current, 3)?);
+                }
+                1 => {
+                    pending.push(Self::field(current, 2)?);
+                    pending.push(Self::field(current, 3)?);
+                }
+                2 => pending.push(Self::field(current, 3)?),
+                5 => pending.push(Self::field(current, 5)?),
+                6 | 7 => pending.push(Self::field(current, 2)?),
+                8 => pending.push(Self::field(current, 1)?),
+                9 => {
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let idx = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1,
+                            1 => 0,
+                            t => return Err(format!("unsupported sharedness audit Alt {t}")),
+                        };
+                        pending.push(Self::field(alt, idx)?);
+                    }
+                }
+                10 | 11 => {}
+                t => return Err(format!("unsupported sharedness audit FnBody {t}")),
+            }
+        }
+        Ok(observed)
+    }
+
     unsafe fn signature(decl: Obj) -> Result<Signature, String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
         let mut params = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
+            let _ = Self::param_borrow(param)?;
             params.push(Self::ty(Self::field(param, 1)?)?);
         }
         Ok(Signature {

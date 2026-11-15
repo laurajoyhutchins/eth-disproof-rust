@@ -1,0 +1,141 @@
+name: Unified mathematical source contract
+
+on:
+  push:
+    branches: ['experiment/latex-unified-contract']
+    paths:
+      - 'benchmark/latex-to-lean/unified/**'
+      - '.github/workflows/latex-unified-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: latex-unified-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-checkpoint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Test shared mathematical evidence contract
+        run: |
+          node --test benchmark/latex-to-lean/unified/*.test.mjs
+          node --check benchmark/latex-to-lean/unified/run.mjs
+          node --check benchmark/latex-to-lean/unified/verify.mjs
+
+  corpus-integration:
+    needs: contract-checkpoint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Build pinned structural frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          cd benchmark/latex-to-lean/structural
+          cargo +1.99.1 build --release --offline --locked
+      - name: Checkout pinned Leanify
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Corrram/leanify.git vendor/leanify
+          git -C vendor/leanify checkout --detach 134da59ae02e9fffc011a5ea89acf4320268d220
+          test "$(git -C vendor/leanify rev-parse HEAD)" = 134da59ae02e9fffc011a5ea89acf4320268d220
+      - name: Restore Lean and pinned Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: vendor/leanify
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Build Leanify once
+        run: |
+          set -euo pipefail
+          cd vendor/leanify
+          lake exe cache get
+          lake build leanify
+      - name: Exercise both backends on untouched research corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/unified/research
+          bin="$GITHUB_WORKSPACE/benchmark/latex-to-lean/structural/target/release/structural-latex"
+          for file in benchmark/latex-to-lean/research/cases/*.tex; do
+            id="$(basename "$file" .tex)"
+            mkdir -p "evidence/unified/research/$id"
+            set +e
+            /usr/bin/time -v -o "evidence/unified/research/$id/time.txt" \
+              node benchmark/latex-to-lean/unified/run.mjs \
+                --source "$file" --out "evidence/unified/research/$id" \
+                --structural-bin "$bin" --leanify-dir "$GITHUB_WORKSPACE/vendor/leanify"
+            status=$?
+            set -e
+            echo "$status" > "evidence/unified/research/$id/driver.exit"
+            if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+              echo "Infrastructure error for $id: $status" >&2; exit 1
+            fi
+          done
+          node benchmark/latex-to-lean/unified/verify.mjs \
+            benchmark/latex-to-lean/research/cases evidence/unified/research \
+            evidence/unified/research-coverage.json --require-coverage
+      - name: Exercise independent held-out mathematical examples
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/unified/holdouts
+          bin="$GITHUB_WORKSPACE/benchmark/latex-to-lean/structural/target/release/structural-latex"
+          for file in benchmark/latex-to-lean/structural/holdouts/*.tex; do
+            id="$(basename "$file" .tex)"
+            mkdir -p "evidence/unified/holdouts/$id"
+            set +e
+            node benchmark/latex-to-lean/unified/run.mjs \
+              --source "$file" --out "evidence/unified/holdouts/$id" \
+              --structural-bin "$bin" --leanify-dir "$GITHUB_WORKSPACE/vendor/leanify"
+            status=$?
+            set -e
+            echo "$status" > "evidence/unified/holdouts/$id/driver.exit"
+            if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+              echo "Infrastructure error for $id: $status" >&2; exit 1
+            fi
+          done
+          node benchmark/latex-to-lean/unified/verify.mjs \
+            benchmark/latex-to-lean/structural/holdouts evidence/unified/holdouts \
+            evidence/unified/holdout-coverage.json --require-coverage
+      - name: Check that no parser receives proof credit
+        run: |
+          node - <<'JS'
+          const fs=require('fs');
+          for(const cohort of ['research','holdout']){
+            const p='evidence/unified/'+cohort+'-coverage.json';
+            const r=JSON.parse(fs.readFileSync(p));
+            if(r.counts.covered!==r.counts.total||r.results.some(x=>x.kernel_verified))process.exitCode=1;
+            console.log(cohort,JSON.stringify(r.counts));
+          }
+          JS
+      - name: Archive source-linked evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: latex-unified-contract-evidence
+          path: evidence/unified/
+          if-no-files-found: warn

@@ -11,6 +11,17 @@ The generated Rust test observes `Rc::as_ptr` allocation identity and the
 existing logical source counter. Neither observation API is called from the
 kernel source; the C probe and Rust test live only in the test drivers.
 
+The driver calls are deliberately **not compiled from the same source**:
+`native/object_trace_probe.c` invokes actual Lean C generated functions;
+`examples/ownership_object_trace_test.rs` invokes the corresponding
+generated Rust exports. Both drivers make the same explicit retain operations,
+unlike a Lean-compiled IO driver that can change reference lifetimes through
+its own compiler optimization. The three input pairs `(0,1)`, `(17,23)`,
+and `(901,702)` are read at runtime, preventing closed constant data from
+being frozen into Lean's persistent object region. This is a test of **the
+same compiled kernel definitions under the same ownership schedule**, not
+an all-language same-source driver theorem.
+
 ### Candidate heap relation
 
 At each observation checkpoint, define a partial relation `R` from an
@@ -34,6 +45,6 @@ therefore remain invisible. It does not cover arbitrary borrow
 annotations, all closure paths, sticky/frozen/MT objects, primitive/FFI
 effects, mutation allocation identity, or object-finalization cascades.
 
-The script fails on the first divergent trace and retains C/Rust outputs
-and source-hash receipts. There is no learned mapping, expected-output
+The script fails on the first divergent trace and retains C/Rust outputs,
+generated kernel C, generated Rust and source-hash receipts in exact-head CI. There is no learned mapping, expected-output
 substitution, or alternate production Rust runtime.

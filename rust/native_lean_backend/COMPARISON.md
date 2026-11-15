@@ -151,6 +151,62 @@ peak memory across concurrent build or transitive shared-library usage**.
 All compilation measurements are fresh-process but cache-uncontrolled,
 with three observations rather than a statistically controlled benchmark.
 
+## Representative workload matrix
+
+The original comparison used only `Property.hop`, a fixed-width recursive
+`UInt64` function. To make its limitations testable, the next benchmark
+compiles **four original Lean roots** in
+[`examples/BenchmarkKernels.lean`](examples/BenchmarkKernels.lean) through
+both compiler backends. No root is implemented a second time in Rust.
+
+| Workload | Original Lean function(s) | What it exercises |
+| --- | --- | --- |
+| `array` | `BenchmarkKernels.arrayStep` | Persistent Array allocation, `set!`, `push`, and old-alias preservation |
+| `closure` | `BenchmarkKernels.closureStep` | Indirect calls, partially applied function values and capture |
+| `nat` | `BenchmarkKernels.natStep`, `natAccumulate` | GMP-backed 256-bit/128-bit multiplication, division, remainder, accumulation |
+
+Each backend builds against *exactly the same* `BenchmarkKernels.lean`.
+The native Lean driver is also source-compiled through Lean's C backend;
+the Rust driver contains only deterministic inputs, accumulation, and
+printing, and links the generated Rust Cargo library. These language-specific
+drivers are a confound for total runtime; they are **not** replacement
+implementations of the measured Lean roots.
+
+The gate requires three-way parity against the original Lean interpreter at
+32 iterations per workload, then native Lean C/Rust parity at 262,144 iterations
+for arrays and closures and 12,000 iterations for Nat. Both binaries emit
+an identical numeric checksum per workload. Twelve alternating subprocess
+measurements per backend are taken after warmup. The runner also records
+per-executable peak RSS, raw compiler phase timings, `ldd` dependencies,
+emitted C and generated Rust source hashes, and source/toolchain identity.
+
+Reproduce after `lake build` and `scripts/check.sh`:
+
+```sh
+bash scripts/compare-c-rust-matrix.sh
+cat artifacts/bench-matrix/parity.tsv
+cat artifacts/bench-matrix/compile-phases.tsv
+cat artifacts/bench-matrix/{array,closure,nat}-summary.txt
+```
+
+The native CI workflow executes this test after the existing `Property.hop`
+comparison. Its evidence is archived at
+`artifacts/bench-matrix/`. Failures are never represented as a speedup.
+
+### Unchanged external projects
+
+The existing three-project acceptance matrix compiles **original Armada
+`Sched.argLeastLoad`** and **Keboola `SyncModel.pullDecide`** into
+standalone Rust and checks source-Lean results. **Newspeak is still an
+explicit refusal** for the selected original root.
+
+These are semantic compiler acceptance tests, **not currently equivalent C
+versus Rust performance benchmarks**. A fair external benchmark needs an
+unchanged source-compiled C executable and the same runtime inputs, not merely
+the external Lean interpreter or a rewritten proxy. Until then its speed ratio
+is `NOT_MEASURED`. No figure from the synthetic workload matrix should
+be projected onto Armada, Keboola, or Newspeak.
+
 ## What remains unanswered
 
 1. **Diverse original programs:** benchmark source-matched closures, arrays,

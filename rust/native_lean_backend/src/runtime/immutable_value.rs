@@ -2,7 +2,7 @@
 // Rust Rc tracks actual memory safety. The second Rc tracks the reference
 // count observed by Lean IR, independently of transient Rust value clones.
 // A direct Rust clone is not a source IR.inc instruction.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct __LeanValue(
     std::rc::Rc<__LeanValueRepr>,
     std::rc::Rc<std::cell::Cell<usize>>,
@@ -44,6 +44,16 @@ enum __LeanValueRepr {
     Str(String),
     Array(Vec<__LeanValue>),
     List(Vec<__LeanValue>),
+}
+
+// A public Clone represents a second owned Lean reference. Generated
+// compiler temporaries instead call compiler_alias, which has no source RC
+// effect. This distinction is essential at exported function boundaries.
+impl Clone for __LeanValue {
+    fn clone(&self) -> Self {
+        self.source_inc(1, true, false);
+        self.compiler_alias()
+    }
 }
 
 // Nat is arbitrary precision in Lean. GMP is an established, maintained
@@ -168,6 +178,10 @@ impl __LeanNatOperand<'_> {
 
 #[allow(dead_code)]
 impl __LeanValue {
+    fn compiler_alias(&self) -> Self {
+        Self(self.0.clone(), self.1.clone())
+    }
+
     fn from_repr(repr: __LeanValueRepr) -> Self {
         // Every newly allocated source heap object owns one Lean reference.
         // Tagged immediates are exempt from source reference counting.
@@ -402,18 +416,18 @@ impl __LeanValue {
     // The resource cap is explicit; no recursive traversal or hidden mutation.
     fn list_items(&self) -> Vec<Self> {
         let mut items = Vec::new();
-        let mut cursor = self.clone();
+        let mut cursor = self.compiler_alias();
         loop {
             let next = match cursor.0.as_ref() {
                 __LeanValueRepr::Tagged(0) => None,
                 __LeanValueRepr::List(values) => {
-                    items.extend(values.iter().cloned());
+                    items.extend(values.iter().map(Self::compiler_alias));
                     None
                 }
                 __LeanValueRepr::Ctor { tag: 1, name: "List.cons", fields }
                     if fields.len() == 2 => {
-                    items.push(fields[0].clone());
-                    Some(fields[1].clone())
+                    items.push(fields[0].compiler_alias());
+                    Some(fields[1].compiler_alias())
                 }
                 _ => panic!("List operation received unsupported value representation"),
             };
@@ -555,11 +569,11 @@ impl __LeanValue {
     fn field(&self, index: usize) -> Self {
         match self.0.as_ref() {
             __LeanValueRepr::Ctor { fields, .. } =>
-                fields.get(index).expect("constructor field absent").clone(),
+                fields.get(index).expect("constructor field absent").compiler_alias(),
             __LeanValueRepr::PullIn { fields, .. } =>
-                fields.get(index).expect("PullIn field absent").clone(),
+                fields.get(index).expect("PullIn field absent").compiler_alias(),
             __LeanValueRepr::List(values) if !values.is_empty() => match index {
-                0 => values[0].clone(),
+                0 => values[0].compiler_alias(),
                 1 => Self::list(values[1..].to_vec()),
                 _ => panic!("List.cons has exactly two fields"),
             },

@@ -146,6 +146,23 @@ cargo run --locked -p lean-eth-reference --bin appendix-basecase-gap -- 34028236
 
 Every CLI invocation intentionally exits with status 2 and `sat_count=null`; it reports the first uncovered active depth, the optimistic matching threshold, the conditional child-size upper bound, and the depth required to guarantee the proposed leaf budget. The fields `source_recursion_admitted=false` and `tensor_contraction_executed=false` are not overridden by arithmetic success. All relevant integers use checked `u128` operations and string-encoded receipt values. The public proof works over unbounded integers; the prototype explicitly refuses unrepresentable thresholds.
 
+## Concrete progress on sparse packets
+
+A [bounded orbit-sparse reference](two-adic-orbit-sparse-layout.md)
+now avoids constructing entirely empty label-pair orbits and allocates
+separate packet counts per occupied coordinatewise-swap orbit.
+Its exact identity is \(PL=M+E+R\), with orbit imbalance \(E\)
+and copy-slot rounding \(R\). Thus the source packet-count bound
+holds for a given actual labeling **exactly when** \(E+R\le2M\).
+This avoids the uniform-padding \(LD/3\) floor without proving a
+worst-case labeling or source recursion theorem.
+
+A finite \(r=64,a=2\) witness uses 256 edges, only 64 occupied
+orbits, 64 packets, and verified symbol-port/child-incidence caps.
+This is structural and at \(T=0\), not a faithful active source
+schedule or a complete tensor count. Concentrated-orbit counterexamples
+show that packet and port caps can fail independently.
+
 ## Research decision
 
 Changing only the **root packet width**, only the **collision concentration estimate**, or only the **leaf cutoff** will not give a complete finite-size proof using the remaining source invariants. To close the uncovered ranges, at least one substantive new lemma is needed:

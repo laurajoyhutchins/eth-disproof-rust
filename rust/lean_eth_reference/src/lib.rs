@@ -597,3 +597,11 @@ pub mod two_adic_orbit_sparse;
 /// Deterministic finite vertex-degree weighted port balancing with
 /// orbit-aware coordinate relabeling and strict structural receipts.
 pub mod two_adic_joint_balance;
+
+/// Source packet-structural all-graph sufficient thresholds from a combined
+/// normalized matching-class and real-port potential; arithmetic only.
+pub mod two_adic_joint_potential;
+
+/// Tiny exact-integer conditional-expectation witness for both potentials.
+/// Explicit u128/work limits; not a complete source recursion.
+pub mod two_adic_joint_derandomize;

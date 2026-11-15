@@ -231,6 +231,9 @@ mod __lean_closure_inline_tests {
     fn binary_pap_is_one_heap_object_without_capture_vec() {
         let f = __LeanValue::pap2(plus, __LeanValue::boxed_u64(11));
         assert!(matches!(f.0.as_ref(), __LeanValueRepr::Closure2 { .. }));
+        // lean_apply_1 consumes one closure reference. The first call is
+        // borrowed only because this source program explicitly retains f.
+        f.source_inc(1, true, false);
         assert_eq!(f.apply1(__LeanValue::boxed_u64(5)).unbox_u64(), 16);
         assert_eq!(f.apply1(__LeanValue::boxed_u64(7)).unbox_u64(), 18);
     }
@@ -242,6 +245,7 @@ mod __lean_closure_inline_tests {
         let shared = __LeanValue::pap2(plus, __LeanValue::boxed_u64(20));
         let alias = shared.clone();
         assert_eq!(shared.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 23);
+        alias.source_inc(1, true, false);
         assert_eq!(alias.apply1(__LeanValue::boxed_u64(4)).unbox_u64(), 24);
         assert_eq!(alias.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 25);
     }
@@ -252,6 +256,7 @@ mod __lean_closure_inline_tests {
             ternary, __LeanValue::boxed_u64(10), __LeanValue::boxed_u64(20)
         );
         assert!(matches!(original.0.as_ref(), __LeanValueRepr::Closure3 { .. }));
+        original.source_inc(1, true, false);
         assert_eq!(original.apply1(__LeanValue::boxed_u64(3)).unbox_u64(), 33);
         let alias = original.clone();
         assert_eq!(original.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 35);
@@ -265,6 +270,7 @@ mod __lean_closure_inline_tests {
     #[test]
     fn general_closure_partial_application_remains_source_ordered() {
         let base = __LeanValue::pap(triple, 3, vec![__LeanValue::boxed_u64(1)]);
+        base.source_inc(1, true, false);
         let partial = base.apply1(__LeanValue::boxed_u64(2));
         assert_eq!(partial.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 6);
         assert_eq!(base.apply(vec![
@@ -312,6 +318,157 @@ mod erased_join_safety_tests {
     }
 }
 
+"#;
+
+const SOURCE_RC_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod source_reference_count_tests {
+    use super::__LeanValue;
+
+    // Same checkpoints and bit ordering as lr_source_rc_control_mask in
+    // native/abi.c. The runtime under test is the actual generated Rust
+    // source, not a separate hand-coded ownership model.
+    #[test]
+    fn pinned_lean_c_direct_branch_and_closure_control() {
+        fn retained_call(value: &__LeanValue) {
+            value.source_inc(1, true, false);
+        }
+        fn branch_release(value: &__LeanValue, active: bool) {
+            if active {
+                value.source_dec(1, true, false);
+            }
+        }
+        fn callback(captured: __LeanValue, _arg: __LeanValue) -> __LeanValue {
+            captured.source_dec(1, true, false);
+            __LeanValue::tagged(0)
+        }
+        let root = __LeanValue::ctor(17, "RcControl", Vec::new());
+        let mut mask = 0u16;
+        macro_rules! sample {
+            ($bit:expr) => {
+                mask |= u16::from(root.is_shared()) << $bit;
+            };
+        }
+        sample!(0);
+        retained_call(&root);
+        sample!(1);
+        branch_release(&root, false);
+        sample!(2);
+        branch_release(&root, true);
+        sample!(3);
+
+        root.source_inc(1, true, false);
+        let unique = __LeanValue::pap2(callback, root.compiler_alias());
+        sample!(4);
+        let result = unique.apply1_owned(__LeanValue::tagged(0));
+        drop(result);
+        sample!(5);
+
+        root.source_inc(1, true, false);
+        let shared = __LeanValue::pap2(callback, root.compiler_alias());
+        shared.source_inc(1, true, false);
+        let retained = shared.compiler_alias();
+        sample!(6);
+        let result = shared.apply1_owned(__LeanValue::tagged(0));
+        drop(result);
+        sample!(7);
+        retained.source_dec(1, true, false);
+        sample!(8);
+        root.source_dec(1, true, false);
+        assert_eq!(mask, 214, "source ledger differs from pinned Lean C control");
+    }
+
+    #[test]
+    fn owned_and_borrowed_array_reads_have_distinct_source_counts() {
+        let element = __LeanValue::boxed_u64(7);
+        let array = __LeanValue::array(vec![element.compiler_alias()]);
+        let borrowed = array.array_get_tagged_borrowed(0);
+        assert_eq!(element.is_shared(), 0);
+        assert_eq!(borrowed.is_shared(), 0);
+        let owned = array.array_get_tagged(0);
+        assert_eq!(element.is_shared(), 1);
+        assert_eq!(owned.is_shared(), 1);
+        owned.source_dec(1, true, false);
+        assert_eq!(element.is_shared(), 0);
+    }
+
+    #[test]
+    fn compiler_clones_do_not_change_source_exclusivity() {
+        let x = __LeanValue::ctor(1, "Cell", vec![__LeanValue::tagged(2)]);
+        let transient = x.compiler_alias();
+        assert_eq!(x.is_shared(), 0);
+        x.source_inc(1, true, false);
+        assert_eq!(x.is_shared(), 1);
+        assert_eq!(transient.is_shared(), 1);
+        x.source_dec(1, true, false);
+        assert_eq!(x.is_shared(), 0);
+    }
+
+    #[test]
+    fn source_increment_delta_and_persistence() {
+        let x = __LeanValue::array(Vec::new());
+        x.source_inc(3, true, false);
+        assert_eq!(x.1.get(), 4);
+        x.source_inc(42, false, true);
+        x.source_dec(1, true, true);
+        assert_eq!(x.1.get(), 4);
+        for _ in 0..3 { x.source_dec(1, true, false); }
+        assert_eq!(x.is_shared(), 0);
+    }
+
+    #[test]
+    fn source_decrement_releases_owned_child_references() {
+        let child = __LeanValue::string("retained");
+        child.source_inc(1, true, false);
+        let parent = __LeanValue::ctor(1, "Parent", vec![child.compiler_alias()]);
+        parent.source_dec(1, true, false);
+        assert_eq!(parent.1.get(), 0);
+        assert_eq!(child.1.get(), 1);
+        assert_eq!(child.is_shared(), 0);
+    }
+
+    #[test]
+    fn source_del_releases_only_shell_not_transferred_fields() {
+        let child = __LeanValue::string("moved");
+        let parent = __LeanValue::ctor(1, "Parent", vec![child.compiler_alias()]);
+        parent.source_del();
+        assert_eq!(parent.1.get(), 0);
+        assert_eq!(child.1.get(), 1);
+        assert_eq!(child.is_shared(), 0);
+    }
+
+    #[test]
+    fn checked_immediate_refcount_events_are_noops() {
+        let x = __LeanValue::tagged(17);
+        x.source_inc(3, true, false);
+        x.source_dec(1, true, false);
+        x.source_del();
+        assert_eq!(x.tagged_nat(), 17);
+    }
+
+    #[test]
+    #[should_panic(expected = "source reference-count overflow")]
+    fn source_increment_overflow_refuses() {
+        let x = __LeanValue::array(Vec::new());
+        x.source_inc(usize::MAX, true, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "source inc on released object")]
+    fn source_use_after_release_refuses() {
+        let x = __LeanValue::string("gone");
+        x.source_dec(1, true, false);
+        x.source_inc(1, true, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "source del requires unique object")]
+    fn source_del_shared_refuses() {
+        let x = __LeanValue::array(Vec::new());
+        x.source_inc(1, true, false);
+        x.source_del();
+    }
+}
 "#;
 
 fn is_value_type(ty: &str) -> bool {
@@ -378,7 +535,7 @@ fn include_value_runtime(source: String, features: RuntimeFeatures) -> CompilerR
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{closure_tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}")
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{closure_tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}\n{SOURCE_RC_TEST_SOURCE}")
     } else {
         source
     };

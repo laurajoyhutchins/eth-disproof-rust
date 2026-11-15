@@ -90,6 +90,16 @@ does **not** imply the independent packet waste inequality
 labeling search and explicit failures, not only the produced
 sparse packet count.
 
+The [simultaneous port/collision proof](two-adic-simultaneous-potential.md)
+is polynomially derandomizable with exact rational products,
+but its \(O(\mathrm{poly}(M,b,D,\delta))\) integer work is
+not an end-to-end speedup. The bounded \(u128\) reference
+records potential evaluations and stops on overflow; a large
+instance requires explicit bit-cost and memory profiling.
+Neither the theoretical conditional expectation nor a favorable
+packet count may be substituted for original deformed source
+tensor arithmetic or leaf cost.
+
 Five places worth instrumenting first:
 
 | Stage | What to record |

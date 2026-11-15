@@ -82,6 +82,35 @@ The CLI returns status 2 for every invocation, reports `sat_count=null`, and inc
 
 The full computational cost includes the independent \(O(aVr)\) weighted bin scan and at most \(O(arq)\) *complete sparse layout evaluations* with exact edge and padding verification. Those are bounded, not optimized away. Nothing in this work establishes a polynomial-cost **complete** source tensor contraction; original field setup, packet-entry generation, interpolation, mode counts, recursion tree and direct leaves remain unmeasured and unverified here.
 
+## A simultaneous all-graphs sufficient theorem
+
+A [new combined matching/port potential theorem](two-adic-simultaneous-potential.md)
+now proves an **explicit worst-case sufficient condition** for
+one vertex labeling that simultaneously meets the source
+orbit-sparse packet-count and real-symbol-port bounds.
+Set \(D=r^{2a}\), \(L=2^a\), \(k=2\delta-1\),
+\(O=(r(r+1)/2)^a\), and
+\(t=\lceil\log_2(2D)\rceil\).
+The sufficient conditions are
+
+\[
+3M\ge2(kDt+LO),\qquad
+M\ge4r\delta\lceil\log_2(4ar)\rceil.
+\]
+
+The original packet vertex maximum-degree condition
+\(2L\le\delta_{\rm cap}\) also remains required.
+The proof sums **one normalized conditional-expectation potential**
+for ordered pair collisions and all symbol loads. It is
+constructive with exact rational arithmetic; the implemented
+small-graph witness checks each conditional average using checked
+integers. A high-size source runtime and all-depth schedule
+do not follow.
+
+This replaces the lack of **any** joint sufficient theorem, but
+the conditions remain far too large for a practical root and
+do not certify the published \(s^{9/10}\) degree envelope.
+
 ## What remains
 
 1. Prove an all-graphs **joint orbit-waste and port** existence bound, or produce a rigorous obstruction under the source degree/size hypotheses. The bounded search gives finite witnesses, not a universal labeling theorem.

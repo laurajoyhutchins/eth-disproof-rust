@@ -210,13 +210,20 @@ impl Reader {
                     .unwrap();
                     x = next;
                 }
-                FnBodyView::Inc { target, next, .. }
-                | FnBodyView::Dec { target, next, .. }
-                | FnBodyView::Delete { target, next } => {
-                    // In the bounded value-semantic subset, Rc aliases own
-                    // their Rust references. A source-CFG preflight refuses
-                    // isShared after a possible earlier inc/dec/del effect.
-                    // This is not Lean/Rust reference-count equivalence.
+                FnBodyView::Inc {
+                    target,
+                    checked,
+                    persistent,
+                    next,
+                }
+                | FnBodyView::Dec {
+                    target,
+                    checked,
+                    persistent,
+                    next,
+                } => {
+                    // Record actual source IR bookkeeping; Rust Rc handles
+                    // alone do not represent Lean's physical reference count.
                     let id = Self::var(target)?;
                     let ty = env.get(&id).ok_or(CompilerError::new(
                         RefusalKind::FnBody,
@@ -228,6 +235,35 @@ impl Reader {
                             "reference bookkeeping on non-object variable",
                         ));
                     }
+                    let n = Self::nat(Self::field(x, 1)?)?;
+                    let is_dec = matches!(Self::body_view(x)?, FnBodyView::Dec { .. });
+                    if n > 1_000_000 || (is_dec && n != 1 && !persistent) {
+                        return Err(CompilerError::new(
+                            RefusalKind::FnBody,
+                            "source reference-count delta unsupported",
+                        ));
+                    }
+                    let operation = if is_dec { "source_dec" } else { "source_inc" };
+                    writeln!(
+                        code,
+                        "    x_{id}.{operation}({n}, {checked}, {persistent});"
+                    )
+                    .unwrap();
+                    x = next;
+                }
+                FnBodyView::Delete { target, next } => {
+                    let id = Self::var(target)?;
+                    let ty = env.get(&id).ok_or(CompilerError::new(
+                        RefusalKind::FnBody,
+                        "reference deletion for undefined variable",
+                    ))?;
+                    if !is_value_type(ty) {
+                        return Err(CompilerError::new(
+                            RefusalKind::FnBody,
+                            "reference deletion on non-object variable",
+                        ));
+                    }
+                    writeln!(code, "    x_{id}.source_del();").unwrap();
                     x = next;
                 }
                 FnBodyView::Case { .. } => {
@@ -279,8 +315,9 @@ impl Reader {
                             // contract; the runtime checks the actual value.
                             let var = Self::var(Self::field(arg, 0)?)?;
                             if env.get(&var) == Some(&"tobj") {
-                                lowered
-                                    .push(format!("x_{var}.clone().require_constructor_object()"));
+                                lowered.push(format!(
+                                    "x_{var}.compiler_alias().require_constructor_object()"
+                                ));
                                 RuntimeFeatures::mark(
                                     ctx.features,
                                     RuntimeFeatures::HEAP_JOIN_TESTS,

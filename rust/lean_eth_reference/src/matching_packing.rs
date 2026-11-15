@@ -76,7 +76,9 @@ fn checked_power(mut base: u128, mut exponent: usize) -> Result<u128, Error> {
     Ok(result)
 }
 
-fn greedy_edge_colors(graph: &BipartiteGraph) -> Result<(Vec<usize>, usize, usize), Error> {
+pub(crate) fn greedy_edge_colors(
+    graph: &BipartiteGraph,
+) -> Result<(Vec<usize>, usize, usize), Error> {
     let mut degree_left = vec![0usize; graph.left_vertices];
     let mut degree_right = vec![0usize; graph.right_vertices];
     let mut left_used = vec![Vec::<usize>::new(); graph.left_vertices];

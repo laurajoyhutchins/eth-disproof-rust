@@ -60,28 +60,35 @@ export function prepareSemanticCase(sourceBytes, caseDir) {
 // native declaration and the structural declaration are elaborated by Lean.
 export function makeProbes(prepared) {
   assert(prepared.status === "ready", "comparison inputs not ready");
-  const lines = prepared.structuralBytes.toString("utf8").split("\n");
-  const imports = [];
-  let i = 0;
-  while (i < lines.length && /^import [A-Za-z_][A-Za-z_0-9.]*\r?$/.test(lines[i])) {
-    imports.push(lines[i].trimEnd());
-    i++;
-  }
-  assert(imports.length > 0, "structural module lacks imports");
-  const body = lines.slice(i).join("\n");
-  assert(!/^\s*import\s+/m.test(body), "non-leading structural import");
-  assert(body.includes("namespace " + prepared.rightNS + "\n"), "missing structural namespace");
-  assert(body.includes("end " + prepared.rightNS), "missing structural namespace end");
-  const prefix = [...new Set([...imports, "import " + prepared.leftNS + ".Article"])]
-    .join("\n") + "\n" + body + "\n";
+  const source = prepared.structuralBytes.toString("utf8");
+  assert(source.includes("namespace " + prepared.rightNS + "\n") &&
+    source.includes("end " + prepared.rightNS + "\n"), "missing structural namespace");
+  // Crucially: import two independently elaborated modules. Do not re-elaborate
+  // one translation after importing the other: global syntax and instances can
+  // change the meaning of a declaration at its definition site.
+  const imports = "import " + prepared.leftNS + ".Article\n" +
+    "import " + prepared.rightNS + "\n";
   const declarations = "\nnamespace LatexSemanticProbe\n" +
     "private def left : Prop := " + prepared.leftNS + ".claim0\n" +
     "private def right : Prop := " + prepared.rightNS + ".claim\n";
-  const typed = prefix + declarations + "end LatexSemanticProbe\n";
-  const proof = prefix + declarations +
+  const typed = imports + declarations + "end LatexSemanticProbe\n";
+  const proof = imports + declarations +
     "theorem definitional_equivalence : left ↔ right := by rfl\n" +
     "#print axioms definitional_equivalence\nend LatexSemanticProbe\n";
   return {typed, proof};
+}
+function registerTemporaryLakeTargets(cwd, leftNS, rightNS) {
+  const file = path.join(cwd, "lakefile.toml");
+  const before = fs.readFileSync(file, "utf8");
+  let after = before;
+  for (const [name, glob] of [[leftNS, leftNS + ".+"],[rightNS,rightNS]]) {
+    if (!after.includes('name = "' + name + '"')) {
+      after += "\n[[lean_lib]]\nname = \"" + name + "\"\nsrcDir = \".\"\n" +
+        "globs = [\"" + glob + "\"]\n";
+    }
+  }
+  if (after !== before) fs.writeFileSync(file, after);
+  return {file, before, after};
 }
 function execute(command, args, cwd) {
   const p = spawnSync(command, args, {cwd, shell:false, encoding:"utf8",
@@ -100,7 +107,8 @@ function saveStage(dir, name, result) {
   return {exit_code:result.exit_code, launch_error:result.launch_error, logs:outputs};
 }
 export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand=execute}) {
-  const prepared = prepareSemanticCase(fs.readFileSync(sourceFile), caseDir);
+  const sourceBytes = fs.readFileSync(sourceFile);
+  const prepared = prepareSemanticCase(sourceBytes, caseDir);
   const destination = path.join(caseDir, "semantic");
   fs.mkdirSync(destination); // never replace existing comparison evidence
   const publicRecord = {schema_version:1, ...Object.fromEntries(
@@ -108,7 +116,7 @@ export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand
     toolchain: {leanify_commit:LEANIFY_COMMIT}, checks: {
       both_typed:false, definitional_equivalence:false, kernel_checked:false
     }};
-  let work = null, namespaceDir = null;
+  let work = null, namespaceDir = null, structuralFile = null, lakeConfig = null;
   const finish = () => {
     fs.writeFileSync(path.join(destination, "comparison.json"),
       JSON.stringify(publicRecord, null, 2) + "\n", {flag:"wx"});
@@ -127,6 +135,12 @@ export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand
     namespaceDir = newNamespaceDir;
     for (const [name, bytes] of Object.entries(prepared.modules))
       fs.writeFileSync(path.join(namespaceDir, name), bytes, {flag:"wx"});
+    // #leanify_article reads the original article at elaboration time.
+    fs.writeFileSync(path.join(namespaceDir, "article.tex"), sourceBytes, {flag:"wx"});
+    const newStructuralFile = path.join(cwd, prepared.rightNS + ".lean");
+    fs.writeFileSync(newStructuralFile, prepared.structuralBytes, {flag:"wx"});
+    structuralFile = newStructuralFile;
+    lakeConfig = registerTemporaryLakeTargets(cwd, prepared.leftNS, prepared.rightNS);
     const typedFile = path.join(work, "Typed.lean");
     const proofFile = path.join(work, "Proof.lean");
     fs.writeFileSync(typedFile, probes.typed);
@@ -145,6 +159,13 @@ export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand
     if (build.launch_error || build.exit_code !== 0) {
       publicRecord.status = "tool_error";
       publicRecord.reason = "native Leanify module could not be rebuilt";
+      return finish();
+    }
+    const structuralBuild = executeCommand("lake", ["build", prepared.rightNS], cwd);
+    publicRecord.structural_build = saveStage(destination, "structural_build", structuralBuild);
+    if (structuralBuild.launch_error || structuralBuild.exit_code !== 0) {
+      publicRecord.status = "tool_error";
+      publicRecord.reason = "structural module could not be independently elaborated";
       return finish();
     }
     const typed = executeCommand("lake", ["env", "lean", typedFile], cwd);
@@ -179,8 +200,16 @@ export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand
     }
     return finish();
   } finally {
+    let conflict = false;
+    if (lakeConfig && lakeConfig.after !== lakeConfig.before) {
+      if (fs.readFileSync(lakeConfig.file, "utf8") === lakeConfig.after)
+        fs.writeFileSync(lakeConfig.file, lakeConfig.before);
+      else conflict = true; // do not overwrite another writer
+    }
+    if (structuralFile) fs.rmSync(structuralFile, {force:true});
     if (namespaceDir) fs.rmSync(namespaceDir, {recursive:true, force:true});
     if (work) fs.rmSync(work, {recursive:true, force:true});
+    if (conflict) throw Error("Lake configuration changed concurrently; restoration refused");
   }
 }
 
@@ -213,7 +242,7 @@ export function verifySemanticCase(sourceFile, caseDir) {
     assert(sha256(fs.readFileSync(path.join(folder,file))) === hash,
       "archived probe differs from original declarations");
   }
-  for (const stage of ["build","elaboration","proof"]) {
+  for (const stage of ["build","structural_build","elaboration","proof"]) {
     if (!record[stage]) continue;
     for (const stream of ["stdout","stderr"]) {
       const name = stage + "." + stream;
@@ -226,6 +255,7 @@ export function verifySemanticCase(sourceFile, caseDir) {
       record.checks.both_typed === true &&
       record.checks.definitional_equivalence === true &&
       record.build?.exit_code === 0 &&
+      record.structural_build?.exit_code === 0 &&
       record.elaboration?.exit_code === 0 &&
       record.proof?.exit_code === 0 &&
       !record.proof?.launch_error, "fabricated kernel result");

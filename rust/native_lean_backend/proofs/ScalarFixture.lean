@@ -9,6 +9,9 @@ def plus (x y : UInt64) : UInt64 := x + y
 -- Certification must reject this declaration even if general codegen succeeds.
 def subtract (x y : UInt64) : UInt64 := x - y
 
+-- Multiple source bindings, literal materialization, wrapping add/mul.
+def straightChain (x y : UInt64) : UInt64 := (x + 3) * y + x
+
 def choose (x y : UInt64) : UInt64 :=
   if x < y then x + 1 else y * 3
 def nested (x y : UInt64) : UInt64 :=
@@ -17,6 +20,7 @@ def nested (x y : UInt64) : UInt64 :=
   else y * 7
 
 #guard plus 17 25 == 42
+#guard straightChain 2 7 == 37
 #guard choose 2 5 == 3
 #guard choose 5 2 == 6
 #guard nested 4 4 == 12

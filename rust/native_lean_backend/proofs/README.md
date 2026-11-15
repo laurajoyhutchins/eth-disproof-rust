@@ -77,6 +77,35 @@ exact Rust-source equality, while \`certified_model_refines\` applies the
 existing all-input semantic theorem to the reified program. The trusted
 boundary and conditional nature of the claim must remain explicit.
 
+## Straight-line source-IR operational correspondence
+
+[ReaderIRSoundness.lean](ReaderIRSoundness.lean) adds an independent big-step
+source semantics over the actual pinned `Lean.IR.Expr` and
+`Lean.IR.FnBody` constructors, including real Lean `UInt64` literal,
+addition, and multiplication operations, environment updates and returns.
+
+`ExprMatches` and `BodyMatches` are proof-carrying relations between those
+real IR nodes and the modeled `WordExpr`/`Program`. The theorem
+`body_sound` states, for **every** input and agreeing variable environment,
+that a witnessed straight-line original IR body evaluates to the model result.
+The `LinkedCertificate` additionally requires the independently constructed
+Reader emission certificate to agree on the *same* modeled program.
+`linked_reader_refines` composes these results for all input words.
+
+The witness-producing scanner is a **total**, fuel-bounded checker, not an
+unrestricted partial proof generator. CI uses original compiled Lean IR for a
+direct addition and a chained literal/add/mul program, and checks that
+subtraction and branching are refused by this narrower source proof path.
+The native CI log prints the axioms of the compositional theorems and rejects
+`sorryAx`.
+
+This is not yet a proof that arbitrary real Lean IR executes correctly under
+the independently specified source operational rules, nor a proof about
+`rustc`'s execution of the emitted text. It also does not extend the
+source-IR proof to the previously emission-certified Bool branches. The
+`Reader::decode`/FFI boundary, runtime reference counts, calls, joins and
+remaining supported IR stay separate obligations.
+
 ## Unproved obligations for a real G1 compiler theorem
 
 1. Prove that `Reader::decode` and `Reader::view` faithfully read and validate

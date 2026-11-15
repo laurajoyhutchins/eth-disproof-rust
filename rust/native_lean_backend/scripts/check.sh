@@ -42,7 +42,13 @@ export LEAN_PATH="$(pwd):${LEAN_PATH}"
 # narrower than the general backend's accepted IR.
 export LEAN_PATH="$(pwd)/proofs:${LEAN_PATH}"
 lean -o proofs/ScalarFixture.olean proofs/ScalarFixture.lean
-lean --load-dynlib="$NATIVE_LIB" proofs/ReaderScalarCertificate.lean
+lean -o proofs/ReaderScalarCertificate.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderScalarCertificate.lean
+# Kernel-check actual Lean IR operational semantics linked to Reader emission.
+lean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRSoundness.lean | tee artifacts/reader-ir-source-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-ir-source-axioms.txt; then
+  echo 'Source IR operational correspondence contains a sorry axiom' >&2
+  exit 2
+fi
 lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
 # Physical reference-count observations must be source checked.
 lean --load-dynlib="$NATIVE_LIB" examples/BorrowFlagFixture.lean

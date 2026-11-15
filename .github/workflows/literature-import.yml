@@ -1,0 +1,51 @@
+name: Literature theorem import
+
+on:
+  pull_request:
+    paths:
+      - 'instrumentation/lean-env/LiteratureImports/**'
+      - 'research/literature-imports/**'
+      - '.github/workflows/literature-import.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: literature-import-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  theorem-import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Validate import provenance and outstanding obligations
+        run: node research/literature-imports/verify.mjs
+      - name: Restore Lean and pinned Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Check exact Mathlib revision and imported theorem in Lean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
+          cd instrumentation/lean-env
+          lake env lean LiteratureImports/ModeProductContraction.lean 2>&1 | tee "$RUNNER_TEMP/literature-proof.log"
+          if grep -Eq '(sorryAx|admitAx|sorry|admit)' "$RUNNER_TEMP/literature-proof.log"; then
+            echo 'An admitted theorem or unexpected axiom was detected' >&2
+            exit 1
+          fi
+          echo 'LITERATURE_IMPORT=LEAN_CHECKED' >> "$GITHUB_STEP_SUMMARY"

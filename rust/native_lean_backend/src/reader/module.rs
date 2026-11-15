@@ -41,6 +41,9 @@ impl Reader {
         }
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
+        if ret == "erased" {
+            return Err("erased function result has no executable meaning".into());
+        }
         let body = Self::field(decl, 3)?;
         let shared = Self::shared_observations(body)?;
         // Source RC effects are erased in the bounded value runtime;
@@ -71,7 +74,12 @@ impl Reader {
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}"));
             }
-            write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
+            if ty == "erased" {
+                // Preserve the zero-sized ABI slot without unused-variable warnings.
+                write!(result, "_x_{var}: ()").unwrap();
+            } else {
+                write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
+            }
         }
         writeln!(result, ") -> {} {{", rust_type(ret)).unwrap();
         Self::body(

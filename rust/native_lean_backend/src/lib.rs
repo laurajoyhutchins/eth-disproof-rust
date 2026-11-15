@@ -294,7 +294,10 @@ fn is_value_type(ty: &str) -> bool {
 }
 
 fn rust_type(ty: &str) -> &str {
-    if is_value_type(ty) {
+    if ty == "erased" {
+        // Proof-only Lean arguments have no observable runtime payload.
+        "()"
+    } else if is_value_type(ty) {
         "__LeanValue"
     } else {
         ty
@@ -648,7 +651,8 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("Alt", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 35);
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 6)));
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 36);
     }
 
     #[test]

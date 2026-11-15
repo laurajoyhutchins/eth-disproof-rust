@@ -174,6 +174,10 @@ jobs:
             rust/native_lean_backend/artifacts/item30-rejection.log
             rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
             rust/native_lean_backend/artifacts/imported-probes/*
+            rust/native_lean_backend/examples/ImportedListReverseOracle.lean
+            rust/native_lean_backend/artifacts/imported-probes/list-reverse-crate/Cargo.toml
+            rust/native_lean_backend/artifacts/imported-probes/list-reverse-crate/src/lib.rs
+            rust/native_lean_backend/artifacts/imported-probes/list-reverse-crate/source_lean.rs
             rust/native_lean_backend/artifacts/native-compiler-bundle-*.txt
             rust/native_lean_backend/artifacts/native-project-cli-receipt.txt
             rust/native_lean_backend/artifacts/eth-compiler-project/Cargo.toml
@@ -220,6 +224,11 @@ jobs:
             rust/native_lean_backend/examples/option-default-package/Cargo.toml
             rust/native_lean_backend/examples/option-default-package/src/*.rs
             rust/native_lean_backend/examples/option-default-package/tests/*.rs
+            rust/native_lean_backend/examples/ErasedParamFixture.lean
+            rust/native_lean_backend/examples/erased-proof-package/original-ir.txt
+            rust/native_lean_backend/examples/erased-proof-package/Cargo.toml
+            rust/native_lean_backend/examples/erased-proof-package/src/*.rs
+            rust/native_lean_backend/examples/erased-proof-package/tests/*.rs
             rust/native_lean_backend/artifacts/external-projects/*/positive-package/Cargo.toml
             rust/native_lean_backend/artifacts/external-projects/*/positive-package/src/*.rs
             rust/native_lean_backend/artifacts/external-projects/*/positive-package/tests/*.rs

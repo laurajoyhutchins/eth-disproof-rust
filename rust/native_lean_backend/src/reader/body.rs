@@ -24,6 +24,9 @@ impl Reader {
                     // vdecl(x, ty, expr, body)
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
+                    if ty == "erased" {
+                        return Err("erased local declaration has no runtime expression".into());
+                    }
                     let expr = Self::field(x, 2)?;
                     // Only top-level array candidates can transfer ownership.
                     // Their full tails are scanned for references through
@@ -80,6 +83,9 @@ impl Reader {
                             return Err(format!(
                                 "borrowed join parameter x_{var} has unverified isShared ownership semantics"
                             ));
+                        }
+                        if ty == "erased" {
+                            return Err("erased join parameter not yet source-verified".into());
                         }
                         if value_env.insert(var, ty).is_some() {
                             return Err(format!(

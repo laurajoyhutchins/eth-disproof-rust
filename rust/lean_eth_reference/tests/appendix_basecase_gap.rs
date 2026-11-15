@@ -22,7 +22,10 @@ fn improved_root_condition_does_not_certify_next_level() {
     assert_eq!(value["first_uncovered_active_depth"], 1);
     assert_eq!(value["first_uniform_padding_gap_depth"], 1);
     assert_eq!(value["optimistic_uniform_padding_prefix_stages"], 1);
-    assert_eq!(value["minimum_uniform_padding_edges_at_first_gap"], "1501199875790166");
+    assert_eq!(
+        value["minimum_uniform_padding_edges_at_first_gap"],
+        "1501199875790166"
+    );
     assert_eq!(value["hypothetical_guaranteed_leaf_depth"], 8);
     assert_eq!(
         value["stages"][0]["minimum_matching_required_edges"],
@@ -46,7 +49,10 @@ fn original_and_smaller_group_counts_have_opposing_depth_costs() {
     assert_eq!(large["hypothetical_guaranteed_leaf_depth"], 8);
     assert_eq!(small["first_uncovered_active_depth"], 2);
     assert_eq!(small["first_uniform_padding_gap_depth"], 2);
-    assert_eq!(small["minimum_uniform_padding_edges_at_first_gap"], "295280793622");
+    assert_eq!(
+        small["minimum_uniform_padding_edges_at_first_gap"],
+        "295280793622"
+    );
     assert_eq!(small["hypothetical_guaranteed_leaf_depth"], 123);
     assert_eq!(
         small["stages"][0]["minimum_matching_required_edges"],

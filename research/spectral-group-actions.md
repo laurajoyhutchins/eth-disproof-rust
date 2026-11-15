@@ -1,6 +1,6 @@
-# Pair swaps: what symmetry buys us
+# Spectral decomposition of pair-swap operators
 
-## The operator
+## Operator definition and eigenvalues
 
 Take \(Q\) commuting involutions \(\Pi_1,\ldots,\Pi_Q\), each swapping a pair of coordinates. Define
 
@@ -19,9 +19,9 @@ M_0\mapsto(-1)^j f(j).
 
 So if \(f(j)=(-1)^j\) on a selected interval of Hamming weights, \(M_0\) acts as the identity there. Outside that interval, its spectrum depends on the chosen interpolation polynomial. This is exact linear algebra, subject to the polynomial degree and coefficient constraints.
 
-**The interesting question is not whether we can construct a spectral projector. It is whether that projector still computes the original count.**
+The spectral identity does not establish that the operator preserves incidence constraints or permits recovery of the original count.
 
-## Compressing by Hamming weight
+## Hamming-weight reduction
 
 Commuting pair swaps give the binary Hamming-cube action. In a fully symmetric subspace, orbit sums depend only on Hamming weight, and the Krawtchouk transform diagonalizes the corresponding association-scheme operators.
 
@@ -38,17 +38,17 @@ A replacement must preserve all four properties:
 | Arithmetic | Its rows, denominators, coefficients and 2-adic precision have controlled bit lengths |
 | Recovery | The original #SAT count can be reconstructed without expanding the discarded exponential representation |
 
-A lower rank answers none of these on its own.
+Rank reduction alone does not establish these properties.
 
-## Do larger group actions help?
+## Higher-order group actions
 
 Possible candidates include block permutations, signed-permutation actions, wreath products and rational sums of Galois-conjugate projectors.
 
 For each candidate, calculate the actual orbit sizes, stabilizers, irreducible components and coefficient fields. Then apply it to **the original incidence system**, not a conveniently symmetric surrogate. A rational projector can reduce field extensions and still increase denominator height or violate support.
 
-A useful negative control is a single broken incidence label. If one label destroys the symmetry used for compression, the supposed speedup should disappear, not be silently assumed.
+A negative control changes one incidence label. If one label destroys the symmetry used for compression, the supposed speedup should disappear, not be silently assumed.
 
-## Rowspace is not a bit bound
+## Rowspace and coefficient heights
 
 The selector/Gram experiments found projected rowspace equivalences. But constructing a primitive rational row-reduced basis can increase integral row norms: one two-row example increased the maximum \(\ell_1\) norm from 3 to 4.
 
@@ -56,9 +56,9 @@ An independent subset of the **original integral selector rows** retains the sou
 
 The related [exact tuple-streaming experiment](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/94) removed an unnecessary materialized Cartesian pool. It reduced iterator *storage*, not the number of mathematical tuples or the exact rational arithmetic needed.
 
-## A two-by-two obstruction
+## Counterexample: internal group factorization
 
-Do not split a coupled group into independent factors:
+A coupled group does not generally split into independent factors:
 
 \[
 A=\begin{pmatrix}
@@ -72,7 +72,7 @@ This matrix is not rank one. A product of one-variable marginals cannot reproduc
 
 Likewise, large treewidth does not certify hardness for this method. A grid has row-transfer algorithms with \(2^{O(\sqrt n)}\operatorname{poly}(n)\) cost. If a proposed solver struggles on a grid, compare it with that baseline before claiming structural difficulty.
 
-## The experiment worth running
+## Comparison experiment
 
 Use four paired families: fully symmetric, one broken orbit label, coupled bounded-density groups, and high-width incidence graphs.
 
@@ -83,6 +83,6 @@ Measure the same exact answer and:
 - **all** operations and memory needed to construct and reconstruct the count;
 - recursive calls and peak live coefficients.
 
-Reject any candidate that fails incidence or exact recovery, hides an exponential basis expansion, or reduces only a local matrix rank while increasing total work.
+Reject candidates that fail incidence or exact recovery, require an exponential basis expansion, or reduce local rank while increasing total work.
 
 [Recursive contraction](two-adic-recursion.md) · [Full cost model](cost-model-and-benchmarks.md) · [Literature](literature.md)

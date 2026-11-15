@@ -1,8 +1,8 @@
-# What actually runs
+# Executable coverage and verification evidence
 
-The test is simple: identify the source program, run it, and say exactly what was compared.
+This page distinguishes source-defined executable paths, generated artifacts, and the independent verification still required.
 
-## The accepted Rust boundary
+## Implemented execution paths
 
 | Runs or exists on main | What that establishes |
 | --- | --- |
@@ -14,9 +14,9 @@ The test is simple: identify the source program, run it, and say exactly what wa
 | `reference/source-manifest.json` | Recorded source Git revision and blob identity catalogue; source identity is not semantic equivalence |
 | Trace comparison and profiling tools | Checks trace shapes and differences; a comparator passing its own fixtures is not an independent original-Lean execution |
 
-Evidence is attached to its **exact commit**. The canonical stage registry lives in [`src/remaining/registry.rs`](../src/remaining/registry.rs). Historical merges [#150](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/150), [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154) and [#158](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/158) explain the original boundaries. Read the code and current CI before extrapolating them to newer heads.
+Evidence is attached to its **exact commit**. The canonical stage registry lives in [`src/remaining/registry.rs`](../src/remaining/registry.rs). Historical merges [#150](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/150), [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154) and [#158](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/158) explain the original boundaries. Evidence from those merges does not establish behavior at a newer head without corresponding tests.
 
-## Three missing demonstrations
+## Outstanding acceptance tests
 
 **One original nonterminal count.** Run the source-defined query, high/leaf, DFS and outer composition on a nontrivial CNF. Do not invoke the host oracle when a source constructor is missing. [The remaining dependency map](remaining-lean-port.md) and [counting gate #100](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/100) describe the route.
 
@@ -24,7 +24,7 @@ Evidence is attached to its **exact commit**. The canonical stage registry lives
 
 **One primitive resource argument.** Rust instruction counts, occupied stack bits, wall time and allocations are **not** TM2 transitions or visited tape cells. The abstract identity under source-graph agreement proved in [#178](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/178) is useful but leaves the Rust source-refinement and full counting graph obligations. See [resource gate #110](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/110).
 
-## Run the current checks
+## Reproduce current checks
 
 The workspace pins Rust 1.99.1.
 

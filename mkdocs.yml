@@ -1,5 +1,5 @@
-site_name: ETH | Exact counting and source execution
-site_description: Exact counting, 2-adic recursion, and source-checked Lean-to-Rust execution
+site_name: ETH construction: mathematics and implementation
+site_description: Research notes on exact #SAT counting, two-adic contraction, and Lean-to-Rust correspondence
 site_url: https://laurajoyhutchins.github.io/eth-disproof-rust/
 repo_url: https://github.com/laurajoyhutchins/eth-disproof-rust
 repo_name: laurajoyhutchins/eth-disproof-rust
@@ -73,7 +73,7 @@ nav:
   - Overview: index.md
   - Mathematics:
       - Questions: research/README.md
-      - Research ledger: research/2026-10-31-to-2026-11-14-ledger.md
+      - Research log: research/2026-10-31-to-2026-11-14-ledger.md
       - Spectral and group actions: research/spectral-group-actions.md
       - Two-adic recursion: research/two-adic-recursion.md
       - Full-pipeline costs: research/cost-model-and-benchmarks.md

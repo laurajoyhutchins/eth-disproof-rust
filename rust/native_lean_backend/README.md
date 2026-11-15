@@ -1,4 +1,4 @@
-# Native Lean → Rust compiler backend (initial executable subset)
+# Native Lean-to-Rust compiler: executable IR subset
 
 This is an **in-process code generator**, not a JSON exporter. Lean 4.34.1
 elaborates a declaration and compiles it to its normal `Lean.IR.Decl`; the
@@ -17,7 +17,7 @@ Lean 4.34.1 -> Lean.Compiler.compile -> Lean.IR.Decl
                                   generated .rs -> rustc
 ```
 
-## Tested usage
+## Build and usage
 
 Linux x86_64, pinned Lean 4.34.1 (including headers and shared runtime), Rust
 1.99.1, C compiler, `ar`. No Cargo crates are downloaded; there are no
@@ -81,7 +81,7 @@ is its own Cargo workspace. The destination must not already exist; a new
 package is published only after codegen succeeds. It is a **library** crate,
 not a user-friendly executable CLI yet.
 
-## Precise coverage
+## Supported IR coverage
 
 **Implemented and exercised:** functions over `UInt8`, `UInt16`, `UInt32`,
 `UInt64`, or `USize`; scalar numeric literals representable as small Lean
@@ -110,7 +110,7 @@ unchanged on failures. Cross-filesystem rename errors refuse instead of
 falling back to partial copying. See [COVERAGE.md](COVERAGE.md) for the
 versioned IR coverage contract and exact test boundaries.
 
-## Security and maintenance boundary
+## Unsupported cases and maintenance
 
 - ABI layouts and constructor tags are pinned to `Lean.Compiler.IR.Basic` in
   Lean **4.34.1** at commit `5045d005`. The build script checks the exact
@@ -175,7 +175,7 @@ A single `__LeanValue` immutable runtime now supports the mainline GMP Nat arith
 
 The compiler now attempts direct, exact decimal extraction of boxed Lean Nat literals up to a fixed 4 KiB bound using the pinned Lean public C API. The emitted Rust value uses the existing canonical GMP `Nat` object. A separate Lean fixture exercises 76 exact large-constant comparisons, while unsupported Nat expressions still refuse. No second value runtime or compiler path is added.
 
-## Source-verified immutable List constructors and real Armada execution
+## List constructor semantics and Armada execution
 
 The single in-process compiler recognizes the bounded source IR for immutable `List.nil`/`List.cons`, two-way pattern matching, and pointer-field projections. It reuses the same canonical GMP-backed `Rc` runtime; it does not implement general heap mutation, `isShared`, unknown constructors or every List operation. Run `examples/ListFixture.lean` through the pinned native smoke suite for **512** original-Lean comparisons.
 

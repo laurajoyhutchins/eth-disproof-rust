@@ -1,10 +1,10 @@
-# LaTeX to Lean: do the symbols mean the same thing?
+# LaTeX-to-Lean semantic faithfulness benchmark
 
-A Lean file can compile and still prove a different theorem from the one on the page. This benchmark is designed to catch that.
+A Lean file can typecheck while stating a different theorem from the source LaTeX. The benchmark evaluates typechecking, semantic faithfulness, and kernel verification separately.
 
-The targets under study are **Leanify**, **PaperFormalizer**, and **AutoformBot**. Before comparing them, pin each executable repository revision, model version, prompt, decoding settings, Lean/Mathlib toolchain and token budget. No unverified model output counts as a proof.
+The targets under study are **Leanify**, **PaperFormalizer**, and **AutoformBot**. Before comparing them, pin each executable repository revision, model version, prompt, decoding settings, Lean/Mathlib toolchain and token budget. Model output counts as a proof only after independent Lean kernel verification and a semantic-faithfulness check.
 
-## Four collections of statements
+## Benchmark corpus
 
 | Collection | Examples | What the translation must keep |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ The targets under study are **Leanify**, **PaperFormalizer**, and **AutoformBot*
 
 Keep a gold proposition, a known proof or counterexample, source hashes and a held-out family of notation changes for each instance.
 
-## Three tests, not one
+## Evaluation stages
 
 **1. Did it parse?** Lean accepts the declarations and reports what it depends on.
 
@@ -25,7 +25,7 @@ Keep a gold proposition, a known proof or counterexample, source hashes and a he
 
 Record typecheck success and semantic faithfulness **separately**. Where independent statement equivalence is not proved, report it as unverified.
 
-## ETH-specific counterexamples
+## Adversarial mathematical cases
 
 - Make two pair swaps noncommuting; a proof that silently assumes simultaneous diagonalization must fail.
 - Try to factor \(\begin{pmatrix}1&1/2\\1/2&3/8\end{pmatrix}\) as rank one. Its determinant is \(1/8\).
@@ -38,7 +38,7 @@ Record typecheck success and semantic faithfulness **separately**. Where indepen
 
 Measure faithful-proposition rate, kernel-checked proof rate *conditional on faithfulness*, false-claim rejection, unauthorized assumptions, and time/token cost. Store source hashes, generated Lean, complete diagnostics, model settings and exact toolchain versions.
 
-A model that produces more compiling files but more silently altered statements is worse at this task.
+Report unauthorized changes to hypotheses or conclusions separately from the number of generated files that typecheck.
 
 The result we want is not a pile of toy theorems. A successful translation must feed the actual [packet recursion proof](two-adic-recursion.md), with its source-side hypotheses and an independent acceptance check.
 

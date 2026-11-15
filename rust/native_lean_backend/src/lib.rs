@@ -1538,7 +1538,17 @@ impl Reader {
                     }
                     let mut lowered = Vec::new();
                     for (arg, ty) in args.into_iter().zip(types.iter()) {
-                        lowered.push(Self::arg(arg, env, ty)?);
+                        if Self::checked_tag(arg, "Arg")? == 1 {
+                            if !is_value_type(ty) {
+                                return Err("erased scalar join argument not supported".into());
+                            }
+                            // Source-optimized guard-dependent parameters are
+                            // physically absent. Any later read must fail,
+                            // never silently materialize an arbitrary value.
+                            lowered.push("__LeanValue::erased()".into());
+                        } else {
+                            lowered.push(Self::arg(arg, env, ty)?);
+                        }
                     }
                     writeln!(code, "    j_{id}({})", lowered.join(", ")).unwrap();
                     return Ok(());

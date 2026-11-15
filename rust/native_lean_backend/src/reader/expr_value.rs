@@ -23,9 +23,7 @@ impl Reader {
             }
             for field in 2..=4 {
                 if Self::nat(Self::field(info, field)?)? != 0 {
-                    return Err(
-                        "constructor with pointer/scalar layout is unsupported".into()
-                    );
+                    return Err("constructor with pointer/scalar layout is unsupported".into());
                 }
             }
             let _name = Self::name(Self::field(info, 0)?, 0)?;
@@ -55,9 +53,7 @@ impl Reader {
                 || ssize != 8
                 || fields.len() != 4
             {
-                return Err(
-                    "PullIn.mk requires exact source 4-pointer/8-byte layout".into()
-                );
+                return Err("PullIn.mk requires exact source 4-pointer/8-byte layout".into());
             }
             let mut args = Vec::new();
             for arg in fields {
@@ -136,8 +132,7 @@ impl Reader {
         let pointers = Self::nat(Self::field(x, 0)?)?;
         let offset = Self::nat(Self::field(x, 1)?)?;
         let id = Self::var(Self::field(x, 2)?)?;
-        if pointers != 4 || offset >= 8 || !env.get(&id).is_some_and(|ty| is_value_type(ty))
-        {
+        if pointers != 4 || offset >= 8 || !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
             return Err(format!(
                 "unverified sproj layout n={pointers}, offset={offset}, operand=x_{id}"
             ));

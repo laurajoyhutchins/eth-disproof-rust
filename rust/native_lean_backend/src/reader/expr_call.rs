@@ -142,10 +142,7 @@ impl Reader {
         // stay in the source-reviewed primitive adapter registry.
         if matches!(
             name.as_str(),
-            "Array.mkEmpty"
-                | "Array.getInternal"
-                | "Array.getInternalBorrowed"
-                | "Array.set!"
+            "Array.mkEmpty" | "Array.getInternal" | "Array.getInternalBorrowed" | "Array.set!"
         ) {
             let expected = match name.as_str() {
                 "Array.mkEmpty" => 2,
@@ -252,8 +249,7 @@ impl Reader {
         }
         // Statically tagged immediate Nat comparisons do not require
         // GMP. Boxed arbitrary Nat continues through the GMP path.
-        let mut both_tagged =
-            matches!(name.as_str(), "Nat.decEq" | "Nat.decLt" | "Nat.decLe");
+        let mut both_tagged = matches!(name.as_str(), "Nat.decEq" | "Nat.decLt" | "Nat.decLe");
         if both_tagged {
             for arg in &args {
                 if Self::checked_tag(*arg, "Arg")? != 0 {
@@ -307,8 +303,8 @@ impl Reader {
                 _ => unreachable!(),
             };
         }
-        let spec = primitive_spec(&name)
-            .ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
+        let spec =
+            primitive_spec(&name).ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
         let op = spec.rust_op;
         let comparison = spec.comparison;
         let expected_ty = spec.operand_type;
@@ -333,9 +329,7 @@ impl Reader {
                 // Lean's unsigned division and remainder are total.
                 // Rust's raw / and % panic on zero: never substitute them.
                 (_, "checked_div") => Ok(format!("{lhs}.checked_div({rhs}).unwrap_or(0)")),
-                (_, "checked_rem") => {
-                    Ok(format!("{lhs}.checked_rem({rhs}).unwrap_or({lhs})"))
-                }
+                (_, "checked_rem") => Ok(format!("{lhs}.checked_rem({rhs}).unwrap_or({lhs})")),
                 (_, "&" | "|" | "^") => Ok(format!("{lhs} {op} {rhs}")),
                 (_, "wrapping_shl" | "wrapping_shr") => {
                     // Lean shifts modulo the bit width, including counts

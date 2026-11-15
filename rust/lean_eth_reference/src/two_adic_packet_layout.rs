@@ -64,7 +64,9 @@ pub fn pack_bounded(
     degree_cap: usize,
 ) -> Result<PacketLayout, Error> {
     if edges.is_empty() || r < 2 || a == 0 || a > 3 {
-        return Err(Error::Invalid("nonempty graph, r>=2, 1<=a<=3 required".into()));
+        return Err(Error::Invalid(
+            "nonempty graph, r>=2, 1<=a<=3 required".into(),
+        ));
     }
     let b = r.checked_pow(a).ok_or_else(cap)?;
     let l = 1usize.checked_shl(a).ok_or_else(cap)?;
@@ -72,11 +74,19 @@ pub fn pack_bounded(
     if b > 8 || edges.len() > 32 || left_labels.len() > 32 || right_labels.len() > 32 {
         return Err(cap());
     }
-    if left_labels.iter().chain(right_labels).any(|&label| label >= b) {
-        return Err(Error::Invalid("vertex label outside symbol alphabet".into()));
+    if left_labels
+        .iter()
+        .chain(right_labels)
+        .any(|&label| label >= b)
+    {
+        return Err(Error::Invalid(
+            "vertex label outside symbol alphabet".into(),
+        ));
     }
     if degree_cap < l.checked_mul(2).ok_or_else(cap)? {
-        return Err(Error::Invalid("packet vertex degree exceeds supplied cap".into()));
+        return Err(Error::Invalid(
+            "packet vertex degree exceeds supplied cap".into(),
+        ));
     }
 
     let n_coords = usize::try_from(a).map_err(|_| cap())?;
@@ -87,7 +97,9 @@ pub fn pack_bounded(
     let mut column_ports = vec![vec![0usize; r]; n_coords];
     for (index, edge) in edges.iter().enumerate() {
         if edge.left >= rows.len() || edge.right >= cols.len() {
-            return Err(Error::Invalid("edge endpoint outside declared vertex part".into()));
+            return Err(Error::Invalid(
+                "edge endpoint outside declared vertex part".into(),
+            ));
         }
         rows[edge.left] += 1;
         cols[edge.right] += 1;
@@ -102,14 +114,14 @@ pub fn pack_bounded(
         }
     }
     if rows.iter().chain(&cols).any(|&degree| degree > degree_cap) {
-        return Err(Error::Invalid("original graph degree exceeds supplied cap".into()));
+        return Err(Error::Invalid(
+            "original graph degree exceeds supplied cap".into(),
+        ));
     }
     let m = edges.len();
     let maximum = classes.iter().map(Vec::len).max().unwrap_or(0);
     let hpad = maximum.div_ceil(l).checked_mul(l).ok_or_else(cap)?;
-    if hpad.checked_mul(d).ok_or_else(cap)?
-        > m.checked_mul(3).ok_or_else(cap)?
-    {
+    if hpad.checked_mul(d).ok_or_else(cap)? > m.checked_mul(3).ok_or_else(cap)? {
         return Err(Error::Capacity(
             "actual padded label-class loads exceed 3M/D".into(),
         ));
@@ -119,8 +131,7 @@ pub fn pack_bounded(
         for symbol in 0..r {
             let row_count = row_ports[i][symbol];
             let column_count = column_ports[i][symbol];
-            if row_count.checked_mul(r).ok_or_else(cap)?
-                > m.checked_mul(3).ok_or_else(cap)?
+            if row_count.checked_mul(r).ok_or_else(cap)? > m.checked_mul(3).ok_or_else(cap)?
                 || column_count.checked_mul(r).ok_or_else(cap)?
                     > m.checked_mul(3).ok_or_else(cap)?
             {
@@ -154,7 +165,9 @@ pub fn pack_bounded(
         let unequal_coordinates = n_coords - equal_coordinates;
         let copies = 1usize << equal_coordinates;
         if ordered_classes.len() != 1usize << unequal_coordinates || !hpad.is_multiple_of(copies) {
-            return Err(Error::Invalid("unordered symbol-pair class multiplicity invalid".into()));
+            return Err(Error::Invalid(
+                "unordered symbol-pair class multiplicity invalid".into(),
+            ));
         }
         for chunk in 0..(hpad / copies) {
             let mut slots = Vec::with_capacity(l);
@@ -192,10 +205,11 @@ pub fn pack_bounded(
 
     let expected_packets = hpad.checked_mul(d).ok_or_else(cap)? / l;
     if packets.len() != expected_packets
-        || packets.len().checked_mul(l).ok_or_else(cap)?
-            != hpad.checked_mul(d).ok_or_else(cap)?
+        || packets.len().checked_mul(l).ok_or_else(cap)? != hpad.checked_mul(d).ok_or_else(cap)?
     {
-        return Err(Error::Invalid("packet decomposition lost padded slots".into()));
+        return Err(Error::Invalid(
+            "packet decomposition lost padded slots".into(),
+        ));
     }
     let mut seen = vec![false; m];
     for packet in &packets {

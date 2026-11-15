@@ -2465,18 +2465,6 @@ pub unsafe extern "C" fn l_NativeRust_publishSource___boxed(path: Obj, source: O
     reply_publish(path, source)
 }
 
-/// # Safety
-/// The supplied Param must be a live, borrowed Lean 4.34.1 IR.Param object.
-/// 255 indicates a failed layout check; this probe never synthesizes values.
-#[no_mangle]
-pub unsafe extern "C" fn rs_param_borrow_flag(param: Obj) -> u8 {
-    match Reader::param_borrow(param) {
-        Ok(false) => 0,
-        Ok(true) => 1,
-        Err(_) => u8::MAX,
-    }
-}
-
 // `rs_emit_ir` is the native compiled ABI; the l_* names let Lean's
 // interpreter use the same shared library through `--load-dynlib`.
 /// # Safety

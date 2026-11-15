@@ -69,7 +69,7 @@ number of selected correction factors.
 No independence of boundary variables or nonzero/positivity hypothesis
 is needed. In particular this is valid for negative integer tensors.
 -/
-theorem finite_contraction_grouped {ι κ : Type*}
+theorem finite_contraction_grouped {ι κ : Type*} [DecidableEq ι]
     (crossings : Finset ι) (states : Finset κ)
     (coeff : κ → ℤ) (correction baseline : κ → ι → ℤ) :
     (∑ x ∈ states, coeff x *
@@ -117,7 +117,7 @@ Here 'row' and 'col' may depend on the entire common state. Hence
 wiring, shared variables, and external tensors are already covered
 by the universally quantified input data, not assumed independent.
 -/
-theorem finite_swap_contraction_grouped {ι κ : Type*}
+theorem finite_swap_contraction_grouped {ι κ : Type*} [DecidableEq ι]
     (crossings : Finset ι) (states : Finset κ)
     (coeff : κ → ℤ) (row col : κ → ι → Fin 4) :
     (∑ x ∈ states, coeff x *

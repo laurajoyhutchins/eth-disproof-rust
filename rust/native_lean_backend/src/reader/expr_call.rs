@@ -19,7 +19,7 @@ impl Reader {
         let name = Self::name(Self::field(x, 0)?, 0)?;
         let signature = functions
             .and_then(|table| table.get(&name))
-            .ok_or_else(|| format!("PAP {name} lacks reachable executable IR"))?;
+            .ok_or_else(|| CompilerError::new(RefusalKind::Dependency, format!("PAP {name} lacks reachable executable IR")))?;
         let args = Self::array(Self::field(x, 1)?)?;
         if signature.params.is_empty()
             || args.len() >= signature.params.len()
@@ -78,7 +78,7 @@ impl Reader {
         let fun = Self::var(Self::field(x, 0)?)?;
         let found = env
             .get(&fun)
-            .ok_or_else(|| format!("undefined AP function x_{fun}"))?;
+            .ok_or_else(|| CompilerError::new(RefusalKind::Expr, format!("undefined AP function x_{fun}")))?;
         if !is_value_type(found) {
             return Err(CompilerError::new(RefusalKind::Expr, "AP function must have an object representation"));
         }

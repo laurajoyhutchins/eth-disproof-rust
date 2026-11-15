@@ -230,9 +230,8 @@ impl Reader {
                     "native declaration closure exceeds 2048 functions",
                 ));
             }
-            let decl = *definitions.get(&name).ok_or_else(||
-                format!("dependency {name} has no compiled IR in the current module; no external fallback"))?;
-            let sig = Self::signature(decl).map_err(|e| format!("{name}: {e}"))?;
+            let decl = *definitions.get(&name).ok_or_else(|| CompilerError::new(RefusalKind::Dependency, format!("dependency {name} has no compiled IR in the current module; no external fallback")))?;
+            let sig = Self::signature(decl).map_err(|e| e.with_context(&name))?;
             let mut called = BTreeSet::new();
             Self::body_calls(Self::field(decl, 3)?, &mut called)?;
             for callee in called {
@@ -308,7 +307,7 @@ impl Reader {
         for (root, public_name) in roots {
             let sig = signatures
                 .get(&root)
-                .ok_or("requested root missing from closure")?;
+                .ok_or(CompilerError::new(RefusalKind::Dependency, "requested root missing from closure"))?;
             // Validate the identifier, including Rust reserved words.
             let _ = Self::emit_function(
                 *closure.get(&root).unwrap(),

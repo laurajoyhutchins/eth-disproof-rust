@@ -12,12 +12,12 @@ impl Reader {
         ctx: LoweringContext<'_>,
     ) -> CompilerResult<()> {
         if depth > 128 {
-            return Err(CompilerError::new(RefusalKind::FnBody, "IR control-flow nesting limit"));
+            return Err(CompilerError::new(RefusalKind::ResourceLimit, "IR control-flow nesting limit"));
         }
         loop {
             *count += 1;
             if *count > 100_000 {
-                return Err(CompilerError::new(RefusalKind::FnBody, "IR instruction limit exceeded"));
+                return Err(CompilerError::new(RefusalKind::ResourceLimit, "IR instruction limit exceeded"));
             }
             match Self::body_view(x)? {
                 FnBodyView::Decl {
@@ -135,7 +135,7 @@ impl Reader {
                 } => {
                     // Source FnBody.set on pointer fields; preserve aliases.
                     let id = Self::var(target)?;
-                    let ty = env.get(&id).ok_or("set on undefined variable")?;
+                    let ty = env.get(&id).ok_or(CompilerError::new(RefusalKind::FnBody, "set on undefined variable"))?;
                     if !matches!(*ty, "obj" | "tobj") {
                         return Err(CompilerError::new(RefusalKind::FnBody, "constructor set requires heap object"));
                     }
@@ -195,7 +195,7 @@ impl Reader {
                     let id = Self::var(target)?;
                     let ty = env
                         .get(&id)
-                        .ok_or("reference bookkeeping for undefined variable")?;
+                        .ok_or(CompilerError::new(RefusalKind::FnBody, "reference bookkeeping for undefined variable"))?;
                     if !is_value_type(ty) {
                         return Err(CompilerError::new(RefusalKind::FnBody, "reference bookkeeping on non-object variable"));
                     }
@@ -214,7 +214,7 @@ impl Reader {
                     // into the enclosing join point's continuation.
                     let id = Self::var(jump_id)?;
                     let types = ctx.joins.get(&id).ok_or_else(|| {
-                        format!("unsupported or recursive jump to join point {id}")
+                        CompilerError::new(RefusalKind::FnBody, format!("unsupported or recursive jump to join point {id}"))
                     })?;
                     let args = Self::array(arguments)?;
                     if args.len() != types.len() {

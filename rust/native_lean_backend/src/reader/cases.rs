@@ -56,7 +56,7 @@ impl Reader {
                     });
                     break;
                 }
-                let family = family.ok_or("object case has no constructor identity")?;
+                let family = family.ok_or(CompilerError::new(RefusalKind::Alt, "object case has no constructor identity"))?;
                 if matches!(type_name.as_str(), "Option" | "List" | "Sum") && type_name != family {
                     return Err(CompilerError::new(RefusalKind::Alt, format!(
                         "object case source family {family} contradicts storage type {type_name}"
@@ -136,7 +136,7 @@ impl Reader {
                     let parent = name
                         .rsplit_once('.')
                         .map(|(p, _)| p)
-                        .ok_or_else(|| format!("unqualified inductive constructor {name}"))?;
+                        .ok_or_else(|| CompilerError::new(RefusalKind::Alt, format!("unqualified inductive constructor {name}")))?;
                     if let Some(prior) = &constructor_parent {
                         if prior != parent {
                             return Err(CompilerError::new(RefusalKind::Alt, format!(
@@ -220,7 +220,7 @@ impl Reader {
                     let info = Self::field(*alt, 0)?;
                     let name = Self::name(Self::field(info, 0)?, 0)?;
                     let idx = Self::nat(Self::field(info, 1)?)?;
-                    immutable_case_ctor(family, idx, &name)?;
+                    immutable_case_ctor(family, idx, &name).map_err(|error| CompilerError::new(RefusalKind::Alt, error))?;
                     named_index = Some(idx);
                 }
                 1 => defaults += 1,
@@ -240,7 +240,7 @@ impl Reader {
         for alt in alts {
             let is_default = Self::checked_tag(alt, "Alt")? == 1;
             let (name, idx) = if is_default {
-                let idx = missing_index.ok_or("unexpected default case alternative")?;
+                let idx = missing_index.ok_or(CompilerError::new(RefusalKind::Alt, "unexpected default case alternative"))?;
                 let name = match (family, idx) {
                     ("Option", 0) => "Option.none",
                     ("Option", 1) => "Option.some",
@@ -258,7 +258,7 @@ impl Reader {
                     Self::nat(Self::field(info, 1)?)?,
                 )
             };
-            let expected_pointers = immutable_case_ctor(family, idx, &name)?;
+            let expected_pointers = immutable_case_ctor(family, idx, &name).map_err(|error| CompilerError::new(RefusalKind::Alt, error))?;
             if seen[idx] {
                 return Err(CompilerError::new(RefusalKind::Alt, format!("duplicate {family} case constructor {name} at tag {idx}")));
             }
@@ -362,7 +362,7 @@ impl Reader {
                     let name = Self::name(Self::field(info, 0)?, 0)?;
                     let (parent, _) = name
                         .rsplit_once('.')
-                        .ok_or_else(|| format!("constructor {name} has no family identity"))?;
+                        .ok_or_else(|| CompilerError::new(RefusalKind::Alt, format!("constructor {name} has no family identity")))?;
                     if family.as_deref().is_some_and(|f| f != parent) {
                         return Err(CompilerError::new(RefusalKind::Alt, format!("mixed user inductive families: {name}")));
                     }

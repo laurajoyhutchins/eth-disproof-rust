@@ -48,7 +48,7 @@ impl Reader {
         }
         let count = lr_array_len(x);
         if count > 1_000_000 {
-            return Err(CompilerError::new(RefusalKind::Abi, "IR node array exceeds safety cap"));
+            return Err(CompilerError::new(RefusalKind::ResourceLimit, "IR node array exceeds safety cap"));
         }
         Ok((0..count).map(|i| lr_array_at(x, i)).collect())
     }
@@ -62,38 +62,38 @@ impl Reader {
             return Err(CompilerError::new(RefusalKind::Abi, "Lean String byte length outside supported bound"));
         }
         let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len - 1);
-        String::from_utf8(bytes.to_vec()).map_err(|_| "invalid UTF-8".into())
+        String::from_utf8(bytes.to_vec()).map_err(|_| CompilerError::new(RefusalKind::Abi, "invalid UTF-8"))
     }
     // Convert an arbitrary-precision source Nat through Lean's pinned public
     // runtime API, never by interpreting GMP limbs or truncating to usize.
     pub(super) unsafe fn decimal_nat(x: Obj) -> CompilerResult<String> {
         let raw = lr_nat_decimal(x);
         if raw.is_null() {
-            return Err(CompilerError::new(RefusalKind::LitVal, "large Nat literal rejected (invalid or over 4 KiB)"));
+            return Err(CompilerError::new(RefusalKind::ResourceLimit, "large Nat literal rejected (invalid or over 4 KiB)"));
         }
         let decoded = CStr::from_ptr(raw)
             .to_str()
             .map(str::to_owned)
-            .map_err(|_| "invalid Nat literal decimal representation".to_owned());
+            .map_err(|_| CompilerError::new(RefusalKind::LitVal, "invalid Nat literal decimal representation"));
         lr_free_string(raw);
         Ok(decoded?)
     }
     pub(super) unsafe fn nat(x: Obj) -> CompilerResult<usize> {
-        Self::scalar(x).map_err(|_| "large Nat unsupported by v0 compiler".into())
+        Self::scalar(x).map_err(|_| CompilerError::new(RefusalKind::Abi, "large Nat unsupported by v0 compiler"))
     }
     // Name paths retain an injective identity, not a lossy pretty-print.
     // Plain ASCII segments keep historical spelling for pinned primitives;
     // special UTF-8 strings use ~s<hex bytes>, numeric segments use ~n<nat>.
     pub(super) unsafe fn name(x: Obj, depth: usize) -> CompilerResult<String> {
         if depth > 128 {
-            return Err(CompilerError::new(RefusalKind::Decl, "name nesting limit"));
+            return Err(CompilerError::new(RefusalKind::ResourceLimit, "name nesting limit"));
         }
         match Self::tag(x)? {
             0 => Ok(String::new()),
             1 => {
                 let parent = Self::name(Self::field(x, 0)?, depth + 1)?;
                 let component = Self::string(Self::field(x, 1)?)?;
-                let encoded = encode_name_str(&component)?;
+                let encoded = encode_name_str(&component).map_err(|error| CompilerError::new(RefusalKind::Decl, error))?;
                 Ok(append_name_component(&parent, &encoded))
             }
             2 => {
@@ -135,7 +135,7 @@ impl Reader {
                 let id = Self::var(Self::field(x, 0)?)?;
                 let found = env
                     .get(&id)
-                    .ok_or_else(|| format!("unknown input variable x_{id}"))?;
+                    .ok_or_else(|| CompilerError::new(RefusalKind::Arg, format!("unknown input variable x_{id}")))?;
                 if !ir_type_compatible(found, expected) {
                     return Err(CompilerError::new(RefusalKind::Arg, format!("x_{id}: expected {expected}, got {found}")));
                 }

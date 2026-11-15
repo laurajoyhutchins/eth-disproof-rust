@@ -110,7 +110,7 @@ impl Reader {
         }
         let index = Self::nat(Self::field(x, 0)?)?;
         let id = Self::var(Self::field(x, 1)?)?;
-        let found = env.get(&id).ok_or("projection of undefined variable")?;
+        let found = env.get(&id).ok_or(CompilerError::new(RefusalKind::Expr, "projection of undefined variable"))?;
         if !is_value_type(found) {
             return Err(CompilerError::new(RefusalKind::Expr, "projection from scalar variable"));
         }
@@ -171,7 +171,7 @@ impl Reader {
             return Err(CompilerError::new(RefusalKind::Expr, "unbox result type must be scalar"));
         }
         let id = Self::var(Self::field(x, 0)?)?;
-        let found = env.get(&id).ok_or("unbox of undefined variable")?;
+        let found = env.get(&id).ok_or(CompilerError::new(RefusalKind::Expr, "unbox of undefined variable"))?;
         if !is_value_type(found) {
             return Err(CompilerError::new(RefusalKind::Expr, "unbox from non-object variable"));
         }

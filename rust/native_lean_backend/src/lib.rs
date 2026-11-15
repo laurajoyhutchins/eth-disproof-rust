@@ -73,7 +73,7 @@ mod __lean_constructor_set_tests {
         let before = Rc::as_ptr(&original.0);
         let updated = original.with_field(0, __LeanValue::nat("7"));
         assert!(std::ptr::eq(before, Rc::as_ptr(&updated.0)));
-        assert_eq!(updated.ctor_field(0).nat_to_decimal(), "7");
+        assert_eq!(updated.field(0).nat_to_decimal(), "7");
     }
     #[test]
     fn shared_keeps_alias() {
@@ -82,8 +82,8 @@ mod __lean_constructor_set_tests {
         let before = Rc::as_ptr(&original.0);
         let updated = original.with_field(1, __LeanValue::nat("11"));
         assert!(!std::ptr::eq(before, Rc::as_ptr(&updated.0)));
-        assert_eq!(alias.ctor_field(1).nat_to_decimal(), "5");
-        assert_eq!(updated.ctor_field(1).nat_to_decimal(), "11");
+        assert_eq!(alias.field(1).nat_to_decimal(), "5");
+        assert_eq!(updated.field(1).nat_to_decimal(), "11");
     }
     #[test]
     #[should_panic(expected = "constructor field set on non-constructor")]

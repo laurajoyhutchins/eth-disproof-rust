@@ -250,13 +250,13 @@ mod tests {
         assert!(padded_load * d <= 3 * m);
         assert!(padded_load * d / l <= 3 * m / l);
         for row_symbol in 0..2 {
-            let row_ports = result.pair_loads[row_symbol * 2]
-                + result.pair_loads[row_symbol * 2 + 1];
+            let row_ports =
+                result.pair_loads[row_symbol * 2] + result.pair_loads[row_symbol * 2 + 1];
             assert!(row_ports <= 3 * m / 2);
         }
         for column_symbol in 0..2 {
-            let column_ports = result.pair_loads[column_symbol]
-                + result.pair_loads[2 + column_symbol];
+            let column_ports =
+                result.pair_loads[column_symbol] + result.pair_loads[2 + column_symbol];
             assert!(column_ports <= 3 * m / 2);
         }
         assert!(result.final_potential_numerator <= result.initial_potential_numerator);

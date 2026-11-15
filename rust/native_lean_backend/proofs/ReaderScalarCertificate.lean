@@ -204,6 +204,9 @@ run_cmd do
     logInfo m!"Reader exact-emission certificate passed: {root}"
   -- The general compiler can emit UInt64.sub, but the proved target grammar
   -- cannot certify it. A successful Reader emission must not widen the proof.
+  let generalOutput ← liftCoreM <| NativeRust.compile `ScalarFixture.subtract "certified_scalar"
+  unless generalOutput.contains "wrapping_sub" do
+    throwError "negative fixture did not exercise supported Reader subtraction"
   let refused ← try
     let _ ← liftCoreM <| ReaderScalarCertificate.certify `ScalarFixture.subtract
     pure false

@@ -22,7 +22,7 @@ run_cmd do
   unless params.any (fun p => p.ty == .erased) do
     throwError "source proof parameter was not IRType.erased in pinned Lean 4.34.1"
   liftIO <| IO.FS.writeFile
-    "examples/erased-proof-package/original-ir.txt" (toString params)
+    "examples/erased-proof-package/original-ir.txt" (reprStr params)
 
   let mut test := "use lean_generated::*;\n#[test] fn source_proof_erasure_oracles() {\n"
   for i in [:64] do

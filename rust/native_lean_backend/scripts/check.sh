@@ -492,7 +492,7 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
 rm -rf examples/erased-proof-package
 lean --load-dynlib="$NATIVE_LIB" examples/ErasedParamFixture.lean
 test -s examples/erased-proof-package/original-ir.txt
-if ! grep -Eq 'pub fn acceptErased\([^\n]*: \(\)' examples/erased-proof-package/src/lib.rs; then
+if ! grep -Eq '^pub fn acceptErased\(.*: \(\)' examples/erased-proof-package/src/lib.rs; then
   echo 'proof-only erased IR argument did not become a zero-sized Rust parameter' >&2
   exit 1
 fi

@@ -177,13 +177,13 @@ private def wordExpr (sym : SymbolicEnv) (expr : IR.Expr) :
             match hv : sym b.idx with
             | some v =>
               if hn : name = `UInt64.add then
-                some {word := .add u v, derivation := by
+                some (WordWitness.mk (.add u v) (by
                   simpa only [hn] using
-                    (ExprMatches.add args a b u v hs ha hb hu hv)}
+                    (ExprMatches.add args a b u v hs ha hb hu hv)))
               else if hn : name = `UInt64.mul then
-                some {word := .mul u v, derivation := by
+                some (WordWitness.mk (.mul u v) (by
                   simpa only [hn] using
-                    (ExprMatches.mul args a b u v hs ha hb hu hv)}
+                    (ExprMatches.mul args a b u v hs ha hb hu hv)))
               else none
             | none => none
           | none => none
@@ -247,8 +247,7 @@ def reifyDecl (decl : IR.Decl) : Option StraightCertificate := do
          p0.borrow || p1.borrow || p0.x.idx == p1.x.idx then
         none
       else
-        let some witness ←
-          straightBody (initialSym p0.x.idx p1.x.idx) body | none
+        let witness ← straightBody (initialSym p0.x.idx p1.x.idx) body
         some {left := p0.x.idx, right := p1.x.idx,
               body, program := witness.program, matchIR := witness.derivation}
   | _ => none

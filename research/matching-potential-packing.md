@@ -187,10 +187,20 @@ the graph/alphabet sizes. It is a correctness reference, **not** the
 unrestricted polynomial-time implementation justified by the proof; that
 version needs a standard arbitrary-precision integer dependency.
 
-The bounded implementation does not yet construct packets from the
-resulting class loads. Its existence is not evidence that the published
-source's full recursion, precision schedule, or complexity bound has
-been verified.
+A second bounded reference, `two_adic_packet_layout::pack_bounded`,
+now implements the source's subsequent **structural packet layout**:
+pad every ordered label pair to a common multiple of `L`; group
+coordinatewise unordered symbol pairs; use each slot bit for the
+orientation at unequal coordinates and the copy index at equal
+coordinates. It checks every real edge is used exactly once, that
+both ends occupy the same slot, that per-coordinate ports are bounded,
+that packet count is at most `3M/L`, and that old and new vertex degree
+caps hold. It intentionally refuses actual overloaded class layouts.
+
+These witnesses use bounded graphs and checked integers. Neither
+the layout nor the labeling reference constructs packet tensor
+entries, signed coefficient modes, or an actual two-adic recursion;
+the paper's precision schedule and complexity theorem remain open.
 
 ## Executable arithmetic and proof obligations
 

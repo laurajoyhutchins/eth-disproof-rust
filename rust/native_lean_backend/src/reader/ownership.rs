@@ -143,8 +143,8 @@ impl Reader {
             }
             locals.insert(name.clone(), effects);
         }
-        // Every successful iteration adds at least one of at most 2*n facts.
-        for _ in 0..(2 * closure.len() + 1) {
+        // At most three monotone facts per closure declaration.
+        for _ in 0..(3 * closure.len() + 1) {
             let mut changed = false;
             for (name, effects) in &locals {
                 if effects.direct_calls.iter().any(|callee| summary.may_effect.contains(callee)) {

@@ -38,7 +38,8 @@ impl Reader {
                 lr_tag(x),
                 lr_field_count(x),
                 lr_is_scalar(x)
-            ).into());
+            )
+            .into());
         }
         Ok(lr_field(x, index))
     }
@@ -166,7 +167,8 @@ impl Reader {
             12 => Ok("tagged"),
             t => Err(format!(
                 "IR type tag {t} unsupported (supported fixed integers and immutable values)"
-            ).into()),
+            )
+            .into()),
         }
     }
     pub(super) unsafe fn lit(x: Obj, ty: &str) -> CompilerResult<String> {

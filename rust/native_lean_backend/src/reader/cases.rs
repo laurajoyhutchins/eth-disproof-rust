@@ -50,7 +50,8 @@ impl Reader {
                         if matches!(type_name.as_str(), "Option" | "List" | "Sum") {
                             return Err(format!(
                                 "constructor {name} disagrees with source case family {type_name}"
-                            ).into());
+                            )
+                            .into());
                         }
                         return Self::generic_object_case(x, code, depth, count, env, ret_ty, ctx);
                     });
@@ -60,7 +61,8 @@ impl Reader {
                 if matches!(type_name.as_str(), "Option" | "List" | "Sum") && type_name != family {
                     return Err(format!(
                         "object case source family {family} contradicts storage type {type_name}"
-                    ).into());
+                    )
+                    .into());
                 }
                 Self::immutable_case(
                     x,
@@ -141,7 +143,8 @@ impl Reader {
                         if prior != parent {
                             return Err(format!(
                                 "mixed inductive constructor families: {prior} and {parent}"
-                            ).into());
+                            )
+                            .into());
                         }
                     } else {
                         constructor_parent = Some(parent.to_owned());
@@ -208,9 +211,9 @@ impl Reader {
         }
         let alts = Self::array(Self::field(x, 3)?)?;
         if alts.len() != 2 {
-            return Err(format!(
-                "{family} case requires exactly two constructor alternatives"
-            ).into());
+            return Err(
+                format!("{family} case requires exactly two constructor alternatives").into(),
+            );
         }
         // A pinned two-constructor Option/List may have one source Alt.default.
         // Only the *other* source-checked constructor identity is admissible.
@@ -248,7 +251,11 @@ impl Reader {
                     ("Option", 1) => "Option.some",
                     ("List", 0) => "List.nil",
                     ("List", 1) => "List.cons",
-                    _ => return Err(format!("{family} default case has unknown source layout").into()),
+                    _ => {
+                        return Err(
+                            format!("{family} default case has unknown source layout").into()
+                        )
+                    }
                 };
                 (name.to_owned(), idx)
             } else {
@@ -260,9 +267,9 @@ impl Reader {
             };
             let expected_pointers = immutable_case_ctor(family, idx, &name)?;
             if seen[idx] {
-                return Err(format!(
-                    "duplicate {family} case constructor {name} at tag {idx}"
-                ).into());
+                return Err(
+                    format!("duplicate {family} case constructor {name} at tag {idx}").into(),
+                );
             }
             if !is_default {
                 let info = Self::field(alt, 0)?;
@@ -272,7 +279,8 @@ impl Reader {
                 if pointer_fields != expected_pointers || usize_fields != 0 || scalar_bytes != 0 {
                     return Err(format!(
                         "{family} alternative {name} has unsupported field layout"
-                    ).into());
+                    )
+                    .into());
                 }
             }
             seen[idx] = true;
@@ -379,9 +387,9 @@ impl Reader {
                         || scalar_bytes != 0
                         || !seen.insert(tag)
                     {
-                        return Err(format!(
-                            "unsupported or duplicate constructor layout: {name}"
-                        ).into());
+                        return Err(
+                            format!("unsupported or duplicate constructor layout: {name}").into(),
+                        );
                     }
                     writeln!(code, "        {tag} => {{").unwrap();
                     if pointers == 0 {

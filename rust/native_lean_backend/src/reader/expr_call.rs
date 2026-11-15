@@ -115,13 +115,15 @@ impl Reader {
                     "{name}: expected {} arguments, got {}",
                     signature.params.len(),
                     args.len()
-                ).into());
+                )
+                .into());
             }
             if var_ty != signature.result {
                 return Err(format!(
                     "{name}: expected result type {}, got {var_ty}",
                     signature.result
-                ).into());
+                )
+                .into());
             }
             let mut lowered = Vec::with_capacity(args.len());
             for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
@@ -149,18 +151,15 @@ impl Reader {
                 _ => 4,
             };
             if args.len() != expected {
-                return Err(format!(
-                    "{name}: expected {expected} operands, got {}",
-                    args.len()
-                ).into());
+                return Err(
+                    format!("{name}: expected {expected} operands, got {}", args.len()).into(),
+                );
             }
             let erased = |index: usize| -> CompilerResult<()> {
                 if Self::checked_tag(args[index], "Arg")? == 1 {
                     Ok(())
                 } else {
-                    Err(format!(
-                        "{name}: expected erased source type/proof at {index}"
-                    ).into())
+                    Err(format!("{name}: expected erased source type/proof at {index}").into())
                 }
             };
             erased(0)?;
@@ -213,10 +212,9 @@ impl Reader {
                 _ => return Err(format!("{name}: unrecognized runtime call shape").into()),
             };
             if args.len() != expected {
-                return Err(format!(
-                    "{name}: expected {expected} operands, got {}",
-                    args.len()
-                ).into());
+                return Err(
+                    format!("{name}: expected {expected} operands, got {}", args.len()).into(),
+                );
             }
             let begin = if runtime.shape.starts_with("erased_") {
                 if Self::checked_tag(args[0], "Arg")? != 1 {
@@ -303,13 +301,12 @@ impl Reader {
                 _ => unreachable!(),
             };
         }
-        let spec =
-            primitive_spec(&name).ok_or_else(|| {
-                CompilerError::new(
-                    RefusalKind::Primitive,
-                    format!("unrecognized primitive call: {name}"),
-                )
-            })?;
+        let spec = primitive_spec(&name).ok_or_else(|| {
+            CompilerError::new(
+                RefusalKind::Primitive,
+                format!("unrecognized primitive call: {name}"),
+            )
+        })?;
         let op = spec.rust_op;
         let comparison = spec.comparison;
         let expected_ty = spec.operand_type;
@@ -324,7 +321,8 @@ impl Reader {
             if var_ty != expected_ty {
                 return Err(format!(
                     "{name}: result type mismatch: expected {expected_ty}, got {var_ty}"
-                ).into());
+                )
+                .into());
             }
             match (expected_ty, op) {
                 ("f64", "+" | "-" | "*") => Ok(format!("{lhs} {op} {rhs}")),

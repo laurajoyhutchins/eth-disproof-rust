@@ -93,7 +93,8 @@ impl Reader {
                         if value_env.insert(var, ty).is_some() {
                             return Err(format!(
                                 "join parameter x_{var} reused a visible variable"
-                            ).into());
+                            )
+                            .into());
                         }
                         param_code.push(format!("x_{var}: {}", rust_type(ty)));
                         param_types.push(ty);
@@ -171,7 +172,8 @@ impl Reader {
                     {
                         return Err(format!(
                             "unverified sset layout n={pointers}, offset={offset}, type={ty}"
-                        ).into());
+                        )
+                        .into());
                     }
                     writeln!(
                         code,
@@ -217,7 +219,8 @@ impl Reader {
                             "join point {id} expects {} args, got {}",
                             types.len(),
                             args.len()
-                        ).into());
+                        )
+                        .into());
                     }
                     let mut lowered = Vec::new();
                     for (arg, ty) in args.into_iter().zip(types.iter()) {

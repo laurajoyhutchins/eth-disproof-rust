@@ -69,7 +69,8 @@ impl Reader {
             if Self::param_borrow(*param)? && shared.contains(&var) {
                 return Err(format!(
                     "borrowed parameter x_{var} has unverified isShared ownership semantics"
-                ).into());
+                )
+                .into());
             }
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}").into());

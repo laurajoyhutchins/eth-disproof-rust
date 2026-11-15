@@ -75,9 +75,9 @@ impl Reader {
             || usize_count != 0
             || ssize != 0
         {
-            return Err(format!(
-                "constructor {name} has unsupported scalar, tag or field layout"
-            ).into());
+            return Err(
+                format!("constructor {name} has unsupported scalar, tag or field layout").into(),
+            );
         }
         if size == 0 {
             if var_ty != "tagged" {
@@ -135,7 +135,8 @@ impl Reader {
         if pointers != 4 || offset >= 8 || !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
             return Err(format!(
                 "unverified sproj layout n={pointers}, offset={offset}, operand=x_{id}"
-            ).into());
+            )
+            .into());
         }
         Ok(format!("x_{id}.pull_in_sproj_u8({pointers}, {offset})"))
     }

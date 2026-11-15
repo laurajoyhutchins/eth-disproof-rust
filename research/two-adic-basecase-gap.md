@@ -58,6 +58,62 @@ Thus a depth with
 \]
 is an **uncovered active-size range**: if a child of size between \(B+1\) and \(U_d\) occurs, it is neither a proposed direct leaf nor admissible under the replacement packing theorem's sufficient inequality. It might still be packable in reality, and actual children might be smaller than \(B\). The statement is an obstruction to a uniform proof that relies **only** on these two inequalities and the proposed leaf cutoff.
 
+## A stronger obstruction from the source's uniform slot layout
+
+The conclusion above depends on the new matching-potential *sufficient*
+inequality. The **specific source layout** yields an additional necessary
+condition even if the vertex labeling is magically perfect.
+
+The construction pads **every one of the \(D\) ordered label-pair
+classes** to a common multiple \(H_{\mathrm{pad}}\) of the packet slot
+length \(L\). If the current graph has at least one real edge, some
+class is nonempty, so \(H_{\mathrm{pad}}\ge L\). The source creates
+exactly \(H_{\mathrm{pad}}D/L\) packets and claims
+at most \(3M/L\) packets, hence
+
+\[
+\frac{H_{\mathrm{pad}}D}{L}\le\frac{3M}{L}
+\quad\Longrightarrow\quad
+\boxed{M\ge\lceil LD/3\rceil}.
+\]
+
+This does **not** rely on the collision-concentration theorem, the
+degree cap, or greedy edge coloring. It is a necessary condition for
+the *source's explicit all-class uniformly padded layout* to retain
+its published packet-count bound, which in turn supplies the
+\(6M/r\) child-edge estimate. It is not a necessary condition for
+arbitrary sparse/nonuniform packet constructions, or for layouts
+that forgo the stated count/shrink bound.
+
+At every hypothetically positive-width active depth,
+\(L_d\ge4^{d+1}\) and \(D_d\ge r^{4(d+1)}\), so the smallest
+uniform-padding requirement is
+
+\[
+\boxed{M_d\ge
+ \left\lceil\frac{4^{d+1}r^{4(d+1)}}3\right\rceil}.
+\]
+
+For \(s=10^{10}\), \(r=64\), the first child has
+\(M_1\le937{,}500{,}000\), but its uniformly padded packet
+layout would need at least
+\(1{,}501{,}199{,}875{,}790{,}166\) edges to satisfy the
+\(3M/L\) packet bound. At \(r=7\), the earliest such
+structural gap is depth two: \(U_2=7{,}346{,}938{,}775\), but
+the minimum for uniform padding is \(295{,}280{,}793{,}622\).
+
+At the extreme \(s=2^{128}-1\), the first structural gaps are
+depth four for \(r=64\) and depth nine for \(r=7\). The matching
+*uniform sufficient-condition* gap occurs at depths four and eight,
+respectively. This distinction matters: improving concentration
+further might close a numerical sufficiency gap, but cannot fix
+the source layout's all-class padding overhead.
+
+The Rust audit computes \(\lceil LD/3\rceil\) with checked
+quotient/remainder arithmetic, including cases where \(LD\)
+itself exceeds \(u128\) but the quotient still fits. Its JSON
+reports both independent first-gap depths, never a count.
+
 ## Exact examples
 
 For \(s=10^{10}\) tensor-network edges and a proposed direct-leaf budget \(B=64\):
@@ -70,10 +126,10 @@ For \(s=10^{10}\) tensor-network edges and a proposed direct-leaf budget \(B=64\
 | 49 | 1 | 1 level | 9 |
 | 64 | 1 | 1 level | 8 |
 
-At \(r=64\), the root threshold is \(T_0=6{,}106{,}906{,}624\). The first child has at most \(937{,}500{,}000\) edges, but even the *optimistic* depth-one threshold is
-\(T_1=855{,}683{,}929{,}200{,}394{,}240\). This is an uncovered interval, not merely a disappointing performance constant.
+At \(r=64\), the *matching-potential* root threshold is \(T_0=6{,}106{,}906{,}624\). The first child has at most \(937{,}500{,}000\) edges, but even the *optimistic* depth-one threshold is
+\(T_1=855{,}683{,}929{,}200{,}394{,}240\). This is an uncovered interval in the sufficient-condition audit. The independent uniform-padding requirement above already blocks this source layout at the same level.
 
-At \(r=7\), the root threshold is \(T_0=441{,}784\) and the second stage needs \(T_1=8{,}445{,}433{,}465\), which is below its maximum child-size bound \(U_1=8{,}571{,}428{,}571\). But at depth two, \(T_2=120{,}889{,}802{,}413{,}534\) greatly exceeds \(U_2=7{,}346{,}938{,}775\). A smaller \(r\) helps packet-label capacity but slows the proven reduction in child size.
+At \(r=7\), the *matching-potential* root threshold is \(T_0=441{,}784\) and the second stage needs \(T_1=8{,}445{,}433{,}465\), which is below its maximum child-size bound \(U_1=8{,}571{,}428{,}571\). But at depth two, \(T_2=120{,}889{,}802{,}413{,}534\) greatly exceeds \(U_2=7{,}346{,}938{,}775\). A smaller \(r\) helps packet-label capacity but slows the proven reduction in child size.
 
 For a **more plausible direct-summation exponent** \(B=20\), the corresponding guaranteed leaf depths become 130 for \(r=7\) and 9 for \(r=64\), while the uncovered packing depths remain 2 and 1. The number \(2^{20}\) accounts for assignments only, not coefficient/field cost.
 

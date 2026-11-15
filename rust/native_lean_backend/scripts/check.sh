@@ -492,7 +492,7 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
 rm -rf examples/erased-proof-package
 lean --load-dynlib="$NATIVE_LIB" examples/ErasedParamFixture.lean
 test -s examples/erased-proof-package/original-ir.txt
-if ! grep -Fq ': ()' examples/erased-proof-package/src/lib.rs; then
+if ! grep -Eq 'pub fn acceptErased\([^\n]*: \(\)' examples/erased-proof-package/src/lib.rs; then
   echo 'proof-only erased IR argument did not become a zero-sized Rust parameter' >&2
   exit 1
 fi
@@ -581,10 +581,10 @@ mkdir -p artifacts
   "$LEAN_PREFIX/bin/lean" --version
   rustc --version
   cargo --version
-  echo "differential_assertions=21707"
+  echo "differential_assertions=21771"
   echo "constructor_field_set_original_lean_oracles=176"
   echo "cross_call_ownership_original_lean_oracles=512"
-  echo "erased_proof_param_source_oracles=64"
+  echo "erased_proof_param_source_oracles=128"
   echo "source_option_default_oracles=512"
   echo "generic_inductive_original_lean_oracles=338"
   echo "array_ownership_original_lean_oracles=768"
@@ -594,7 +594,7 @@ mkdir -p artifacts
   echo "large_nat_literal_oracles=76"
   echo "item30_exact_source_oracles=101"
   echo "additional_scalar_matrix_oracles=1920"
-  echo "core_and_matrix_oracles=23627"
+  echo "core_and_matrix_oracles=23691"
   echo "gmp_nat_differential=5208"
   echo "immutable_object_differential=3072"
   echo "pap_ap_differential=2048"

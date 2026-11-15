@@ -34,11 +34,13 @@ pub(super) enum FnBodyView {
     },
     Inc {
         target: Obj,
+        checked: bool,
         persistent: bool,
         next: Obj,
     },
     Dec {
         target: Obj,
+        checked: bool,
         persistent: bool,
         next: Obj,
     },
@@ -65,10 +67,14 @@ pub(super) enum AltView {
 }
 
 impl Reader {
-    unsafe fn rc_persistent(x: Obj) -> CompilerResult<bool> {
+    // Exact pinned Lean.IR.FnBody (checkRef, persistent) unboxed flags.
+    // Both bits are validated by the C shim before this reader uses them.
+    unsafe fn rc_flags(x: Obj) -> CompilerResult<(bool, bool)> {
         match lr_ir_rc_flags(x) {
-            0 | 1 => Ok(false),
-            2 | 3 => Ok(true),
+            0 => Ok((false, false)),
+            1 => Ok((true, false)),
+            2 => Ok((false, true)),
+            3 => Ok((true, true)),
             _ => Err(CompilerError::new(
                 RefusalKind::FnBody,
                 "invalid pinned Lean.IR inc/dec packed Bool flags",
@@ -104,15 +110,23 @@ impl Reader {
                 ty: Self::field(x, 4)?,
                 next: Self::field(x, 5)?,
             },
-            6 => FnBodyView::Inc {
-                target: Self::field(x, 0)?,
-                persistent: Self::rc_persistent(x)?,
-                next: Self::field(x, 2)?,
+            6 => {
+                let (checked, persistent) = Self::rc_flags(x)?;
+                FnBodyView::Inc {
+                    target: Self::field(x, 0)?,
+                    checked,
+                    persistent,
+                    next: Self::field(x, 2)?,
+                }
             },
-            7 => FnBodyView::Dec {
-                target: Self::field(x, 0)?,
-                persistent: Self::rc_persistent(x)?,
-                next: Self::field(x, 2)?,
+            7 => {
+                let (checked, persistent) = Self::rc_flags(x)?;
+                FnBodyView::Dec {
+                    target: Self::field(x, 0)?,
+                    checked,
+                    persistent,
+                    next: Self::field(x, 2)?,
+                }
             },
             8 => FnBodyView::Delete {
                 target: Self::field(x, 0)?,

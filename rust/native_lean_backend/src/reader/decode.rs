@@ -182,7 +182,7 @@ impl Reader {
                     ));
                 }
                 Ok(if is_value_type(found) {
-                    format!("x_{id}.clone()")
+                    format!("x_{id}.compiler_alias()")
                 } else {
                     format!("x_{id}")
                 })

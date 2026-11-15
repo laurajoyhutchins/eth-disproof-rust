@@ -363,16 +363,16 @@ fn compiler_ir(
     let bundle = read_bounded(&destination.join("receipt.txt"))?;
     let bundle_text = std::str::from_utf8(&bundle).map_err(|e| e.to_string())?;
     let source_hash = contract::digest(&read_bounded(&input)?);
-    let report = contract::native_ir_report(
-        &opts.module,
-        &opts.roots,
-        pin,
+    let report = contract::native_ir_report(contract::NativeIrBundle {
+        module: &opts.module,
+        roots: &opts.roots,
+        toolchain: pin,
         lean_version,
-        &source.git_blob,
-        &source_hash,
-        &artifact,
-        bundle_text,
-    );
+        source_git_blob: &source.git_blob,
+        source_lean_sha256: &source_hash,
+        generated: &artifact,
+        native_bundle_receipt: bundle_text,
+    });
     let raw = serde_json::to_vec(&report).map_err(|e| e.to_string())?;
     Ok((artifact, raw))
 }

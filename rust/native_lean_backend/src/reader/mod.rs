@@ -12,5 +12,11 @@ mod body;
 mod cases;
 mod decode;
 mod expr;
+mod expr_call;
+mod expr_value;
 mod module;
 mod ownership;
+mod usage;
+mod view;
+
+use view::{AltView, FnBodyView};

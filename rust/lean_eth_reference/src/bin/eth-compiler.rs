@@ -1,4 +1,4 @@
-//! Lean frontend + Rust acceptance gate. Neither backend is an executable ETH proof.
+//! One compiler acceptance interface: native Lean IR or a non-executable residual Expr.\n//! The canonical in-process code generator lives in rust/native_lean_backend.
 use lean_eth_reference::lean_codegen as contract;
 
 use contract::{Backend, Result, ensure, refuse};
@@ -121,6 +121,14 @@ impl Options {
             "invalid Lean declaration name",
         )?;
         ensure(
+            backend != Backend::CompilerIr || roots.len() == 1,
+            "native compiler bundle currently accepts exactly one Lean declaration root",
+        )?;
+        ensure(
+            !(mode == Mode::Compile && backend == Backend::CompilerIr && producer.is_some()),
+            "native executable-IR backend cannot use a symbolic producer",
+        )?;
+        ensure(
             artifact != receipt,
             "artifact and receipt must be different paths",
         )?;
@@ -188,11 +196,18 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>> {
     )?;
     fs::read(path).map_err(|e| e.to_string())
 }
-fn run_command(opts: &Options, work: &Path, label: &str, args: &[&str]) -> Result<Vec<u8>> {
+fn run_process(
+    opts: &Options,
+    work: &Path,
+    label: &str,
+    program: &str,
+    current_dir: &Path,
+    args: &[&str],
+) -> Result<Vec<u8>> {
     let stdout = work.join(format!("{label}.stdout"));
     let stderr = work.join(format!("{label}.stderr"));
-    let mut child = Command::new(&opts.lake_bin)
-        .current_dir(&opts.lake_root)
+    let mut child = Command::new(program)
+        .current_dir(current_dir)
         .args(args)
         .stdout(Stdio::from(
             File::create(&stdout).map_err(|e| e.to_string())?,
@@ -224,6 +239,10 @@ fn run_command(opts: &Options, work: &Path, label: &str, args: &[&str]) -> Resul
     )?;
     read_bounded(&stdout)
 }
+fn run_command(opts: &Options, work: &Path, label: &str, args: &[&str]) -> Result<Vec<u8>> {
+    run_process(opts, work, label, &opts.lake_bin, &opts.lake_root, args)
+}
+
 fn text(bytes: Vec<u8>) -> Result<String> {
     String::from_utf8(bytes)
         .map(|v| v.trim().to_owned())
@@ -286,59 +305,78 @@ fn compiler_ir(
     stage: &Stage,
     pin: &str,
     lean_version: &str,
+    source: &contract::SourceIdentity,
 ) -> Result<(Vec<u8>, Vec<u8>)> {
-    // leanfran 0.6.0 currently requires 4.35.0, independent of the ETH 4.34.1 pin.
+    // The native compiler consumes borrowed, actual Lean 4.34.1 IR through
+    // its in-process FFI. The former leanfran 4.35.0 generator is retired
+    // from this production entrypoint, not retained as a fallback.
     ensure(
-        pin == "leanprover/lean4:v4.35.0",
-        "leanfran 0.6.0 incompatible with pinned source Lean; no silent upgrade",
+        pin == "leanprover/lean4:v4.34.1",
+        "canonical native compiler requires original Lean 4.34.1; no upgrade/fallback",
     )?;
-    let backend = text(run_command(
+    ensure(opts.roots.len() == 1, "native bundle requires one root")?;
+    let native_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("missing native compiler workspace parent")?
+        .join("native_lean_backend")
+        .canonicalize()
+        .map_err(|e| format!("canonical native compiler unavailable: {e}"))?;
+    ensure(
+        native_root.join("NativeRust.olean").is_file()
+            && native_root
+                .join("target/release/liblean_rust_native_backend.so")
+                .is_file(),
+        "native compiler is not built: run lake build and scripts/check.sh in rust/native_lean_backend",
+    )?;
+    // compile-bundle.sh already tests the original Lean module, emits from
+    // the live IR, compiles generated Rust, checks its root closure, and
+    // publishes an atomic non-overwriting evidence bundle.
+    let native_stage = Stage::new(&native_root)?;
+    let destination = native_stage.0.join("bundle");
+    let input = opts
+        .source_repo
+        .join(&source.path)
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    let input_path = input.to_str().ok_or("non-UTF-8 Lean source path")?;
+    let destination_path = destination.to_str().ok_or("non-UTF-8 native output path")?;
+    let export = opts.roots[0]
+        .rsplit('.')
+        .next()
+        .ok_or("missing Lean export name")?;
+    run_process(
         opts,
         &stage.0,
-        "backend-version",
-        &["env", "leanfran", "--version"],
-    )?)?;
-    ensure(backend == "leanfran 0.6.0", "unexpected leanfran version")?;
-    let generator = text(run_command(
-        opts,
-        &stage.0,
-        "generator-version",
-        &["env", "leanfran", "--generator-version"],
-    )?)?;
-    ensure(generator == "4", "unexpected leanfran generator version")?;
-    let target = stage.0.join("generated.rs");
-    let target_path = target.to_str().ok_or("non-UTF-8 staged artifact path")?;
-    let mut args = vec![
-        "env",
-        "leanfran",
-        "module",
-        "generate",
-        "--module-name",
-        &opts.module,
-        "--roots",
-    ];
-    for root in &opts.roots {
-        args.push(root);
-    }
-    args.extend(["--output-file", target_path, "--output", "json"]);
-    let summary_raw = run_command(opts, &stage.0, "leanfran", &args)?;
-    let summary = contract::strict_json_value(&summary_raw)?;
-    let artifact = read_bounded(&target)?;
-    let report = contract::ir_report(
+        "native-inprocess-ir",
+        "bash",
+        &native_root,
+        &[
+            "scripts/compile-bundle.sh",
+            &opts.module,
+            &opts.roots[0],
+            input_path,
+            destination_path,
+            export,
+        ],
+    )?;
+    let artifact = read_bounded(&destination.join("generated.rs"))?;
+    let bundle = read_bounded(&destination.join("receipt.txt"))?;
+    let bundle_text = std::str::from_utf8(&bundle).map_err(|e| e.to_string())?;
+    let source_hash = contract::digest(&read_bounded(&input)?);
+    let report = contract::native_ir_report(
         &opts.module,
         &opts.roots,
-        contract::IrVersions {
-            toolchain: pin,
-            lean: lean_version,
-            backend: &backend,
-            generator: &generator,
-        },
+        pin,
+        lean_version,
+        &source.git_blob,
+        &source_hash,
         &artifact,
-        summary,
+        bundle_text,
     );
-    let receipt = serde_json::to_vec(&report).map_err(|e| e.to_string())?;
-    Ok((artifact, receipt))
+    let raw = serde_json::to_vec(&report).map_err(|e| e.to_string())?;
+    Ok((artifact, raw))
 }
+
 fn write_receipt(stage: &Stage, destination: &Path, receipt: &Value) -> Result<()> {
     let staged = stage.0.join("accepted-receipt.json");
     fs::write(
@@ -356,8 +394,9 @@ fn write_receipt(stage: &Stage, destination: &Path, receipt: &Value) -> Result<(
 }
 
 fn execute(opts: &Options) -> Result<()> {
-    // Invalidate a previous acceptance BEFORE doing any fallible work.
-    if opts.receipt.exists() {
+    // Invalidate an old compile receipt before attempting a new build.
+    // Verify may read its embedded backend evidence before reissuing it.
+    if opts.mode == Mode::Compile && opts.receipt.exists() {
         fs::remove_file(&opts.receipt).map_err(|e| e.to_string())?;
     }
     let source = contract::source_identity(
@@ -377,6 +416,14 @@ fn execute(opts: &Options) -> Result<()> {
             let artifact = read_bounded(&opts.artifact)?;
             let report = match &opts.backend_report {
                 Some(p) => Some(read_bounded(p)?),
+                None if opts.backend == Backend::CompilerIr => {
+                    // Verification is reproducible from the persisted receipt
+                    // without inventing a second backend report file.
+                    let prior = contract::strict_json_value(&read_bounded(&opts.receipt)?)?;
+                    let embedded = prior.get("backend_report")
+                        .ok_or("missing native backend evidence in prior receipt")?;
+                    Some(serde_json::to_vec(embedded).map_err(|e| e.to_string())?)
+                }
                 None => None,
             };
             (artifact, report, None, None)
@@ -387,7 +434,7 @@ fn execute(opts: &Options) -> Result<()> {
             match opts.backend {
                 Backend::CompilerIr => {
                     let (artifact, report) =
-                        compiler_ir(opts, &stage, &source.lean_toolchain, &actual)?;
+                        compiler_ir(opts, &stage, &source.lean_toolchain, &actual, &source)?;
                     (artifact, Some(report), Some(actual), None)
                 }
                 Backend::ResidualExpr => {
@@ -415,6 +462,20 @@ fn execute(opts: &Options) -> Result<()> {
         &opts.roots,
         &source,
     )?;
+    if opts.backend == Backend::CompilerIr {
+        let raw = backend_report.as_deref().ok_or("missing native compiler report")?;
+        let evidence = contract::strict_json_value(raw)?;
+        let original_sha256 = contract::digest(&read_bounded(
+            &opts.source_repo.join(&source.path),
+        )?);
+        ensure(
+            evidence["source_lean_sha256"] == json!(original_sha256),
+            "native bundle was compiled from a different source file",
+        )?;
+        // Source and artifact hashes are checked again on every verify;
+        // the embedded report does not authorize execution or a proof claim.
+        receipt["backend_report"] = evidence;
+    }
     if let Some(version) = actual_version {
         receipt["actual_lean_version"] = json!(version);
         if opts.backend == Backend::ResidualExpr {
@@ -499,5 +560,27 @@ mod tests {
     #[test]
     fn no_silent_backend_substitution() {
         assert!(Backend::parse("auto").is_err());
+    }
+    #[test]
+    fn native_route_refuses_multiple_roots_before_compilation() {
+        let args = [
+            "compile", "--backend", "compiler-ir", "--module", "Demo",
+            "--root", "Demo.f", "--root", "Demo.g",
+            "--source-repo", "/tmp/source", "--source-path", "Demo.lean",
+            "--source-revision", "a", "--output", "/tmp/generated.rs",
+            "--receipt", "/tmp/receipt.json",
+        ].iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(Options::parse(&args).is_err());
+    }
+    #[test]
+    fn native_route_refuses_symbolic_producer() {
+        let args = [
+            "compile", "--backend", "compiler-ir", "--module", "Demo",
+            "--root", "Demo.f", "--source-repo", "/tmp/source",
+            "--source-path", "Demo.lean", "--source-revision", "a",
+            "--producer", "ResidualGraph.lean", "--output", "/tmp/generated.rs",
+            "--receipt", "/tmp/receipt.json",
+        ].iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(Options::parse(&args).is_err());
     }
 }

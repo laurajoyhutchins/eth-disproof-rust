@@ -40,7 +40,7 @@ fn verify(graph: &BipartiteGraph, cert: &MatchingLabelCertificate) {
         .unwrap_or(0);
     assert_eq!(cert.maximum_degree, left_degree.max(right_degree));
     if !graph.edges.is_empty() {
-        assert!(cert.matching_count <= 2 * cert.maximum_degree - 1);
+        assert!(cert.matching_count < 2 * cert.maximum_degree);
     }
     assert!(
         u128::try_from(cert.maximum_pair_class_load).unwrap() * cert.exact_load_bound_denominator

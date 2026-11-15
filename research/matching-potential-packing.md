@@ -174,6 +174,24 @@ The final row uses an additional line-coloring theorem and is **not** checked by
 
 For the *changed* packing lemma, the previous \(16r^8\) floor from the old \(D^2\Delta\) inequality is **not** a universal requirement. It was conditional on the old lemma.
 
+## Bounded executable labeling reference
+
+The separate `two_adic_matching_labels::construct_bounded` Rust routine implements
+the **actual deterministic labeling algorithm** on small bipartite multigraphs:
+greedy proper edge coloring, exact conditional-expectation comparisons with
+one integer denominator, and a final certificate containing the labels,
+color classes, class loads and potential numerator. No random sampling or
+floating-point estimates are used. Parallel edges and shared endpoints are
+tested. The code refuses fixed-width overflows and intentionally limits
+the graph/alphabet sizes. It is a correctness reference, **not** the
+unrestricted polynomial-time implementation justified by the proof; that
+version needs a standard arbitrary-precision integer dependency.
+
+The bounded implementation does not yet construct packets from the
+resulting class loads. Its existence is not evidence that the published
+source's full recursion, precision schedule, or complexity bound has
+been verified.
+
 ## Executable arithmetic and proof obligations
 
 `RootPackingAudit.matching_potential_required_edges()` computes the new sufficient threshold using checked \(u128\) arithmetic, and `matching_potential_packing_holds()` separately checks \(2L\le\Delta\). This is a numerical check, not a verified constructed labeling. The `appendix-packing` CLI always returns an unsupported-recursion receipt; its field `matching_packing_arithmetic_holds` is not a proof of a full recursion.

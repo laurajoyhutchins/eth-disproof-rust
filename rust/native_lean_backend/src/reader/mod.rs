@@ -19,4 +19,5 @@ mod ownership;
 mod usage;
 mod view;
 
+use ownership::OwnershipSummary;
 use view::{AltView, FnBodyView};

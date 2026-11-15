@@ -187,8 +187,8 @@ impl Reader {
                     .unwrap();
                     x = next;
                 }
-                FnBodyView::Inc { target, next }
-                | FnBodyView::Dec { target, next }
+                FnBodyView::Inc { target, next, .. }
+                | FnBodyView::Dec { target, next, .. }
                 | FnBodyView::Delete { target, next } => {
                     // In the bounded value-semantic subset, Rc aliases own
                     // their Rust references. A source-CFG preflight refuses

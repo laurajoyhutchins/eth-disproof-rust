@@ -1,10 +1,26 @@
-//! Source-CFG reference-count audit over borrowed Lean IR.
-//! A nonrecursive join executes only when reached by an IR jump.
+//! Source-ordered physical ownership admission over borrowed Lean compiler IR.
+//! The emitted Rc representation is not the source physical reference-count
+//! machine. We therefore reject observations after potentially unmatched RC
+//! effects, including effects through direct calls, joins, cases and closures.
 use super::*;
 
+// Interprocedural summaries are a conservative may-analysis. Syntactic
+// closure creation does *not* execute its callee; actual indirect AP does.
+#[derive(Default)]
+pub(super) struct OwnershipSummary {
+    may_effect: BTreeSet<String>,
+    may_observe: BTreeSet<String>,
+}
+
+#[derive(Default)]
+struct LocalEffects {
+    effect: bool,
+    observe: bool,
+    direct_calls: BTreeSet<String>,
+    partial_calls: BTreeSet<String>,
+}
+
 impl Reader {
-    // An isShared expression is a physical ownership observation even when
-    // the current generated value representation is immutable and Rc-backed.
     pub(super) unsafe fn shared_observations(body: Obj) -> CompilerResult<BTreeSet<usize>> {
         let mut observed = BTreeSet::new();
         let mut pending = vec![body];
@@ -44,11 +60,119 @@ impl Reader {
         Ok(observed)
     }
 
-    // Follow executable source control flow rather than the syntax tree:
-    // jdecl makes its binding visible but only jmp executes the value body.
-    // Conservatively remember reference-count effects across all paths.
-    // VarIds do not imply disjoint heap objects.
-    pub(super) unsafe fn rc_may_precede_sharedness(body: Obj) -> CompilerResult<bool> {
+    // Analyze every source alternative and lexically defined join body.
+    // This over-approximates executable effects without pretending that a
+    // declared, unentered join or PAP eagerly calls its target.
+    unsafe fn local_effects(body: Obj) -> CompilerResult<LocalEffects> {
+        let mut result = LocalEffects::default();
+        let mut pending = vec![body];
+        let mut count = 0usize;
+        while let Some(current) = pending.pop() {
+            count += 1;
+            if count > 100_000 {
+                return Err("source ownership effect scan limit exceeded".into());
+            }
+            match Self::body_view(current)? {
+                FnBodyView::Decl { expr, next, .. } => {
+                    match Self::checked_tag(expr, "Expr")? {
+                        1 | 2 | 8 => result.effect = true, // reset, reuse, indirect AP
+                        6 => {
+                            result.direct_calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
+                        }
+                        7 => {
+                            result.partial_calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
+                        }
+                        12 => result.observe = true,
+                        _ => {}
+                    }
+                    pending.push(next);
+                }
+                FnBodyView::Join { value, next, .. } => {
+                    pending.push(value);
+                    pending.push(next);
+                }
+                FnBodyView::Case { alternatives, .. } => {
+                    for alt in Self::array(alternatives)? {
+                        let branch = match Self::alt_view(alt)? {
+                            AltView::Constructor { body } | AltView::Default { body } => body,
+                        };
+                        pending.push(branch);
+                    }
+                }
+                FnBodyView::Inc { persistent, next, .. }
+                | FnBodyView::Dec { persistent, next, .. } => {
+                    result.effect |= !persistent;
+                    pending.push(next);
+                }
+                FnBodyView::Delete { next, .. } => {
+                    result.effect = true;
+                    pending.push(next);
+                }
+                FnBodyView::Set { next, .. } | FnBodyView::ScalarSet { next, .. } => {
+                    pending.push(next);
+                }
+                FnBodyView::Return { .. } | FnBodyView::Jump { .. } => {}
+            }
+        }
+        Ok(result)
+    }
+
+    // Fixed point over the exact, requested-root executable declaration
+    // closure, including recursive direct-call cycles. Missing primitive
+    // bodies conservatively count as potential effects.
+    pub(super) unsafe fn ownership_summary(
+        closure: &BTreeMap<String, Obj>,
+    ) -> CompilerResult<OwnershipSummary> {
+        let mut locals = BTreeMap::<String, LocalEffects>::new();
+        let mut summary = OwnershipSummary::default();
+        for (name, decl) in closure {
+            let effects = Self::local_effects(Self::field(*decl, 3)?)?;
+            if effects.effect || effects.direct_calls.iter().any(|c| !closure.contains_key(c)) {
+                summary.may_effect.insert(name.clone());
+            }
+            if effects.observe {
+                summary.may_observe.insert(name.clone());
+            }
+            locals.insert(name.clone(), effects);
+        }
+        // Every successful iteration adds at least one of at most 2*n facts.
+        for _ in 0..(2 * closure.len() + 1) {
+            let mut changed = false;
+            for (name, effects) in &locals {
+                if effects.direct_calls.iter().any(|callee| summary.may_effect.contains(callee)) {
+                    changed |= summary.may_effect.insert(name.clone());
+                }
+                if effects.direct_calls.iter().any(|callee| summary.may_observe.contains(callee)) {
+                    changed |= summary.may_observe.insert(name.clone());
+                }
+            }
+            if !changed {
+                return Ok(summary);
+            }
+        }
+        Err("ownership call-effect fixed point did not converge".into())
+    }
+
+    // Source PAPs transfer captured references into a closure object. If the
+    // target observes physical sharing, the immutable Rc closure adapter has
+    // no proven capture/borrow correspondence, even if its body has no RC ops.
+    pub(super) unsafe fn captures_observer(
+        body: Obj,
+        summary: &OwnershipSummary,
+    ) -> CompilerResult<bool> {
+        let events = Self::local_effects(body)?;
+        Ok(events.partial_calls.iter().any(|c| summary.may_observe.contains(c)))
+    }
+
+    // Actual executable path analysis; join bodies are visited only at a
+    // jump, and branch histories never leak into sibling alternatives.
+    // At an observation or call into an observing callee, any earlier
+    // possible effect is a hard refusal. Unknown indirect applications
+    // taint subsequent observations.
+    pub(super) unsafe fn rc_may_precede_sharedness(
+        body: Obj,
+        summary: Option<&OwnershipSummary>,
+    ) -> CompilerResult<bool> {
         #[derive(Clone)]
         struct JoinScope {
             id: usize,
@@ -64,14 +188,32 @@ impl Reader {
             }
             match Self::body_view(current)? {
                 FnBodyView::Decl { expr, next, .. } => {
-                    if prior_rc && Self::checked_tag(expr, "Expr")? == 12 {
+                    let tag = Self::checked_tag(expr, "Expr")?;
+                    if prior_rc && tag == 12 {
                         return Ok(true);
                     }
-                    pending.push((next, prior_rc, scope, depth));
+                    let mut effects = prior_rc;
+                    match tag {
+                        1 | 2 | 8 => effects = true, // reset, reuse, unknown AP
+                        6 => {
+                            let name = Self::name(Self::field(expr, 0)?, 0)?;
+                            if let Some(s) = summary {
+                                if prior_rc && s.may_observe.contains(&name) {
+                                    return Ok(true);
+                                }
+                                // If a primitive call is absent from the
+                                // source closure, it has unknown RC effects.
+                                effects |= !s.may_effect.contains(&name)
+                                    && !s.may_observe.contains(&name)
+                                    && !is_primitive(&name);
+                                effects |= s.may_effect.contains(&name);
+                            }
+                        }
+                        _ => {}
+                    }
+                    pending.push((next, effects, scope, depth));
                 }
-                FnBodyView::Join {
-                    id, value, next, ..
-                } => {
+                FnBodyView::Join { id, value, next, .. } => {
                     let id = Self::var(id)?;
                     let visible = Some(std::rc::Rc::new(JoinScope {
                         id,
@@ -83,9 +225,11 @@ impl Reader {
                 FnBodyView::Set { next, .. } | FnBodyView::ScalarSet { next, .. } => {
                     pending.push((next, prior_rc, scope, depth));
                 }
-                FnBodyView::Inc { next, .. }
-                | FnBodyView::Dec { next, .. }
-                | FnBodyView::Delete { next, .. } => {
+                FnBodyView::Inc { persistent, next, .. }
+                | FnBodyView::Dec { persistent, next, .. } => {
+                    pending.push((next, prior_rc || !persistent, scope, depth));
+                }
+                FnBodyView::Delete { next, .. } => {
                     pending.push((next, true, scope, depth));
                 }
                 FnBodyView::Case { alternatives, .. } => {

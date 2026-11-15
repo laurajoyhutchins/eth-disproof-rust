@@ -96,6 +96,12 @@ for spec in "array:262144" "closure:262144" "nat:12000"; do
   "$out/bench-subprocess" "$out/lean-c" "$rustbin" "$workload" "$count" \
     "$out/$workload-expected.txt" \
     > "$out/$workload-runtime-ns.tsv" 2> "$out/$workload-summary.txt"
+  # A zero-iteration control measures launch, dynamic-linker and driver
+  # startup without invoking the emitted Lean function. Report separately.
+  printf '0\n' > "$out/$workload-zero-expected.txt"
+  "$out/bench-subprocess" "$out/lean-c" "$rustbin" "$workload" 0 \
+    "$out/$workload-zero-expected.txt" \
+    > "$out/$workload-startup-ns.tsv" 2> "$out/$workload-startup-summary.txt"
 done
 ldd "$out/lean-c" > "$out/lean-c-dependencies.txt"
 ldd "$rustbin" > "$out/rust-dependencies.txt"
@@ -111,6 +117,7 @@ ldd "$rustbin" > "$out/rust-dependencies.txt"
   echo 'original_lean_small_oracle=32_per_workload'
   echo 'large_workload_parity=lean_c_equals_rust'
   echo 'runtime_samples_per_backend=12_per_workload'
+  echo 'zero_iteration_startup_control=12_samples_per_backend'
   echo 'compile_samples_per_backend=1_not_a_statistical_result'
   echo 'runtime_scope=warm_subprocess_launch_to_checked_exit'
   echo 'runtime_linkage=lean_c_uses_lean_runtime;rust_uses_gmp_without_lean_runtime'
@@ -123,9 +130,14 @@ ldd "$rustbin" > "$out/rust-dependencies.txt"
     "$out/BenchmarkKernels.c" "$out/BenchmarkDriver.c" \
     "$generated/src/lib.rs" "$out/compile-phases.tsv" "$out/parity.tsv" \
     "$out/runtime-rss.tsv" "$out/array-runtime-ns.tsv" \
-    "$out/closure-runtime-ns.tsv" "$out/nat-runtime-ns.tsv"
+    "$out/closure-runtime-ns.tsv" "$out/nat-runtime-ns.tsv" \
+    "$out/array-startup-ns.tsv" "$out/closure-startup-ns.tsv" \
+    "$out/nat-startup-ns.tsv"
 } > "$out/receipt.txt"
 cat "$out/receipt.txt"
 cat "$out/compile-phases.tsv"
 cat "$out/parity.tsv"
-for k in array closure nat; do cat "$out/$k-summary.txt"; done
+for k in array closure nat; do
+  cat "$out/$k-summary.txt"
+  cat "$out/$k-startup-summary.txt"
+done

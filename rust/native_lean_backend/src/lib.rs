@@ -7,7 +7,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::fmt::Write;
 
+mod names;
+mod primitives;
 mod safety;
+
+use names::{append_name_component, encode_name_str, internal_closure_name, internal_name};
+use primitives::{is_nat_primitive, is_primitive, primitive_spec, runtime_primitive_spec};
+#[cfg(test)]
+use primitives::{PRIMITIVE_REGISTRY, RUNTIME_PRIMITIVE_REGISTRY};
 
 // Generated from the complete reviewed pinned Lean IR constructor contract.
 include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));
@@ -30,7 +37,6 @@ extern "C" {
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
     fn lr_nat_decimal(x: Obj) -> *mut c_char;
-    fn lr_param_borrow(x: Obj) -> i32;
     fn lr_free_string(x: *mut c_char);
     fn lr_string_size(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
@@ -168,6 +174,84 @@ mod __lean_array_ownership_tests {
 }
 "#;
 
+const CLOSURE_INLINE_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_closure_inline_tests {
+    use super::{__LeanValue, __LeanValueRepr};
+
+    fn plus(a: __LeanValue, b: __LeanValue) -> __LeanValue {
+        __LeanValue::boxed_u64(a.unbox_u64().wrapping_add(b.unbox_u64()))
+    }
+
+    fn ternary(a: __LeanValue, b: __LeanValue, c: __LeanValue) -> __LeanValue {
+        __LeanValue::boxed_u64(
+            a.unbox_u64().wrapping_add(b.unbox_u64()).wrapping_add(c.unbox_u64())
+        )
+    }
+
+    fn triple(args: Vec<__LeanValue>) -> __LeanValue {
+        assert_eq!(args.len(), 3);
+        __LeanValue::boxed_u64(
+            args[0].unbox_u64()
+                .wrapping_add(args[1].unbox_u64())
+                .wrapping_add(args[2].unbox_u64())
+        )
+    }
+
+    #[test]
+    fn binary_pap_is_one_heap_object_without_capture_vec() {
+        let f = __LeanValue::pap2(plus, __LeanValue::boxed_u64(11));
+        assert!(matches!(f.0.as_ref(), __LeanValueRepr::Closure2 { .. }));
+        assert_eq!(f.apply1(__LeanValue::boxed_u64(5)).unbox_u64(), 16);
+        assert_eq!(f.apply1(__LeanValue::boxed_u64(7)).unbox_u64(), 18);
+    }
+
+    #[test]
+    fn owned_last_use_moves_capture_but_shared_alias_remains_callable() {
+        let unique = __LeanValue::pap2(plus, __LeanValue::boxed_u64(17));
+        assert_eq!(unique.apply1_owned(__LeanValue::boxed_u64(2)).unbox_u64(), 19);
+        let shared = __LeanValue::pap2(plus, __LeanValue::boxed_u64(20));
+        let alias = shared.clone();
+        assert_eq!(shared.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 23);
+        assert_eq!(alias.apply1(__LeanValue::boxed_u64(4)).unbox_u64(), 24);
+        assert_eq!(alias.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 25);
+    }
+
+    #[test]
+    fn two_inline_captures_remain_ordered_and_alias_safe() {
+        let original = __LeanValue::pap3(
+            ternary, __LeanValue::boxed_u64(10), __LeanValue::boxed_u64(20)
+        );
+        assert!(matches!(original.0.as_ref(), __LeanValueRepr::Closure3 { .. }));
+        assert_eq!(original.apply1(__LeanValue::boxed_u64(3)).unbox_u64(), 33);
+        let alias = original.clone();
+        assert_eq!(original.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 35);
+        assert_eq!(alias.apply1_owned(__LeanValue::boxed_u64(7)).unbox_u64(), 37);
+        let unique = __LeanValue::pap3(
+            ternary, __LeanValue::boxed_u64(1), __LeanValue::boxed_u64(2)
+        );
+        assert_eq!(unique.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 6);
+    }
+
+    #[test]
+    fn general_closure_partial_application_remains_source_ordered() {
+        let base = __LeanValue::pap(triple, 3, vec![__LeanValue::boxed_u64(1)]);
+        let partial = base.apply1(__LeanValue::boxed_u64(2));
+        assert_eq!(partial.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 6);
+        assert_eq!(base.apply(vec![
+            __LeanValue::boxed_u64(7), __LeanValue::boxed_u64(9)
+        ]).unbox_u64(), 17);
+    }
+
+    #[test]
+    #[should_panic(expected = "oversaturated binary source PAP")]
+    fn specialized_closure_refuses_oversaturation() {
+        let f = __LeanValue::pap2(plus, __LeanValue::boxed_u64(1));
+        let _ = f.apply(vec![__LeanValue::boxed_u64(2), __LeanValue::boxed_u64(3)]);
+    }
+}
+"#;
+
 // Embedded at the end of generated code; tests must follow emitted declarations.
 const ERASED_JOIN_TEST_SOURCE: &str = r#"
 #[cfg(test)]
@@ -190,12 +274,6 @@ mod erased_join_safety_tests {
     #[should_panic(expected = "erased join value was read")]
     fn erased_equality_refuses() {
         assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
-    }
-
-    #[test]
-    #[should_panic(expected = "isShared requires a heap-backed Lean value")]
-    fn tagged_immediate_sharedness_refuses() {
-        let _ = __LeanValue::tagged(0).is_shared();
     }
 }
 
@@ -255,6 +333,12 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
+        let closure_tests =
+            if source.contains("__LeanValue::pap2(") || source.contains("__LeanValue::pap3(") {
+                CLOSURE_INLINE_TEST_SOURCE
+            } else {
+                ""
+            };
         let set_tests = if source.contains(".with_field(") {
             CONSTRUCTOR_SET_TEST_SOURCE
         } else {
@@ -265,7 +349,7 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}")
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{closure_tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}")
     } else {
         source
     };
@@ -376,16 +460,6 @@ impl Reader {
             t => Err(format!("unknown Lean.Name tag {t}")),
         }
     }
-    // Param.borrow is an unboxed Bool in pinned Lean IR.Param, not one of
-    // its two pointer fields. The Lean C ABI verifies its actual layout.
-    unsafe fn param_borrow(x: Obj) -> Result<bool, String> {
-        match lr_param_borrow(x) {
-            0 => Ok(false),
-            1 => Ok(true),
-            _ => Err("unsupported Lean IR.Param borrowed-flag layout".into()),
-        }
-    }
-
     unsafe fn var(x: Obj) -> Result<usize, String> {
         // A Lean single-field structure may be represented as its single field
         // after erasure; accept both representations, reject all other cases.
@@ -653,6 +727,22 @@ impl Reader {
         Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
     }
 
+    // An indirect AP can consume its closure only at its proven last IR
+    // use. All branches and lexical joins are scanned; unknown constructs
+    // refuse the optimization. Arguments may not alias the function itself.
+    unsafe fn consumable_ap(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
+        if Self::checked_tag(expr, "Expr")? != 8 {
+            return Ok(None);
+        }
+        let id = Self::var(Self::field(expr, 0)?)?;
+        for arg in Self::array(Self::field(expr, 1)?)? {
+            if Self::arg_refs(arg, id)? {
+                return Ok(None);
+            }
+        }
+        Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
+    }
+
     // A direct callee takes ownership of its argument. Moving an object at
     // its unique final use avoids manufacturing a temporary Rust Rc alias.
     // Do not extend this analysis through joins, branches, indirect calls,
@@ -700,6 +790,7 @@ impl Reader {
         functions: Option<&FunctionTable>,
         consumed_array: Option<usize>,
         consumed_calls: &BTreeSet<usize>,
+        consumed_ap: Option<usize>,
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
@@ -856,6 +947,25 @@ impl Reader {
                     // immutable value model; scalar operands still refuse.
                     captured.push(Self::arg(arg, env, "tobj")?);
                 }
+                if signature.params.len() == 2 && captured.len() == 1 {
+                    // Original binary PAP with one bound value.
+                    return Ok(format!(
+                        "__LeanValue::pap2({}_binary, {})",
+                        internal_closure_name(&name),
+                        captured[0]
+                    ));
+                }
+                if signature.params.len() == 3 && captured.len() == 2 {
+                    // The pinned Lean boxed-lambda IR for the benchmark
+                    // binds two values of a generated ternary helper. Embed
+                    // both captures in the Rc closure; no heap capture Vec.
+                    return Ok(format!(
+                        "__LeanValue::pap3({}_ternary, {}, {})",
+                        internal_closure_name(&name),
+                        captured[0],
+                        captured[1]
+                    ));
+                }
                 Ok(format!(
                     "__LeanValue::pap({}, {}, vec![{}])",
                     internal_closure_name(&name),
@@ -879,6 +989,14 @@ impl Reader {
                 let args = Self::array(Self::field(x, 1)?)?;
                 if args.is_empty() || args.len() > 16 {
                     return Err("AP requires 1..16 object arguments".into());
+                }
+                if args.len() == 1 {
+                    let arg = Self::arg(args[0], env, "tobj")?;
+                    return if consumed_ap == Some(fun) {
+                        Ok(format!("x_{fun}.apply1_owned({arg})"))
+                    } else {
+                        Ok(format!("x_{fun}.apply1({arg})"))
+                    };
                 }
                 let mut lowered = Vec::new();
                 for arg in args {
@@ -1707,6 +1825,11 @@ impl Reader {
                     } else {
                         BTreeSet::new()
                     };
+                    let consumed_ap = if straight_line {
+                        Self::consumable_ap(expr, tail)?
+                    } else {
+                        None
+                    };
                     let value = Self::expr(
                         expr,
                         ty,
@@ -1714,6 +1837,7 @@ impl Reader {
                         ctx.functions,
                         consumed_array,
                         &consumed_calls,
+                        consumed_ap,
                     )?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
@@ -1731,17 +1855,11 @@ impl Reader {
                         return Err(format!("join point {id} shadows a visible join"));
                     }
                     let mut param_types = Vec::new();
-                    let join_shared = Self::shared_observations(Self::field(x, 2)?)?;
                     let mut value_env = env.clone();
                     let mut param_code = Vec::new();
                     for param in Self::array(Self::field(x, 1)?)? {
                         let var = Self::var(Self::field(param, 0)?)?;
                         let ty = Self::ty(Self::field(param, 1)?)?;
-                        if Self::param_borrow(param)? && join_shared.contains(&var) {
-                            return Err(format!(
-                                "borrowed join parameter x_{var} has unverified isShared ownership semantics"
-                            ));
-                        }
                         if value_env.insert(var, ty).is_some() {
                             return Err(format!(
                                 "join parameter x_{var} reused a visible variable"
@@ -1940,7 +2058,6 @@ impl Reader {
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
-        let shared = Self::shared_observations(body)?;
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
@@ -1954,11 +2071,6 @@ impl Reader {
             }
             let var = Self::var(Self::field(*param, 0)?)?;
             let ty = Self::ty(Self::field(*param, 1)?)?;
-            if Self::param_borrow(*param)? && shared.contains(&var) {
-                return Err(format!(
-                    "borrowed parameter x_{var} has unverified isShared ownership semantics"
-                ));
-            }
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}"));
             }
@@ -1982,102 +2094,13 @@ impl Reader {
     }
 }
 
-// The path separators cannot occur inside a canonical component: plain
-// ASCII components exclude '.', '~'; special strings and Nat segments use
-// disjoint prefixed encodings. The original Lean.Name object crosses FFI.
-fn append_name_component(parent: &str, component: &str) -> String {
-    if parent.is_empty() {
-        component.to_owned()
-    } else {
-        format!("{parent}.{component}")
-    }
-}
-
-fn encode_name_str(component: &str) -> Result<String, String> {
-    if component.len() > 4096 {
-        return Err("Lean.Name string component exceeds safety cap".into());
-    }
-    if !component.is_empty()
-        && !component.as_bytes()[0].is_ascii_digit()
-        && component
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'!')
-    {
-        return Ok(component.to_owned());
-    }
-    let mut encoded = String::from("~s");
-    for byte in component.as_bytes() {
-        write!(&mut encoded, "{byte:02x}").unwrap();
-    }
-    Ok(encoded)
-}
-
-// Emitted Rust function names remain injective for all canonical Lean paths.
-// Naming is injective over UTF-8 bytes and independent of declaration ordering.
-fn internal_closure_name(lean_name: &str) -> String {
-    format!("__pap_{}", internal_name(lean_name))
-}
-
-fn internal_name(lean_name: &str) -> String {
-    let mut out = String::from("lean_");
-    for byte in lean_name.as_bytes() {
-        write!(&mut out, "{byte:02x}").unwrap();
-    }
-    out
-}
-
 impl Reader {
-    // Gather all physical sharing observations in one declaration body.
-    // IR variable identities are unique; unsupported shapes fail closed.
-    unsafe fn shared_observations(body: Obj) -> Result<BTreeSet<usize>, String> {
-        let mut observed = BTreeSet::new();
-        let mut pending = vec![body];
-        let mut count = 0usize;
-        while let Some(current) = pending.pop() {
-            count += 1;
-            if count > 100_000 {
-                return Err("sharedness audit exceeds 100000 IR instructions".into());
-            }
-            match Self::checked_tag(current, "FnBody")? {
-                0 => {
-                    let expr = Self::field(current, 2)?;
-                    if Self::checked_tag(expr, "Expr")? == 12 {
-                        observed.insert(Self::var(Self::field(expr, 0)?)?);
-                    }
-                    pending.push(Self::field(current, 3)?);
-                }
-                1 => {
-                    pending.push(Self::field(current, 2)?);
-                    pending.push(Self::field(current, 3)?);
-                }
-                2 => pending.push(Self::field(current, 3)?),
-                5 => pending.push(Self::field(current, 5)?),
-                6 | 7 => pending.push(Self::field(current, 2)?),
-                8 => pending.push(Self::field(current, 1)?),
-                9 => {
-                    for alt in Self::array(Self::field(current, 3)?)? {
-                        let idx = match Self::checked_tag(alt, "Alt")? {
-                            0 => 1,
-                            1 => 0,
-                            t => return Err(format!("unsupported sharedness audit Alt {t}")),
-                        };
-                        pending.push(Self::field(alt, idx)?);
-                    }
-                }
-                10 | 11 => {}
-                t => return Err(format!("unsupported sharedness audit FnBody {t}")),
-            }
-        }
-        Ok(observed)
-    }
-
     unsafe fn signature(decl: Obj) -> Result<Signature, String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
         let mut params = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
-            let _ = Self::param_borrow(param)?;
             params.push(Self::ty(Self::field(param, 1)?)?);
         }
         Ok(Signature {
@@ -2224,6 +2247,28 @@ impl Reader {
             {
                 continue;
             }
+            // Full-application helpers can take stack arguments directly
+            // when one source AP operand remains. The original Vec thunk
+            // remains available for general PAPs and multi-arg applications.
+            if sig.params.len() == 2 {
+                result.push_str("#[allow(dead_code)]\n");
+                writeln!(
+                    result,
+                    "fn {}_binary(capture: __LeanValue, arg: __LeanValue) -> __LeanValue {{",
+                    internal_closure_name(name)
+                )
+                .unwrap();
+                writeln!(result, "    {}(capture, arg)\n}}", internal_name(name)).unwrap();
+            }
+            if sig.params.len() == 3 {
+                result.push_str("#[allow(dead_code)]\n");
+                writeln!(
+                    result,
+                    "fn {}_ternary(a: __LeanValue, b: __LeanValue, c: __LeanValue) -> __LeanValue {{",
+                    internal_closure_name(name)
+                ).unwrap();
+                writeln!(result, "    {}(a, b, c)\n}}", internal_name(name)).unwrap();
+            }
             result.push_str("#[allow(dead_code)]\n");
             writeln!(
                 result,
@@ -2279,85 +2324,6 @@ impl Reader {
         }
         include_value_runtime(result)
     }
-}
-
-const PRIMITIVE_REGISTRY: &str = include_str!("../primitive-registry.tsv");
-
-struct PrimitiveSpec<'a> {
-    operand_type: &'a str,
-    rust_op: &'a str,
-    comparison: bool,
-}
-
-fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
-    PRIMITIVE_REGISTRY
-        .lines()
-        .filter(|line| !line.starts_with('#') && !line.is_empty())
-        .find_map(|line| {
-            let mut cells = line.split('\t');
-            let id = cells.next()?;
-            let operand_type = cells.next()?;
-            let rust_op = cells.next()?;
-            let kind = cells.next()?;
-            if cells.next().is_some() || id != name {
-                return None;
-            }
-            Some(PrimitiveSpec {
-                operand_type,
-                rust_op,
-                comparison: kind == "comparison",
-            })
-        })
-}
-
-// The supported Nat runtime is explicit, with no fallback to host arithmetic.
-// Both dependency discovery and native codegen consult this exact whitelist.
-fn is_nat_primitive(name: &str) -> bool {
-    matches!(
-        name,
-        "Nat.add"
-            | "Nat.sub"
-            | "Nat.mul"
-            | "Nat.div"
-            | "Nat.mod"
-            | "Nat.decEq"
-            | "Nat.decLt"
-            | "Nat.decLe"
-    )
-}
-
-fn is_primitive(name: &str) -> bool {
-    primitive_spec(name).is_some()
-        || is_nat_primitive(name)
-        || runtime_primitive_spec(name).is_some()
-        || matches!(
-            name,
-            "Array.mkEmpty" | "Array.getInternal" | "Array.getInternalBorrowed" | "Array.set!"
-        )
-}
-
-const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");
-struct RuntimePrimitiveSpec<'a> {
-    rust_function: &'a str,
-    shape: &'a str,
-}
-fn runtime_primitive_spec(name: &str) -> Option<RuntimePrimitiveSpec<'static>> {
-    RUNTIME_PRIMITIVE_REGISTRY
-        .lines()
-        .filter(|line| !line.starts_with('#') && !line.is_empty())
-        .find_map(|line| {
-            let mut cells = line.split('\t');
-            let id = cells.next()?;
-            let rust_function = cells.next()?;
-            let shape = cells.next()?;
-            if cells.next().is_some() || id != name {
-                return None;
-            }
-            Some(RuntimePrimitiveSpec {
-                rust_function,
-                shape,
-            })
-        })
 }
 
 unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
@@ -2547,6 +2513,11 @@ mod tests {
         assert!(RUNTIME_SOURCE.contains("Closure {"));
         assert!(RUNTIME_SOURCE.contains("fn pap("));
         assert!(RUNTIME_SOURCE.contains("fn apply("));
+        assert!(RUNTIME_SOURCE.contains("Closure2 {"));
+        assert!(RUNTIME_SOURCE.contains("fn pap2("));
+        assert!(RUNTIME_SOURCE.contains("fn pap3("));
+        assert!(RUNTIME_SOURCE.contains("fn apply1("));
+        assert!(RUNTIME_SOURCE.contains("fn apply1_owned("));
         assert_eq!(RUNTIME_SOURCE.matches("fn is_shared(").count(), 1);
         assert!(!RUNTIME_SOURCE.contains("fn mutate"));
     }

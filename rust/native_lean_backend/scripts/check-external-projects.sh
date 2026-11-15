@@ -661,7 +661,7 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   echo 'general_G1_acceptance=NOT_ESTABLISHED'
   sha256sum "$cli_package/receipt.txt" "$cli_package/src/lib.rs" \
     "$cli_package/tests/lean-oracle.rs"
-} > "$out/keboola/cli-acceptance.txt" "$out/unified-cli-manifest.tsv" "$out/unified-cli-summary.txt"
+} > "$out/keboola/cli-acceptance.txt"
 
 # Recompile the exact three original roots through the *public* compiler
 # facade, not only the native FFI smoke script. A tiny Newspeak projection
@@ -698,7 +698,9 @@ fi
   echo "substantial_external_project_roots_verified=2_of_3"
   echo "semantic_verification_of_selected_external_roots=armada_pass_keboola_pass_newspeak_span_pass"
   echo "toolchain=$(lean --version)"
-  sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt" "$out/keboola/cli-acceptance.txt"
+  sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt" \
+    "$out/keboola/cli-acceptance.txt" "$out/unified-cli-manifest.tsv" \
+    "$out/unified-cli-summary.txt"
 } > "$out/receipt.txt"
 cat "$manifest"
 cat "$out/receipt.txt"

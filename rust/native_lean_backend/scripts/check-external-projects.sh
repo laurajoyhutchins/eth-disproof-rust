@@ -661,7 +661,15 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   echo 'general_G1_acceptance=NOT_ESTABLISHED'
   sha256sum "$cli_package/receipt.txt" "$cli_package/src/lib.rs" \
     "$cli_package/tests/lean-oracle.rs"
-} > "$out/keboola/cli-acceptance.txt"
+} > "$out/keboola/cli-acceptance.txt" "$out/unified-cli-manifest.tsv" "$out/unified-cli-summary.txt"
+
+# Recompile the exact three original roots through the *public* compiler
+# facade, not only the native FFI smoke script. A tiny Newspeak projection
+# does NOT satisfy the third substantial-root acceptance requirement.
+EXTERNAL_SOURCE_CHECKOUTS="$scratch" \
+EXTERNAL_EVIDENCE_DIR="$out" \
+EXTERNAL_NATIVE_ROOT="$native" \
+  bash "$native/scripts/check-unified-external-cli.sh"
 
 if ! grep -Fqx 'generated_rust_semantic_parity=256_original_Lean_Keboola_pullDecide_cases_PASS' \
     "$out/keboola/identity.txt"; then
@@ -684,6 +692,9 @@ fi
   echo "external_keboola_original_root=256_source_oracles_PASS"
   echo "external_newspeak_original_root=256_source_oracles_PASS"
   echo "independent_external_source_roots_with_parity=3"
+  echo "public_eth_compiler_original_projects=3_verified_against_source_oracles"
+  echo "public_eth_compiler_substantial_roots=2_of_3"
+  echo "public_eth_compiler_newspeak_certificate=NOT_ACCEPTED"
   echo "substantial_external_project_roots_verified=2_of_3"
   echo "semantic_verification_of_selected_external_roots=armada_pass_keboola_pass_newspeak_span_pass"
   echo "toolchain=$(lean --version)"

@@ -2,6 +2,22 @@
 use super::*;
 
 impl Reader {
+    // A case arm inherits visible bindings without exporting its own
+    // definitions. Every arm still shares the instruction budget and
+    // increments nesting depth exactly once.
+    unsafe fn lower_case_arm(
+        arm: Obj,
+        code: &mut String,
+        depth: usize,
+        count: &mut usize,
+        env: &BTreeMap<usize, &'static str>,
+        ret_ty: &str,
+        ctx: LoweringContext<'_>,
+    ) -> Result<(), String> {
+        let mut arm_env = env.clone();
+        Self::body(arm, code, depth + 1, count, &mut arm_env, ret_ty, ctx)
+    }
+
     pub(super) unsafe fn case_body(
         x: Obj,
         code: &mut String,
@@ -135,13 +151,12 @@ impl Reader {
                         return Err(format!("invalid or repeated tagged constructor {name}"));
                     }
                     writeln!(code, "        {index} => {{").unwrap();
-                    let mut branch_env = env.clone();
-                    Self::body(
+                    Self::lower_case_arm(
                         Self::field(alt, 1)?,
                         code,
-                        depth + 1,
+                        depth,
                         count,
-                        &mut branch_env,
+                        env,
                         ret_ty,
                         ctx,
                     )?;
@@ -160,8 +175,7 @@ impl Reader {
         }
         if let Some(body) = default {
             writeln!(code, "        _ => {{").unwrap();
-            let mut branch_env = env.clone();
-            Self::body(body, code, depth + 1, count, &mut branch_env, ret_ty, ctx)?;
+            Self::lower_case_arm(body, code, depth, count, env, ret_ty, ctx)?;
             writeln!(code, "        }}").unwrap();
         } else {
             writeln!(
@@ -294,13 +308,12 @@ impl Reader {
                 )
                 .unwrap();
             }
-            let mut arm_env = env.clone();
-            Self::body(
+            Self::lower_case_arm(
                 Self::field(alt, if is_default { 0 } else { 1 })?,
                 code,
-                depth + 1,
+                depth,
                 count,
-                &mut arm_env,
+                env,
                 ret_ty,
                 ctx,
             )?;
@@ -376,13 +389,12 @@ impl Reader {
                     } else {
                         writeln!(code, "            assert!(x_{id}.has_ctor({tag}, \"{name}\", {pointers}), \"invalid object constructor representation\");").unwrap();
                     }
-                    let mut local = env.clone();
-                    Self::body(
+                    Self::lower_case_arm(
                         Self::field(*alt, 1)?,
                         code,
-                        depth + 1,
+                        depth,
                         count,
-                        &mut local,
+                        env,
                         ret_ty,
                         ctx,
                     )?;
@@ -396,13 +408,12 @@ impl Reader {
                     }
                     default = true;
                     writeln!(code, "        _ => {{").unwrap();
-                    let mut local = env.clone();
-                    Self::body(
+                    Self::lower_case_arm(
                         Self::field(*alt, 0)?,
                         code,
-                        depth + 1,
+                        depth,
                         count,
-                        &mut local,
+                        env,
                         ret_ty,
                         ctx,
                     )?;
@@ -470,16 +481,7 @@ impl Reader {
             seen[cidx] = true;
             writeln!(code, "        {cidx} => {{").unwrap();
             // Branch-local variable definitions must never leak across arms.
-            let mut arm_env = env.clone();
-            Self::body(
-                Self::field(alt, 1)?,
-                code,
-                depth + 1,
-                count,
-                &mut arm_env,
-                ret_ty,
-                ctx,
-            )?;
+            Self::lower_case_arm(Self::field(alt, 1)?, code, depth, count, env, ret_ty, ctx)?;
             writeln!(code, "        }}").unwrap();
         }
         if !seen.into_iter().all(|b| b) {

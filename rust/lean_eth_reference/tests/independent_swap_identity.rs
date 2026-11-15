@@ -131,3 +131,61 @@ fn finite_integer_contractions_agree_after_weight_grouping() {
         assert_eq!(direct, decomposed, "lambda={lambda}");
     }
 }
+
+
+#[test]
+fn signed_grouped_contraction_handles_shared_wires_and_zero_crossings() {
+    // A single joint assignment chooses four bits a,b,c,d. Each swap crossing
+    // reads overlapping adjacent bit pairs, so the crossings are NOT
+    // independently summed. The external tensor weight can be negative.
+    //
+    // This is a finite regression for the universal Lean theorem, not a
+    // substitute for its proof or a complexity bound.
+    assert_eq!(-singlet_numerator(1) * singlet_numerator(1), -1);
+    for crossing_count in 0..=4 {
+        let mut direct = 0_i128;
+        let mut grouped = 0_i128;
+        for state in 0..16_usize {
+            let wires = std::array::from_fn::<_, 4, _>(|k| (state >> k) & 1);
+            let endpoints = std::array::from_fn::<_, 4, _>(|e| {
+                let next = (e + 1) % 4;
+                let after_next = (e + 2) % 4;
+                (
+                    (wires[e] << 1) | wires[next],
+                    (wires[next] << 1) | wires[after_next],
+                )
+            });
+            let external_weight = state as i128 % 7 - 3;
+            let direct_entry: i128 = (0..crossing_count)
+                .map(|e| direct_swap_entry(endpoints[e].0, endpoints[e].1))
+                .product();
+            direct += external_weight * direct_entry;
+
+            let mut mode_sum = 0_i128;
+            for weight in 0..=crossing_count {
+                for selected in 0..(1_usize << crossing_count) {
+                    if selected.count_ones() as usize != weight {
+                        continue;
+                    }
+                    let entry: i128 = (0..crossing_count)
+                        .map(|e| {
+                            let (row, col) = endpoints[e];
+                            if (selected >> e) & 1 == 1 {
+                                -singlet_numerator(row) * singlet_numerator(col)
+                            } else {
+                                delta(row, col)
+                            }
+                        })
+                        .product();
+                    mode_sum += entry;
+                }
+            }
+            assert_eq!(
+                mode_sum, direct_entry,
+                "shared-wire state={state}, crossings={crossing_count}"
+            );
+            grouped += external_weight * mode_sum;
+        }
+        assert_eq!(grouped, direct, "crossings={crossing_count}");
+    }
+}

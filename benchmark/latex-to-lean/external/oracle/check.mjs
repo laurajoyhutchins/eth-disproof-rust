@@ -127,8 +127,9 @@ export function runOracle({externalDir,receiptsDir,leanifyDir,outDir}) {
         try {
           if(backend==="leanify") {
             ok(receipt.generated.leanify?.namespace===ns,"namespace mismatch "+item.id);
-            owned=path.join(cwd,ns);
-            fs.mkdirSync(owned);
+            const newOwned=path.join(cwd,ns);
+            fs.mkdirSync(newOwned); // take ownership only after success
+            owned=newOwned;
             for(const name of ["Article.lean","Compiled.lean"]) {
               const entry=receipt.generated.leanify.modules?.[name];
               ok(entry?.name===ns+"/"+name,"native path mismatch "+item.id);
@@ -139,8 +140,9 @@ export function runOracle({externalDir,receiptsDir,leanifyDir,outDir}) {
           } else {
             const e=receipt.generated.structural;
             ok(e?.name===ns+".lean","structural path mismatch "+item.id);
-            owned=path.join(cwd,ns+".lean");
-            fs.writeFileSync(owned,relativeBytes(path.join(receiptsDir,item.id),e.name,e.sha256),{flag:"wx"});
+            const newOwned=path.join(cwd,ns+".lean");
+            fs.writeFileSync(newOwned,relativeBytes(path.join(receiptsDir,item.id),e.name,e.sha256),{flag:"wx"});
+            owned=newOwned;
           }
           work=fs.mkdtempSync(path.join(cwd,".external-oracle-"));
           const build=run("lake",["build",ns+(backend==="leanify"?".Article":"")],cwd);

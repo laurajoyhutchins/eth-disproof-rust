@@ -1,35 +1,21 @@
 # Two-path Lean codegen acceptance contract
 
-Status: **Rust implementation, unverified generated artifacts**. This work is
-stacked on the compiler-IR and core-expression PRs. It does not prove the ETH
-counting machine executable.
+**Status:** canonical native IR backend and a non-executable residual-expression producer, both fail closed. Neither certifies the full ETH counting algorithm.
 
-## One Rust frontend
+## One user-facing compiler, distinct source semantics
 
-`eth-compiler` provides two subcommands:
+The `eth-compiler` CLI has two explicit routes. `compile --backend compiler-ir` drives the existing **in-process Lean 4.34.1 compiler** in `rust/native_lean_backend`, using its already-supported atomic source/Rust bundle. It does not invoke leanfran. `compile --backend residual-expr` invokes the existing Lean core-expression DAG producer for a source definition that cannot be compiled from ordinary executable IR. The latter **does not emit Rust**.
 
-- `compile`: run a selected Lean or leanfran producer, validate the output,
-  and publish the artifact and corresponding unverified receipt.
-- `verify`: inspect an existing artifact and optional IR backend report against
-  the same source and schema contract. No code is generated or executed.
+There is no automatic substitution between routes, and no alternate production GMP/`Rc` runtime. Both share source Git identity, artifact digest, receipt format, strict refusal rules and `verify`. The physical `StructuredCalls`/`BitProgram` lowering remains specialized until its semantics have been independently matched to the original source.
 
-The backend is explicitly `compiler-ir` or `residual-expr`; a failed route
-**never** runs a different algorithm. This opt-in routing is intentional while
-there is no proven cross-backend semantic substitution rule.
+## Commands
 
-Implementation: `src/bin/eth-compiler.rs` and `src/lean_codegen.rs`. This
-code uses **existing locked dependencies only**: Serde for typed graph/receipt
-validation, serde_json for JSON, sha2 for SHA-256, and standard Rust process,
-filesystem and timing APIs. No bespoke JSON syntax, Python orchestration, or
-new crate lock entries.
+Build the pinned in-process compiler first and set `LEAN_PREFIX` to the pinned Lean 4.34.1 toolchain. See [the canonical compiler guide](compiler-ir-backend.md) for a reproducible `compile` and `verify` invocation.
 
-## Reproducible execution
-
-For a Git-pinned Lean project with an actual module and a committed
-`lean-toolchain` file:
+For the symbolic route, with a Git-committed Lean module and matching source toolchain:
 
 ```sh
-cargo run --locked --bin eth-compiler -- compile \
+cargo run --locked --offline --bin eth-compiler -- compile \
   --backend residual-expr \
   --source-repo /work/lean-project \
   --source-revision "$(git -C /work/lean-project rev-parse HEAD)" \
@@ -41,75 +27,20 @@ cargo run --locked --bin eth-compiler -- compile \
   --receipt /tmp/lean-residual.receipt.json
 ```
 
-To run compiler IR, use `--backend compiler-ir`, omit `--producer`, and
-choose a Rust output path. This requires actual `leanfran 0.6.0`,
-generator version 4 and Lean 4.35.0, **not** the original Lean 4.34.1
-source tree. No automatic upgrade or fallback is allowed.
+The `verify` command checks the Git source and artifact bytes. For native IR the original backend evidence is embedded in the receipt. A failure invalidates the receipt; it never authorizes executing a different algorithm.
 
-To validate an artifact without running Lean:
+## What the acceptance receipts establish
 
-```sh
-cargo run --locked --bin eth-compiler -- verify \
-  --backend residual-expr \
-  --source-repo /work/lean-project \
-  --source-revision "$(git -C /work/lean-project rev-parse HEAD)" \
-  --source-path LeanIRSmoke.lean \
-  --module LeanIRSmoke --root LeanIRSmoke.double \
-  --artifact /tmp/lean-residual.json \
-  --receipt /tmp/lean-residual.receipt.json
-```
+1. The original source file and toolchain pin bytes agree with Git HEAD and the requested commit.
+2. Native IR artifacts must carry an actual pinned compiler-bundle receipt, the correct root and module, matching generated source hashes, a standalone Rust compile receipt, and explicit *not established* semantic and physical-refinement fields. Previous leanfran 4.35.0 reports are invalid.
+3. The symbolic DAG must pass strict typed JSON/topological validation, bounded node counts, exact source-root identity, and non-executable output restrictions.
+4. Successful output is staged and the receipt is published last. An old compile receipt is invalidated before a new attempt; generated code is never silently substituted on failure.
+5. All receipts retain `executable_approved: false` until independent source equivalence is established. A generated and compiled Rust library is not an accepted ETH counting machine.
 
-Compiler-IR verification additionally requires `--backend-report` containing
-the original generation summary. The standard binary runs all lightweight
-contract tests under `cargo test --locked --offline --all-targets`.
+The compiled native bundle identifies one source file and its compiler closure. This does not independently establish the transitive Git identity or semantic equivalence of all imported declarations. The symbolic producer's `lean_defeq_checked` field is not itself an externally checkable kernel proof.
 
-## Enforced integrity and failure behavior
+## Remaining work
 
-Before accepting either route, the runner checks:
+A production G1 release requires broader unchanged Lean-project acceptance and proper closure/ownership semantics. G2 additionally requires justified source residualization, demand-driven delta/iota reduction, verified physical program composition, full original Lean/Rust state traces and resource correspondence. The original ETH-specific source graph machinery remains until those obligations are discharged.
 
-1. Git HEAD equals the specified 40-hex revision; the source file and
-   toolchain pin bytes match their committed Git blobs.
-2. The observed Lean version matches the pinned source toolchain during
-   compilation. The IR route verifies the expected leanfran/generator version.
-3. Backend report/root identities, artifact SHA-256, byte length and missing
-   declarations or skips are checked.
-4. Residual graphs are decoded with typed Serde enums, strict unknown-field
-   rejection, duplicate JSON-field rejection, topological references,
-   bounded node counts, and exact source root.
-5. Accepted artifacts are staged; the receipt is published last. Any failed
-   invocation removes an old acceptance receipt. Consumers must recheck the
-   receipt digest before using the corresponding artifact.
-
-The output explicitly retains:
-
-```json
-{
-  "executable_approved": false,
-  "checks": {
-    "declaration_source_binding": "not-established",
-    "transitive_executable_closure": "not-established",
-    "lean_rust_semantic_refinement": "not-established",
-    "physical_bitprogram_refinement": "not-established"
-  }
-}
-```
-
-The above is an excerpt of the receipt, not a complete example. The Git blob
-proves the checked **file** identity, not that the named Lean declaration
-originated in that file or that its dependencies are computationally safe.
-The symbolic producer's `lean_defeq_checked` flag is not a standalone
-kernel-checkable certificate.
-
-## Outstanding technical obligations
-
-- Build a genuine Lean declaration provenance witness and a transitive
-  computational dependency closure (including critical axioms and externs).
-- Establish source-preserving demand-driven delta/iota reduction without
-  forcing astronomical `Fin l -> Instr` tables.
-- Construct a typed Rust residual-expression consumer and prove/independently
-  test every accepted operation against the original Lean semantics.
-- Demonstrate original ETH BitProgram label, PC, port, transition and cost
-  correspondence. A successful Rust compilation is not that proof.
-
-The existing ETH-specific source-graph exporter retains its separately
-established physical-graph slice and has not been removed.
+See [the compiler guide](compiler-ir-backend.md), [residualization](core-expr-residualizer.md), and [source/refinement obligations](../../../research/lean-rust-acceptance.md).

@@ -628,7 +628,8 @@ pub fn validate_ir(
         "native IR report claims unproved semantic or physical verification",
     )?;
     ensure(
-        doc.generated_sha256 == digest(artifact) && doc.generated_bytes == artifact.len() as u64
+        doc.generated_sha256 == digest(artifact)
+            && doc.generated_bytes == artifact.len() as u64
             && sha256_hex(&doc.cargo_manifest_sha256),
         "native IR generated Cargo source/manifest digest mismatch",
     )?;
@@ -844,8 +845,11 @@ mod tests {
         let roots = vec!["Demo.inc".into(), "Demo.twice".into()];
         let project_receipt = format!(
             "status=GENERATED_COMPILED_SEMANTICS_NOT_VERIFIED\nmodule=Demo\nroots=Demo.inc,Demo.twice\nsource_sha256={}\nphase_timeout_seconds=300\nsource_revision={}\nbackend_revision={}\nlean_version=Lean (version 4.34.1, x86_64)\nrust_version=rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbackend_sha256={}\ngenerated_sha256={}\nsemantic_verification=NOT_PERFORMED\ntransitive_source_manifest=NOT_CAPTURED\n",
-            source_sha, source.git_revision, "c".repeat(40),
-            "d".repeat(64), digest(code),
+            source_sha,
+            source.git_revision,
+            "c".repeat(40),
+            "d".repeat(64),
+            digest(code),
         );
         let report = native_ir_report(NativeIrProject {
             module: "Demo",
@@ -860,38 +864,62 @@ mod tests {
             native_project_receipt: &project_receipt,
         });
         let raw = serde_json::to_vec(&report).unwrap();
-        let accepted =
-            validate(Backend::CompilerIr, code, Some(&raw), "Demo", &roots, &source).unwrap();
+        let accepted = validate(
+            Backend::CompilerIr,
+            code,
+            Some(&raw),
+            "Demo",
+            &roots,
+            &source,
+        )
+        .unwrap();
         assert_eq!(accepted["executable_approved"], false);
         assert_eq!(accepted["status"], "generated-unverified");
 
         let bad = |field: &str, value: Value| {
             let mut r = report.clone();
             r[field] = value;
-            validate_ir(&serde_json::to_vec(&r).unwrap(), code, "Demo", &roots, &source)
-                .is_err()
+            validate_ir(
+                &serde_json::to_vec(&r).unwrap(),
+                code,
+                "Demo",
+                &roots,
+                &source,
+            )
+            .is_err()
         };
         assert!(bad("generated_sha256", json!("0".repeat(64))));
         assert!(bad("source_git_blob", json!("0".repeat(40))));
         assert!(bad("source_revision", json!("f".repeat(40))));
-        assert!(bad("roots", json!(["Demo.twice","Demo.inc"])));
-        assert!(bad("native_project_receipt", json!(project_receipt.replace(
-            "semantic_verification=NOT_PERFORMED", "semantic_verification=PROVED",
-        ))));
-        assert!(bad("native_project_receipt", json!(format!(
-            "{project_receipt}status=GENERATED_COMPILED_SEMANTICS_NOT_VERIFIED\n"
-        ))));
-        assert!(bad("native_project_receipt", json!(project_receipt.replace(
-            "roots=Demo.inc,Demo.twice", "roots=Demo.inc",
-        ))));
+        assert!(bad("roots", json!(["Demo.twice", "Demo.inc"])));
+        assert!(bad(
+            "native_project_receipt",
+            json!(project_receipt.replace(
+                "semantic_verification=NOT_PERFORMED",
+                "semantic_verification=PROVED",
+            ))
+        ));
+        assert!(bad(
+            "native_project_receipt",
+            json!(format!(
+                "{project_receipt}status=GENERATED_COMPILED_SEMANTICS_NOT_VERIFIED\n"
+            ))
+        ));
+        assert!(bad(
+            "native_project_receipt",
+            json!(project_receipt.replace("roots=Demo.inc,Demo.twice", "roots=Demo.inc",))
+        ));
         // Legacy adapter reports cannot impersonate the native G1 runtime.
-        assert!(validate_ir(
-            br#"{"format":"lean-compiler-ir-backend-probe-v1"}"#,
-            code,
-            "Demo",
-            &roots,
-            &source,
-        ).is_err());
+        assert!(
+            validate_ir(
+                br#"{"format":"lean-compiler-ir-backend-probe-v1"}"#,
+                code,
+                "Demo",
+                &roots,
+                &source,
+            )
+            .is_err()
+        );
     }
     #[test]
     fn source_name_and_version_checks() {

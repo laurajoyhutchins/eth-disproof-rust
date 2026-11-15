@@ -23,7 +23,10 @@ impl Reader {
         features: &Cell<RuntimeFeatures>,
     ) -> CompilerResult<String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
-            return Err(CompilerError::new(RefusalKind::Decl, "extern declaration without executable body"));
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                "extern declaration without executable body",
+            ));
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
         if rust_name.is_empty()
@@ -32,7 +35,10 @@ impl Reader {
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'_')
         {
-            return Err(CompilerError::new(RefusalKind::Decl, "unsafe Rust function name"));
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                "unsafe Rust function name",
+            ));
         }
         const KEYWORDS: &[&str] = &[
             "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
@@ -42,7 +48,10 @@ impl Reader {
             "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
         ];
         if KEYWORDS.contains(&rust_name) || rust_name == "_" {
-            return Err(CompilerError::new(RefusalKind::Decl, "reserved Rust function name"));
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                "reserved Rust function name",
+            ));
         }
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
@@ -54,7 +63,10 @@ impl Reader {
         // Source RC effects are erased in the bounded value runtime;
         // reject physical observations after an earlier CFG effect.
         if !shared.is_empty() && Self::rc_may_precede_sharedness(body)? {
-            return Err(CompilerError::new(RefusalKind::Decl, "unverified isShared after source inc/dec/del reference bookkeeping"));
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                "unverified isShared after source inc/dec/del reference bookkeeping",
+            ));
         }
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
@@ -73,12 +85,18 @@ impl Reader {
                 RuntimeFeatures::mark(features, RuntimeFeatures::VALUE);
             }
             if Self::param_borrow(*param)? && shared.contains(&var) {
-                return Err(CompilerError::new(RefusalKind::Decl, format!(
-                    "borrowed parameter x_{var} has unverified isShared ownership semantics"
-                )));
+                return Err(CompilerError::new(
+                    RefusalKind::Decl,
+                    format!(
+                        "borrowed parameter x_{var} has unverified isShared ownership semantics"
+                    ),
+                ));
             }
             if env.insert(var, ty).is_some() {
-                return Err(CompilerError::new(RefusalKind::Decl, format!("duplicate parameter x_{var}")));
+                return Err(CompilerError::new(
+                    RefusalKind::Decl,
+                    format!("duplicate parameter x_{var}"),
+                ));
             }
             write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
         }
@@ -124,7 +142,10 @@ impl Reader {
         while let Some(body) = pending.pop() {
             count += 1;
             if count > 100_000 {
-                return Err(CompilerError::new(RefusalKind::Dependency, "dependency IR traversal exceeded 100000 instructions"));
+                return Err(CompilerError::new(
+                    RefusalKind::Dependency,
+                    "dependency IR traversal exceeded 100000 instructions",
+                ));
             }
             match Self::body_view(body)? {
                 FnBodyView::Decl { expr, next, .. } => {
@@ -189,14 +210,20 @@ impl Reader {
             ));
         }
         if roots.is_empty() || roots.len() > 128 {
-            return Err(CompilerError::new(RefusalKind::Dependency, "expected 1..128 public Lean root declarations"));
+            return Err(CompilerError::new(
+                RefusalKind::Dependency,
+                "expected 1..128 public Lean root declarations",
+            ));
         }
         let entries = Self::array(decls)?;
         let mut definitions = BTreeMap::<String, Obj>::new();
         for decl in entries {
             let name = Self::name(Self::field(decl, 0)?, 0)?;
             if definitions.insert(name.clone(), decl).is_some() {
-                return Err(CompilerError::new(RefusalKind::Dependency, format!("duplicate IR declaration in closure: {name}")));
+                return Err(CompilerError::new(
+                    RefusalKind::Dependency,
+                    format!("duplicate IR declaration in closure: {name}"),
+                ));
             }
         }
         let mut pending = Vec::new();
@@ -204,10 +231,16 @@ impl Reader {
         let mut root_names = BTreeSet::new();
         for (root, public) in &roots {
             if !root_names.insert(root.clone()) {
-                return Err(CompilerError::new(RefusalKind::Dependency, format!("duplicate public Lean root: {root}")));
+                return Err(CompilerError::new(
+                    RefusalKind::Dependency,
+                    format!("duplicate public Lean root: {root}"),
+                ));
             }
             if !public_names.insert(public.clone()) {
-                return Err(CompilerError::new(RefusalKind::Dependency, format!("duplicate Rust public API name: {public}")));
+                return Err(CompilerError::new(
+                    RefusalKind::Dependency,
+                    format!("duplicate Rust public API name: {public}"),
+                ));
             }
             if !definitions.contains_key(root) {
                 return Err(CompilerError::new(
@@ -305,9 +338,10 @@ impl Reader {
         }
         // Exact same dependency closure is shared by all public wrappers.
         for (root, public_name) in roots {
-            let sig = signatures
-                .get(&root)
-                .ok_or(CompilerError::new(RefusalKind::Dependency, "requested root missing from closure"))?;
+            let sig = signatures.get(&root).ok_or(CompilerError::new(
+                RefusalKind::Dependency,
+                "requested root missing from closure",
+            ))?;
             // Validate the identifier, including Rust reserved words.
             let _ = Self::emit_function(
                 *closure.get(&root).unwrap(),

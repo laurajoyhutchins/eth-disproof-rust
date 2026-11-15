@@ -3,6 +3,17 @@ open Lean Elab Command
 
 namespace BorrowFlagFixture
   @[noinline] def passthrough (x : Nat) : Nat := x
+
+  -- An original compiled Lean program, not a constructed IR declaration.
+  -- The function only inspects its input constructor tag and never takes
+  -- ownership of the frame or one of its fields.
+  inductive Frame where
+    | vacant
+    | node (left right : Nat)
+  @[noinline] def inspectTag (value : Frame) : UInt8 :=
+    match value with
+    | .vacant => 0
+    | .node .. => 1
 end BorrowFlagFixture
 
 -- Construct genuine Lean.IR.Param values in the pinned Lean process.
@@ -36,6 +47,17 @@ run_cmd do
   let accepted := NativeRust.emit permitted "owned_observation"
   unless accepted.startsWith "OK\n" do
     throwError "owned-param source IR unexpectedly refused: {accepted}"
+
+  -- Verify that actual pinned Lean compiler output produces a borrowed
+  -- formal. This protects the analysis against only testing invented flags.
+  let sourceDecl? ← liftCoreM do
+    if (← Lean.IR.findDecl `BorrowFlagFixture.inspectTag).isNone then
+      Lean.Compiler.compile #[`BorrowFlagFixture.inspectTag]
+    Lean.IR.findDecl `BorrowFlagFixture.inspectTag
+  let some (.fdecl _ sourceParams _ _ _) := sourceDecl?
+    | throwError "missing original Lean IR for borrowed tag inspector"
+  unless sourceParams.size == 1 && sourceParams[0]!.borrow do
+    throwError "original Lean compiler did not mark read-only Frame parameter as borrowed"
 
   -- Direct source-ownership permissions are independent of Rust Rc aliases.
   -- Borrowed x begins with zero transferable references. The source-only

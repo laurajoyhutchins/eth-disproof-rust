@@ -111,6 +111,25 @@ jobs:
             and .executable_approved == false
             and .checks.lean_rust_semantic_refinement == "not-established"
           ' rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json
+          # A modified artifact must refuse and invalidate its copied receipt.
+          cp rust/native_lean_backend/artifacts/eth-compiler-canonical.rs \
+            rust/native_lean_backend/artifacts/eth-compiler-tampered.rs
+          cp rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json \
+            rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json
+          printf '\n// tampered after generation\n' >> rust/native_lean_backend/artifacts/eth-compiler-tampered.rs
+          if cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- verify \
+              --backend compiler-ir \
+              --source-repo "$GITHUB_WORKSPACE" \
+              --source-revision "$(git rev-parse HEAD)" \
+              --source-path rust/native_lean_backend/examples/PropertyDef.lean \
+              --source-toolchain-path rust/native_lean_backend/lean-toolchain \
+              --module PropertyDef --root Property.hop \
+              --artifact "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered.rs" \
+              --receipt "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json"; then
+            echo "Tampered canonical IR artifact accepted" >&2
+            exit 1
+          fi
+          test ! -e rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json
           # Keep the exact-head provenance and all generated-code hashes in the job log.
           cat rust/native_lean_backend/artifacts/native-smoke-receipt.txt
           cat rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt

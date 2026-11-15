@@ -21,12 +21,27 @@ function fixture(){
     fs.writeFileSync(path.join(dir,name),data);
     logs[name.replace(".","_")+"_sha256"]=sha256(Buffer.from(data));
   }
+  const identity=validateSource(bytes);
+  const namespace="Unified"+identity.sha256.slice(0,20);
+  const nativeDir=path.join(dir,namespace);
+  fs.mkdirSync(nativeDir);
+  const modules={};
+  for(const name of ["Article.lean","Compiled.lean"]){
+    const data="-- synthetic "+name+" native elaboration receipt\n";
+    fs.writeFileSync(path.join(nativeDir,name),data);
+    modules[name]={name:namespace+"/"+name,sha256:sha256(Buffer.from(data))};
+  }
+  for(const name of ["leanify.init.stdout","leanify.init.stderr","leanify.build.stdout","leanify.build.stderr"]){
+    const data="native "+name+"\n";
+    fs.writeFileSync(path.join(dir,name),data);
+    logs[name.replaceAll(".","_")+"_sha256"]=sha256(Buffer.from(data));
+  }
   const report=receipt({
-    source:validateSource(bytes),
+    source:identity,
     observations:[{backend:"leanify",status:"parsed",claim_count:1},
       {backend:"structural",status:"diagnosed_failure",claim_count:0}],
     tools:{leanify:{commit:LEANIFY_COMMIT},structural:{binary_sha256:binary}},
-    generated:{},logs
+    generated:{leanify:{namespace,modules}},logs
   });
   fs.writeFileSync(path.join(dir,"receipt.json"),JSON.stringify(report));
  }
@@ -68,5 +83,21 @@ test("fabricated backend selection is rejected",t=>{
 test("missing receipt cannot be silently skipped",t=>{
  const f=fixture();t.after(()=>fs.rmSync(f.root,{recursive:true,force:true}));
  fs.rmSync(path.join(f.runs,"A01","receipt.json"));
+ assert.notEqual(run(f).status,0);
+});
+
+test("modified generated Lean source is rejected",t=>{
+ const f=fixture();t.after(()=>fs.rmSync(f.root,{recursive:true,force:true}));
+ const dir=path.join(f.runs,"B99");
+ const r=JSON.parse(fs.readFileSync(path.join(dir,"receipt.json")));
+ const name=r.generated.leanify.modules["Article.lean"].name;
+ fs.appendFileSync(path.join(dir,name),"\n-- tampered");
+ assert.notEqual(run(f).status,0);
+});
+test("missing elaboration output refuses score even if parsing passed",t=>{
+ const f=fixture();t.after(()=>fs.rmSync(f.root,{recursive:true,force:true}));
+ const file=path.join(f.runs,"A01","receipt.json"),r=JSON.parse(fs.readFileSync(file));
+ delete r.generated.leanify;
+ fs.writeFileSync(file,JSON.stringify(r));
  assert.notEqual(run(f).status,0);
 });

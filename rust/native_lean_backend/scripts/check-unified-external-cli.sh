@@ -168,13 +168,11 @@ RUST
     echo "semantic_coverage=FINITE_ORACLES_NOT_A_PROOF"
     echo "transitive_source_manifest=NOT_CAPTURED"
     sha256sum "$source_file" "$oracle" "$package/src/lib.rs" \
-      "$package/Cargo.toml" "$package/receipt.txt" "$receipt" \
-      "$oracle_package/oracles/source_lean.rs" 2>/dev/null || {
-      # The Armada oracle is in tests/, not oracles/.
-      test "$name" == armada || exit 1
-    }
+      "$package/Cargo.toml" "$package/receipt.txt" "$receipt"
     if [[ "$name" == armada ]]; then
       sha256sum "$oracle_package/tests/source_lean.rs"
+    else
+      sha256sum "$oracle_package/oracles/source_lean.rs"
     fi
   } > "$case_dir/unified-cli-evidence.txt"
   printf '%s\t%s\t%s\t%s\tPASS\tPASS\t%s\n' \

@@ -80,8 +80,65 @@ theorem anthropic_instance_preserves_contraction
     _ = contraction N.S N.W N.Θ N.f :=
       anthropic_value_eq_contraction N
 
+
+/--
+The source's node grouping followed by its finite-alphabet instance
+construction preserves its *original* network value in one statement.
+Both transformations are the exact pinned Anthropic definitions.
+-/
+theorem anthropic_grouped_instance_eq_original
+    {J J' σ τ A : Type*}
+    [Fintype J] [LinearOrder J] [Fintype J'] [LinearOrder J']
+    [Fintype A] [DecidableEq A]
+    (N : Groundwork.Network J σ τ) (color : J → J')
+    (outsideState : σ) (outsideLabel : τ)
+    (labelCodes : J' → J' → Finset A)
+    (decode : J' → J' → A → (J × J → τ))
+    (hcode : ∀ a b, a < b →
+      Set.BijOn (decode a b) (labelCodes a b)
+        ((N.merge color outsideState outsideLabel).Θ a b))
+    (defaultCode : A) :
+    ((N.merge color outsideState outsideLabel).toInst labelCodes decode).Z
+      defaultCode = N.value := by
+  calc
+    ((N.merge color outsideState outsideLabel).toInst labelCodes decode).Z
+        defaultCode =
+      contraction (N.merge color outsideState outsideLabel).S
+        (N.merge color outsideState outsideLabel).W
+        (N.merge color outsideState outsideLabel).Θ
+        (N.merge color outsideState outsideLabel).f :=
+      anthropic_instance_preserves_contraction
+        (N.merge color outsideState outsideLabel) labelCodes decode hcode defaultCode
+    _ = contraction N.S N.W N.Θ N.f :=
+      anthropic_merge_preserves_contraction N color outsideState outsideLabel
+    _ = N.value := (anthropic_value_eq_contraction N).symm
+
+/--
+A two-node source network with one allowed edge label and one joint
+assignment. Every local weight is one, so its exact value is one.
+-/
+private def oneEdgeNetwork : Groundwork.Network (Fin 2) Bool Bool where
+  S _ := {false}
+  W _ _ := 1
+  Θ _ _ := {true}
+  f _ _ _ _ := 1
+  c _ _ := 1
+
+/--
+Not every nominal edge-code mapping preserves value. Dropping all edge
+codes removes the only contributing edge label, changing 1 to 0.
+The failed bijection cannot be omitted from the source adapter.
+-/
+theorem dropping_edge_labels_changes_value :
+    (oneEdgeNetwork.toInst
+      (fun _ _ => (∅ : Finset Bool))
+      (fun _ _ _ => true)).Z false ≠ oneEdgeNetwork.value := by
+  decide
+
 #print axioms IndependentETH.SourceNetwork.anthropic_value_eq_contraction
 #print axioms IndependentETH.SourceNetwork.anthropic_merge_preserves_contraction
 #print axioms IndependentETH.SourceNetwork.anthropic_instance_preserves_contraction
+#print axioms IndependentETH.SourceNetwork.anthropic_grouped_instance_eq_original
+#print axioms IndependentETH.SourceNetwork.dropping_edge_labels_changes_value
 
 end IndependentETH.SourceNetwork

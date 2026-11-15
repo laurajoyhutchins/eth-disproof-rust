@@ -68,3 +68,22 @@ reference-count observations still need an exact operational simulation,
 especially across branches, joins, closures, and calls. End-to-end output
 equality on these fixtures is evidence for these executions, not a general
 equivalence theorem or a G2 resource guarantee.
+
+## Borrowed parameter observations
+
+Lean 4.34.1 `Lean.IR.Param` carries a packed `borrow : Bool` field.
+The canonical Lean C ABI shim now reads it from the source object and checks
+the exact pinned representation. `examples/BorrowFlagFixture.lean`
+constructs source-native owned and borrowed parameters and confirms that the
+C accessor agrees with Lean's field values.
+
+The emitter refuses `Expr.isShared` on a borrowed function or join parameter
+because the caller, not the callee, owns its reference-count lifetime. The
+current generated Rust signature does not yet represent that borrow contract.
+It also refuses `isShared` on tagged immediates at runtime, rather than
+observing the artificial `Rc` allocation used by the adapter.
+
+This is an explicit **restriction**, not a completion of reference-count
+equivalence. Owned values may still have mismatched physical traces where
+generated clones and erased `inc`/`dec`/`del` interact. Future acceptance
+must prove or refuse those patterns, with source-C execution evidence.

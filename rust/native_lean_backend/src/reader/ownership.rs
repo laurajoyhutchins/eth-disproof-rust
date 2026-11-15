@@ -10,6 +10,7 @@ use super::*;
 pub(super) struct OwnershipSummary {
     may_effect: BTreeSet<String>,
     may_observe: BTreeSet<String>,
+    known_functions: BTreeSet<String>,
 }
 
 #[derive(Default)]
@@ -125,6 +126,7 @@ impl Reader {
     ) -> CompilerResult<OwnershipSummary> {
         let mut locals = BTreeMap::<String, LocalEffects>::new();
         let mut summary = OwnershipSummary::default();
+        summary.known_functions.extend(closure.keys().cloned());
         for (name, decl) in closure {
             let effects = Self::local_effects(Self::field(*decl, 3)?)?;
             if effects.effect || effects.direct_calls.iter().any(|c| !closure.contains_key(c)) {
@@ -203,10 +205,8 @@ impl Reader {
                                 }
                                 // If a primitive call is absent from the
                                 // source closure, it has unknown RC effects.
-                                effects |= !s.may_effect.contains(&name)
-                                    && !s.may_observe.contains(&name)
-                                    && !is_primitive(&name);
-                                effects |= s.may_effect.contains(&name);
+                                effects |= !s.known_functions.contains(&name)
+                                    || s.may_effect.contains(&name);
                             }
                         }
                         _ => {}

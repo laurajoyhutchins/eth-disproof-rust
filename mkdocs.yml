@@ -1,4 +1,4 @@
-site_name: ETH construction: mathematics and implementation
+site_name: "ETH construction: mathematics and implementation"
 site_description: Research notes on exact #SAT counting, two-adic contraction, and Lean-to-Rust correspondence
 site_url: https://laurajoyhutchins.github.io/eth-disproof-rust/
 repo_url: https://github.com/laurajoyhutchins/eth-disproof-rust

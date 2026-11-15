@@ -1944,9 +1944,8 @@ impl Reader {
         let body = Self::field(decl, 3)?;
         let shared = Self::shared_observations(body)?;
         // Reject physical observations only when preceding source RC
-        // effects may change them. Ordered optimized mutations may inspect
-        // isShared first and increment fields afterwards; those remain
-        // supported in the established value-semantic subset.
+        // effects may change them. The audit follows jumps into lexical
+        // joins rather than treating join bodies as declaration-time effects.
         if !shared.is_empty() && Self::rc_may_precede_sharedness(body)? {
             return Err(
                 "unverified isShared after source inc/dec/del reference bookkeeping".into(),
@@ -2082,53 +2081,25 @@ impl Reader {
         Ok(observed)
     }
 
-    // The emitted Rc runtime does not replay source inc/dec/del. It must
-    // therefore refuse a later isShared that may observe an earlier source
-    // reference-count effect. Track temporal order on each case path; a
-    // subsequent RC operation cannot retroactively change a previous read.
-    // Distinct variable IDs can alias, so any preceding RC effect taints
-    // the path. Joins are conservative until a complete CFG is available.
-    unsafe fn has_reference_bookkeeping(body: Obj) -> Result<bool, String> {
-        let mut pending = vec![body];
-        let mut count = 0usize;
-        while let Some(current) = pending.pop() {
-            count += 1;
-            if count > 100_000 {
-                return Err("reference-count audit exceeds 100000 IR instructions".into());
-            }
-            match Self::checked_tag(current, "FnBody")? {
-                0 => pending.push(Self::field(current, 3)?),
-                1 => {
-                    pending.push(Self::field(current, 2)?);
-                    pending.push(Self::field(current, 3)?);
-                }
-                2 => pending.push(Self::field(current, 3)?),
-                5 => pending.push(Self::field(current, 5)?),
-                6..=8 => return Ok(true),
-                9 => {
-                    for alt in Self::array(Self::field(current, 3)?)? {
-                        let idx = match Self::checked_tag(alt, "Alt")? {
-                            0 => 1,
-                            1 => 0,
-                            t => return Err(format!("unsupported RC audit Alt {t}")),
-                        };
-                        pending.push(Self::field(alt, idx)?);
-                    }
-                }
-                10 | 11 => {}
-                t => return Err(format!("unsupported RC audit FnBody {t}")),
-            }
-        }
-        Ok(false)
-    }
-
+    // Follow the actual Lean FnBody control-flow graph, not its syntax tree:
+    // jdecl defines a join but does not execute its body until jmp.
+    // Carry one conservative RC-effect bit along each executable path;
+    // aliases are not assumed disjoint merely because VarIds differ.
+    // Scope snapshots exclude a join from its own body, matching the
+    // canonical emitter's nonrecursive join contract.
     unsafe fn rc_may_precede_sharedness(body: Obj) -> Result<bool, String> {
-        let mut pending = vec![(body, false)];
-        let mut count = 0usize;
-        while let Some((current, prior_rc)) = pending.pop() {
-            count += 1;
-            if count > 100_000 {
-                return Err("ordered reference-count audit exceeds 100000 IR instructions".into());
+        #[derive(Clone)]
+        struct JoinScope {
+            id: usize,
+            body: Obj,
+            outer: Option<std::rc::Rc<JoinScope>>,
+        }
+        let mut pending = vec![(body, false, None::<std::rc::Rc<JoinScope>>, 0usize)];
+        let mut steps = 0usize;
+        while let Some((current, prior_rc, scope, depth)) = pending.pop() {
+            steps += 1;
+            if steps > 100_000 || depth > 128 {
+                return Err("source reference-count CFG audit limit exceeded".into());
             }
             match Self::checked_tag(current, "FnBody")? {
                 0 => {
@@ -2136,36 +2107,51 @@ impl Reader {
                     if prior_rc && Self::checked_tag(expr, "Expr")? == 12 {
                         return Ok(true);
                     }
-                    pending.push((Self::field(current, 3)?, prior_rc));
+                    pending.push((Self::field(current, 3)?, prior_rc, scope, depth));
                 }
                 1 => {
-                    // A join declaration is not executed until a jump. RC
-                    // effects in the continuation may reach its body. Without
-                    // explicit CFG flow, mixed RC and sharedness refuse.
-                    if Self::has_reference_bookkeeping(current)?
-                        && !Self::shared_observations(current)?.is_empty()
-                    {
-                        return Ok(true);
-                    }
-                    pending.push((Self::field(current, 2)?, prior_rc));
-                    pending.push((Self::field(current, 3)?, prior_rc));
+                    let id = Self::var(Self::field(current, 0)?)?;
+                    let value = Self::field(current, 2)?;
+                    let continuation = Self::field(current, 3)?;
+                    let visible = Some(std::rc::Rc::new(JoinScope {
+                        id,
+                        body: value,
+                        outer: scope,
+                    }));
+                    pending.push((continuation, prior_rc, visible, depth + 1));
                 }
-                2 => pending.push((Self::field(current, 3)?, prior_rc)),
-                5 => pending.push((Self::field(current, 5)?, prior_rc)),
-                6 | 7 => pending.push((Self::field(current, 2)?, true)),
-                8 => pending.push((Self::field(current, 1)?, true)),
+                2 => pending.push((Self::field(current, 3)?, prior_rc, scope, depth)),
+                5 => pending.push((Self::field(current, 5)?, prior_rc, scope, depth)),
+                6 | 7 => pending.push((Self::field(current, 2)?, true, scope, depth)),
+                8 => pending.push((Self::field(current, 1)?, true, scope, depth)),
                 9 => {
                     for alt in Self::array(Self::field(current, 3)?)? {
                         let idx = match Self::checked_tag(alt, "Alt")? {
                             0 => 1,
                             1 => 0,
-                            t => return Err(format!("unsupported ordered RC audit Alt {t}")),
+                            t => return Err(format!("unsupported RC CFG alternative {t}")),
                         };
-                        pending.push((Self::field(alt, idx)?, prior_rc));
+                        pending.push((Self::field(alt, idx)?, prior_rc, scope.clone(), depth + 1));
                     }
                 }
-                10 | 11 => {}
-                t => return Err(format!("unsupported ordered RC audit FnBody {t}")),
+                10 => {}
+                11 => {
+                    let id = Self::var(Self::field(current, 0)?)?;
+                    let mut candidate = scope.as_ref();
+                    let mut target = None;
+                    while let Some(join) = candidate {
+                        if join.id == id {
+                            target = Some((join.body, join.outer.clone()));
+                            break;
+                        }
+                        candidate = join.outer.as_ref();
+                    }
+                    let (body, outer) = target.ok_or_else(|| {
+                        format!("unsupported or recursive RC CFG jump to join {id}")
+                    })?;
+                    pending.push((body, prior_rc, outer, depth + 1));
+                }
+                t => return Err(format!("unsupported RC CFG FnBody constructor {t}")),
             }
         }
         Ok(false)

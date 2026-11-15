@@ -52,6 +52,18 @@ for root in arrayStep closureStep natStep natAccumulate; do
     exit 1
   fi
 done
+# This source fixture has three last-use Array.push calls and one preserved
+# live alias across the subsequent join and branches. Assert the emitted
+# implementation chooses the owned path without consuming the shared x_8.
+# The numbered VarIds come from pinned Lean 4.34.1 IR and are independently
+# checked by the original Lean/C/Rust output parity below.
+if ! grep -Fq 'x_13.array_push_owned(' "$generated/src/lib.rs" ||
+   ! grep -Fq 'x_4.array_push_owned(' "$generated/src/lib.rs" ||
+   ! grep -Fq 'x_6.array_push_owned(' "$generated/src/lib.rs" ||
+   ! grep -Fq 'x_8.clone().array_set_tagged(' "$generated/src/lib.rs"; then
+  echo 'FATAL: ownership lowering failed to consume dead arrays or preserve the live alias' >&2
+  exit 1
+fi
 cp examples/benchmark_matrix_driver.rs "$generated/src/main.rs"
 measure lean-rust native-compile-and-link \
   cargo build --release --offline --manifest-path "$generated/Cargo.toml"
@@ -125,6 +137,7 @@ ldd "$rustbin" > "$out/rust-dependencies.txt"
   echo 'host_conditions=CI_cache_and_frequency_uncontrolled'
   echo 'unmodified_external_projects=NOT_PERFORMANCE_BENCHMARKED'
   echo 'no_general_speedup_or_formal_semantic_preservation_claim=true'
+  echo 'array_ownership=source_ir_full_tail_proven_dead_for_push;live_old_alias_copied_for_set'
   sha256sum examples/BenchmarkKernels.lean examples/BenchmarkDriver.lean \
     examples/BenchmarkCodegen.lean examples/benchmark_matrix_driver.rs \
     "$out/BenchmarkKernels.c" "$out/BenchmarkDriver.c" \

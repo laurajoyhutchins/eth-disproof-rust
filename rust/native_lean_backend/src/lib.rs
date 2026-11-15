@@ -494,6 +494,106 @@ impl Reader {
         Ok(false)
     }
 
+    unsafe fn tail_unused_on_all_paths(body: Obj, id: usize) -> Result<bool, String> {
+        let mut pending = vec![(body, 0usize)];
+        let mut steps = 0usize;
+        while let Some((current, depth)) = pending.pop() {
+            steps += 1;
+            if steps > 100_000 || depth > 128 {
+                return Ok(false);
+            }
+            let next_depth = depth + 1;
+            match Self::checked_tag(current, "FnBody")? {
+                0 => {
+                    // vdecl: both the expression and all subsequent uses matter.
+                    // Reject shadowing rather than reasoning across renamings.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::expr_refs(Self::field(current, 2)?, id)?
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 3)?, depth));
+                }
+                1 => {
+                    // jdecl: the generated Rust lexical closure may capture
+                    // variables from its environment. Scan its whole body,
+                    // all parameters and the continuation, not just the jump.
+                    for param in Self::array(Self::field(current, 1)?)? {
+                        if Self::var(Self::field(param, 0)?)? == id {
+                            return Ok(false);
+                        }
+                    }
+                    pending.push((Self::field(current, 2)?, next_depth));
+                    pending.push((Self::field(current, 3)?, depth));
+                }
+                2 => {
+                    // Constructor pointer-field set mutates/observes its target.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::arg_refs(Self::field(current, 2)?, id)?
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 3)?, depth));
+                }
+                5 => {
+                    // Packed-field sset reads its object and byte-value IDs.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::var(Self::field(current, 3)?)? == id
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 5)?, depth));
+                }
+                6 | 7 => {
+                    // inc/dec: conservatively retain variables involved in
+                    // source reference-count operations, even if IR is erased.
+                    if Self::var(Self::field(current, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 2)?, depth));
+                }
+                8 => {
+                    // del: likewise, don't transfer when source bookkeeping
+                    // mentions this value after the candidate consuming call.
+                    if Self::var(Self::field(current, 0)?)? == id {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 1)?, depth));
+                }
+                9 => {
+                    // case: scan scrutinee plus every constructor/default arm.
+                    if Self::var(Self::field(current, 1)?)? == id {
+                        return Ok(false);
+                    }
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let body_index = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1, // constructor alternative
+                            1 => 0, // default alternative
+                            _ => return Ok(false),
+                        };
+                        pending.push((Self::field(alt, body_index)?, next_depth));
+                    }
+                }
+                10 => {
+                    if Self::arg_refs(Self::field(current, 0)?, id)? {
+                        return Ok(false);
+                    }
+                }
+                11 => {
+                    // A typed jump can pass the value to a join even though
+                    // that join's body doesn't mention the original VarId.
+                    if Self::args_ref(Self::field(current, 1)?, id)? {
+                        return Ok(false);
+                    }
+                }
+                // setTag, uset and other unsupported forms are never
+                // a reason to silently consume an array.
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
     unsafe fn consumable_array(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
         if Self::checked_tag(expr, "Expr")? != 6 {
             return Ok(None);
@@ -514,7 +614,7 @@ impl Reader {
                 return Ok(None);
             }
         }
-        Ok(Self::straight_tail_unused(tail, id)?.then_some(id))
+        Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
     }
 
     // A direct callee takes ownership of its argument. Moving an object at
@@ -1556,9 +1656,9 @@ impl Reader {
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
                     let expr = Self::field(x, 2)?;
-                    // A lexical join or nested control-flow arm may capture
-                    // this variable. Only top-level straight-line tails can
-                    // transfer ownership to the Rc array fast path.
+                    // Only top-level array candidates can transfer ownership.
+                    // Their full tails are scanned for references through
+                    // branch and join bodies, conservatively preserving aliases.
                     let straight_line = depth == 0 && ctx.joins.is_empty();
                     let tail = Self::field(x, 3)?;
                     let consumed_array = if straight_line {

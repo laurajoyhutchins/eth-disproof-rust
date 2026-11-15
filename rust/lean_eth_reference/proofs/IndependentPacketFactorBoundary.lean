@@ -51,6 +51,32 @@ def singleSlotRow (y x : Bool) : ℤ :=
   if y then (x.toNat : ℤ) else 1 - (x.toNat : ℤ)
 
 /--
+For L = 1 the source packet has S = {-1, 0}, C(T) = (T+1)T and
+C'(0) = 1. Therefore the exact deformed kernel W_00(T) = T+1.
+This is not a guess about its coefficients: it is the single-slot
+specialization of OpenAI's Cauchy formula.
+-/
+def singleSlotDeformed (T : ℤ) (y x : Bool) : ℤ :=
+  let argument := (T + 1) * (x.toNat : ℤ)
+  if y then argument else 1 - argument
+
+theorem single_slot_deformation_at_zero (y x : Bool) :
+    singleSlotDeformed 0 y x = singleSlotRow y x := by
+  cases y <;> cases x <;> decide
+
+/--
+A raw deformed packet factor at T = -1 is not the fixed identity
+interaction encoded by Anthropic-style edge labels. Equality can only
+be sought after the required reconstruction/translation.
+-/
+theorem deformed_packet_not_pointwise_anthropic_edge :
+    singleSlotDeformed (-1) true true ≠
+      (∑ label : Bool,
+        (if true = label then (1 : ℤ) else 0) *
+        (if true = label then (1 : ℤ) else 0)) := by
+  decide
+
+/--
 At T=0 a single-slot packet has W(0)=1. Its row factor agrees with
 the edge interaction obtained by summing Anthropic-style delta factors
 over one shared bit. The two delta factors are NOT each equal to the
@@ -127,6 +153,8 @@ theorem odd_singlet_not_an_integral_weight_one_packet_coefficient :
   omega
 
 #print axioms IndependentETH.PacketFactorBoundary.finite_relation_factors_through_columns
+#print axioms IndependentETH.PacketFactorBoundary.single_slot_deformation_at_zero
+#print axioms IndependentETH.PacketFactorBoundary.deformed_packet_not_pointwise_anthropic_edge
 #print axioms IndependentETH.PacketFactorBoundary.single_slot_interaction_equals_factored_edge
 #print axioms IndependentETH.PacketFactorBoundary.pair_factor_sign_gauge
 #print axioms IndependentETH.PacketFactorBoundary.same_interaction_distinct_factors

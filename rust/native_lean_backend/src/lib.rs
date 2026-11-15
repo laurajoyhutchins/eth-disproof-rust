@@ -543,6 +543,28 @@ mod tests {
         SUPPORTED_IR_TAGS,
     };
     #[test]
+    fn explicit_runtime_features_do_not_search_generated_rust_text() {
+        use super::{include_value_runtime, RuntimeFeatures, RUNTIME_SOURCE};
+        use std::cell::Cell;
+
+        // This text resembles generated runtime operations, but it has not
+        // passed source-checked Lean IR emission. It selects no features.
+        let deceptive = "fn demo() { let _ = \"__LeanValue::pap2(.array_push(.with_field(\"; }";
+        assert_eq!(
+            include_value_runtime(deceptive.to_owned(), RuntimeFeatures::default()).unwrap(),
+            deceptive
+        );
+        let flags = Cell::new(RuntimeFeatures::default());
+        RuntimeFeatures::mark(&flags, RuntimeFeatures::VALUE);
+        RuntimeFeatures::mark(&flags, RuntimeFeatures::INLINE_CLOSURE_TESTS);
+        let generated = include_value_runtime("fn example() {}".to_owned(), flags.get()).unwrap();
+        assert!(generated.starts_with(RUNTIME_SOURCE));
+        assert!(generated.contains("fn example() {}"));
+        assert!(generated.contains("specialized_closure_refuses_oversaturation"));
+        assert!(!generated.contains("unique_owner_reuses_array_allocation"));
+    }
+
+    #[test]
     fn list_and_option_cases_require_source_constructor_identity_and_layout() {
         assert_eq!(immutable_case_ctor("Option", 0, "Option.none").unwrap(), 0);
         assert_eq!(immutable_case_ctor("Option", 1, "Option.some").unwrap(), 1);

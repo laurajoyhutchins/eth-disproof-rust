@@ -53,11 +53,10 @@ impl Reader {
                         expr,
                         ty,
                         env,
-                        ctx.functions,
+                        ctx,
                         consumed_array,
                         &consumed_calls,
                         consumed_ap,
-                        ctx.features,
                     )?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));

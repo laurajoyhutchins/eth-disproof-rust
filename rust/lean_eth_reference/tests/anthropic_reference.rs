@@ -115,16 +115,50 @@ fn anthro_mainresults_valid_case_has_nine_models_and_expected_word() {
 #[test]
 fn anthro_list_semantics_and_openai_finset_semantics_agree_on_edge_cases() {
     let cases = [
-        ReferenceCnf { n: 0, clauses: vec![] },
-        ReferenceCnf { n: 3, clauses: vec![] },
-        ReferenceCnf { n: 3, clauses: vec![vec![]] },
-        ReferenceCnf { n: 3, clauses: vec![vec![(0, true), (0, false)]] },
-        ReferenceCnf { n: 3, clauses: vec![vec![(0, false)]] },
-        ReferenceCnf { n: 4, clauses: vec![vec![(0, true), (0, true), (1, false)]] },
-        ReferenceCnf { n: 4, clauses: vec![vec![(0, true)], vec![(0, true)]] },
-        ReferenceCnf { n: 4, clauses: vec![vec![(1, false), (0, true)], vec![(0, true), (1, false)]] },
-        ReferenceCnf { n: 5, clauses: vec![vec![(0, true), (1, false)], vec![(2, true)], vec![(4, false)]] },
-        ReferenceCnf { n: 5, clauses: vec![vec![(0, true)], vec![(0, false)]] },
+        ReferenceCnf {
+            n: 0,
+            clauses: vec![],
+        },
+        ReferenceCnf {
+            n: 3,
+            clauses: vec![],
+        },
+        ReferenceCnf {
+            n: 3,
+            clauses: vec![vec![]],
+        },
+        ReferenceCnf {
+            n: 3,
+            clauses: vec![vec![(0, true), (0, false)]],
+        },
+        ReferenceCnf {
+            n: 3,
+            clauses: vec![vec![(0, false)]],
+        },
+        ReferenceCnf {
+            n: 4,
+            clauses: vec![vec![(0, true), (0, true), (1, false)]],
+        },
+        ReferenceCnf {
+            n: 4,
+            clauses: vec![vec![(0, true)], vec![(0, true)]],
+        },
+        ReferenceCnf {
+            n: 4,
+            clauses: vec![vec![(1, false), (0, true)], vec![(0, true), (1, false)]],
+        },
+        ReferenceCnf {
+            n: 5,
+            clauses: vec![
+                vec![(0, true), (1, false)],
+                vec![(2, true)],
+                vec![(4, false)],
+            ],
+        },
+        ReferenceCnf {
+            n: 5,
+            clauses: vec![vec![(0, true)], vec![(0, false)]],
+        },
     ];
     for case in cases {
         let openai = case.as_openai_finset();
@@ -185,7 +219,13 @@ fn semantic_sparsification_reference_agrees_with_independent_counts() {
 #[test]
 fn anthro_output_preserves_the_highest_possible_count_bit() {
     // The all-satisfying empty formula has 2^n models, requiring n+1 bits.
-    let f = ReferenceCnf { n: 4, clauses: vec![] };
+    let f = ReferenceCnf {
+        n: 4,
+        clauses: vec![],
+    };
     assert_eq!(f.num_sat(), 16);
-    assert_eq!(f.binary(f.num_sat()), vec![false, false, false, false, true]);
+    assert_eq!(
+        f.binary(f.num_sat()),
+        vec![false, false, false, false, true]
+    );
 }

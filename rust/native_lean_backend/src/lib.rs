@@ -1546,7 +1546,12 @@ impl Reader {
                         BTreeSet::new()
                     };
                     let value = Self::expr(
-                        expr, ty, env, ctx.functions, consumed_array, &consumed_calls
+                        expr,
+                        ty,
+                        env,
+                        ctx.functions,
+                        consumed_array,
+                        &consumed_calls,
                     )?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));

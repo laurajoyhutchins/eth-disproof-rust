@@ -56,4 +56,12 @@ run_cmd do
   let pure := NativeRust.emit (.fdecl name #[x] .uint8 observed info) "rc_no_bookkeeping"
   unless pure.startsWith "OK\n" do
     throwError "bare isShared observation unexpectedly refused: {pure}"
-  logInfo "Source RC effect observations: 6 refusals, 2 bounded positive emissions"
+  -- Optimized Lean constructors check isShared before incrementing fields.
+  -- Later bookkeeping cannot change the already-computed Boolean value.
+  let checkFirst : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .uint8 (.isShared ⟨0⟩)
+      (.inc ⟨0⟩ 1 true false (.ret (.var ⟨2⟩)))
+  let ordered := NativeRust.emit (.fdecl name #[x] .uint8 checkFirst info) "rc_check_before_inc"
+  unless ordered.startsWith "OK\n" do
+    throwError "pre-mutation source sharing check unexpectedly refused: {ordered}"
+  logInfo "Source RC effect observations: 6 refusals, 3 bounded positive emissions"

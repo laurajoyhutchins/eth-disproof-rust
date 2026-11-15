@@ -295,6 +295,32 @@ mod tests {
     }
 
     #[test]
+    fn source_packet_layout_attains_small_uniform_padding_boundary() {
+        use crate::two_adic_packet_layout::{BipartiteEdge, pack_bounded};
+
+        // This is a finite structural r=2,a=1 example, NOT a source
+        // r=64 recursion. D=4, L=2; ceil(L*D/3)=3 real edges.
+        assert_eq!(minimum_uniform_padding_edges(2, 4), Some(3));
+        let three = [
+            BipartiteEdge { left: 0, right: 0 },
+            BipartiteEdge { left: 1, right: 1 },
+            BipartiteEdge { left: 2, right: 2 },
+        ];
+        let left_labels = [0, 0, 1];
+        let right_labels = [0, 1, 0];
+        let actual = pack_bounded(&three, &left_labels, &right_labels, 2, 1, 4).unwrap();
+        assert_eq!(actual.padded_class_load, 2);
+        assert_eq!(actual.packets.len(), 4);
+        assert!(actual.packets.len() * 2 <= 3 * three.len());
+
+        // No possible nonempty uniform all-class padding can retain
+        // the source 3M/L bound with only two real edges.
+        assert!(
+            pack_bounded(&three[..2], &left_labels, &right_labels, 2, 1, 4).is_err()
+        );
+    }
+
+    #[test]
     fn already_below_budget_does_not_start_recursion() {
         let a = BasecaseGapAudit::new(10_000, 64, 10_000).unwrap();
         assert_eq!(a.hypothetical_guaranteed_leaf_depth, 0);

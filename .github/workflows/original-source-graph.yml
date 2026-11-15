@@ -19,6 +19,11 @@ on:
   pull_request:
     paths:
       - 'rust/lean_eth_reference/tools/export_source_graph.lean'
+      - 'rust/lean_eth_reference/tools/probe_native_counting_closure.py'
+      - 'rust/lean_eth_reference/tools/test_probe_native_counting_closure.py'
+      - 'rust/lean_eth_reference/tools/compile_native_count.py'
+      - 'rust/lean_eth_reference/tools/test_compile_native_count.py'
+      - 'rust/lean_eth_reference/tools/bounded_process.py'
       - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
       - 'rust/lean_eth_reference/tools/source_graph_kernel_certificate.py'
       - 'rust/lean_eth_reference/tools/test_source_graph_kernel_certificate.py'
@@ -237,5 +242,121 @@ jobs:
             ${{ runner.temp }}/source-physical/
             ${{ runner.temp }}/compute-l-graph/
             ${{ runner.temp }}/named-repeat-proof/
+          if-no-files-found: warn
+          retention-days: 14
+
+  counting-closure-probe:
+    # Diagnostic only, scoped to the counting compiler PR. Do not turn this
+    # expensive original-Lean import into a required job for every Rust edit.
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/compiled-outer-counting-20261112'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      PINNED_ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+      LEAN_ROOT: instrumentation/lean-env
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Check counting probes without original Lean
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_probe_native_counting_closure.py' -v
+      - name: Checkout exact original OpenAI SAT source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth 1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          ln -s "$PINNED_ORIGINAL_SOURCE/lean/OAI" "$LEAN_ROOT/OAI"
+      - name: Restore pinned Lean and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Restore incrementally compiled original OAI modules
+        id: counting-oai-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-oai-count-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            original-oai-count-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-
+            original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae
+      - name: Probe original Lean source phases with shared dependency builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C "$LEAN_ROOT/.lake/packages/mathlib" rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+          mkdir -p "$RUNNER_TEMP/counting-closure"
+          if python3 rust/lean_eth_reference/tools/probe_native_counting_closure.py \
+              --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+              --output-dir "$RUNNER_TEMP/counting-closure" \
+              --phase marked-query --phase leaf --phase outer --phase large-domain \
+              --width 3 --cutoff 20 --max-labels 4096 \
+              --build-timeout-seconds 540 --timeout-seconds 180; then
+            echo 'COUNTING_CLOSURE=STRUCTURALLY_EXPORTED_NOT_YET_CERTIFIED' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'COUNTING_CLOSURE=REFUSED_INSPECT_ARTIFACTS' >> "$GITHUB_STEP_SUMMARY"
+            python3 -m json.tool "$RUNNER_TEMP/counting-closure/counting-closure-report.json" \
+              | tail -80 >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Compile exact exported large-domain graph into Rust executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/compile_native_count.py \
+            --upstream "$PINNED_ORIGINAL_SOURCE" --lake-root "$LEAN_ROOT" \
+            --rust-crate rust/lean_eth_reference \
+            --output-dir "$RUNNER_TEMP/compiled-large-count" \
+            --source-graph "$RUNNER_TEMP/counting-closure/large-domain.graph.json" \
+            --entry-mode large-domain --width 3 --cutoff 20 \
+            --require-certificate --timeout-seconds 600
+          test -s "$RUNNER_TEMP/compiled-large-count/eth-count"
+          echo "LARGE_DOMAIN=PHYSICAL_RUST_BINARY_COMPILED_AND_KERNEL_CERTIFIED_NOT_YET_COUNT_TESTED" >> "$GITHUB_STEP_SUMMARY"
+      - name: Test source Rust counter refuses unsupported finite fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="$RUNNER_TEMP/compiled-large-count/eth-count"
+          set +e
+          printf "p cnf 1 1\n1 0\n" | "$binary" > "$RUNNER_TEMP/finite.stdout" 2> "$RUNNER_TEMP/finite.stderr"
+          result="$?"
+          set -e
+          test "$result" -eq 2
+          test ! -s "$RUNNER_TEMP/finite.stdout"
+          grep -Fq "unsupported noncomputable finite fallback" "$RUNNER_TEMP/finite.stderr"
+          echo "LARGE_DOMAIN=SMALL_INPUT_EXPLICIT_REFUSAL_VERIFIED" >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve incremental original Lean module build artifacts in cache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-oai-count-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Preserve original counting closure graphs and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-counting-closure-${{ github.event.pull_request.head.sha }}
+          path: |
+            ${{ runner.temp }}/counting-closure/
+            ${{ runner.temp }}/compiled-large-count/
           if-no-files-found: warn
           retention-days: 14

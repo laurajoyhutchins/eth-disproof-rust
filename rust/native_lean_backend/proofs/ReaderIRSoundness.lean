@@ -140,10 +140,10 @@ theorem body_sound {sym : SymbolicEnv} {body : IR.FnBody} {p : Program}
       EnvAgrees sym runtime inputs →
         BodyRuns body runtime (evalActualProgram inputs p) := by
   induction h with
-  | ret id value hv =>
+  | ret env id value hv =>
       intro inputs runtime agrees
       exact BodyRuns.ret runtime id _ (agrees id.idx value hv)
-  | bind id expr tail value result he ht ih =>
+  | bind env id expr tail value result he ht ih =>
       intro inputs runtime agrees
       exact BodyRuns.bind runtime id expr tail _ _
         (expr_sound he inputs runtime agrees)

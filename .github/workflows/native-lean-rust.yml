@@ -79,54 +79,63 @@ jobs:
             bash ./scripts/check-evidence.sh
             bash ./scripts/check-imported-probes.sh
             bash ./scripts/check-bundle.sh
+            bash ./scripts/check-project-cli.sh
             bash ./scripts/check-native-runtime-parity.sh
             bash ./scripts/compare-c-rust.sh
             bash ./scripts/compare-c-rust-matrix.sh
             bash ./scripts/check-external-projects.sh
           )
-          # End-to-end CLI uses the existing in-process G1 compiler and its
-          # atomic bundle, not leanfran or a second Rust runtime.
+          # The public eth-compiler interface must emit one actual multi-root
+          # Cargo package, using only the existing in-process native emitter.
+          fixture="$GITHUB_WORKSPACE/rust/native_lean_backend/fixtures/CompilerCli"
+          package="$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-project"
+          certificate="$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-project.receipt.json"
           cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- compile \
             --backend compiler-ir \
             --source-repo "$GITHUB_WORKSPACE" \
             --source-revision "$(git rev-parse HEAD)" \
-            --source-path rust/native_lean_backend/examples/PropertyDef.lean \
-            --source-toolchain-path rust/native_lean_backend/lean-toolchain \
-            --lake-root "$GITHUB_WORKSPACE/rust/native_lean_backend" \
-            --module PropertyDef --root Property.hop \
-            --output "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.rs" \
-            --receipt "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json"
+            --source-path rust/native_lean_backend/fixtures/CompilerCli/Sample.lean \
+            --source-toolchain-path rust/native_lean_backend/fixtures/CompilerCli/lean-toolchain \
+            --lake-root "$fixture" \
+            --module Sample --root Sample.inc --root Sample.twice --root Sample.choose \
+            --output "$package" --receipt "$certificate"
+          test -s "$package/Cargo.toml"
+          test -s "$package/src/lib.rs"
+          test -s "$package/receipt.txt"
           cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- verify \
             --backend compiler-ir \
             --source-repo "$GITHUB_WORKSPACE" \
             --source-revision "$(git rev-parse HEAD)" \
-            --source-path rust/native_lean_backend/examples/PropertyDef.lean \
-            --source-toolchain-path rust/native_lean_backend/lean-toolchain \
-            --module PropertyDef --root Property.hop \
-            --artifact "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.rs" \
-            --receipt "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json"
+            --source-path rust/native_lean_backend/fixtures/CompilerCli/Sample.lean \
+            --source-toolchain-path rust/native_lean_backend/fixtures/CompilerCli/lean-toolchain \
+            --module Sample --root Sample.inc --root Sample.twice --root Sample.choose \
+            --artifact "$package" --receipt "$certificate"
           jq -e '
             .backend == "compiler-ir"
+            and .roots == ["Sample.inc", "Sample.twice", "Sample.choose"]
             and .backend_report.compiler == "native-lean-4.34.1"
             and .executable_approved == false
             and .checks.lean_rust_semantic_refinement == "not-established"
-          ' rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json
-          # A modified artifact must refuse and invalidate its copied receipt.
-          cp rust/native_lean_backend/artifacts/eth-compiler-canonical.rs \
-            rust/native_lean_backend/artifacts/eth-compiler-tampered.rs
-          cp rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json \
-            rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json
-          printf '\n// tampered after generation\n' >> rust/native_lean_backend/artifacts/eth-compiler-tampered.rs
+          ' "$certificate"
+          # These are genuine Lean functions from the unmodified source
+          # module, not hand-reimplemented Rust bodies.
+          grep -Fq 'Generated directly from Lean IR declaration: Sample.inc' "$package/src/lib.rs"
+          grep -Fq 'Generated directly from Lean IR declaration: Sample.twice' "$package/src/lib.rs"
+          grep -Fq 'Generated directly from Lean IR declaration: Sample.choose' "$package/src/lib.rs"
+          # Reject and invalidate certification for a mutated Cargo package.
+          cp -a "$package" "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered"
+          cp "$certificate" "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json"
+          printf '\n// modified after native compilation\n' >> "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered/src/lib.rs"
           if cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- verify \
               --backend compiler-ir \
               --source-repo "$GITHUB_WORKSPACE" \
               --source-revision "$(git rev-parse HEAD)" \
-              --source-path rust/native_lean_backend/examples/PropertyDef.lean \
-              --source-toolchain-path rust/native_lean_backend/lean-toolchain \
-              --module PropertyDef --root Property.hop \
-              --artifact "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered.rs" \
+              --source-path rust/native_lean_backend/fixtures/CompilerCli/Sample.lean \
+              --source-toolchain-path rust/native_lean_backend/fixtures/CompilerCli/lean-toolchain \
+              --module Sample --root Sample.inc --root Sample.twice --root Sample.choose \
+              --artifact "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered" \
               --receipt "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json"; then
-            echo "Tampered canonical IR artifact accepted" >&2
+            echo "Tampered canonical IR Cargo package accepted" >&2
             exit 1
           fi
           test ! -e rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json
@@ -166,8 +175,11 @@ jobs:
             rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
             rust/native_lean_backend/artifacts/imported-probes/*
             rust/native_lean_backend/artifacts/native-compiler-bundle-*.txt
-            rust/native_lean_backend/artifacts/eth-compiler-canonical.rs
-            rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json
+            rust/native_lean_backend/artifacts/native-project-cli-receipt.txt
+            rust/native_lean_backend/artifacts/eth-compiler-project/Cargo.toml
+            rust/native_lean_backend/artifacts/eth-compiler-project/src/lib.rs
+            rust/native_lean_backend/artifacts/eth-compiler-project/receipt.txt
+            rust/native_lean_backend/artifacts/eth-compiler-project.receipt.json
             rust/native_lean_backend/artifacts/parity-native/*.txt
             rust/native_lean_backend/artifacts/parity-native/*.tsv
             rust/native_lean_backend/artifacts/parity-native/*.log

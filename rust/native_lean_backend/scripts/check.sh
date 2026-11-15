@@ -565,7 +565,7 @@ mkdir -p artifacts
   echo "cross_call_ownership_original_lean_oracles=512"
   echo "pinned_param_borrow_abi_and_sharedness_refusal=PASS"
   echo "source_rc_bookkeeping_sharedness_refusals=6"
-  echo "source_rc_value_only_positive_emissions=2"
+  echo "source_rc_value_only_positive_emissions=3"
   echo "source_option_default_oracles=512"
   echo "generic_inductive_original_lean_oracles=338"
   echo "array_ownership_original_lean_oracles=768"

@@ -97,18 +97,27 @@ The pinned source IR uses `FnBody.inc`, `FnBody.dec`, and
 can therefore change a source-observable result without any corresponding
 Rust operation.
 
-The compiler now refuses any **single declaration** that combines an
-`isShared` observation with an explicit `inc`, `dec`, or `del` anywhere
-in its body, including nested joins and branches. The audit does not rely
-on equal variable IDs because aliases can have different IDs. This is a
-conservative refusal, not a claim of full memory equivalence.
+The compiler now refuses a later `isShared` when source `inc`,
+`dec`, or `del` may have occurred **earlier on the same execution
+path**. Cases are scanned separately, without assuming that distinct
+variable IDs denote different allocations. Joins conservatively refuse
+when bookkeeping and observations coexist, because the current analysis
+does not model all jump-to-join control-flow edges.
+
+This ordering matters: optimized Lean constructor code may inspect
+`isShared` and *then* increment a field reference as it creates a
+replacement object. That later increment cannot change the value of
+the earlier observation. Rejecting the whole declaration breaks
+already-verified source mutation programs without improving their
+reference-count correspondence.
 
 `examples/ReferenceBookkeepingFixture.lean` constructs actual Lean
 `IR.FnBody` terms. It tests six negative cases (each bookkeeping
 instruction, possible alias across distinct IDs, paired increments and
-decrements, and a nested join) and two positive emissions (bookkeeping
-with no `isShared`, and `isShared` without bookkeeping). Both are
-emitter-contract checks, not a source execution trace theorem.
+decrements, and a nested join) and three positive emissions (bookkeeping with no `isShared`,
+`isShared` without bookkeeping, and a sharing check followed by an
+increment). These are emitter-contract checks, not a source execution
+trace theorem.
 
 **Still unverified:** source reference-count effects flowing through
 other called declarations, runtime alias identity across values and closures,

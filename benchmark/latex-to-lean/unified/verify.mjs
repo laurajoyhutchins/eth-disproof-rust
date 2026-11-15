@@ -32,8 +32,24 @@ for(const file of files){
     record.verification?.proof_completed!==false)
     throw Error("parser output falsely asserts verification "+id);
  const logs=["leanify.stdout","leanify.stderr","structural.stdout","structural.stderr"];
+ if(record.generated.leanify){
+  if(record.observations.find(x=>x.backend==="leanify").status!=="parsed")
+    throw Error("generated Leanify modules without acceptance "+id);
+  logs.push("leanify.init.stdout","leanify.init.stderr","leanify.build.stdout","leanify.build.stderr");
+  const native=record.generated.leanify;
+  if(!/^Unified[0-9a-f]{20}$/.test(native.namespace))
+    throw Error("invalid native namespace "+id);
+  for(const name of ["Article.lean","Compiled.lean"]){
+    const mod=native.modules?.[name];
+    if(mod?.name!==native.namespace+"/"+name)
+      throw Error("missing Leanify module "+id+" "+name);
+    if(sha256(fs.readFileSync(path.join(folder,mod.name)))!==mod.sha256)
+      throw Error("native module hash mismatch "+id+" "+name);
+  }
+ }else if(record.observations.find(x=>x.backend==="leanify").status==="parsed")
+    throw Error("Leanify check passed but no native elaboration receipt "+id);
  for(const name of logs){
-  const key=name.replace(".","_")+"_sha256";
+  const key=name.replaceAll(".","_")+"_sha256";
   const got=sha256(fs.readFileSync(path.join(folder,name)));
   if(record.logs[key]!==got)throw Error("log hash mismatch "+id+" "+name);
  }

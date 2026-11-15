@@ -6,16 +6,50 @@
 use super::*;
 
 pub(super) enum FnBodyView {
-    Decl { defined: Obj, expr: Obj, next: Obj },
-    Join { id: Obj, params: Obj, value: Obj, next: Obj },
-    Set { target: Obj, value: Obj, next: Obj },
-    ScalarSet { target: Obj, value: Obj, next: Obj },
-    Inc { target: Obj, next: Obj },
-    Dec { target: Obj, next: Obj },
-    Delete { target: Obj, next: Obj },
-    Case { scrutinee: Obj, alternatives: Obj },
-    Return { value: Obj },
-    Jump { id: Obj, arguments: Obj },
+    Decl {
+        defined: Obj,
+        expr: Obj,
+        next: Obj,
+    },
+    Join {
+        id: Obj,
+        params: Obj,
+        value: Obj,
+        next: Obj,
+    },
+    Set {
+        target: Obj,
+        value: Obj,
+        next: Obj,
+    },
+    ScalarSet {
+        target: Obj,
+        value: Obj,
+        next: Obj,
+    },
+    Inc {
+        target: Obj,
+        next: Obj,
+    },
+    Dec {
+        target: Obj,
+        next: Obj,
+    },
+    Delete {
+        target: Obj,
+        next: Obj,
+    },
+    Case {
+        scrutinee: Obj,
+        alternatives: Obj,
+    },
+    Return {
+        value: Obj,
+    },
+    Jump {
+        id: Obj,
+        arguments: Obj,
+    },
 }
 
 pub(super) enum AltView {
@@ -63,7 +97,9 @@ impl Reader {
                 scrutinee: Self::field(x, 1)?,
                 alternatives: Self::field(x, 3)?,
             },
-            10 => FnBodyView::Return { value: Self::field(x, 0)? },
+            10 => FnBodyView::Return {
+                value: Self::field(x, 0)?,
+            },
             11 => FnBodyView::Jump {
                 id: Self::field(x, 0)?,
                 arguments: Self::field(x, 1)?,
@@ -74,8 +110,12 @@ impl Reader {
 
     pub(super) unsafe fn alt_view(x: Obj) -> Result<AltView, String> {
         Ok(match Self::checked_tag(x, "Alt")? {
-            0 => AltView::Constructor { body: Self::field(x, 1)? },
-            1 => AltView::Default { body: Self::field(x, 0)? },
+            0 => AltView::Constructor {
+                body: Self::field(x, 1)?,
+            },
+            1 => AltView::Default {
+                body: Self::field(x, 0)?,
+            },
             t => return Err(format!("IR alternative constructor {t} unsupported")),
         })
     }

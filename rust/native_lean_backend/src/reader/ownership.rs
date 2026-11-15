@@ -80,8 +80,7 @@ impl Reader {
                     }));
                     pending.push((next, prior_rc, visible, depth + 1));
                 }
-                FnBodyView::Set { next, .. }
-                | FnBodyView::ScalarSet { next, .. } => {
+                FnBodyView::Set { next, .. } | FnBodyView::ScalarSet { next, .. } => {
                     pending.push((next, prior_rc, scope, depth));
                 }
                 FnBodyView::Inc { next, .. }

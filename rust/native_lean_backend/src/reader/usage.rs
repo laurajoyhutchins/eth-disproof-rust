@@ -45,8 +45,7 @@ impl Reader {
                     }
                     x = next;
                 }
-                FnBodyView::Inc { target, next }
-                | FnBodyView::Dec { target, next } => {
+                FnBodyView::Inc { target, next } | FnBodyView::Dec { target, next } => {
                     if Self::var(target)? == id {
                         return Ok(false);
                     }
@@ -122,8 +121,7 @@ impl Reader {
                     }
                     pending.push((next, depth));
                 }
-                FnBodyView::Inc { target, next }
-                | FnBodyView::Dec { target, next } => {
+                FnBodyView::Inc { target, next } | FnBodyView::Dec { target, next } => {
                     if Self::var(target)? == id {
                         return Ok(false);
                     }
@@ -242,5 +240,4 @@ impl Reader {
         }
         Ok(consumed)
     }
-
 }

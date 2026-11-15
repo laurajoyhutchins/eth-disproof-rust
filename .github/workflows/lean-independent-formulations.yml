@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'rust/lean_eth_reference/proofs/IndependentCnfBridge.lean'
+      - 'rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean'
       - '.github/workflows/lean-independent-formulations.yml'
   workflow_dispatch:
 
@@ -80,7 +81,9 @@ jobs:
             cd instrumentation/lean-env
             lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCnfBridge.lean"
+            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean"
           )
           echo 'INDEPENDENT_CNF_COUNT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'INDEPENDENT_SWAP_IDENTITY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'OpenAI source: 4eaee87548250b2682affda7d05d947c05554bae' >> "$GITHUB_STEP_SUMMARY"
           echo 'Anthropic source: 16a5ce41304fcdaea4e0be7c132e1c361dc26da5' >> "$GITHUB_STEP_SUMMARY"

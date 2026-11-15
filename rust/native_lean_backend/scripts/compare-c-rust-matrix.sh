@@ -64,6 +64,17 @@ if ! grep -Fq 'x_13.array_push_owned(' "$generated/src/lib.rs" ||
   echo 'FATAL: ownership lowering failed to consume dead arrays or preserve the live alias' >&2
   exit 1
 fi
+# The original benchmark's source-level binary closures lower into
+# arity-three boxed Lean functions with two captures in Lean 4.34.1 IR.
+# This assertion requires the actual generated algorithm to select the
+# specialized capture representation and unary AP, not just its runtime.
+codegen="$(sed -n '/^\/\/ Native in-process Lean IR closure/,/^#\[cfg(test)\]/p' "$generated/src/lib.rs")"
+if ! grep -Fq '__LeanValue::pap3(' <<< "$codegen" ||
+   ! grep -Eq '\.apply1(_owned)?\(' <<< "$codegen"; then
+  echo 'FATAL: benchmark closure IR did not select inline PAP and unary AP' >&2
+  grep -En 'pap3|pap\(|apply1|apply\(' <<< "$codegen" | head -n 25 >&2 || true
+  exit 1
+fi
 cp examples/benchmark_matrix_driver.rs "$generated/src/main.rs"
 measure lean-rust native-compile-and-link \
   cargo build --release --offline --manifest-path "$generated/Cargo.toml"

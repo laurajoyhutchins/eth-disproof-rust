@@ -363,9 +363,19 @@ for fixture in RefusalObjectCtor; do
   rm -f "examples/${fixture}.log"
 done
 lean --load-dynlib="$NATIVE_LIB" examples/FunctionValues.lean
-if ! grep -Fq '__LeanValue::pap(' examples/function-package/src/lib.rs || ! grep -Fq '.apply(vec![' examples/function-package/src/lib.rs; then
-  echo 'real boxed PAP/AP was not lowered' >&2; exit 1
+# Restrict the codegen witness to actual Lean IR-emitted program
+# functions. The canonical runtime and appended tests also mention pap2 and
+# apply1, but cannot count as proof that source IR selected the fast path.
+program="$(sed -n '/^\/\/ Native in-process Lean IR closure/,/^#\[cfg(test)\]/p' examples/function-package/src/lib.rs)"
+if ! grep -Fq '__LeanValue::pap3(' <<< "$program" ||
+   ! grep -Eq '\.apply1(_owned)?\(' <<< "$program"; then
+  echo 'original source ternary boxed PAP or unary indirect AP did not use optimized lowering' >&2
+  grep -En 'pap2|apply1|pap\(|apply\(' <<< "$program" | head -n 24 >&2 || true
+  exit 1
 fi
+# The original runMulti and generated unit tests independently cover general
+# partial application. They need not contain a vector AP call after this
+# specialization, since the source compiles to unary AP instructions.
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --offline --manifest-path examples/function-package/Cargo.toml
 cargo clippy --offline --manifest-path examples/function-package/Cargo.toml --all-targets -- -D warnings
 rm -rf examples/rejected-function-package
@@ -477,14 +487,13 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   cargo test --release --offline --manifest-path examples/cross-call-package/Cargo.toml
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   cargo clippy --offline --manifest-path examples/cross-call-package/Cargo.toml --all-targets -- -D warnings
-# Typed proof erasure: the original Lean argument is absent at runtime.
-# Test only a proof-only function parameter; locals/returns and arbitrary
-# erased operands must still refuse.
+# Original-source proof erasure: the source argument has no runtime payload.
+# Runtime erased locals/results/joins are intentionally still unsupported.
 rm -rf examples/erased-proof-package
 lean --load-dynlib="$NATIVE_LIB" examples/ErasedParamFixture.lean
 test -s examples/erased-proof-package/original-ir.txt
 if ! grep -Fq ': ()' examples/erased-proof-package/src/lib.rs; then
-  echo 'original IRType.erased parameter was not represented as zero-sized unit' >&2
+  echo 'proof-only erased IR argument did not become a zero-sized Rust parameter' >&2
   exit 1
 fi
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \

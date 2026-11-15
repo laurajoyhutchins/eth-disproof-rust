@@ -183,6 +183,7 @@ impl __LeanValue {
 
     // These methods implement the source IR bookkeeping on a *separate*
     // logical counter. Compiler-internal Rust Rc clones do not alter it.
+    #[track_caller]
     fn source_inc(&self, n: usize, check_ref: bool, persistent: bool) {
         self.assert_not_erased();
         if persistent { return; }
@@ -195,6 +196,7 @@ impl __LeanValue {
         self.1.set(old.checked_add(n).expect("source reference-count overflow"));
     }
 
+    #[track_caller]
     fn source_dec(&self, n: usize, check_ref: bool, persistent: bool) {
         self.assert_not_erased();
         if persistent { return; }
@@ -213,6 +215,7 @@ impl __LeanValue {
 
     // The Lean del instruction calls lean_del_object, which releases the
     // container shell, not its already transferred child references.
+    #[track_caller]
     fn source_del(&self) {
         self.assert_not_erased();
         assert!(self.source_heap(), "source del on tagged immediate");

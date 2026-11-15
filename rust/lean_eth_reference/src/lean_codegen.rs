@@ -571,7 +571,10 @@ struct NativeIrReport {
 }
 
 fn sha256_hex(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
 /// Parse the *existing* native compiler's bundle receipt rather than
@@ -581,13 +584,21 @@ fn native_bundle_fields(raw: &str) -> Result<HashMap<&str, &str>> {
     ensure(raw.len() <= 8192, "native IR bundle receipt is oversized")?;
     let mut fields = HashMap::new();
     for line in raw.lines() {
-        let (key, value) = line.split_once('=').ok_or("malformed native bundle receipt")?;
+        let (key, value) = line
+            .split_once('=')
+            .ok_or("malformed native bundle receipt")?;
         ensure(
-            !key.is_empty() && !value.is_empty()
-                && key.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
+            !key.is_empty()
+                && !value.is_empty()
+                && key
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_'),
             "invalid native bundle receipt field",
         )?;
-        ensure(fields.insert(key, value).is_none(), "duplicate native bundle receipt field")?;
+        ensure(
+            fields.insert(key, value).is_none(),
+            "duplicate native bundle receipt field",
+        )?;
     }
     Ok(fields)
 }
@@ -616,8 +627,7 @@ pub fn validate_ir(
         "native IR report claims unproved semantic or physical verification",
     )?;
     ensure(
-        doc.generated_sha256 == digest(artifact)
-            && doc.generated_bytes == artifact.len() as u64,
+        doc.generated_sha256 == digest(artifact) && doc.generated_bytes == artifact.len() as u64,
         "native IR generated Rust digest/length mismatch",
     )?;
     ensure(
@@ -657,7 +667,9 @@ pub fn validate_ir(
                 "native_shared_library_sha256",
                 "closure_names_sha256",
                 "generated_rlib_sha256",
-            ].iter().all(|key| sha256_hex(field(key))),
+            ]
+            .iter()
+            .all(|key| sha256_hex(field(key))),
         "native IR bundle is missing compiler and build provenance",
     )
 }
@@ -855,28 +867,75 @@ mod tests {
             "Demo",
             &["Demo.double".into()],
             &source,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(accepted["executable_approved"], false);
         assert_eq!(accepted["status"], "generated-unverified");
 
         let mut bad = report.clone();
         bad["generated_sha256"] = json!("0".repeat(64));
-        assert!(validate_ir(&serde_json::to_vec(&bad).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
+        assert!(
+            validate_ir(
+                &serde_json::to_vec(&bad).unwrap(),
+                code,
+                "Demo",
+                &["Demo.double".into()],
+                &source
+            )
+            .is_err()
+        );
         bad = report.clone();
         bad["source_git_blob"] = json!("b".repeat(39) + "a");
-        assert!(validate_ir(&serde_json::to_vec(&bad).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
+        assert!(
+            validate_ir(
+                &serde_json::to_vec(&bad).unwrap(),
+                code,
+                "Demo",
+                &["Demo.double".into()],
+                &source
+            )
+            .is_err()
+        );
         bad = report.clone();
         bad["native_bundle_receipt"] = json!(bundle.replace(
             "semantic_verification=NOT_PERFORMED",
             "semantic_verification=PROVED",
         ));
-        assert!(validate_ir(&serde_json::to_vec(&bad).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
+        assert!(
+            validate_ir(
+                &serde_json::to_vec(&bad).unwrap(),
+                code,
+                "Demo",
+                &["Demo.double".into()],
+                &source
+            )
+            .is_err()
+        );
         bad = report.clone();
-        bad["native_bundle_receipt"] = json!(format!("{bundle}status=GENERATED_COMPILED_UNVERIFIED\n"));
-        assert!(validate_ir(&serde_json::to_vec(&bad).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
+        bad["native_bundle_receipt"] =
+            json!(format!("{bundle}status=GENERATED_COMPILED_UNVERIFIED\n"));
+        assert!(
+            validate_ir(
+                &serde_json::to_vec(&bad).unwrap(),
+                code,
+                "Demo",
+                &["Demo.double".into()],
+                &source
+            )
+            .is_err()
+        );
         // The retired leanfran 4.35.0 report is not a valid native receipt.
         let legacy = json!({"format":"lean-compiler-ir-backend-probe-v1"});
-        assert!(validate_ir(&serde_json::to_vec(&legacy).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
+        assert!(
+            validate_ir(
+                &serde_json::to_vec(&legacy).unwrap(),
+                code,
+                "Demo",
+                &["Demo.double".into()],
+                &source
+            )
+            .is_err()
+        );
     }
     #[test]
     fn source_name_and_version_checks() {

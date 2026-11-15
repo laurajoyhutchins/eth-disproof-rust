@@ -330,7 +330,12 @@ impl Reader {
                             erased(3)?;
                             let array = Self::arg(args[1], env, "obj")?;
                             let index = Self::arg(args[2], env, "tagged")?;
-                            Ok(format!("{array}.array_get_tagged({index}.tagged_nat())"))
+                            let accessor = if name == "Array.getInternalBorrowed" {
+                                "array_get_tagged_borrowed"
+                            } else {
+                                "array_get_tagged"
+                            };
+                            Ok(format!("{array}.{accessor}({index}.tagged_nat())"))
                         }
                         "Array.set!" => {
                             if var_ty != "obj" {

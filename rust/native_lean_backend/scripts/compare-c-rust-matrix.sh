@@ -60,7 +60,7 @@ done
 if ! grep -Fq 'x_13.array_push_owned(' "$generated/src/lib.rs" ||
    ! grep -Fq 'x_4.array_push_owned(' "$generated/src/lib.rs" ||
    ! grep -Fq 'x_6.array_push_owned(' "$generated/src/lib.rs" ||
-   ! grep -Fq 'x_8.clone().array_set_tagged(' "$generated/src/lib.rs"; then
+   ! grep -Fq 'x_8.compiler_alias().array_set_tagged(' "$generated/src/lib.rs"; then
   echo 'FATAL: ownership lowering failed to consume dead arrays or preserve the live alias' >&2
   exit 1
 fi

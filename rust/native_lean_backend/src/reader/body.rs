@@ -168,10 +168,9 @@ impl Reader {
                     x = Self::field(x, 5)?;
                 }
                 6..=8 => {
-                    // In the bounded value-semantic subset, Rc aliases own
-                    // their Rust references. A source-CFG preflight refuses
-                    // isShared after a possible earlier inc/dec/del effect.
-                    // This is not Lean/Rust reference-count equivalence.
+                    // Replay source IR reference-count events on their own
+                    // logical counters. Rust clones manage memory only.
+                    let tag = Self::checked_tag(x, "FnBody")?;
                     let id = Self::var(Self::field(x, 0)?)?;
                     let ty = env
                         .get(&id)
@@ -179,8 +178,19 @@ impl Reader {
                     if !is_value_type(ty) {
                         return Err("reference bookkeeping on non-object variable".into());
                     }
-                    let body_index = if Self::tag(x)? == 8 { 1 } else { 2 };
-                    x = Self::field(x, body_index)?;
+                    if tag == 8 {
+                        writeln!(code, "    x_{id}.source_del();").unwrap();
+                        x = Self::field(x, 1)?;
+                    } else {
+                        let n = Self::nat(Self::field(x, 1)?)?;
+                        if n > 1_000_000 || (tag == 7 && n != 1) {
+                            return Err("source reference-count delta unsupported".into());
+                        }
+                        let (check_ref, persistent) = Self::rc_flags(x)?;
+                        let op = if tag == 6 { "source_inc" } else { "source_dec" };
+                        writeln!(code, "    x_{id}.{op}({n}, {check_ref}, {persistent});").unwrap();
+                        x = Self::field(x, 2)?;
+                    }
                 }
                 9 => {
                     // case(tid, scrutinee, type, alts)
@@ -219,8 +229,9 @@ impl Reader {
                             // contract; the runtime checks the actual value.
                             let var = Self::var(Self::field(arg, 0)?)?;
                             if env.get(&var) == Some(&"tobj") {
-                                lowered
-                                    .push(format!("x_{var}.clone().require_constructor_object()"));
+                                lowered.push(format!(
+                                    "x_{var}.compiler_alias().require_constructor_object()"
+                                ));
                             } else {
                                 lowered.push(Self::arg(arg, env, ty)?);
                             }

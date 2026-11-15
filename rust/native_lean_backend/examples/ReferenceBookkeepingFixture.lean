@@ -53,6 +53,26 @@ run_cmd do
   let allowed := NativeRust.emit (.fdecl name #[x] .object unobserved info) "rc_value_only"
   unless allowed.startsWith "OK\n" do
     throwError "unobserved RC bookkeeping unexpectedly refused: {allowed}"
+  unless (allowed.splitOn "source_inc(1, true, false)").length > 1 &&
+      (allowed.splitOn "source_dec(1, true, false)").length > 1 do
+    throwError "pinned source RC flag layout was not emitted faithfully: {allowed}"
+
+  let persistentBody : Lean.IR.FnBody :=
+    .inc ⟨0⟩ 5 false true (.ret (.var ⟨0⟩))
+  let persistentOutput :=
+    NativeRust.emit (.fdecl name #[x] .object persistentBody info) "rc_persistent"
+  unless persistentOutput.startsWith "OK\n" &&
+      (persistentOutput.splitOn "source_inc(5, false, true)").length > 1 do
+    throwError "pinned persistent source RC flags were misread: {persistentOutput}"
+
+  let delOnly : Lean.IR.FnBody :=
+    .del ⟨0⟩ (.vdecl ⟨2⟩ .uint8 (.lit (.num 0)) (.ret (.var ⟨2⟩)))
+  let deleteOutput :=
+    NativeRust.emit (.fdecl name #[x] .uint8 delOnly info) "rc_del"
+  unless deleteOutput.startsWith "OK\n" &&
+      (deleteOutput.splitOn "source_del()").length > 1 do
+    throwError "source del shell-only operation missing: {deleteOutput}"
+
   let pure := NativeRust.emit (.fdecl name #[x] .uint8 observed info) "rc_no_bookkeeping"
   unless pure.startsWith "OK\n" do
     throwError "bare isShared observation unexpectedly refused: {pure}"

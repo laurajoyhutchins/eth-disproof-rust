@@ -87,3 +87,32 @@ This is an explicit **restriction**, not a completion of reference-count
 equivalence. Owned values may still have mismatched physical traces where
 generated clones and erased `inc`/`dec`/`del` interact. Future acceptance
 must prove or refuse those patterns, with source-C execution evidence.
+
+## Explicit Lean IR reference-count bookkeeping
+
+The pinned source IR uses `FnBody.inc`, `FnBody.dec`, and
+`FnBody.del` for physical Lean reference-count operations. The emitted
+`Rc` implementation previously ignored those instructions while exposing
+`Expr.isShared` through Rust `Rc::strong_count`. An `inc` or `dec`
+can therefore change a source-observable result without any corresponding
+Rust operation.
+
+The compiler now refuses any **single declaration** that combines an
+`isShared` observation with an explicit `inc`, `dec`, or `del` anywhere
+in its body, including nested joins and branches. The audit does not rely
+on equal variable IDs because aliases can have different IDs. This is a
+conservative refusal, not a claim of full memory equivalence.
+
+`examples/ReferenceBookkeepingFixture.lean` constructs actual Lean
+`IR.FnBody` terms. It tests six negative cases (each bookkeeping
+instruction, possible alias across distinct IDs, paired increments and
+decrements, and a nested join) and two positive emissions (bookkeeping
+with no `isShared`, and `isShared` without bookkeeping). Both are
+emitter-contract checks, not a source execution trace theorem.
+
+**Still unverified:** source reference-count effects flowing through
+other called declarations, runtime alias identity across values and closures,
+and physical uniqueness decisions in optimized mutation. This local
+gate does not authorize accepting those general cases. A subsequent
+interprocedural ownership analysis or a faithful logical RC model is needed
+before broadening supported observations.

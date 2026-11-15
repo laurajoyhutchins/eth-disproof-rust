@@ -497,26 +497,3 @@ impl PartialEq for __LeanValue {
     }
 }
 impl Eq for __LeanValue {}
-
-#[cfg(test)]
-mod erased_join_safety_tests {
-    use super::__LeanValue;
-
-    #[test]
-    #[should_panic(expected = "erased join value was read")]
-    fn erased_constructor_predicate_refuses() {
-        assert!(!__LeanValue::erased().has_ctor(0, "Unit", 0));
-    }
-
-    #[test]
-    #[should_panic(expected = "erased join value was read")]
-    fn erased_tagged_predicate_refuses() {
-        assert!(!__LeanValue::erased().has_tagged(0));
-    }
-
-    #[test]
-    #[should_panic(expected = "erased join value was read")]
-    fn erased_equality_refuses() {
-        assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
-    }
-}

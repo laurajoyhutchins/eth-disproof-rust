@@ -65,11 +65,26 @@ were **9,232–9,408 KiB** for C and **2,152 KiB** for Rust.
 The phase totals are not a controlled apples-to-apples compiler benchmark:
 one path emits C from source; the other consumes imported `.olean` and loads
 a plugin. In particular, the 0.67-second / ~1.54-GiB Rust emission process
-may be dominated by Lean import/startup costs. The follow-on **import-control**
-phase in `compare-c-rust.sh` measures exactly those imports and plugin loading
-without generating Rust, so we can quantify that confound separately.
+may be dominated by Lean import/startup costs. The **import-control** phase in `compare-c-rust.sh` measures those same
+imports and plugin loading without generating Rust. On [exact-head CI run
+43660472757](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43660472757)
+(commit `6631dc85d486580653ae41d1151adb66355f5356`), the import-only control
+was **0.50 s median and 1,611,232–1,611,352 KiB peak RSS**, while the IR
+emission command was **0.50 s median and 1,612,328–1,612,524 KiB peak RSS**.
+The measured difference is near the timer resolution: **the enormous
+in-process memory footprint is overwhelmingly present before Rust emission**.
+That is evidence of a Lean import/plugin-startup cost, not evidence of an
+intrinsically memory-hungry Rust IR translator. A controlled incremental
+allocation profiler is still required for precise attribution.
 The C and Rust native build optimizations are also not identical:
 `leanc -O2` versus `rustc -O` (Rust optimization level 3).
+On the same final run, the 30-trial runtime medians were **21.6241 ms C**
+and **4.465482 ms Rust**, about **4.84×** in favor of Rust. The three-run
+build-phase medians were: C source-to-C 0.15 s, driver-to-C 0.14 s and
+C compile/link 0.29 s; Rust source-to-olean 0.16 s, import-only control
+0.50 s (not additive), IR emission 0.50 s and Rust compile/link 0.06 s.
+These remain phase measurements, not an equal-work compiler speedup.
+
 The two executable files are of similar size, but C's Lean runtime is
 dynamically linked and therefore excluded from its on-disk ELF size.
 

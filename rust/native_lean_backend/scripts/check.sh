@@ -41,6 +41,8 @@ lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
 # Physical reference-count observations must be source checked.
 lean --load-dynlib="$NATIVE_LIB" examples/BorrowFlagFixture.lean
 lean --load-dynlib="$NATIVE_LIB" examples/ReferenceBookkeepingFixture.lean
+# Run the small same-source ownership trace before the long performance matrix.
+bash scripts/check-ownership-object-trace.sh
 # Compile an imported Lean module separately, then compile its transitive
 # dependency graph (including diamond sharing and recursive call cycles).
 export LEAN_PATH="$(pwd)/examples:${LEAN_PATH}"
@@ -588,6 +590,8 @@ mkdir -p artifacts
   echo "source_rc_ordered_pure_and_value_admissions=3"
   echo "source_rc_lean_c_control_mask=214"
   echo "source_rc_captured_unique_and_shared_closure_calls=2"
+  echo "same_source_object_identity_rc_checkpoint_pairs=3"
+  echo "same_source_object_identity_rc_checkpoints=18"
   echo "source_option_default_oracles=512"
   echo "generic_inductive_original_lean_oracles=338"
   echo "array_ownership_original_lean_oracles=768"

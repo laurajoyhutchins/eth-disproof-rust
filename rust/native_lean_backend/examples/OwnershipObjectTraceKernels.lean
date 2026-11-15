@@ -1,11 +1,14 @@
 namespace OwnershipObjectTrace
 
+-- Two constructors and two fields prevent the Lean compiler from
+-- erasing this type to its single payload field.
 inductive Token where
-  | mk (payload : Nat)
+  | vacant
+  | mk (payload stamp : Nat)
 
 -- Every operation below is compiled unchanged to Lean C and native Rust.
 -- Keep the explicit noinline boundary: the trace must cover actual calls.
-@[noinline] def create (n : Nat) : Token := .mk n
+@[noinline] def create (n : Nat) : Token := .mk n (n + 1)
 @[noinline] def identity (x : Token) : Token := x
 @[noinline] def select (chooseLeft : Bool) (x y : Token) : Token :=
   if chooseLeft then identity x else identity y

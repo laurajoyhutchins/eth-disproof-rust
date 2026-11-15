@@ -87,6 +87,18 @@ maximum degree* is a genuinely different assumption, not a free parameter.
 See [the root-packing obstruction and exact hypothetical schedule checker](root-packing-feasibility.md).
 No full recursion or new complexity bound is claimed.
 
+### Exact depth ceiling under the source leaf cutoff
+
+Even after replacing collision packing, the original \(r=64\),
+\(M_{d+1}\le3M_d/32\) and
+\(H=\lceil s/\lfloor\sqrt\lambda\rfloor\rceil\) guarantee that
+every first-generation child is a leaf for \(\lambda\le120\);
+for every positive `u128` root, all second-generation children are
+leaves. Thus only roots larger than \(2^{120}\) can even *possibly*
+run a second active call. A revised base case or shrinkage schedule
+needs an independent proof. See [exact multi-level depth gate](two-adic-depth-gate.md)
+and `appendix-depth`; all CLI receipts fail closed.
+
 ### Replacement collision-packing theorem under investigation
 
 A [matching-potential construction](matching-potential-packing.md)

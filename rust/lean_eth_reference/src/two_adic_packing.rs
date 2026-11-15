@@ -166,6 +166,23 @@ impl RootPackingAudit {
         self.groups >= 3
     }
 
+    /// The new matching-potential *sufficient* condition is also
+    /// impossible on the paper's global Delta=ceil(s^(9/10)) envelope
+    /// for every 2 <= s <= u128::MAX, positive u, and r>=7.
+    ///
+    /// Since s^(1/10)<2^13, Delta>=s/8192. Positive u gives a>=2,
+    /// D>=r^4>=7^4=2401 and ceil(log2 D)>=12. With Delta>=1,
+    /// (2Delta-1)>=Delta. Hence the NEW matching condition would
+    /// require s >= D*(2Delta-1)*ceil(log2 D)
+    ///           >= (2401*12/8192)*s > s, contradiction.
+    ///
+    /// This states only that substituting the **published upper
+    /// envelope** into the improved lemma cannot certify packing.
+    /// An instance-proved smaller degree invariant may still work.
+    pub fn published_envelope_obstructs_matching_lemma(&self) -> bool {
+        self.groups >= 7
+    }
+
     /// This audit establishes arithmetic necessary conditions only.
     /// Replacing the degree envelope, proving a new shrink/precision
     /// schedule, and executing an actual contraction are still required.
@@ -188,6 +205,19 @@ mod tests {
                     assert!(candidate.published_degree_envelope_obstructed());
                     assert!(!candidate.fully_source_admitted());
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn new_matching_bound_cannot_use_the_published_degree_envelope() {
+        for edges in [2, 10_000, 1 << 60, 1 << 120, u128::MAX] {
+            for groups in [7, 8, 49, 64] {
+                let audit = RootPackingAudit::new(edges, groups, 1, 8).unwrap();
+                assert!(audit.published_envelope_obstructs_matching_lemma());
+                // The candidate degree cap of eight is a DIFFERENT
+                // assumption: do not confuse it with ceil(s^0.9).
+                assert_eq!(audit.degree_cap, 8);
             }
         }
     }

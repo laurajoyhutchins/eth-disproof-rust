@@ -21,6 +21,10 @@ fn degree_bounded_candidate_is_a_nonterminal_refusal() {
     assert_eq!(value["original_child_shrink_bound_holds"], true);
     assert_eq!(value["source_asymptotic_u_bound_holds"], false);
     assert_eq!(value["published_degree_envelope_obstructed"], true);
+    assert_eq!(
+        value["published_degree_envelope_obstructs_matching_lemma"],
+        true
+    );
     assert_eq!(value["required_collision_edges"], "4503599627370496");
     assert_eq!(value["matching_potential_packing_holds"], true);
     assert_eq!(value["matching_potential_uses_certified_degree"], false);

@@ -198,6 +198,20 @@ The final row uses an additional line-coloring theorem and is **not** checked by
 
 For the *changed* packing lemma, the previous \(16r^8\) floor from the old \(D^2\Delta\) inequality is **not** a universal requirement. It was conditional on the old lemma.
 
+### Original worst-case degree envelope remains insufficient
+
+Even this improved sufficient inequality cannot be verified using
+\(\Delta=\lceil s^{9/10}\rceil\) on a positive
+\(u128\)-sized root with \(r\ge7\). In that range
+\(\Delta\ge s/8192\), while \(D\ge7^4=2401\)
+and \(\lceil\log_2D\rceil\ge12\); the claimed
+sufficient condition would require at least
+\((2401\cdot12/8192)s>s\) edges. See
+[exact multi-level depth gate](two-adic-depth-gate.md).
+
+This does not refute the improved construction. It makes an all-depth
+*certified tighter degree cap* a separate research obligation.
+
 ## Bounded executable labeling reference
 
 The existing `matching_packing::construct_matching_labels` is the

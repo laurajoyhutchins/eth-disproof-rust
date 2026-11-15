@@ -575,6 +575,10 @@ pub mod two_adic_admission;
 /// Arithmetic feasibility is not source proof or active recursion.
 pub mod two_adic_packing;
 
+/// Exact upper-bound audit of hypothetical two-adic recursive depth.
+/// Not an active contraction or full parameter proof.
+pub mod two_adic_depth;
+
 /// Exact finite bipartite matching/label derandomization for improved packing.
 /// Does not run the source-defined tensor recursion.
 pub mod matching_packing;

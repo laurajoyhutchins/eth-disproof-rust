@@ -63,6 +63,14 @@ This reduces a real polynomial factor of setup but **does not** remove
 the independent field, weighted-mode, packet-entry, precision, or leaf
 costs. The full recursive count remains unexecuted.
 
+The [multi-level depth gate](two-adic-depth-gate.md) is an additional
+independent acceptance condition. At `r=64` and any `u128` root,
+the source leaf cutoff makes all second-generation children direct
+leaves; at `lambda<=120`, even the first child is a leaf.
+This is a mathematical bottleneck in the full recurrence, not a
+packing kernel performance issue. The `appendix-depth` audit records
+conditional child upper bounds without simulating a #SAT count.
+
 Five places worth instrumenting first:
 
 | Stage | What to record |

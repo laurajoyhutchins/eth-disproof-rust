@@ -8,7 +8,9 @@ The in-process Lean 4.34.1 compiler is one compiler, not a family of backends. I
 | --- | --- |
 | `src/lib.rs` | Lean C ABI entrypoints and panic/refusal boundary, canonical emitted runtime source, shared IR type contexts and unit tests |
 | `src/reader/decode.rs` | Bounded reads and type/tag/constructor/name decoding from borrowed Lean objects |
-| `src/reader/expr.rs` | Exact typed expression lowering (source-backed construction and emission) |
+| `src/reader/expr.rs` | Single checked expression-tag dispatcher; no independent parser |
+| `src/reader/expr_call.rs` | Source-refined direct calls, PAP/AP closures, primitives, and ownership-aware lowering |
+| `src/reader/expr_value.rs` | Source-validated constructors, projections, boxing, and sharing observations |
 | `src/reader/usage.rs` | Conservative reference/use and last-use analysis for owned transfers |
 | `src/reader/view.rs` | Checked, borrowed views of `FnBody` and `Alt` constructor fields; no owned/serialized IR |
 | `src/reader/cases.rs` | Case alternatives, source-validated constructor families and scalar/object layouts |

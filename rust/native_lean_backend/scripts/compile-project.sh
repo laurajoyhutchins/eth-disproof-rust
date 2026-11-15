@@ -23,8 +23,8 @@ project="$(realpath -e -- "$project_arg")"
 source="$(realpath -e -- "$source_arg")"
 case "$source" in "$project/"*) ;; *) echo "Source must be inside original project" >&2; exit 2 ;; esac
 source_sha_before="$(sha256sum -- "$source" | cut -d' ' -f1)"
-[[ -f "$project/lakefile.lean" && -f "$project/lean-toolchain" ]] || {
-  echo "Expected unchanged Lake project" >&2; exit 2;
+[[ ( -f "$project/lakefile.lean" || -f "$project/lakefile.toml" ) && -f "$project/lean-toolchain" ]] || {
+  echo "Expected unchanged Lake project (lakefile.lean or lakefile.toml)" >&2; exit 2;
 }
 [[ "$(cat "$project/lean-toolchain")" == 'leanprover/lean4:v4.34.1' &&
    "$(cat "$native/lean-toolchain")" == 'leanprover/lean4:v4.34.1' ]] || {

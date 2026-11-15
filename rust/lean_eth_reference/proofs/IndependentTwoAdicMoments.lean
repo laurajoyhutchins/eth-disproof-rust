@@ -10,7 +10,7 @@ real-port load is represented by one independent symbol per vertex,
 weighted by that vertex's degree.
 
 The proofs use no probability measure, floating-point arithmetic,
-`sorry` or `admit`. The remaining source-specific bridge must
+unproved placeholders. The remaining source-specific bridge must
 identify these independent product spaces with restrictions of an
 actual bipartite graph's uniformly random vertex labeling and combine
 the moments with one exact sequential conditional-expectation score.

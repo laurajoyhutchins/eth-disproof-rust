@@ -50,9 +50,11 @@ argument without cloning it **only** when all of these hold:
   involving the variable, and its unsupported control-flow forms conservatively
   prevent the transfer.
 
-Otherwise the existing owned `Rc`-backed value is cloned, so aliases remain
-valid. This eliminates one class of artificial transient Rust references at
-known final uses, without introducing another runtime or accepting new IR tags.
+Otherwise the generated code retains a nonowning compiler alias, which
+preserves physical memory safety without introducing a Lean reference-count
+increment. External `__LeanValue::clone()` now means a new owned source
+reference; compiler-generated temporary aliases use `compiler_alias()`.
+The distinction is explicit in the canonical runtime.
 
 `examples/CrossCallFixture.lean` holds the source-defined interprocedural
 conformance cases. Its independently Lean-evaluated oracle produces 512
@@ -60,14 +62,14 @@ comparisons covering consumed values, retained originals, returned aliases,
 and duplicated operands across noinline compiled functions. The integrated
 gate runs debug, release, and strict Clippy checks.
 
-**Not established:** physical reference-count correspondence with Lean.
-The generated runtime uses `Rc::strong_count` for `is_shared`, while
-Lean IR explicitly manages reference counts with `inc`, `dec`, and `del`.
-Object lifetimes, unique-owner mutations, incoming/outgoing ownership, and
-reference-count observations still need an exact operational simulation,
-especially across branches, joins, closures, and calls. End-to-end output
-equality on these fixtures is evidence for these executions, not a general
-equivalence theorem or a G2 resource guarantee.
+The original Rust `Rc::strong_count` observation is no longer authoritative
+on this experimental branch. Each emitted value has an independent source
+reference-count cell; emitted `inc`/`dec`/`del` update that cell. Rust `Rc`
+remains responsible for storage safety. The runtime still requires a complete
+ownership simulation across constructors, closures, imported primitives and
+the public ABI before it can claim full correspondence. End-to-end output
+equality is evidence for tested executions, not a general theorem or a G2
+resource guarantee.
 
 ## Borrowed parameter observations
 
@@ -83,19 +85,28 @@ current generated Rust signature does not yet represent that borrow contract.
 It also refuses `isShared` on tagged immediates at runtime, rather than
 observing the artificial `Rc` allocation used by the adapter.
 
-This is an explicit **restriction**, not a completion of reference-count
-equivalence. Owned values may still have mismatched physical traces where
-generated clones and erased `inc`/`dec`/`del` interact. Future acceptance
-must prove or refuse those patterns, with source-C execution evidence.
+This remains an explicit **restriction**, not a complete reference-count
+equivalence proof. The source-count ledger eliminates a known source of
+artificial alias observations, but borrowed parameter transfer and external
+object lifetimes remain separate acceptance obligations.
 
 ## Explicit Lean IR reference-count bookkeeping
 
-The pinned source IR uses `FnBody.inc`, `FnBody.dec`, and
-`FnBody.del` for physical Lean reference-count operations. The emitted
-`Rc` implementation previously ignored those instructions while exposing
-`Expr.isShared` through Rust `Rc::strong_count`. An `inc` or `dec`
-can therefore change a source-observable result without any corresponding
-Rust operation.
+Lean 4.34.1 uses `FnBody.inc`, `FnBody.dec` and `FnBody.del` to
+manage ownership. The canonical Rust emitter now replays these instructions
+against a logical source count, independent of transient Rust `Rc` handles.
+The pinned Lean C ABI supplies the packed `checkRef` and `persistent`
+flags for `inc`/`dec`; the emitter validates them instead of reading
+nonexistent pointer fields. The supported increment delta is bounded
+to 1,000,000, and, matching the pinned LLVM backend, decrement requires
+delta 1.
+
+`source_dec` releases owned constructor, array, list and closure children
+when the logical count reaches zero; `source_del` releases only the
+container shell, matching `lean_del_object`, and ignores tagged immediates.
+An attempted source underflow or deletion of a nonunique heap object refuses
+at runtime rather than being silently ignored. Borrowed array element reads
+do not increment the count; owned reads do.
 
 The compiler now refuses a later `isShared` when source `inc`,
 `dec`, or `del` may have occurred **earlier on the same execution
@@ -120,13 +131,17 @@ decrements, and a nested join) and four positive emissions (bookkeeping with no 
 increment, and the same ordering across a lexical join). These are
 emitter-contract checks, not a source execution trace theorem.
 
-**Still unverified:** reference-count effects flowing through other
-called declarations, runtime alias identity across values and closures,
-and physical uniqueness decisions in optimized mutation. This local
-gate does not authorize accepting those general cases. A subsequent
-interprocedural ownership analysis or a faithful logical RC model is needed
-before broadening supported observations. The source-defined
-`MutFixture.rotate` remains an important regression: its `isShared`
-precedes the field increments in the shared branch, even though the
-code includes nested join declarations. Its existing original-Lean
-differential tests must continue to pass.
+**Still unverified:** universal correspondence of ownership transfer
+across calls, closure environments, constructor mutation, and externally
+supplied values; the pinned Lean runtime's multithreaded and sticky/
+persistent reference-count states; and interactions between source count
+and physical allocations after copy-on-write. The existing source-CFG
+refusal remains in place for observations following earlier RC effects,
+so this change is an executable foundation, not universal support.
+The source-defined `MutFixture.rotate` remains an important differential
+regression, including nested joins and unique/shared branches.
+
+The source-count runtime is single-threaded: generated values use
+`Rc<Cell<usize>>`, not a thread-safe Lean heap representation. The
+supported G1 domain must remain explicit until the missing operations
+have source-C differential evidence and a checked simulation relation.

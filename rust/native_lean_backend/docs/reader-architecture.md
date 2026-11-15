@@ -8,7 +8,9 @@ The in-process Lean 4.34.1 compiler is one compiler, not a family of backends. I
 | --- | --- |
 | `src/lib.rs` | Lean C ABI entrypoints and panic/refusal boundary, canonical emitted runtime source, shared IR type contexts and unit tests |
 | `src/reader/decode.rs` | Bounded reads and type/tag/constructor/name decoding from borrowed Lean objects |
-| `src/reader/expr.rs` | Exact typed expression lowering and conservative ownership last-use check |
+| `src/reader/expr.rs` | Exact typed expression lowering (source-backed construction and emission) |
+| `src/reader/usage.rs` | Conservative reference/use and last-use analysis for owned transfers |
+| `src/reader/view.rs` | Checked, borrowed views of `FnBody` and `Alt` constructor fields; no owned/serialized IR |
 | `src/reader/cases.rs` | Case alternatives, source-validated constructor families and scalar/object layouts |
 | `src/reader/body.rs` | Scoped joins, IR bodies, branch control flow and variable environments |
 | `src/reader/module.rs` | Dependency closure, root signatures, generated functions and multi-root output |
@@ -16,6 +18,13 @@ The in-process Lean 4.34.1 compiler is one compiler, not a family of backends. I
 | `src/primitives.rs` | Single source-validated primitive and runtime-external support policy |
 | `src/names.rs` | Injective generated Rust identifier encoding |
 | `src/runtime/immutable_value.rs` | Sole emitted GMP/Nat/Rc value representation; not a compiler IR data model |
+
+The borrowed control-flow view centralizes tag-to-field interpretation for dependency
+discovery, ownership/use analysis, and source-CFG reference-count auditing.
+Those traversals remain separate because lexical syntax, executable CFG paths
+and conservative liveness are not interchangeable. The view exposes only
+borrowed pointers from the pinned Lean ABI. It does not cache Lean objects,
+silently widen supported IR, or replace the original emitter.
 
 Reader stage methods are `pub(super)` within the reader module, except for the three FFI-facing emission methods and the bounded `Reader::string` decoder used when publishing source. Those four crate-visible methods are `pub(crate)`. Root and helper entrypoints remain unchanged; there is no user-facing Rust API expansion.
 

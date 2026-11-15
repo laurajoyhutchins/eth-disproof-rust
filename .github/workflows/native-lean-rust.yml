@@ -74,6 +74,7 @@ jobs:
             bash ./scripts/check-bundle.sh
             bash ./scripts/check-native-runtime-parity.sh
             bash ./scripts/compare-c-rust.sh
+            bash ./scripts/compare-c-rust-matrix.sh
             bash ./scripts/check-external-projects.sh
           )
           # Keep the exact-head provenance and all generated-code hashes in the job log.
@@ -83,6 +84,7 @@ jobs:
           cat rust/native_lean_backend/artifacts/native-compiler-bundle-receipt.txt
           cat rust/native_lean_backend/artifacts/parity-native/receipt.txt
           cat rust/native_lean_backend/artifacts/compare-native/receipt.txt
+          cat rust/native_lean_backend/artifacts/bench-matrix/receipt.txt
           cat rust/native_lean_backend/artifacts/external-projects/manifest.tsv
           cat rust/native_lean_backend/artifacts/external-projects/receipt.txt
           {
@@ -120,6 +122,13 @@ jobs:
             rust/native_lean_backend/artifacts/compare-native/*.time
             rust/native_lean_backend/artifacts/compare-native/*.c
             rust/native_lean_backend/artifacts/compare-native/*.rs
+            rust/native_lean_backend/artifacts/bench-matrix/*.tsv
+            rust/native_lean_backend/artifacts/bench-matrix/*.txt
+            rust/native_lean_backend/artifacts/bench-matrix/*.log
+            rust/native_lean_backend/artifacts/bench-matrix/*.time
+            rust/native_lean_backend/artifacts/bench-matrix/*.c
+            rust/native_lean_backend/artifacts/bench-matrix/generated-package/src/lib.rs
+            rust/native_lean_backend/artifacts/bench-matrix/generated-package/src/main.rs
             rust/native_lean_backend/artifacts/external-projects/*.tsv
             rust/native_lean_backend/artifacts/external-projects/*.txt
             rust/native_lean_backend/artifacts/external-projects/*/*.lean

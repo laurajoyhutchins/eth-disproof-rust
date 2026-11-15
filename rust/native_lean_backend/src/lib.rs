@@ -142,7 +142,12 @@ mod __lean_array_ownership_tests {
         assert!(size.has_tagged(3), "small array size must be a tagged Nat");
         assert_eq!(size.tagged_nat(), 3);
         assert_eq!(size.nat_to_decimal(), "3");
-        assert_eq!(__LeanValue::array(Vec::new()).array_size().tagged_nat(), 0);
+        assert_eq!(size, __LeanValue::nat_from_decimal("3"));
+        assert_eq!(__LeanValue::nat_from_decimal("3"), size);
+        let zero = __LeanValue::array(Vec::new()).array_size();
+        assert_eq!(zero.tagged_nat(), 0);
+        assert_eq!(zero, __LeanValue::nat_from_decimal("0"));
+        assert_ne!(zero, __LeanValue::nat_from_decimal("1"));
     }
 
     #[test]

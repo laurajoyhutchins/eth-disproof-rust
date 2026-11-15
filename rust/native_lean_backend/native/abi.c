@@ -64,6 +64,15 @@ int lr_abi_probe(void) {
         && lean_is_scalar(lean_ctor_get(node, 0))
         && lean_unbox(lean_ctor_get(node, 0)) == 7
         && lean_unbox(lean_ctor_get(node, 1)) == 9;
+    /* Source runtime control: one owned reference is exclusive, two
+     * references are shared, and dropping the added reference restores
+     * exclusivity. Rust's logical ledger must match this single-threaded
+     * trace, not transient Rc handle counts. */
+    good = good && lean_is_exclusive(node);
+    lean_inc(node);
+    good = good && !lean_is_exclusive(node);
+    lean_dec(node);
+    good = good && lean_is_exclusive(node);
     lean_dec(node);
     lean_object *str = lean_mk_string("abi-probe");
     good = good && lean_is_string(str)

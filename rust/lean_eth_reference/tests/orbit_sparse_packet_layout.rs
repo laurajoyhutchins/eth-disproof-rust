@@ -1,8 +1,7 @@
 //! Independent source-slot tests for sparse versus uniformly padded
 //! packet layouts. No #SAT evaluator, field entries or recursive count.
 use lean_eth_reference::two_adic_orbit_sparse::{
-    OrbitSparsePacketLayout, construct_orbit_sparse_admitted,
-    construct_orbit_sparse_bounded,
+    OrbitSparsePacketLayout, construct_orbit_sparse_admitted, construct_orbit_sparse_bounded,
 };
 use lean_eth_reference::two_adic_packet_layout::{BipartiteEdge, pack_bounded};
 use std::collections::BTreeMap;
@@ -30,7 +29,10 @@ fn verify_independently(
         layout.unused_slots,
         layout.orientation_imbalance_slots + layout.rounding_slots
     );
-    assert_eq!(layout.packets.len(), layout.occupied_orbits.iter().map(|o| o.packets).sum());
+    assert_eq!(
+        layout.packets.len(),
+        layout.occupied_orbits.iter().map(|o| o.packets).sum()
+    );
     assert_eq!(
         edges.len(),
         layout.occupied_orbits.iter().map(|o| o.real_edges).sum()
@@ -40,7 +42,8 @@ fn verify_independently(
     let mut saw = vec![0usize; edges.len()];
     let mut independent_row = vec![vec![0usize; layout.r]; a];
     let mut independent_col = vec![vec![0usize; layout.r]; a];
-    let mut independent_classes = BTreeMap::<Vec<(usize, usize)>, BTreeMap<(usize, usize), usize>>::new();
+    let mut independent_classes =
+        BTreeMap::<Vec<(usize, usize)>, BTreeMap<(usize, usize), usize>>::new();
     let b = layout.r.pow(layout.a);
     for (index, edge) in edges.iter().enumerate() {
         let rl = left[edge.left];
@@ -58,7 +61,11 @@ fn verify_independently(
             x /= layout.r;
             y /= layout.r;
         }
-        *independent_classes.entry(sig).or_default().entry((rl, cl)).or_default() += 1;
+        *independent_classes
+            .entry(sig)
+            .or_default()
+            .entry((rl, cl))
+            .or_default() += 1;
         assert!(index < edges.len());
     }
     assert_eq!(layout.row_ports, independent_row);
@@ -118,14 +125,20 @@ fn verify_independently(
     assert!(saw.iter().all(|&count| count == 1));
 
     let within_packet_bound = layout.packets.len() * l <= 3 * edges.len();
-    let within_symbol_bound = independent_row.iter().zip(&independent_col).all(|(rows, cols)| {
-        rows.iter().zip(cols).all(|(&x, &y)| {
-            x * layout.r <= 3 * edges.len() && y * layout.r <= 3 * edges.len()
-        })
-    });
+    let within_symbol_bound = independent_row
+        .iter()
+        .zip(&independent_col)
+        .all(|(rows, cols)| {
+            rows.iter()
+                .zip(cols)
+                .all(|(&x, &y)| x * layout.r <= 3 * edges.len() && y * layout.r <= 3 * edges.len())
+        });
     assert_eq!(layout.packet_count_bound_holds, within_packet_bound);
     assert_eq!(layout.symbol_port_bounds_hold, within_symbol_bound);
-    assert_eq!(layout.original_packet_bounds_hold(), within_packet_bound && within_symbol_bound);
+    assert_eq!(
+        layout.original_packet_bounds_hold(),
+        within_packet_bound && within_symbol_bound
+    );
 }
 
 #[test]
@@ -177,7 +190,10 @@ fn preserves_two_coordinate_unequal_orientations() {
     assert_eq!(layout.occupied_orbits.len(), 1);
     assert_eq!(layout.occupied_orbits[0].equal_coordinates, 0);
     assert_eq!(layout.packets.len(), 1);
-    assert_eq!(layout.packets[0].slots, vec![Some(0), Some(1), Some(2), Some(3)]);
+    assert_eq!(
+        layout.packets[0].slots,
+        vec![Some(0), Some(1), Some(2), Some(3)]
+    );
     verify_independently(&edges, &row, &col, &layout);
 }
 
@@ -193,7 +209,10 @@ fn uses_equal_coordinate_bits_for_copy_index() {
     let layout = construct_orbit_sparse_admitted(&edges, &row, &col, 2, 2, 8).unwrap();
     assert_eq!(layout.occupied_orbits[0].equal_coordinates, 1);
     assert_eq!(layout.occupied_orbits[0].copies_per_class_per_packet, 2);
-    assert_eq!(layout.packets[0].slots, vec![Some(0), Some(1), Some(2), Some(3)]);
+    assert_eq!(
+        layout.packets[0].slots,
+        vec![Some(0), Some(1), Some(2), Some(3)]
+    );
     verify_independently(&edges, &row, &col, &layout);
 }
 
@@ -202,7 +221,10 @@ fn zero_slots_and_parallel_edges_preserve_exact_source_edge_ids() {
     let edges = vec![BipartiteEdge { left: 0, right: 0 }; 3];
     let layout = construct_orbit_sparse_admitted(&edges, &[0], &[0], 2, 2, 8).unwrap();
     assert_eq!(layout.packets.len(), 1);
-    assert_eq!(layout.packets[0].slots, vec![Some(0), Some(1), Some(2), None]);
+    assert_eq!(
+        layout.packets[0].slots,
+        vec![Some(0), Some(1), Some(2), None]
+    );
     assert_eq!(layout.rounding_slots, 1);
     assert_eq!(layout.orientation_imbalance_slots, 0);
     verify_independently(&edges, &[0], &[0], &layout);
@@ -365,16 +387,20 @@ fn sparse_slots_preserve_exact_source_cauchy_identity_and_coupled_f_zero() {
         for y in 0..16usize {
             let mut polynomial_product = 1i128;
             for (i, row) in w.iter().enumerate() {
-                let wx = row.iter().enumerate().map(|(j, &v)| {
-                    v * i128::try_from((x >> j) & 1).unwrap()
-                }).sum::<i128>();
+                let wx = row
+                    .iter()
+                    .enumerate()
+                    .map(|(j, &v)| v * i128::try_from((x >> j) & 1).unwrap())
+                    .sum::<i128>();
                 let ybit = (y >> i) & 1;
                 polynomial_product *= if ybit == 0 { 1 - wx } else { wx };
             }
             deformed_at_zero += tensor_row(y) * tensor_column(x) * polynomial_product;
         }
     }
-    let direct = (0..16usize).map(|x| tensor_row(x) * tensor_column(x)).sum::<i128>();
+    let direct = (0..16usize)
+        .map(|x| tensor_row(x) * tensor_column(x))
+        .sum::<i128>();
     assert_eq!(deformed_at_zero, direct);
 }
 

@@ -2,7 +2,7 @@ name: Unified mathematical source contract
 
 on:
   push:
-    branches: ['experiment/latex-unified-contract']
+    branches: ['experiment/latex-to-lean-pilot', 'experiment/latex-unified-contract']
     paths:
       - 'benchmark/latex-to-lean/unified/**'
       - 'benchmark/latex-to-lean/research/summarize.mjs'

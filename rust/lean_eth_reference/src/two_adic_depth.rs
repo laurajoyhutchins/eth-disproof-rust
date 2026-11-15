@@ -64,7 +64,9 @@ pub fn child_upper_edges(m: u128, groups: u32) -> Result<u128, Error> {
         ));
     }
     let r = u128::from(groups);
-    let high = (m / r).checked_mul(6).ok_or_else(|| capacity("child edge bound overflow"))?;
+    let high = (m / r)
+        .checked_mul(6)
+        .ok_or_else(|| capacity("child edge bound overflow"))?;
     let low = ((m % r) * 6) / r;
     high.checked_add(low)
         .ok_or_else(|| capacity("child edge bound overflow"))
@@ -100,7 +102,8 @@ impl DepthAudit {
         proposed_maximum_degree: u128,
         widths: &[u32],
     ) -> Result<Self, Error> {
-        if root_edges < 2 || proposed_maximum_degree == 0 || widths.is_empty() || widths.len() > 32 {
+        if root_edges < 2 || proposed_maximum_degree == 0 || widths.is_empty() || widths.len() > 32
+        {
             return Err(Error::Invalid(
                 "root edges >=2, positive degree cap and 1..=32 widths required".into(),
             ));
@@ -127,8 +130,8 @@ impl DepthAudit {
             let label_classes_d = cumulative_a
                 .and_then(|a| a.checked_mul(2))
                 .and_then(|exponent| u128::from(groups).checked_pow(exponent));
-            let matching_required_edges = cumulative_a
-                .and_then(|a| matching_threshold(groups, a, proposed_maximum_degree));
+            let matching_required_edges =
+                cumulative_a.and_then(|a| matching_threshold(groups, a, proposed_maximum_degree));
             let degree_cap_sufficient_for_packet_vertices = slots_l
                 .and_then(|l| l.checked_mul(2))
                 .is_some_and(|ports| ports <= proposed_maximum_degree);
@@ -231,7 +234,10 @@ mod tests {
         assert_eq!(a.stages[2].reason, "guaranteed_leaf");
         assert!(a.stages.iter().all(|stage| stage.source_fixed_width_u == 0));
         assert!(!a.full_recursion_admitted());
-        assert_eq!(child_upper_edges(u128::MAX, 64).unwrap(), (u128::MAX / 64) * 6 + 5);
+        assert_eq!(
+            child_upper_edges(u128::MAX, 64).unwrap(),
+            (u128::MAX / 64) * 6 + 5
+        );
     }
 
     #[test]

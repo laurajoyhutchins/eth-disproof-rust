@@ -382,7 +382,10 @@ fn include_value_runtime(source: String, features: RuntimeFeatures) -> CompilerR
         source
     };
     if code.len() > safety::MAX_OUTPUT_BYTES {
-        return Err("complete standalone Rust source exceeds maximum output bytes".into());
+        return Err(CompilerError::new(
+            RefusalKind::ResourceLimit,
+            "complete standalone Rust source exceeds maximum output bytes",
+        ));
     }
     Ok(code)
 }

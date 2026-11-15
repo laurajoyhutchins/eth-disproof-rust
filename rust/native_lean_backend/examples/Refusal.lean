@@ -19,10 +19,16 @@ run_cmd do
   let natReport := NativeRust.emit natDecl "unsupported_nat"
   unless natReport.startsWith "ERROR\n" do
     throwError "unsupported Nat bitwise primitive was silently accepted"
+  unless (natReport.splitOn "\"construct\":\"Primitive\"").length == 2 do
+    throwError "unsupported Nat operation lost its source primitive refusal category"
   let invalidName := NativeRust.emit decl "9not_valid"
   unless invalidName.startsWith "ERROR\n" do
     throwError "unsafe Rust name was accepted"
+  unless (invalidName.splitOn "\"construct\":\"Decl\"").length == 2 do
+    throwError "invalid Rust public symbol lost its declaration refusal category"
   let keywordName := NativeRust.emit decl "fn"
   unless keywordName.startsWith "ERROR\n" do
     throwError "Rust reserved keyword was accepted"
+  unless (keywordName.splitOn "\"construct\":\"Decl\"").length == 2 do
+    throwError "reserved Rust symbol lost its declaration refusal category"
   logInfo "Unsupported Nat bitwise operation and invalid Rust identifiers refused"

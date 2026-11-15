@@ -12,7 +12,10 @@ impl Reader {
         while let Some(current) = pending.pop() {
             count += 1;
             if count > 100_000 {
-                return Err("sharedness audit exceeds 100000 IR instructions".into());
+                return Err(CompilerError::new(
+                    RefusalKind::ResourceLimit,
+                    "sharedness audit exceeds 100000 IR instructions",
+                ));
             }
             match Self::body_view(current)? {
                 FnBodyView::Decl { expr, next, .. } => {
@@ -60,7 +63,10 @@ impl Reader {
         while let Some((current, prior_rc, scope, depth)) = pending.pop() {
             steps += 1;
             if steps > 100_000 || depth > 128 {
-                return Err("source reference-count CFG audit limit exceeded".into());
+                return Err(CompilerError::new(
+                    RefusalKind::ResourceLimit,
+                    "source reference-count CFG audit limit exceeded",
+                ));
             }
             match Self::body_view(current)? {
                 FnBodyView::Decl { expr, next, .. } => {
@@ -109,7 +115,10 @@ impl Reader {
                         candidate = join.outer.as_ref();
                     }
                     let (body, outer) = target.ok_or_else(|| {
-                        format!("unsupported or recursive RC CFG jump to join {id}")
+                        CompilerError::new(
+                            RefusalKind::FnBody,
+                            format!("unsupported or recursive RC CFG jump to join {id}"),
+                        )
                     })?;
                     pending.push((body, prior_rc, outer, depth + 1));
                 }

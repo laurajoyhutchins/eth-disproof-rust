@@ -12,12 +12,18 @@ impl Reader {
         ctx: LoweringContext<'_>,
     ) -> CompilerResult<()> {
         if depth > 128 {
-            return Err("IR control-flow nesting limit".into());
+            return Err(CompilerError::new(
+                RefusalKind::ResourceLimit,
+                "IR control-flow nesting limit",
+            ));
         }
         loop {
             *count += 1;
             if *count > 100_000 {
-                return Err("IR instruction limit exceeded".into());
+                return Err(CompilerError::new(
+                    RefusalKind::ResourceLimit,
+                    "IR instruction limit exceeded",
+                ));
             }
             match Self::body_view(x)? {
                 FnBodyView::Decl {
@@ -59,7 +65,10 @@ impl Reader {
                         consumed_ap,
                     )?;
                     if env.insert(name, ty).is_some() {
-                        return Err(format!("variable x_{name} defined more than once").into());
+                        return Err(CompilerError::new(
+                            RefusalKind::FnBody,
+                            format!("variable x_{name} defined more than once"),
+                        ));
                     }
                     writeln!(code, "    let x_{name}: {} = {value};", rust_type(ty)).unwrap();
                     x = next;
@@ -76,7 +85,10 @@ impl Reader {
                     // scope: recursive join jumps are refused, not miscompiled.
                     let id = Self::var(join_id)?;
                     if ctx.joins.contains_key(&id) {
-                        return Err(format!("join point {id} shadows a visible join").into());
+                        return Err(CompilerError::new(
+                            RefusalKind::FnBody,
+                            format!("join point {id} shadows a visible join"),
+                        ));
                     }
                     let mut param_types = Vec::new();
                     let join_shared = Self::shared_observations(value)?;
@@ -86,15 +98,15 @@ impl Reader {
                         let var = Self::var(Self::field(param, 0)?)?;
                         let ty = Self::ty(Self::field(param, 1)?)?;
                         if Self::param_borrow(param)? && join_shared.contains(&var) {
-                            return Err(format!(
+                            return Err(CompilerError::new(RefusalKind::FnBody, format!(
                                 "borrowed join parameter x_{var} has unverified isShared ownership semantics"
-                            ).into());
+                            )));
                         }
                         if value_env.insert(var, ty).is_some() {
-                            return Err(format!(
-                                "join parameter x_{var} reused a visible variable"
-                            )
-                            .into());
+                            return Err(CompilerError::new(
+                                RefusalKind::FnBody,
+                                format!("join parameter x_{var} reused a visible variable"),
+                            ));
                         }
                         if is_value_type(ty) {
                             RuntimeFeatures::mark(ctx.features, RuntimeFeatures::VALUE);
@@ -136,13 +148,22 @@ impl Reader {
                 } => {
                     // Source FnBody.set on pointer fields; preserve aliases.
                     let id = Self::var(target)?;
-                    let ty = env.get(&id).ok_or("set on undefined variable")?;
+                    let ty = env.get(&id).ok_or(CompilerError::new(
+                        RefusalKind::FnBody,
+                        "set on undefined variable",
+                    ))?;
                     if !matches!(*ty, "obj" | "tobj") {
-                        return Err("constructor set requires heap object".into());
+                        return Err(CompilerError::new(
+                            RefusalKind::FnBody,
+                            "constructor set requires heap object",
+                        ));
                     }
                     let index = Self::nat(index)?;
                     if index >= 1024 {
-                        return Err("constructor pointer index exceeds bound".into());
+                        return Err(CompilerError::new(
+                            RefusalKind::FnBody,
+                            "constructor pointer index exceeds bound",
+                        ));
                     }
                     let value = Self::arg(value, env, "tobj")?;
                     writeln!(
@@ -175,10 +196,12 @@ impl Reader {
                         || !env.get(&id).is_some_and(|t| is_value_type(t))
                         || env.get(&value) != Some(&"u8")
                     {
-                        return Err(format!(
-                            "unverified sset layout n={pointers}, offset={offset}, type={ty}"
-                        )
-                        .into());
+                        return Err(CompilerError::new(
+                            RefusalKind::FnBody,
+                            format!(
+                                "unverified sset layout n={pointers}, offset={offset}, type={ty}"
+                            ),
+                        ));
                     }
                     writeln!(
                         code,
@@ -195,11 +218,15 @@ impl Reader {
                     // isShared after a possible earlier inc/dec/del effect.
                     // This is not Lean/Rust reference-count equivalence.
                     let id = Self::var(target)?;
-                    let ty = env
-                        .get(&id)
-                        .ok_or("reference bookkeeping for undefined variable")?;
+                    let ty = env.get(&id).ok_or(CompilerError::new(
+                        RefusalKind::FnBody,
+                        "reference bookkeeping for undefined variable",
+                    ))?;
                     if !is_value_type(ty) {
-                        return Err("reference bookkeeping on non-object variable".into());
+                        return Err(CompilerError::new(
+                            RefusalKind::FnBody,
+                            "reference bookkeeping on non-object variable",
+                        ));
                     }
                     x = next;
                 }
@@ -216,22 +243,30 @@ impl Reader {
                     // into the enclosing join point's continuation.
                     let id = Self::var(jump_id)?;
                     let types = ctx.joins.get(&id).ok_or_else(|| {
-                        format!("unsupported or recursive jump to join point {id}")
+                        CompilerError::new(
+                            RefusalKind::FnBody,
+                            format!("unsupported or recursive jump to join point {id}"),
+                        )
                     })?;
                     let args = Self::array(arguments)?;
                     if args.len() != types.len() {
-                        return Err(format!(
-                            "join point {id} expects {} args, got {}",
-                            types.len(),
-                            args.len()
-                        )
-                        .into());
+                        return Err(CompilerError::new(
+                            RefusalKind::FnBody,
+                            format!(
+                                "join point {id} expects {} args, got {}",
+                                types.len(),
+                                args.len()
+                            ),
+                        ));
                     }
                     let mut lowered = Vec::new();
                     for (arg, ty) in args.into_iter().zip(types.iter()) {
                         if Self::checked_tag(arg, "Arg")? == 1 {
                             if !is_value_type(ty) {
-                                return Err("erased scalar join argument not supported".into());
+                                return Err(CompilerError::new(
+                                    RefusalKind::FnBody,
+                                    "erased scalar join argument not supported",
+                                ));
                             }
                             // Source-optimized guard-dependent parameters are
                             // physically absent. Any later read must fail,

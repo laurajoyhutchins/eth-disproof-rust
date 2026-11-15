@@ -9,7 +9,7 @@ static lean_object *observed[32];
 static unsigned n_observed;
 
 uint64_t lr_object_trace_id(b_lean_obj_arg x) {
-    if (!x || lean_is_scalar((lean_object *)x)) __builtin_trap();
+    if (!x || lean_is_scalar((lean_object *)x)) return UINT64_MAX - 1u;
     for (unsigned i = 0; i < n_observed; ++i) {
         if (observed[i] == x) return (uint64_t)(i + 1);
     }
@@ -19,8 +19,9 @@ uint64_t lr_object_trace_id(b_lean_obj_arg x) {
 }
 
 uint64_t lr_object_trace_rc(b_lean_obj_arg x) {
-    if (!x || lean_is_scalar((lean_object *)x) || !lean_is_st((lean_object *)x)) __builtin_trap();
+    if (!x || lean_is_scalar((lean_object *)x)) return UINT64_MAX - 1u;
+    if (!lean_is_st((lean_object *)x)) return UINT64_MAX - 2u;
     int rc = lean_internal_get_rc((lean_object *)x);
-    if (rc < 1) __builtin_trap(); /* no sticky/frozen/MT domain admission */
+    if (rc < 1) return UINT64_MAX - 3u; /* never report as admitted */
     return (uint64_t)rc;
 }

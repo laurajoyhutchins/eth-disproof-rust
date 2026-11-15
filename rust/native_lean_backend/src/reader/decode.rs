@@ -126,12 +126,17 @@ impl Reader {
                 if !ir_type_compatible(found, expected) {
                     return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }
+                if *found == "erased" {
+                    // Forward only a source-typed proof-only argument.
+                    return Ok("()".to_owned());
+                }
                 Ok(if is_value_type(found) {
                     format!("x_{id}.clone()")
                 } else {
                     format!("x_{id}")
                 })
             }
+            1 if expected == "erased" => Ok("()".to_owned()),
             1 => Err("erased value used as runtime operand".into()),
             t => Err(format!("unknown Arg constructor {t}")),
         }
@@ -145,6 +150,7 @@ impl Reader {
             3 => Ok("u32"),
             4 => Ok("u64"),
             5 => Ok("usize"),
+            6 => Ok("erased"),
             7 => Ok("obj"),
             8 => Ok("tobj"),
             12 => Ok("tagged"),

@@ -49,6 +49,7 @@ fn run() -> Result<(), String> {
             "original_child_shrink_bound_holds": a.original_child_shrink_bound_holds(),
             "source_asymptotic_u_bound_holds": a.source_asymptotic_u_bound_holds(),
             "published_degree_envelope_obstructed": a.published_degree_envelope_obstructed(),
+            "published_degree_envelope_obstructs_matching_lemma": a.published_envelope_obstructs_matching_lemma(),
             "source_degree_invariant_verified": false,
             "interpolation_precision_verified": false,
             "active_recursion_executed": false,

@@ -304,7 +304,12 @@ impl Reader {
             };
         }
         let spec =
-            primitive_spec(&name).ok_or_else(|| format!("unrecognized primitive call: {name}"))?;
+            primitive_spec(&name).ok_or_else(|| {
+                CompilerError::new(
+                    RefusalKind::Primitive,
+                    format!("unrecognized primitive call: {name}"),
+                )
+            })?;
         let op = spec.rust_op;
         let comparison = spec.comparison;
         let expected_ty = spec.operand_type;

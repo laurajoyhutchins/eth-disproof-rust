@@ -29,7 +29,10 @@ impl Reader {
             ),
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
             12 => Self::lower_shared_observation(x, var_ty, env),
-            t => Err(format!("IR expression constructor {t} unsupported").into()),
+            t => Err(CompilerError::new(
+                RefusalKind::Expr,
+                format!("IR expression constructor {t} unsupported"),
+            )),
         }
     }
 }

@@ -4,11 +4,14 @@ use super::*;
 impl Reader {
     pub(crate) unsafe fn emit(decl: Obj, rust_name: Obj) -> CompilerResult<String> {
         if lr_abi_probe() == 0 {
-            return Err("Lean C ABI runtime probe failed".into());
+            return Err(CompilerError::new(
+                RefusalKind::Abi,
+                "Lean C ABI runtime probe failed",
+            ));
         }
         let declaration = Self::name(Self::field(decl, 0)?, 0)?;
         let generated = Self::emit_function(decl, &Self::string(rust_name)?, None)
-            .map_err(|reason| format!("declaration={declaration}; {reason}"))?;
+            .map_err(|reason| reason.with_declaration(declaration))?;
         include_value_runtime(generated)
     }
 
@@ -91,7 +94,10 @@ impl Reader {
     }
     pub(super) unsafe fn signature(decl: Obj) -> CompilerResult<Signature> {
         if Self::checked_tag(decl, "Decl")? != 0 {
-            return Err("extern or opaque declaration in native dependency closure".into());
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                "extern or opaque declaration in native dependency closure",
+            ));
         }
         let mut params = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
@@ -170,7 +176,10 @@ impl Reader {
         roots: Vec<(String, String)>,
     ) -> CompilerResult<String> {
         if lr_abi_probe() == 0 {
-            return Err("Lean C ABI runtime probe failed".into());
+            return Err(CompilerError::new(
+                RefusalKind::Abi,
+                "Lean C ABI runtime probe failed",
+            ));
         }
         if roots.is_empty() || roots.len() > 128 {
             return Err("expected 1..128 public Lean root declarations".into());
@@ -194,7 +203,10 @@ impl Reader {
                 return Err(format!("duplicate Rust public API name: {public}").into());
             }
             if !definitions.contains_key(root) {
-                return Err(format!("requested Lean root {root} has no compiler IR").into());
+                return Err(CompilerError::new(
+                    RefusalKind::Dependency,
+                    format!("requested Lean root {root} has no compiler IR"),
+                ));
             }
             pending.push(root.clone());
         }
@@ -206,7 +218,10 @@ impl Reader {
                 continue;
             }
             if visited.len() > 2048 {
-                return Err("native declaration closure exceeds 2048 functions".into());
+                return Err(CompilerError::new(
+                    RefusalKind::ResourceLimit,
+                    "native declaration closure exceeds 2048 functions",
+                ));
             }
             let decl = *definitions.get(&name).ok_or_else(||
                 format!("dependency {name} has no compiled IR in the current module; no external fallback"))?;

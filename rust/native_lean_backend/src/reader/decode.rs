@@ -23,9 +23,12 @@ impl Reader {
         if SUPPORTED_IR_TAGS.contains(&(family, tag)) {
             Ok(tag)
         } else {
-            Err(format!(
-                "{family} constructor tag {tag} explicitly unsupported by pinned IR coverage contract"
-            ).into())
+            Err(CompilerError::new(
+                RefusalKind::ir_family(family),
+                format!(
+                    "{family} constructor tag {tag} explicitly unsupported by pinned IR coverage contract"
+                ),
+            ))
         }
     }
     pub(super) unsafe fn field(x: Obj, index: usize) -> CompilerResult<Obj> {
@@ -143,7 +146,10 @@ impl Reader {
                 })
             }
             1 => Err("erased value used as runtime operand".into()),
-            t => Err(format!("unknown Arg constructor {t}").into()),
+            t => Err(CompilerError::new(
+                RefusalKind::Arg,
+                format!("unknown Arg constructor {t}"),
+            )),
         }
     }
     pub(super) unsafe fn ty(x: Obj) -> CompilerResult<&'static str> {

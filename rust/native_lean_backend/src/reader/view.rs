@@ -114,7 +114,10 @@ impl Reader {
                 id: Self::field(x, 0)?,
                 arguments: Self::field(x, 1)?,
             },
-            t => return Err(format!("IR body constructor {t} unsupported").into()),
+            t => return Err(CompilerError::new(
+                RefusalKind::FnBody,
+                format!("IR body constructor {t} unsupported"),
+            )),
         })
     }
 
@@ -126,7 +129,10 @@ impl Reader {
             1 => AltView::Default {
                 body: Self::field(x, 0)?,
             },
-            t => return Err(format!("IR alternative constructor {t} unsupported").into()),
+            t => return Err(CompilerError::new(
+                RefusalKind::Alt,
+                format!("IR alternative constructor {t} unsupported"),
+            )),
         })
     }
 }

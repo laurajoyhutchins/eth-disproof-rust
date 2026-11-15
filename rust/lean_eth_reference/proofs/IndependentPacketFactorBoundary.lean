@@ -35,7 +35,7 @@ label set can be exponentially large. It is not Anthropic's quantitative
 rank bound.
 -/
 theorem finite_relation_factors_through_columns
-    {X Y : Type*} [Fintype Y]
+    {X Y : Type*} [Fintype Y] [DecidableEq Y]
     (F : X → Y → ℤ) (x : X) (y : Y) :
     F x y =
       ∑ label : Y, F x label * (if label = y then (1 : ℤ) else 0) := by

@@ -379,6 +379,20 @@ mod source_reference_count_tests {
     }
 
     #[test]
+    fn owned_and_borrowed_array_reads_have_distinct_source_counts() {
+        let element = __LeanValue::boxed_u64(7);
+        let array = __LeanValue::array(vec![element.compiler_alias()]);
+        let borrowed = array.array_get_tagged_borrowed(0);
+        assert_eq!(element.is_shared(), 0);
+        assert_eq!(borrowed.is_shared(), 0);
+        let owned = array.array_get_tagged(0);
+        assert_eq!(element.is_shared(), 1);
+        assert_eq!(owned.is_shared(), 1);
+        owned.source_dec(1, true, false);
+        assert_eq!(element.is_shared(), 0);
+    }
+
+    #[test]
     fn compiler_clones_do_not_change_source_exclusivity() {
         let x = __LeanValue::ctor(1, "Cell", vec![__LeanValue::tagged(2)]);
         let transient = x.compiler_alias();

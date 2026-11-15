@@ -52,5 +52,8 @@ It is **not** a full source-to-Rust heap simulation. In particular:
 - Source `borrow`, external calls, arbitrary closure arities, all
   destructor cascades, sticky/frozen/multithreaded counts, mutation
   identity and complete interprocedural ownership contracts remain open.
+- The source-owned `Array.getInternal` increments the element's logical
+  count; `Array.getInternalBorrowed` returns a compiler-only alias without
+  incrementing it. This is covered by the canonical runtime regression test.
 - The existing source-CFG and cross-call refusal rules remain active.
   This control must not be used to promote G1/G2 or claim a theorem.

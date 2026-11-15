@@ -216,7 +216,15 @@ impl Reader {
                     erased(3)?;
                     let array = Self::arg(args[1], env, "obj")?;
                     let index = Self::arg(args[2], env, "tagged")?;
-                    Ok(format!("{array}.array_get_tagged({index}.tagged_nat())"))
+                    // Owned get retains the element; borrowed get must not.
+                    // The immutable Rust handle remains memory-safe in both
+                    // cases, but only the former increments source RC.
+                    let getter = if name == "Array.getInternalBorrowed" {
+                        "array_get_tagged_borrowed"
+                    } else {
+                        "array_get_tagged"
+                    };
+                    Ok(format!("{array}.{getter}({index}.tagged_nat())"))
                 }
                 "Array.set!" => {
                     if var_ty != "obj" {

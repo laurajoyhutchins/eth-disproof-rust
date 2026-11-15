@@ -56,7 +56,8 @@ pub(super) fn is_primitive(name: &str) -> bool {
         )
 }
 
-pub(super) const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");
+pub(super) const RUNTIME_PRIMITIVE_REGISTRY: &str =
+    include_str!("../runtime-primitive-registry.tsv");
 pub(super) struct RuntimePrimitiveSpec<'a> {
     pub(super) rust_function: &'a str,
     pub(super) shape: &'a str,
@@ -86,10 +87,22 @@ mod tests {
 
     #[test]
     fn unsupported_runtime_primitives_are_not_inferred() {
-        for name in ["Nat.pow", "Array.pop", "IO.println", "IO.getLine", "Unknown.foo"] {
+        for name in [
+            "Nat.pow",
+            "Array.pop",
+            "IO.println",
+            "IO.getLine",
+            "Unknown.foo",
+        ] {
             assert!(!is_primitive(name), "{name} must not silently lower");
         }
-        for name in ["Nat.add", "Nat.div", "Int.add", "Array.set!", "Array.getInternal"] {
+        for name in [
+            "Nat.add",
+            "Nat.div",
+            "Int.add",
+            "Array.set!",
+            "Array.getInternal",
+        ] {
             assert!(is_primitive(name), "{name} must remain supported");
         }
     }

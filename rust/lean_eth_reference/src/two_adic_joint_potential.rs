@@ -39,13 +39,11 @@ fn ceil_log2(value: u128) -> u32 {
 }
 
 fn ceiling_twothirds(value: u128) -> Option<u128> {
-    (value / 3)
-        .checked_mul(2)?
-        .checked_add(match value % 3 {
-            0 => 0,
-            1 => 1,
-            _ => 2,
-        })
+    (value / 3).checked_mul(2)?.checked_add(match value % 3 {
+        0 => 0,
+        1 => 1,
+        _ => 2,
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -99,7 +97,9 @@ impl JointPotentialArithmetic {
         let a = coordinates;
         let degree = proposed_actual_maximum_degree;
         let b = r.checked_pow(a);
-        let d = a.checked_mul(2).and_then(|exponent| r.checked_pow(exponent));
+        let d = a
+            .checked_mul(2)
+            .and_then(|exponent| r.checked_pow(exponent));
         let l = 1u128.checked_shl(a);
         let o = r
             .checked_mul(r + 1)
@@ -134,9 +134,7 @@ impl JointPotentialArithmetic {
             .is_some_and(|new_degree| proposed_maximum_degree_cap >= new_degree);
         let packet_possible = packet_threshold.is_some_and(|needed| root_edges >= needed);
         let port_possible = port_threshold.is_some_and(|needed| root_edges >= needed);
-        let together = packet_threshold
-            .zip(port_threshold)
-            .map(|(x, y)| x.max(y));
+        let together = packet_threshold.zip(port_threshold).map(|(x, y)| x.max(y));
 
         Ok(Self {
             root_edges,

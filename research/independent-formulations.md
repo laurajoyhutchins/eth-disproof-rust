@@ -23,14 +23,14 @@ The two Lean source models are not the same datatype.
 - Anthropic's `encInput` starts with `1^k 0`, followed by `encClauses`: `1^n 0` then fixed-width, **least-significant-bit-first** positions. `slot none = 0`; for literal `(i,b)`, `slot = 2i + 1 + b.toNat`. Width is `Nat.log2 (2*n) + 1`. Its output is the lowest `n+1` bits of `numSat`, LSB first. This is **not** the OpenAI native input or output ABI.
 - Both formula semantics interpret a clause as OR and a formula as AND. At the mathematical level, forgetting list order and duplicates preserves satisfaction for every Boolean assignment. This does **not** establish an equality of encoded words, runtime programs, transitions or complexity functions.
 
-The first bridge to prove in Lean is therefore an **extensional counting equivalence**, for a set conversion `toOpenAI : Anthropic.CNF n → OpenAI.SAT.CNF (Fin n)`:
+The first bridge is **proved** in [`IndependentCnfBridge.lean`](../rust/lean_eth_reference/proofs/IndependentCnfBridge.lean). The total conversion `IndependentETH.toCNF` preserves satisfaction and count for every Anthropic CNF, with no machine-theorem eligibility hypotheses. The count retains the `n`-variable universe, including unused variables. The original definitions are imported unchanged from their pinned revisions. In particular:
 
 ```text
-∀ φ a, Anthropic.satisfies φ a ↔ OpenAI.satisfies (toOpenAI φ) a
-∀ φ, Anthropic.numSat φ = OpenAI.SAT.count (toOpenAI φ)
+IndependentETH.satisfiable_iff : MainResults.Satisfiable φ ↔ SAT.Satisfiable (toCNF φ)
+IndependentETH.numSat_eq_count : MainResults.numSat φ = SAT.count (toCNF φ)
 ```
 
-These are proposed statements, not yet kernel-checked; precise namespace, coercion, and source definitions must be reconciled against the pinned Lean files. In particular, keep the `n`-variable universe even when some variables are unused, and separate the *count bridge for all lists* from Anthropic's *machine theorem, which has extra hypotheses*.
+These are semantic identities, not statements about the two encoded inputs, executable programs, or time bounds.
 
 ## Acceptance levels
 
@@ -73,7 +73,17 @@ IndependentETH.numSat_eq_count :
 
 The full theorem names are in the Lean file. This is **all finite formulas**, not merely Anthropic's narrower machine-theorem input domain. The exact-head Lean checkpoint [run #43727057523](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43727057523) passed with axioms `propext`, `Classical.choice`, `Quot.sound` for each theorem.
 
-The separate [`IndependentSwapIdentity.lean`](../rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean) formalizes a single two-bit integer matrix identity: in basis (00,01,10,11), `SWAP = I - vvᵀ` for `v=(0,1,-1,0)`. This is the local `SWAP = I - 2·singlet` formula described in Anthropic's pinned ETH exposition. The independent [Rust tensor test](../rust/lean_eth_reference/tests/independent_swap_identity.rs) checks exact mode sums and contracted integer values for 1–3 two-bit crossings after grouping by the number of singlet factors. These are **local** tests and do not prove OpenAI's packet routing, preservation of incidence support, polynomial contraction cost or either source's full recursion theorem.
+[`IndependentSwapIdentity.lean`](../rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean) proves `SWAP = I - vvᵀ` over the integers in basis (00,01,10,11), for `v=(0,1,-1,0)`. This is the local `SWAP = I - 2·singlet` formula in Anthropic's pinned exposition. The independent [Rust test](../rust/lean_eth_reference/tests/independent_swap_identity.rs) also checks exact expansions and contracted integer values for 1–3 crossings.
+
+### Arbitrary finite network contraction, grouped by weight
+
+The same Lean module now contains `finite_contraction_grouped` and `finite_swap_contraction_grouped`. The former expands any finite product of local sums, then interchanges the finite contraction sum and mode sum, and groups modes by their number of correction factors. The latter instantiates it with the **signed** rank-one singlet correction at every swap crossing.
+
+Its states are an arbitrary finite set of joint boundary assignments; an arbitrary integer coefficient may encode all other node tensors, incidence constraints and shared wires. Neither independence of crossings nor a fixed network size is assumed. The identity holds for zero crossings, repeated/shared boundary variables, and negative coefficients.
+
+The proof uses `Finset.prod_add`, `Finset.sum_comm`, and `Finset.sum_powerset`; the exact-head Lean CI run must typecheck the new theorem before it is called verified. This is an **algebraic** theorem: expanding the powerset has `2^|E|` terms. Neither this grouping nor the local singlet identity establishes a fast algorithm, Anthropic's low-rank grouping bound, or correspondence with OpenAI's packet-mode routing.
+
+Most importantly, the correction `-vvᵀ` has odd entries. Singlet Hamming weight is **not** automatically 2-adic valuation. Discarding high-weight terms modulo `2^p` requires a separate divisibility proof, stated for the actual OpenAI coefficients and routing.
 
 ## Required adversarial corpus
 
@@ -87,9 +97,9 @@ For an actual independent executable comparison, run the **original Anthropic ma
 
 ## Priority for our current work
 
-1. **Now:** Level A bounded reference tests and pin the second upstream source.
-2. **Next:** Prove the count-meaning bridge in Lean, preserving all quantifiers and hypotheses. This can feed [formalization evaluation](formalization-evaluation.md).
-3. **Then:** Identify actual shared algebraic identities in Anthropic's proof and OpenAI's two-adic recursion. Do not assume they are the same algorithm or recurrence merely because both refute ETH.
+1. **Complete:** Pinned source-level CNF meaning bridge, all formulas; local signed-swap identity; finite Rust oracle.
+2. **Current Lean acceptance:** Exact-head compile and axiom-audit of the new arbitrary finite network contraction theorem. Do not promote it from proposed to verified before a green check on the new commit.
+3. **Next mathematical bridge:** Construct a total, source-defined translation from Anthropic's grouped network objects to OpenAI's packet-mode objects; state a common contraction value and prove equality or a correctly justified `2^p` congruence. Keep Hamming weight and 2-adic precision distinct.
 4. **Independently required:** Finish [OpenAI source-to-Rust acceptance](lean-rust-acceptance.md), including the nonterminal query/leaf/DFS/outer chain, noncomputable finite fallback refusal, exact original traces and primitive TM2 accounting.
 
 A successful finite comparison is useful regression evidence. It is not a theorem acceptance receipt, a faithful ETH executable witness, or an ETH complexity benchmark.

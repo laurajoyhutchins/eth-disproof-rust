@@ -238,6 +238,58 @@ theorem normalized_matching_count_moment
   rw [div_pow]
 
 /--
+Normalize the exact port moment by the number `r^|V|` of
+equally likely vertex-symbol labelings. The result is an exact
+product of the source's per-vertex rational port factors.
+-/
+theorem normalized_degree_weighted_port_moment
+    {V A : Type*} [Fintype V] [DecidableEq V]
+    [Fintype A] [DecidableEq A]
+    (degree : V → ℕ) (target : A) (z : ℚ) :
+    (∑ labels ∈ Fintype.piFinset
+      (fun _ : V => (Finset.univ : Finset A)),
+      z ^ (∑ v : V,
+        if labels v = target then degree v else 0)) /
+      (Fintype.card A : ℚ) ^ Fintype.card V =
+    ∏ v, (((Fintype.card A : ℚ) - 1 + z ^ degree v) /
+      (Fintype.card A : ℚ)) := by
+  classical
+  calc
+    _ = (∏ v : V, ((Fintype.card A : ℚ) - 1 + z ^ degree v)) /
+        (∏ _v : V, (Fintype.card A : ℚ)) := by
+      rw [degree_weighted_port_power_moment]
+      simp
+    _ = ∏ v : V, (((Fintype.card A : ℚ) - 1 + z ^ degree v) /
+        (Fintype.card A : ℚ)) := by
+      rw [Finset.prod_div_distrib]
+
+/--
+The same normalized port moment in the source's factor form
+`product_v (1 + (z^degree_v - 1)/r)`, with no real
+approximations or independent stochastic assumptions.
+-/
+theorem normalized_degree_weighted_port_source_factor
+    {V A : Type*} [Fintype V] [DecidableEq V]
+    [Fintype A] [DecidableEq A]
+    (degree : V → ℕ) (target : A) (z : ℚ) :
+    (∑ labels ∈ Fintype.piFinset
+      (fun _ : V => (Finset.univ : Finset A)),
+      z ^ (∑ v : V,
+        if labels v = target then degree v else 0)) /
+      (Fintype.card A : ℚ) ^ Fintype.card V =
+    ∏ v, (1 + (z ^ degree v - 1) /
+      (Fintype.card A : ℚ)) := by
+  rw [normalized_degree_weighted_port_moment]
+  have hr : (Fintype.card A : ℚ) ≠ 0 := by
+    have hc : 0 < Fintype.card A :=
+      Fintype.card_pos_iff.mpr ⟨target⟩
+    exact_mod_cast (Nat.ne_of_gt hc)
+  apply Finset.prod_congr rfl
+  intro v _
+  field_simp
+  ring
+
+/--
 Specialization to two independent endpoint labels on every matching
 edge, one of the source's `D=b²` ordered classes. This proves the
 moment without assuming any probabilistic estimate.
@@ -263,6 +315,8 @@ theorem matching_ordered_pair_moment
 #print axioms TwoAdicIndependentMoments.matching_count_power_moment
 #print axioms TwoAdicIndependentMoments.degree_weighted_port_power_moment
 #print axioms TwoAdicIndependentMoments.normalized_matching_count_moment
+#print axioms TwoAdicIndependentMoments.normalized_degree_weighted_port_moment
+#print axioms TwoAdicIndependentMoments.normalized_degree_weighted_port_source_factor
 
 
 end TwoAdicIndependentMoments

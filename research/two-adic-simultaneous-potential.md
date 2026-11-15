@@ -331,15 +331,29 @@ potential numerators, all conditional-average verification,
 actual packet count and refusal flags. Neither mode executes
 a source tensor contraction.
 
+## Kernel-checked finite moments (15 November 2026)
+
+The independent Lean formalization now contains two separate verified layers:
+
+1. [`IndependentTwoAdicJointPotential.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean), merged in [#306](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/306), proves the finite rational nonincreasing-choice principle, the concrete coordinatewise unordered signature partition summing to \(D=r^{2a}\), the exact packet waste equivalence, child incidence from row/column ports, and an abstract orbit packet budget.
+2. [`IndependentTwoAdicMoments.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/lean_eth_reference/proofs/IndependentTwoAdicMoments.lean), merged in [#309](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/309), proves **13 independent finite-label sum lemmas**. For a matching represented by independently labelled edge endpoint pairs, it establishes \(\sum 2^{X_\gamma}=(D+1)^m\) and the exact rational mean \(((D+1)/D)^m\). For vertex symbol ports, it establishes \(\sum z^{C_s}=\prod_v(r-1+z^{d_v})\) and the normalized source factor \(\prod_v(1+(z^{d_v}-1)/r)\). The Lean bridge explicitly proves that the source's powers of **actual hit counts** are equal to the local products, including indivisible vertex-degree contributions.
+
+Both checks passed at exact heads using pinned Lean 4.34.1 and Mathlib, with only standard Lean axioms and no proof placeholders. See [#306 verification](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43771961460) and [#309 verification](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43774480582).
+
+**These are not yet a kernel proof of the complete combined theorem.** A matching's edge-local label space must be shown equivalent to the restriction of the original graph's vertex-label space using its actual pairwise endpoint-disjointness. The **partial-assignment** matching and port moments must then be proved and assembled into one normalized potential at every greedy choice. The rational moment proof itself supplies neither the analytic exponential tail estimates nor the source-specific \(2^{a-e}\) orbit fiber-size/copy-slot identities. The altered \(W(T)\) for nonzero \(T\), interpolation, weighted modes, precision, and recursive contraction also remain unverified.
+
 ## Next acceptance frontier
 
 This is a **worst-case simultaneous sufficient theorem**, but
 it is not an all-depth or practical one. Further work must:
 
-1. Prove the combined normalization, conditional-expectation lemma
-   and orbit rounding summation in Lean; compare to the original
-   and the existing exact matching-potential proof. Do not infer
-   the proof from passing finite regression tests.
+1. **Finish** the combined theorem in Lean: transport the verified
+   edge-local matching moments to disjoint source endpoints, prove
+   partial-assignment conditional averages for both potentials,
+   establish the analytic exponential upper bounds, and derive
+   individual orbit multiplicities and copy-slot counts. The finite
+   independent-moment and abstract-budget lemmas are already checked,
+   but they do not discharge these remaining connections.
 2. Extend exact *constructive* realization beyond the small
    `u128` reference using a reused arbitrary-precision Rust
    package, with a measured total labeling bit-cost receipt.

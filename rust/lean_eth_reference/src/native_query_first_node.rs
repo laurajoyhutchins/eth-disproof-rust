@@ -7,7 +7,9 @@
 
 use crate::Error;
 use crate::bit_program::{Cmd, Program};
-use crate::{native_bootstrap, native_layout, native_nodes, native_pair_setup, native_query_prefix};
+use crate::{
+    native_bootstrap, native_layout, native_nodes, native_pair_setup, native_query_prefix,
+};
 
 /// Exactly the first four source commands in QueryStreamProgram.nodeBody:
 /// beginNode; NativeLayoutLoad.command; bootstrapNode; setupCaller.

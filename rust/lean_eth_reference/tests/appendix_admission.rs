@@ -32,7 +32,7 @@ fn no_large_integer_rounding_and_no_invalid_success() {
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(report["edges"], max_edges);
+    assert_eq!(report["edges"].as_str(), Some(max_edges.as_str()));
     assert_eq!(report["lambda"], 128);
     assert_eq!(report["root_u"], 0);
     assert!(report["sat_count"].is_null());

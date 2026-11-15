@@ -232,7 +232,9 @@ impl __LeanValue {
     #[track_caller]
     fn source_del(&self) {
         self.assert_not_erased();
-        assert!(self.source_heap(), "source del on tagged immediate");
+        // lean_del_object checks the tagged-pointer bit and is a no-op for
+        // immediate values. Heap deletion frees only the container shell.
+        if !self.source_heap() { return; }
         assert_eq!(self.1.replace(0), 1, "source del requires unique object");
     }
 

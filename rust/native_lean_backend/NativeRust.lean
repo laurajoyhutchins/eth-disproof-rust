@@ -12,12 +12,12 @@ private def refusalMessage (decl : Lean.Name) (construct reason : String) : Stri
       ("reason", .str reason)
     ]).compress
 
-/-- A borrowed, in-process Lean.IR.Decl passed directly to Rust.
-    Rust returns `OK\n<source>` or `ERROR\n<reason>`; no serialized IR. -/
 /-- Pinned C-ABI diagnostic: 0=owned, 1=borrowed, 255=invalid layout.
     This does not confer a reference-count equivalence guarantee. -/
 @[extern "rs_param_borrow_flag"] opaque paramBorrowFlag (param : @& Lean.IR.Param) : UInt8
 
+/-- A borrowed, in-process Lean.IR.Decl passed directly to Rust.
+    Rust returns `OK\n<source>` or `ERROR\n<reason>`; no serialized IR. -/
 @[extern "rs_emit_ir"] opaque emit (decl : @& Lean.IR.Decl) (rustName : @& String) : String
 
 /-- Emit a closed executable dependency graph in-process (no JSON IR). -/

@@ -36,6 +36,7 @@ jobs:
           node --check benchmark/latex-to-lean/unified/generate-leanify.mjs
           node --check benchmark/latex-to-lean/unified/semantic-check.mjs
           node --check benchmark/latex-to-lean/unified/semantic-verify.mjs
+          node --check benchmark/latex-to-lean/unified/semantic.mjs
           node --check benchmark/latex-to-lean/unified/semantic-fixture.mjs
 
   corpus-integration:

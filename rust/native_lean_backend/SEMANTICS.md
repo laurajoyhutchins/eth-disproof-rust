@@ -129,14 +129,21 @@ negative case exercise the pinned Bool layout through real Lean IR.
 The requested-root closure now has a monotone fixed-point *may-effect*
 and *may-observe* summary. Source-CFG analysis propagates possible RC
 effects through direct calls, including recursion, case alternatives and
-lexically entered joins. An `isShared` in a caller or callee after a
-potential earlier RC effect is refused. PAP creation does not eagerly
+lexically entered joins. An `isShared` in a caller after a potential
+earlier RC effect is refused, as is a directly called *scalar-returning*
+observer after an earlier effect. Object-returning compiler copy-on-write
+paths remain in the established value-semantic subset. Their physical
+allocation/uniqueness choices are explicitly **not certified** by this
+check. This is a deliberately incomplete boundary, not a blanket
+ownership-equivalence claim.
+
+PAP creation does not eagerly
 execute the callee; observing closure captures remain refused until their
 capture/borrow ownership correspondence is verified. An unknown indirect
 AP taints subsequent observations. Source-native tests cover direct
 calls in both directions, a branch-hidden callee effect, unknown closure
-application, and observable closure captures, plus positive pure and
-observation-before-effect cases.
+application, and observable closure captures, plus positive pure,
+observation-before-effect, and object-returning value-only cases.
 
 This is a **conservative admission guard**, not proof that `Rc`'s actual
 strong counts match Lean's physical counts at observable points. In

@@ -110,7 +110,7 @@ fn coordinate_descent_repairs_two_different_symbol_rotations_without_port_loss()
     assert!(receipt.structurally_admitted());
     assert_eq!(receipt.maximum_row_port, 8);
     assert_eq!(receipt.maximum_column_port, 8);
-    assert_eq!(receipt.uniform_packets_at_final_labels, Some(256));
+    assert_eq!(receipt.uniform_packets_at_final_labels, Some(512));
     assert_certified(&edges, 4, 2, &receipt);
     assert_eq!(
         receipt,

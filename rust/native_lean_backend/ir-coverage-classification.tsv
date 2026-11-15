@@ -32,7 +32,7 @@ Lean.IR.Expr.ap	8	implemented_bounded	fully_boxed_source_defined_indirect_calls_
 Lean.IR.Expr.box	9	implemented_bounded	fixed_width_scalars_to_immutable_values	Objects_and_FunctionValues
 Lean.IR.Expr.unbox	10	implemented_bounded	verified_immutable_boxed_scalar_types	Objects_and_FunctionValues
 Lean.IR.Expr.lit	11	implemented_bounded	small_tagged_natural_literal	matrix_or_baseline_fixture
-Lean.IR.Expr.isShared	12	explicitly_unsupported	default_refusal	no_positive_semantics_claim
+Lean.IR.Expr.isShared	12	implemented_bounded	Rc_sharedness_for_COW_guard_only	MutFixture_optimized_constructor_guard
 Lean.IR.Alt.ctor	0	implemented_bounded	Bool_false_true_only	matrix_or_baseline_fixture
 Lean.IR.Alt.default	1	implemented_bounded	UInt8_nullary_enum_default_only	TaggedFixture_384
 Lean.IR.FnBody.vdecl	0	implemented_bounded	typed_local_assignment	matrix_or_baseline_fixture

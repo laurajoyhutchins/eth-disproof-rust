@@ -883,6 +883,16 @@ impl Reader {
                 }
             }
             11 => Ok(Self::lit(Self::field(x, 0)?, var_ty)?),
+            12 => {
+                if var_ty != "u8" {
+                    return Err("isShared must yield uint8".into());
+                }
+                let id = Self::var(Self::field(x, 0)?)?;
+                if !env.get(&id).is_some_and(|ty| is_value_type(ty)) {
+                    return Err("isShared requires a value object".into());
+                }
+                Ok(format!("x_{id}.is_shared()"))
+            }
             t => Err(format!("IR expression constructor {t} unsupported")),
         }
     }
@@ -2221,7 +2231,7 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("Alt", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 32);
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 33);
     }
 
     #[test]

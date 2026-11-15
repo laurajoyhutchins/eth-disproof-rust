@@ -1,8 +1,7 @@
 //! Independent tests of simultaneous finite port balancing and orbit
 //! packet minimization. No source-defined tensor counting.
 use lean_eth_reference::two_adic_joint_balance::{
-    JointBalanceReceipt, construct_joint_balanced_admitted,
-    construct_joint_balanced_bounded,
+    JointBalanceReceipt, construct_joint_balanced_admitted, construct_joint_balanced_bounded,
 };
 use lean_eth_reference::two_adic_orbit_sparse::construct_orbit_sparse_bounded;
 use lean_eth_reference::two_adic_packet_layout::BipartiteEdge;
@@ -16,7 +15,13 @@ fn shifted_edges() -> Vec<BipartiteEdge> {
         .collect()
 }
 
-fn port_loads(labels: &[usize], edges: &[BipartiteEdge], left: bool, r: usize, a: u32) -> Vec<Vec<usize>> {
+fn port_loads(
+    labels: &[usize],
+    edges: &[BipartiteEdge],
+    left: bool,
+    r: usize,
+    a: u32,
+) -> Vec<Vec<usize>> {
     let mut ports = vec![vec![0usize; r]; a as usize];
     for edge in edges {
         let mut label = labels[if left { edge.left } else { edge.right }];
@@ -33,7 +38,10 @@ fn assert_certified(edges: &[BipartiteEdge], r: usize, a: u32, receipt: &JointBa
     let max_degree = receipt.maximum_degree;
     let lhs = m + (r - 1) * max_degree;
     assert_eq!(receipt.greedy_port_bound_numerator, lhs);
-    assert_eq!(receipt.vertex_degree_necessary_port_bound, r * max_degree <= 3 * m);
+    assert_eq!(
+        receipt.vertex_degree_necessary_port_bound,
+        r * max_degree <= 3 * m
+    );
     assert_eq!(
         receipt.greedy_port_sufficient_for_source_limit,
         (r - 1) * max_degree <= 2 * m
@@ -144,7 +152,10 @@ fn star_degree_is_a_provable_no_go_before_label_search() {
     // r*Delta=64 >3M=48; whichever symbol labels the star
     // center, that row symbol necessarily carries 16 real ports.
     let err = construct_joint_balanced_bounded(&edges, 1, 16, 4, 2, 16, 3).unwrap_err();
-    assert!(err.to_string().contains("unavoidable per-symbol port overload"));
+    assert!(
+        err.to_string()
+            .contains("unavoidable per-symbol port overload")
+    );
 }
 
 #[test]

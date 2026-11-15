@@ -49,7 +49,7 @@ impl Reader {
         }
         Ok((0..count).map(|i| lr_array_at(x, i)).collect())
     }
-    pub(super) unsafe fn string(x: Obj) -> Result<String, String> {
+    pub(crate) unsafe fn string(x: Obj) -> Result<String, String> {
         let ptr = lr_string_ptr(x);
         if ptr.is_null() {
             return Err("expected Lean String".into());

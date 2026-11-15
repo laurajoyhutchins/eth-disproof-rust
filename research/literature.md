@@ -1,39 +1,65 @@
-# Literature and source index for ETH algorithm research
+# Papers we can use
 
-**Curated 14 November 2026.** This is an *annotated reading map*, not a claim that every cited result is directly usable in OpenAI's proof. DOI links below were checked against publisher or bibliographic records. Keep the publications' status and the upstream 2026 preprint distinct.
+The papers below are useful because they answer specific questions about **counting**, **tensor contraction**, **exact arithmetic**, or **Lean semantics**. A citation is not evidence that its theorem applies to the ETH construction: write down the hypotheses before importing an argument.
 
-## Peer-reviewed foundations
+## Counting and sparsification
 
-| Reference | What to extract for this project | Caution |
-| --- | --- | --- |
-| Impagliazzo, Paturi & Zane (2001), **“Which Problems Have Strongly Exponential Complexity?”**, *Journal of Computer and System Sciences* 63, 512–530. [DOI 10.1006/jcss.2001.1774](https://doi.org/10.1006/jcss.2001.1774) | ETH framing, sparsification lemma, instance-size/parameter-preserving reduction discipline | Its conditional framework is not evidence for or against the new theorem |
-| Lokshtanov, Saurabh & Xue (2026), **“The Sparsification Lemma via Measure and Conquer”**, *SOSA 2026*, 291–297. [DOI 10.1137/1.9781611978964.22](https://doi.org/10.1137/1.9781611978964.22) | Cleaner proof and quantitative sparsification constants; independent crosscheck for preprocessing | Improved sparsification does not itself replace the tensor-contraction proof |
-| Valiant (1979), **“The Complexity of Enumeration and Reliability Problems”**, *SIAM Journal on Computing* 8(3), 410–421. [DOI 10.1137/0208032](https://doi.org/10.1137/0208032) | Counting complexity and the difference between decision and exact counting | A \(\#P\)-completeness classification is not a time lower bound |
-| Markov & Shi (2008), **“Simulating Quantum Computation by Contracting Tensor Networks”**, *SIAM Journal on Computing* 38(3), 963–981. [DOI 10.1137/050644756](https://doi.org/10.1137/050644756) | Tensor-network contraction, width-based exact baseline, ordering cost | Width can explain one solver's cost without proving the novel method hard |
-| Bodlaender & Koster (2010), **“Treewidth Computations I. Upper Bounds”**, *Information and Computation* 208(3), 259–275. [DOI 10.1016/j.ic.2009.03.008](https://doi.org/10.1016/j.ic.2009.03.008) | Width heuristics/upper bounds for instrumented adversarial families | Estimated width is neither an exact invariant nor an ETH lower-bound proof |
-| Cantor & Kaltofen (1991), **“On Fast Multiplication of Polynomials over Arbitrary Algebras”**, *Acta Informatica* 28, 693–701. [DOI 10.1007/BF01178683](https://doi.org/10.1007/BF01178683) | Exact polynomial multiplication cost models for many Hermite/interpolation kernels | Algebraic operations still have coefficient bit costs |
-| van der Poorten (1976), **“Hermite Interpolation and p-adic Exponential Polynomials”**, *Journal of the Australian Mathematical Society* 22(1), 12–26. [DOI 10.1017/S144678870001332X](https://doi.org/10.1017/S144678870001332X) | Valuation-sensitive interpolation and coefficient-height reasoning | Different analytic setting; do not import its lemmas into a quotient ring without proof |
-| Curticapean, Dell & Marx (2017), **“Homomorphisms Are a Good Basis for Counting Small Subgraphs”**, *STOC 2017*, 210–223. [DOI 10.1145/3055399.3055502](https://doi.org/10.1145/3055399.3055502) | Change of counting basis and precise transformations of finite combinatorial counts | A useful analogy, not direct proof of a pair-swap measurement basis |
-| de Moura & Ullrich (2021), **“The Lean 4 Theorem Prover and Programming Language”**, *CADE 28*, 625–635. [DOI 10.1007/978-3-030-79876-5_37](https://doi.org/10.1007/978-3-030-79876-5_37) | Lean compiler/runtime semantics, “functional but in-place” execution and codegen | General Lean semantics do not automatically validate custom Rust codegen |
-| The mathlib Community (2020), **“The Lean Mathematical Library”**, *CPP 2020*, 367–381. [DOI 10.1145/3372885.3373824](https://doi.org/10.1145/3372885.3373824) | Reuse formal ring/algebra, polynomial and tensor infrastructure; kernel discipline | Always pin the exact Mathlib revision of the original development |
+**Valiant, 1979.** *The Complexity of Enumeration and Reliability Problems.* SIAM J. Comput. 8(3), 410–421. [DOI](https://doi.org/10.1137/0208032).  
+Start here for the distinction between decision and exact counting. \(\#P\)-completeness does not imply a time lower bound for one proposed algorithm.
 
-## Primary source and contemporary discussion (not peer-reviewed literature)
+**Impagliazzo, Paturi & Zane, 2001.** *Which Problems Have Strongly Exponential Complexity?* JCSS 63, 512–530. [DOI](https://doi.org/10.1006/jcss.2001.1774).  
+The sparsification framework and parameter-preserving reductions define what has to be counted when going from general CNF to bounded density.
 
-- **OpenAI (October 25, 2026), “The Exponential Time Hypothesis is False.”** [Original manuscript/source tree](https://github.com/openai/math/tree/main/preprints/The-Exponential-Time-Hypothesis-is-False-October-25-2026), [formalization scope](https://github.com/openai/math/blob/main/lean/docs/378.md), and the [pinned Lean source used here](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT). **Preprint**, not a peer-reviewed theorem in this bibliography. The published Lean scope describes \(2^{O_k(n(\log\log n)^2/\sqrt{\log n})}\) up to polynomial encoding factors; the manuscript asserts sharper \(2^{O_k(n\log\log n/\sqrt{\log n})}\) and fixed-density improvements. Do not conflate them.
-- [OpenAI's announcement and expert-review plan](https://openai.com/index/building-scientific-understanding-with-academic-communities/) records why independent mathematical evaluation remains necessary.
-- [This repo's evidence matrix](../rust/lean_eth_reference/docs/evidence.md) is the implementation-level ledger. The [source manifest](../rust/lean_eth_reference/reference/source-manifest.json) is the exact byte-identity ledger. Neither alone validates a mathematical theorem.
-- **Background not claimed peer-reviewed here:** Delsarte's *An Algebraic Approach to the Association Schemes of Coding Theory* and MacWilliams–Sloane's *The Theory of Error-Correcting Codes* provide Hamming association-scheme/Krawtchouk context for the symmetry experiment. Read them for definitions and orthogonality, not as a proof of incidence compatibility.
+**Lokshtanov, Saurabh & Xue, 2026.** *The Sparsification Lemma via Measure and Conquer.* SOSA, 291–297. [DOI](https://doi.org/10.1137/1.9781611978964.22).  
+A second proof and quantitative reference for the preprocessing stage. Improving sparsification constants does not prove the recursive contractor.
 
-## Reading order by proof obligation
+## Tensor networks and width
 
-1. **Exact counting and reductions:** Valiant → Impagliazzo/Paturi/Zane → 2026 sparsification. Derive count-preserving transformations explicitly.
-2. **Tensor network baseline:** Markov/Shi → Bodlaender/Koster. Use this for controlled baseline and counterexamples to naive hardness inferences.
-3. **Spectral/operator design:** association-scheme background → independently derive pair-swap joint spectrum and rational/integer measurement properties; test lost symmetry when incidence labels break orbits.
-4. **Interpolation/bit complexity:** Cantor/Kaltofen → van der Poorten as heuristic reference. Prove local unit differences, exact quotient-ring equations and bit heights in Lean rather than transplanting field-only results.
-5. **Implementation correspondence:** de Moura/Ullrich → Mathlib → actual pinned source IR/Expr, original execution and machine refinement.
+**Markov & Shi, 2008.** *Simulating Quantum Computation by Contracting Tensor Networks.* SIAM J. Comput. 38(3), 963–981. [DOI](https://doi.org/10.1137/050644756).  
+Use this to define ordinary contraction cost and a width-aware exact baseline.
 
-## Reuse protocol
+**Bodlaender & Koster, 2010.** *Treewidth Computations I. Upper Bounds.* Information and Computation 208(3), 259–275. [DOI](https://doi.org/10.1016/j.ic.2009.03.008).  
+Useful for checking decomposition-width estimates. A high treewidth estimate is not a lower bound on the proposed new method.
 
-For each imported lemma or algorithm, record title/DOI, the exact theorem (including all rings, nonzero/unit hypotheses, parameter ranges and quantifier order), its proposed role, the Lean formal statement, source commit and a negative test where one hypothesis is removed. Avoid copying article text or including copyrighted PDFs in the repository. The useful artifact is a small formally checked theorem/definition and a precise reference.
+**Curticapean, Dell & Marx, 2017.** *Homomorphisms Are a Good Basis for Counting Small Subgraphs.* STOC, 210–223. [DOI](https://doi.org/10.1145/3055399.3055502).  
+A disciplined example of changing a counting basis. The idea is relevant to selector measurements; its correctness does not automatically transfer to pair swaps.
 
-Every paper above earns its place by informing a *specific proof or benchmark obligation*. Adding more references without an extraction/verification plan is not progress.
+## Algebra and interpolation
+
+**Cantor & Kaltofen, 1991.** *On Fast Multiplication of Polynomials over Arbitrary Algebras.* Acta Informatica 28, 693–701. [DOI](https://doi.org/10.1007/BF01178683).  
+Use the exact algebraic operation model when pricing repeated Hermite reconstruction. Add coefficient bit complexity separately.
+
+**van der Poorten, 1976.** *Hermite Interpolation and p-adic Exponential Polynomials.* J. Austral. Math. Soc. 22(1), 12–26. [DOI](https://doi.org/10.1017/S144678870001332X).  
+Valuations and interpolation are relevant, but this analytic setting is not identical to arithmetic in a finite quotient ring. Reprove any transferred statement with the correct units and precision.
+
+For pair-swap spectra, Delsarte's *An Algebraic Approach to the Association Schemes of Coding Theory* and MacWilliams–Sloane's *The Theory of Error-Correcting Codes* supply Hamming-scheme and Krawtchouk background. These are references for the algebra, not peer-reviewed proofs of our incidence compatibility.
+
+## Lean and formal libraries
+
+**de Moura & Ullrich, 2021.** *The Lean 4 Theorem Prover and Programming Language.* CADE 28, 625–635. [DOI](https://doi.org/10.1007/978-3-030-79876-5_37).  
+Read against the concrete compiler-IR runtime: sharing, mutable-in-place optimization and closure behavior are semantic questions for the Rust backend.
+
+**The mathlib Community, 2020.** *The Lean Mathematical Library.* CPP, 367–381. [DOI](https://doi.org/10.1145/3372885.3373824).  
+Reuse algebra and polynomial results, pinned to the original Mathlib commit. Do not silently upgrade the source environment.
+
+## The source under study
+
+**OpenAI, October 25, 2026.** [*The Exponential Time Hypothesis is False*, source and manuscript](https://github.com/openai/math/tree/main/preprints/The-Exponential-Time-Hypothesis-is-False-October-25-2026). This is a **preprint**, not part of the peer-reviewed list above.
+
+The [Lean formalization scope](https://github.com/openai/math/blob/main/lean/docs/378.md) describes a bound of the form
+
+\[
+2^{O_k(n(\log\log n)^2/\sqrt{\log n})},
+\]
+
+up to polynomial encoding factors. The manuscript states a sharper \(2^{O_k(n\log\log n/\sqrt{\log n})}\) route. Do not transfer the sharper statement to the Lean scope without checking the corresponding theorem.
+
+Our [pinned source](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT) and [execution evidence](../rust/lean_eth_reference/docs/evidence.md) are separate from claims about the mathematical result.
+
+## Turning reading into work
+
+For every borrowed lemma: record the exact statement, ring, units/nonzero assumptions, quantifiers, source and a small counterexample when one hypothesis is removed. Then implement the intended statement in Lean and audit its axioms.
+
+For every borrowed algorithm: include its construction cost and intermediate bit lengths. A source citation is not a substitute for a resource bound.
+
+[Research questions](README.md) · [Formalization test design](formalization-evaluation.md)

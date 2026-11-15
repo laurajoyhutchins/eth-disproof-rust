@@ -26,6 +26,19 @@ def shared (a b : Nat) : Nat :=
   first (rotate original) + first original
 end MutFixture
 
+-- Temporary source-IR diagnosis of source RC order and alias identities.
+run_cmd do
+  let targets : Array Lean.Name := #[
+    `MutFixture.unique, `MutFixture.shared, `MutFixture.rotate, `MutFixture.first
+  ]
+  for target in targets do
+    let decl? ← liftCoreM do
+      if (← Lean.IR.findDecl target).isNone then
+        Lean.Compiler.compile #[target]
+      Lean.IR.findDecl target
+    if let some decl := decl? then
+      logInfo s!"RC_SOURCE_IR {target}:\n{Lean.IR.formatDecl decl |>.pretty}"
+
 #native_rust_package [MutFixture.unique, MutFixture.shared] to "examples/mut-package"
 
 open Lean Elab Command

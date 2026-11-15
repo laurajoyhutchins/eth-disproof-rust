@@ -735,31 +735,33 @@ pub fn validate(
 
 /// A wrapper around the canonical native compiler's generated-source bundle.
 /// This is an integrity record, never a kernel-checked extraction certificate.
-pub fn native_ir_report(
-    module: &str,
-    roots: &[String],
-    toolchain: &str,
-    lean_version: &str,
-    source_git_blob: &str,
-    source_lean_sha256: &str,
-    generated: &[u8],
-    native_bundle_receipt: &str,
-) -> Value {
+pub struct NativeIrBundle<'a> {
+    pub module: &'a str,
+    pub roots: &'a [String],
+    pub toolchain: &'a str,
+    pub lean_version: &'a str,
+    pub source_git_blob: &'a str,
+    pub source_lean_sha256: &'a str,
+    pub generated: &'a [u8],
+    pub native_bundle_receipt: &'a str,
+}
+
+pub fn native_ir_report(bundle: NativeIrBundle<'_>) -> Value {
     json!({
         "format": "lean-inprocess-ir-bundle-v1",
         "status": "generated-unverified",
         "compiler": "native-lean-4.34.1",
-        "module": module,
-        "roots": roots,
-        "lean_toolchain": toolchain,
-        "lean_version": lean_version,
-        "source_git_blob": source_git_blob,
-        "source_lean_sha256": source_lean_sha256,
-        "generated_sha256": digest(generated),
-        "generated_bytes": generated.len(),
+        "module": bundle.module,
+        "roots": bundle.roots,
+        "lean_toolchain": bundle.toolchain,
+        "lean_version": bundle.lean_version,
+        "source_git_blob": bundle.source_git_blob,
+        "source_lean_sha256": bundle.source_lean_sha256,
+        "generated_sha256": digest(bundle.generated),
+        "generated_bytes": bundle.generated.len(),
         "semantic_verification": "not-established",
         "physical_bitprogram_verification": "not-established",
-        "native_bundle_receipt": native_bundle_receipt
+        "native_bundle_receipt": bundle.native_bundle_receipt
     })
 }
 
@@ -849,16 +851,16 @@ mod tests {
             digest(code),
             "e".repeat(64),
         );
-        let report = native_ir_report(
-            "Demo",
-            &["Demo.double".into()],
-            &source.lean_toolchain,
-            "Lean (version 4.34.1, x86_64)",
-            &source.git_blob,
-            &source_sha,
-            code,
-            &bundle,
-        );
+        let report = native_ir_report(NativeIrBundle {
+            module: "Demo",
+            roots: &["Demo.double".into()],
+            toolchain: &source.lean_toolchain,
+            lean_version: "Lean (version 4.34.1, x86_64)",
+            source_git_blob: &source.git_blob,
+            source_lean_sha256: &source_sha,
+            generated: code,
+            native_bundle_receipt: &bundle,
+        });
         let raw = serde_json::to_vec(&report).unwrap();
         let accepted = validate(
             Backend::CompilerIr,

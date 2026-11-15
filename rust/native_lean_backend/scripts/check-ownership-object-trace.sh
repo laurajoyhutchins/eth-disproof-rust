@@ -25,7 +25,7 @@ leanc -O2 -o "$out/lean-c" "$out/OwnershipObjectTraceKernels.c" "$out/OwnershipO
 cat examples/ownership_object_trace_test.rs >> examples/ownership-object-trace-package/src/lib.rs
 for inputs in "0 1" "17 23" "901 702"; do
   read -r first second <<< "$inputs"
-  "$out/lean-c" "$first" "$second" > "$out/c-$first-$second.txt"
+  "$out/lean-c" "$first" "$second" | grep '^TRACE ' > "$out/c-$first-$second.txt"
   OWNERSHIP_OBJECT_TRACE_A="$first" OWNERSHIP_OBJECT_TRACE_B="$second" \
   OWNERSHIP_OBJECT_TRACE_OUT="$out/rust-$first-$second.txt" \
   env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
@@ -33,6 +33,10 @@ for inputs in "0 1" "17 23" "901 702"; do
   test -s "$out/c-$first-$second.txt"
   test -s "$out/rust-$first-$second.txt"
   if ! cmp -s "$out/c-$first-$second.txt" "$out/rust-$first-$second.txt"; then
+    echo '--- source function C entry points ---' >&2
+    grep -n -A 10 -E 'l_OwnershipObjectTrace_(create|identity|select|throughClosure)\\(' "$out/OwnershipObjectTraceKernels.c" | head -110 >&2 || true
+    echo '--- source function Rust entry points ---' >&2
+    grep -n -A 12 -E 'fn (create|identity|select|throughClosure|__lean_.*identity)' examples/ownership-object-trace-package/src/lib.rs | head -110 >&2 || true
     echo "Lean C physical object trace differs from Rust logical source RC trace at $inputs" >&2
     diff -u "$out/c-$first-$second.txt" "$out/rust-$first-$second.txt" >&2 || true
     exit 1

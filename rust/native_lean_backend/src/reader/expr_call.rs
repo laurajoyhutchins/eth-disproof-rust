@@ -153,12 +153,22 @@ impl Reader {
                     ),
                 ));
             }
+            if signature.borrows.len() != signature.params.len() {
+                return Err(CompilerError::new(
+                    RefusalKind::Primitive,
+                    format!("{name}: source Param.borrow signature length mismatch"),
+                ));
+            }
             let mut lowered = Vec::with_capacity(args.len());
-            for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
+            for ((arg, ty), borrowed) in args
+                .into_iter()
+                .zip(signature.params.iter())
+                .zip(signature.borrows.iter())
+            {
                 let typed = Self::arg(arg, env, ty)?;
                 if is_value_type(ty) && Self::checked_tag(arg, "Arg")? == 0 {
                     let id = Self::var(Self::field(arg, 0)?)?;
-                    if consumed_calls.contains(&id) {
+                    if !borrowed && consumed_calls.contains(&id) {
                         lowered.push(format!("x_{id}"));
                         continue;
                     }

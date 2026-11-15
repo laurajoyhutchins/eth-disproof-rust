@@ -79,6 +79,19 @@ impl Reader {
                 ));
             }
         }
+        // Admit only borrowed-parameter ownership transfers justified by
+        // source IR inc operations. This is a bounded direct-variable audit;
+        // it does not certify derived aliases or every heap event.
+        let mut borrowed = Vec::new();
+        for param in &params {
+            let id = Self::var(Self::field(*param, 0)?)?;
+            let ty = Self::ty(Self::field(*param, 1)?)?;
+            if is_value_type(ty) && Self::param_borrow(*param)? {
+                borrowed.push(id);
+            }
+        }
+        Self::verify_direct_borrow_transfers(body, &borrowed, functions)?;
+
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
@@ -136,12 +149,14 @@ impl Reader {
             ));
         }
         let mut params = Vec::new();
+        let mut borrows = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
-            let _ = Self::param_borrow(param)?;
+            borrows.push(Self::param_borrow(param)?);
             params.push(Self::ty(Self::field(param, 1)?)?);
         }
         Ok(Signature {
             params,
+            borrows,
             result: Self::ty(Self::field(decl, 2)?)?,
         })
     }

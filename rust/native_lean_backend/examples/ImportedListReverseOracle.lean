@@ -26,7 +26,8 @@ run_cmd do
     let values := "vec![" ++ String.intercalate ", "
       (expected.map fun n => s!"\"{n}\".to_owned()") ++ "]"
     test := test ++ s!"let result = public_root((), {src});\n"
-    test := test ++ s!"assert_eq!(result.list_items().iter().map(|v| v.nat_to_decimal()).collect::<Vec<_>>(), {values}, \"source case {i}\");\n"
+    test := test ++ s!"let expected: Vec<String> = {values};\n"
+    test := test ++ s!"assert_eq!(result.list_items().iter().map(|v| v.nat_to_decimal()).collect::<Vec<_>>(), expected, \"source case {i}\");\n"
   test := test ++ "}\n"
   liftIO <| IO.FS.createDirAll "artifacts/imported-probes/list-reverse-oracles"
   liftIO <| IO.FS.writeFile "artifacts/imported-probes/list-reverse-oracles/source_lean.rs" test

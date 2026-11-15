@@ -55,12 +55,15 @@ done
 # This source fixture has three last-use Array.push calls and one preserved
 # live alias across the subsequent join and branches. Assert the emitted
 # implementation chooses the owned path without consuming the shared x_8.
+# A compiler_alias preserves a Rust-safe handle WITHOUT manufacturing a
+# source Lean inc. Checking for clone() here would falsely require an extra
+# source reference and contradict the pinned ownership contract.
 # The numbered VarIds come from pinned Lean 4.34.1 IR and are independently
 # checked by the original Lean/C/Rust output parity below.
 if ! grep -Fq 'x_13.array_push_owned(' "$generated/src/lib.rs" ||
    ! grep -Fq 'x_4.array_push_owned(' "$generated/src/lib.rs" ||
    ! grep -Fq 'x_6.array_push_owned(' "$generated/src/lib.rs" ||
-   ! grep -Fq 'x_8.clone().array_set_tagged(' "$generated/src/lib.rs"; then
+   ! grep -Fq 'x_8.compiler_alias().array_set_tagged(' "$generated/src/lib.rs"; then
   echo 'FATAL: ownership lowering failed to consume dead arrays or preserve the live alias' >&2
   exit 1
 fi

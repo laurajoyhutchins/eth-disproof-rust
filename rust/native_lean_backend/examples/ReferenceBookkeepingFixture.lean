@@ -56,6 +56,13 @@ run_cmd do
     let result := NativeRust.emit (.fdecl name #[x, y] .uint8 body info) "persistent_rc"
     unless result.startsWith "OK\n" do
       throwError "persistent source RC noop {label} unexpectedly refused: {result}"
+  let persistentIR := NativeRust.emit
+    (.fdecl name #[x] .object (.inc ⟨0⟩ 5 false true (.ret (.var ⟨0⟩))) info)
+    "persistent_source_flags"
+  unless persistentIR.startsWith "OK\n" &&
+      (persistentIR.splitOn ".source_inc(5, false, true)").length > 1 do
+    throwError "source inc packed check/persistent flags were not preserved: {persistentIR}"
+
   let mixed : Lean.IR.FnBody :=
     .inc ⟨0⟩ 1 true true (.dec ⟨1⟩ 1 true false observed)
   let mixedResult := NativeRust.emit (.fdecl name #[x, y] .uint8 mixed info) "mixed_rc"
@@ -72,6 +79,9 @@ run_cmd do
   let allowed := NativeRust.emit (.fdecl name #[x] .object unobserved info) "rc_value_only"
   unless allowed.startsWith "OK\n" do
     throwError "unobserved RC bookkeeping unexpectedly refused: {allowed}"
+  unless (allowed.splitOn ".source_inc(1, true, false)").length > 1 &&
+      (allowed.splitOn ".source_dec(1, true, false)").length > 1 do
+    throwError "source IR inc/dec was silently erased: {allowed}"
   let pure := NativeRust.emit (.fdecl name #[x] .uint8 observed info) "rc_no_bookkeeping"
   unless pure.startsWith "OK\n" do
     throwError "bare isShared observation unexpectedly refused: {pure}"

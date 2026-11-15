@@ -1,6 +1,12 @@
 
-#[derive(Clone, Debug)]
-pub struct __LeanValue(std::rc::Rc<__LeanValueRepr>);
+// Rust Rc tracks actual memory safety. The second Rc tracks the reference
+// count observed by Lean IR, independently of transient Rust value clones.
+// A direct Rust clone is not a source IR.inc instruction.
+#[derive(Debug)]
+pub struct __LeanValue(
+    std::rc::Rc<__LeanValueRepr>,
+    std::rc::Rc<std::cell::Cell<usize>>,
+);
 
 #[derive(Debug)]
 enum __LeanValueRepr {
@@ -38,6 +44,16 @@ enum __LeanValueRepr {
     Str(String),
     Array(Vec<__LeanValue>),
     List(Vec<__LeanValue>),
+}
+
+// A public Clone represents a second owned Lean reference. Generated
+// compiler temporaries instead call compiler_alias, which has no source RC
+// effect. This distinction is essential at exported function boundaries.
+impl Clone for __LeanValue {
+    fn clone(&self) -> Self {
+        self.source_inc(1, true, false);
+        self.compiler_alias()
+    }
 }
 
 // Nat is arbitrary precision in Lean. GMP is an established, maintained
@@ -162,6 +178,102 @@ impl __LeanNatOperand<'_> {
 
 #[allow(dead_code)]
 impl __LeanValue {
+    fn compiler_alias(&self) -> Self {
+        Self(self.0.clone(), self.1.clone())
+    }
+
+    fn from_repr(repr: __LeanValueRepr) -> Self {
+        // Every newly allocated source heap object owns one Lean reference.
+        // Tagged immediates are exempt from source reference counting.
+        Self(
+            std::rc::Rc::new(repr),
+            std::rc::Rc::new(std::cell::Cell::new(1)),
+        )
+    }
+
+    fn source_heap(&self) -> bool {
+        !matches!(self.0.as_ref(), __LeanValueRepr::Tagged(_) | __LeanValueRepr::Erased)
+    }
+
+    // These methods implement the source IR bookkeeping on a *separate*
+    // logical counter. Compiler-internal Rust Rc clones do not alter it.
+    #[track_caller]
+    fn source_inc(&self, n: usize, check_ref: bool, persistent: bool) {
+        self.assert_not_erased();
+        if persistent { return; }
+        if !self.source_heap() {
+            assert!(check_ref, "unchecked source inc on a tagged immediate");
+            return;
+        }
+        let old = self.1.get();
+        assert!(old > 0, "source inc on released object");
+        self.1.set(old.checked_add(n).expect("source reference-count overflow"));
+    }
+
+    #[track_caller]
+    fn source_dec(&self, n: usize, check_ref: bool, persistent: bool) {
+        self.assert_not_erased();
+        if persistent { return; }
+        if !self.source_heap() {
+            assert!(check_ref, "unchecked source dec on a tagged immediate");
+            return;
+        }
+        // Lean's pinned LLVM backend accepts only a single reference
+        // decrement. Reject unsupported non-unit decrements.
+        assert_eq!(n, 1, "Lean 4.34.1 source dec requires n = 1");
+        let old = self.1.get();
+        assert!(old > 0, "source dec on released object");
+        self.1.set(old - 1);
+        if old == 1 {
+            // Cascade source-owned field releases iteratively. Deep Lean
+            // lists must not require one native Rust stack frame per cell.
+            let mut pending = Vec::new();
+            self.source_enqueue_children(&mut pending);
+            while let Some(child) = pending.pop() {
+                if !child.source_heap() {
+                    continue;
+                }
+                let count = child.1.get();
+                assert!(count > 0, "source child release on exhausted reference");
+                child.1.set(count - 1);
+                if count == 1 {
+                    child.source_enqueue_children(&mut pending);
+                }
+            }
+        }
+    }
+
+    // The Lean del instruction calls lean_del_object, which releases the
+    // container shell, not its already transferred child references.
+    #[track_caller]
+    fn source_del(&self) {
+        self.assert_not_erased();
+        // lean_del_object checks the tagged-pointer bit and is a no-op for
+        // immediate values. Heap deletion frees only the container shell.
+        if !self.source_heap() { return; }
+        assert_eq!(self.1.replace(0), 1, "source del requires unique object");
+    }
+
+    fn source_enqueue_children(&self, pending: &mut Vec<Self>) {
+        match self.0.as_ref() {
+            __LeanValueRepr::Ctor { fields, .. }
+            | __LeanValueRepr::PullIn { fields, .. }
+            | __LeanValueRepr::Array(fields)
+            | __LeanValueRepr::List(fields) => {
+                pending.extend(fields.iter().map(Self::compiler_alias));
+            }
+            __LeanValueRepr::Closure { captures, .. } => {
+                pending.extend(captures.iter().map(Self::compiler_alias));
+            }
+            __LeanValueRepr::Closure2 { capture, .. } => pending.push(capture.compiler_alias()),
+            __LeanValueRepr::Closure3 { first, second, .. } => {
+                pending.push(first.compiler_alias());
+                pending.push(second.compiler_alias());
+            }
+            _ => {}
+        }
+    }
+
     // Lean constructor pointer-field set: unique mutation, alias-safe COW.
     // Rc ownership is used only to choose a safe implementation path.
     // This is not a claim of identical Lean/Rust reference-count traces.
@@ -176,7 +288,8 @@ impl __LeanValue {
             !matches!(self.0.as_ref(), __LeanValueRepr::Tagged(_)),
             "isShared requires a heap-backed Lean value"
         );
-        u8::from(std::rc::Rc::strong_count(&self.0) > 1)
+        assert!(self.1.get() > 0, "isShared on released source object");
+        u8::from(self.1.get() != 1)
     }
     fn with_field(mut self, index: usize, value: Self) -> Self {
         if let Some(__LeanValueRepr::Ctor { fields, .. }) = std::rc::Rc::get_mut(&mut self.0) {
@@ -206,13 +319,13 @@ impl __LeanValue {
         );
         self
     }
-    fn erased() -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Erased)) }
-    fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
-    fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }
-    fn boxed_u16(v: u16) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U16(v))) }
-    fn boxed_u32(v: u32) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U32(v))) }
-    pub fn boxed_u64(v: u64) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U64(v))) }
-    fn boxed_usize(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::USize(v))) }
+    fn erased() -> Self { Self::from_repr(__LeanValueRepr::Erased) }
+    fn tagged(v: usize) -> Self { Self::from_repr(__LeanValueRepr::Tagged(v)) }
+    fn boxed_u8(v: u8) -> Self { Self::from_repr(__LeanValueRepr::U8(v)) }
+    fn boxed_u16(v: u16) -> Self { Self::from_repr(__LeanValueRepr::U16(v)) }
+    fn boxed_u32(v: u32) -> Self { Self::from_repr(__LeanValueRepr::U32(v)) }
+    pub fn boxed_u64(v: u64) -> Self { Self::from_repr(__LeanValueRepr::U64(v)) }
+    fn boxed_usize(v: usize) -> Self { Self::from_repr(__LeanValueRepr::USize(v)) }
 
     pub fn nat(text: &str) -> Self { Self::nat_from_decimal(text) }
     pub fn int(text: &str) -> Self {
@@ -222,13 +335,13 @@ impl __LeanValue {
         let mut value = __LeanBigNat::zero();
         let rc = unsafe { __gmpz_set_str(&mut value.value, cstr.as_ptr(), 10) };
         assert_eq!(rc, 0, "invalid GMP signed decimal input");
-        Self(std::rc::Rc::new(__LeanValueRepr::Int(value)))
+        Self::from_repr(__LeanValueRepr::Int(value))
     }
     pub fn string(value: &str) -> Self {
-        Self(std::rc::Rc::new(__LeanValueRepr::Str(value.to_owned())))
+        Self::from_repr(__LeanValueRepr::Str(value.to_owned()))
     }
     pub fn array(values: Vec<Self>) -> Self {
-        Self(std::rc::Rc::new(__LeanValueRepr::Array(values)))
+        Self::from_repr(__LeanValueRepr::Array(values))
     }
 
     // `Array.mkEmpty` has an unobservable capacity hint. Keep
@@ -254,6 +367,15 @@ impl __LeanValue {
         else { panic!("Array.getInternal expected an Array"); };
         values.get(index).expect("source Array.getInternal index out of bounds").clone()
     }
+    // Lean's lean_array_uget_borrowed returns a borrowed element with no
+    // refcount increment; lean_array_uget owns its result and does increment.
+    fn array_get_tagged_borrowed(&self, index: usize) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.getInternalBorrowed expected an Array"); };
+        values.get(index).expect("source Array.getInternalBorrowed index out of bounds")
+            .compiler_alias()
+    }
+
     // A persistent copy preserves all observable prior references. The
     // ownership-aware optimization is a separate reviewed concern.
     fn array_set_tagged(&self, index: usize, value: Self) -> Self {
@@ -265,10 +387,10 @@ impl __LeanValue {
     }
     fn pull_in_ctor(fields: Vec<Self>) -> Self {
         assert_eq!(fields.len(), 4, "source PullIn requires four object fields");
-        Self(std::rc::Rc::new(__LeanValueRepr::PullIn {
+        Self::from_repr(__LeanValueRepr::PullIn {
             fields,
             bytes: [0; 8],
-        }))
+        })
     }
     fn pull_in_set_u8(self, pointers: usize, offset: usize, value: u8) -> Self {
         assert_eq!(pointers, 4, "source PullIn object width");
@@ -280,7 +402,7 @@ impl __LeanValue {
         let __LeanValueRepr::PullIn { bytes, .. } = &mut repr
         else { panic!("Lean sset target is not PullIn") };
         bytes[offset] = value;
-        Self(std::rc::Rc::new(repr))
+        Self(std::rc::Rc::new(repr), self.1)
     }
     fn pull_in_sproj_u8(&self, pointers: usize, offset: usize) -> u8 {
         assert_eq!(pointers, 4, "source PullIn object width");
@@ -290,7 +412,7 @@ impl __LeanValue {
         bytes[offset]
     }
     pub fn list(values: Vec<Self>) -> Self {
-        Self(std::rc::Rc::new(__LeanValueRepr::List(values)))
+        Self::from_repr(__LeanValueRepr::List(values))
     }
     // Generated Lean List.cons is a two-pointer immutable constructor.
     // Retain O(1) cons and sharing rather than copying the tail on construction.
@@ -320,7 +442,7 @@ impl __LeanValue {
     // The resource cap is explicit; no recursive traversal or hidden mutation.
     fn list_items(&self) -> Vec<Self> {
         let mut items = Vec::new();
-        let mut cursor = self.clone();
+        let mut cursor = self.compiler_alias();
         loop {
             let next = match cursor.0.as_ref() {
                 __LeanValueRepr::Tagged(0) => None,
@@ -331,7 +453,7 @@ impl __LeanValue {
                 __LeanValueRepr::Ctor { tag: 1, name: "List.cons", fields }
                     if fields.len() == 2 => {
                     items.push(fields[0].clone());
-                    Some(fields[1].clone())
+                    Some(fields[1].compiler_alias())
                 }
                 _ => panic!("List operation received unsupported value representation"),
             };
@@ -349,7 +471,7 @@ impl __LeanValue {
         else { panic!("Int.add expects two signed GMP Int objects"); };
         let mut out = __LeanBigNat::zero();
         unsafe { __gmpz_add(&mut out.value, a.ptr(), b.ptr()); }
-        Self(std::rc::Rc::new(__LeanValueRepr::Int(out)))
+        Self::from_repr(__LeanValueRepr::Int(out))
     }
     fn string_append(&self, rhs: &Self) -> Self {
         let (__LeanValueRepr::Str(a), __LeanValueRepr::Str(b)) =
@@ -421,7 +543,7 @@ impl __LeanValue {
         Self::list(values)
     }
     pub fn nat_from_decimal(value: &str) -> Self {
-        Self(std::rc::Rc::new(__LeanValueRepr::Nat(__LeanBigNat::from_decimal(value))))
+        Self::from_repr(__LeanValueRepr::Nat(__LeanBigNat::from_decimal(value)))
     }
     pub fn nat_to_decimal(&self) -> String {
         self.nat_operand().as_ref().decimal()
@@ -437,7 +559,7 @@ impl __LeanValue {
         let lhs = self.nat_operand();
         let rhs = other.nat_operand();
         let result = __LeanBigNat::binary(lhs.as_ref(), rhs.as_ref(), operation);
-        Self(std::rc::Rc::new(__LeanValueRepr::Nat(result)))
+        Self::from_repr(__LeanValueRepr::Nat(result))
     }
     fn nat_cmp(&self, other: &Self) -> i32 {
         let lhs = self.nat_operand();
@@ -445,7 +567,7 @@ impl __LeanValue {
         unsafe { __gmpz_cmp(lhs.as_ref().ptr(), rhs.as_ref().ptr()) }
     }
     fn ctor(tag: usize, name: &'static str, fields: Vec<Self>) -> Self {
-        Self(std::rc::Rc::new(__LeanValueRepr::Ctor { tag, name, fields }))
+        Self::from_repr(__LeanValueRepr::Ctor { tag, name, fields })
     }
     fn tag(&self) -> usize {
         match self.0.as_ref() {
@@ -473,11 +595,11 @@ impl __LeanValue {
     fn field(&self, index: usize) -> Self {
         match self.0.as_ref() {
             __LeanValueRepr::Ctor { fields, .. } =>
-                fields.get(index).expect("constructor field absent").clone(),
+                fields.get(index).expect("constructor field absent").compiler_alias(),
             __LeanValueRepr::PullIn { fields, .. } =>
-                fields.get(index).expect("PullIn field absent").clone(),
+                fields.get(index).expect("PullIn field absent").compiler_alias(),
             __LeanValueRepr::List(values) if !values.is_empty() => match index {
-                0 => values[0].clone(),
+                0 => values[0].compiler_alias(),
                 1 => Self::list(values[1..].to_vec()),
                 _ => panic!("List.cons has exactly two fields"),
             },
@@ -492,21 +614,22 @@ impl __LeanValue {
 
     fn pap(invoke: fn(Vec<Self>) -> Self, arity: usize, captures: Vec<Self>) -> Self {
         assert!(arity > 0 && captures.len() < arity, "invalid source PAP arity");
-        Self(std::rc::Rc::new(__LeanValueRepr::Closure { arity, captures, invoke }))
+        Self::from_repr(__LeanValueRepr::Closure { arity, captures, invoke })
     }
 
     fn pap2(invoke: fn(Self, Self) -> Self, capture: Self) -> Self {
-        Self(std::rc::Rc::new(__LeanValueRepr::Closure2 { capture, invoke }))
+        Self::from_repr(__LeanValueRepr::Closure2 { capture, invoke })
     }
 
     fn pap3(invoke: fn(Self, Self, Self) -> Self, first: Self, second: Self) -> Self {
-        Self(std::rc::Rc::new(__LeanValueRepr::Closure3 { first, second, invoke }))
+        Self::from_repr(__LeanValueRepr::Closure3 { first, second, invoke })
     }
 
-    // Preserve declaration-order captures, support repeated applications
-    // through aliases, and retain general partially applied source functions.
+    // lean_apply consumes one closure reference even when the underlying
+    // Rust Rc has additional temporary handles. The source logical count
+    // (rather than Rc::try_unwrap) determines the ownership transition.
     fn apply(&self, args: Vec<Self>) -> Self {
-        match self.0.as_ref() {
+        let output = match self.0.as_ref() {
             __LeanValueRepr::Closure { arity, captures, invoke } => {
                 assert!(!args.is_empty(), "empty source AP");
                 let mut all = captures.clone();
@@ -527,45 +650,36 @@ impl __LeanValue {
                 invoke(first.clone(), second.clone(), args.into_iter().next().unwrap())
             }
             _ => panic!("tried to apply a non-function Lean value"),
-        }
+        };
+        self.source_dec(1, true, false);
+        output
     }
 
-    // A single-argument indirect application is frequent in source Lean.
-    // Avoid allocating a temporary Vec for an inline binary PAP. Generic
-    // closures retain the existing verified vector-based ABI and behavior.
+    // The optimized one-argument path must consume exactly one *source*
+    // closure reference. It cannot infer source uniqueness from Rust Rc,
+    // which also holds compiler-internal aliases.
     fn apply1(&self, arg: Self) -> Self {
         match self.0.as_ref() {
-            __LeanValueRepr::Closure2 { capture, invoke } => invoke(capture.clone(), arg),
+            __LeanValueRepr::Closure2 { capture, invoke } => {
+                let result = invoke(capture.clone(), arg);
+                self.source_dec(1, true, false);
+                result
+            }
             __LeanValueRepr::Closure3 { first, second, invoke } => {
-                invoke(first.clone(), second.clone(), arg)
+                let result = invoke(first.clone(), second.clone(), arg);
+                self.source_dec(1, true, false);
+                result
             }
             __LeanValueRepr::Closure { .. } => self.apply(vec![arg]),
             _ => panic!("tried to apply a non-function Lean value"),
         }
     }
 
-    // Consume a closure only when the emitter proves that *no* possible
-    // continuation or join reads it. If another Rc alias exists, recover the
-    // shared representation and use the borrowed path. Only uniquely owned
-    // closure captures can be moved into a generated source function.
+    // Consuming the Rust handle is a memory-safety optimization only. The
+    // logical source decrement happens in apply1, on every path, including
+    // shared closures. Capture transfers are balanced by their source counts.
     fn apply1_owned(self, arg: Self) -> Self {
-        match std::rc::Rc::try_unwrap(self.0) {
-            Ok(__LeanValueRepr::Closure2 { capture, invoke }) => invoke(capture, arg),
-            Ok(__LeanValueRepr::Closure3 { first, second, invoke }) => {
-                invoke(first, second, arg)
-            }
-            Ok(__LeanValueRepr::Closure { arity, mut captures, invoke }) => {
-                captures.push(arg);
-                assert!(captures.len() <= arity, "oversaturated source AP");
-                if captures.len() == arity {
-                    invoke(captures)
-                } else {
-                    Self::pap(invoke, arity, captures)
-                }
-            }
-            Ok(_) => panic!("tried to apply a non-function Lean value"),
-            Err(shared) => Self(shared).apply1(arg),
-        }
+        self.apply1(arg)
     }
 }
 

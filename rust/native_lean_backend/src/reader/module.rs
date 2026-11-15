@@ -345,7 +345,7 @@ impl Reader {
                 if i > 0 {
                     result.push_str(", ");
                 }
-                write!(result, "args[{i}].clone()").unwrap();
+                write!(result, "args[{i}].compiler_alias()").unwrap();
             }
             result.push_str(")\n}\n");
         }

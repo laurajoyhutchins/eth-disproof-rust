@@ -4,22 +4,23 @@ on:
   push:
     branches: ['experiment/latex-to-lean-pilot', 'experiment/latex-unified-contract', 'experiment/latex-elaborated-semantics', 'experiment/latex-external-overlap-benchmark']
     paths:
-      - 'benchmark/latex-to-lean/unified/**'
-      - 'benchmark/latex-to-lean/external/**'
-      - 'benchmark/latex-to-lean/research/summarize.mjs'
-      - 'benchmark/latex-to-lean/research/summarize.test.mjs'
+      - 'benchmark/latex-to-lean/**'
+      - '.github/workflows/latex-unified-contract.yml'
+  pull_request:
+    branches: ['experiment/latex-to-lean-pilot', 'experiment/latex-elaborated-semantics']
+    paths:
+      - 'benchmark/latex-to-lean/**'
       - '.github/workflows/latex-unified-contract.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: latex-unified-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   contract-checkpoint:
+    concurrency:
+      group: latex-unified-checkpoint-${{ github.ref }}
+      cancel-in-progress: true
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -39,14 +40,18 @@ jobs:
           node --check benchmark/latex-to-lean/unified/semantic-verify.mjs
           node --check benchmark/latex-to-lean/unified/semantic.mjs
           node --check benchmark/latex-to-lean/unified/semantic-fixture.mjs
-          node --test benchmark/latex-to-lean/external/validate.test.mjs
+          node --test benchmark/latex-to-lean/external/validate.test.mjs benchmark/latex-to-lean/external/assert-baseline.test.mjs
           node --check benchmark/latex-to-lean/external/summarize.mjs
+          node --check benchmark/latex-to-lean/external/assert-baseline.mjs
           node --test benchmark/latex-to-lean/external/oracle/check.test.mjs
           node --check benchmark/latex-to-lean/external/oracle/check.mjs
 
   corpus-integration:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deep]')
     needs: contract-checkpoint
+    concurrency:
+      group: latex-unified-deep-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -194,6 +199,8 @@ jobs:
           node benchmark/latex-to-lean/external/oracle/check.mjs \
             benchmark/latex-to-lean/external evidence/unified/external \
             "$GITHUB_WORKSPACE/vendor/leanify" evidence/unified/external-oracle
+      - name: Enforce frozen parsing and semantic evidence baseline
+        run: node benchmark/latex-to-lean/external/assert-baseline.mjs evidence/unified
       - name: Check that no parser receives proof credit
         run: |
           node - <<'JS'

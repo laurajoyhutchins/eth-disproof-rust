@@ -84,6 +84,22 @@ impl RootPackingAudit {
                 .is_some_and(|ports| ports <= self.degree_cap)
     }
 
+    /// Absolute minimum M for the *three numerical packing inequalities*
+    /// over all possible degree caps, achieved at cap = 2L:
+    ///
+    /// M >= 2 D_arr^2 cap >= 4 L D_arr^2.
+    ///
+    /// None means the necessary lower bound exceeds u128, not zero.
+    /// This bound assumes the source packet construction and a root with M=s;
+    /// it is independent of the paper's s^(9/10) envelope.
+    pub fn minimum_root_edges_any_degree_cap(&self) -> Option<u128> {
+        self.label_classes_d
+            .and_then(|d| d.checked_mul(d))
+            .zip(self.required_new_degree)
+            .and_then(|(d_squared, ports)| d_squared.checked_mul(ports))
+            .and_then(|bound| bound.checked_mul(2))
+    }
+
     /// The source estimates each child's edges by 6 M / r. To retain
     /// the original strict 1/8 factor, one needs r > 48.
     pub fn original_child_shrink_bound_holds(&self) -> bool {
@@ -165,6 +181,34 @@ mod tests {
         assert!(!audit.original_child_shrink_bound_holds());
         assert!(!audit.published_degree_envelope_obstructed());
         assert!(!audit.fully_source_admitted());
+    }
+
+    #[test]
+    fn unavoidable_root_edge_floor_includes_new_packet_degree() {
+        // u=1 -> a=2, L=4, D_arr=r^4, cap >= 2L=8.
+        // Therefore M >= 16*r^8 even with ideal initial degrees.
+        for (groups, expected) in [
+            (7, 92_236_816u128),
+            (8, 268_435_456),
+            (49, 531_726_889_113_616),
+            (64, 1u128 << 52),
+        ] {
+            let audit = RootPackingAudit::new(expected, groups, 1, 8).unwrap();
+            assert_eq!(audit.minimum_root_edges_any_degree_cap(), Some(expected));
+            assert_eq!(audit.packet_inequalities_hold(), true);
+            assert_eq!(
+                audit.original_child_shrink_bound_holds(),
+                groups > 48
+            );
+            assert!(!RootPackingAudit::new(expected - 1, groups, 1, 8)
+                .unwrap()
+                .packet_inequalities_hold());
+        }
+
+        // An unattainably huge lower bound must not wrap around to zero.
+        let impossible = RootPackingAudit::new(u128::MAX, 64, 1000, 8).unwrap();
+        assert_eq!(impossible.minimum_root_edges_any_degree_cap(), None);
+        assert!(!impossible.packet_inequalities_hold());
     }
 
     #[test]

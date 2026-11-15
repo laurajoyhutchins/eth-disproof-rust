@@ -64,4 +64,15 @@ run_cmd do
   let ordered := NativeRust.emit (.fdecl name #[x] .uint8 checkFirst info) "rc_check_before_inc"
   unless ordered.startsWith "OK\n" do
     throwError "pre-mutation source sharing check unexpectedly refused: {ordered}"
-  logInfo "Source RC effect observations: 6 refusals, 3 bounded positive emissions"
+  -- The join body executes only at jmp. A sharing check in the
+  -- continuation is not tainted by an RC effect later in that join.
+  let joinReturn : Lean.IR.FnBody :=
+    .vdecl ⟨3⟩ .uint8 (.lit (.num 0)) (.ret (.var ⟨3⟩))
+  let orderedJoin : Lean.IR.FnBody :=
+    .jdecl ⟨9⟩ #[] (.inc ⟨0⟩ 1 true false joinReturn)
+      (.vdecl ⟨2⟩ .uint8 (.isShared ⟨0⟩) (.jmp ⟨9⟩ #[]))
+  let acceptedJoin :=
+    NativeRust.emit (.fdecl name #[x] .uint8 orderedJoin info) "rc_join_after_observation"
+  unless acceptedJoin.startsWith "OK\n" do
+    throwError "ordered join RC after sharing check unexpectedly refused: {acceptedJoin}"
+  logInfo "Source RC effect observations: 6 refusals, 4 bounded positive emissions"

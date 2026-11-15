@@ -57,8 +57,8 @@ impl Reader {
         // A caller can change an aliased object's source RC before an
         // observing callee executes. The same audit spans executable joins,
         // cases and direct calls; AP remains an unknown-effect boundary.
-        let can_observe = !shared.is_empty()
-            || ownership.is_some_and(|s| s.may_observe.contains(&declared_name));
+        let can_observe =
+            !shared.is_empty() || ownership.is_some_and(|s| s.may_observe.contains(&declared_name));
         if can_observe && Self::rc_may_precede_sharedness(body, ownership)? {
             return Err(
                 "unverified isShared after source inc/dec/del reference bookkeeping or interprocedural call".into(),

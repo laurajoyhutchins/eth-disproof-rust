@@ -81,10 +81,14 @@ impl Reader {
                     match Self::checked_tag(expr, "Expr")? {
                         1 | 2 | 8 => result.effect = true, // reset, reuse, indirect AP
                         6 => {
-                            result.direct_calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
+                            result
+                                .direct_calls
+                                .insert(Self::name(Self::field(expr, 0)?, 0)?);
                         }
                         7 => {
-                            result.partial_calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
+                            result
+                                .partial_calls
+                                .insert(Self::name(Self::field(expr, 0)?, 0)?);
                         }
                         12 => result.observe = true,
                         _ => {}
@@ -103,8 +107,12 @@ impl Reader {
                         pending.push(branch);
                     }
                 }
-                FnBodyView::Inc { persistent, next, .. }
-                | FnBodyView::Dec { persistent, next, .. } => {
+                FnBodyView::Inc {
+                    persistent, next, ..
+                }
+                | FnBodyView::Dec {
+                    persistent, next, ..
+                } => {
                     result.effect |= !persistent;
                     pending.push(next);
                 }
@@ -132,7 +140,12 @@ impl Reader {
         summary.known_functions.extend(closure.keys().cloned());
         for (name, decl) in closure {
             let effects = Self::local_effects(Self::field(*decl, 3)?)?;
-            if effects.effect || effects.direct_calls.iter().any(|c| !closure.contains_key(c)) {
+            if effects.effect
+                || effects
+                    .direct_calls
+                    .iter()
+                    .any(|c| !closure.contains_key(c))
+            {
                 summary.may_effect.insert(name.clone());
             }
             if effects.observe {
@@ -147,13 +160,25 @@ impl Reader {
         for _ in 0..(3 * closure.len() + 1) {
             let mut changed = false;
             for (name, effects) in &locals {
-                if effects.direct_calls.iter().any(|callee| summary.may_effect.contains(callee)) {
+                if effects
+                    .direct_calls
+                    .iter()
+                    .any(|callee| summary.may_effect.contains(callee))
+                {
                     changed |= summary.may_effect.insert(name.clone());
                 }
-                if effects.direct_calls.iter().any(|callee| summary.may_observe.contains(callee)) {
+                if effects
+                    .direct_calls
+                    .iter()
+                    .any(|callee| summary.may_observe.contains(callee))
+                {
                     changed |= summary.may_observe.insert(name.clone());
                 }
-                if effects.direct_calls.iter().any(|callee| summary.exposed_observers.contains(callee)) {
+                if effects
+                    .direct_calls
+                    .iter()
+                    .any(|callee| summary.exposed_observers.contains(callee))
+                {
                     changed |= summary.exposed_observers.insert(name.clone());
                 }
             }
@@ -172,7 +197,10 @@ impl Reader {
         summary: &OwnershipSummary,
     ) -> CompilerResult<bool> {
         let events = Self::local_effects(body)?;
-        Ok(events.partial_calls.iter().any(|c| summary.may_observe.contains(c)))
+        Ok(events
+            .partial_calls
+            .iter()
+            .any(|c| summary.may_observe.contains(c)))
     }
 
     // Actual executable path analysis; join bodies are visited only at a
@@ -222,7 +250,9 @@ impl Reader {
                     }
                     pending.push((next, effects, scope, depth));
                 }
-                FnBodyView::Join { id, value, next, .. } => {
+                FnBodyView::Join {
+                    id, value, next, ..
+                } => {
                     let id = Self::var(id)?;
                     let visible = Some(std::rc::Rc::new(JoinScope {
                         id,
@@ -234,8 +264,12 @@ impl Reader {
                 FnBodyView::Set { next, .. } | FnBodyView::ScalarSet { next, .. } => {
                     pending.push((next, prior_rc, scope, depth));
                 }
-                FnBodyView::Inc { persistent, next, .. }
-                | FnBodyView::Dec { persistent, next, .. } => {
+                FnBodyView::Inc {
+                    persistent, next, ..
+                }
+                | FnBodyView::Dec {
+                    persistent, next, ..
+                } => {
                     pending.push((next, prior_rc || !persistent, scope, depth));
                 }
                 FnBodyView::Delete { next, .. } => {

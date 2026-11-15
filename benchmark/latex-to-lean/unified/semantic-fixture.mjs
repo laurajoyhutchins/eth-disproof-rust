@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {sha256,validateSource,receipt,LEANIFY_COMMIT} from "./contract.mjs";
-import {runSemanticCase} from "./semantic.mjs";
+import {runSemanticCase,verifySemanticCase} from "./semantic.mjs";
 
 const vendor = path.resolve(process.argv[2] || "");
 if (!process.argv[2] || !fs.existsSync(path.join(vendor,"lean-toolchain")))
@@ -51,6 +51,8 @@ try {
       }},structural:{name:str+".lean",sha256:sha256(structural)}}});
     fs.writeFileSync(path.join(folder,"receipt.json"),JSON.stringify(r));
     const result = runSemanticCase({sourceFile,caseDir:folder,leanifyDir:vendor});
+    const replay = verifySemanticCase(sourceFile, folder);
+    if (replay.status !== result.status) throw Error("fixture evidence mismatch");
     console.log(item.name, result.status);
     if (result.status !== item.expected) {
       console.error("Expected", item.expected, "for", item.name);

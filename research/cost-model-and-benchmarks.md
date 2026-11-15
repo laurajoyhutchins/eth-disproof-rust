@@ -35,6 +35,17 @@ M\ge LD_{\rm arr},\qquad 2L\le\Delta.
 
 For \(s=10^6\), \(u_0=0\). With \(\lambda=20\), the nominal direct leaf contains \(H=250{,}000\) edge variables. Its \(2^H\) enumeration is beyond practical reach. This says the *published sufficient schedule* is punishing, not that a tighter mathematically valid one is impossible.
 
+Before timing the recursive stages, check that the chosen schedule actually
+admits recursion. The fixed appendix schedule cannot activate its root on
+any `u128` edge count, since `lambda <= 128` gives `u_0 = 0`.
+Run `cargo run --locked -p lean-eth-reference --bin appendix-admission -- 1000000`
+to record the exact refusal and nominal leaf exponent; exit code 2 is
+intentional. This is **not a benchmark or a contraction implementation**.
+
+Any alternate finite-size schedule must have its own verified packing,
+child-size, valuation and recovery conditions before its runtime is compared
+with an independent exact #SAT baseline.
+
 Five places worth instrumenting first:
 
 | Stage | What to record |

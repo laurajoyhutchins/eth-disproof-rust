@@ -566,3 +566,7 @@ pub mod native_signature_candidate;
 
 /// Source-linked bounded primitive TM2 resource accounting (not an asymptotic proof).
 pub mod tm2_resources;
+
+/// Necessary conditions for the appendix's fixed two-adic recursion schedule.
+/// This is an audit, not a counting program or sufficiency certificate.
+pub mod two_adic_admission;

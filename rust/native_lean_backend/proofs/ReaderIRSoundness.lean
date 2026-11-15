@@ -294,19 +294,28 @@ theorem linked_reader_refines (c : LinkedCertificate) (a b : UInt64) :
 
 end ReaderIRSoundness
 
+#print axioms ReaderIRSoundness.body_sound
+#print axioms ReaderIRSoundness.linked_reader_refines
+
 open Lean Elab Command
 
 run_cmd do
-  let root := `ScalarFixture.plus
-  let emitted ← liftCoreM <| ReaderScalarCertificate.certify root
-  let some decl ← liftCoreM <| Lean.IR.findDecl root
-    | throwError "original source IR not found: {root}"
-  let some source := ReaderIRSoundness.reifyDecl decl
-    | throwError "proof-producing original IR checker refused {root}"
-  if h : source.program = emitted.program then
-    let combined : ReaderIRSoundness.LinkedCertificate :=
-      { source, emission := emitted, sameProgram := h }
-    let _ := ReaderIRSoundness.linked_reader_refines combined
-    logInfo "Original Lean IR operational semantics linked to actual Reader emission"
-  else
-    throwError "source IR witness disagrees with Reader's canonical target model"
+  for root in #[`ScalarFixture.plus, `ScalarFixture.straightChain] do
+    let emitted ← liftCoreM <| ReaderScalarCertificate.certify root
+    let some decl ← liftCoreM <| Lean.IR.findDecl root
+      | throwError "original source IR not found: {root}"
+    let some source := ReaderIRSoundness.reifyDecl decl
+      | throwError "proof-producing original IR checker refused {root}"
+    if h : source.program = emitted.program then
+      let combined : ReaderIRSoundness.LinkedCertificate :=
+        { source, emission := emitted, sameProgram := h }
+      let _ := ReaderIRSoundness.linked_reader_refines combined
+      logInfo m!"Original Lean IR operational certificate linked to Reader output: {root}"
+    else
+      throwError "source IR witness disagrees with Reader's canonical target model"
+  for root in #[`ScalarFixture.subtract, `ScalarFixture.nested] do
+    let some decl ← liftCoreM <| Lean.IR.findDecl root
+      | throwError "negative fixture source IR missing: {root}"
+    if (ReaderIRSoundness.reifyDecl decl).isSome then
+      throwError "source IR checker certified unsupported instruction: {root}"
+    logInfo m!"Source IR correctly refused unproved construct: {root}"

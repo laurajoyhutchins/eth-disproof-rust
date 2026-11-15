@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {sha256,validateSource,receipt,LEANIFY_COMMIT} from "./contract.mjs";
-import {prepareSemanticCase,makeProbes,runSemanticCase} from "./semantic.mjs";
+import {prepareSemanticCase,makeProbes,runSemanticCase,verifySemanticCase} from "./semantic.mjs";
 
 function fixture(t,{claims=1,left="∀ n : Nat, n = n",right="∀ m : Nat, m = m"}={}) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),"semantic-test-"));
@@ -97,4 +97,18 @@ test("semantic report is append-only",t=>{
   const args={sourceFile:f.sourceFile,caseDir:f.root,leanifyDir:f.root};
   runSemanticCase(args);
   assert.throws(()=>runSemanticCase(args),/EEXIST/);
+});
+
+test("semantic verifier rejects edits to archived Lean proof",t=>{
+  const f=fixture(t);
+  const fake=(command,args)=>{
+    if(command==="git")return {exit_code:0,stdout:LEANIFY_COMMIT+"\n",stderr:""};
+    if(args.includes("--version"))return {exit_code:0,stdout:"Lean 4.34.0\n",stderr:""};
+    return {exit_code:0,stdout:"",stderr:""};
+  };
+  runSemanticCase({sourceFile:f.sourceFile,caseDir:f.root,
+    leanifyDir:path.join(f.root,"vendor"),executeCommand:fake});
+  assert.equal(verifySemanticCase(f.sourceFile,f.root).status,"definitionally_equivalent");
+  fs.appendFileSync(path.join(f.root,"semantic","Proof.lean"),"\n-- tampered");
+  assert.throws(()=>verifySemanticCase(f.sourceFile,f.root),/archived probe/);
 });

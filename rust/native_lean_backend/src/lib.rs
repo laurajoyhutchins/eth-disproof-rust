@@ -326,11 +326,12 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        let closure_tests = if source.contains("__LeanValue::pap2(") || source.contains("__LeanValue::pap3(") {
-            CLOSURE_INLINE_TEST_SOURCE
-        } else {
-            ""
-        };
+        let closure_tests =
+            if source.contains("__LeanValue::pap2(") || source.contains("__LeanValue::pap3(") {
+                CLOSURE_INLINE_TEST_SOURCE
+            } else {
+                ""
+            };
         let set_tests = if source.contains(".with_field(") {
             CONSTRUCTOR_SET_TEST_SOURCE
         } else {
@@ -954,7 +955,8 @@ impl Reader {
                     return Ok(format!(
                         "__LeanValue::pap3({}_ternary, {}, {})",
                         internal_closure_name(&name),
-                        captured[0], captured[1]
+                        captured[0],
+                        captured[1]
                     ));
                 }
                 Ok(format!(
@@ -2291,7 +2293,8 @@ impl Reader {
                     result,
                     "fn {}_binary(capture: __LeanValue, arg: __LeanValue) -> __LeanValue {{",
                     internal_closure_name(name)
-                ).unwrap();
+                )
+                .unwrap();
                 writeln!(result, "    {}(capture, arg)\n}}", internal_name(name)).unwrap();
             }
             if sig.params.len() == 3 {

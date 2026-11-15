@@ -466,6 +466,7 @@ for pair in "CustomCtor:custom-package" "RecursiveCtor:recursive-package"; do
 done
 # Original Lean optimized constructor mutation and alias checks.
 rm -rf examples/mut-package
+lean -o examples/MutKernels.olean examples/MutKernels.lean
 lean --load-dynlib="$NATIVE_LIB" examples/MutFixture.lean
 if ! grep -Fq '.with_field(' examples/mut-package/src/lib.rs; then
   echo 'source constructor set was not emitted' >&2
@@ -474,6 +475,8 @@ fi
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --offline --manifest-path examples/mut-package/Cargo.toml
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --release --offline --manifest-path examples/mut-package/Cargo.toml
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo clippy --offline --manifest-path examples/mut-package/Cargo.toml --all-targets -- -D warnings
+# Same Lean definitions compiled by upstream C and native Rust backends.
+bash scripts/check-c-emitter-mut.sh
 # Original Lean cross-call ownership: unique consumption, retained aliases,
 # returned aliases, repeated argument aliases, and transitive noinline callees.
 rm -rf examples/cross-call-package

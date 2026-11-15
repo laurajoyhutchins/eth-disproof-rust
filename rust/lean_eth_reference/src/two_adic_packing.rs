@@ -84,6 +84,46 @@ impl RootPackingAudit {
                 .is_some_and(|ports| ports <= self.degree_cap)
     }
 
+    /// A stronger, deterministically constructible *sufficient* root
+    /// packing condition, replacing the source's D_arr^2 collision term.
+    ///
+    /// A greedy proper edge coloring uses at most k = 2*degree_cap - 1
+    /// matchings. Conditional expectation applied to the normalized
+    /// per-matching exponential potential bounds the maximum load by
+    ///
+    ///     (3/2) * M / D_arr + k * log2(D_arr).
+    ///
+    /// Rounding this maximum up to a multiple of L produces <=3M/D_arr
+    /// padded slots if M >= D_arr*(k*ceil(log2 D_arr) + L).
+    ///
+    /// This method preserves the source's 3M/L packet count and 3M/r
+    /// per-coordinate port bound. It does NOT establish a source-invariant
+    /// degree cap, full recursion, or the original precision/cost theorem.
+    ///
+    /// None means an intermediate exceeded u128 and therefore refuses;
+    /// it must not be interpreted as a satisfied bound.
+    pub fn matching_potential_required_edges(&self) -> Option<u128> {
+        let d = self.label_classes_d?;
+        let l = self.slots_l?;
+        let matchings = self.degree_cap.checked_mul(2)?.checked_sub(1)?;
+        let log_classes = u128::from(u128::BITS - (d - 1).leading_zeros());
+        matchings
+            .checked_mul(log_classes)?
+            .checked_add(l)
+            .and_then(|factor| d.checked_mul(factor))
+    }
+
+    /// Meets both the *new* packing sufficient inequality and the source's
+    /// 2L <= maximum-degree invariant. This is NOT a complete recursion
+    /// admission test, and is unrelated to source's fixed epsilon schedule.
+    pub fn matching_potential_packing_holds(&self) -> bool {
+        self.required_new_degree
+            .is_some_and(|ports| ports <= self.degree_cap)
+            && self
+                .matching_potential_required_edges()
+                .is_some_and(|required| required <= self.edges)
+    }
+
     /// Absolute minimum M for the *three numerical packing inequalities*
     /// over all possible degree caps, achieved at cap = 2L:
     ///
@@ -181,6 +221,70 @@ mod tests {
         assert!(!audit.original_child_shrink_bound_holds());
         assert!(!audit.published_degree_envelope_obstructed());
         assert!(!audit.fully_source_admitted());
+    }
+
+    #[test]
+    fn matching_potential_reduces_quadratic_label_class_threshold() {
+        // r=64, u=1: a=2, L=4, D=2^24, log2(D)=24.
+        // Degree cap 8 gives 2*8-1=15 matchings (greedy coloring).
+        // New sufficient M = D*(15*24+4) = 6,106,906,624.
+        // Old collision condition instead required M >= 2^52.
+        let threshold = 6_106_906_624u128;
+        let candidate = RootPackingAudit::new(threshold, 64, 1, 8).unwrap();
+        assert_eq!(candidate.matching_potential_required_edges(), Some(threshold));
+        assert!(candidate.matching_potential_packing_holds());
+        assert!(!candidate.packet_inequalities_hold());
+        assert!(candidate.original_child_shrink_bound_holds());
+        assert!(!candidate.source_asymptotic_u_bound_holds());
+        assert!(!candidate.fully_source_admitted());
+        let below = RootPackingAudit::new(threshold - 1, 64, 1, 8).unwrap();
+        assert!(!below.matching_potential_packing_holds());
+    }
+
+    #[test]
+    fn matching_packing_is_distinct_from_child_shrink_and_degree() {
+        let bound = RootPackingAudit::new(1024, 2, 1, 8).unwrap();
+        assert_eq!(bound.matching_potential_required_edges(), Some(1024));
+        assert!(bound.matching_potential_packing_holds());
+        assert!(!bound.original_child_shrink_bound_holds());
+        // Even with enough edges, new packet vertices would violate cap=7.
+        let too_small_cap = RootPackingAudit::new(1_000_000, 2, 1, 7).unwrap();
+        assert!(!too_small_cap.matching_potential_packing_holds());
+        let overflow = RootPackingAudit::new(u128::MAX, 64, 1000, 8).unwrap();
+        assert_eq!(overflow.matching_potential_required_edges(), None);
+        assert!(!overflow.matching_potential_packing_holds());
+    }
+
+    #[test]
+    fn matching_independence_requires_disjoint_edges() {
+        // Enumerate two edges over binary vertex labels. In a matching
+        // there are 2^4 assignments, and sum 2^(class_hits) = 25.
+        // Independence predicts (1+1/4)^2 = 25/16 exactly.
+        let mut disjoint_weight_sum = 0u32;
+        for mask in 0..16u32 {
+            let row_a = mask & 1;
+            let col_a = (mask >> 1) & 1;
+            let row_b = (mask >> 2) & 1;
+            let col_b = (mask >> 3) & 1;
+            let hits = u32::from(row_a == 0 && col_a == 0)
+                + u32::from(row_b == 0 && col_b == 0);
+            disjoint_weight_sum += 1u32 << hits;
+        }
+        assert_eq!(disjoint_weight_sum, 25);
+
+        // If edges share the same row vertex, the independence identity
+        // fails: there are 2^3 assignments, and sum 2^(hits) = 13.
+        let mut shared_weight_sum = 0u32;
+        for mask in 0..8u32 {
+            let row = mask & 1;
+            let col_a = (mask >> 1) & 1;
+            let col_b = (mask >> 2) & 1;
+            let hits = u32::from(row == 0 && col_a == 0)
+                + u32::from(row == 0 && col_b == 0);
+            shared_weight_sum += 1u32 << hits;
+        }
+        assert_eq!(shared_weight_sum, 13);
+        assert_ne!(2 * shared_weight_sum, disjoint_weight_sum);
     }
 
     #[test]

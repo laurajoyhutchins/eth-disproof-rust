@@ -1,0 +1,135 @@
+import Mathlib
+
+/-!
+# Orbit-sparse packet bounds and finite conditional expectation
+
+This module isolates kernel-checkable finite arithmetic used by the
+simultaneous matching-class / port-labeling research. It does not assert
+that the original source's modified Cauchy deformation, weighted modes,
+or complete two-adic recursion are proved.
+
+The sources are the original appendix's quantitative-contraction.tex
+and research/two-adic-simultaneous-potential.md. The probabilistic
+matching/port moment estimates and the source-specific orbit partition
+remain separate proof obligations.
+
+In this module, `s` is a finite set of occupied signatures,
+`classes` counts ordered classes in each orbit,
+`load` bounds the maximum ordered class load in each orbit,
+and `packet` is its packet count.
+-/
+
+namespace TwoAdicJointPotential
+
+open scoped BigOperators
+
+/-- The exact integer waste identity is equivalent to the source packet cap. -/
+theorem packet_cap_iff_waste
+    (M L P imbalance rounding : ℕ)
+    (hslots : L * P = M + imbalance + rounding) :
+    L * P ≤ 3 * M ↔ imbalance + rounding ≤ 2 * M := by
+  omega
+
+/-- Independently bounded real row/column ports bound each child incidence. -/
+theorem child_bound_from_two_ports
+    (M r rowPorts columnPorts childEdges : ℕ)
+    (hrow : r * rowPorts ≤ 3 * M)
+    (hcol : r * columnPorts ≤ 3 * M)
+    (hchild : childEdges ≤ rowPorts + columnPorts) :
+    r * childEdges ≤ 6 * M := by
+  have hmul := Nat.mul_le_mul_left r hchild
+  omega
+
+/--
+For every nonempty finite set of candidate labels, if the average
+conditional score equals the old potential, at least one candidate
+has score no larger than the old potential. The theorem works for
+exact rational potentials with any sign, not merely nonnegative data.
+-/
+theorem exists_nonincreasing_choice
+    {α : Type*} [DecidableEq α]
+    (candidates : Finset α) (hne : candidates.Nonempty)
+    (score : α → ℚ) (prior : ℚ)
+    (hmean :
+      (∑ x ∈ candidates, score x) =
+        (candidates.card : ℚ) * prior) :
+    ∃ x ∈ candidates, score x ≤ prior := by
+  classical
+  obtain ⟨x, hx, hmin⟩ :=
+    Finset.exists_min_image candidates score hne
+  refine ⟨x, hx, ?_⟩
+  have hsum :
+      (candidates.card : ℚ) * score x ≤
+        ∑ y ∈ candidates, score y := by
+    calc
+      (candidates.card : ℚ) * score x =
+          ∑ y ∈ candidates, score x := by simp
+      _ ≤ ∑ y ∈ candidates, score y := by
+        exact Finset.sum_le_sum (by
+          intro y hy
+          exact hmin y hy)
+  have hcard : (0 : ℚ) < (candidates.card : ℚ) := by
+    exact_mod_cast Finset.card_pos.mpr hne
+  rw [hmean] at hsum
+  nlinarith
+
+/--
+An abstract orbit-sum lemma. It deliberately assumes the geometric
+facts `sum classes = D` and `L * packets ≤ classes * load + L`.
+Those premises must be transported from the actual finite slot
+construction before this lemma can certify the source recursion.
+
+Its conclusion is the specific `PL ≤ 3M` source packet bound.
+-/
+theorem orbit_packet_budget
+    {ι : Type*} [DecidableEq ι]
+    (orbits : Finset ι)
+    (classes packet : ι → ℚ)
+    (M L D k t upper : ℚ)
+    (hD : 0 < D)
+    (hclasses : (∑ i ∈ orbits, classes i) = D)
+    (hclass_nonneg : ∀ i ∈ orbits, 0 ≤ classes i)
+    (hper_orbit :
+      ∀ i ∈ orbits,
+        L * packet i ≤ classes i * upper + L)
+    (hupper : 2 * D * upper = 3 * M + 2 * D * k * t)
+    (hbudget :
+      2 * (k * D * t + L * (orbits.card : ℚ)) ≤ 3 * M) :
+    L * (∑ i ∈ orbits, packet i) ≤ 3 * M := by
+  have hsum :
+      L * (∑ i ∈ orbits, packet i) ≤
+        ∑ i ∈ orbits, (classes i * upper + L) := by
+    rw [Finset.mul_sum]
+    exact Finset.sum_le_sum (by
+      intro i hi
+      exact hper_orbit i hi)
+  have hcount :
+      (∑ i ∈ orbits, (classes i * upper + L)) =
+        D * upper + L * (orbits.card : ℚ) := by
+    simp [Finset.sum_add_distrib, ← Finset.sum_mul,
+      hclasses, mul_comm, mul_left_comm]
+  have hlinear :
+      D * upper = 3 * M / 2 + k * D * t := by
+    nlinarith [hupper]
+  rw [hcount, hlinear] at hsum
+  nlinarith [hbudget]
+
+/-- The number of occupied orbits is never larger than all possible orbits. -/
+theorem replace_occupied_by_all_orbits
+    (M L D k t : ℚ) (occupied allOrbits : ℕ)
+    (hcount : occupied ≤ allOrbits)
+    (hbound :
+      2 * (k * D * t + L * (allOrbits : ℚ)) ≤ 3 * M)
+    (hL : 0 ≤ L) :
+    2 * (k * D * t + L * (occupied : ℚ)) ≤ 3 * M := by
+  have hnat : (occupied : ℚ) ≤ (allOrbits : ℚ) := by
+    exact_mod_cast hcount
+  nlinarith
+
+#print axioms TwoAdicJointPotential.packet_cap_iff_waste
+#print axioms TwoAdicJointPotential.child_bound_from_two_ports
+#print axioms TwoAdicJointPotential.exists_nonincreasing_choice
+#print axioms TwoAdicJointPotential.orbit_packet_budget
+#print axioms TwoAdicJointPotential.replace_occupied_by_all_orbits
+
+end TwoAdicJointPotential

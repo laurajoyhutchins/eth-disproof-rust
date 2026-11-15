@@ -52,6 +52,33 @@ fi
 
 export LEAN_PATH="$NEWSPEAK_NATIVE:$NEWSPEAK_PROJECT/.lake/build/lib/lean:$LEAN_PREFIX/lib/lean"
 
+# Capture the actual specialized IR that first refused, before making any
+# claim about how erased parameters should be represented in generated Rust.
+cat > "$out/inspect-erased.lean" <<'LEAN'
+import NativeRust
+import Newspeak.PEGCertificate
+open Lean Elab Command
+run_cmd do
+  let name : Lean.Name :=
+    `Newspeak.FiniteStore.empty._at_.Newspeak.finiteStoreFromEntries._at_.Newspeak.newspeakGrammar.spec_0.spec_1
+  let decl ← liftCoreM do
+    let some original ← Lean.IR.findDecl name
+      | throwError "specialized Newspeak source IR unavailable: {name}"
+    return original
+  let body := toString decl
+  if body.utf8ByteSize > 262144 then
+    throwError "source IR snapshot exceeds 256KiB evidence cap"
+  liftIO <| IO.FS.writeFile
+    "artifacts/external-projects/newspeak/certificate/erased-source-ir.txt" body
+LEAN
+if (cd "$NEWSPEAK_NATIVE" && timeout 45s lean "$out/inspect-erased.lean") \
+      > "$out/inspect-erased.log" 2>&1 &&
+      [[ -s "$out/erased-source-ir.txt" ]]; then
+  echo 'specialized_erased_ir=PINNED_SOURCE_CAPTURED' >> "$out/identity.txt"
+else
+  echo 'specialized_erased_ir=DIAGNOSTIC_UNAVAILABLE' >> "$out/identity.txt"
+fi
+
 # First root is the full acceptance target. Others attribute compiler gaps
 # without substituting simpler functions for the certificate checker.
 specs=(

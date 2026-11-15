@@ -22,6 +22,7 @@ done
 project="$(realpath -e -- "$project_arg")"
 source="$(realpath -e -- "$source_arg")"
 case "$source" in "$project/"*) ;; *) echo "Source must be inside original project" >&2; exit 2 ;; esac
+source_sha_before="$(sha256sum -- "$source" | cut -d' ' -f1)"
 [[ -f "$project/lakefile.lean" && -f "$project/lean-toolchain" ]] || {
   echo "Expected unchanged Lake project" >&2; exit 2;
 }
@@ -47,6 +48,8 @@ export LD_LIBRARY_PATH="$LEAN_PREFIX/lib/lean${LD_LIBRARY_PATH:+:$LD_LIBRARY_PAT
    -f "$LEAN_PREFIX/include/lean/lean.h" ]] || {
   echo "Lean/Rust/toolchain ABI mismatch" >&2; exit 2;
 }
+budget="${NATIVE_PROJECT_TIMEOUT_SECONDS:-300}"
+[[ "$budget" =~ ^[1-9][0-9]{0,3}$ ]] || { echo "Invalid phase timeout budget" >&2; exit 2; }
 mkdir -p "$native/artifacts"
 scratch="$(mktemp -d "$native/artifacts/.project-cli.XXXXXXXX")"
 publish=''
@@ -57,7 +60,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Only Lake builds the original source. No source rewrite or replacement IR.
-(cd "$project" && lake build "$module") > "$scratch/project.log" 2>&1 || {
+(cd "$project" && timeout --signal=TERM --kill-after=5s "${budget}s" lake build "$module") > "$scratch/project.log" 2>&1 || {
   cat "$scratch/project.log" >&2; exit 1;
 }
 imports="$(cd "$project" && lake env printenv LEAN_PATH)"
@@ -65,8 +68,8 @@ imports="$(cd "$project" && lake env printenv LEAN_PATH)"
 export LEAN_PATH="$native:$imports:$LEAN_PREFIX/lib/lean"
 (
   cd "$native"
-  cargo build --offline --release
-  lean -o NativeRust.olean NativeRust.lean
+  timeout --signal=TERM --kill-after=5s "${budget}s" cargo build --offline --release
+  timeout --signal=TERM --kill-after=5s "${budget}s" lean -o NativeRust.olean NativeRust.lean
 ) > "$scratch/backend.log" 2>&1 || {
   cat "$scratch/backend.log" >&2; exit 1;
 }
@@ -82,7 +85,7 @@ printf 'import NativeRust\nimport %s\n#native_rust_package [%s] to "%s/generated
   "$module" "$joined" "$relative" > "$scratch/compile.lean"
 (
   cd "$native"
-  lean --load-dynlib="$plugin" "$scratch/compile.lean"
+  timeout --signal=TERM --kill-after=5s "${budget}s" lean --load-dynlib="$plugin" "$scratch/compile.lean"
 ) > "$scratch/codegen.log" 2>&1 || {
   cat "$scratch/codegen.log" >&2; exit 1;
 }
@@ -95,10 +98,13 @@ for root in "${roots[@]}"; do
   }
 done
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
-  cargo test --offline --manifest-path "$scratch/generated/Cargo.toml" \
+  timeout --signal=TERM --kill-after=5s "${budget}s" cargo test --offline --manifest-path "$scratch/generated/Cargo.toml" \
   > "$scratch/cargo.log" 2>&1 || {
   cat "$scratch/cargo.log" >&2; exit 1;
 }
+if [[ "$(sha256sum -- "$source" | cut -d' ' -f1)" != "$source_sha_before" ]]; then
+  echo "Original source changed while compiling; refusing receipt" >&2; exit 2
+fi
 publish="$(mktemp -d "$parent/.native-project-publish.XXXXXXXX")"
 cp -a -- "$scratch/generated/." "$publish/"
 rm -rf -- "$publish/target"
@@ -106,7 +112,8 @@ rm -rf -- "$publish/target"
   echo 'status=GENERATED_COMPILED_SEMANTICS_NOT_VERIFIED'
   echo "module=$module"
   echo "roots=$requested"
-  echo "source_sha256=$(sha256sum "$source" | cut -d' ' -f1)"
+  echo "source_sha256=$source_sha_before"
+  echo "phase_timeout_seconds=$budget"
   echo "source_revision=$(git -C "$project" rev-parse HEAD 2>/dev/null || echo unavailable)"
   echo "backend_revision=$(git -C "$native" rev-parse HEAD 2>/dev/null || echo unavailable)"
   echo "lean_version=$(lean --version)"

@@ -383,7 +383,16 @@ impl __LeanValue {
     fn array_size(&self) -> Self {
         let __LeanValueRepr::Array(values) = self.0.as_ref()
         else { panic!("Array.size expects Array"); };
-        Self::nat_from_decimal(&values.len().to_string())
+        // Lean's array length is a small Nat on pinned x86-64. The old
+        // implementation allocated a GMP integer and formatted the length
+        // in decimal on every size probe, including Array.getD bounds checks.
+        // Keep a total fallback at the tagged Nat cutoff rather than truncate.
+        let len = values.len();
+        if len <= usize::MAX >> 1 {
+            Self::tagged(len)
+        } else {
+            Self::nat_from_decimal(&len.to_string())
+        }
     }
     fn list_reverse(&self) -> Self {
         let mut values = self.list_items();
@@ -493,6 +502,10 @@ impl PartialEq for __LeanValue {
         match (self.0.as_ref(), other.0.as_ref()) {
             (Nat(a), Nat(b)) | (Int(a), Int(b)) =>
                 unsafe { __gmpz_cmp(a.ptr(), b.ptr()) == 0 },
+            // Lean's small Nat is an immediate tagged value. A source Nat
+            // may also be produced by an arbitrary-precision GMP primitive.
+            // Compare numeric meaning, not just the Rust storage variant.
+            (Tagged(_), Nat(_)) | (Nat(_), Tagged(_)) => self.nat_cmp(other) == 0,
             (Str(a), Str(b)) => a == b,
             (Array(a), Array(b)) | (List(a), List(b)) => a == b,
             (Tagged(a), Tagged(b)) => a == b,

@@ -132,6 +132,25 @@ mod __lean_array_ownership_tests {
     }
 
     #[test]
+    fn array_size_uses_exact_tagged_nat_without_gmp_allocation() {
+        let input = __LeanValue::array(vec![
+            __LeanValue::tagged(11),
+            __LeanValue::tagged(13),
+            __LeanValue::tagged(17),
+        ]);
+        let size = input.array_size();
+        assert!(size.has_tagged(3), "small array size must be a tagged Nat");
+        assert_eq!(size.tagged_nat(), 3);
+        assert_eq!(size.nat_to_decimal(), "3");
+        assert_eq!(size, __LeanValue::nat_from_decimal("3"));
+        assert_eq!(__LeanValue::nat_from_decimal("3"), size);
+        let zero = __LeanValue::array(Vec::new()).array_size();
+        assert_eq!(zero.tagged_nat(), 0);
+        assert_eq!(zero, __LeanValue::nat_from_decimal("0"));
+        assert_ne!(zero, __LeanValue::nat_from_decimal("1"));
+    }
+
+    #[test]
     fn shared_owner_keeps_earlier_alias_unchanged() {
         let original = __LeanValue::empty_array(2)
             .array_push_owned(__LeanValue::tagged(3));

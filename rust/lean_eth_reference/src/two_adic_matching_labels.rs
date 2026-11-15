@@ -233,6 +233,36 @@ mod tests {
     }
 
     #[test]
+    fn constructed_labels_satisfy_padded_class_bound_at_actual_color_threshold() {
+        // Abstract packet-lemma parameters b=2, D=4, L=2, with k=1
+        // matching. This is not the source's positive-u parameter schedule.
+        // M=D*(k*ceil(log2 D)+L)=4*(2+2)=16 exactly.
+        let edges = (0..16)
+            .map(|i| BipartiteEdge { left: i, right: i })
+            .collect::<Vec<_>>();
+        let result = construct_bounded(16, 16, &edges, 2).unwrap();
+        assert_eq!(result.matchings, 1);
+        let m = edges.len();
+        let d = result.pair_loads.len();
+        let l = 2usize;
+        assert_eq!(m, d * (result.matchings * 2 + l));
+        let padded_load = result.maximum_pair_load.div_ceil(l) * l;
+        assert!(padded_load * d <= 3 * m);
+        assert!(padded_load * d / l <= 3 * m / l);
+        for row_symbol in 0..2 {
+            let row_ports = result.pair_loads[row_symbol * 2]
+                + result.pair_loads[row_symbol * 2 + 1];
+            assert!(row_ports <= 3 * m / 2);
+        }
+        for column_symbol in 0..2 {
+            let column_ports = result.pair_loads[column_symbol]
+                + result.pair_loads[2 + column_symbol];
+            assert!(column_ports <= 3 * m / 2);
+        }
+        assert!(result.final_potential_numerator <= result.initial_potential_numerator);
+    }
+
+    #[test]
     fn shared_endpoints_and_parallel_edges_are_properly_colored() {
         let cases = vec![
             (2, 2, vec![(0, 0), (0, 1), (1, 0), (1, 1)]),

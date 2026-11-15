@@ -205,9 +205,103 @@ theorem actual_uint64_program_refines (env : Nat → UInt64) (program : Program)
       actual_uint64_condition_refines, ht, hf]
     cases evalActualCondition env c <;> rfl
 
+/-! ## Distinct target syntax: translation, not merely dual interpretation -/
+
+/-- A separate, restricted Rust operation language. No source constructors
+are reused by target evaluation; these names reflect emitted Rust operations. -/
+inductive RustExpr where
+  | input : Nat → RustExpr
+  | constant : Nat → RustExpr
+  | wrappingAdd : RustExpr → RustExpr → RustExpr
+  | wrappingMul : RustExpr → RustExpr → RustExpr
+  deriving Repr, DecidableEq
+
+def lowerExpr : WordExpr → RustExpr
+  | .arg i => .input i
+  | .lit n => .constant n
+  | .add a b => .wrappingAdd (lowerExpr a) (lowerExpr b)
+  | .mul a b => .wrappingMul (lowerExpr a) (lowerExpr b)
+
+def evalRustExpr (env : Nat → Nat) : RustExpr → Nat
+  | .input i => env i
+  | .constant n => n % modulus
+  | .wrappingAdd a b => (evalRustExpr env a + evalRustExpr env b) % modulus
+  | .wrappingMul a b => (evalRustExpr env a * evalRustExpr env b) % modulus
+
+theorem lowerExpr_correct (env : Nat → Nat) (e : WordExpr) :
+    evalRustExpr env (lowerExpr e) = evalRustWord env e := by
+  induction e with
+  | arg i => rfl
+  | lit n => rfl
+  | add a b ha hb =>
+    simp only [lowerExpr, evalRustExpr, evalRustWord, ha, hb]
+  | mul a b ha hb =>
+    simp only [lowerExpr, evalRustExpr, evalRustWord, ha, hb]
+
+inductive RustCompare where
+  | eq : RustExpr → RustExpr → RustCompare
+  | lt : RustExpr → RustExpr → RustCompare
+  | le : RustExpr → RustExpr → RustCompare
+  deriving Repr, DecidableEq
+
+def lowerCompare : Condition → RustCompare
+  | .eq a b => .eq (lowerExpr a) (lowerExpr b)
+  | .lt a b => .lt (lowerExpr a) (lowerExpr b)
+  | .le a b => .le (lowerExpr a) (lowerExpr b)
+
+def evalRustCompare (env : Nat → Nat) : RustCompare → Bool
+  | .eq a b => decide (evalRustExpr env a = evalRustExpr env b)
+  | .lt a b => decide (evalRustExpr env a < evalRustExpr env b)
+  | .le a b => decide (evalRustExpr env a ≤ evalRustExpr env b)
+
+theorem lowerCompare_correct (env : Nat → Nat) (c : Condition) :
+    evalRustCompare env (lowerCompare c) = evalRustCondition env c := by
+  cases c with
+  | eq a b =>
+    simp only [lowerCompare, evalRustCompare, evalRustCondition, lowerExpr_correct]
+  | lt a b =>
+    simp only [lowerCompare, evalRustCompare, evalRustCondition, lowerExpr_correct]
+  | le a b =>
+    simp only [lowerCompare, evalRustCompare, evalRustCondition, lowerExpr_correct]
+
+/-- Source `return` and Bool-case branches map to a separate Rust-shaped
+return/match grammar; branch selection uses the actual 0/1 tag convention. -/
+inductive RustProgram where
+  | returnExpr : RustExpr → RustProgram
+  | ifTag : RustCompare → RustProgram → RustProgram → RustProgram
+  deriving Repr, DecidableEq
+
+def lowerProgram : Program → RustProgram
+  | .ret e => .returnExpr (lowerExpr e)
+  | .branch c t f => .ifTag (lowerCompare c) (lowerProgram t) (lowerProgram f)
+
+def evalRustProgramSyntax (env : Nat → Nat) : RustProgram → Nat
+  | .returnExpr e => evalRustExpr env e
+  | .ifTag c t f =>
+      if rustBoolTag (evalRustCompare env c) = 1
+      then evalRustProgramSyntax env t else evalRustProgramSyntax env f
+
+theorem lowerProgram_correct (env : Nat → Nat) (p : Program) :
+    evalRustProgramSyntax env (lowerProgram p) = evalRustProgram env p := by
+  induction p with
+  | ret e =>
+    exact lowerExpr_correct env e
+  | branch c t f ht hf =>
+    simp only [lowerProgram, evalRustProgramSyntax, evalRustProgram,
+      lowerCompare_correct, ht, hf, rustBoolTag]
+    cases evalRustCondition env c <;> rfl
+
+/-- Compositional modeled compiler theorem for the selected fragment,
+now including a nonidentity source-to-target syntax translation. -/
+theorem modeled_compiler_refines (env : Nat → UInt64) (p : Program) :
+    evalRustProgramSyntax (fun i => (env i).toNat) (lowerProgram p) =
+      (evalActualProgram env p).toNat := by
+  rw [lowerProgram_correct, actual_uint64_program_refines]
+
 #print axioms NativeRustScalarRefinement.word_refines
 #print axioms NativeRustScalarRefinement.condition_refines
 #print axioms NativeRustScalarRefinement.program_refines
 #print axioms NativeRustScalarRefinement.actual_uint64_program_refines
+#print axioms NativeRustScalarRefinement.modeled_compiler_refines
 
 end NativeRustScalarRefinement

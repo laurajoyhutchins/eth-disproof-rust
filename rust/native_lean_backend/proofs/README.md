@@ -22,6 +22,14 @@ target uses natural-number arithmetic reduced modulo `2^64`, the intended
 semantics of Rust's wrapping operations. The grammar has `arg`, `lit`, `add`, `mul`,
 `eq`, `lt`, `le`, `return` and nested conditional branches.
 
+The proof now also includes a **distinct target AST** (`RustExpr`,
+`RustCompare`, `RustProgram`) and a total `lowerProgram` function.
+`modeled_compiler_refines` composes the model-lowering theorem with the
+genuine Lean `UInt64` source theorem, for all modeled programs and inputs.
+The target grammar models `wrapping_add`, `wrapping_mul`, scalar comparisons,
+`u8` Bool tags, and branch selection. **This is not the production Rust text
+emitter.**
+
 The correspondence being audited is specifically:
 
 | Source operation | `primitive-registry.tsv` | Rust emission in `src/reader/expr_call.rs` |

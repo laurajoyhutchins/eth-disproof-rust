@@ -111,6 +111,16 @@ impl Reader {
         }
     }
 
+    pub(super) unsafe fn rc_flags(x: Obj) -> Result<(bool, bool), String> {
+        match lr_rc_flags(x) {
+            0 => Ok((false, false)),
+            1 => Ok((true, false)),
+            2 => Ok((false, true)),
+            3 => Ok((true, true)),
+            _ => Err("unsupported pinned Lean IR inc/dec packed Bool ABI".into()),
+        }
+    }
+
     pub(super) unsafe fn var(x: Obj) -> Result<usize, String> {
         // A Lean single-field structure may be represented as its single field
         // after erasure; accept both representations, reject all other cases.

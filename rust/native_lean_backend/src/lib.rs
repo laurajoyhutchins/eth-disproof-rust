@@ -92,6 +92,27 @@ mod __lean_constructor_set_tests {
     }
 }
 "#;
+const HEAP_JOIN_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_heap_join_refinement_tests {
+    use super::__LeanValue;
+    #[test]
+    fn constructor_heap_refines_tobject() {
+        let value = __LeanValue::ctor(0, "Probe.ctor", vec![]);
+        assert_eq!(value.require_constructor_object().tag(), 0);
+    }
+    #[test]
+    #[should_panic(expected = "tobject join requires a heap constructor")]
+    fn tagged_value_is_not_a_heap_constructor() {
+        let _ = __LeanValue::tagged(0).require_constructor_object();
+    }
+    #[test]
+    #[should_panic(expected = "tobject join requires a heap constructor")]
+    fn erased_join_argument_is_not_a_heap_constructor() {
+        let _ = __LeanValue::erased().require_constructor_object();
+    }
+}
+"#;
 const ARRAY_OWNERSHIP_TEST_SOURCE: &str = r#"
 #[cfg(test)]
 mod __lean_array_ownership_tests {
@@ -213,7 +234,12 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}")
+        let heap_join_tests = if source.contains(".require_constructor_object()") {
+            HEAP_JOIN_TEST_SOURCE
+        } else {
+            ""
+        };
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}")
     } else {
         source
     };
@@ -1704,6 +1730,18 @@ impl Reader {
                             // physically absent. Any later read must fail,
                             // never silently materialize an arbitrary value.
                             lowered.push("__LeanValue::erased()".into());
+                        } else if *ty == "obj" && Self::checked_tag(arg, "Arg")? == 0 {
+                            // Only a typed join argument may refine tobj
+                            // (tagged-or-heap) to a heap-only constructor.
+                            // All other IR uses keep the strict object type
+                            // contract; the runtime checks the actual value.
+                            let var = Self::var(Self::field(arg, 0)?)?;
+                            if env.get(&var) == Some(&"tobj") {
+                                lowered
+                                    .push(format!("x_{var}.clone().require_constructor_object()"));
+                            } else {
+                                lowered.push(Self::arg(arg, env, ty)?);
+                            }
                         } else {
                             lowered.push(Self::arg(arg, env, ty)?);
                         }

@@ -132,7 +132,6 @@ fn finite_integer_contractions_agree_after_weight_grouping() {
     }
 }
 
-
 #[test]
 fn signed_grouped_contraction_handles_shared_wires_and_zero_crossings() {
     // A single joint assignment chooses four bits a,b,c,d. Each swap crossing

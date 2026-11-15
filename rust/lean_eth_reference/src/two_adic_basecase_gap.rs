@@ -36,6 +36,12 @@ pub struct OptimisticStage {
     /// Minimum possible threshold for the new sufficient lemma.
     /// None means the positive threshold exceeds the u128 range.
     pub minimum_matching_required_edges: Option<u128>,
+    /// Necessary, not sufficient: the source uniform padded layout has
+    /// H_pad>=L on any nonempty graph, D ordered classes, and exactly
+    /// H_pad*D/L packets. The 3M/L packet cap forces M>=ceil(L*D/3).
+    pub minimum_uniform_padding_edges: Option<u128>,
+    /// An arithmetic test of this necessary uniform-layout condition.
+    pub could_fit_source_uniform_padding: bool,
     /// This is a *necessary* arithmetic check for using the sufficient
     /// lemma, not a witness to the graph, labeling or recursive algorithm.
     pub could_meet_matching_sufficient_condition: bool,
@@ -57,11 +63,38 @@ pub struct BasecaseGapAudit {
     /// Prefix of stages that could meet the sufficiency inequality in
     /// the most optimistic arithmetic envelope; no actual child is proved.
     pub optimistic_prefix_stages: usize,
+    /// A stronger, concentration-independent obstruction to the
+    /// source uniform class-padding construction and 3M/L packet bound.
+    pub first_uniform_padding_gap_depth: Option<usize>,
+    pub optimistic_uniform_padding_prefix_stages: usize,
+    pub upper_edges_at_first_padding_gap: Option<u128>,
+    pub minimum_uniform_padding_edges_at_first_gap: Option<u128>,
     pub upper_edges_at_first_gap: Option<u128>,
     pub minimum_required_edges_at_first_gap: Option<u128>,
     pub minimum_degree_cap_at_first_gap: Option<u128>,
     /// First 12 levels, or all levels if the leaf budget is attained sooner.
     pub stages: Vec<OptimisticStage>,
+}
+
+/// Exact ceil(L*D/3), using quotient/remainder to avoid overflow from
+/// multiplying L*D first. None means the minimum exceeds u128 or inputs
+/// cannot represent a positive source class count.
+pub fn minimum_uniform_padding_edges(l: u128, d: u128) -> Option<u128> {
+    if l == 0 || d == 0 {
+        return None;
+    }
+    let quotient = (l / 3).checked_mul(d)?;
+    let remainder = match l % 3 {
+        0 => 0,
+        1 => d / 3 + u128::from(!d.is_multiple_of(3)),
+        2 => (d / 3) * 2 + match d % 3 {
+            0 => 0,
+            1 => 1,
+            _ => 2,
+        },
+        _ => unreachable!("remainder modulo three"),
+    };
+    quotient.checked_add(remainder)
 }
 
 fn stage_at(depth: usize, groups: u32, upper: u128) -> OptimisticStage {
@@ -73,6 +106,7 @@ fn stage_at(depth: usize, groups: u32, upper: u128) -> OptimisticStage {
         .and_then(|exponent| u128::from(groups).checked_pow(exponent));
     let minimum_degree = slots.and_then(|l| l.checked_mul(2));
     let threshold = minimum_degree.and_then(|delta| matching_threshold(groups, a, delta));
+    let uniform_minimum = slots.zip(classes).and_then(|(l, d)| minimum_uniform_padding_edges(l, d));
     OptimisticStage {
         depth,
         largest_possible_edges: upper,
@@ -81,6 +115,8 @@ fn stage_at(depth: usize, groups: u32, upper: u128) -> OptimisticStage {
         label_pair_classes_d: classes,
         minimum_degree_cap: minimum_degree,
         minimum_matching_required_edges: threshold,
+        minimum_uniform_padding_edges: uniform_minimum,
+        could_fit_source_uniform_padding: uniform_minimum.is_some_and(|needed| needed <= upper),
         could_meet_matching_sufficient_condition: threshold.is_some_and(|needed| needed <= upper),
     }
 }
@@ -106,7 +142,9 @@ impl BasecaseGapAudit {
         let mut upper = root_edges;
         let mut depth = 0usize;
         let mut first_gap: Option<OptimisticStage> = None;
+        let mut first_padding_gap: Option<OptimisticStage> = None;
         let mut optimistic_prefix_stages = 0;
+        let mut optimistic_uniform_padding_prefix_stages = 0;
         let mut stages = Vec::new();
 
         while upper > proposed_leaf_edge_budget {
@@ -121,6 +159,13 @@ impl BasecaseGapAudit {
                     optimistic_prefix_stages += 1;
                 } else {
                     first_gap = Some(stage.clone());
+                }
+            }
+            if first_padding_gap.is_none() {
+                if stage.could_fit_source_uniform_padding {
+                    optimistic_uniform_padding_prefix_stages += 1;
+                } else {
+                    first_padding_gap = Some(stage.clone());
                 }
             }
             if stages.len() < MAX_DISPLAYED_STAGES {
@@ -139,6 +184,14 @@ impl BasecaseGapAudit {
             hypothetical_guaranteed_leaf_depth: depth,
             first_uncovered_active_depth: first_gap.as_ref().map(|stage| stage.depth),
             optimistic_prefix_stages,
+            first_uniform_padding_gap_depth: first_padding_gap.as_ref().map(|stage| stage.depth),
+            optimistic_uniform_padding_prefix_stages,
+            upper_edges_at_first_padding_gap: first_padding_gap
+                .as_ref()
+                .map(|stage| stage.largest_possible_edges),
+            minimum_uniform_padding_edges_at_first_gap: first_padding_gap
+                .as_ref()
+                .and_then(|stage| stage.minimum_uniform_padding_edges),
             upper_edges_at_first_gap: first_gap.as_ref().map(|stage| stage.largest_possible_edges),
             minimum_required_edges_at_first_gap: first_gap
                 .as_ref()
@@ -171,6 +224,13 @@ mod tests {
             Some(6_106_906_624)
         );
         assert_eq!(a.first_uncovered_active_depth, Some(1));
+        assert_eq!(a.first_uniform_padding_gap_depth, Some(1));
+        assert_eq!(a.optimistic_uniform_padding_prefix_stages, 1);
+        assert_eq!(a.stages[0].minimum_uniform_padding_edges, Some(22_369_622));
+        assert_eq!(
+            a.minimum_uniform_padding_edges_at_first_gap,
+            Some(1_501_199_875_790_166)
+        );
         assert_eq!(a.optimistic_prefix_stages, 1);
         assert_eq!(a.upper_edges_at_first_gap, Some(572_522_496));
         assert_eq!(
@@ -191,6 +251,11 @@ mod tests {
             Some(8_445_433_465)
         );
         assert_eq!(a.first_uncovered_active_depth, Some(2));
+        assert_eq!(a.first_uniform_padding_gap_depth, Some(2));
+        assert_eq!(
+            a.minimum_uniform_padding_edges_at_first_gap,
+            Some(295_280_793_622)
+        );
         assert_eq!(a.optimistic_prefix_stages, 2);
         assert_eq!(a.hypothetical_guaranteed_leaf_depth, 123);
         let b = BasecaseGapAudit::new(10_000_000_000, 64, 64).unwrap();
@@ -203,10 +268,12 @@ mod tests {
     fn no_small_leaf_budget_closes_gap_even_at_u128_limit() {
         let r64 = BasecaseGapAudit::new(u128::MAX, 64, 128).unwrap();
         assert_eq!(r64.first_uncovered_active_depth, Some(4));
+        assert_eq!(r64.first_uniform_padding_gap_depth, Some(4));
         assert_eq!(r64.hypothetical_guaranteed_leaf_depth, 36);
         assert_eq!(r64.optimistic_prefix_stages, 4);
         let r7 = BasecaseGapAudit::new(u128::MAX, 7, 128).unwrap();
         assert_eq!(r7.first_uncovered_active_depth, Some(8));
+        assert_eq!(r7.first_uniform_padding_gap_depth, Some(9));
         assert_eq!(r7.hypothetical_guaranteed_leaf_depth, 544);
         assert_eq!(r7.optimistic_prefix_stages, 8);
         assert!(r7.stages.len() <= MAX_DISPLAYED_STAGES);
@@ -214,10 +281,25 @@ mod tests {
     }
 
     #[test]
+    fn exact_padding_floor_handles_products_above_u128() {
+        // ceil(4*2^24/3), without any floating-point loss.
+        assert_eq!(minimum_uniform_padding_edges(4, 1 << 24), Some(22_369_622));
+        assert_eq!(minimum_uniform_padding_edges(16, 1 << 48), Some(1_501_199_875_790_166));
+        // L*D exceeds u128, but the quotient is still representable.
+        assert_eq!(
+            minimum_uniform_padding_edges(1u128 << 127, 2),
+            Some((1u128 << 127) - (1u128 << 127) / 3)
+        );
+        assert_eq!(minimum_uniform_padding_edges(u128::MAX, u128::MAX), None);
+        assert_eq!(minimum_uniform_padding_edges(0, 1), None);
+    }
+
+    #[test]
     fn already_below_budget_does_not_start_recursion() {
         let a = BasecaseGapAudit::new(10_000, 64, 10_000).unwrap();
         assert_eq!(a.hypothetical_guaranteed_leaf_depth, 0);
         assert_eq!(a.first_uncovered_active_depth, None);
+        assert_eq!(a.first_uniform_padding_gap_depth, None);
         assert_eq!(a.optimistic_prefix_stages, 0);
         assert!(a.stages.is_empty());
         assert!(BasecaseGapAudit::new(1, 64, 10).is_err());

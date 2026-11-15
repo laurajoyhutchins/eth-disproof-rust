@@ -34,6 +34,8 @@ fn run() -> Result<(), String> {
                 "minimum_label_pair_classes_d": s.label_pair_classes_d.map(|v| v.to_string()),
                 "minimum_degree_cap": s.minimum_degree_cap.map(|v| v.to_string()),
                 "minimum_matching_required_edges": s.minimum_matching_required_edges.map(|v| v.to_string()),
+                "minimum_uniform_padding_edges": s.minimum_uniform_padding_edges.map(|v| v.to_string()),
+                "could_fit_source_uniform_padding": s.could_fit_source_uniform_padding,
                 "could_meet_sufficient_packing_arithmetic": s.could_meet_matching_sufficient_condition
             })
         })
@@ -50,6 +52,10 @@ fn run() -> Result<(), String> {
             "published_root_width_u": audit.published_root_width_u,
             "hypothetical_guaranteed_leaf_depth": audit.hypothetical_guaranteed_leaf_depth,
             "optimistic_packing_prefix_stages": audit.optimistic_prefix_stages,
+            "first_uniform_padding_gap_depth": audit.first_uniform_padding_gap_depth,
+            "optimistic_uniform_padding_prefix_stages": audit.optimistic_uniform_padding_prefix_stages,
+            "upper_edges_at_first_padding_gap": audit.upper_edges_at_first_padding_gap.map(|v| v.to_string()),
+            "minimum_uniform_padding_edges_at_first_gap": audit.minimum_uniform_padding_edges_at_first_gap.map(|v| v.to_string()),
             "first_uncovered_active_depth": audit.first_uncovered_active_depth,
             "upper_edges_at_first_gap": audit.upper_edges_at_first_gap.map(|v| v.to_string()),
             "minimum_matching_required_edges_at_first_gap": audit.minimum_required_edges_at_first_gap.map(|v| v.to_string()),
@@ -61,6 +67,7 @@ fn run() -> Result<(), String> {
                 "degree_cap_equals_minimum_new_packet_vertex_cap_at_each_depth": true,
                 "actual_child_edges_are_no_larger_than_conditional_upper_bound": true,
                 "actual_child_graphs_and_degree_caps_verified": false,
+                "uniform_all_label_pair_class_padding": true,
                 "original_precision_and_complexity_proof_transferred": false
             },
             "source_recursion_admitted": false,

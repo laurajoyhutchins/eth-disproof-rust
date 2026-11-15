@@ -224,6 +224,120 @@ LEAN
             "$verified/Cargo.toml" "$case_dir/armada-oracles.lean" \
             >> "$case_dir/identity.txt"
         fi
+        # Exercise the unchanged original Keboola pullDecide root, not a
+        # rewritten decision procedure. Input values use the verified original
+        # PullIn.mk layout, while all 256 outputs are evaluated by Lean itself.
+        if [[ "$name" == "keboola" && "$rustbuild" == "PASS" ]]; then
+          verified="$case_dir/fullpull-crate"
+          mkdir -p "$verified/src" "$verified/oracles"
+          cp "$target" "$verified/src/lib.rs"
+          cat > "$verified/Cargo.toml" <<'TOML'
+[package]
+name = "lean_generated_keboola_pull"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[workspace]
+TOML
+          cat >> "$verified/src/lib.rs" <<'RUST'
+
+#[cfg(test)]
+mod independently_evaluated_original_pull_decisions {
+    use super::*;
+    include!("../oracles/source_lean.rs");
+}
+RUST
+          cat > "$case_dir/pull-oracles.lean" <<'LEAN'
+import NativeRust
+import SyncModel.Pull
+open Lean Elab Command
+run_cmd do
+  let mut tests := "#[test] fn original_source_pull_decide_256_cases() {\n"
+  let rustNat : Nat → String := fun n =>
+    s!"__LeanValue::nat_from_decimal(\"{n}\")"
+  let rustOption : Option Nat → String := fun o =>
+    match o with
+    | none => "__LeanValue::tagged(0)"
+    | some n => s!"__LeanValue::ctor(1, \"Option.some\", vec![{rustNat n}])"
+  let mut observedOutputs : Array Nat := #[]
+  for i in [:256] do
+    let mode := i % 4
+    let n : Nat := if i % 13 == 0 then 2^1024 + i else (i + 17) * 97
+    let base := n + 37
+    let isNew := mode == 3
+    let theirs := false
+    let force := mode == 0
+    let fileExists := true
+    let pullHash : Option Nat := if mode == 3 then none else some n
+    let curHash := if mode == 2 then n else n + 1
+    let extrasChanged := mode == 1
+    let shapeMigration := false
+    let cfgBase : Option Nat := if mode == 3 then none else some base
+    let apiHash := if mode == 2 then base else base + 1
+    let branchSwitched := false
+    let typeRewrite := false
+    let p : SyncModel.PullIn := {
+      isNew, theirs, force, fileExists, pullHash, curHash,
+      extrasChanged, shapeMigration, cfgBase, apiHash,
+      branchSwitched, typeRewrite
+    }
+    let expected : Nat :=
+      match SyncModel.pullDecide p with
+      | .abort => 0
+      | .preserve => 1
+      | .skip => 2
+      | .write => 3
+    if !observedOutputs.contains expected then
+      observedOutputs := observedOutputs.push expected
+    let values : Array String := #[
+      rustOption pullHash, rustNat curHash, rustOption cfgBase, rustNat apiHash
+    ]
+    tests := tests ++ "let input = __LeanValue::pull_in_ctor(vec![" ++
+      String.intercalate ", " values.toList ++ "]);\n"
+    let bools : Array Bool := #[
+      isNew, theirs, force, fileExists,
+      extrasChanged, shapeMigration, branchSwitched, typeRewrite
+    ]
+    for offset in [:bools.size] do
+      let bit : Nat := if bools[offset]! then 1 else 0
+      tests := tests ++ s!"let input = input.pull_in_set_u8(4, {offset}, {bit}u8);\n"
+    tests := tests ++ s!"assert_eq!(external_root(input), {expected}u8, \"original Keboola input {i}\");\n"
+  if observedOutputs.size != 4 then
+    throwError "original Keboola oracle failed to cover all four PullOut constructors"
+  tests := tests ++ "}\n"
+  liftIO <| IO.FS.writeFile
+    "artifacts/external-projects/keboola/fullpull-crate/oracles/source_lean.rs" tests
+  logInfo "Generated 256 original-Keboola full pullDecide input/output oracles"
+LEAN
+          if ! (cd "$native" && timeout 45s lean "$case_dir/pull-oracles.lean") \
+               > "$case_dir/pull-oracles.log" 2>&1 ||
+             [[ ! -s "$verified/oracles/source_lean.rs" ]]; then
+            cat "$case_dir/pull-oracles.log" >&2
+            echo "FATAL: failed to evaluate original Keboola pullDecide oracles" >&2
+            exit 1
+          fi
+          if ! env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+             cargo test --offline --manifest-path "$verified/Cargo.toml" \
+             > "$case_dir/pull-cargo.log" 2>&1; then
+            cat "$case_dir/pull-cargo.log" >&2
+            echo "FATAL: unmodified Keboola pullDecide Rust disagrees with Lean" >&2
+            exit 1
+          fi
+          env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+            cargo test --release --offline --manifest-path "$verified/Cargo.toml" \
+            >> "$case_dir/pull-cargo.log" 2>&1
+          env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+            cargo clippy --offline --manifest-path "$verified/Cargo.toml" \
+            --all-targets -- -D warnings >> "$case_dir/pull-cargo.log" 2>&1
+          semantic_parity="256_original_Lean_Keboola_pullDecide_cases_PASS"
+          echo "verified_original_keboola_pullDecide=PASS_256_cases" >> "$case_dir/identity.txt"
+          sha256sum "$verified/src/lib.rs" "$verified/oracles/source_lean.rs" \
+            "$verified/Cargo.toml" "$case_dir/pull-oracles.lean" \
+            >> "$case_dir/identity.txt"
+        fi
       else
         codegen="REFUSED"
         if ! grep -q 'Rust native backend refused' "$case_dir/codegen.log"; then
@@ -275,6 +389,45 @@ LEAN
         fi
   fi
 
+  # Capture source-defined executable IR from original Keboola declarations.
+  # The constructor metadata lives in PullIn-producing IR, not in a standalone
+  # executable PullIn.mk declaration; source constructors are not functions.
+  if [[ "$name" == "keboola" ]]; then
+    cat > "$case_dir/inspect-pull-deps.lean" <<'LEAN'
+import NativeRust
+import SyncModel.Pull
+open Lean Elab Command
+run_cmd do
+  let roots : Array Lean.Name := #[
+    `SyncModel.pSqlEdit,
+    `SyncModel.forceConflict,
+    `SyncModel.locallyModified,
+    `SyncModel.remoteUnchanged,
+    `SyncModel.ymlModified,
+    `SyncModel.bytesMatch
+  ]
+  let mut snapshot := ""
+  for root in roots do
+    let decl ← liftCoreM do
+      if (← Lean.IR.findDecl root).isNone then
+        Lean.Compiler.compile #[root]
+      let some d ← Lean.IR.findDecl root
+        | throwError "original source-compiled Lean IR unavailable: {root}"
+      return d
+    snapshot := snapshot ++ s!"NAME {root}\n{decl}\nEND {root}\n"
+  if snapshot.utf8ByteSize > 262144 then
+    throwError "original Keboola structure IR exceeds 256 KiB"
+  liftIO <| IO.FS.writeFile
+    "artifacts/external-projects/keboola/pull-deps-ir.txt" snapshot
+LEAN
+    if (cd "$native" && timeout 45s lean "$case_dir/inspect-pull-deps.lean") \
+        > "$case_dir/inspect-pull-deps.log" 2>&1 && [[ -s "$case_dir/pull-deps-ir.txt" ]]; then
+      echo "original_keboola_structure_dependencies=PINNED_SOURCE_IR" >> "$case_dir/identity.txt"
+    else
+      echo "original_keboola_structure_dependencies=UNAVAILABLE_DIAGNOSTIC_ONLY" >> "$case_dir/identity.txt"
+    fi
+  fi
+
   # Source-pinned, read-only diagnostic for Armada's transitive List helpers.
   # These names are emitted by the original Sched.argLeastLoad compiler IR.
   # A missing diagnostic is reported separately and never accepted as Rust.
@@ -323,8 +476,8 @@ LEAN
 done
 
 # A separate *positive* test on two unchanged original Keboola functions.
-# Unlike the complex PullIn root (which still must refuse), these functions
-# use ordinary Bool control flow. Compute all 12 expected results in original
+# These two smaller helpers use ordinary Bool control flow independently
+# of the full PullIn root, which is now source-verified above. Compute all 12 expected results in original
 # Lean, then compile and execute the exact emitted external-source Rust.
 positive="$out/keboola/positive-package"
 rm -rf -- "$positive"
@@ -383,6 +536,11 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
     "$positive/src/lib.rs" "$positive/tests/lean-oracle.rs" "$positive/Cargo.toml"
 } > "$out/keboola/positive-receipt.txt"
 
+if ! grep -Fqx 'generated_rust_semantic_parity=256_original_Lean_Keboola_pullDecide_cases_PASS' \
+    "$out/keboola/identity.txt"; then
+  echo 'FATAL: full original Keboola pullDecide parity receipt missing or incomplete' >&2
+  exit 1
+fi
 {
   echo "status=COMPLETE_OBSERVATIONS_NOT_G1_ACCEPTANCE"
   echo "source_revision=$(git rev-parse --verify HEAD 2>/dev/null || echo unavailable)"
@@ -390,7 +548,9 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   echo "all_upstream_sources_unmodified=true"
   echo "external_armada_original_root=128_source_oracles_PASS"
   echo "external_keboola_two_original_helpers=12_source_oracles_PASS"
-  echo "semantic_verification_of_selected_external_roots=armada_pass_newspeak_keboola_refused"
+  echo "external_keboola_original_root=256_source_oracles_PASS"
+  echo "substantial_external_project_roots_verified=2_of_3"
+  echo "semantic_verification_of_selected_external_roots=armada_pass_keboola_pass_newspeak_refused"
   echo "toolchain=$(lean --version)"
   sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt"
 } > "$out/receipt.txt"

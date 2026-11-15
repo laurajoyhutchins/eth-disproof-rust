@@ -14,9 +14,12 @@ evalRustProgram (fun i => (env i).val) program
   = (evalSourceProgram env program).val
 ```
 
-The source uses `Fin (2^64)` arithmetic. The independently defined target
-uses natural-number arithmetic reduced modulo `2^64`, the intended semantics
-of the Rust operations. The grammar has `arg`, `lit`, `add`, `mul`,
+The first source model uses `Fin (2^64)` arithmetic. A second, stronger
+source bridge uses the **actual Lean `UInt64` operations**, with Lean's pinned
+`UInt64.toNat_add`/`toNat_mul` theorems, and proves the same all-input program
+result for genuine `UInt64` inputs and comparisons. The independently defined
+target uses natural-number arithmetic reduced modulo `2^64`, the intended
+semantics of Rust's wrapping operations. The grammar has `arg`, `lit`, `add`, `mul`,
 `eq`, `lt`, `le`, `return` and nested conditional branches.
 
 The correspondence being audited is specifically:

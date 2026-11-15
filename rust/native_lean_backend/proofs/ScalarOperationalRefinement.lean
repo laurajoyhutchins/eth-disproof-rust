@@ -1,4 +1,4 @@
-import Init
+import Init.Data.UInt.Lemmas
 
 /-!
 # Source and Rust-value semantics for a bounded Lean compiler fragment
@@ -136,8 +136,78 @@ theorem program_refines (env : Nat → Word) (program : Program) :
     simp only [evalRustProgram, evalSourceProgram, condition_refines, ht, hf]
     cases evalSourceCondition env c <;> rfl
 
+/-- The *actual* Lean `UInt64` primitive operations, not an independently
+chosen finite-word source interpreter. -/
+def evalActualUInt64 (env : Nat → UInt64) : WordExpr → UInt64
+  | .arg i => env i
+  | .lit n => UInt64.ofNat n
+  | .add a b => evalActualUInt64 env a + evalActualUInt64 env b
+  | .mul a b => evalActualUInt64 env a * evalActualUInt64 env b
+
+/-- The canonical Lean `UInt64` library states the same wrapping equations
+required by Rust `u64.wrapping_add` and `wrapping_mul`. -/
+theorem actual_uint64_add_mod (a b : UInt64) :
+    (a + b).toNat = (a.toNat + b.toNat) % modulus := by
+  simpa only [modulus] using (UInt64.toNat_add a b)
+
+theorem actual_uint64_mul_mod (a b : UInt64) :
+    (a * b).toNat = (a.toNat * b.toNat) % modulus := by
+  simpa only [modulus] using (UInt64.toNat_mul a b)
+
+/-- All trees of real Lean `UInt64` operations refine the independent target
+Nat/modulo interpretation. In particular this is stronger than the Fin-only
+source model above, but still is not an emitted-code/rustc theorem. -/
+theorem actual_uint64_word_refines (env : Nat → UInt64) (e : WordExpr) :
+    evalRustWord (fun i => (env i).toNat) e = (evalActualUInt64 env e).toNat := by
+  induction e with
+  | arg i => rfl
+  | lit n =>
+    simp only [evalRustWord, evalActualUInt64, UInt64.toNat_ofNat', modulus]
+  | add a b ha hb =>
+    simp only [evalRustWord, evalActualUInt64, actual_uint64_add_mod, ha, hb]
+  | mul a b ha hb =>
+    simp only [evalRustWord, evalActualUInt64, actual_uint64_mul_mod, ha, hb]
+
+def evalActualCondition (env : Nat → UInt64) : Condition → Bool
+  | .eq a b => decide (evalActualUInt64 env a = evalActualUInt64 env b)
+  | .lt a b => decide (evalActualUInt64 env a < evalActualUInt64 env b)
+  | .le a b => decide (evalActualUInt64 env a ≤ evalActualUInt64 env b)
+
+theorem actual_uint64_condition_refines (env : Nat → UInt64) (c : Condition) :
+    evalRustCondition (fun i => (env i).toNat) c = evalActualCondition env c := by
+  cases c with
+  | eq a b =>
+    simp [evalRustCondition, evalActualCondition, actual_uint64_word_refines,
+      UInt64.toNat_inj]
+  | lt a b =>
+    simp [evalRustCondition, evalActualCondition, actual_uint64_word_refines,
+      UInt64.lt_iff_toNat_lt]
+  | le a b =>
+    simp [evalRustCondition, evalActualCondition, actual_uint64_word_refines,
+      UInt64.le_iff_toNat_le]
+
+def evalActualProgram (env : Nat → UInt64) : Program → UInt64
+  | .ret e => evalActualUInt64 env e
+  | .branch c t f =>
+      if evalActualCondition env c then evalActualProgram env t
+      else evalActualProgram env f
+
+/-- All inputs and all finite programs in the selected grammar: genuine Lean
+UInt64 semantics are equal to the independent Rust wrapping-value model. -/
+theorem actual_uint64_program_refines (env : Nat → UInt64) (program : Program) :
+    evalRustProgram (fun i => (env i).toNat) program =
+      (evalActualProgram env program).toNat := by
+  induction program with
+  | ret e =>
+    exact actual_uint64_word_refines env e
+  | branch c t f ht hf =>
+    simp only [evalRustProgram, evalActualProgram,
+      actual_uint64_condition_refines, ht, hf]
+    cases evalActualCondition env c <;> rfl
+
 #print axioms NativeRustScalarRefinement.word_refines
 #print axioms NativeRustScalarRefinement.condition_refines
 #print axioms NativeRustScalarRefinement.program_refines
+#print axioms NativeRustScalarRefinement.actual_uint64_program_refines
 
 end NativeRustScalarRefinement

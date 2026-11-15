@@ -56,6 +56,13 @@ See [root-packing feasibility](root-packing-feasibility.md) for the
 exact proof and CLI receipts. Such receipts are refusals, **not** runtime
 benchmarks.
 
+The [matching-potential packing argument](matching-potential-packing.md)
+replaces the *sufficient* quadratic-in-label-class collision requirement
+with a deterministic condition proportional to \(D_{\rm arr}\Delta\log D_{\rm arr}\).
+This reduces a real polynomial factor of setup but **does not** remove
+the independent field, weighted-mode, packet-entry, precision, or leaf
+costs. The full recursive count remains unexecuted.
+
 Five places worth instrumenting first:
 
 | Stage | What to record |

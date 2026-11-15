@@ -52,13 +52,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "$HEAD_SHA"
           git cat-file -e "${BASE_SHA}^{commit}"
           git diff --check "$BASE_SHA" "$HEAD_SHA" -- rust/native_lean_backend
-          "$TOOL" agent locate --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \\
-            --task 'Lean compiler primitive registry and source name encoding' \\
+          "$TOOL" agent locate --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \
+            --task 'Lean compiler primitive registry and source name encoding' \
             --index-segments 256 --limit 20 --json > "$OUT/locate.json"
-          "$TOOL" agent context --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \\
-            --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/primitive-registry.tsv,rust/native_lean_backend/runtime-primitive-registry.tsv \\
+          "$TOOL" agent context --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \
+            --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/primitive-registry.tsv,rust/native_lean_backend/runtime-primitive-registry.tsv \
             --limit 32 > "$OUT/context.json"
-          "$TOOL" agent verify --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" \\
+          "$TOOL" agent verify --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" \
             --candidate "$HEAD_SHA" --limit 32 > "$OUT/verify.json"
           jq -e '.schema == "excession.agent-context.v1"' "$OUT/context.json" > /dev/null
           jq -e '.schema == "excession.agent-verification.v1"' "$OUT/verify.json" > /dev/null

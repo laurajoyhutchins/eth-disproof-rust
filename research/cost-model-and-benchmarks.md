@@ -46,6 +46,16 @@ Any alternate finite-size schedule must have its own verified packing,
 child-size, valuation and recovery conditions before its runtime is compared
 with an independent exact #SAT baseline.
 
+Retuning the original root's \(\varepsilon\) does not rescue this
+schedule by itself. The first packing inequality with \(M=s\),
+\(\Delta=\lceil s^{9/10}\rceil\) and \(u_0\ge1\) already requires
+\(s\ge2^{490}\) at \(r=64\). A degree-aware candidate may meet
+the three arithmetic packing inequalities while failing the separate
+\(u\), child-invariant, recovery, and complexity requirements.
+See [root-packing feasibility](root-packing-feasibility.md) for the
+exact proof and CLI receipts. Such receipts are refusals, **not** runtime
+benchmarks.
+
 Five places worth instrumenting first:
 
 | Stage | What to record |

@@ -179,7 +179,9 @@ pub fn construct_orbit_sparse_bounded(
         .max()
         .unwrap_or(0);
     if max_degree > degree_cap {
-        return Err(invalid("original graph maximum degree exceeds supplied cap"));
+        return Err(invalid(
+            "original graph maximum degree exceeds supplied cap",
+        ));
     }
 
     let mut packets = Vec::new();
@@ -190,25 +192,38 @@ pub fn construct_orbit_sparse_bounded(
     for (signature, orbit) in orbits {
         let equal = signature.iter().filter(|&&(lo, hi)| lo == hi).count();
         let unequal = n_coords - equal;
-        let c = 1usize.checked_shl(u32::try_from(unequal).map_err(|_| capacity())?)
+        let c = 1usize
+            .checked_shl(u32::try_from(unequal).map_err(|_| capacity())?)
             .ok_or_else(capacity)?;
-        let q = 1usize.checked_shl(u32::try_from(equal).map_err(|_| capacity())?)
+        let q = 1usize
+            .checked_shl(u32::try_from(equal).map_err(|_| capacity())?)
             .ok_or_else(capacity)?;
         if q.checked_mul(c).ok_or_else(capacity)? != l {
-            return Err(invalid("orbit copy and orientation multiplicities mismatch"));
+            return Err(invalid(
+                "orbit copy and orientation multiplicities mismatch",
+            ));
         }
         let maximum = orbit.classes.values().map(Vec::len).max().unwrap_or(0);
         let orbit_packets = maximum.div_ceil(q);
         let padded = orbit_packets.checked_mul(l).ok_or_else(capacity)?;
         let balanced = c.checked_mul(maximum).ok_or_else(capacity)?;
-        let imbalance = balanced.checked_sub(orbit.real_edges)
+        let imbalance = balanced
+            .checked_sub(orbit.real_edges)
             .ok_or_else(|| invalid("orbit class sum exceeded class maximum"))?;
-        let rounding = padded.checked_sub(balanced)
+        let rounding = padded
+            .checked_sub(balanced)
             .ok_or_else(|| invalid("orbit copy rounding was negative"))?;
-        total_imbalance = total_imbalance.checked_add(imbalance).ok_or_else(capacity)?;
+        total_imbalance = total_imbalance
+            .checked_add(imbalance)
+            .ok_or_else(capacity)?;
         total_rounding = total_rounding.checked_add(rounding).ok_or_else(capacity)?;
-        if packets.len().checked_add(orbit_packets).ok_or_else(capacity)?
-            .checked_mul(l).ok_or_else(capacity)? > MAX_PACKET_SLOTS
+        if packets
+            .len()
+            .checked_add(orbit_packets)
+            .ok_or_else(capacity)?
+            .checked_mul(l)
+            .ok_or_else(capacity)?
+            > MAX_PACKET_SLOTS
         {
             return Err(capacity());
         }
@@ -266,7 +281,11 @@ pub fn construct_orbit_sparse_bounded(
     let m = edges.len();
     let padded_slots = packets.len().checked_mul(l).ok_or_else(capacity)?;
     let unused_slots = padded_slots.checked_sub(m).ok_or_else(capacity)?;
-    if unused_slots != total_imbalance.checked_add(total_rounding).ok_or_else(capacity)? {
+    if unused_slots
+        != total_imbalance
+            .checked_add(total_rounding)
+            .ok_or_else(capacity)?
+    {
         return Err(invalid("orbit padding waste identity failed"));
     }
 
@@ -319,17 +338,15 @@ pub fn construct_orbit_sparse_bounded(
         for symbol in 0..r {
             let row = row_ports[coordinate][symbol];
             let col = column_ports[coordinate][symbol];
-            symbol_port_bounds_hold &=
-                row.checked_mul(r).ok_or_else(capacity)? <= r_bound
-                    && col.checked_mul(r).ok_or_else(capacity)? <= r_bound;
+            symbol_port_bounds_hold &= row.checked_mul(r).ok_or_else(capacity)? <= r_bound
+                && col.checked_mul(r).ok_or_else(capacity)? <= r_bound;
             let child_edges = row.checked_add(col).ok_or_else(capacity)?;
             child_edge_upper_counts[coordinate][symbol] = child_edges;
             child_edge_bound_holds &=
                 child_edges.checked_mul(r).ok_or_else(capacity)? <= r_child_bound;
         }
     }
-    let packet_count_bound_holds =
-        padded_slots <= m.checked_mul(3).ok_or_else(capacity)?;
+    let packet_count_bound_holds = padded_slots <= m.checked_mul(3).ok_or_else(capacity)?;
     Ok(OrbitSparsePacketLayout {
         r,
         a,
@@ -362,14 +379,15 @@ pub fn construct_orbit_sparse_admitted(
     a: u32,
     degree_cap: usize,
 ) -> Result<OrbitSparsePacketLayout, Error> {
-    let layout = construct_orbit_sparse_bounded(
-        edges, left_labels, right_labels, r, a, degree_cap,
-    )?;
+    let layout =
+        construct_orbit_sparse_bounded(edges, left_labels, right_labels, r, a, degree_cap)?;
     if !layout.packet_count_bound_holds {
         return Err(invalid("orbit-sparse packet count exceeds source 3M/L cap"));
     }
     if !layout.symbol_port_bounds_hold {
-        return Err(invalid("orbit-sparse symbol port count exceeds source 3M/r cap"));
+        return Err(invalid(
+            "orbit-sparse symbol port count exceeds source 3M/r cap",
+        ));
     }
     if !layout.child_edge_bound_holds {
         return Err(invalid("orbit-sparse child exceeds source 6M/r cap"));

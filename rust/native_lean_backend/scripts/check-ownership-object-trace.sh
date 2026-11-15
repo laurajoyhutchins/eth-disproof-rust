@@ -22,23 +22,30 @@ done
 (cd examples && lean -c "$out/OwnershipObjectTraceKernels.c" OwnershipObjectTraceKernels.lean)
 (cd examples && lean -c "$out/OwnershipObjectTraceCDriver.c" OwnershipObjectTraceCDriver.lean)
 leanc -O2 -o "$out/lean-c" "$out/OwnershipObjectTraceKernels.c" "$out/OwnershipObjectTraceCDriver.c" native/object_trace_probe.c
-"$out/lean-c" > "$out/c.txt"
 cat examples/ownership_object_trace_test.rs >> examples/ownership-object-trace-package/src/lib.rs
-OWNERSHIP_OBJECT_TRACE_OUT="$out/rust.txt" env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --offline --manifest-path examples/ownership-object-trace-package/Cargo.toml --lib source_object_trace_tests::trace -- --exact
-test -s "$out/c.txt"
-test -s "$out/rust.txt"
-if ! cmp -s "$out/c.txt" "$out/rust.txt"; then
-  echo "Lean C physical object trace differs from Rust logical source RC trace" >&2
-  diff -u "$out/c.txt" "$out/rust.txt" >&2 || true
-  exit 1
-fi
+for inputs in "0 1" "17 23" "901 702"; do
+  read -r first second <<< "$inputs"
+  "$out/lean-c" "$first" "$second" > "$out/c-$first-$second.txt"
+  OWNERSHIP_OBJECT_TRACE_A="$first" OWNERSHIP_OBJECT_TRACE_B="$second" \
+  OWNERSHIP_OBJECT_TRACE_OUT="$out/rust-$first-$second.txt" \
+  env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+    cargo test --offline --manifest-path examples/ownership-object-trace-package/Cargo.toml --lib source_object_trace_tests::trace -- --exact
+  test -s "$out/c-$first-$second.txt"
+  test -s "$out/rust-$first-$second.txt"
+  if ! cmp -s "$out/c-$first-$second.txt" "$out/rust-$first-$second.txt"; then
+    echo "Lean C physical object trace differs from Rust logical source RC trace at $inputs" >&2
+    diff -u "$out/c-$first-$second.txt" "$out/rust-$first-$second.txt" >&2 || true
+    exit 1
+  fi
+done
 {
   echo 'status=PASS_SAME_SOURCE_C_RUST_OBSERVED_OBJECT_ID_AND_RC'
   echo "revision=$(git rev-parse HEAD)"
   echo "lean=$(lean --version)"
   echo "rust=$(rustc --version)"
   echo 'checkpoint_count=6'
+  echo 'runtime_input_pairs=3'
   echo 'source_heap_simulation=UNPROVED_BEYOND_OBSERVED_BOUNDARIES'
-  sha256sum examples/OwnershipObjectTraceKernels.lean examples/OwnershipObjectTraceFixture.lean examples/OwnershipObjectTraceCDriver.lean examples/ownership_object_trace_test.rs native/object_trace_probe.c "$out/OwnershipObjectTraceKernels.c" examples/ownership-object-trace-package/src/lib.rs "$out/c.txt" "$out/rust.txt"
+  sha256sum examples/OwnershipObjectTraceKernels.lean examples/OwnershipObjectTraceFixture.lean examples/OwnershipObjectTraceCDriver.lean examples/ownership_object_trace_test.rs native/object_trace_probe.c "$out/OwnershipObjectTraceKernels.c" examples/ownership-object-trace-package/src/lib.rs "$out"/c-*.txt "$out"/rust-*.txt
 } > "$out/receipt.txt"
 cat "$out/receipt.txt"

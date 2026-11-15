@@ -27,7 +27,7 @@ for (const item of manifest.cases) {
     throw Error("parser claimed proof completion "+item.id);
   const accepted=r.observations.filter(x=>x.status==="parsed").map(x=>x.backend).sort();
   const semantic=verifySemanticCase(source,folder);
-  if (accepted.length===2 && !["definitionally_equivalent","unresolved",
+  if (accepted.length===2 && !["definitionally_equivalent","propositionally_equivalent","unresolved",
       "unelaboratable","tool_error","unresolved_pairing"].includes(semantic.status))
     throw Error("missing overlapping comparison "+item.id);
   if (accepted.length!==2 && semantic.status!=="not_applicable")
@@ -41,6 +41,7 @@ const countsFor=rows=>({
  covered:rows.filter(r=>r.parsed_by.length>0).length,
  overlap:rows.filter(r=>r.parsed_by.length===2).length,
  equivalent:rows.filter(r=>r.semantic_comparison==="definitionally_equivalent").length,
+ normalized_equivalent:rows.filter(r=>r.semantic_comparison==="propositionally_equivalent").length,
  comparison_unresolved:rows.filter(r=>r.semantic_comparison==="unresolved").length,
  source_faithfulness_assessed:0,proofs_completed:0
 });

@@ -5,7 +5,14 @@ use lean_eth_reference::two_adic_packet_layout::BipartiteEdge;
 use serde_json::json;
 use std::process::ExitCode;
 
-type Fixture = (Vec<BipartiteEdge>, Vec<usize>, Vec<usize>, usize, u32, usize);
+type Fixture = (
+    Vec<BipartiteEdge>,
+    Vec<usize>,
+    Vec<usize>,
+    usize,
+    u32,
+    usize,
+);
 
 fn fixture(name: &str) -> Result<Fixture, String> {
     match name {

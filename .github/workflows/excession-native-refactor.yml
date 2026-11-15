@@ -7,6 +7,7 @@ on:
       - 'rust/native_lean_backend/primitive-registry.tsv'
       - 'rust/native_lean_backend/runtime-primitive-registry.tsv'
       - 'rust/native_lean_backend/docs/excession-refactor.md'
+      - 'rust/native_lean_backend/docs/reader-architecture.md'
       - '.github/workflows/excession-native-refactor.yml'
 
 permissions:
@@ -52,14 +53,18 @@ jobs:
           git cat-file -e "${BASE_SHA}^{commit}"
           git diff --check "$BASE_SHA" "$HEAD_SHA" -- rust/native_lean_backend
           "$TOOL" agent locate --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \
-            --task 'Lean compiler primitive registry and source name encoding' \
+            --task 'Lean compiler IR Reader decoding, expression lowering, constructor cases and module dependency closure' \
             --roots rust/native_lean_backend/src --index-segments 256 --limit 20 --json > "$OUT/locate.json"
           "$TOOL" agent context --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \
             --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/primitive-registry.tsv,rust/native_lean_backend/runtime-primitive-registry.tsv \
             --roots rust/native_lean_backend/src --limit 32 > "$OUT/context.json"
+          "$TOOL" agent context --repo "$GITHUB_WORKSPACE" --rev "$HEAD_SHA" \
+            --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/src/reader/mod.rs,rust/native_lean_backend/src/reader/decode.rs,rust/native_lean_backend/src/reader/expr.rs,rust/native_lean_backend/src/reader/cases.rs,rust/native_lean_backend/src/reader/body.rs,rust/native_lean_backend/src/reader/module.rs \
+            --roots rust/native_lean_backend/src --limit 32 > "$OUT/context-candidate.json"
           "$TOOL" agent verify --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" \
             --candidate "$HEAD_SHA" --roots rust/native_lean_backend/src --limit 32 > "$OUT/verify.json"
           jq -e '.schema == "excession.agent-context.v1"' "$OUT/context.json" > /dev/null
+          jq -e '.schema == "excession.agent-context.v1"' "$OUT/context-candidate.json" > /dev/null
           jq -e '.schema == "excession.agent-verification.v1"' "$OUT/verify.json" > /dev/null
           {
             echo 'Excession source-bound refactor review'

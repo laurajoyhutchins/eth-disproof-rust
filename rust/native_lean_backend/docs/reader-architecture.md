@@ -1,0 +1,45 @@
+# Native Lean IR reader modules
+
+The in-process Lean 4.34.1 compiler is one compiler, not a family of backends. Its C ABI accepts borrowed compiler IR objects, inspects them under a pinned constructor/tag contract, and emits a bounded Rust subset. This refactor moves implementation methods; it does not introduce serialization, ownership transfer of Lean IR, a second runtime, or a different source language.
+
+## Source ownership
+
+| Path | Responsibility |
+| --- | --- |
+| `src/lib.rs` | Lean C ABI entrypoints and panic/refusal boundary, canonical emitted runtime source, shared IR type contexts and unit tests |
+| `src/reader/decode.rs` | Bounded reads and type/tag/constructor/name decoding from borrowed Lean objects |
+| `src/reader/expr.rs` | Exact typed expression lowering and conservative ownership last-use check |
+| `src/reader/cases.rs` | Case alternatives, source-validated constructor families and scalar/object layouts |
+| `src/reader/body.rs` | Scoped joins, IR bodies, branch control flow and variable environments |
+| `src/reader/module.rs` | Dependency closure, root signatures, generated functions and multi-root output |
+| `src/reader/mod.rs` | Private implementation facade; imports the one existing primitive policy and naming scheme |
+| `src/primitives.rs` | Single source-validated primitive and runtime-external support policy |
+| `src/names.rs` | Injective generated Rust identifier encoding |
+| `src/runtime/immutable_value.rs` | Sole emitted GMP/Nat/Rc value representation; not a compiler IR data model |
+
+The reader stage methods are `pub(super)` within the reader module. Only the three exported operations consumed by the crate's FFI wrappers are `pub(crate)`. Root and helper entrypoints remain unchanged, and there is no user-facing Rust API expansion.
+
+The source definition of a supported constructor, primitive or Lean IR tag remains authoritative. Source `sproj` is distinct from pointer-field `proj`. Unknown effects, missing declarations, unsupported constructor layouts, erased runtime operands and noncomputable source with unavailable IR must still fail closed.
+
+## Verification
+
+The first extraction was verified at commit `52fa5e8a544e278eb9fc9beff3dfb0e1da22dd93` through the native Lean compiler, generated Rust execution and Excession Git-source review. This second extraction must independently repeat the original Lean and generated Rust differential suite on **its own exact head**.
+
+Run the native commands from `rust/native_lean_backend` after building the pinned Lean and GMP toolchain:
+
+```sh
+cargo fmt --all -- --check
+cargo test --locked
+lake build
+bash scripts/check.sh
+bash scripts/check-evidence.sh
+bash scripts/check-imported-probes.sh
+bash scripts/check-bundle.sh
+bash scripts/check-native-runtime-parity.sh
+bash scripts/compare-c-rust.sh
+bash scripts/check-external-projects.sh
+```
+
+The pull-request workflows run these checks and preserve independent provenance. The Excession check additionally executes `agent locate`, `agent context` at the original and candidate revisions, and `agent verify`, leaving coverage gaps in the output. Excession's static dependency analysis is not a complete Rust call graph and its replay is not behavioral equivalence. Exact-head external Lean/Rust tests remain necessary.
+
+This structural refactor does **not** establish the G2 source equivalence or resource bounds of the original noncomputable ETH counting program.

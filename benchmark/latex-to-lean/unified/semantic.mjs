@@ -122,8 +122,9 @@ export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand
       revision.stdout.trim() === LEANIFY_COMMIT, "untrusted Leanify checkout");
     const probes = makeProbes(prepared);
     work = fs.mkdtempSync(path.join(cwd, ".semantic-probe-"));
-    namespaceDir = path.join(cwd, prepared.leftNS);
-    fs.mkdirSync(namespaceDir); // refuse concurrent or pre-existing source
+    const newNamespaceDir = path.join(cwd, prepared.leftNS);
+    fs.mkdirSync(newNamespaceDir); // never take ownership of an existing directory
+    namespaceDir = newNamespaceDir;
     for (const [name, bytes] of Object.entries(prepared.modules))
       fs.writeFileSync(path.join(namespaceDir, name), bytes, {flag:"wx"});
     const typedFile = path.join(work, "Typed.lean");

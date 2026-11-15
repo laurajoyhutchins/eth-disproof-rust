@@ -267,6 +267,32 @@ fn exhaustive_two_by_two_graphs_and_labelings_replay_exact_packet_counts() {
 }
 
 #[test]
+fn source_r64_positive_width_succeeds_structurally_without_uniform_d_classes() {
+    // u=1 -> a=2, L=4, D=64^4. Choose 64 distinct diagonal
+    // symbol-labels, each with four independent edges.
+    // There are 64 occupied orbits, 256 real edges, zero padding.
+    // The uniform construction would have to pad all 2^24 classes.
+    let edges = (0..256)
+        .map(|i| BipartiteEdge { left: i, right: i })
+        .collect::<Vec<_>>();
+    let labels = (0..256).map(|i| (i / 4) * 65).collect::<Vec<_>>();
+    let receipt = construct_orbit_sparse_admitted(&edges, &labels, &labels, 64, 2, 8).unwrap();
+    assert_eq!(receipt.packets.len(), 64);
+    assert_eq!(receipt.occupied_orbits.len(), 64);
+    assert_eq!(receipt.padded_slots, 256);
+    assert_eq!(receipt.unused_slots, 0);
+    assert!(receipt.original_packet_bounds_hold());
+    assert_eq!(receipt.original_maximum_degree, 1);
+    for symbol_counts in &receipt.child_edge_upper_counts {
+        assert_eq!(symbol_counts.len(), 64);
+        assert!(symbol_counts.iter().all(|&count| count == 8));
+    }
+    // Some children have at most 8 original edge incidences; there
+    // is still no tensor coefficient, signed mode or source-u proof.
+    verify_independently(&edges, &labels, &labels, &receipt);
+}
+
+#[test]
 fn validates_labels_endpoints_degrees_and_capacity() {
     let small = [BipartiteEdge { left: 0, right: 0 }];
     assert!(construct_orbit_sparse_bounded(&small, &[4], &[0], 2, 2, 8).is_err());

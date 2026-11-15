@@ -230,11 +230,15 @@ impl __LeanValue {
             let mut pending = Vec::new();
             self.source_enqueue_children(&mut pending);
             while let Some(child) = pending.pop() {
-                if !child.source_heap() { continue; }
+                if !child.source_heap() {
+                    continue;
+                }
                 let count = child.1.get();
                 assert!(count > 0, "source child release on exhausted reference");
                 child.1.set(count - 1);
-                if count == 1 { child.source_enqueue_children(&mut pending); }
+                if count == 1 {
+                    child.source_enqueue_children(&mut pending);
+                }
             }
         }
     }
@@ -261,8 +265,7 @@ impl __LeanValue {
             __LeanValueRepr::Closure { captures, .. } => {
                 pending.extend(captures.iter().map(Self::compiler_alias));
             }
-            __LeanValueRepr::Closure2 { capture, .. } =>
-                pending.push(capture.compiler_alias()),
+            __LeanValueRepr::Closure2 { capture, .. } => pending.push(capture.compiler_alias()),
             __LeanValueRepr::Closure3 { first, second, .. } => {
                 pending.push(first.compiler_alias());
                 pending.push(second.compiler_alias());

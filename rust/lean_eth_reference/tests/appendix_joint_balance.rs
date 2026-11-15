@@ -17,7 +17,10 @@ fn shifted_matching_recovers_low_waste_without_losing_symbol_balance() {
     let (code, receipt) = run("r4-shifted");
     assert_eq!(code, 2);
     assert_eq!(receipt["real_edges"], 32);
-    assert_eq!(receipt["right_coordinate_shifts"], serde_json::json!([3, 3]));
+    assert_eq!(
+        receipt["right_coordinate_shifts"],
+        serde_json::json!([3, 3])
+    );
     assert_eq!(receipt["initial_sparse_packet_count"], 32);
     assert_eq!(receipt["final_sparse_packet_count"], 8);
     assert_eq!(receipt["initial_unused_slots"], 96);
@@ -41,7 +44,10 @@ fn large_r_witness_retains_64_packets_instead_of_full_uniform_class_space() {
     assert_eq!(receipt["initial_sparse_packet_count"], 64);
     assert_eq!(receipt["final_sparse_packet_count"], 64);
     assert_eq!(receipt["final_unused_slots"], 0);
-    assert_eq!(receipt["source_uniform_packets_at_final_labels"], "16777216");
+    assert_eq!(
+        receipt["source_uniform_packets_at_final_labels"],
+        "16777216"
+    );
     assert_eq!(receipt["maximum_actual_row_symbol_ports"], 4);
     assert_eq!(receipt["maximum_actual_column_symbol_ports"], 4);
     assert_eq!(receipt["structurally_admitted"], true);

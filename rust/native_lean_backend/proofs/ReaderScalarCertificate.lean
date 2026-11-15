@@ -40,7 +40,7 @@ private def Bindings.addTest (env : Bindings) (id : Nat) (value : Condition) : B
     tests := fun n => if n == id then some value else env.tests n
     used := fun n => if n == id then true else env.used n }
 
-private def variable (arg : IR.Arg) : Option Nat :=
+private def argId (arg : IR.Arg) : Option Nat :=
   match arg with
   | .var x => some x.idx
   | .erased => none
@@ -49,7 +49,7 @@ private def pair (args : Array IR.Arg) : Option (Nat × Nat) := do
   let _ ← require (args.size == 2)
   let left ← args[0]?
   let right ← args[1]?
-  return (← variable left, ← variable right)
+  return (← argId left, ← argId right)
 
 private inductive Value where
   | word : WordExpr → Value
@@ -106,7 +106,7 @@ private partial def reifyBody (env : Bindings)
       let (p, tail) ← reifyBody (env.addTest x.idx c) next
       return (p, s!"    let x_{x.idx}: u8 = {rhs};\n" ++ tail)
   | .ret arg =>
-    let id ← variable arg
+    let id ← argId arg
     let word ← env.words id
     return (.ret word, s!"    x_{id}\n")
   | .case tid x ty alts =>

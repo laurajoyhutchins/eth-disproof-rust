@@ -8,8 +8,7 @@ use lean_eth_reference::native_layout;
 use lean_eth_reference::native_nodes;
 use lean_eth_reference::native_pair_setup;
 use lean_eth_reference::native_query_first_node::{
-    first_node_before_pairs_command, first_node_before_pairs_entry,
-    first_node_before_pairs_program,
+    first_node_before_pairs_command, first_node_before_pairs_entry, first_node_before_pairs_program,
 };
 use lean_eth_reference::native_query_prefix;
 use lean_eth_reference::native_tuple::encode_words;
@@ -40,7 +39,11 @@ fn fixture(has_node: bool) -> Config<40, 896> {
     // Parking exactly the 14 source LayoutMasters words; the later loader
     // copies them to 128..141, never constructing numerical values in Rust.
     put(&mut state, 732, &[true, true, true]); // low 130: r
-    put(&mut state, 738, &[true, false, true, false, true, false, false]); // low 136
+    put(
+        &mut state,
+        738,
+        &[true, false, true, false, true, false, false],
+    ); // low 136
     put(&mut state, 740, &[true, true, true]); // low 138
     put(&mut state, 741, &[true, true]); // low 139
     put(&mut state, 742, &[true; 13]); // low 140
@@ -67,15 +70,24 @@ fn one_node_composition_equals_independent_source_stage_replay() {
         assert!(state.pc.is_none());
 
         let mut stage_steps = 0;
-        stage_steps += replay(native_query_prefix::prepare_high_command().unwrap(), &mut other);
+        stage_steps += replay(
+            native_query_prefix::prepare_high_command().unwrap(),
+            &mut other,
+        );
         stage_steps += replay(native_nodes::nodes_entry_command().unwrap(), &mut other);
         assert_eq!(other.regs[37], has_node, "node guard from physical source");
 
         if has_node {
             stage_steps += replay(native_nodes::begin_node_command().unwrap(), &mut other);
             stage_steps += replay(native_layout::command().unwrap(), &mut other);
-            stage_steps += replay(native_bootstrap::bootstrap_node_command().unwrap(), &mut other);
-            stage_steps += replay(native_pair_setup::setup_caller_command().unwrap(), &mut other);
+            stage_steps += replay(
+                native_bootstrap::bootstrap_node_command().unwrap(),
+                &mut other,
+            );
+            stage_steps += replay(
+                native_pair_setup::setup_caller_command().unwrap(),
+                &mut other,
+            );
             assert_eq!(
                 other.stacks[832],
                 VecDeque::from(vec![true]),
@@ -120,11 +132,15 @@ fn partial_command_is_the_original_source_order_not_a_counting_program() {
     );
     assert!(matches!(
         remaining::query::command(),
-        Err(lean_eth_reference::Error::NotImplemented("QueryStreamProgram.command"))
+        Err(lean_eth_reference::Error::NotImplemented(
+            "QueryStreamProgram.command"
+        ))
     ));
     assert!(matches!(
         remaining::query::pair_dfs(),
-        Err(lean_eth_reference::Error::NotImplemented("QueryStreamProgram.pairs"))
+        Err(lean_eth_reference::Error::NotImplemented(
+            "QueryStreamProgram.pairs"
+        ))
     ));
 }
 

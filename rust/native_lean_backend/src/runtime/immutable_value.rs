@@ -224,7 +224,19 @@ impl __LeanValue {
         let old = self.1.get();
         assert!(old > 0, "source dec on released object");
         self.1.set(old - 1);
-        if old == 1 { self.source_release_children(); }
+        if old == 1 {
+            // Cascade source-owned field releases iteratively. Deep Lean
+            // lists must not require one native Rust stack frame per cell.
+            let mut pending = Vec::new();
+            self.source_enqueue_children(&mut pending);
+            while let Some(child) = pending.pop() {
+                if !child.source_heap() { continue; }
+                let count = child.1.get();
+                assert!(count > 0, "source child release on exhausted reference");
+                child.1.set(count - 1);
+                if count == 1 { child.source_enqueue_children(&mut pending); }
+            }
+        }
     }
 
     // The Lean del instruction calls lean_del_object, which releases the
@@ -238,22 +250,22 @@ impl __LeanValue {
         assert_eq!(self.1.replace(0), 1, "source del requires unique object");
     }
 
-    fn source_release_children(&self) {
-        let release = |child: &Self| child.source_dec(1, true, false);
+    fn source_enqueue_children(&self, pending: &mut Vec<Self>) {
         match self.0.as_ref() {
             __LeanValueRepr::Ctor { fields, .. }
             | __LeanValueRepr::PullIn { fields, .. }
             | __LeanValueRepr::Array(fields)
             | __LeanValueRepr::List(fields) => {
-                for child in fields { release(child); }
+                pending.extend(fields.iter().map(Self::compiler_alias));
             }
             __LeanValueRepr::Closure { captures, .. } => {
-                for child in captures { release(child); }
+                pending.extend(captures.iter().map(Self::compiler_alias));
             }
-            __LeanValueRepr::Closure2 { capture, .. } => release(capture),
+            __LeanValueRepr::Closure2 { capture, .. } =>
+                pending.push(capture.compiler_alias()),
             __LeanValueRepr::Closure3 { first, second, .. } => {
-                release(first);
-                release(second);
+                pending.push(first.compiler_alias());
+                pending.push(second.compiler_alias());
             }
             _ => {}
         }

@@ -434,8 +434,9 @@ impl Reader {
 
     // Last-use analysis only permits moves through a straight-line tail.
     // Any join, branch, unknown expression, or reference bookkeeping for the
-    // candidate is conservatively considered an additional use. This is a
-    // performance optimization; it never extends accepted source semantics.
+    // candidate is conservatively considered an additional use. This avoids
+    // unnecessary transient Rc aliases, but does not prove Lean's physical
+    // reference-count trace equals Rust's trace.
     unsafe fn arg_refs(x: Obj, id: usize) -> Result<bool, String> {
         Ok(match Self::checked_tag(x, "Arg")? {
             0 => Self::var(Self::field(x, 0)?)? == id,
@@ -516,12 +517,53 @@ impl Reader {
         Ok(Self::straight_tail_unused(tail, id)?.then_some(id))
     }
 
+    // A direct callee takes ownership of its argument. Moving an object at
+    // its unique final use avoids manufacturing a temporary Rust Rc alias.
+    // Do not extend this analysis through joins, branches, indirect calls,
+    // bookkeeping, or unrecognized expressions.
+    unsafe fn consumable_call(
+        expr: Obj,
+        tail: Obj,
+        functions: Option<&FunctionTable>,
+    ) -> Result<BTreeSet<usize>, String> {
+        let mut consumed = BTreeSet::new();
+        if Self::checked_tag(expr, "Expr")? != 6 {
+            return Ok(consumed);
+        }
+        let name = Self::name(Self::field(expr, 0)?, 0)?;
+        let Some(signature) = functions.and_then(|f| f.get(&name)) else {
+            return Ok(consumed);
+        };
+        let args = Self::array(Self::field(expr, 1)?)?;
+        if args.len() != signature.params.len() {
+            return Ok(consumed);
+        }
+        let mut counts = BTreeMap::<usize, usize>::new();
+        for arg in &args {
+            if Self::checked_tag(*arg, "Arg")? == 0 {
+                let id = Self::var(Self::field(*arg, 0)?)?;
+                *counts.entry(id).or_default() += 1;
+            }
+        }
+        for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
+            if !is_value_type(ty) || Self::checked_tag(arg, "Arg")? != 0 {
+                continue;
+            }
+            let id = Self::var(Self::field(arg, 0)?)?;
+            if counts.get(&id) == Some(&1) && Self::straight_tail_unused(tail, id)? {
+                consumed.insert(id);
+            }
+        }
+        Ok(consumed)
+    }
+
     unsafe fn expr(
         x: Obj,
         var_ty: &str,
         env: &BTreeMap<usize, &'static str>,
         functions: Option<&FunctionTable>,
         consumed_array: Option<usize>,
+        consumed_calls: &BTreeSet<usize>,
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
@@ -758,7 +800,15 @@ impl Reader {
                     }
                     let mut lowered = Vec::with_capacity(args.len());
                     for (arg, ty) in args.into_iter().zip(signature.params.iter()) {
-                        lowered.push(Self::arg(arg, env, ty)?);
+                        let typed = Self::arg(arg, env, ty)?;
+                        if is_value_type(ty) && Self::checked_tag(arg, "Arg")? == 0 {
+                            let id = Self::var(Self::field(arg, 0)?)?;
+                            if consumed_calls.contains(&id) {
+                                lowered.push(format!("x_{id}"));
+                                continue;
+                            }
+                        }
+                        lowered.push(typed);
                     }
                     return Ok(format!("{}({})", internal_name(&name), lowered.join(", ")));
                 }
@@ -1509,12 +1559,26 @@ impl Reader {
                     // A lexical join or nested control-flow arm may capture
                     // this variable. Only top-level straight-line tails can
                     // transfer ownership to the Rc array fast path.
-                    let consumed_array = if depth == 0 && ctx.joins.is_empty() {
-                        Self::consumable_array(expr, Self::field(x, 3)?)?
+                    let straight_line = depth == 0 && ctx.joins.is_empty();
+                    let tail = Self::field(x, 3)?;
+                    let consumed_array = if straight_line {
+                        Self::consumable_array(expr, tail)?
                     } else {
                         None
                     };
-                    let value = Self::expr(expr, ty, env, ctx.functions, consumed_array)?;
+                    let consumed_calls = if straight_line {
+                        Self::consumable_call(expr, tail, ctx.functions)?
+                    } else {
+                        BTreeSet::new()
+                    };
+                    let value = Self::expr(
+                        expr,
+                        ty,
+                        env,
+                        ctx.functions,
+                        consumed_array,
+                        &consumed_calls,
+                    )?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }

@@ -134,6 +134,7 @@ theorem program_refines (env : Nat → Word) (program : Program) :
     exact word_refines env e
   | branch c t f ht hf =>
     simp only [evalRustProgram, evalSourceProgram, condition_refines, ht, hf]
+    cases evalSourceCondition env c <;> rfl
 
 #print axioms NativeRustScalarRefinement.word_refines
 #print axioms NativeRustScalarRefinement.condition_refines

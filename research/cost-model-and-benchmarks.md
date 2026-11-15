@@ -71,6 +71,16 @@ This is a mathematical bottleneck in the full recurrence, not a
 packing kernel performance issue. The `appendix-depth` audit records
 conditional child upper bounds without simulating a #SAT count.
 
+A [replacement leaf-budget audit](two-adic-basecase-gap.md) now
+isolates the second numerical problem: even if every hypothetical
+active width is one and each new degree cap is optimistically \(2L_d\),
+the matching-potential threshold \(T_d\) increases with cumulative
+\(a_d\), while the proved child upper bound decreases by \(6/r\).
+On a \(10^{10}\)-edge root, the sufficient conditions leave
+uncovered active-size ranges after one or two recursive levels
+depending on \(r\). Changing the leaf cutoff without a new packing
+or base-case theorem cannot certify the complete pipeline.
+
 Five places worth instrumenting first:
 
 | Stage | What to record |

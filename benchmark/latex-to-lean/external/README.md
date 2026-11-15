@@ -15,6 +15,10 @@ The source snapshot is commit `a0d26681cee5d7af46e5b2d8b172fd1c3bf5c428`.
 equation, author-group assignment, case inventory and source URL. Runtime receipts also
 record SHA-256 independently.
 
+The Leanify artifact generator now restores its temporary Lake registration after
+building. The source-oracle runner also accepts an already registered target
+only when its exact source directory and module glob match expectations.
+
 These are transcribed mathematical equations, **not raw publisher TeX bytes**.
 Each case has a minimal LaTeX document wrapper. OpenStax's real-number domain is
 made explicit as quantified variables. The manifest documents transcription changes.

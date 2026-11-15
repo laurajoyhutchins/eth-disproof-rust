@@ -352,6 +352,15 @@ impl __LeanValue {
         else { panic!("Array.getInternal expected an Array"); };
         values.get(index).expect("source Array.getInternal index out of bounds").clone()
     }
+    // Lean's lean_array_uget_borrowed returns a borrowed element with no
+    // refcount increment; lean_array_uget owns its result and does increment.
+    fn array_get_tagged_borrowed(&self, index: usize) -> Self {
+        let __LeanValueRepr::Array(values) = self.0.as_ref()
+        else { panic!("Array.getInternalBorrowed expected an Array"); };
+        values.get(index).expect("source Array.getInternalBorrowed index out of bounds")
+            .compiler_alias()
+    }
+
     // A persistent copy preserves all observable prior references. The
     // ownership-aware optimization is a separate reviewed concern.
     fn array_set_tagged(&self, index: usize, value: Self) -> Self {

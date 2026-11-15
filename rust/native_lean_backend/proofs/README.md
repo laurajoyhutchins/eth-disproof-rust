@@ -44,13 +44,47 @@ The existing original-Lean-to-Rust differential suite tests actual generated
 Rust, but those tests do not discharge the link between the modeled target
 semantics and `rustc` execution.
 
+
+## Reader-to-target emission check
+
+[ReaderScalarCertificate.lean](ReaderScalarCertificate.lean) independently
+reifies the **actual** pinned \`Lean.IR.Decl\` for a narrower executable subset,
+then invokes the real in-process Reader FFI. It constructs (1) the
+\`ScalarOperationalRefinement.Program\` used by the all-input theorem and
+(2) the complete canonical Rust function text, and accepts a certificate
+only when Reader's entire output is equal to the independently rendered
+source. There is no parallel production emitter or serialized-IR substitute.
+
+The certified subset is UInt64 parameters and return, UInt64 literals,
+\`UInt64.add\`/\`UInt64.mul\`, \`UInt64.decEq\`/\`decLt\`/\`decLe\`,
+\`vdecl\`, \`ret\`, and two-constructor Bool \`case\` (including nesting).
+The checker rejects direct calls, join points, subtraction, ownership
+effects, object types, and every unsupported form. CI exercises three
+original-Lean source programs and one explicit subtraction refusal.
+
+This closes the **checked source-text equality** step for successfully
+certified examples, not the full compiler-correctness theorem:
+- The independent IR reifier's correspondence with an operational model of
+  *all* admitted source IR has not been proved.
+- The canonical Rust syntax's correspondence with \`rustc\`/MIR execution
+  has not been proved.
+- General Reader output outside this narrower grammar has no certificate.
+- Physical reference-count ownership, calls, joins, and remaining IR are
+  still distinct obligations.
+
+A passing finite fixture alone is not the claim. A \`Certificate\` carries
+exact Rust-source equality, while \`certified_model_refines\` applies the
+existing all-input semantic theorem to the reified program. The trusted
+boundary and conditional nature of the claim must remain explicit.
+
 ## Unproved obligations for a real G1 compiler theorem
 
 1. Prove that `Reader::decode` and `Reader::view` faithfully read and validate
    actual Lean 4.34.1 compiler IR nodes and their types, including rejected IR.
-2. Make the implemented expression lowering produce a typed witness that each
-   generated Rust operation matches the target operation interpreted here. The
-   current `String` emitter does not create such a proof certificate.
+2. Generalize the new exact-emission certificate beyond its restricted scalar
+   fragment and prove the independent IR reifier/typed target rendering
+   relation compositionally. The general Reader `String` emitter is still
+   unverified.
 3. Connect Rust execution to these target semantics, either through a trusted
    Rust operational model or an independently checked source-to-bytecode bridge.
 4. Generalize from a finite arithmetic/branch tree to lexical environments,

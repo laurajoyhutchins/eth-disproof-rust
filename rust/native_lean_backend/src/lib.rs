@@ -2157,7 +2157,7 @@ mod tests {
         assert!(RUNTIME_SOURCE.contains("Closure {"));
         assert!(RUNTIME_SOURCE.contains("fn pap("));
         assert!(RUNTIME_SOURCE.contains("fn apply("));
-        assert!(!RUNTIME_SOURCE.contains("fn is_shared"));
+        assert_eq!(RUNTIME_SOURCE.matches("fn is_shared(").count(), 1);
         assert!(!RUNTIME_SOURCE.contains("fn mutate"));
     }
 

@@ -9,7 +9,7 @@ From the ETH repository root, build the std-only structural crate and the exact 
 ```bash
 cd benchmark/latex-to-lean/structural
 cargo +1.99.1 build --release --offline --locked
-cd ../../../..
+cd ../../..
 git clone https://github.com/Corrram/leanify.git vendor/leanify
 git -C vendor/leanify checkout --detach 134da59ae02e9fffc011a5ea89acf4320268d220
 cd vendor/leanify && lake exe cache get && lake build leanify && cd ../..
@@ -44,7 +44,7 @@ node benchmark/latex-to-lean/unified/verify.mjs SOURCE_DIR RECEIPTS_DIR coverage
 
 The pinned upstream Leanify parser covers **8/12** original research cases. The distinct Rust structural backend covers the remaining four, with 16 Rust typechecker tests, held-out dimension/alphabet sweeps and fifteen independent kernel proof/refutation checks. A previously verified focused-Mathlib import reduced kernel check memory and wall time relative to `import Mathlib`. **The union of parser capabilities is not one verified unified semantic compiler.**
 
-The initial integrated run executes both frontends on all twelve original research cases and six independently held-out synthetic cases. A source-to-claim equivalence judgment is not inferred from parser output, matching words, proof success on a different statement, or a zero exit code. Previously verified Mathlib equivalences and Leanify's self-audit remain separate evidence.
+The initial integrated run executes both frontends on all twelve original research cases and six separately authored held-out synthetic cases. A source-to-claim equivalence judgment is not inferred from parser output, matching words, proof success on a different statement, or a zero exit code. Previously verified Mathlib equivalences and Leanify's self-audit remain separate evidence.
 
 ## Next architectural step
 

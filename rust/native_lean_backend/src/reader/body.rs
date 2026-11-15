@@ -244,7 +244,10 @@ impl Reader {
                             if env.get(&var) == Some(&"tobj") {
                                 lowered
                                     .push(format!("x_{var}.clone().require_constructor_object()"));
-                                RuntimeFeatures::mark(ctx.features, RuntimeFeatures::HEAP_JOIN_TESTS);
+                                RuntimeFeatures::mark(
+                                    ctx.features,
+                                    RuntimeFeatures::HEAP_JOIN_TESTS,
+                                );
                             } else {
                                 lowered.push(Self::arg(arg, env, ty)?);
                             }

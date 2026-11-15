@@ -5,5 +5,6 @@ import OwnershipObjectTraceKernels
   OwnershipObjectTrace.create,
   OwnershipObjectTrace.identity,
   OwnershipObjectTrace.select,
-  OwnershipObjectTrace.throughClosure
+  OwnershipObjectTrace.throughClosure,
+  OwnershipObjectTrace.createNested
 ] to "examples/ownership-object-trace-package"

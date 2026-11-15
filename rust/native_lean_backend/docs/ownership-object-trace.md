@@ -35,12 +35,24 @@ run. The check asserts:
 3. The C physical RC equals the Rust logical source count for every
    observed object at each checkpoint.
 4. The through-closure result is observed alongside its captured input.
+5. For a genuine two-level source-defined tree, both an independently
+   retained grandchild and an independently retained direct sibling have
+   count two before the root is released. After destroying the root, each
+   surviving descendant has count one, proving that the source RC release
+   cascaded through the intermediate fork as well as the direct child.
 
 This is a **bounded experimental refinement check**, not a proof that `R`
-exists for all reachable allocations or states. No pointer values leave
+exists for all reachable allocations or states. The two additional
+`graph-before` and `graph-after` checkpoints exercise the same
+`OwnershipObjectTrace.createNested` source function compiled to Lean C
+and Rust. The independently retained grandchild remains accessible after
+its root and intermediate fork have been physically released by Lean C,
+which exposes the destructor cascade without reading freed memory. No pointer values leave
 the respective processes. The trace records only objects reachable at
 explicit public boundaries; internal allocation and destruction events
-are not yet tracked. Differences in transient allocation topology can
+are not all tracked. The nested-tree case observes source-child release
+effects at an intermediate boundary, but does not timestamp every allocator,
+call transfer, or destructor event. Differences in transient allocation topology can
 therefore remain invisible. It does not cover arbitrary borrow
 annotations, all closure paths, sticky/frozen/MT objects, primitive/FFI
 effects, mutation allocation identity, or object-finalization cascades.

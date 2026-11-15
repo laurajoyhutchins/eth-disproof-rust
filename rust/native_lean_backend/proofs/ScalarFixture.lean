@@ -5,6 +5,10 @@ The Reader emission checker reads their actual Lean.IR.Decl, not their syntax.
 namespace ScalarFixture
 
 def plus (x y : UInt64) : UInt64 := x + y
+-- Reader supports subtraction, but the proved model does not.
+-- Certification must reject this declaration even if general codegen succeeds.
+def subtract (x y : UInt64) : UInt64 := x - y
+
 def choose (x y : UInt64) : UInt64 :=
   if x < y then x + 1 else y * 3
 def nested (x y : UInt64) : UInt64 :=

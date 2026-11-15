@@ -33,7 +33,7 @@ for(const c of m.cases){
    timeout:'timeout_or_signal',
    tool_error:'tool_error'
  })[classified.status];
- records.push({id:c.id,category:c.category,source_sha256:sha(source),stdout_sha256:sha(stdout),stderr_sha256:sha(stderr),exit_code,status,counts:result,claims,warnings,proof_status:'not_run',semantic_equivalence:'not_checked'});
+ records.push({id:c.id,category:c.category,source_sha256:sha256(source),stdout_sha256:sha256(stdout),stderr_sha256:sha256(stderr),exit_code,status,counts:result,claims,warnings,proof_status:'not_run',semantic_equivalence:'not_checked'});
 }
 const aggregate={};
 for(const c of m.cases){

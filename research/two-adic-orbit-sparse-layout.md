@@ -28,6 +28,56 @@ A `BTreeMap` orders signatures and class/edge assignments reproducibly. The boun
 
 This construction may change which *real* ports share a packet relative to the original uniform construction. The source Cauchy deformation then differs at \(T\ne0\). The original count at \(T=0\) remains the relevant target, but a formal proof that the source's mode/interpolation/group identities apply to this **new layout** is still required.
 
+## Source Cauchy interpolation at the original point
+
+The appendix defines, for row/column positions `x,y` in one packet,
+
+\[
+W_{xy}(T)=\frac{\mathcal C(T)}
+{\mathcal C'(0)(T-(y-x))},\qquad
+\mathcal C(T)=\prod_{t=-L}^{L-1}(T-t),
+\]
+
+with cancellation of the factor \(T-(y-x)\) before evaluating.
+Between distinct packets it sets \(W_{xy}(T)=0\), and it restricts
+the matrix to **real ports**. Since \(y-x\) is one of the roots of
+\(\mathcal C\), the exact polynomial identity gives
+\(W_{xy}(0)=1\) when the two real ports occupy the **same**
+slot and zero otherwise. For each occupied source edge the sparse
+constructor places its row and column port at the same position;
+all real source edges are unique. Thus **\(W(0)=I_M\)** for this
+finite layout without reference to empty signatures or to the
+original all-class padding.
+
+Consequently, if \(A(Y)\) and \(B(X)\) denote arbitrary source
+row/column tensor products over Boolean edge assignments, the
+appendix's displayed deformation satisfies
+
+\[
+\begin{aligned}
+F(0)
+ &=\sum_{X,Y}A(Y)B(X)
+   \prod_x\ell_{Y_x}((W(0)X)_x)\\
+ &=\sum_X A(X)B(X),
+\end{aligned}
+\]
+
+since \(\ell_0(z)=1-z\), \(\ell_1(z)=z\), and
+\(\ell_{Y_x}(X_x)\) is the equality indicator for Boolean values.
+This is an **algebraic original-point identity for any port-faithful
+layout**, including orbit-sparse, and does *not* require
+factorization of internally coupled tensor factors.
+
+An independent Rust regression evaluates the cancelled Cauchy
+polynomial at \(T=0\) in exact \(i128\) arithmetic for the
+two-coordinate finite witness. It checks the full real-port
+\(W(0)\) matrix and exhaustively verifies the last equality with
+coupled, signed row and column tensor functions. This is important
+progress on the source-semantic boundary, but **does not transfer
+the \(T\ne0\) precision, weighted-mode or group-routing theorems**.
+Changing which real ports share a packet changes \(W(T)\) away
+from zero and must be re-proved at that level.
+
 ## Exact waste identity and structural admissibility
 
 For each occupied orbit write `M_sigma=sum_gamma X_gamma`. Its padded slots are `P_sigma*L`, and its two sources of waste are:

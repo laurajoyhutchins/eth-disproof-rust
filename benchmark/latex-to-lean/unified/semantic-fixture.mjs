@@ -14,6 +14,8 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), "semantic-fixtures-"));
 const cases = [
   {name:"alpha",left:"∀ n : Nat, n = n",right:"∀ k : Nat, k = k",
     expected:"definitionally_equivalent"},
+  {name:"zero-sub",left:"∀ a : ℝ, a + (-a) = 0",
+    right:"∀ a : ℝ, a + (0 - a) = 0",expected:"propositionally_equivalent"},
   {name:"quantifier",left:"∀ n : Nat, n = n",right:"∃ n : Nat, n = n",
     expected:"unresolved"},
   {name:"hypothesis",left:"∀ n : Nat, n = n",
@@ -63,9 +65,11 @@ try {
       process.exitCode=1;
       break;
     }
-    if (result.status === "definitionally_equivalent" && !result.checks.kernel_checked)
+    if (["definitionally_equivalent","propositionally_equivalent"].includes(result.status) &&
+        !result.checks.kernel_checked)
       throw Error("positive fixture lacked kernel check");
-    if (result.status !== "definitionally_equivalent" && result.checks.kernel_checked)
+    if (!["definitionally_equivalent","propositionally_equivalent"].includes(result.status) &&
+        result.checks.kernel_checked)
       throw Error("negative fixture was granted proof credit");
   }
 } finally {

@@ -104,9 +104,7 @@ impl Reader {
         })
     }
 
-    // Traverse dependency IR iteratively to avoid stack growth on long
-    // straight-line functions. All control-flow shapes not handled by the
-    // emitter fail closed before code publication.
+    // Source-bound, iterative reachability of directly called functions.
     pub(super) unsafe fn body_calls(x: Obj, calls: &mut BTreeSet<String>) -> Result<(), String> {
         let mut pending = vec![x];
         let mut count = 0;
@@ -115,37 +113,31 @@ impl Reader {
             if count > 100_000 {
                 return Err("dependency IR traversal exceeded 100000 instructions".into());
             }
-            match Self::checked_tag(body, "FnBody")? {
-                0 => {
-                    let expr = Self::field(body, 2)?;
+            match Self::body_view(body)? {
+                FnBodyView::Decl { expr, next, .. } => {
                     if matches!(Self::checked_tag(expr, "Expr")?, 6 | 7) {
                         calls.insert(Self::name(Self::field(expr, 0)?, 0)?);
                     }
-                    pending.push(Self::field(body, 3)?);
+                    pending.push(next);
                 }
-                1 => {
-                    pending.push(Self::field(body, 2)?);
-                    pending.push(Self::field(body, 3)?);
+                FnBodyView::Join { value, next, .. } => {
+                    pending.push(value);
+                    pending.push(next);
                 }
-                9 => {
-                    for alt in Self::array(Self::field(body, 3)?)? {
-                        match Self::checked_tag(alt, "Alt")? {
-                            0 => pending.push(Self::field(alt, 1)?),
-                            1 => pending.push(Self::field(alt, 0)?),
-                            t => return Err(format!("unknown alternative constructor {t}")),
-                        }
+                FnBodyView::Case { alternatives, .. } => {
+                    for alt in Self::array(alternatives)? {
+                        let branch = match Self::alt_view(alt)? {
+                            AltView::Constructor { body } | AltView::Default { body } => body,
+                        };
+                        pending.push(branch);
                     }
                 }
-                2 => pending.push(Self::field(body, 3)?),
-                5 => pending.push(Self::field(body, 5)?),
-                6 | 7 => pending.push(Self::field(body, 2)?),
-                8 => pending.push(Self::field(body, 1)?),
-                10 | 11 => (),
-                t => {
-                    return Err(format!(
-                        "dependency traversal does not support IR body constructor {t}"
-                    ))
-                }
+                FnBodyView::Set { next, .. }
+                | FnBodyView::ScalarSet { next, .. }
+                | FnBodyView::Inc { next, .. }
+                | FnBodyView::Dec { next, .. }
+                | FnBodyView::Delete { next, .. } => pending.push(next),
+                FnBodyView::Return { .. } | FnBodyView::Jump { .. } => {}
             }
         }
         Ok(())

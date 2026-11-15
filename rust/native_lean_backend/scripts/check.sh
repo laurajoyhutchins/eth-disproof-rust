@@ -483,6 +483,8 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --release --offlin
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo clippy --offline --manifest-path examples/mut-package/Cargo.toml --all-targets -- -D warnings
 # Same Lean definitions compiled by upstream C and native Rust backends.
 bash scripts/check-c-emitter-mut.sh
+# Same-source per-object identity and reference-count checkpoints.
+bash scripts/check-ownership-object-trace.sh
 # Original Lean cross-call ownership: unique consumption, retained aliases,
 # returned aliases, repeated argument aliases, and transitive noinline callees.
 rm -rf examples/cross-call-package

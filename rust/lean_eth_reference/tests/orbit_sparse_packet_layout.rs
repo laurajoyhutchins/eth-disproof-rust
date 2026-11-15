@@ -31,11 +31,19 @@ fn verify_independently(
     );
     assert_eq!(
         layout.packets.len(),
-        layout.occupied_orbits.iter().map(|o| o.packets).sum::<usize>()
+        layout
+            .occupied_orbits
+            .iter()
+            .map(|o| o.packets)
+            .sum::<usize>()
     );
     assert_eq!(
         edges.len(),
-        layout.occupied_orbits.iter().map(|o| o.real_edges).sum::<usize>()
+        layout
+            .occupied_orbits
+            .iter()
+            .map(|o| o.real_edges)
+            .sum::<usize>()
     );
     assert!(layout.occupied_orbits.iter().all(|o| o.real_edges > 0));
 

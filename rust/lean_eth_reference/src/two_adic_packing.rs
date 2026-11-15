@@ -88,13 +88,16 @@ impl RootPackingAudit {
     /// packing condition, replacing the source's D_arr^2 collision term.
     ///
     /// A greedy proper edge coloring uses at most k = 2*degree_cap - 1
-    /// matchings. Conditional expectation applied to the normalized
-    /// per-matching exponential potential bounds the maximum load by
+    /// matchings. An *exact rational* conditional-expectation potential
+    /// proves a constructible bound on maximum class load of
     ///
-    ///     (3/2) * M / D_arr + k * log2(D_arr).
+    ///     (3/2) * M / D_arr + k * ceil(log2(k*D_arr)).
     ///
-    /// Rounding this maximum up to a multiple of L produces <=3M/D_arr
-    /// padded slots if M >= D_arr*(k*ceil(log2 D_arr) + L).
+    /// The extra log(k) is essential for the directly constructible
+    /// potential: a log(D_arr)-only bound follows from a different
+    /// existential Holder estimate, but its derandomization is not
+    /// implemented. Rounding up to L slots gives <=3M/D_arr if
+    /// M >= D_arr * (k * ceil(log2(k*D_arr)) + L).
     ///
     /// This method preserves the source's 3M/L packet count and 3M/r
     /// per-coordinate port bound. It does NOT establish a source-invariant
@@ -106,9 +109,10 @@ impl RootPackingAudit {
         let d = self.label_classes_d?;
         let l = self.slots_l?;
         let matchings = self.degree_cap.checked_mul(2)?.checked_sub(1)?;
-        let log_classes = u128::from(u128::BITS - (d - 1).leading_zeros());
+        let class_terms = d.checked_mul(matchings)?;
+        let log_class_terms = u128::from(u128::BITS - (class_terms - 1).leading_zeros());
         matchings
-            .checked_mul(log_classes)?
+            .checked_mul(log_class_terms)?
             .checked_add(l)
             .and_then(|factor| d.checked_mul(factor))
     }
@@ -227,9 +231,9 @@ mod tests {
     fn matching_potential_reduces_quadratic_label_class_threshold() {
         // r=64, u=1: a=2, L=4, D=2^24, log2(D)=24.
         // Degree cap 8 gives 2*8-1=15 matchings (greedy coloring).
-        // New sufficient M = D*(15*24+4) = 6,106,906,624.
+        // New sufficient M = D*(15*28+4) = 7,113,539,584.
         // Old collision condition instead required M >= 2^52.
-        let threshold = 6_106_906_624u128;
+        let threshold = 7_113_539_584u128;
         let candidate = RootPackingAudit::new(threshold, 64, 1, 8).unwrap();
         assert_eq!(
             candidate.matching_potential_required_edges(),
@@ -246,8 +250,8 @@ mod tests {
 
     #[test]
     fn matching_packing_is_distinct_from_child_shrink_and_degree() {
-        let bound = RootPackingAudit::new(1024, 2, 1, 8).unwrap();
-        assert_eq!(bound.matching_potential_required_edges(), Some(1024));
+        let bound = RootPackingAudit::new(1280, 2, 1, 8).unwrap();
+        assert_eq!(bound.matching_potential_required_edges(), Some(1280));
         assert!(bound.matching_potential_packing_holds());
         assert!(!bound.original_child_shrink_bound_holds());
         // Even with enough edges, new packet vertices would violate cap=7.

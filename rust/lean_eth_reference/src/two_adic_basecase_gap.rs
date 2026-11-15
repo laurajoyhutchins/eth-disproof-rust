@@ -87,10 +87,13 @@ pub fn minimum_uniform_padding_edges(l: u128, d: u128) -> Option<u128> {
     let remainder = match l % 3 {
         0 => 0,
         1 => d / 3 + u128::from(!d.is_multiple_of(3)),
-        2 => (d / 3) * 2 + match d % 3 {
-            0 => 0,
-            1 => 1,
-            _ => 2,
+        2 => {
+            (d / 3) * 2
+                + match d % 3 {
+                    0 => 0,
+                    1 => 1,
+                    _ => 2,
+                }
         },
         _ => unreachable!("remainder modulo three"),
     };
@@ -106,7 +109,9 @@ fn stage_at(depth: usize, groups: u32, upper: u128) -> OptimisticStage {
         .and_then(|exponent| u128::from(groups).checked_pow(exponent));
     let minimum_degree = slots.and_then(|l| l.checked_mul(2));
     let threshold = minimum_degree.and_then(|delta| matching_threshold(groups, a, delta));
-    let uniform_minimum = slots.zip(classes).and_then(|(l, d)| minimum_uniform_padding_edges(l, d));
+    let uniform_minimum = slots
+        .zip(classes)
+        .and_then(|(l, d)| minimum_uniform_padding_edges(l, d));
     OptimisticStage {
         depth,
         largest_possible_edges: upper,
@@ -284,7 +289,10 @@ mod tests {
     fn exact_padding_floor_handles_products_above_u128() {
         // ceil(4*2^24/3), without any floating-point loss.
         assert_eq!(minimum_uniform_padding_edges(4, 1 << 24), Some(22_369_622));
-        assert_eq!(minimum_uniform_padding_edges(16, 1 << 48), Some(1_501_199_875_790_166));
+        assert_eq!(
+            minimum_uniform_padding_edges(16, 1 << 48),
+            Some(1_501_199_875_790_166)
+        );
         // L*D exceeds u128, but the quotient is still representable.
         assert_eq!(
             minimum_uniform_padding_edges(1u128 << 127, 2),
@@ -315,9 +323,7 @@ mod tests {
 
         // No possible nonempty uniform all-class padding can retain
         // the source 3M/L bound with only two real edges.
-        assert!(
-            pack_bounded(&three[..2], &left_labels, &right_labels, 2, 1, 4).is_err()
-        );
+        assert!(pack_bounded(&three[..2], &left_labels, &right_labels, 2, 1, 4).is_err());
     }
 
     #[test]

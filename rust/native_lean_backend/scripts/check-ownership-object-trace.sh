@@ -16,7 +16,7 @@ mkdir -p "$out"
 rm -rf examples/ownership-object-trace-package
 lean -o examples/OwnershipObjectTraceKernels.olean examples/OwnershipObjectTraceKernels.lean
 lean --load-dynlib="$NATIVE_LIB" examples/OwnershipObjectTraceFixture.lean
-for root in create identity select throughClosure; do
+for root in create identity select throughClosure createNested; do
   grep -Fq "Generated directly from Lean IR declaration: OwnershipObjectTrace.$root" examples/ownership-object-trace-package/src/lib.rs || exit 1
 done
 (cd examples && lean -c "$out/OwnershipObjectTraceKernels.c" OwnershipObjectTraceKernels.lean)
@@ -47,7 +47,9 @@ done
   echo "revision=$(git rev-parse HEAD)"
   echo "lean=$(lean --version)"
   echo "rust=$(rustc --version)"
-  echo 'checkpoint_count=6'
+  echo 'checkpoint_count=8'
+  echo 'nested_destructor_cascade=grandchild_and_direct_sibling'
+  echo 'retained_descendant_counts=CHECKED_AFTER_ROOT_RELEASE'
   echo 'runtime_input_pairs=3'
   echo 'source_heap_simulation=UNPROVED_BEYOND_OBSERVED_BOUNDARIES'
   sha256sum examples/OwnershipObjectTraceKernels.lean examples/OwnershipObjectTraceFixture.lean examples/OwnershipObjectTraceCDriver.lean examples/ownership_object_trace_test.rs native/object_trace_probe.c "$out/OwnershipObjectTraceKernels.c" examples/ownership-object-trace-package/src/lib.rs "$out"/c-*.txt "$out"/rust-*.txt

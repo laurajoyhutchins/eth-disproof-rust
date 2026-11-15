@@ -18,4 +18,16 @@ inductive Token where
 @[noinline] def throughClosure (x : Token) : Token :=
   applyValue (retain x) 0
 
+-- A two-level, heap-backed tree. Releasing its root must cascade through
+-- an intermediate fork into the retained leaf, as well as into the root's
+-- other direct child. Its source implementation is unchanged on both paths.
+inductive Tree where
+  | vacant
+  | leaf (payload stamp : Nat)
+  | fork (left right : Tree)
+
+@[noinline] def createNested (a b : Nat) : Tree :=
+  .fork (.fork (.leaf a (a + 1)) (.leaf b (b + 1)))
+        (.leaf (a + b) (a + b + 1))
+
 end OwnershipObjectTrace

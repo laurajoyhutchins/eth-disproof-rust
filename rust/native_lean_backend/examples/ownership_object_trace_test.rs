@@ -41,6 +41,35 @@ mod source_object_trace_tests {
         writeln!(result, "TRACE branch-right {} {} {}", inspect(&same, &mut seen), inspect(&right, &mut seen), inspect(&b, &mut seen)).unwrap();
         let captured = throughClosure(left.clone());
         writeln!(result, "TRACE closure {} {}", inspect(&left, &mut seen), inspect(&captured, &mut seen)).unwrap();
+        // Descendant ownership is observable without reading freed memory.
+        // The fork's left child is itself a fork, so releasing the root
+        // cascades across two generations; the right leaf is a direct child.
+        let tree = createNested(__LeanValue::tagged(first), __LeanValue::tagged(second));
+        let inner = tree.field(0);
+        let grandchild = inner.field(0);
+        let sibling = tree.field(1);
+        grandchild.source_inc(1, true, false);
+        sibling.source_inc(1, true, false);
+        writeln!(
+            result,
+            "TRACE graph-before {} {} {} {}",
+            inspect(&tree, &mut seen),
+            inspect(&inner, &mut seen),
+            inspect(&grandchild, &mut seen),
+            inspect(&sibling, &mut seen),
+        ).unwrap();
+        // The live Rust aliases are memory-safety handles, not extra Lean
+        // source references. Only this source decrement destroys the tree.
+        tree.source_dec(1, true, false);
+        writeln!(
+            result,
+            "TRACE graph-after {} {}",
+            inspect(&grandchild, &mut seen),
+            inspect(&sibling, &mut seen),
+        ).unwrap();
+        grandchild.source_dec(1, true, false);
+        sibling.source_dec(1, true, false);
+
         std::fs::write(std::env::var_os("OWNERSHIP_OBJECT_TRACE_OUT").expect("trace output path"), result).unwrap();
     }
 }

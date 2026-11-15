@@ -36,6 +36,7 @@ extern lean_object *l_OwnershipObjectTrace_create(lean_object *);
 extern lean_object *l_OwnershipObjectTrace_identity(lean_object *);
 extern lean_object *l_OwnershipObjectTrace_select(uint8_t, lean_object *, lean_object *);
 extern lean_object *l_OwnershipObjectTrace_throughClosure(lean_object *);
+extern lean_object *l_OwnershipObjectTrace_createNested(lean_object *, lean_object *);
 
 lean_obj_res lr_object_trace_run(lean_obj_arg first, lean_obj_arg second) {
     lean_object *a = l_OwnershipObjectTrace_create(first);
@@ -68,6 +69,33 @@ lean_obj_res lr_object_trace_run(lean_obj_arg first, lean_obj_arg second) {
     printf("TRACE closure %llu %llu %llu %llu\n",
            (unsigned long long)lr_object_trace_id(left), (unsigned long long)lr_object_trace_rc(left),
            (unsigned long long)lr_object_trace_id(captured), (unsigned long long)lr_object_trace_rc(captured));
+    // Keep all previously observed objects alive through the nested test.
+    // Otherwise Lean's allocator may reuse a freed address and make the
+    // first-observation ID table falsely identify a new allocation as old.
+    // Avoid relying on unspecified C argument evaluation order for IDs.
+    // The root, intermediate fork, grandchild, and right leaf are first
+    // observed in this explicit order, matching the Rust observation driver.
+    lean_object *tree = l_OwnershipObjectTrace_createNested(first, second);
+    lean_object *inner = lean_ctor_get(tree, 0);
+    lean_object *grandchild = lean_ctor_get(inner, 0);
+    lean_object *sibling = lean_ctor_get(tree, 1);
+    lean_inc(grandchild); /* separate live ownership of a grandchild */
+    lean_inc(sibling);    /* separate live ownership of direct child */
+    unsigned long long tree_id = (unsigned long long)lr_object_trace_id(tree);
+    unsigned long long inner_id = (unsigned long long)lr_object_trace_id(inner);
+    unsigned long long grand_id = (unsigned long long)lr_object_trace_id(grandchild);
+    unsigned long long sibling_id = (unsigned long long)lr_object_trace_id(sibling);
+    printf("TRACE graph-before %llu %llu %llu %llu %llu %llu %llu %llu\n",
+           tree_id, (unsigned long long)lr_object_trace_rc(tree),
+           inner_id, (unsigned long long)lr_object_trace_rc(inner),
+           grand_id, (unsigned long long)lr_object_trace_rc(grandchild),
+           sibling_id, (unsigned long long)lr_object_trace_rc(sibling));
+    lean_dec(tree);
+    printf("TRACE graph-after %llu %llu %llu %llu\n",
+           grand_id, (unsigned long long)lr_object_trace_rc(grandchild),
+           sibling_id, (unsigned long long)lr_object_trace_rc(sibling));
+    lean_dec(grandchild);
+    lean_dec(sibling);
     lean_dec(a);
     lean_dec(same);
     lean_dec(b);

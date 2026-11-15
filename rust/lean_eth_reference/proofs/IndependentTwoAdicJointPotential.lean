@@ -78,6 +78,50 @@ theorem exists_nonincreasing_choice
   nlinarith
 
 /--
+The actual coordinatewise-swap orbit key for ordered symbol pairs.
+It is deliberately given in source-facing `Fin a → Fin r × Fin r`
+notation, so the next proof can count the real fibers of this map.
+-/
+def coordinateUnorderedSignature (r a : ℕ)
+    (ordered : Fin a → Fin r × Fin r) : Fin a → Fin r × Fin r :=
+  fun i =>
+    (min (ordered i).1 (ordered i).2,
+      max (ordered i).1 (ordered i).2)
+
+/--
+Every ordered pair-label class belongs to exactly one coordinatewise
+unordered signature. This is a concrete finite orbit partition,
+not merely an assumed abstract class-count equality.
+-/
+theorem ordered_classes_partitioned_by_signature (r a : ℕ) :
+    (∑ signature ∈
+        ((Finset.univ : Finset (Fin a → Fin r × Fin r)).image
+          (coordinateUnorderedSignature r a)),
+      ((Finset.univ : Finset (Fin a → Fin r × Fin r)).filter
+        (fun ordered => coordinateUnorderedSignature r a ordered = signature)).card) =
+      (r * r) ^ a := by
+  classical
+  calc
+    _ = (Finset.univ : Finset (Fin a → Fin r × Fin r)).card := by
+      symm
+      exact Finset.card_eq_sum_card_image
+        (coordinateUnorderedSignature r a) Finset.univ
+    _ = (r * r) ^ a := by
+      simp [Fintype.card_fun, Fintype.card_prod]
+
+/-- The concrete orbit partition has exactly `D = r^(2a)` classes. -/
+theorem ordered_classes_partitioned_source_D (r a : ℕ) :
+    (∑ signature ∈
+        ((Finset.univ : Finset (Fin a → Fin r × Fin r)).image
+          (coordinateUnorderedSignature r a)),
+      ((Finset.univ : Finset (Fin a → Fin r × Fin r)).filter
+        (fun ordered => coordinateUnorderedSignature r a ordered = signature)).card) =
+      r ^ (2 * a) := by
+  rw [ordered_classes_partitioned_by_signature]
+  rw [mul_pow, ← pow_mul]
+  ring
+
+/--
 An abstract orbit-sum lemma. It deliberately assumes the geometric
 facts `sum classes = D` and `L * packets ≤ classes * load + L`.
 Those premises must be transported from the actual finite slot
@@ -141,6 +185,8 @@ theorem replace_occupied_by_all_orbits
 #print axioms TwoAdicJointPotential.packet_cap_iff_waste
 #print axioms TwoAdicJointPotential.child_bound_from_two_ports
 #print axioms TwoAdicJointPotential.exists_nonincreasing_choice
+#print axioms TwoAdicJointPotential.ordered_classes_partitioned_by_signature
+#print axioms TwoAdicJointPotential.ordered_classes_partitioned_source_D
 #print axioms TwoAdicJointPotential.orbit_packet_budget
 #print axioms TwoAdicJointPotential.replace_occupied_by_all_orbits
 

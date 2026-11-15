@@ -20,6 +20,7 @@ function fixture(t,{claims=1,left="∀ n : Nat, n = n",right="∀ m : Nat, m = m
   const compiled=Buffer.from("import Mathlib.Basic.Real.Basic\n");
   const structural=Buffer.from("import Mathlib.Basic.Real.Basic\nnamespace "+rightNS+
     "\ndef claim : Prop := "+right+"\nend "+rightNS+"\n");
+  fs.mkdirSync(path.join(root,"vendor"));
   fs.mkdirSync(path.join(root,leftNS));
   fs.writeFileSync(path.join(root,leftNS,"Article.lean"),article);
   fs.writeFileSync(path.join(root,leftNS,"Compiled.lean"),compiled);

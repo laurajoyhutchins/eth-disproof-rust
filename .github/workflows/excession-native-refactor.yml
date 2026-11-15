@@ -1,0 +1,79 @@
+name: Excession native compiler refactor review
+
+on:
+  pull_request:
+    paths:
+      - 'rust/native_lean_backend/src/**'
+      - 'rust/native_lean_backend/primitive-registry.tsv'
+      - 'rust/native_lean_backend/runtime-primitive-registry.tsv'
+      - 'rust/native_lean_backend/docs/excession-refactor.md'
+      - '.github/workflows/excession-native-refactor.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: excession-native-refactor-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  source-bound-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout exact candidate with base history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout pinned Excession
+        uses: actions/checkout@v4
+        with:
+          repository: laurajoyhutchins/excession
+          ref: 21d2e0fd52b6099bb88eae1456bfe3a4681b963d
+          path: .excession-review-tool
+          persist-credentials: false
+      - name: Build exact Excession CLI
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.99.1 --profile minimal
+          cargo +1.99.1 build --locked --manifest-path .excession-review-tool/core/Cargo.toml --bin excession
+      - name: Locate source, inspect base, verify candidate
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/excession-native-refactor"
+          mkdir -p "$OUT"
+          TOOL="$GITHUB_WORKSPACE/.excession-review-tool/core/target/debug/excession"
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git diff --check "$BASE_SHA" "$HEAD_SHA" -- rust/native_lean_backend
+          "$TOOL" agent locate --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \\
+            --task 'Lean compiler primitive registry and source name encoding' \\
+            --index-segments 256 --limit 20 --json > "$OUT/locate.json"
+          "$TOOL" agent context --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \\
+            --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/primitive-registry.tsv,rust/native_lean_backend/runtime-primitive-registry.tsv \\
+            --limit 32 > "$OUT/context.json"
+          "$TOOL" agent verify --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" \\
+            --candidate "$HEAD_SHA" --limit 32 > "$OUT/verify.json"
+          jq -e '.schema == "excession.agent-context.v1"' "$OUT/context.json" > /dev/null
+          jq -e '.schema == "excession.agent-verification.v1"' "$OUT/verify.json" > /dev/null
+          {
+            echo 'Excession source-bound refactor review'
+            echo "Base: $BASE_SHA"
+            echo "Candidate: $HEAD_SHA"
+            echo 'Rust semantic equivalence: NOT ESTABLISHED by Excession'
+            echo 'Exact-head Lean native differential gate: required independently'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve source and coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: excession-native-lean-refactor
+          path: ${{ runner.temp }}/excession-native-refactor/*.json
+          if-no-files-found: warn
+          retention-days: 14

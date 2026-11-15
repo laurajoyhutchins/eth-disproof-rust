@@ -7,7 +7,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::fmt::Write;
 
+mod names;
+mod primitives;
 mod safety;
+
+use names::{append_name_component, encode_name_str, internal_closure_name, internal_name};
+use primitives::{is_nat_primitive, is_primitive, primitive_spec, runtime_primitive_spec};
+#[cfg(test)]
+use primitives::PRIMITIVE_REGISTRY;
 
 // Generated from the complete reviewed pinned Lean IR constructor contract.
 include!(concat!(env!("OUT_DIR"), "/ir_coverage_tags.rs"));
@@ -1705,50 +1712,6 @@ impl Reader {
     }
 }
 
-// The path separators cannot occur inside a canonical component: plain
-// ASCII components exclude '.', '~'; special strings and Nat segments use
-// disjoint prefixed encodings. The original Lean.Name object crosses FFI.
-fn append_name_component(parent: &str, component: &str) -> String {
-    if parent.is_empty() {
-        component.to_owned()
-    } else {
-        format!("{parent}.{component}")
-    }
-}
-
-fn encode_name_str(component: &str) -> Result<String, String> {
-    if component.len() > 4096 {
-        return Err("Lean.Name string component exceeds safety cap".into());
-    }
-    if !component.is_empty()
-        && !component.as_bytes()[0].is_ascii_digit()
-        && component
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'!')
-    {
-        return Ok(component.to_owned());
-    }
-    let mut encoded = String::from("~s");
-    for byte in component.as_bytes() {
-        write!(&mut encoded, "{byte:02x}").unwrap();
-    }
-    Ok(encoded)
-}
-
-// Emitted Rust function names remain injective for all canonical Lean paths.
-// Naming is injective over UTF-8 bytes and independent of declaration ordering.
-fn internal_closure_name(lean_name: &str) -> String {
-    format!("__pap_{}", internal_name(lean_name))
-}
-
-fn internal_name(lean_name: &str) -> String {
-    let mut out = String::from("lean_");
-    for byte in lean_name.as_bytes() {
-        write!(&mut out, "{byte:02x}").unwrap();
-    }
-    out
-}
-
 impl Reader {
     unsafe fn signature(decl: Obj) -> Result<Signature, String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
@@ -1957,85 +1920,6 @@ impl Reader {
         }
         include_value_runtime(result)
     }
-}
-
-const PRIMITIVE_REGISTRY: &str = include_str!("../primitive-registry.tsv");
-
-struct PrimitiveSpec<'a> {
-    operand_type: &'a str,
-    rust_op: &'a str,
-    comparison: bool,
-}
-
-fn primitive_spec(name: &str) -> Option<PrimitiveSpec<'static>> {
-    PRIMITIVE_REGISTRY
-        .lines()
-        .filter(|line| !line.starts_with('#') && !line.is_empty())
-        .find_map(|line| {
-            let mut cells = line.split('\t');
-            let id = cells.next()?;
-            let operand_type = cells.next()?;
-            let rust_op = cells.next()?;
-            let kind = cells.next()?;
-            if cells.next().is_some() || id != name {
-                return None;
-            }
-            Some(PrimitiveSpec {
-                operand_type,
-                rust_op,
-                comparison: kind == "comparison",
-            })
-        })
-}
-
-// The supported Nat runtime is explicit, with no fallback to host arithmetic.
-// Both dependency discovery and native codegen consult this exact whitelist.
-fn is_nat_primitive(name: &str) -> bool {
-    matches!(
-        name,
-        "Nat.add"
-            | "Nat.sub"
-            | "Nat.mul"
-            | "Nat.div"
-            | "Nat.mod"
-            | "Nat.decEq"
-            | "Nat.decLt"
-            | "Nat.decLe"
-    )
-}
-
-fn is_primitive(name: &str) -> bool {
-    primitive_spec(name).is_some()
-        || is_nat_primitive(name)
-        || runtime_primitive_spec(name).is_some()
-        || matches!(
-            name,
-            "Array.mkEmpty" | "Array.getInternal" | "Array.getInternalBorrowed" | "Array.set!"
-        )
-}
-
-const RUNTIME_PRIMITIVE_REGISTRY: &str = include_str!("../runtime-primitive-registry.tsv");
-struct RuntimePrimitiveSpec<'a> {
-    rust_function: &'a str,
-    shape: &'a str,
-}
-fn runtime_primitive_spec(name: &str) -> Option<RuntimePrimitiveSpec<'static>> {
-    RUNTIME_PRIMITIVE_REGISTRY
-        .lines()
-        .filter(|line| !line.starts_with('#') && !line.is_empty())
-        .find_map(|line| {
-            let mut cells = line.split('\t');
-            let id = cells.next()?;
-            let rust_function = cells.next()?;
-            let shape = cells.next()?;
-            if cells.next().is_some() || id != name {
-                return None;
-            }
-            Some(RuntimePrimitiveSpec {
-                rust_function,
-                shape,
-            })
-        })
 }
 
 unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {

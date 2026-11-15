@@ -432,10 +432,12 @@ impl Reader {
         }
     }
 
-    // Last-use analysis only permits moves through a straight-line tail.
-    // Any join, branch, unknown expression, or reference bookkeeping for the
-    // candidate is conservatively considered an additional use. This is a
-    // performance optimization; it never extends accepted source semantics.
+    // Ownership is transferable only when *every* subsequent path is free of
+    // accesses to this IR VarId. Unlike the original straight-line check,
+    // this bounded traversal sees nested join bodies and case alternatives.
+    // An unfamiliar instruction/expression, reference-count operation, or
+    // shadowed binding refuses the optimization. This is not an acceptance
+    // expansion: no unsupported IR can pass merely because it is never run.
     unsafe fn arg_refs(x: Obj, id: usize) -> Result<bool, String> {
         Ok(match Self::checked_tag(x, "Arg")? {
             0 => Self::var(Self::field(x, 0)?)? == id,
@@ -465,32 +467,107 @@ impl Reader {
         })
     }
 
-    unsafe fn straight_tail_unused(mut x: Obj, id: usize) -> Result<bool, String> {
-        for _ in 0..100_000 {
-            match Self::checked_tag(x, "FnBody")? {
+    // Full-tail lexical use search. All paths are checked even if a branch is
+    // unreachable with the current inputs; it must be safe for *any* input.
+    // The body pointer is a pinned Lean object borrowed during this FFI call.
+    unsafe fn tail_unused_on_all_paths(body: Obj, id: usize) -> Result<bool, String> {
+        let mut pending = vec![(body, 0usize)];
+        let mut steps = 0usize;
+        while let Some((current, depth)) = pending.pop() {
+            steps += 1;
+            if steps > 100_000 || depth > 128 {
+                return Ok(false);
+            }
+            let next_depth = depth + 1;
+            match Self::checked_tag(current, "FnBody")? {
                 0 => {
-                    if Self::expr_refs(Self::field(x, 2)?, id)? {
+                    // vdecl: both the expression and all subsequent uses matter.
+                    // Reject shadowing rather than reasoning across renamings.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::expr_refs(Self::field(current, 2)?, id)?
+                    {
                         return Ok(false);
                     }
-                    x = Self::field(x, 3)?;
+                    pending.push((Self::field(current, 3)?, next_depth));
+                }
+                1 => {
+                    // jdecl: the generated Rust lexical closure may capture
+                    // variables from its environment. Scan its whole body,
+                    // all parameters and the continuation, not just the jump.
+                    for param in Self::array(Self::field(current, 1)?)? {
+                        if Self::var(Self::field(param, 0)?)? == id {
+                            return Ok(false);
+                        }
+                    }
+                    pending.push((Self::field(current, 2)?, next_depth));
+                    pending.push((Self::field(current, 3)?, next_depth));
+                }
+                2 => {
+                    // Constructor pointer-field set mutates/observes its target.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::arg_refs(Self::field(current, 2)?, id)?
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 3)?, next_depth));
+                }
+                5 => {
+                    // Packed-field sset reads its object and byte-value IDs.
+                    if Self::var(Self::field(current, 0)?)? == id
+                        || Self::var(Self::field(current, 3)?)? == id
+                    {
+                        return Ok(false);
+                    }
+                    pending.push((Self::field(current, 5)?, next_depth));
                 }
                 6 | 7 => {
-                    if Self::var(Self::field(x, 0)?)? == id {
+                    // inc/dec: conservatively retain variables involved in
+                    // source reference-count operations, even if IR is erased.
+                    if Self::var(Self::field(current, 0)?)? == id {
                         return Ok(false);
                     }
-                    x = Self::field(x, 2)?;
+                    pending.push((Self::field(current, 2)?, next_depth));
                 }
                 8 => {
-                    if Self::var(Self::field(x, 0)?)? == id {
+                    // del: likewise, don't transfer when source bookkeeping
+                    // mentions this value after the candidate consuming call.
+                    if Self::var(Self::field(current, 0)?)? == id {
                         return Ok(false);
                     }
-                    x = Self::field(x, 1)?;
+                    pending.push((Self::field(current, 1)?, next_depth));
                 }
-                10 => return Ok(!Self::arg_refs(Self::field(x, 0)?, id)?),
+                9 => {
+                    // case: scan scrutinee plus every constructor/default arm.
+                    if Self::var(Self::field(current, 1)?)? == id {
+                        return Ok(false);
+                    }
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let body_index = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1, // constructor alternative
+                            1 => 0, // default alternative
+                            _ => return Ok(false),
+                        };
+                        pending.push((Self::field(alt, body_index)?, next_depth));
+                    }
+                }
+                10 => {
+                    if Self::arg_refs(Self::field(current, 0)?, id)? {
+                        return Ok(false);
+                    }
+                }
+                11 => {
+                    // A typed jump can pass the value to a join even though
+                    // that join's body doesn't mention the original VarId.
+                    if Self::args_ref(Self::field(current, 1)?, id)? {
+                        return Ok(false);
+                    }
+                }
+                // setTag, uset and other unsupported forms are never
+                // a reason to silently consume an array.
                 _ => return Ok(false),
             }
         }
-        Ok(false)
+        Ok(true)
     }
 
     unsafe fn consumable_array(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
@@ -513,7 +590,7 @@ impl Reader {
                 return Ok(None);
             }
         }
-        Ok(Self::straight_tail_unused(tail, id)?.then_some(id))
+        Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
     }
 
     unsafe fn expr(
@@ -1506,9 +1583,9 @@ impl Reader {
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
                     let expr = Self::field(x, 2)?;
-                    // A lexical join or nested control-flow arm may capture
-                    // this variable. Only top-level straight-line tails can
-                    // transfer ownership to the Rc array fast path.
+                    // Only top-level candidates are consumed. The full-tail
+                    // analysis scans joins and branches for captures/aliases;
+                    // nested candidates remain conservative until proven safe.
                     let consumed_array = if depth == 0 && ctx.joins.is_empty() {
                         Self::consumable_array(expr, Self::field(x, 3)?)?
                     } else {

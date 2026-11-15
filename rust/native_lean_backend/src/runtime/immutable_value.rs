@@ -5,6 +5,7 @@ pub struct __LeanValue(std::rc::Rc<__LeanValueRepr>);
 #[derive(Debug)]
 enum __LeanValueRepr {
     Tagged(usize),
+    Erased, // Physically absent optimized join parameter; any read must trap.
     U8(u8), U16(u16), U32(u32), U64(u64), USize(usize),
     Ctor { tag: usize, name: &'static str, fields: Vec<__LeanValue> },
     // Verified Lean 4.34.1 SyncModel.PullIn.mk: four pointer fields and
@@ -146,6 +147,28 @@ impl __LeanNatOperand<'_> {
 
 #[allow(dead_code)]
 impl __LeanValue {
+    // Lean constructor pointer-field set: unique mutation, alias-safe COW.
+    // Rc ownership is used only to choose a safe implementation path.
+    // This is not a claim of identical Lean/Rust reference-count traces.
+    fn is_shared(&self) -> u8 {
+        assert!(!matches!(self.0.as_ref(), __LeanValueRepr::Erased), "erased join value was read");
+        u8::from(std::rc::Rc::strong_count(&self.0) > 1)
+    }
+    fn with_field(mut self, index: usize, value: Self) -> Self {
+        if let Some(__LeanValueRepr::Ctor { fields, .. }) = std::rc::Rc::get_mut(&mut self.0) {
+            *fields.get_mut(index).expect("constructor set: invalid pointer index") = value;
+            return self;
+        }
+        match self.0.as_ref() {
+            __LeanValueRepr::Ctor { tag, name, fields } => {
+                let mut updated = fields.clone();
+                *updated.get_mut(index).expect("constructor set: invalid pointer index") = value;
+                Self::ctor(*tag, name, updated)
+            }
+            _ => panic!("constructor field set on non-constructor"),
+        }
+    }
+    fn erased() -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Erased)) }
     fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
     fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }
     fn boxed_u16(v: u16) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U16(v))) }

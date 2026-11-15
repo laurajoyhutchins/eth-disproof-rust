@@ -199,7 +199,10 @@ fn is_value_type(ty: &str) -> bool {
 }
 
 fn rust_type(ty: &str) -> &str {
-    if is_value_type(ty) {
+    if ty == "erased" {
+        // Lean.IR.IRType.erased has no runtime payload.
+        "()"
+    } else if is_value_type(ty) {
         "__LeanValue"
     } else {
         ty
@@ -394,12 +397,18 @@ impl Reader {
                 if !ir_type_compatible(found, expected) {
                     return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }
+                if *found == "erased" {
+                    // A proof-only parameter may be forwarded only to another
+                    // proof-only position. No runtime contents exist to read.
+                    return Ok("()".to_owned());
+                }
                 Ok(if is_value_type(found) {
                     format!("x_{id}.clone()")
                 } else {
                     format!("x_{id}")
                 })
             }
+            1 if expected == "erased" => Ok("()".to_owned()),
             1 => Err("erased value used as runtime operand".into()),
             t => Err(format!("unknown Arg constructor {t}")),
         }
@@ -413,6 +422,7 @@ impl Reader {
             3 => Ok("u32"),
             4 => Ok("u64"),
             5 => Ok("usize"),
+            6 => Ok("erased"),
             7 => Ok("obj"),
             8 => Ok("tobj"),
             12 => Ok("tagged"),
@@ -1916,6 +1926,9 @@ impl Reader {
         }
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
+        if ret == "erased" {
+            return Err("erased function result has no executable meaning".into());
+        }
         let body = Self::field(decl, 3)?;
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
@@ -2560,7 +2573,8 @@ mod tests {
         assert!(SUPPORTED_IR_TAGS.contains(&("Alt", 1)));
         assert!(SUPPORTED_IR_TAGS.contains(&("FnBody", 2)));
         assert!(SUPPORTED_IR_TAGS.contains(&("Arg", 1)));
-        assert_eq!(SUPPORTED_IR_TAGS.len(), 35);
+        assert!(SUPPORTED_IR_TAGS.contains(&("IRType", 6)));
+        assert_eq!(SUPPORTED_IR_TAGS.len(), 36);
     }
 
     #[test]

@@ -41,6 +41,9 @@ impl Reader {
         }
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
+        if ret == "erased" {
+            return Err("erased function result has no executable meaning".into());
+        }
         let body = Self::field(decl, 3)?;
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");

@@ -483,15 +483,7 @@ impl Reader {
             seen[cidx] = true;
             writeln!(code, "        {cidx} => {{").unwrap();
             // Branch-local variable definitions must never leak across arms.
-            Self::lower_case_arm(
-                Self::field(alt, 1)?,
-                code,
-                depth,
-                count,
-                env,
-                ret_ty,
-                ctx,
-            )?;
+            Self::lower_case_arm(Self::field(alt, 1)?, code, depth, count, env, ret_ty, ctx)?;
             writeln!(code, "        }}").unwrap();
         }
         if !seen.into_iter().all(|b| b) {

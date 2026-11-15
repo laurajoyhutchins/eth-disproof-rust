@@ -4,11 +4,15 @@ on:
   pull_request:
     paths:
       - 'rust/native_lean_backend/**'
+      - 'rust/lean_eth_reference/src/bin/eth-compiler.rs'
+      - 'rust/lean_eth_reference/src/lean_codegen.rs'
       - '.github/workflows/native-lean-rust.yml'
   push:
     branches: [main]
     paths:
       - 'rust/native_lean_backend/**'
+      - 'rust/lean_eth_reference/src/bin/eth-compiler.rs'
+      - 'rust/lean_eth_reference/src/lean_codegen.rs'
       - '.github/workflows/native-lean-rust.yml'
   workflow_dispatch:
 
@@ -77,6 +81,37 @@ jobs:
             bash ./scripts/compare-c-rust-matrix.sh
             bash ./scripts/check-external-projects.sh
           )
+          # End-to-end CLI uses the existing in-process G1 compiler and its
+          # atomic bundle, not leanfran or a second Rust runtime.
+          cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- compile \
+            --backend compiler-ir \
+            --source-repo "$GITHUB_WORKSPACE" \
+            --source-revision "$(git rev-parse HEAD)" \
+            --source-path rust/native_lean_backend/examples/PropertyDef.lean \
+            --source-toolchain-path rust/native_lean_backend/lean-toolchain \
+            --lake-root "$GITHUB_WORKSPACE/rust/native_lean_backend" \
+            --module PropertyDef --root Property.hop \
+            --output "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.rs" \
+            --receipt "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json"
+          cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- verify \
+            --backend compiler-ir \
+            --source-repo "$GITHUB_WORKSPACE" \
+            --source-revision "$(git rev-parse HEAD)" \
+            --source-path rust/native_lean_backend/examples/PropertyDef.lean \
+            --source-toolchain-path rust/native_lean_backend/lean-toolchain \
+            --module PropertyDef --root Property.hop \
+            --artifact "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.rs" \
+            --receipt "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json")
+          data = json.loads(p.read_text())
+          assert data["backend"] == "compiler-ir"
+          assert data["backend_report"]["compiler"] == "native-lean-4.34.1"
+          assert data["executable_approved"] is False
+          assert data["checks"]["lean_rust_semantic_refinement"] == "not-established"
+          PY
           # Keep the exact-head provenance and all generated-code hashes in the job log.
           cat rust/native_lean_backend/artifacts/native-smoke-receipt.txt
           cat rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
@@ -113,6 +148,8 @@ jobs:
             rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
             rust/native_lean_backend/artifacts/imported-probes/*
             rust/native_lean_backend/artifacts/native-compiler-bundle-*.txt
+            rust/native_lean_backend/artifacts/eth-compiler-canonical.rs
+            rust/native_lean_backend/artifacts/eth-compiler-canonical.receipt.json
             rust/native_lean_backend/artifacts/parity-native/*.txt
             rust/native_lean_backend/artifacts/parity-native/*.tsv
             rust/native_lean_backend/artifacts/parity-native/*.log

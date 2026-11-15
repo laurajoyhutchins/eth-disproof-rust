@@ -122,8 +122,9 @@ impl Options {
             "native executable-IR backend cannot use a symbolic producer",
         )?;
         ensure(
-            artifact != receipt,
-            "artifact and receipt must be different paths",
+            artifact != receipt
+                && !(backend == Backend::CompilerIr && receipt.starts_with(&artifact)),
+            "receipt must be outside the native Cargo package",
         )?;
         ensure(
             !(mode == Mode::Verify && producer.is_some()),
@@ -642,6 +643,32 @@ mod tests {
         let opts = Options::parse(&args).unwrap();
         assert_eq!(opts.backend, Backend::CompilerIr);
         assert_eq!(opts.roots, ["Sample.inc", "Sample.twice"]);
+    }
+    #[test]
+    fn native_route_refuses_receipt_inside_generated_package() {
+        let args = [
+            "compile",
+            "--backend",
+            "compiler-ir",
+            "--module",
+            "Sample",
+            "--root",
+            "Sample.inc",
+            "--source-repo",
+            "/tmp/source",
+            "--source-path",
+            "Sample.lean",
+            "--source-revision",
+            "a",
+            "--output",
+            "/tmp/native-package",
+            "--receipt",
+            "/tmp/native-package/src/lib.rs",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
+        assert!(Options::parse(&args).is_err());
     }
     #[test]
     fn native_route_refuses_symbolic_producer() {

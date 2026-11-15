@@ -1,61 +1,61 @@
-# Canonical compiler-IR Rust backend
+# Canonical native Lean IR compiler
 
-**Status:** one production executable-IR emitter, an explicitly bounded Lean 4.34.1 subset. This does not establish G1 release acceptance or execute the original ETH counting program.
+The executable-IR backend is `rust/native_lean_backend` (Lean 4.34.1, Rust 1.99.1). The public `eth-compiler` CLI delegates to its existing [multi-root Lake-project compiler](../../native_lean_backend/scripts/compile-project.sh), which consumes genuine borrowed `Lean.IR.Decl` objects in the Lean process and emits a standalone Rust Cargo package.
 
-## Authority
+This is **one** Rust emitter and **one** GMP/`Rc` runtime. The old experimental leanfran 0.6.0 / Lean 4.35.0 adapter remains in Git history as an experiment, but is not invoked or accepted by the canonical `compiler-ir` route. Missing IR and unsupported runtime semantics refuse without switching backends.
 
-The canonical executable Lean-to-Rust route is the in-process compiler in [`rust/native_lean_backend`](../../native_lean_backend/README.md). It receives borrowed `Lean.IR.Decl` objects from the pinned Lean 4.34.1 process and emits standalone Rust. The `eth-compiler` frontend calls its existing `scripts/compile-bundle.sh` publisher. There is **no second runtime or emitter** in the ETH CLI.
+## Use it on an unchanged Lake project
 
-The earlier `leanfran 0.6.0` adapter from PR #184 is retained in Git history and acknowledged in [NOTICE](../../../NOTICE). It used Lean 4.35.0 and was never a verified production ETH compiler. The public `compiler-ir` route no longer invokes it; old leanfran-generated receipts are rejected by the native bundle validator.
-
-## Current invocation
-
-With the exact Lean 4.34.1 installation and Rust 1.99.1:
+Build with a pinned Lean 4.34.1 installation, Rust 1.99.1, Linux x86-64, and the system GMP library. A source checkout must have a committed `lean-toolchain` and the original module. In this repository, the small source-pinned fixture is `rust/native_lean_backend/fixtures/CompilerCli`.
 
 ```sh
 export LEAN_PREFIX=/absolute/path/to/lean-4.34.1
-(cd rust/native_lean_backend && lake build && bash scripts/check.sh)
+fixture="$PWD/rust/native_lean_backend/fixtures/CompilerCli"
 
 cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- compile \
   --backend compiler-ir \
-  --source-repo "$PWD" --source-revision "$(git rev-parse HEAD)" \
-  --source-path rust/native_lean_backend/examples/PropertyDef.lean \
-  --source-toolchain-path rust/native_lean_backend/lean-toolchain \
-  --lake-root "$PWD/rust/native_lean_backend" \
-  --module PropertyDef --root Property.hop \
-  --output rust/native_lean_backend/artifacts/canonical-ir.rs \
-  --receipt rust/native_lean_backend/artifacts/canonical-ir.receipt.json
+  --source-repo "$PWD" \
+  --source-revision "$(git rev-parse HEAD)" \
+  --source-path rust/native_lean_backend/fixtures/CompilerCli/Sample.lean \
+  --source-toolchain-path rust/native_lean_backend/fixtures/CompilerCli/lean-toolchain \
+  --lake-root "$fixture" \
+  --module Sample \
+  --root Sample.inc --root Sample.twice --root Sample.choose \
+  --output "$PWD/rust/native_lean_backend/artifacts/compiled-cli-example" \
+  --receipt "$PWD/rust/native_lean_backend/artifacts/compiled-cli-example.receipt.json"
 ```
 
-The command currently accepts **one root and one source module per bundle**. Imported transitive declarations beyond the supported native closure are not certified. The native bundle script builds a standalone Rust library, validates that the requested root appears in the generated closure, and records hashes for the source, compiled Lean module, generated Rust and native backend. `eth-compiler` independently binds this bundle to the original Git-committed source and rejects a mismatched bundle, toolchain, root, digest, or status.
+`--output` is a **new Cargo package directory**, not a loose `.rs` file. The directory must not exist before compilation. It contains `Cargo.toml`, `src/lib.rs`, and the original native compiler's `receipt.txt`. The unified acceptance receipt is stored separately at `--receipt`.
 
-Reverify the artifact without executing Lean or running a backend:
+The original Lake project is built without rewriting its declarations. Its requested executable IR is passed to the native backend with shared closure deduplication. A generated Cargo test runs under the existing native script. **No default output is certified semantically equivalent to original Lean**; only the finite source-oracle tests in the native conformance suite establish equality for exercised programs.
+
+## Reverify without compiling again
 
 ```sh
 cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- verify \
   --backend compiler-ir \
-  --source-repo "$PWD" --source-revision "$(git rev-parse HEAD)" \
-  --source-path rust/native_lean_backend/examples/PropertyDef.lean \
-  --source-toolchain-path rust/native_lean_backend/lean-toolchain \
-  --module PropertyDef --root Property.hop \
-  --artifact rust/native_lean_backend/artifacts/canonical-ir.rs \
-  --receipt rust/native_lean_backend/artifacts/canonical-ir.receipt.json
+  --source-repo "$PWD" \
+  --source-revision "$(git rev-parse HEAD)" \
+  --source-path rust/native_lean_backend/fixtures/CompilerCli/Sample.lean \
+  --source-toolchain-path rust/native_lean_backend/fixtures/CompilerCli/lean-toolchain \
+  --module Sample \
+  --root Sample.inc --root Sample.twice --root Sample.choose \
+  --artifact "$PWD/rust/native_lean_backend/artifacts/compiled-cli-example" \
+  --receipt "$PWD/rust/native_lean_backend/artifacts/compiled-cli-example.receipt.json"
 ```
 
-The embedded backend report permits the verifier to recheck the bundle without a second manually produced report file. A failed verification invalidates the receipt, not the original source.
+Verification rechecks the original file and toolchain's Git blobs, exact selected roots and source revision, native project receipt, generated library hash, Cargo manifest hash, and the acceptance metadata. Any mismatch refuses and invalidates the acceptance receipt. The native compiler's project receipt explicitly records that the complete transitive imported-source manifest is **not captured**.
 
-## Other source path
+The checked semantics of each Lean IR instruction and the original ETH machine still require their independent source-level obligations. Generated Rust does not establish original Lean program correspondence merely because it compiled.
 
-A source definition without executable Lean IR may be represented as a shared core-expression DAG through the separate `--backend residual-expr` path. This **does not generate executable Rust**. Source-defined `StructuredCalls`/`BitProgram` lowering retains its existing specialized semantics and requires independent full-state agreement with original Lean execution.
+## Distinct symbolic path
 
-Do not automatically route an unsupported executable-IR declaration to the symbolic producer. Both must be tied to the same original source, with missing computational dependencies refusing. No `leanfran` fallback, duplicate GMP/`Rc` runtime, Python compiler wrapper, or enumerative #SAT substitute is permitted.
+`--backend residual-expr` emits a non-executable shared Lean core-`Expr` DAG with a strict syntax, provenance and refusal contract. It does **not** generate the same Cargo package, automatically repair missing compiler IR, or authorize a replacement #SAT algorithm.
 
-## Remaining acceptance work
+The ETH-specific structured `BitProgram` source lowering remains a separate specialization. Its labels, ports, physical state transitions, cost and Lean-to-Rust equivalence must be validated independently before any common backend can supersede it.
 
-- Complete packaging for multiple roots and unchanged imported projects; this adapter currently uses the single-root native bundle.
-- Verify transitive source provenance and computational relevance, not only Git identity for one source file.
-- Add the typed, demand-driven residual consumer and exact physical `BitProgram` equivalence.
-- Finish G1 acceptance on three substantial unchanged Lean programs and G2 on a complete nonterminal counting machine.
-- Establish formal Lean-to-Rust semantic and TM2 resource correspondence. A successful native compile and finite differential tests are **not** proof certificates.
+## Remaining release obligations
 
-See [the source acceptance obligations](../../../research/lean-rust-acceptance.md) and [issue #193](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/193).
+The compiled interface now handles several roots for an unchanged Lake project. The G1 release still requires three **substantial** independent unchanged projects through that very path, complete source closure provenance, ABI and ownership correctness, and integrated exact-head CI. G2 adds lazy semantics-preserving residual consumption plus the complete original query, leaf, DFS and outer counting program with independent full-state and primitive-resource correspondence.
+
+See [checklist #193](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/193), [G1 semantics](../../native_lean_backend/SEMANTICS.md), and [Lean/Rust acceptance](../../../research/lean-rust-acceptance.md).

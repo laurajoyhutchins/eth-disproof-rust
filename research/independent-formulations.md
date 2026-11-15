@@ -178,3 +178,24 @@ For an actual independent executable comparison, run the **original Anthropic ma
 4. **Independently required:** Finish [OpenAI source-to-Rust acceptance](lean-rust-acceptance.md), including the nonterminal query/leaf/DFS/outer chain, noncomputable finite fallback refusal, exact original traces and primitive TM2 accounting.
 
 A successful finite comparison is useful regression evidence. It is not a theorem acceptance receipt, a faithful ETH executable witness, or an ETH complexity benchmark.
+
+## Packet factors versus Anthropic factors: strict correspondence boundary
+
+The original OpenAI appendix is [`quantitative-contraction.tex`](https://github.com/openai/math/blob/main/preprints/The-Exponential-Time-Hypothesis-is-False-October-25-2026/build/quantitative-contraction.tex) in the October 25 manuscript. Its exact packet construction has three independent layers:
+
+1. The collision-packing lemma labels ports and embeds each real edge in one slot of a packet of length `L=2^a`, with uniform orientation rules and at most `3M/L` packets.
+2. The Cauchy kernel is `W_xy(T)=C(T)/(C'(0)(T-(y-x)))`; at `T=0` it is the original edge identity. At `T=t+2^(a+1) ζ`, crossing rows have a geometric expansion in tile moments `L_Z(X)=Σ j^b X_y`, with coefficient divisible by `2^(b+1)`.
+3. For a fixed admissible mode exponent vector `β`, each *child packet tensor* is the coefficient of the mode monomial `Z^β` in the packet's product of target-row factors, multiplied by the source-mode powers `∏ L_Z(X)^(β_Z)`. The child group contraction is `Z_(g,β)`. The source asserts `F(t+αζ) ≡ Σ_(β:weight(β)<p_t) ∏_g Z_(g,β) (mod 2^p_t)`.
+
+Anthropic's pinned [`Paper.FactorsThrough`](https://github.com/anthropics/formal-math/blob/16a5ce41304fcdaea4e0be7c132e1c361dc26da5/eth/proof/networks/Paper/SecNetworks_DefFactor.lean) instead specifies a *pair interaction* `Ψ(a,b)=Σ_θ f(a,θ) f'(b,θ)`. Its original [`Groundwork.Network.value`](https://github.com/anthropics/formal-math/blob/16a5ce41304fcdaea4e0be7c132e1c361dc26da5/eth/proof/networks/Groundwork/Net/Net.lean), grouping, and instance encoding have already been imported and related to our common contraction by `IndependentAnthropicNetworkAdapter.lean`.
+
+There is no source-defined equality between these two sets of individual factor tables. In fact, such an equality is not invariant under the factors' normal sign gauges: `f·g = (-f)·(-g)`. More seriously, the raw integer signed-singlet correction has the odd entry `-1` whereas an OpenAI mode with weight one has a coefficient divisible by two. Therefore **a direct, integral, weight-one coefficient identification is false**, not merely unproved.
+
+[`IndependentPacketFactorBoundary.lean`](../rust/lean_eth_reference/proofs/IndependentPacketFactorBoundary.lean) makes the distinctions checkable:
+
+- Every finite interaction has an exact factorization through the complete column-state set. This is not Anthropic's efficient low-rank bound, since that state set may be exponentially large.
+- The one-slot OpenAI kernel at `T=0` is the equality gate, and the interaction equals a sum of two Anthropic-form delta-factor products.
+- Sign gauges preserve the pair interaction, and neutral group scalings preserve a product of group sums, without preserving each factor.
+- There cannot be an integer coefficient `c` with `2c=-1`, the precise obstruction to naive identification of a packet weight-one coefficient with an odd signed-singlet entry.
+
+**Remaining theorem, still open:** Construct *both* original algorithms' complete embeddings into one labelled finite network, with compatible coefficient rings and exact ports, then prove equality of *complete contraction values* or the source-justified `2^p` congruence. A factorwise theorem additionally needs explicit label bijections, normalization and perhaps a gauge transformation. The equality of the two original local factor tables cannot be inferred from a shared final count or an abstract finite factorization; the original OpenAI source's coefficient-extraction and valuation steps must be included. This work proves no cross-algorithm complexity bound.

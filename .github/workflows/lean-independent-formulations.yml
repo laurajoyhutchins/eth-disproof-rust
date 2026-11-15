@@ -1,0 +1,90 @@
+name: Independent Lean ETH semantics and contractions
+
+on:
+  pull_request:
+    paths:
+      - 'rust/lean_eth_reference/proofs/IndependentCnfBridge.lean'
+      - 'rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean'
+      - '.github/workflows/lean-independent-formulations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: independent-eth-lean-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lean:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Fetch and verify exact OpenAI and Anthropic source revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math upstream/anthropic
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth 1 --filter=blob:none origin 4eaee87548250b2682affda7d05d947c05554bae
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = 4eaee87548250b2682affda7d05d947c05554bae
+
+          git -C upstream/anthropic init -q
+          git -C upstream/anthropic remote add origin https://github.com/anthropics/formal-math.git
+          git -C upstream/anthropic sparse-checkout init --cone
+          git -C upstream/anthropic sparse-checkout set eth
+          git -C upstream/anthropic fetch --depth 1 --filter=blob:none origin 16a5ce41304fcdaea4e0be7c132e1c361dc26da5
+          git -C upstream/anthropic checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/anthropic rev-parse HEAD)" = 16a5ce41304fcdaea4e0be7c132e1c361dc26da5
+          test "$(git -C upstream/anthropic hash-object eth/MainResults.lean)" = 1c62a550fa1e4cbec65bb7112f92ad67589afddc
+
+          mkdir -p instrumentation/lean-env/OAI/Algorithms/SubexponentialSAT
+          mkdir -p instrumentation/lean-env/OAI/IndependentAnthropic
+          cp upstream/openai-math/lean/OAI/Algorithms/SubexponentialSAT/LeanCompat.lean instrumentation/lean-env/OAI/Algorithms/SubexponentialSAT/
+          cp upstream/openai-math/lean/OAI/Algorithms/SubexponentialSAT/SAT.lean instrumentation/lean-env/OAI/Algorithms/SubexponentialSAT/
+          cp upstream/anthropic/eth/MainResults.lean instrumentation/lean-env/OAI/IndependentAnthropic/MainResults.lean
+
+          cmp upstream/openai-math/lean/OAI/Algorithms/SubexponentialSAT/SAT.lean instrumentation/lean-env/OAI/Algorithms/SubexponentialSAT/SAT.lean
+          cmp upstream/anthropic/eth/MainResults.lean instrumentation/lean-env/OAI/IndependentAnthropic/MainResults.lean
+
+      - name: Restore Lean 4.34.1 and pinned Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Kernel-check the count bridge and finite contraction identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
+          if grep -nE '\b(sorry|admit)\b' rust/lean_eth_reference/proofs/IndependentCnfBridge.lean rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean; then
+            echo 'Independent proof contains unresolved admission' >&2
+            exit 1
+          fi
+          (
+            cd instrumentation/lean-env
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults
+            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCnfBridge.lean"
+            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean"
+          )
+          echo 'INDEPENDENT_CNF_COUNT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'INDEPENDENT_SWAP_IDENTITY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'INDEPENDENT_FINITE_CONTRACTION_GROUPING=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'OpenAI source: 4eaee87548250b2682affda7d05d947c05554bae' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Anthropic source: 16a5ce41304fcdaea4e0be7c132e1c361dc26da5' >> "$GITHUB_STEP_SUMMARY"

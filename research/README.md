@@ -8,6 +8,8 @@ The appendix is a recursive **2-adic tensor contraction**, not the body’s glob
 
 [Recursion identity](two-adic-recursion.md) · [Parameter analysis](../rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md)
 
+[Independent ETH formulations and comparison levels](independent-formulations.md) records the Anthropic reference encoding, bounded cross-model tests, and the mathematical/physical-machine boundary.
+
 ## Spectral compression and arithmetic
 
 Pair swaps give a natural joint spectrum. Krawtchouk/Walsh methods compress symmetric coordinates. Neither observation is a counting algorithm until the source incidence, integer measurements, denominators and exact recovery survive the change of basis.

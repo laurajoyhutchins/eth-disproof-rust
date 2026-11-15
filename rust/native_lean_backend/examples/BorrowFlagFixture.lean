@@ -5,18 +5,14 @@ namespace BorrowFlagFixture
   @[noinline] def passthrough (x : Nat) : Nat := x
 end BorrowFlagFixture
 
--- The two parameter values below are genuine Lean.IR.Param objects from the
--- pinned Lean version. Check its packed Bool ABI instead of guessing offsets
--- from a Rust-side object mirror.
+-- Construct genuine Lean.IR.Param values in the pinned Lean process.
+-- An owned observation must emit; the otherwise identical borrowed
+-- observation must refuse. This checks the packed Bool through the
+-- production backend without introducing a second diagnostic entry point.
 run_cmd do
   let owned : Lean.IR.Param :=
     { x := ⟨0⟩, borrow := false, ty := .object }
   let borrowed : Lean.IR.Param := { owned with borrow := true }
-  unless NativeRust.paramBorrowFlag owned == 0 do
-    throwError "pinned Param.borrow=false C ABI disagreement"
-  unless NativeRust.paramBorrowFlag borrowed == 1 do
-    throwError "pinned Param.borrow=true C ABI disagreement"
-
   let decl? ← liftCoreM do
     if (← Lean.IR.findDecl `BorrowFlagFixture.passthrough).isNone then
       Lean.Compiler.compile #[`BorrowFlagFixture.passthrough]

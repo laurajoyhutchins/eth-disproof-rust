@@ -194,7 +194,7 @@ There is no source-defined equality between these two sets of individual factor 
 [`IndependentPacketFactorBoundary.lean`](../rust/lean_eth_reference/proofs/IndependentPacketFactorBoundary.lean) makes the distinctions checkable:
 
 - Every finite interaction has an exact factorization through the complete column-state set. This is not Anthropic's efficient low-rank bound, since that state set may be exponentially large.
-- The one-slot OpenAI kernel at `T=0` is the equality gate, and the interaction equals a sum of two Anthropic-form delta-factor products.
+- For a one-slot packet, the original OpenAI Cauchy formula simplifies to `W_00(T)=T+1`. At `T=0`, the row interaction is the equality gate and equals a sum over Anthropic-form shared-bit delta factors. At the source sample `T=-1`, the same row interaction on `(y,x)=(1,1)` is zero while the fixed equality interaction is one. Therefore the untransformed, pointwise factor equality is false even for one slot.
 - Sign gauges preserve the pair interaction, and neutral group scalings preserve a product of group sums, without preserving each factor.
 - There cannot be an integer coefficient `c` with `2c=-1`, the precise obstruction to naive identification of a packet weight-one coefficient with an odd signed-singlet entry.
 

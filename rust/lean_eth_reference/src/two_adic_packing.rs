@@ -250,8 +250,8 @@ mod tests {
 
     #[test]
     fn matching_packing_is_distinct_from_child_shrink_and_degree() {
-        let bound = RootPackingAudit::new(1280, 2, 1, 8).unwrap();
-        assert_eq!(bound.matching_potential_required_edges(), Some(1280));
+        let bound = RootPackingAudit::new(1984, 2, 1, 8).unwrap();
+        assert_eq!(bound.matching_potential_required_edges(), Some(1984));
         assert!(bound.matching_potential_packing_holds());
         assert!(!bound.original_child_shrink_bound_holds());
         // Even with enough edges, new packet vertices would violate cap=7.

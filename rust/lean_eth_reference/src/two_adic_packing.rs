@@ -231,7 +231,10 @@ mod tests {
         // Old collision condition instead required M >= 2^52.
         let threshold = 6_106_906_624u128;
         let candidate = RootPackingAudit::new(threshold, 64, 1, 8).unwrap();
-        assert_eq!(candidate.matching_potential_required_edges(), Some(threshold));
+        assert_eq!(
+            candidate.matching_potential_required_edges(),
+            Some(threshold)
+        );
         assert!(candidate.matching_potential_packing_holds());
         assert!(!candidate.packet_inequalities_hold());
         assert!(candidate.original_child_shrink_bound_holds());
@@ -266,8 +269,7 @@ mod tests {
             let col_a = (mask >> 1) & 1;
             let row_b = (mask >> 2) & 1;
             let col_b = (mask >> 3) & 1;
-            let hits = u32::from(row_a == 0 && col_a == 0)
-                + u32::from(row_b == 0 && col_b == 0);
+            let hits = u32::from(row_a == 0 && col_a == 0) + u32::from(row_b == 0 && col_b == 0);
             disjoint_weight_sum += 1u32 << hits;
         }
         assert_eq!(disjoint_weight_sum, 25);
@@ -279,8 +281,7 @@ mod tests {
             let row = mask & 1;
             let col_a = (mask >> 1) & 1;
             let col_b = (mask >> 2) & 1;
-            let hits = u32::from(row == 0 && col_a == 0)
-                + u32::from(row == 0 && col_b == 0);
+            let hits = u32::from(row == 0 && col_a == 0) + u32::from(row == 0 && col_b == 0);
             shared_weight_sum += 1u32 << hits;
         }
         assert_eq!(shared_weight_sum, 13);

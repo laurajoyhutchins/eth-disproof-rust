@@ -53,7 +53,7 @@ impl Reader {
                         expr,
                         ty,
                         env,
-                        ctx.functions,
+                        ctx,
                         consumed_array,
                         &consumed_calls,
                         consumed_ap,
@@ -95,6 +95,9 @@ impl Reader {
                                 "join parameter x_{var} reused a visible variable"
                             ));
                         }
+                        if is_value_type(ty) {
+                            RuntimeFeatures::mark(ctx.features, RuntimeFeatures::VALUE);
+                        }
                         param_code.push(format!("x_{var}: {}", rust_type(ty)));
                         param_types.push(ty);
                     }
@@ -119,6 +122,7 @@ impl Reader {
                         LoweringContext {
                             functions: ctx.functions,
                             joins: &scoped_joins,
+                            features: ctx.features,
                         },
                     )?;
                     return Ok(());
@@ -146,6 +150,7 @@ impl Reader {
                     )
                     .unwrap();
                     env.insert(id, "obj");
+                    RuntimeFeatures::mark(ctx.features, RuntimeFeatures::CONSTRUCTOR_SET_TESTS);
                     x = next;
                 }
                 FnBodyView::ScalarSet {
@@ -238,6 +243,10 @@ impl Reader {
                             if env.get(&var) == Some(&"tobj") {
                                 lowered
                                     .push(format!("x_{var}.clone().require_constructor_object()"));
+                                RuntimeFeatures::mark(
+                                    ctx.features,
+                                    RuntimeFeatures::HEAP_JOIN_TESTS,
+                                );
                             } else {
                                 lowered.push(Self::arg(arg, env, ty)?);
                             }

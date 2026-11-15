@@ -55,3 +55,46 @@ For generalization, freeze a genuinely independent mathematical-paper corpus, st
 ## CI
 
 Run the Node contract tests and the existing research scorer tests on ordinary pushes; run the pinned, more expensive two-toolchain acceptance job on `workflow_dispatch` or a commit explicitly labeled `[deep]`. The full CI archives every source-linked result and never assigns automatic mathematical proof credit.
+
+## Typed semantic comparison (experimental Phase 2)
+
+The parser receipt is unchanged. After the ordinary source-linked receipt has been checked,
+run the second step in the same pinned Leanify checkout:
+
+    node benchmark/latex-to-lean/unified/semantic-check.mjs \
+      --source benchmark/latex-to-lean/research/cases/RG03.tex \
+      --receipt-dir /tmp/latex-unified-rg03 \
+      --leanify-dir "$PWD/vendor/leanify"
+    node benchmark/latex-to-lean/unified/semantic-verify.mjs \
+      --source benchmark/latex-to-lean/research/cases/RG03.tex \
+      --receipt-dir /tmp/latex-unified-rg03
+
+Automatic equivalence checking currently requires both frontends to accept exactly one claim.
+The comparator checks the native Leanify `Article.lean` and `Compiled.lean` hashes, rebuilds
+the native module, and uses the actual imported declaration. It hoists structural imports
+ahead of the unchanged declaration body so both propositions elaborate in one pinned Lean
+environment. The comparison theorem is:
+
+    private def left : Prop := UnifiedSOURCE.claim0
+    private def right : Prop := StructSOURCE.claim
+    theorem definitional_equivalence : left ↔ right := by rfl
+
+These names are schematic. Actual namespaces and declarations are preserved in archived
+`semantic/Typed.lean` and `semantic/Proof.lean`, with the comparison report and full logs.
+The report returns `definitionally_equivalent` only after successful Lean elaboration and
+a kernel-checked proof. Failure means `unresolved`, not a counterexample. Other distinct
+states include `unelaboratable`, `unresolved_pairing`, `tool_error`, and `not_applicable`.
+
+This is only **definitional equivalence**, not all mathematical equivalence. More powerful
+equivalence needs separately checked witness proofs and justified claim correspondence.
+Equivalence between generated propositions also does not establish faithfulness to LaTeX
+or proof of the original proposition. Both remain `not_assessed`.
+
+The verifier recomputes archived probe sources and checks source/output hashes, stage logs,
+and status consistency. It cannot authenticate an untrusted process execution; replay in
+the exact pinned Lean environment remains the strongest check. The original 12-case and
+six-case scorecards are unchanged.
+
+The `[deep]` CI run exercises a true Lean alpha-renaming positive, plus changed quantifier,
+missing hypothesis, and changed type negatives. These are comparator fixtures, not a
+measurement of translation quality.

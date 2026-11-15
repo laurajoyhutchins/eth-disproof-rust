@@ -1,11 +1,10 @@
-//! Source-checked constructor case families and alternative lowering.
+//! Case-family validation and branch lowering from Lean IR CtorInfo.
 use super::*;
 
 impl Reader {
-    // Each case alternative receives the visible variable types, but changes
-    // to an arm-local environment must not escape to its siblings.
-    // Recursive bodies retain the original shared instruction counter and
-    // advance the depth budget exactly once.
+    // A case arm inherits visible bindings without exporting its own
+    // definitions. Every arm still shares the instruction budget and
+    // increments nesting depth exactly once.
     unsafe fn lower_case_arm(
         arm: Obj,
         code: &mut String,
@@ -496,5 +495,4 @@ impl Reader {
         writeln!(code, "    }}").unwrap();
         Ok(())
     }
-
 }

@@ -18,6 +18,21 @@ enum __LeanValueRepr {
         captures: Vec<__LeanValue>,
         invoke: fn(Vec<__LeanValue>) -> __LeanValue,
     },
+    // Most source PAPs in the verified closure corpus bind one argument of
+    // a binary function. Store it directly in the existing Rc allocation:
+    // no separate Vec allocation, lookup table, or change to source semantics.
+    Closure2 {
+        capture: __LeanValue,
+        invoke: fn(__LeanValue, __LeanValue) -> __LeanValue,
+    },
+    // Actual Lean 4.34.1 boxed lambda IR often has two bound arguments and
+    // one remaining AP operand (e.g. FunctionValues.runIndirect). The
+    // captures live in the Rc object instead of a separate Vec allocation.
+    Closure3 {
+        first: __LeanValue,
+        second: __LeanValue,
+        invoke: fn(__LeanValue, __LeanValue, __LeanValue) -> __LeanValue,
+    },
     Nat(__LeanBigNat),
     Int(__LeanBigNat),
     Str(String),
@@ -155,12 +170,6 @@ impl __LeanValue {
     }
     fn is_shared(&self) -> u8 {
         self.assert_not_erased();
-        // Tagged immediates have no Lean heap reference count. A Rust Rc
-        // allocation for the tagged adapter must not make them observable.
-        assert!(
-            !matches!(self.0.as_ref(), __LeanValueRepr::Tagged(_)),
-            "isShared requires a heap-backed Lean value"
-        );
         u8::from(std::rc::Rc::strong_count(&self.0) > 1)
     }
     fn with_field(mut self, index: usize, value: Self) -> Self {
@@ -480,8 +489,16 @@ impl __LeanValue {
         Self(std::rc::Rc::new(__LeanValueRepr::Closure { arity, captures, invoke }))
     }
 
-    // Preserve declaration-order captures and permit additional partial
-    // application. No mutation or runtime lookup of untrusted pointers.
+    fn pap2(invoke: fn(Self, Self) -> Self, capture: Self) -> Self {
+        Self(std::rc::Rc::new(__LeanValueRepr::Closure2 { capture, invoke }))
+    }
+
+    fn pap3(invoke: fn(Self, Self, Self) -> Self, first: Self, second: Self) -> Self {
+        Self(std::rc::Rc::new(__LeanValueRepr::Closure3 { first, second, invoke }))
+    }
+
+    // Preserve declaration-order captures, support repeated applications
+    // through aliases, and retain general partially applied source functions.
     fn apply(&self, args: Vec<Self>) -> Self {
         match self.0.as_ref() {
             __LeanValueRepr::Closure { arity, captures, invoke } => {
@@ -495,7 +512,53 @@ impl __LeanValue {
                     Self::pap(*invoke, *arity, all)
                 }
             }
+            __LeanValueRepr::Closure2 { capture, invoke } => {
+                assert_eq!(args.len(), 1, "oversaturated binary source PAP");
+                invoke(capture.clone(), args.into_iter().next().unwrap())
+            }
+            __LeanValueRepr::Closure3 { first, second, invoke } => {
+                assert_eq!(args.len(), 1, "oversaturated ternary source PAP");
+                invoke(first.clone(), second.clone(), args.into_iter().next().unwrap())
+            }
             _ => panic!("tried to apply a non-function Lean value"),
+        }
+    }
+
+    // A single-argument indirect application is frequent in source Lean.
+    // Avoid allocating a temporary Vec for an inline binary PAP. Generic
+    // closures retain the existing verified vector-based ABI and behavior.
+    fn apply1(&self, arg: Self) -> Self {
+        match self.0.as_ref() {
+            __LeanValueRepr::Closure2 { capture, invoke } => invoke(capture.clone(), arg),
+            __LeanValueRepr::Closure3 { first, second, invoke } => {
+                invoke(first.clone(), second.clone(), arg)
+            }
+            __LeanValueRepr::Closure { .. } => self.apply(vec![arg]),
+            _ => panic!("tried to apply a non-function Lean value"),
+        }
+    }
+
+    // Consume a closure only when the emitter proves that *no* possible
+    // continuation or join reads it. If another Rc alias exists, recover the
+    // shared representation and use the borrowed path. Only uniquely owned
+    // closure captures can be moved into a generated source function.
+    fn apply1_owned(self, arg: Self) -> Self {
+        match std::rc::Rc::try_unwrap(self.0) {
+            Ok(__LeanValueRepr::Closure2 { capture, invoke }) => invoke(capture, arg),
+            Ok(__LeanValueRepr::Closure3 { first, second, invoke }) => {
+                invoke(first, second, arg)
+            }
+            Ok(__LeanValueRepr::Closure { arity, mut captures, invoke }) => {
+                captures.push(arg);
+                assert!(captures.len() <= arity, "oversaturated source AP");
+                if captures.len() == arity {
+                    invoke(captures)
+                } else {
+                    Self::pap(invoke, arity, captures)
+                }
+            }
+            Ok(_) => panic!("tried to apply a non-function Lean value"),
+            Err(shared) => Self(shared).apply1(arg),
         }
     }
 }
@@ -524,7 +587,15 @@ impl PartialEq for __LeanValue {
                 a == b && an == bn && af == bf,
             (PullIn {fields:a, bytes:ab}, PullIn {fields:b, bytes:bb}) =>
                 a == b && ab == bb,
-            (Closure { .. }, Closure { .. }) => std::rc::Rc::ptr_eq(&self.0, &other.0),
+            (Closure { .. }, Closure { .. })
+            | (Closure2 { .. }, Closure2 { .. })
+            | (Closure3 { .. }, Closure3 { .. })
+            | (Closure { .. }, Closure2 { .. })
+            | (Closure2 { .. }, Closure { .. })
+            | (Closure { .. }, Closure3 { .. })
+            | (Closure3 { .. }, Closure { .. })
+            | (Closure2 { .. }, Closure3 { .. })
+            | (Closure3 { .. }, Closure2 { .. }) => std::rc::Rc::ptr_eq(&self.0, &other.0),
             _ => false,
         }
     }

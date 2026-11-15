@@ -8,21 +8,27 @@ fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 5 {
         return Err(
-            "usage: appendix-depth <root-edges> <groups> <candidate-degree-cap> <u0,u1,...>"
-                .into(),
+            "usage: appendix-depth <root-edges> <groups> <candidate-degree-cap> <u0,u1,...>".into(),
         );
     }
-    let edges = args[1].parse::<u128>().map_err(|_| "invalid edges".to_owned())?;
-    let groups = args[2].parse::<u32>().map_err(|_| "invalid groups".to_owned())?;
+    let edges = args[1]
+        .parse::<u128>()
+        .map_err(|_| "invalid edges".to_owned())?;
+    let groups = args[2]
+        .parse::<u32>()
+        .map_err(|_| "invalid groups".to_owned())?;
     let degree = args[3]
         .parse::<u128>()
         .map_err(|_| "invalid degree cap".to_owned())?;
     let widths = args[4]
         .split(',')
-        .map(|part| part.parse::<u32>().map_err(|_| "invalid packet width".to_owned()))
+        .map(|part| {
+            part.parse::<u32>()
+                .map_err(|_| "invalid packet width".to_owned())
+        })
         .collect::<Result<Vec<_>, _>>()?;
-    let audit = DepthAudit::new(edges, groups, degree, &widths)
-        .map_err(|error| error.to_string())?;
+    let audit =
+        DepthAudit::new(edges, groups, degree, &widths).map_err(|error| error.to_string())?;
     let stages = audit
         .stages
         .iter()

@@ -7,6 +7,7 @@ on:
       - 'rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean'
       - 'rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean'
       - 'rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean'
+      - 'rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean'
       - '.github/workflows/lean-independent-formulations.yml'
   workflow_dispatch:
 
@@ -51,9 +52,17 @@ jobs:
 
           mkdir -p instrumentation/lean-env/OAI/Algorithms/SubexponentialSAT
           mkdir -p instrumentation/lean-env/OAI/IndependentAnthropic
+          mkdir -p instrumentation/lean-env/Groundwork/Net
           cp upstream/openai-math/lean/OAI/Algorithms/SubexponentialSAT/LeanCompat.lean instrumentation/lean-env/OAI/Algorithms/SubexponentialSAT/
           cp upstream/openai-math/lean/OAI/Algorithms/SubexponentialSAT/SAT.lean instrumentation/lean-env/OAI/Algorithms/SubexponentialSAT/
           cp upstream/anthropic/eth/MainResults.lean instrumentation/lean-env/OAI/IndependentAnthropic/MainResults.lean
+          for f in Defs Calculus Net; do
+            cp "upstream/anthropic/eth/proof/networks/Groundwork/Net/$f.lean" "instrumentation/lean-env/Groundwork/Net/$f.lean"
+            cmp "upstream/anthropic/eth/proof/networks/Groundwork/Net/$f.lean" "instrumentation/lean-env/Groundwork/Net/$f.lean"
+          done
+          test "$(git -C upstream/anthropic hash-object eth/proof/networks/Groundwork/Net/Defs.lean)" = e927df137cf9c335d46656ae57c20bb96ace178d
+          test "$(git -C upstream/anthropic hash-object eth/proof/networks/Groundwork/Net/Calculus.lean)" = 89eba2cb319592a55d208a093c830c00cbd9be26
+          test "$(git -C upstream/anthropic hash-object eth/proof/networks/Groundwork/Net/Net.lean)" = 47e67d78888e45cb9af7b171bb3894e13fb288c9
 
           cmp upstream/openai-math/lean/OAI/Algorithms/SubexponentialSAT/SAT.lean instrumentation/lean-env/OAI/Algorithms/SubexponentialSAT/SAT.lean
           cmp upstream/anthropic/eth/MainResults.lean instrumentation/lean-env/OAI/IndependentAnthropic/MainResults.lean
@@ -75,22 +84,24 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
-          if grep -nE '\b(sorry|admit)\b' rust/lean_eth_reference/proofs/IndependentCnfBridge.lean rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean; then
+          if grep -nE '\b(sorry|admit)\b' rust/lean_eth_reference/proofs/IndependentCnfBridge.lean rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean; then
             echo 'Independent proof contains unresolved admission' >&2
             exit 1
           fi
           (
             cd instrumentation/lean-env
-            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults Groundwork.Net.Net
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCnfBridge.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean"
+            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean"
           )
           echo 'INDEPENDENT_CNF_COUNT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'INDEPENDENT_SWAP_IDENTITY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'INDEPENDENT_FINITE_CONTRACTION_GROUPING=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'INDEPENDENT_ROUTING_AND_VALUATION_BOUNDARY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'TWO_ADIC_JOINT_POTENTIAL_FINITE_CORE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'ANTHROPIC_ORIGINAL_NETWORK_VALUE_ADAPTER=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'OpenAI source: 4eaee87548250b2682affda7d05d947c05554bae' >> "$GITHUB_STEP_SUMMARY"
           echo 'Anthropic source: 16a5ce41304fcdaea4e0be7c132e1c361dc26da5' >> "$GITHUB_STEP_SUMMARY"

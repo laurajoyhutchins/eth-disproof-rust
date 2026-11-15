@@ -12,7 +12,7 @@ export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_
 # The ledger is fail-closed on tag/order drift and documents conditional semantics.
 mkdir -p artifacts
 # Kernel-check the scalar/branch model before executing expensive source parity.
-lean proofs/ScalarOperationalRefinement.lean > artifacts/scalar-refinement-axioms.txt
+lean -o proofs/ScalarOperationalRefinement.olean proofs/ScalarOperationalRefinement.lean > artifacts/scalar-refinement-axioms.txt
 if grep -Fq 'sorryAx' artifacts/scalar-refinement-axioms.txt; then
   echo 'Scalar refinement contains a sorry axiom' >&2
   exit 2
@@ -37,6 +37,12 @@ cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"
+# Check actual Reader-generated scalar Rust against an independent Lean IR
+# reifier and the all-inputs target semantic theorem. This is intentionally
+# narrower than the general backend's accepted IR.
+export LEAN_PATH="$(pwd)/proofs:${LEAN_PATH}"
+lean -o proofs/ScalarFixture.olean proofs/ScalarFixture.lean
+lean --load-dynlib="$NATIVE_LIB" proofs/ReaderScalarCertificate.lean
 lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
 # Physical reference-count observations must be source checked.
 lean --load-dynlib="$NATIVE_LIB" examples/BorrowFlagFixture.lean

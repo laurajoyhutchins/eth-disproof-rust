@@ -52,6 +52,55 @@ const char *lr_string_ptr(b_lean_obj_arg o) { return o && lean_is_string((lean_o
  * The header supplies tag, scalar, ctor allocation and field access APIs.
  * Compiler-IR tag compatibility is separately exercised by the Lean fixtures.
  */
+/* Independent pinned Lean C runtime control for source-owned reference
+ * transitions through a direct call, both branch outcomes, and actual
+ * partially applied closure calls. Each bit records !lean_is_exclusive(root).
+ * No synthetic count or Rust Rc handle participates in this control.
+ */
+static void lr_rc_control_retain(lean_object *x) { lean_inc(x); }
+static void lr_rc_control_branch_release(lean_object *x, int active) {
+    if (active) lean_dec(x);
+}
+static lean_obj_res lr_rc_control_callback(lean_obj_arg captured, lean_obj_arg arg) {
+    lean_dec(captured); /* apply_1 transfers one owned capture to the callee */
+    lean_dec(arg);
+    return lean_box(0);
+}
+static unsigned lr_source_rc_control_mask(void) {
+    unsigned mask = 0;
+    lean_object *root = lean_alloc_ctor(17, 0, 0);
+#define LR_SAMPLE(bit) do { if (!lean_is_exclusive(root)) mask |= 1u << (bit); } while (0)
+    LR_SAMPLE(0);                   /* one root owner */
+    lr_rc_control_retain(root);
+    LR_SAMPLE(1);                   /* direct call added owner */
+    lr_rc_control_branch_release(root, 0);
+    LR_SAMPLE(2);                   /* branch without release */
+    lr_rc_control_branch_release(root, 1);
+    LR_SAMPLE(3);                   /* branch released added owner */
+
+    lean_inc(root);                 /* closure owns a root reference */
+    lean_object *unique = lean_alloc_closure((void *)lr_rc_control_callback, 2, 1);
+    lean_closure_set(unique, 0, root);
+    LR_SAMPLE(4);                   /* capture */
+    lean_object *ret = lean_apply_1(unique, lean_box(0));
+    lean_dec(ret);
+    LR_SAMPLE(5);                   /* unique closure consumed, capture released */
+
+    lean_inc(root);
+    lean_object *shared = lean_alloc_closure((void *)lr_rc_control_callback, 2, 1);
+    lean_closure_set(shared, 0, root);
+    lean_inc(shared);               /* retain a second closure reference */
+    LR_SAMPLE(6);
+    ret = lean_apply_1(shared, lean_box(0));
+    lean_dec(ret);
+    LR_SAMPLE(7);                   /* retained closure still holds capture */
+    lean_dec(shared);
+    LR_SAMPLE(8);                   /* final closure release frees capture */
+    lean_dec(root);
+#undef LR_SAMPLE
+    return mask;
+}
+
 int lr_abi_probe(void) {
     lean_object *node = lean_alloc_ctor(17, 2, 0);
     lean_ctor_set(node, 0, lean_box(7));
@@ -64,6 +113,10 @@ int lr_abi_probe(void) {
         && lean_unbox(lean_ctor_get(node, 0)) == 7
         && lean_unbox(lean_ctor_get(node, 1)) == 9;
     lean_dec(node);
+    /* Bits 1,2,4,6,7 are shared; all other checkpoints exclusive.
+     * A compiler replacement must match the actual C runtime control.
+     */
+    good = good && lr_source_rc_control_mask() == 214u;
     lean_object *str = lean_mk_string("abi-probe");
     good = good && lean_is_string(str)
         && strcmp(lean_string_cstr(str), "abi-probe") == 0;

@@ -580,6 +580,8 @@ mkdir -p artifacts
   echo "source_rc_value_only_positive_emissions=7"
   echo "source_rc_interprocedural_refusals=5"
   echo "source_rc_ordered_pure_and_value_admissions=3"
+  echo "source_rc_lean_c_control_mask=214"
+  echo "source_rc_captured_unique_and_shared_closure_calls=2"
   echo "source_option_default_oracles=512"
   echo "generic_inductive_original_lean_oracles=338"
   echo "array_ownership_original_lean_oracles=768"

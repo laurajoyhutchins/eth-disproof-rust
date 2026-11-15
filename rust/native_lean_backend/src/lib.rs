@@ -319,6 +319,59 @@ const SOURCE_RC_TEST_SOURCE: &str = r#"
 mod source_reference_count_tests {
     use super::__LeanValue;
 
+    // Same checkpoints and bit ordering as lr_source_rc_control_mask in
+    // native/abi.c. The runtime under test is the actual generated Rust
+    // source, not a separate hand-coded ownership model.
+    #[test]
+    fn pinned_lean_c_direct_branch_and_closure_control() {
+        fn retained_call(value: &__LeanValue) {
+            value.source_inc(1, true, false);
+        }
+        fn branch_release(value: &__LeanValue, active: bool) {
+            if active {
+                value.source_dec(1, true, false);
+            }
+        }
+        fn callback(captured: __LeanValue, _arg: __LeanValue) -> __LeanValue {
+            captured.source_dec(1, true, false);
+            __LeanValue::tagged(0)
+        }
+        let root = __LeanValue::ctor(17, "RcControl", Vec::new());
+        let mut mask = 0u16;
+        macro_rules! sample {
+            ($bit:expr) => {
+                mask |= u16::from(root.is_shared()) << $bit;
+            };
+        }
+        sample!(0);
+        retained_call(&root);
+        sample!(1);
+        branch_release(&root, false);
+        sample!(2);
+        branch_release(&root, true);
+        sample!(3);
+
+        root.source_inc(1, true, false);
+        let unique = __LeanValue::pap2(callback, root.compiler_alias());
+        sample!(4);
+        let result = unique.apply1_owned(__LeanValue::tagged(0));
+        drop(result);
+        sample!(5);
+
+        root.source_inc(1, true, false);
+        let shared = __LeanValue::pap2(callback, root.compiler_alias());
+        shared.source_inc(1, true, false);
+        let retained = shared.compiler_alias();
+        sample!(6);
+        let result = shared.apply1_owned(__LeanValue::tagged(0));
+        drop(result);
+        sample!(7);
+        retained.source_dec(1, true, false);
+        sample!(8);
+        root.source_dec(1, true, false);
+        assert_eq!(mask, 214, "source ledger differs from pinned Lean C control");
+    }
+
     #[test]
     fn compiler_clones_do_not_change_source_exclusivity() {
         let x = __LeanValue::ctor(1, "Cell", vec![__LeanValue::tagged(2)]);

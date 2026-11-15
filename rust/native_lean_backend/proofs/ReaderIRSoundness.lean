@@ -192,22 +192,25 @@ private def wordExpr (sym : SymbolicEnv) (expr : IR.Expr) :
     else none
   | _ => none
 
-private partial def straightBody (sym : SymbolicEnv) (body : IR.FnBody) :
+private def straightBody (fuel : Nat) (sym : SymbolicEnv) (body : IR.FnBody) :
     Option (BodyWitness sym body) :=
-  match body with
-  | .ret (.var id) =>
-      match hv : sym id.idx with
-      | some value => some {program := .ret value, derivation := .ret sym id value hv}
-      | none => none
-  | .vdecl id .uint64 expr tail =>
-      match wordExpr sym expr with
-      | some {word := value, derivation := hexpr} =>
-          match straightBody (setVar sym id.idx value) tail with
-          | some {program := p, derivation := htail} =>
-              some {program := p, derivation := .bind sym id expr tail value p hexpr htail}
-          | none => none
-      | none => none
-  | _ => none
+  match fuel with
+  | 0 => none
+  | fuel + 1 =>
+    match body with
+    | .ret (.var id) =>
+        match hv : sym id.idx with
+        | some value => some {program := .ret value, derivation := .ret sym id value hv}
+        | none => none
+    | .vdecl id .uint64 expr tail =>
+        match wordExpr sym expr with
+        | some {word := value, derivation := hexpr} =>
+            match straightBody fuel (setVar sym id.idx value) tail with
+            | some {program := p, derivation := htail} =>
+                some {program := p, derivation := .bind sym id expr tail value p hexpr htail}
+            | none => none
+        | none => none
+    | _ => none
 
 def inputWords (a b : UInt64) : Nat → UInt64 :=
   fun n => if n = 0 then a else if n = 1 then b else 0
@@ -247,7 +250,7 @@ def reifyDecl (decl : IR.Decl) : Option StraightCertificate := do
          p0.borrow || p1.borrow || p0.x.idx == p1.x.idx then
         none
       else
-        let witness ← straightBody (initialSym p0.x.idx p1.x.idx) body
+        let witness ← straightBody 100000 (initialSym p0.x.idx p1.x.idx) body
         some {left := p0.x.idx, right := p1.x.idx,
               body, program := witness.program, matchIR := witness.derivation}
   | _ => none

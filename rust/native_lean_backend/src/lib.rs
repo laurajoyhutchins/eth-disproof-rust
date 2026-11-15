@@ -172,6 +172,12 @@ mod erased_join_safety_tests {
     fn erased_equality_refuses() {
         assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
     }
+
+    #[test]
+    #[should_panic(expected = "isShared requires a heap-backed Lean value")]
+    fn tagged_immediate_sharedness_refuses() {
+        let _ = __LeanValue::tagged(0).is_shared();
+    }
 }
 
 "#;

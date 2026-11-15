@@ -61,7 +61,13 @@ impl Reader {
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}"));
             }
-            write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
+            if ty == "erased" {
+                // The source proof argument has zero runtime data and is never
+                // read. Keep its ABI slot, but avoid an unused-parameter warning.
+                write!(result, "_x_{var}: ()").unwrap();
+            } else {
+                write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
+            }
         }
         writeln!(result, ") -> {} {{", rust_type(ret)).unwrap();
         Self::body(

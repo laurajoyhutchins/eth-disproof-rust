@@ -49,10 +49,9 @@ fn run() -> Result<(), String> {
         ),
         _ => return Err("unsupported joint balance fixture".into()),
     };
-    let receipt = construct_joint_balanced_bounded(
-        &edges, left_count, right_count, r, a, cap, passes,
-    )
-    .map_err(|error| error.to_string())?;
+    let receipt =
+        construct_joint_balanced_bounded(&edges, left_count, right_count, r, a, cap, passes)
+            .map_err(|error| error.to_string())?;
     let lambda = usize::BITS - (edges.len() - 1).leading_zeros();
     let layout = &receipt.final_layout;
     println!(

@@ -200,16 +200,20 @@ For the *changed* packing lemma, the previous \(16r^8\) floor from the old \(D^2
 
 ## Bounded executable labeling reference
 
-The separate `two_adic_matching_labels::construct_bounded` Rust routine implements
-the **actual deterministic labeling algorithm** on small bipartite multigraphs:
-greedy proper edge coloring, exact conditional-expectation comparisons with
-one integer denominator, and a final certificate containing the labels,
-color classes, class loads and potential numerator. No random sampling or
-floating-point estimates are used. Parallel edges and shared endpoints are
-tested. The code refuses fixed-width overflows and intentionally limits
-the graph/alphabet sizes. It is a correctness reference, **not** the
-unrestricted polynomial-time implementation justified by the proof; that
-version needs a standard arbitrary-precision integer dependency.
+The existing `matching_packing::construct_matching_labels` is the
+**single canonical Rust labeling reference**. It implements the deterministic
+matching potential on finite bipartite multigraphs: proper greedy edge
+coloring, exact conditional-expectation comparisons with one integer
+denominator, and a certificate containing the labels, matching colors,
+maximum class load and numerator bound. No random sampling or floating-point
+estimates are used. Parallel edges, stars and exhaustive small simple graphs
+are tested independently. It refuses fixed-width overflow or work exceeding
+its explicit cap. The former duplicate bounded labeler was deleted.
+
+This remains a correctness reference, **not** the unrestricted
+polynomial-time implementation justified by the argument. A production
+construction needs standard arbitrary-precision integers and appropriate
+incremental evaluation of the potential.
 
 A second bounded reference, `two_adic_packet_layout::pack_bounded`,
 now implements the source's subsequent **structural packet layout**:

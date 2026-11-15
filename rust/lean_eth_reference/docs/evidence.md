@@ -1,70 +1,51 @@
-# Execution and evidence
+# What actually runs
 
-This page describes the **accepted `main` tree**, not pending PR branches. A
-stage being constructible in Rust, having a fixture, or having a pinned source
-hash is not the same thing as executing the original Lean code.
+The test is simple: identify the source program, run it, and say exactly what was compared.
 
-## Accepted execution boundaries
+## The accepted Rust boundary
 
-| Capability | Entry point / evidence | What is established | Not established |
-| --- | --- | --- | --- |
-| Bounded semantic #SAT oracle | `cargo run --bin lean-eth-reference`; Rust unit tests | Finite CNF parsing and small-instance counts via bounded enumeration | The source-defined Lean counting algorithm or its complexity bound |
-| Source-defined native frontend | `cargo run --bin eth-frontend`; `docs/m2-runnable-frontend.md`; native frontend tests | Physical Rust `BitProgram` execution of the pinned `Native.frontendCommand` for supported inputs; preserves/checks specified ports | Any #SAT answer, independent Lean state parity, or full native counter |
-| Source-defined terminal-family count | `cargo run --bin eth-terminal-count`; `src/native_terminal_count.rs` and terminal tests; merged [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154) | Physical source frontend, classification, a separately identified primitive count-port adapter and answer for supported terminal CNFs; unsupported nonterminal CNFs refuse | General #SAT, independently executed original-Lean parity or a TM2 resource theorem |
-| Selected native machine fragments | `src/native_*.rs`, `src/remaining/registry.rs` and their tests | Source-correlated Rust instruction behavior and boundary/refusal tests | Composition into the entire original algorithm |
-| Generated literal machine tables | Merged [code generation PR #150](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/150) | Deterministic Rust generation from pinned original Lean literal program tables (expanded by merged [#158](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/158)); exact catalog coverage is asserted by tests | Full closed `QueryStreamProgram` export, independent Lean runtime differential, or nonterminal counting |
-| Source identity | `reference/source-manifest.json` | A catalogue of source Git revision and recorded blob IDs; tests validate local pin *format and coverage* | Independent byte-for-byte verification of those blobs or semantic equivalence |
-| Original Lean execution | See draft [query exporter PR #145](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/145) | Progress on restoring pinned Lean/Mathlib belongs to that PR, not to an accepted `main` conformance gate | A completed original source query or a Lean/Rust differential run on `main` |
-| Full machine differential | On `main`, comparator and profiler regression tests from merged [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154); draft original-Lean execution gate [#156](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/156) | Strict comparison and profiling tooling accepts correctly formatted independently generated traces; the harness rejects malformed data | A successful independently executed original-Lean state trace receipt accepted on `main` |
-| Nonterminal source-native #SAT count | `src/remaining.rs`; [counting gate #100](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/100) | Unfinished stages must refuse, not substitute the bounded semantic oracle | One accepted end-to-end nonterminal count |
-| Primitive TM2 refinement and complexity | [resource gate #110](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/110) | Outstanding mathematical obligations are explicitly identified | A TM2 step/tape bound or an ETH theorem established by Rust execution |
+| Runs or exists on main | What that establishes |
+| --- | --- |
+| `eth-frontend` / `Native.frontendCommand` | Executes the pinned source-defined CNF frontend as a physical `BitProgram`; no satisfying-assignment count |
+| `eth-terminal-count` | Handles supported terminal CNFs through the source frontend, classifier and an explicitly identified primitive count-port adapter; nonterminal formulas refuse |
+| `lean-eth-reference` | Bounded **exponential** #SAT oracle; checks small exact counts but is not the proposed source counter |
+| `src/native_*.rs` | Selected high, cache, signature, tuple, pair and terminal machine fragments; fragments do not imply the full query |
+| Literal table codegen | Deterministic generation from selected pinned original Lean literal tables; not full `QueryStreamProgram` construction |
+| `reference/source-manifest.json` | Recorded source Git revision and blob identity catalogue; source identity is not semantic equivalence |
+| Trace comparison and profiling tools | Checks trace shapes and differences; a comparator passing its own fixtures is not an independent original-Lean execution |
 
-**Terms are not interchangeable:** Rust `BitProgram` instruction totals are
-not the original primitive Turing-machine transition count. Live Rust stack
-bits are not tape occupancy; wall time and allocations are implementation
-measurements, not a proof of asymptotic bit complexity.
+Evidence is attached to its **exact commit**. The canonical stage registry lives in [`src/remaining/registry.rs`](../src/remaining/registry.rs). Historical merges [#150](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/150), [#154](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/154) and [#158](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/158) explain the original boundaries. Read the code and current CI before extrapolating them to newer heads.
 
-## Reproduce what currently runs
+## Three missing demonstrations
 
-From the repository root with the pinned Rust 1.99.1 toolchain:
+**One original nonterminal count.** Run the source-defined query, high/leaf, DFS and outer composition on a nontrivial CNF. Do not invoke the host oracle when a source constructor is missing. [The remaining dependency map](remaining-lean-port.md) and [counting gate #100](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/100) describe the route.
+
+**One independent machine differential.** Execute the pinned original Lean program and the Rust result on identical initial states. Compare PC, *all* registers and stacks, ports, transitions, output, halting and refusal. Historical [draft #156](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/156) worked toward the original-source gate; a cached fixture is not an independent producer.
+
+**One primitive resource argument.** Rust instruction counts, occupied stack bits, wall time and allocations are **not** TM2 transitions or visited tape cells. The abstract identity under source-graph agreement proved in [#178](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/178) is useful but leaves the Rust source-refinement and full counting graph obligations. See [resource gate #110](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/110).
+
+## Run the current checks
+
+The workspace pins Rust 1.99.1.
 
 ```sh
 cargo fmt --all -- --check
 cargo test --locked --offline --all-targets
 cargo clippy --locked --offline --all-targets -- -D warnings
 
-# The native physical frontend. This does not count solutions.
+# Source-defined physical frontend. Does not count.
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
   cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-frontend
 
-# Supported terminal-family source-native count (zero clauses: 2^3).
+# Supported terminal count: 2^3 for three variables and no clauses.
 printf 'p cnf 3 0\n' | \
   cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-terminal-count
 
-# Separate bounded, exponential correctness oracle. This counts solutions.
+# Separate exponential oracle. Five solutions.
 printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
   cargo run --quiet --locked --offline -p lean-eth-reference --bin lean-eth-reference
 ```
 
-The [Rust Actions workflow](../../../.github/workflows/rust.yml) runs on PRs,
-pushes to `main` and manual dispatch. Check the workflow **for the exact
-commit under discussion**; old local test totals and earlier green commits do
-not validate later heads.
+The [Rust workflow](../../../.github/workflows/rust.yml) reports the exact head checked. A green run from yesterday validates yesterday's commit, not today's.
 
-## Acceptance tests for the next milestones
-
-1. **Independent Lean/Rust transition equivalence:** run the pinned original
-   Lean implementation and Rust on identical legal and adversarial initial
-   states. Compare program counters, *all* registers/stacks, emitted output,
-   each transition, terminal/cleanup state and bounded refusal. Preserve the
-   command, exact commits, toolchains and hashed trace artifacts.
-2. **One complete nonterminal native count:** accept a CNF with a nontrivial
-   source-defined count, traverse the real high-query/leaf/DFS path without a
-   host enumeration fallback, and compare the complete result independently.
-3. **Separate resource accounts:** profile implementation time/allocations
-   alongside source-instruction steps, and separately justify the primitive
-   TM2 transition/tape accounting needed for mathematical complexity claims.
-
-Unknown, unsupported and unexecuted must remain visible as such. Research
-branches and PR descriptions are proposals until their exact heads are
-reviewed, tested and merged.
+[Compiler acceptance](../../../research/lean-rust-acceptance.md) · [Independent differential specification](independent-differential-and-accounting.md)

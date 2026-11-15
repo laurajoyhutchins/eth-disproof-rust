@@ -1,66 +1,103 @@
-# Full-pipeline cost model, adversarial families and acceptance experiments
+# Where the time and space actually go
 
-**Purpose:** reject hidden exponentials, separate mathematical work from implementation overhead, and find the first complete **source-defined** algorithmic bottleneck. See the [detailed parameter study](../rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md) for derivations of the source bounds.
+A smaller matrix is not enough. A faster Hermite kernel is not enough. We need a cheaper **exact count**, including everything that happens before and after the elegant algebra.
 
-## The accounting unit is the whole exact counter
+## Count all the work
 
-For each input \(x\), record a *cost vector*, not one scalar elapsed time:
+For a formula \(x\), separate
+
 \[
-C(x)=(T_{\rm setup},T_{\rm encode},T_{\rm packet},
-T_{\rm interpolation},T_{\rm modes},T_{\rm child},
-T_{\rm leaf},T_{\rm reconstruct};
-B_{\rm arithmetic},S_{\rm peak},R_{\rm refusals}).
+T(x)=T_{\rm encode}+T_{\rm field}+T_{\rm packet}
++T_{\rm interpolate}+T_{\rm modes}+T_{\rm children}
++T_{\rm leaves}+T_{\rm recover}.
 \]
-Distinguish wall time, exact arithmetic operations, total operand-bit work, allocated bytes and **simultaneously retained** bytes. A mathematically better asymptotic exponent requires a bound on all stages in the stated cost model. A fast Cython/Rust/FLINT microkernel is not a non-exponential theorem. Cached results must include their construction and verification cost for an uncached first run, and separately report amortized subsequent runs.
 
-A useful machine-readable per-run record has: source/git/toolchain pins; formula generator/version/seed; \(n,m,k,s\); preprocessing expansion; active schedule and reasons for refusal; packet parameters; width/treewidth estimate; \(P_0,p_t,K,q_t\); visited modes, nonzero modes, mode-weight histogram; child depth and calls; live coefficient counts and max bit width; leaf work; output count and independent oracle; time and peak resident bytes. Report “not observed” for unavailable counters, never zero.
+Alongside time, track arithmetic **bit operations**, the widest intermediate coefficient, retained coefficients, recursive calls and *peak simultaneous memory*. A final count may fit in \(n+1\) bits while its intermediate rationals do not.
 
-## Source parameter hazards
+An optimization needs to name the term it changes. Deleting an \(O(D)\)-sized iterator pool does not delete its \(D\) tuples. Faster multiplication does not delete the child contractions.
 
-- **Root scheduling:** \(\epsilon=1/131072\), \(r=64\), \(u_0=\lfloor\epsilon\lceil\log_2s\rceil\rfloor\). Many attainable instances have \(u_0=0\). A paper-admissible regime is not the same as a finite practical implementation.
-- **Packet growth:** \(D_{\rm arr}=64^{2a}\), \(L=2^a\); packing demands \(M\ge 2D_{\rm arr}^2\Delta\), \(M\ge LD_{\rm arr}\), \(2L\le\Delta\).
-- **Leaf threshold:** \(H=\lceil s/\lfloor\sqrt{\lceil\log_2s\rceil}\rfloor\rceil\) (when defined) can make direct \(2^H\) work enormous.
-- **Field construction:** a literal search over \(2^e\) candidate degree-\(e\) polynomials with divisibility checks introduces a large polynomial *in \(s\)*, not an exponential in \(s\), because \(e=4\lceil\log_2s\rceil\). The naive trial-pair envelope can be roughly \(s^6\). A certified polynomial/irreducibility constructor can attack this without weakening the theorem.
-- **Hermite and modes:** \(K=M(2L-1)+1\) evaluations may dominate node cost; the admitted weighted mode count has a subexponential envelope and may generate many children at high \(p_t\). Reusing weights cannot eliminate required child evaluations.
-- **Exact bit complexity:** the fact that the *final* count fits in \(n+1\) bits does not bound intermediate rational denominators, ring lifts, factor tables or recursive workspace size.
+## The bad parameters
 
-A proposed improvement must state whether it decreases the number of *original mathematical calls*, the algebraic operation count per call, the bit complexity per operation or only the implementation constant. Never blur those categories.
+The appendix's sufficient schedule includes
 
-## Input families (none is certified worst-case)
+\[
+\epsilon=2^{-17},\qquad u_0=\left\lfloor
+\epsilon\lceil\log_2s\rceil\right\rfloor,\qquad
+D_{\rm arr}=64^{2a},\quad L=2^a.
+\]
 
-| Family | Construction and known answer, when simple | Stress target and countercheck |
-| --- | --- | --- |
-| Empty, contradictory, unit, unused-variable CNFs | Immediate counts \(2^n\) or \(0\), carefully tracking declared unused variables | Frontend/refusal/terminal consistency; no evidence of hard recursion |
-| Complete bipartite OR CNF \(B_k=\bigwedge_{i,j=1}^k(x_i\lor y_j)\) | Exactly \(2^{k+1}-1\) assignments among \(2k\) variables | Dense elimination/scope without intrinsic hard count; check that the exact solver does not use exponential factor tables unnecessarily |
-| Rectangular grid constraints | Recover count from independent row-transfer DP \(2^{O(\sqrt n)}\operatorname{poly}(n)\) | Cross-row coupling, width and input geometry; **not** a hardness lower bound |
-| Affine / XOR-derived 3-regular incidence families | Count by independent Gaussian elimination over \(\mathbf F_2\) when appropriate | Dense source representation versus easy algebraic count; ensure reduction preserves #SAT exactly |
-| Seeded bounded-degree/high-expansion 3-CNF | Use certified exact solver for small cases, return “unknown” when oracle limit reached | Cross-group modes, recursion depth, packet collisions and negative cases |
-| High-occurrence CNF with duplicates/tautologies | Validate count-preserving simplification and multiplicity | General-density preprocessing/sparsification and large coefficient transfer |
-| Hand-constructed packet tensors with alternating signs/valuations | Exact quotient-ring oracle on tiny networks | Precision loss, zero-mode pruning, interpolation inverses and within-group coupling |
-| Mutated source-structure fixtures | Known expected refusal | Wrong head label, swapped ports, unsupported constructor, erased-proof misuse, nonunit division, hidden finite fallback |
+The packing conditions require, among other things,
 
-Seeded random instances are for discovery and regression; do not generalize from them to an asymptotic worst-case theorem. Keep the direct exact solver as an **independent oracle only**, never as the implementation path under test.
+\[
+M\ge2D_{\rm arr}^{2}\Delta,\qquad
+M\ge LD_{\rm arr},\qquad 2L\le\Delta.
+\]
 
-## The measurement protocol
+For \(s=10^6\), \(u_0=0\). With \(\lambda=20\), the nominal direct leaf contains \(H=250{,}000\) edge variables. Its \(2^H\) enumeration is beyond practical reach. This says the *published sufficient schedule* is punishing, not that a tighter mathematically valid one is impossible.
 
-1. **Correctness first.** Pin the original Lean definition/fixture, input canonicalization and expected count. Check small instances with a separately implemented exact solver and enumerate only within a declared resource limit.
-2. **Separate admissibility.** State whether the proof's quantitative prerequisites actually hold for this input. Report inactive recursion and source-level branch choice. Do not substitute smaller “engineering” parameters without a new proof.
-3. **Two independent producers.** Run source Lean and generated Rust when both are actually supported, comparing every ABI output and relevant physical state; a Rust oracle comparing to itself does not count.
-4. **Instrument full composition.** Include packet construction, field/precision setup, mode generation, child calls, interpolation, final lift/recovery, teardown and memory. Freeze source and code revision and run uncached as well as warmed.
-5. **Baseline fairly.** Include trivial algebraic counts for special families, row DP for grid, Gaussian elimination for affine cases, and a widely used exact #SAT solver for bounded realistic instances. Count preprocessing and conversion costs in both methods.
-6. **Adversarial and negative tests.** Force boundary modes at weight \(p-1,p\), nonunit interpolation point differences, zero/canceling coefficients, high precision, shared-object writes, incomplete source graph and timeouts.
-7. **Publish refusal and failure data.** Record first divergent state, smallest counterexample, compiler error and source-dependent limitation. Avoid quietly dropping hard instances from plots.
+Five places worth instrumenting first:
 
-## Optimization pass/fail
+| Stage | What to record |
+| --- | --- |
+| Field setup | \(e=4\lceil\log_2s\rceil\), candidate/divisor trials and actual bit work |
+| Packets | \(L\), \(D_{\rm arr}\), collisions, live monomials, coefficient sizes |
+| Interpolation | \(K=M(2L-1)+1\) calls, jet order, reused weights |
+| Modes/children | Admissible and nonzero mode tuples, depth, child calls, precision \(p_t\) |
+| Leaves | Actual size \(H\), direct assignments visited, retained memory |
 
-**Pass (local):** source-preserving identity or kernel equivalence, exact differential tests and a statistically credible reduction in its measured isolated cost. Label it “local” and report total cost unchanged if that is the case.
+A literal irreducible-polynomial search can have an \(s^4\)-scale candidate space and a crude \(s^6\)-scale trial-pair envelope before polynomial arithmetic. This is **large polynomial** setup work, not \(2^{\Theta(s)}\); \(e=O(\log s)\). Replace it with a certified construction, not with a randomly chosen polynomial.
 
-**Pass (end-to-end):** one complete accepted source-defined nonterminal count; full exact result; all invariants satisfied; total bit work, peak memory and time improve on a disclosed family with no hidden \(2^{\Omega(n)}\) preprocessing or fallback. Further distinguish empirical performance from a theorem.
+The mode envelope \(\exp(O(\sqrt{Mp_t/D_t}))\) and packet-entry bound \(\exp(O(L\log s))\) are **subexponential** costs. Treating them as polynomial overhead would conceal the largest parts of the actual algorithm.
 
-**Pass (asymptotic):** a Lean-checked or equally rigorous cost recurrence proves the new whole-pipeline bound with all field, tuple, precision, packet and recursion parameters represented. A bounded benchmark alone cannot establish this.
+For full derivations, see [Worst-case stressors and polynomial overhead](../rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md).
 
-**Fail:** unsupported code paths masquerading as count success, silent paper-schedule changes, exponential auxiliary tables, denominator/precision assumptions without witnesses, cherry-picked fixture-only optimizations, or invalid factorization across coupled group components.
+## Four informative families
 
-## Practical priority
+### 1. Easy count, bad elimination
 
-First complete the source query/count program and differential acceptance; then measure the actual dominant stage. In parallel, proofs can eliminate needless *polynomial* overhead (certified field setup, shared interpolation products, O(1)-state tuple iterators) without claiming they improve the exponent. Only after an active end-to-end recurrence exists should the higher group-action or direct-jet proposals be treated as replacement algorithms.
+\[
+B_k=\bigwedge_{i=1}^{k}\bigwedge_{j=1}^{k}
+(x_i\lor y_j).
+\]
+
+For \(2k\) variables its count is
+
+\[
+\#B_k=2^{k+1}-1.
+\]
+
+Why? Either all the \(x_i\) are true and every \(y_j\) is free, or at least one \(x_i\) is false and all \(y_j\) must be true. A dense elimination order may still materialize \(2^k\) entries. This separates an avoidable implementation blowup from intrinsic counting difficulty.
+
+### 2. Grids
+
+A row-transfer dynamic program gives a \(2^{O(\sqrt n)}\operatorname{poly}(n)\) baseline for appropriately encoded grids. A grid minor or large treewidth alone does not prove that the new method is hard. Measure its actual coupling and compare with the row DP.
+
+### 3. Affine formulas
+
+Use XOR-derived or linear systems whose counts are independently computable by Gaussian elimination over \(\mathbf F_2\). They expose whether expensive preprocessing is manufacturing difficulty from algebraically easy inputs. Check that every encoding preserves the original count.
+
+### 4. Coupled and high-expansion cases
+
+Generate bounded-degree incidence graphs with fixed seeds, plus tiny hand-built tensors with zero, negative and high-valuation entries. These stress routing, mode pruning, cancellation and precision. An exact solver supplies small-instance answers; beyond its resource limit the reference answer is **unknown**, not zero.
+
+Also keep contradictory, empty and tautological CNFs as low-cost frontend tests. Mutation tests should swap ports, change a cutoff at \(p-1/p\), introduce nonunit interpolation differences and attempt a hidden finite fallback.
+
+## How to run a meaningful comparison
+
+For each input, pin the generator seed, CNF hash, source Lean Git revision, toolchains and actual Rust head. Record \(n,m,s\), branch admissibility, preprocessing expansion, full stage timings, arithmetic bits, peak live memory and exact count. Record the first divergent state when independent Lean/Rust traces differ.
+
+Measure **cold** construction and cache-warmed execution separately. Include conversion and preprocessing in both the new method and the baseline.
+
+Use the right baseline for the family: closed-form count for \(B_k\), row DP for a grid, Gaussian elimination for affine systems, and an independently implemented exact #SAT solver for general small CNFs. Do not use the solver under test as its own oracle.
+
+## Three distinct claims
+
+**A local speedup:** the source-equivalent kernel is faster on a declared family. Record the measured total cost, even if unchanged.
+
+**An end-to-end speedup:** one complete original-source nonterminal count is correct and measurably cheaper in total bit work, wall time or memory on disclosed inputs, with no hidden exponential table.
+
+**A better asymptotic algorithm:** the *whole* cost recurrence is proved with its field setup, precision, packet expansion, modes, children and memory accounted for. No finite benchmark proves this claim.
+
+Until the actual recursion is active, the most useful work is to complete its execution path and tighten certified setup costs. Do not optimize an algorithm that never gets called.
+
+[Recursion theorem](two-adic-recursion.md) · [Source/compiler acceptance](lean-rust-acceptance.md)

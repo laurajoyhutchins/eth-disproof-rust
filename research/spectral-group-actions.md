@@ -1,65 +1,88 @@
-# Pair-swap spectra, incidence-compatible group actions and interpolation
+# Pair swaps: what symmetry buys us
 
-**Status:** research program, with exact local algebra and counterexamples; **no** accepted replacement for the source counting algorithm.
+## The operator
 
-## Canonical object and geometry
+Take \(Q\) commuting involutions \(\Pi_1,\ldots,\Pi_Q\), each swapping a pair of coordinates. Define
 
-A model instance has \(Q\) commuting pair-swap involutions \(\Pi_1,\dots,\Pi_Q\) on an ambient coordinate space. Define
 \[
-W=\tfrac12\sum_{i=1}^{Q}(I-\Pi_i),\qquad V=\prod_{i=1}^{Q}\Pi_i,\qquad M_0=Vf(W).
+W=\frac12\sum_{i=1}^{Q}(I-\Pi_i),\qquad
+V=\prod_{i=1}^{Q}\Pi_i,\qquad
+M_0=Vf(W).
 \]
-Each joint eigenspace is indexed by its number of antisymmetric swap factors, \(j\in\{0,\ldots,Q\}\). On that eigenspace, \(W\) has eigenvalue \(j\), and \(V\) has sign \((-1)^j\). Therefore \(M_0\) has scalar eigenvalue \((-1)^j f(j)\). Choosing \(f(j)=(-1)^j\) on a designated central interval gives *identity on that interval*, subject to the exact polynomial/degree and integer-coefficient constraints.
 
-The symmetry is not free. The map must preserve the *incidence-compatible support* needed by the counting reduction, not only a pleasing spectrum. A group action that makes the operator low-rank but destroys the source support conditions is unusable.
+On a joint eigenspace with \(j\) antisymmetric factors,
 
-## Why the Krawtchouk/Walsh basis is natural
-
-The commuting involutions generate the binary Hamming-cube action. In a symmetric subspace, orbit sums are indexed by Hamming weight and diagonalized by a Krawtchouk transform. This can replace a dense \(2^Q\)-coordinate linear calculation with an \(O(Q)\)-coordinate weight calculation *when the input operator and all queried observables are actually class functions*. It cannot replace the original full problem when incidence labels, copies or requested measurements break that symmetry.
-
-Questions to certify separately:
-
-1. Does the candidate action commute with every source incidence constraint, rather than merely the ambient spectral operator?
-2. Is the orbit/invariant subspace closed under tensor assembly, row selection and exact measurement reconstruction?
-3. Can an integer measurement matrix be constructed in time subexponential in the original instance size, with controlled \(\ell_1\) row norms and coefficient bit lengths?
-4. Can the count actually be recovered from the compressed measurements without re-expanding an exponential basis?
-5. Does the complete source operation/bit-memory budget improve over the present method and a direct exact baseline?
-
-These are conjunctive conditions, not a menu of optional desiderata.
-
-## Higher-order actions and rationality
-
-Potential generalizations include block permutations, signed permutation groups, wreath-product actions and central idempotents of a finite group algebra. The correct invariant is not just the rank of a central projector. For each candidate compute:
-
-- Orbit and stabilizer sizes, conjugacy-class parameters and coefficient field of the irreducible projections.
-- Degree and arithmetic height of the projector representation; exact common denominators and 2-adic valuations.
-- Support after pulling the operator back to every input incidence and its copy/group structure.
-- Number and bit height of the *measurements* required to identify the target count.
-- Cost of constructing the representation, decomposing orbits, multiplying operators and applying the inverse reconstruction.
-
-A rational/Galois orbit sum may reduce coefficient-field extensions but can enlarge integral denominators or destroy support. A non-rational character projector cannot simply be averaged and claimed equivalent without a proof that the resulting rational operator preserves the demanded measurement information.
-
-## Selector/Gram evidence and its limit
-
-For a weighted feature map with selector matrix \(U\), projected Gram products such as \(U^\mathsf{T}WU\) can have the same rowspace as the appropriately projected source selector system. In the historical [PR #95](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/95), an independent subbasis chosen from the *original integral selector rows* preserves the rowspace without increasing individual source row \(\ell_1\) bounds. Naive primitive RREF does not preserve that quantitative property: even a two-row example can increase maximum \(\ell_1\) from 3 to 4. This was a draft on the historical Python research branch, not a verified general reduction in current Rust main.
-
-Rowspace equality by itself neither bounds witness generation nor proves that every valid original instance is representable. The source-totality gap and full coefficient/copy accounting remain open.
-
-## Two traps found experimentally
-
-**Do not split a coupled group.** The weight matrix
 \[
-A=\begin{pmatrix}1&1/2\\1/2&3/8\end{pmatrix}
-\quad\text{has}\quad
-\det A=1/8\neq0.
+W\mapsto j,\qquad V\mapsto(-1)^j,\qquad
+M_0\mapsto(-1)^j f(j).
 \]
-It is not rank one. Multiplying independent component marginals inside a group changes the count. Valid whole-*group* factorization must be distinguished from invalid factorization *within* that group.
 
-**Do not infer hardness from a minor.** An \(\Omega(\sqrt n)\) grid treewidth profile does not imply an exponential lower bound for the proposed method. For grids a row-transfer dynamic program may already run in \(2^{O(\sqrt n)}\operatorname{poly}(n)\). Use graph structure as a measured stress signal, never as a proof of a lower bound.
+So if \(f(j)=(-1)^j\) on a selected interval of Hamming weights, \(M_0\) acts as the identity there. Outside that interval, its spectrum depends on the chosen interpolation polynomial. This is exact linear algebra, subject to the polynomial degree and coefficient constraints.
 
-## A falsifiable replacement experiment
+**The interesting question is not whether we can construct a spectral projector. It is whether that projector still computes the original count.**
 
-Take paired, source-preserving families: (a) high-symmetry inputs, (b) inputs with one broken orbit/copy label, (c) bounded-density coupled group cases, and (d) adversarial high-width instances. For each compare **exact count equality**, number of realized orbit weights, projector support size, measurement rows and \(\ell_1\), numerator/denominator bit heights, 2-adic precision, total exact arithmetic operations, peak bytes, and final recursive calls. Fail the candidate if an incidence identity breaks, denominators grow uncontrolled, a step enumerates a hidden exponential family, or no full count path is retained.
+## Compressing by Hamming weight
 
-Research outcome sought: a source-correlated mathematical operator \(M\) with (1) certified support, (2) efficient integer construction and small measurements, (3) exact recovery, and (4) a proved **total** complexity benefit. Better rank alone is not enough.
+Commuting pair swaps give the binary Hamming-cube action. In a fully symmetric subspace, orbit sums depend only on Hamming weight, and the Krawtchouk transform diagonalizes the corresponding association-scheme operators.
 
-Related notes: [recursion](two-adic-recursion.md), [complexity](cost-model-and-benchmarks.md), and [literature](literature.md).
+A \(2^Q\)-coordinate calculation can then collapse to \(Q+1\) weight coordinates. But only if **both** the operator and the observations used to recover the count respect the symmetry.
+
+Input incidence labels, copies and measurement rows usually need individual coordinates. Losing those distinctions may make the spectral calculation smaller while making the reconstruction invalid.
+
+A replacement must preserve all four properties:
+
+| Property | What to check |
+| --- | --- |
+| Support | The new operator obeys the source's incidence restrictions |
+| Measurements | An integer measurement matrix exists and can be constructed efficiently |
+| Arithmetic | Its rows, denominators, coefficients and 2-adic precision have controlled bit lengths |
+| Recovery | The original #SAT count can be reconstructed without expanding the discarded exponential representation |
+
+A lower rank answers none of these on its own.
+
+## Do larger group actions help?
+
+Possible candidates include block permutations, signed-permutation actions, wreath products and rational sums of Galois-conjugate projectors.
+
+For each candidate, calculate the actual orbit sizes, stabilizers, irreducible components and coefficient fields. Then apply it to **the original incidence system**, not a conveniently symmetric surrogate. A rational projector can reduce field extensions and still increase denominator height or violate support.
+
+A useful negative control is a single broken incidence label. If one label destroys the symmetry used for compression, the supposed speedup should disappear, not be silently assumed.
+
+## Rowspace is not a bit bound
+
+The selector/Gram experiments found projected rowspace equivalences. But constructing a primitive rational row-reduced basis can increase integral row norms: one two-row example increased the maximum \(\ell_1\) norm from 3 to 4.
+
+An independent subset of the **original integral selector rows** retains the source row-norm bound while spanning the same relevant space. That is useful, but still does not establish source-totality or the cost of generating every measurement witness. See historical [draft #95](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/95).
+
+The related [exact tuple-streaming experiment](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/94) removed an unnecessary materialized Cartesian pool. It reduced iterator *storage*, not the number of mathematical tuples or the exact rational arithmetic needed.
+
+## A two-by-two obstruction
+
+Do not split a coupled group into independent factors:
+
+\[
+A=\begin{pmatrix}
+1&\tfrac12\\
+\tfrac12&\tfrac38
+\end{pmatrix},
+\qquad \det A=\tfrac18\ne0.
+\]
+
+This matrix is not rank one. A product of one-variable marginals cannot reproduce its joint weights. The recursive construction may factor across routed **groups** after selecting modes. It does not generally factor *inside* a group.
+
+Likewise, large treewidth does not certify hardness for this method. A grid has row-transfer algorithms with \(2^{O(\sqrt n)}\operatorname{poly}(n)\) cost. If a proposed solver struggles on a grid, compare it with that baseline before claiming structural difficulty.
+
+## The experiment worth running
+
+Use four paired families: fully symmetric, one broken orbit label, coupled bounded-density groups, and high-width incidence graphs.
+
+Measure the same exact answer and:
+
+- realized orbit/weight counts, support and measurement rows;
+- \(\ell_1\) row norms, numerator/denominator bits and 2-adic precision;
+- **all** operations and memory needed to construct and reconstruct the count;
+- recursive calls and peak live coefficients.
+
+Reject any candidate that fails incidence or exact recovery, hides an exponential basis expansion, or reduces only a local matrix rank while increasing total work.
+
+[Recursive contraction](two-adic-recursion.md) · [Full cost model](cost-model-and-benchmarks.md) · [Literature](literature.md)

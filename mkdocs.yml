@@ -1,5 +1,5 @@
-site_name: ETH construction research
-site_description: Mathematical research, source refinement, and Rust implementation evidence
+site_name: ETH | Exact counting and source execution
+site_description: Exact counting, 2-adic recursion, and source-checked Lean-to-Rust execution
 site_url: https://laurajoyhutchins.github.io/eth-disproof-rust/
 repo_url: https://github.com/laurajoyhutchins/eth-disproof-rust
 repo_name: laurajoyhutchins/eth-disproof-rust
@@ -71,15 +71,15 @@ extra_javascript:
 
 nav:
   - Overview: index.md
-  - Research:
-      - Research index: research/README.md
-      - October–November ledger: research/2026-10-31-to-2026-11-14-ledger.md
+  - Mathematics:
+      - Questions: research/README.md
+      - Research ledger: research/2026-10-31-to-2026-11-14-ledger.md
       - Spectral and group actions: research/spectral-group-actions.md
       - Two-adic recursion: research/two-adic-recursion.md
       - Full-pipeline costs: research/cost-model-and-benchmarks.md
       - Literature: research/literature.md
       - Formalization evaluation: research/formalization-evaluation.md
-  - Execution and correctness:
+  - Execution:
       - Execution evidence: rust/lean_eth_reference/docs/evidence.md
       - Remaining Lean port: rust/lean_eth_reference/docs/remaining-lean-port.md
       - Lean–Rust acceptance: research/lean-rust-acceptance.md
@@ -87,7 +87,7 @@ nav:
       - Source refinement: rust/lean_eth_reference/docs/m3-tm2-resource-evidence.md
       - Finite fallback: rust/lean_eth_reference/docs/m2-finite-fallback-decision.md
       - Two-path compiler contract: rust/lean_eth_reference/docs/two-path-acceptance-contract.md
-  - Runtime and compilation:
+  - Compiler:
       - Rust executable: rust/lean_eth_reference/README.md
       - Native frontend: rust/lean_eth_reference/docs/m2-runnable-frontend.md
       - Lean compiler IR: rust/lean_eth_reference/docs/compiler-ir-backend.md
@@ -99,7 +99,7 @@ nav:
           - Semantics: rust/native_lean_backend/SEMANTICS.md
           - Conformance: rust/native_lean_backend/CONFORMANCE.md
           - Evidence: rust/native_lean_backend/EVIDENCE.md
-  - Port and experiments:
+  - Detailed notes:
       - Documentation inventory: rust/lean_eth_reference/docs/README.md
       - Worst-case parameter study: rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md
       - Source query table: rust/lean_eth_reference/docs/compiled-query-table.md
@@ -109,6 +109,7 @@ nav:
   - Repository:
       - Project README: README.md
       - Contributing: CONTRIBUTING.md
+      - Writing these notes: STYLE.md
       - Source on GitHub: https://github.com/laurajoyhutchins/eth-disproof-rust
 
 # Historical port chapters remain searchable but do not crowd the sidebar.

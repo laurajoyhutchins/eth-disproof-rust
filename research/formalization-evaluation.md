@@ -1,50 +1,45 @@
-# Evaluating LaTeX → Lean formalization for ETH research
+# LaTeX to Lean: do the symbols mean the same thing?
 
-**Scope:** proposed reproducible benchmark and acceptance policy, not a claim that named tools have already passed. The default output is a **Lean theorem and independent checker receipt**, not Python output or an English approximation.
+A Lean file can compile and still prove a different theorem from the one on the page. This benchmark is designed to catch that.
 
-## Why this belongs here
+The targets under study are **Leanify**, **PaperFormalizer**, and **AutoformBot**. Before comparing them, pin each executable repository revision, model version, prompt, decoding settings, Lean/Mathlib toolchain and token budget. No unverified model output counts as a proof.
 
-The spectral and two-adic investigations contain fragile qualifications: valuation cutoffs, integer/rational denominators, sum/product interchanges, group routing, source-dependent symbol identities and asymptotic quantifiers. A plausible Lean translation is insufficient when a missing hypothesis could turn a false claim into a compileable theorem about a different proposition.
+## Four collections of statements
 
-Candidate systems from the recent research include **Leanify**, **PaperFormalizer** and **AutoformBot**. Their exact executable versions, upstream revisions, model settings and code availability must be discovered and pinned **before** a benchmark receipt is valid; this document does not invent those pins or assume equivalent outputs.
-
-## Versioned corpus (retain original LaTeX, gold statement and proof obligations)
-
-| Suite | Instances | What faithful translation preserves |
+| Collection | Examples | What the translation must keep |
 | --- | --- | --- |
-| Elementary | quantified definitions, integral/rational identities, sums, recurrence domains | Quantifier order, type coercions, scopes, nonzero denominators |
-| Research spectral | commuting involutions, joint eigenspace sign, central interpolation identity, selector rowspace | Exact group action, equality vs congruence, rank vs row norm, integer measurement assumptions |
-| Algorithmic | recursive mode expansion, \(p\)-adic truncation, packing inequalities, complexity recurrences | Bounded sums, termination/decreasing measure, source parameters and bit complexity model |
-| Adversarial | false equalities, missing invertibility, invalid group factorization, changed quantifiers, overbroad asymptotics | **Reject** false or under-specified inputs; no auto-repair that silently changes the problem |
+| Elementary | Quantifiers, integer identities, definitions | Binder order, domains, coercions |
+| Spectral | Commuting involutions, eigenspaces, selector rows | Exact actions, equality, rank versus row norm |
+| Algorithmic | Mode cutoffs, recurrence bounds, Hermite jets | Finite sums, precision, decreasing measures |
+| Adversarial | False claims, missing units, swapped quantifiers | The **failure** rather than an invented stronger hypothesis |
 
-The benchmark must preserve a challenge ID, gold human-checked proposition, known theorem/counterexample, source blob identity and a list of semantic invariants. Partition by *mathematical family* before evaluation so that template-memorizing a fixture does not count as generalization. Keep a held-out collection with fresh symbol names and equivalent but structurally different formulations.
+Keep a gold proposition, a known proof or counterexample, source hashes and a held-out family of notation changes for each instance.
 
-## Faithfulness gate
+## Three tests, not one
 
-A proposed Lean statement may pass parsing and typechecking while proving the wrong theorem. Compare the following independently:
+**1. Did it parse?** Lean accepts the declarations and reports what it depends on.
 
-1. Free variables, binders and quantifier order; type and domain of each symbol.
-2. Missing or strengthened hypotheses, including \(p>0\), quotient-ring characteristic, invertibility, source-valid packing and finite support.
-3. Equality vs congruence; modular precision; existential vs constructive output; uniform vs instance-specific asymptotic constants.
-4. Definitional identities, aliases, tuple indexing, source-dependent routing and number of groups.
-5. Imported axioms, `sorry`, `admit`, opaque constants and `noncomputable` use; audit with `#print axioms` and source closure analysis.
-6. Intentional falsity: if the original counterexample is false in a small finite model, translation must not pass by inserting new hypotheses, weakening the conclusion or changing the universe.
+**2. Did it mean the same thing?** Compare quantifier order, types, hypotheses, modular equalities, source symbols and precision. A translation that adds “assuming \(a\ne0\)” to a false division claim has changed the task.
 
-Use a kernel-checked, independent statement-equivalence proof where practicable; otherwise report **faithfulness unverified**, even if the candidate compiles. Never score compilation as semantic equivalence.
+**3. Did the kernel check the proof?** No `sorry`, `admit`, hidden axiom or opaque escape hatch. Audit the proposition and its dependencies with `#print axioms` and the pinned source closure.
 
-## Reproducibility and cost
+Record typecheck success and semantic faithfulness **separately**. Where independent statement equivalence is not proved, report it as unverified.
 
-Capture per candidate: LaTeX source ID/hash, gold Lean statement hash, tool repository and immutable revision, model provider/model version, prompting and token budget, decoding seed/temperature, Lean/Mathlib versions, generated code hashes, kernel result, axiom audit, complete diagnostics, time, input/output token counts and estimated/actual provider cost. Report refusal separately from invalid or faithful-but-unproved outputs. No background external solver or unpinned internet retrieval during the acceptance test.
+## ETH-specific counterexamples
 
-Primary metrics: **faithful-proposition rate**, **kernel-checked proof rate conditional on faithfulness**, **false-claim rejection rate**, **unauthorized-assumption rate**, median and tail time/cost, and regression robustness on held-out transformations. A strong false-claim test should deliberately negate the expected conclusion or remove an invertibility hypothesis and check that the system declines or produces a counterexample, not a bogus theorem.
+- Make two pair swaps noncommuting; a proof that silently assumes simultaneous diagonalization must fail.
+- Try to factor \(\begin{pmatrix}1&1/2\\1/2&3/8\end{pmatrix}\) as rank one. Its determinant is \(1/8\).
+- Change the mode cutoff from \(<p\) to \(\le p\), or remove \(2^p=0\). The intended truncation proof must reject the change.
+- Swap two ports in a routed packet. A true source correspondence proof must expose the mismatch.
+- Divide by a nonunit modulo \(2^p\). The prover must not conjure an inverse.
+- Turn a uniform resource bound into a statement about a fixed input. The two are not interchangeable.
 
-## Initial ETH target suite
+## Metrics and evidence
 
-- Pair swaps: prove \(W\) eigenvalue \(j\) and \(V\) sign \((-1)^j\) on joint eigenspaces; falsify by making swaps noncommuting.
-- Group coupling: reject a rank-one decomposition for \(\bigl[\begin{smallmatrix}1&1/2\\1/2&3/8\end{smallmatrix}\bigr]\) (determinant \(1/8\)).
-- Weighted cutoff: prove omission of modes with weight \(\ge p\) **only** in the algebra satisfying \(2^p=0\).
-- Source packet routing: preserve two active groups, crossing ports, label/copy provenance and bounded child size; mutate one route to force a failed proof.
-- Hermite recovery: distinguish units from nonunits modulo \(2^p\) and retain necessary precision.
-- Resource theorem: require a uniform bit-work/space bound over all inputs, not a fast result on sample parameter values.
+Measure faithful-proposition rate, kernel-checked proof rate *conditional on faithfulness*, false-claim rejection, unauthorized assumptions, and time/token cost. Store source hashes, generated Lean, complete diagnostics, model settings and exact toolchain versions.
 
-A successful translated lemma should be integrated into the *actual* source-facing Lean theorem hierarchy in [two-adic recursion](two-adic-recursion.md), not kept as an unrelated toy lemma. For source-refinement claims, require separate independent original-Lean/Rust execution checks described in [compiler acceptance](lean-rust-acceptance.md).
+A model that produces more compiling files but more silently altered statements is worse at this task.
+
+The result we want is not a pile of toy theorems. A successful translation must feed the actual [packet recursion proof](two-adic-recursion.md), with its source-side hypotheses and an independent acceptance check.
+
+[Compiler/source correspondence](lean-rust-acceptance.md) · [Reading list](literature.md)

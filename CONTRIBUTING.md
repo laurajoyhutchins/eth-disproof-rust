@@ -3,6 +3,8 @@
 This is a source-pinned research port. Each change should make the executed
 behavior or the boundaries of the original Lean construction easier to audit.
 
+See [Writing these notes](docs/STYLE.md) for the editorial conventions: equations, counterexamples and source identities before status language. The same standard applies to PR descriptions.
+
 ## Contribution contract
 
 A pull request should answer four concrete questions:

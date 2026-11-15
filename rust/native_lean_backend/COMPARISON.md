@@ -154,7 +154,7 @@ with three observations rather than a statistically controlled benchmark.
 ## Representative workload matrix
 
 The original comparison used only `Property.hop`, a fixed-width recursive
-`UInt64` function. To make its limitations testable, the next benchmark
+`UInt64` function. To make its limitations testable, the representative benchmark
 compiles **four original Lean roots** in
 [`examples/BenchmarkKernels.lean`](examples/BenchmarkKernels.lean) through
 both compiler backends. No root is implemented a second time in Rust.
@@ -176,7 +176,8 @@ The gate requires three-way parity against the original Lean interpreter at
 32 iterations per workload, then native Lean C/Rust parity at 262,144 iterations
 for arrays and closures and 12,000 iterations for Nat. Both binaries emit
 an identical numeric checksum per workload. Twelve alternating subprocess
-measurements per backend are taken after warmup. The runner also records
+measurements per backend are taken after warmup, plus twelve zero-iteration
+startup-only control samples per workload and backend. The runner also records
 per-executable peak RSS, raw compiler phase timings, `ldd` dependencies,
 emitted C and generated Rust source hashes, and source/toolchain identity.
 
@@ -187,11 +188,64 @@ bash scripts/compare-c-rust-matrix.sh
 cat artifacts/bench-matrix/parity.tsv
 cat artifacts/bench-matrix/compile-phases.tsv
 cat artifacts/bench-matrix/{array,closure,nat}-summary.txt
+cat artifacts/bench-matrix/{array,closure,nat}-startup-summary.txt
 ```
 
 The native CI workflow executes this test after the existing `Property.hop`
 comparison. Its evidence is archived at
 `artifacts/bench-matrix/`. Failures are never represented as a speedup.
+
+### Verified matrix baseline and the resulting compiler questions
+
+[Native CI run 43699833669](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43699833669)
+at commit `5fec979040e953d7f40783b4637a7649ebde18c0` passed
+all interpreter/C/Rust parity gates, original external-project regression, and
+the root Rust workspace. The workload medians below were calculated from the
+**twelve archived raw nanosecond observations per backend**. They use the
+conventional midpoint of the two center values; the first version of the
+subprocess harness printed the upper center sample instead, which was close
+but was not the mathematical median. The harness has since been corrected.
+
+| Workload and calls | Lean native C median | Emitted Rust median | Observed difference |
+| --- | ---: | ---: | --- |
+| Array, 262,144 | 31.033 ms | 246.826 ms | Rust **7.95× slower** |
+| Closures, 262,144 | 29.330 ms | 72.106 ms | Rust **2.46× slower** |
+| GMP Nat, 12,000 | 16.047 ms | 6.909 ms | Rust **2.32× faster** |
+
+Array execution peak RSS in the three tracked samples was
+9,192–9,336 KiB for C and 2,672–2,792 KiB for Rust. Closure C RSS
+was 9,332–9,404 KiB versus Rust 2,404–2,560 KiB. Nat C RSS was
+8,944–8,976 KiB versus Rust 2,620–2,672 KiB. These are process-specific
+measurements; shared runtime costs and platform differences are not normalized.
+
+The one-sample build phases were 0.20 s to compile the Lean source to
+`.olean`, 0.66 s to load Lean and emit Rust, and 0.48 s to compile/link the
+generated Cargo executable. The C counterpart took 0.20 s for the source
+module, 0.23 s for its driver module, and 0.52 s to compile/link. These
+phases are **not equivalent**: Lean's frontend and source imports are charged
+differently. No broad compiler-throughput ratio follows.
+
+These results contradict the suggestion that the scalar-recursion speedup
+automatically transfers to collections and closures. The C backend wins
+substantially on the tested heap-backed programs.
+
+**Concrete generated-code observation.** In the array program, the IR-derived
+Rust currently emits `x_13.clone().array_push(&x_15.clone())` after
+`array_set_tagged`. The emitted C executes `lean_array_push(v_b_13_, ...)`,
+consuming that updated array. Rust has a specialized
+`array_push_owned` runtime operation, but the conservative emitter's last-use
+analysis did not select it in this join-point/control-flow case. This is a
+specific, source-grounded performance opportunity, not an assertion that all
+of the difference comes from that one copy. The closure path separately
+allocates an Rc-backed PAP and clones captures before indirect application.
+A correctness-preserving escape/last-use analysis could reduce this overhead,
+but sharing and `isShared` behavior require careful semantic checks.
+
+The follow-on zero-iteration trials explicitly measure process startup
+without invoking any of the benchmark roots. Subtracting median startup
+times from median full-run times can be a useful diagnostic, but must not
+be reported as a precise compute-only benchmark without controlling noise,
+input generation and backend driver costs.
 
 ### Unchanged external projects
 
@@ -209,11 +263,13 @@ be projected onto Armada, Keboola, or Newspeak.
 
 ## What remains unanswered
 
-1. **Diverse original programs:** benchmark source-matched closures, arrays,
-   GMP-backed `Nat`, and original external projects. A recursive `UInt64`
-   function is not a representative distribution of Lean code.
-2. **Steady-state runtime:** separate process startup from compute time and
-   report statistical uncertainty across isolated/repeated environments.
+1. **Diverse original programs:** reproduce these synthetic source-matched
+   results across original external projects, representative data sizes and
+   workloads with different allocation/lifetime patterns. Newspeak still
+   refuses for the selected root.
+2. **Steady-state runtime:** use the zero-iteration startup control to
+   distinguish launch cost from compute-dominated cost; then add in-process
+   loop timing and uncertainty intervals on controlled hardware.
 3. **Shared-phase compiler costs:** compare equal frontend and IR preparation,
    measure code generation separately from native compilation and linking,
    and examine cold/warm cache behavior.

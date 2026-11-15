@@ -1,5 +1,9 @@
 # Native Lean → Rust compiler backend (initial executable subset)
 
+For a measured, original-source comparison with Lean's **native C backend**,
+including checksum parity, runtime timings, compiler phases, executable sizes,
+and dynamic-linkage caveats, see [COMPARISON.md](COMPARISON.md).
+
 This is an **in-process code generator**, not a JSON exporter. Lean 4.34.1
 elaborates a declaration and compiles it to its normal `Lean.IR.Decl`; the
 `#native_rust` command passes that **borrowed IR object** to a Rust `cdylib`

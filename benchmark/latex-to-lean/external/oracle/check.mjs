@@ -51,6 +51,18 @@ function targetEntries(targets) {
   return targets.map(([name,glob])=>'\n[[lean_lib]]\nname = "'+name+
     '"\nsrcDir = "."\nglobs = ["'+glob+'"]\n').join("");
 }
+// A previous (or user-managed) Leanify checkout may already register a
+// generated library. Reuse only when the target is exactly the expected one.
+export function newTargets(original, targets) {
+  const missing=[];
+  for (const [name,glob] of targets) {
+    const expected='[[lean_lib]]\nname = "'+name+
+      '"\nsrcDir = "."\nglobs = ["'+glob+'"]\n';
+    if (!original.includes('name = "'+name+'"')) missing.push([name,glob]);
+    else ok(original.includes(expected),"unexpected preexisting Lake target "+name);
+  }
+  return missing;
+}
 function trustedExit(r) {return r.exit_code===0&&!r.launch_error;}
 export function runOracle({externalDir,receiptsDir,leanifyDir,outDir}) {
   validateCorpus(externalDir);
@@ -82,9 +94,8 @@ export function runOracle({externalDir,receiptsDir,leanifyDir,outDir}) {
     allTargets.push([t.leftNS,t.leftNS+".+"]);
     allTargets.push([t.rightNS,t.rightNS]);
   }
-  for(const [name] of allTargets)
-    ok(!original.includes('name = "'+name+'"'),"preexisting temporary Lake target "+name);
-  const modified=original+targetEntries(allTargets);
+  const missing=newTargets(original,allTargets);
+  const modified=original+targetEntries(missing);
   const goldPath=path.join(cwd,"ExternalGold.lean");
   let ownsGold=false, ownsConfig=false;
   const results=[];

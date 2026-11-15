@@ -85,6 +85,53 @@ The proof uses `Finset.prod_add`, `Finset.sum_comm`, and `Finset.sum_powerset`. 
 
 Most importantly, the correction `-vvᵀ` has odd entries. Singlet Hamming weight is **not** automatically 2-adic valuation. Discarding high-weight terms modulo `2^p` requires a separate divisibility proof, stated for the actual OpenAI coefficients and routing.
 
+## Group-routing and precision boundary (15 November 2026)
+
+[IndependentRoutingBoundary.lean](../rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean) separates two mathematical operations:
+
+1. **Route/factor:** After fixing a shared outer assignment, sum each independent group setting and multiply those group sums. The outer assignment's sum remains *outside* the product. A concrete two-setting counterexample shows that pulling it inside produces the wrong value.
+2. **Truncate:** In a ring with `2^p = 0`, a mode of weight `w ≥ p` may be discarded **if its actual coefficient contains the factor `2^w`**. This is a divisibility certificate, not a consequence of its label.
+
+The new `group_sum_product`, `conditional_group_contraction`, `two_power_vanishes_above_precision`, and `weighted_mode_cutoff` theorems passed [Lean #43755368182](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43755368182) at commit `4d290da`, with only `propext`, `Classical.choice`, and `Quot.sound` among their axioms.
+
+### Exact pinned source landmarks
+
+| Source | Declaration | What is actually proved | Missing comparison |
+| --- | --- | --- | --- |
+| [Anthropic Value/Sums.lean](https://github.com/anthropics/formal-math/blob/16a5ce41304fcdaea4e0be7c132e1c361dc26da5/eth/proof/networks/Value/Sums.lean) | `Value.stSumsInside` and `Value.stSumOut` | Color-group node settings form a bijective regrouping; edge-label sums recover the original pair interaction | Translate its concrete network and group settings to a common finite contraction |
+| [OpenAI SubexpComputedWeights.lean](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SubexpComputedWeights.lean) | `momentWeight_reconstruct`, `enumeration_weight_split` | Monomial weights split across **disjoint supports** after field-assignment reconstruction; the coordinate lift is arbitrary | Source-specific adapter for these field/moment objects; no identification with Anthropic singlet modes |
+| [OpenAI scope](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/docs/378.md) | `SqrtLogSpace.exact_count_and_sat` | Exact counting by a formal primitive machine at the stated **Lean** running-time bound | The sharper October 25 manuscript bound is a distinct claim; do not transfer it automatically |
+
+The OpenAI `SubexpComputedWeights` development is part of a prime-field moment construction. It is **not** the separate appendix's 2-adic packet-mode truncation. The latter still requires extracting precise source definitions, normalizations and coefficients before a source-specific Lean bridge can be stated.
+
+### Why direct mode matching is not the right goal
+
+For the signed swap decomposition `SWAP = I - vvᵀ`, one correction entry is `-1`. Thus `2 ∤ -1`, even though the term has singlet Hamming weight one. Rewriting it as `-2·singlet` introduces a denominator in the projector; it does not grant integral 2-adic divisibility. Naively deleting every weight-one term modulo 2 changes the result.
+
+The appropriate comparison diagram passes through a common *contraction value*:
+
+```text
+Anthropic network + exact group expansion
+           │ source-specific value preservation
+           ▼
+       Finite contraction
+           ▲
+           │ source-specific value preservation + precision certificate
+OpenAI packet network + weighted modes
+```
+
+The two expansions need not have bijective mode sets. Cancellation can occur between different terms. A proof must identify the same underlying finite network, the conversion of assignments and factor coefficients, and the ring/precision maps on each side. Only then can the resulting contraction values be equated or compared modulo a justified power of two.
+
+This is not yet an algorithm-equivalence theorem: neither source-specific value-preserving conversion, nor the appendix's source-derived valuation certificate, is established. No improved resource bound follows from regrouping finite sums.
+
+### Next acceptance obligations
+
+- Define one finite labelled-network semantics with explicit original edges, ports, factor order and coefficient ring.
+- Prove an **Anthropic adapter**, reusing its own `Value.stSumsInside` and `Value.stSumOut` where possible.
+- Prove a separate **OpenAI adapter** for the exact intended algorithm. Do not substitute its prime-field body for the appendix's 2-adic packet program.
+- Prove a divisibility/valuation lemma for every discarded mode from the *actual coefficient construction*; exercise weights `p-1` and `p`, odd entries, and noninvertible denominators.
+- Test a deliberately wrong routing, a shared outer assignment, and a non-divisible singlet correction as negative controls.
+
 ## Required adversarial corpus
 
 1. Empty clause (unsatisfiable), empty formula (all assignments), unused declared variables (factor of two per unused variable).

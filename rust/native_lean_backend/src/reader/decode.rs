@@ -192,5 +192,4 @@ impl Reader {
             t => Err(format!("literal constructor {t} unsupported")),
         }
     }
-
 }

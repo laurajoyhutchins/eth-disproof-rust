@@ -188,7 +188,11 @@ impl Reader {
         Ok(())
     }
 
-    pub(crate) unsafe fn emit_module(decls: Obj, root: Obj, public_name: Obj) -> Result<String, String> {
+    pub(crate) unsafe fn emit_module(
+        decls: Obj,
+        root: Obj,
+        public_name: Obj,
+    ) -> Result<String, String> {
         let root = Self::name(root, 0)?;
         let public_name = Self::string(public_name)?;
         Self::emit_roots(decls, vec![(root, public_name)])
@@ -206,7 +210,10 @@ impl Reader {
         Self::emit_roots(decls, public_roots)
     }
 
-    pub(super) unsafe fn emit_roots(decls: Obj, roots: Vec<(String, String)>) -> Result<String, String> {
+    pub(super) unsafe fn emit_roots(
+        decls: Obj,
+        roots: Vec<(String, String)>,
+    ) -> Result<String, String> {
         if lr_abi_probe() == 0 {
             return Err("Lean C ABI runtime probe failed".into());
         }
@@ -333,4 +340,5 @@ impl Reader {
             result.push_str(")\n}\n");
         }
         include_value_runtime(result)
-    }}
+    }
+}

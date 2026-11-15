@@ -1,0 +1,60 @@
+name: Native Lean-to-Rust scalar semantics proof
+
+on:
+  pull_request:
+    paths:
+      - 'rust/native_lean_backend/proofs/**'
+      - 'rust/native_lean_backend/scripts/check.sh'
+      - '.github/workflows/native-scalar-proof.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'rust/native_lean_backend/proofs/**'
+      - 'rust/native_lean_backend/scripts/check.sh'
+      - '.github/workflows/native-scalar-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kernel-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Restore exact Lean 4.34.1
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: false
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Check all-inputs scalar fragment theorem at exact head
+        shell: bash
+        run: |
+          set -euo pipefail
+          lean_binary="$(cd instrumentation/lean-env && elan which lean)"
+          "$lean_binary" --version
+          test "$(cat rust/native_lean_backend/lean-toolchain)" = 'leanprover/lean4:v4.34.1'
+          "$lean_binary" rust/native_lean_backend/proofs/ScalarOperationalRefinement.lean \
+            | tee scalar-proof-kernel-receipt.txt
+          if grep -Eq 'sorryAx|^error:' scalar-proof-kernel-receipt.txt; then
+            echo "Unproved admission or Lean diagnostic in scalar proof" >&2
+            exit 1
+          fi
+          echo "verified-head=${{ github.event.pull_request.head.sha || github.sha }}" >> scalar-proof-kernel-receipt.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-scalar-proof-kernel-receipt
+          retention-days: 30
+          if-no-files-found: warn
+          path: scalar-proof-kernel-receipt.txt

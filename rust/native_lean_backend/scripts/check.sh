@@ -11,6 +11,12 @@ export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_
 # Derive the complete IR constructor inventory from the actual pinned Lean environment.
 # The ledger is fail-closed on tag/order drift and documents conditional semantics.
 mkdir -p artifacts
+# Kernel-check the scalar/branch model before executing expensive source parity.
+lean proofs/ScalarOperationalRefinement.lean > artifacts/scalar-refinement-axioms.txt
+if grep -Fq 'sorryAx' artifacts/scalar-refinement-axioms.txt; then
+  echo 'Scalar refinement contains a sorry axiom' >&2
+  exit 2
+fi
 lean scripts/VerifyIRInventory.lean
 test "$(awk -F '\t' 'NR>1 && $1=="primitive" && $3=="conditional" {n++} END {print n+0}' artifacts/ir-constructor-summary.tsv)" -eq 68
 awk -F '\t' '

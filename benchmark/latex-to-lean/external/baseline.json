@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "evidence_run": null,
+  "head_sha": null,
+  "meaning": "Frozen historical translation results plus an explicit kernel-checked zero_sub normalization obligation; normalized proof credit is distinct from definitional equality and source fidelity.",
+  "research": {
+    "total": 12,
+    "covered": 12,
+    "leanify": 8,
+    "structural": 4,
+    "conflicts": 0,
+    "unverified": 12
+  },
+  "holdout": {
+    "total": 6,
+    "covered": 6,
+    "leanify": 0,
+    "structural": 6,
+    "conflicts": 0,
+    "unverified": 6
+  },
+  "external": {
+    "total": 12,
+    "covered": 7,
+    "leanify": 7,
+    "structural": 5,
+    "conflicts": 5,
+    "unverified": 12
+  },
+  "discovery": {
+    "total": 7,
+    "covered": 7,
+    "overlap": 5,
+    "equivalent": 4,
+    "comparison_unresolved": 0,
+    "source_faithfulness_assessed": 0,
+    "proofs_completed": 0,
+    "normalized_equivalent": 1
+  },
+  "author_holdout": {
+    "total": 5,
+    "covered": 0,
+    "overlap": 0,
+    "equivalent": 0,
+    "comparison_unresolved": 0,
+    "source_faithfulness_assessed": 0,
+    "proofs_completed": 0,
+    "normalized_equivalent": 0
+  },
+  "oracle": {
+    "total": 12,
+    "generated_translations": 12,
+    "reference_matches": 11,
+    "no_definitional_match": 1,
+    "tool_errors": 0,
+    "audited_source_faithfulness": 0
+  },
+  "previous_observation": {
+    "run_id": 43706737530,
+    "head_sha": "81d22081394da06a0ba85dea0b35e2ca577c6b3a",
+    "definitional_matches": 4,
+    "unresolved_comparisons": 1
+  },
+  "expected_witness": "zero_sub"
+}

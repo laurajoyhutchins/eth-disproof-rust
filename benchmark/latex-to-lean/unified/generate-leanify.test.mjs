@@ -8,6 +8,7 @@ import {generateLeanify} from "./generate-leanify.mjs";
 
 function fixture(){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),"native-lean-"));
+ fs.writeFileSync(path.join(root,"lakefile.toml"),"name = \"fixture\"\\n".replace("\\n","\n"));
  const source=Buffer.from("\\begin{theorem}$1=1$\\end{theorem}");
  const sourceSha=sha256(source),ns="Unified"+sourceSha.slice(0,20);
  return {root,source,sourceSha,ns};
@@ -48,4 +49,35 @@ test("existing namespace cannot be overwritten or deleted",t=>{
 test("malformed source identity cannot generate native declarations",t=>{
  const f=fixture();clean(f,t);
  assert.throws(()=>generateLeanify({vendor:f.root,source:f.source,sourceSha:"bad",run:()=>{throw Error("never");}}));
+});
+
+test("Leanify init target is restored even after native generation",t=>{
+ const f=fixture();clean(f,t);
+ const lake=path.join(f.root,"lakefile.toml");
+ const initial=fs.readFileSync(lake,"utf8");
+ const run=(cmd,args)=>{
+   if(args.includes("init")){
+     fs.appendFileSync(lake,"\n[[lean_lib]]\nname = \""+f.ns+
+       "\"\nsrcDir = \".\"\nglobs = [\""+f.ns+".+\"]\n");
+     const dir=path.join(f.root,f.ns);
+     fs.writeFileSync(path.join(dir,"Article.lean"),"article");
+     fs.writeFileSync(path.join(dir,"Compiled.lean"),"compiled");
+   }
+   return {exitCode:0,stdout:"",stderr:""};
+ };
+ const got=generateLeanify({vendor:f.root,source:f.source,sourceSha:f.sourceSha,run});
+ assert.equal(got.ok,true);
+ assert.equal(fs.readFileSync(lake,"utf8"),initial);
+ assert.equal(fs.existsSync(path.join(f.root,f.ns)),false);
+});
+test("unrelated simultaneous Lake edits are never overwritten",t=>{
+ const f=fixture();clean(f,t);
+ const lake=path.join(f.root,"lakefile.toml");
+ assert.throws(()=>generateLeanify({vendor:f.root,source:f.source,sourceSha:f.sourceSha,
+   run:()=>{
+     fs.appendFileSync(lake,"\n# another agent's edit\n");
+     return {exitCode:1,stdout:"",stderr:"failed"};
+   }}),/beyond its own temporary target/);
+ assert.match(fs.readFileSync(lake,"utf8"),/another agent's edit/);
+ assert.equal(fs.existsSync(path.join(f.root,f.ns)),false);
 });

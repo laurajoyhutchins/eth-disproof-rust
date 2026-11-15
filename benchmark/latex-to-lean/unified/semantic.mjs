@@ -75,7 +75,15 @@ export function makeProbes(prepared) {
   const proof = imports + declarations +
     "theorem definitional_equivalence : left ↔ right := by rfl\n" +
     "#print axioms definitional_equivalence\nend LatexSemanticProbe\n";
-  return {typed, proof};
+  // This is deliberately not definitional equality: an explicit, kernel-checked
+  // rewrite of 0 - x to -x is the *only* additional rule. It cannot prove two
+  // unrelated propositions merely because they happen to be true.
+  const normalized = imports + declarations +
+    "theorem zero_sub_equivalence : left ↔ right := by\n" +
+    "  simp only [left, right, " + prepared.leftNS + ".claim0, " +
+      prepared.rightNS + ".claim, zero_sub, iff_self]\n" +
+    "#print axioms zero_sub_equivalence\nend LatexSemanticProbe\n";
+  return {typed, proof, normalized};
 }
 function registerTemporaryLakeTargets(cwd, leftNS, rightNS) {
   const file = path.join(cwd, "lakefile.toml");
@@ -114,7 +122,8 @@ export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand
   const publicRecord = {schema_version:1, ...Object.fromEntries(
     Object.entries(prepared).filter(([k]) => !["modules","structuralBytes"].includes(k))),
     toolchain: {leanify_commit:LEANIFY_COMMIT}, checks: {
-      both_typed:false, definitional_equivalence:false, kernel_checked:false
+      both_typed:false, definitional_equivalence:false,
+      normalized_equivalence:false, kernel_checked:false
     }};
   let work = null, namespaceDir = null, structuralFile = null, lakeConfig = null;
   const finish = () => {
@@ -186,17 +195,40 @@ export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand
     if (proof.launch_error) {
       publicRecord.status = "tool_error";
       publicRecord.reason = "Lean proof checker failed to start";
-    } else if (proof.exit_code !== 0) {
-      publicRecord.status = "unresolved";
-      publicRecord.reason = "definitional equivalence not established; no inequivalence inferred";
-    } else if (/(?:sorryAx|admit)/.test(proof.stdout + proof.stderr)) {
-      publicRecord.status = "unresolved";
-      publicRecord.reason = "admission detected in proof audit";
-    } else {
-      publicRecord.status = "definitionally_equivalent";
-      publicRecord.reason = "Lean checked the generated Iff theorem by rfl";
-      publicRecord.checks.definitional_equivalence = true;
+      return finish();
+    }
+    if (proof.exit_code === 0) {
+      if (/(?:sorryAx|admit)/.test(proof.stdout + proof.stderr)) {
+        publicRecord.status = "unresolved";
+        publicRecord.reason = "admission detected in definitional proof audit";
+      } else {
+        publicRecord.status = "definitionally_equivalent";
+        publicRecord.reason = "Lean checked the generated Iff theorem by rfl";
+        publicRecord.checks.definitional_equivalence = true;
+        publicRecord.checks.kernel_checked = true;
+      }
+      return finish();
+    }
+    // A failed rfl is not a counterexample. Try one explicitly limited
+    // normalization theorem, archiving its exact source and audit separately.
+    const normalizedFile = path.join(work, "Normalized.lean");
+    fs.writeFileSync(normalizedFile, probes.normalized);
+    fs.writeFileSync(path.join(destination, "Normalized.lean"), probes.normalized, {flag:"wx"});
+    publicRecord.probe_hashes.normalized = sha256(Buffer.from(probes.normalized));
+    const norm = executeCommand("lake", ["env", "lean", normalizedFile], cwd);
+    publicRecord.normalization = saveStage(destination, "normalization", norm);
+    if (norm.launch_error) {
+      publicRecord.status = "tool_error";
+      publicRecord.reason = "Lean normalization proof checker failed to start";
+    } else if (norm.exit_code === 0 && !/(?:sorryAx|admit)/.test(norm.stdout + norm.stderr)) {
+      publicRecord.status = "propositionally_equivalent";
+      publicRecord.reason = "Lean checked Iff after the explicit zero_sub rewrite";
+      publicRecord.checks.normalized_equivalence = true;
       publicRecord.checks.kernel_checked = true;
+      publicRecord.normalization_rule = "zero_sub";
+    } else {
+      publicRecord.status = "unresolved";
+      publicRecord.reason = "neither rfl nor the zero_sub equivalence lemma was established";
     }
     return finish();
   } finally {
@@ -235,14 +267,17 @@ export function verifySemanticCase(sourceFile, caseDir) {
   assert(JSON.stringify(record.artifact_hashes) === JSON.stringify(prepared.artifact_hashes),
     "compared artifact identity mismatch");
   const probes = makeProbes(prepared);
-  for (const [file, textValue] of [["Typed.lean",probes.typed],["Proof.lean",probes.proof]]) {
+  const checkedFiles = [["Typed.lean",probes.typed],["Proof.lean",probes.proof]];
+  if (record.normalization) checkedFiles.push(["Normalized.lean",probes.normalized]);
+  for (const [file, textValue] of checkedFiles) {
     const hash = sha256(Buffer.from(textValue));
-    const stage = file === "Typed.lean" ? "typed" : "proof";
+    const stage = file === "Typed.lean" ? "typed" :
+      file === "Proof.lean" ? "proof" : "normalized";
     assert(record.probe_hashes?.[stage] === hash, "probe source digest changed");
     assert(sha256(fs.readFileSync(path.join(folder,file))) === hash,
       "archived probe differs from original declarations");
   }
-  for (const stage of ["build","structural_build","elaboration","proof"]) {
+  for (const stage of ["build","structural_build","elaboration","proof","normalization"]) {
     if (!record[stage]) continue;
     for (const stream of ["stdout","stderr"]) {
       const name = stage + "." + stream;
@@ -250,18 +285,33 @@ export function verifySemanticCase(sourceFile, caseDir) {
         "stage log hash mismatch: " + name);
     }
   }
+  const checkedDefinitional = record.status === "definitionally_equivalent";
+  const checkedNormalized = record.status === "propositionally_equivalent";
+  const baseChecked = record.checks?.both_typed === true &&
+    record.build?.exit_code === 0 &&
+    record.structural_build?.exit_code === 0 &&
+    record.elaboration?.exit_code === 0;
   if (record.checks?.kernel_checked) {
-    assert(record.status === "definitionally_equivalent" &&
-      record.checks.both_typed === true &&
-      record.checks.definitional_equivalence === true &&
-      record.build?.exit_code === 0 &&
-      record.structural_build?.exit_code === 0 &&
-      record.elaboration?.exit_code === 0 &&
-      record.proof?.exit_code === 0 &&
-      !record.proof?.launch_error, "fabricated kernel result");
+    assert(baseChecked && (checkedDefinitional || checkedNormalized),
+      "fabricated kernel result");
+    if (checkedDefinitional) {
+      assert(record.checks.definitional_equivalence === true &&
+        record.checks.normalized_equivalence === false &&
+        record.proof?.exit_code === 0 &&
+        !record.proof?.launch_error && !record.normalization,
+        "fabricated definitional equivalence");
+    } else {
+      assert(record.checks.definitional_equivalence === false &&
+        record.checks.normalized_equivalence === true &&
+        record.normalization_rule === "zero_sub" &&
+        record.proof?.exit_code !== 0 &&
+        record.normalization?.exit_code === 0 &&
+        !record.normalization?.launch_error, "fabricated normalized proof");
+    }
   } else {
-    assert(record.status !== "definitionally_equivalent" &&
-      record.checks?.definitional_equivalence === false,
+    assert(!checkedDefinitional && !checkedNormalized &&
+      record.checks?.definitional_equivalence === false &&
+      record.checks?.normalized_equivalence === false,
       "unverified comparison claims equivalence");
   }
   return record;

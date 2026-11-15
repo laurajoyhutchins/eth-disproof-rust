@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-11-15",
+  "review_method": "model-assisted cross-check of the cited public primary-source pages; not an independent human audit, frozen source snapshot, or proof of all the publishers' mathematical assumptions",
+  "source_faithfulness_credit": "not_assessed",
+  "automatic_verification": false,
+  "scope": "Published displayed equations and explicitly stated domains only. Generated lean candidate translation fidelity requires separate kernel comparison plus source review.",
+  "findings": [
+    {
+      "id": "O01",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "real_binder_from_context",
+      "explanation": "The commutative law of addition is printed for real a,b."
+    },
+    {
+      "id": "O02",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "real_binders_from_context",
+      "explanation": "The parenthesized associative law of addition is printed for real a,b,c."
+    },
+    {
+      "id": "O03",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "real_binders_from_context",
+      "explanation": "The commutative law of multiplication uses a dot product on real scalars."
+    },
+    {
+      "id": "O04",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "real_binders_from_context",
+      "explanation": "The distributive law matches the textbook's displayed equation."
+    },
+    {
+      "id": "O05",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "real_binder_from_context",
+      "explanation": "The additive-identity equation is printed for every real a."
+    },
+    {
+      "id": "O06",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "real_binder_from_context",
+      "explanation": "The multiplicative-identity equation is printed for every real a."
+    },
+    {
+      "id": "O07",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "parentheses_normalized",
+      "explanation": "OpenStax prints a + (-a) = 0; the structural frontend emits a + (0 - a) = 0, requiring zero_sub rather than rfl."
+    },
+    {
+      "id": "D01",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "nat_domain_from_section",
+      "explanation": "DLMF 1.2.3 is the sum of binomial coefficients to 2^n with n a nonnegative integer; the oracle uses Nat.choose."
+    },
+    {
+      "id": "D02",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "oracle_absent",
+      "explanation": "DLMF 1.2.7 uses generalized binomial coefficients with complex z and integral k; do not substitute Nat.choose."
+    },
+    {
+      "id": "D03",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "complex_matrix_specialization",
+      "explanation": "DLMF 1.2.37 is transpose of product; the reference uses matrices over ℂ with conformable dimensions, not an arbitrary-scalar theorem."
+    },
+    {
+      "id": "N01",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "real_matrix_specialization",
+      "explanation": "Nicholson Theorem 2, property 2 states transpose involution; the typed reference restricts to real matrices."
+    },
+    {
+      "id": "N02",
+      "equation_status": "formula_matches",
+      "domain_or_notation": "real_matrix_specialization",
+      "explanation": "Nicholson Theorem 2, property 4 states transpose additivity for matrices of the same size; typed reference restricts to real matrices."
+    }
+  ],
+  "limitations": [
+    "Publisher pages are live web resources without a timestamp-pinned page snapshot.",
+    "OpenStax LaTeX was transcribed and wrapped in new theorem documents, not copied from a publisher source repository.",
+    "Typed DLMF and Nicholson matrix propositions are field specializations; they do not certify arbitrary-domain interpretations.",
+    "D02 has no typed source oracle and no source-faithfulness credit.",
+    "Equivalence of two true propositions is insufficient evidence of faithful translation; only restrictive kernel-rechecked normalization is used."
+  ]
+}

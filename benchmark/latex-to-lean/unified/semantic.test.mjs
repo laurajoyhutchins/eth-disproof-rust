@@ -84,7 +84,8 @@ test("negative proof attempt is unresolved, never evidence of conflict",t=>{
   const fake=(command,args)=>{
     if(command==="git")return {exit_code:0,stdout:LEANIFY_COMMIT+"\n",stderr:""};
     if(args.includes("--version"))return {exit_code:0,stdout:"Lean 4.34.0\n",stderr:""};
-    if(args.at(-1)?.endsWith("Proof.lean"))return {exit_code:1,stdout:"",stderr:"unsolved goals"};
+    if(args.at(-1)?.endsWith("Proof.lean") || args.at(-1)?.endsWith("Normalized.lean"))
+      return {exit_code:1,stdout:"",stderr:"unsolved goals"};
     return {exit_code:0,stdout:"",stderr:""};
   };
   const record=runSemanticCase({sourceFile:f.sourceFile,caseDir:f.root,
@@ -112,4 +113,45 @@ test("semantic verifier rejects edits to archived Lean proof",t=>{
   assert.equal(verifySemanticCase(f.sourceFile,f.root).status,"definitionally_equivalent");
   fs.appendFileSync(path.join(f.root,"semantic","Proof.lean"),"\n-- tampered");
   assert.throws(()=>verifySemanticCase(f.sourceFile,f.root),/archived probe/);
+});
+
+test("zero-sub proof never claims definitional equivalence",t=>{
+  const f=fixture(t,{left:"∀ a : ℝ, a + (-a) = 0",
+    right:"∀ a : ℝ, a + (0 - a) = 0"});
+  const fake=(command,args)=>{
+    if(command==="git")return {exit_code:0,stdout:LEANIFY_COMMIT+"\n",stderr:""};
+    if(args.includes("--version"))return {exit_code:0,stdout:"Lean 4.34.0\n",stderr:""};
+    if(args.at(-1)?.endsWith("Proof.lean"))
+      return {exit_code:1,stdout:"tactic rfl failed",stderr:""};
+    return {exit_code:0,stdout:"'normalization' depends on axioms: [propext]\n",stderr:""};
+  };
+  const result=runSemanticCase({sourceFile:f.sourceFile,caseDir:f.root,
+    leanifyDir:path.join(f.root,"vendor"),executeCommand:fake});
+  assert.equal(result.status,"propositionally_equivalent");
+  assert.equal(result.checks.definitional_equivalence,false);
+  assert.equal(result.checks.normalized_equivalence,true);
+  assert.equal(result.checks.kernel_checked,true);
+  assert.equal(result.normalization_rule,"zero_sub");
+  const archived=fs.readFileSync(path.join(f.root,"semantic","Normalized.lean"),"utf8");
+  assert.match(archived,/simp only \[left, right, /);
+  assert.match(archived,/zero_sub, iff_self/);
+  assert.equal(verifySemanticCase(f.sourceFile,f.root).status,"propositionally_equivalent");
+  fs.appendFileSync(path.join(f.root,"semantic","Normalized.lean"),"\n-- changed");
+  assert.throws(()=>verifySemanticCase(f.sourceFile,f.root),/archived probe/);
+});
+test("failed zero-sub proof receives no equivalence credit",t=>{
+  const f=fixture(t,{left:"∀ a : Nat, a = a",right:"∀ a : Int, a = a"});
+  const fake=(command,args)=>{
+    if(command==="git")return {exit_code:0,stdout:LEANIFY_COMMIT+"\n",stderr:""};
+    if(args.includes("--version"))return {exit_code:0,stdout:"Lean 4.34.0\n",stderr:""};
+    if(args.at(-1)?.endsWith("Proof.lean") || args.at(-1)?.endsWith("Normalized.lean"))
+      return {exit_code:1,stdout:"proof failed",stderr:""};
+    return {exit_code:0,stdout:"",stderr:""};
+  };
+  const result=runSemanticCase({sourceFile:f.sourceFile,caseDir:f.root,
+    leanifyDir:path.join(f.root,"vendor"),executeCommand:fake});
+  assert.equal(result.status,"unresolved");
+  assert.equal(result.checks.kernel_checked,false);
+  assert.equal(result.checks.normalized_equivalence,false);
+  assert.equal(verifySemanticCase(f.sourceFile,f.root).status,"unresolved");
 });

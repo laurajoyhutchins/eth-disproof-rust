@@ -206,7 +206,8 @@ fn run_process(
 ) -> Result<Vec<u8>> {
     let stdout = work.join(format!("{label}.stdout"));
     let stderr = work.join(format!("{label}.stderr"));
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .current_dir(current_dir)
         .args(args)
         .stdout(Stdio::from(
@@ -214,7 +215,15 @@ fn run_process(
         ))
         .stderr(Stdio::from(
             File::create(&stderr).map_err(|e| e.to_string())?,
-        ))
+        ));
+    // A timed-out Lake/Bash launcher must not abandon Lean children that
+    // continue compiling after the staging directory is removed.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let mut child = command
         .spawn()
         .map_err(|e| format!("Lean command {label} unavailable: {e}"))?;
     let started = Instant::now();
@@ -223,6 +232,15 @@ fn run_process(
             break status;
         }
         if started.elapsed() >= opts.timeout {
+            #[cfg(unix)]
+            {
+                // process_group(0) made the launched process its own group leader.
+                // Kill its descendants before cleaning the atomic staging area.
+                let _ = Command::new("kill")
+                    .args(["-TERM", "--"])
+                    .arg(format!("-{}", child.id()))
+                    .status();
+            }
             let _ = child.kill();
             let _ = child.wait();
             return refuse(format!("Lean command {label} timed out"));

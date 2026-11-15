@@ -579,6 +579,10 @@ pub mod two_adic_packing;
 /// Not an active contraction or full parameter proof.
 pub mod two_adic_depth;
 
+/// Optimistic all-depth packet sufficiency versus hypothetical direct-leaf budgets.
+/// No precision, tensor execution or #SAT counting is admitted.
+pub mod two_adic_basecase_gap;
+
 /// Exact finite bipartite matching/label derandomization for improved packing.
 /// Does not run the source-defined tensor recursion.
 pub mod matching_packing;

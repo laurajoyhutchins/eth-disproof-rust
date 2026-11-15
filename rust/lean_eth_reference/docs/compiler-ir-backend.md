@@ -1,86 +1,61 @@
-# Compiler-IR Rust backend experiment
+# Canonical compiler-IR Rust backend
 
-Status: **opt-in executable-declaration bridge; not an ETH source port**.
+**Status:** one production executable-IR emitter, an explicitly bounded Lean 4.34.1 subset. This does not establish G1 release acceptance or execute the original ETH counting program.
 
-The original ETH source is pinned to Lean **4.34.1**. The existing
-[leanfran Rust backend](https://github.com/conao3/lean-leanfran) at version
-0.6.0 currently requires Lean **4.35.0**. Do not change the original
-Lean/Mathlib pins to run this experiment. The independent smoke fixture
-has its own Lean toolchain and does not affect the Rust crate.
+## Authority
 
-## Why
+The canonical executable Lean-to-Rust route is the in-process compiler in [`rust/native_lean_backend`](../../native_lean_backend/README.md). It receives borrowed `Lean.IR.Decl` objects from the pinned Lean 4.34.1 process and emits standalone Rust. The `eth-compiler` frontend calls its existing `scripts/compile-bundle.sh` publisher. There is **no second runtime or emitter** in the ETH CLI.
 
-Instead of maintaining individual translations for Lean source constructs,
-give elaborated compiler IR to an existing Rust backend. The backend
-discovers the transitive *executable* declaration closure. Requested roots
-identify entrypoints; they are not an expression-constructor allowlist.
+The earlier `leanfran 0.6.0` adapter from PR #184 is retained in Git history and acknowledged in [NOTICE](../../../NOTICE.md). It used Lean 4.35.0 and was never a verified production ETH compiler. The public `compiler-ir` route no longer invokes it; old leanfran-generated receipts are rejected by the native bundle validator.
 
-The original QueryStreamProgram.program appears under a noncomputable
-section. A noncomputable declaration does not necessarily have compiler IR.
-Therefore successful generic compilation of a separate executable
-declaration says **nothing** about complete ETH source coverage.
+## Current invocation
 
-Missing IR, skipped declarations, or unavailable runtime externs must be
-refused. They cannot authorize a host-side #SAT implementation.
-
-## Running the isolated experiment
-
-The two-path runner is now the native Rust `eth-compiler` binary. It uses the
-already-locked `serde`, `serde_json`, and `sha2` dependencies and standard
-Rust subprocess/filesystem APIs. It does not require Python.
-
-Install Lean 4.35.0, lake, and leanfran 0.6.0 (generator version 4), then
-use an actual Git checkout containing the pinned Lean module and toolchain:
+With the exact Lean 4.34.1 installation and Rust 1.99.1:
 
 ```sh
-cargo run --locked --bin eth-compiler -- compile \
+export LEAN_PREFIX=/absolute/path/to/lean-4.34.1
+(cd rust/native_lean_backend && lake build && bash scripts/check.sh)
+
+cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- compile \
   --backend compiler-ir \
-  --source-repo /path/to/lean-project \
-  --source-revision "$(git -C /path/to/lean-project rev-parse HEAD)" \
-  --source-path LeanIRSmoke.lean \
-  --lake-root /path/to/lean-project \
-  --module LeanIRSmoke --root LeanIRSmoke.double \
-  --output /tmp/lean-ir-smoke-generated.rs \
-  --receipt /tmp/lean-ir-smoke-receipt.json
-cargo test --locked --bin eth-compiler
+  --source-repo "$PWD" --source-revision "$(git rev-parse HEAD)" \
+  --source-path rust/native_lean_backend/examples/PropertyDef.lean \
+  --source-toolchain-path rust/native_lean_backend/lean-toolchain \
+  --lake-root "$PWD/rust/native_lean_backend" \
+  --module PropertyDef --root Property.hop \
+  --output rust/native_lean_backend/artifacts/canonical-ir.rs \
+  --receipt rust/native_lean_backend/artifacts/canonical-ir.receipt.json
 ```
 
-The Git source checkout must contain a committed `lean-toolchain`. The
-compiler-IR path refuses a Lean 4.34.1 checkout because the currently pinned
-leanfran version requires 4.35.0; it does not upgrade the original ETH source.
+The command currently accepts **one root and one source module per bundle**. Imported transitive declarations beyond the supported native closure are not certified. The native bundle script builds a standalone Rust library, validates that the requested root appears in the generated closure, and records hashes for the source, compiled Lean module, generated Rust and native backend. `eth-compiler` independently binds this bundle to the original Git-committed source and rejects a mismatched bundle, toolchain, root, digest, or status.
 
-The Rust integration tests exercise refusal and schema validation; they do
-**not** prove real leanfran compilation. The real smoke test still requires
-compatible installed Lean/leanfran binaries and generated code compilation.
+Reverify the artifact without executing Lean or running a backend:
 
-A successful receipt has status **generated-unverified**, source and toolchain
-identity, generator version, declaration roots, backend coverage, generated
-SHA-256 and explicit missing semantic and physical proofs. Skipped declarations
-or mismatched versions refuse rather than producing an accepted receipt.
+```sh
+cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- verify \
+  --backend compiler-ir \
+  --source-repo "$PWD" --source-revision "$(git rev-parse HEAD)" \
+  --source-path rust/native_lean_backend/examples/PropertyDef.lean \
+  --source-toolchain-path rust/native_lean_backend/lean-toolchain \
+  --module PropertyDef --root Property.hop \
+  --artifact rust/native_lean_backend/artifacts/canonical-ir.rs \
+  --receipt rust/native_lean_backend/artifacts/canonical-ir.receipt.json
+```
 
-Generated Rust requires the leanfran runtime and is not yet linked to the
-ETH crate.
+The embedded backend report permits the verifier to recheck the bundle without a second manually produced report file. A failed verification invalidates the receipt, not the original source.
 
-## Acceptance path
+## Other source path
 
-1. Pin and attribute an exact backend source revision, validate its
-   compatibility with the original Lean 4.34.1 without upgrading the
-   source/Mathlib pins, and compile an original computable declaration.
-2. Compare real original Lean and generated Rust outputs independently;
-   check exact Nat and IO semantics.
-3. For noncomputable source definitions, introduce a source-independent,
-   shared, lazy residualizer over elaborated core expressions. It must
-   preserve supported reduction semantics without eager table expansion;
-   axioms, opaque externs and unsupported reductions must refuse.
-4. Retain symbolic BitProgram construction as a verified specialization.
-   Preserve source label layout, PC, ports, transition steps and physical
-   relocation against independently executed original Lean traces.
-5. Only after all stages pass may the generic backend become the default
-   native codegen path for the ETH executable closure.
+A source definition without executable Lean IR may be represented as a shared core-expression DAG through the separate `--backend residual-expr` path. This **does not generate executable Rust**. Source-defined `StructuredCalls`/`BitProgram` lowering retains its existing specialized semantics and requires independent full-state agreement with original Lean execution.
 
-The source graph exporter remains authoritative for its previously
-verified physical graph subset. Compiler-IR source emission and physical
-BitProgram correctness are different proof obligations.
+Do not automatically route an unsupported executable-IR declaration to the symbolic producer. Both must be tied to the same original source, with missing computational dependencies refusing. No `leanfran` fallback, duplicate GMP/`Rc` runtime, Python compiler wrapper, or enumerative #SAT substitute is permitted.
 
-Attribution: leanfran, conao3/lean-leanfran, Apache-2.0. The external
-backend is not vendored or included as a Cargo dependency in this PR.
+## Remaining acceptance work
+
+- Complete packaging for multiple roots and unchanged imported projects; this adapter currently uses the single-root native bundle.
+- Verify transitive source provenance and computational relevance, not only Git identity for one source file.
+- Add the typed, demand-driven residual consumer and exact physical `BitProgram` equivalence.
+- Finish G1 acceptance on three substantial unchanged Lean programs and G2 on a complete nonterminal counting machine.
+- Establish formal Lean-to-Rust semantic and TM2 resource correspondence. A successful native compile and finite differential tests are **not** proof certificates.
+
+See [the source acceptance obligations](../../../research/lean-rust-acceptance.md) and [issue #193](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/193).

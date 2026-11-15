@@ -76,9 +76,7 @@ fn potential_numerator(
                     let factor = d.checked_add(numerator).ok_or_else(capacity)?;
                     product = product.checked_mul(factor).ok_or_else(capacity)?;
                 }
-                let term = product
-                    .checked_mul(normalization)
-                    .ok_or_else(capacity)?;
+                let term = product.checked_mul(normalization).ok_or_else(capacity)?;
                 total = total.checked_add(term).ok_or_else(capacity)?;
             }
         }
@@ -117,9 +115,7 @@ pub fn construct_bounded(
             ));
         }
         let mut color = 0usize;
-        while color_left[edge.left].contains(&color)
-            || color_right[edge.right].contains(&color)
-        {
+        while color_left[edge.left].contains(&color) || color_right[edge.right].contains(&color) {
             color = color.checked_add(1).ok_or_else(capacity)?;
         }
         color_left[edge.left].push(color);
@@ -187,7 +183,10 @@ pub fn construct_bounded(
         last_potential = value;
     }
     let left_labels = left.into_iter().map(|x| x.unwrap_or(0)).collect::<Vec<_>>();
-    let right_labels = right.into_iter().map(|x| x.unwrap_or(0)).collect::<Vec<_>>();
+    let right_labels = right
+        .into_iter()
+        .map(|x| x.unwrap_or(0))
+        .collect::<Vec<_>>();
     let mut pair_loads = vec![0usize; d];
     for edge in edges {
         let index = left_labels[edge.left]

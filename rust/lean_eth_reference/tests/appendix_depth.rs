@@ -48,7 +48,10 @@ fn maximum_u128_still_cannot_produce_third_active_stage() {
     assert_eq!(receipt["stages"][0]["matching_arithmetic_possible"], true);
     assert_eq!(receipt["stages"][1]["matching_arithmetic_possible"], true);
     assert_eq!(receipt["stages"][2]["reason"], "guaranteed_leaf");
-    assert_eq!(receipt["leaf_edge_exponent"], "30934760629176223951215873402888019224");
+    assert_eq!(
+        receipt["leaf_edge_exponent"],
+        "30934760629176223951215873402888019224"
+    );
     assert_eq!(receipt["full_recursion_admitted"], false);
     assert!(receipt["sat_count"].is_null());
 }

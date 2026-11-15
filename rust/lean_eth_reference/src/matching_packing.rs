@@ -85,7 +85,9 @@ fn greedy_edge_colors(graph: &BipartiteGraph) -> Result<(Vec<usize>, usize, usiz
     let mut count = 0;
     for &(left, right) in &graph.edges {
         if left >= graph.left_vertices || right >= graph.right_vertices {
-            return Err(Error::Invalid("bipartite edge endpoint out of range".into()));
+            return Err(Error::Invalid(
+                "bipartite edge endpoint out of range".into(),
+            ));
         }
         degree_left[left] = degree_left[left].checked_add(1).ok_or_else(overflow)?;
         degree_right[right] = degree_right[right].checked_add(1).ok_or_else(overflow)?;
@@ -104,7 +106,9 @@ fn greedy_edge_colors(graph: &BipartiteGraph) -> Result<(Vec<usize>, usize, usiz
         .max()
         .unwrap_or(0);
     if maximum_degree != 0 && count > maximum_degree.saturating_mul(2) - 1 {
-        return Err(Error::Invalid("proper greedy coloring exceeds 2 delta - 1".into()));
+        return Err(Error::Invalid(
+            "proper greedy coloring exceeds 2 delta - 1".into(),
+        ));
     }
     Ok((colors, count, maximum_degree))
 }
@@ -186,7 +190,9 @@ pub fn construct_matching_labels(
     labels_per_side: u32,
 ) -> Result<MatchingLabelCertificate, Error> {
     if labels_per_side < 2 {
-        return Err(Error::Invalid("labels per vertex must be at least two".into()));
+        return Err(Error::Invalid(
+            "labels per vertex must be at least two".into(),
+        ));
     }
     let (colors, k, maximum_degree) = greedy_edge_colors(graph)?;
     let q = u128::from(labels_per_side);
@@ -217,7 +223,9 @@ pub fn construct_matching_labels(
         .and_then(|v| v.checked_mul(estimator.common_denominator))
         .ok_or_else(overflow)?;
     if initial != allowed {
-        return Err(Error::Invalid("initial rational potential was not kD".into()));
+        return Err(Error::Invalid(
+            "initial rational potential was not kD".into(),
+        ));
     }
     let mut current = initial;
 
@@ -274,7 +282,9 @@ pub fn construct_matching_labels(
         .checked_mul(denominator)
         .ok_or_else(overflow)?;
     if lhs > rhs || current > initial {
-        return Err(Error::Invalid("matching load or potential certificate violated".into()));
+        return Err(Error::Invalid(
+            "matching load or potential certificate violated".into(),
+        ));
     }
 
     Ok(MatchingLabelCertificate {

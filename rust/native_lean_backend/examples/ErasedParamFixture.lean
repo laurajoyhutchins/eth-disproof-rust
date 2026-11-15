@@ -12,7 +12,8 @@ namespace ErasedParamFixture
 
 end ErasedParamFixture
 
-#native_rust_package [ErasedParamFixture.through] to "examples/erased-proof-package"
+#native_rust_package [ErasedParamFixture.acceptErased, ErasedParamFixture.through]
+  to "examples/erased-proof-package"
 
 open Lean Elab Command
 run_cmd do
@@ -28,9 +29,11 @@ run_cmd do
   for i in [:64] do
     let n : Nat := if i % 11 == 0 then 2^256 + i else i*i + 7
     let expected := ErasedParamFixture.through n
-    test := test ++ s!"assert_eq!(through(__LeanValue::nat_from_decimal(\"{n}\")).nat_to_decimal(), \"{expected}\", \"source case {i}\");\n"
+    let direct := ErasedParamFixture.acceptErased n rfl
+    test := test ++ s!"assert_eq!(through(__LeanValue::nat_from_decimal(\"{n}\")).nat_to_decimal(), \"{expected}\", \"through case {i}\");\n"
+    test := test ++ s!"assert_eq!(acceptErased(__LeanValue::nat_from_decimal(\"{n}\"), ()).nat_to_decimal(), \"{direct}\", \"erased direct case {i}\");\n"
   test := test ++ "}\n"
   liftIO <| IO.FS.createDirAll "examples/erased-proof-package/tests"
   liftIO <| IO.FS.writeFile
     "examples/erased-proof-package/tests/erasure.rs" test
-  logInfo "Generated 64 independent original-Lean proof-erasure comparisons"
+  logInfo "Generated 128 independent original-Lean proof-erasure comparisons"

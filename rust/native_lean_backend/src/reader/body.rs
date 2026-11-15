@@ -186,18 +186,10 @@ impl Reader {
                         if n > 1_000_000 || (tag == 7 && n != 1) {
                             return Err("source reference-count delta unsupported".into());
                         }
-                        let flag = |index| -> Result<bool, String> {
-                            match Self::scalar(Self::field(x, index)?)? {
-                                0 => Ok(false),
-                                1 => Ok(true),
-                                _ => Err("malformed reference-count Bool flag".into()),
-                            }
-                        };
-                        let check_ref = flag(2)?;
-                        let persistent = flag(3)?;
+                        let (check_ref, persistent) = Self::rc_flags(x)?;
                         let op = if tag == 6 { "source_inc" } else { "source_dec" };
                         writeln!(code, "    x_{id}.{op}({n}, {check_ref}, {persistent});").unwrap();
-                        x = Self::field(x, 4)?;
+                        x = Self::field(x, 2)?;
                     }
                 }
                 9 => {

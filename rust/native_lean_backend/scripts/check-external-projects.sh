@@ -262,6 +262,7 @@ run_cmd do
     match o with
     | none => "__LeanValue::tagged(0)"
     | some n => s!"__LeanValue::ctor(1, \"Option.some\", vec![{rustNat n}])"
+  let mut observedOutputs : Array Nat := #[]
   for i in [:256] do
     let mode := i % 4
     let n : Nat := if i % 13 == 0 then 2^1024 + i else (i + 17) * 97
@@ -289,6 +290,8 @@ run_cmd do
       | .preserve => 1
       | .skip => 2
       | .write => 3
+    if !observedOutputs.contains expected then
+      observedOutputs := observedOutputs.push expected
     let values : Array String := #[
       rustOption pullHash, rustNat curHash, rustOption cfgBase, rustNat apiHash
     ]
@@ -302,6 +305,8 @@ run_cmd do
       let bit : Nat := if bools[offset]! then 1 else 0
       tests := tests ++ s!"let input = input.pull_in_set_u8(4, {offset}, {bit}u8);\n"
     tests := tests ++ s!"assert_eq!(external_root(input), {expected}u8, \"original Keboola input {i}\");\n"
+  if observedOutputs.size != 4 then
+    throwError "original Keboola oracle failed to cover all four PullOut constructors"
   tests := tests ++ "}\n"
   liftIO <| IO.FS.writeFile
     "artifacts/external-projects/keboola/fullpull-crate/oracles/source_lean.rs" tests
@@ -471,8 +476,8 @@ LEAN
 done
 
 # A separate *positive* test on two unchanged original Keboola functions.
-# Unlike the complex PullIn root (which still must refuse), these functions
-# use ordinary Bool control flow. Compute all 12 expected results in original
+# These two smaller helpers use ordinary Bool control flow independently
+# of the full PullIn root, which is now source-verified above. Compute all 12 expected results in original
 # Lean, then compile and execute the exact emitted external-source Rust.
 positive="$out/keboola/positive-package"
 rm -rf -- "$positive"
@@ -531,6 +536,11 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
     "$positive/src/lib.rs" "$positive/tests/lean-oracle.rs" "$positive/Cargo.toml"
 } > "$out/keboola/positive-receipt.txt"
 
+if ! grep -Fqx 'generated_rust_semantic_parity=256_original_Lean_Keboola_pullDecide_cases_PASS' \
+    "$out/keboola/identity.txt"; then
+  echo 'FATAL: full original Keboola pullDecide parity receipt missing or incomplete' >&2
+  exit 1
+fi
 {
   echo "status=COMPLETE_OBSERVATIONS_NOT_G1_ACCEPTANCE"
   echo "source_revision=$(git rev-parse --verify HEAD 2>/dev/null || echo unavailable)"
@@ -538,7 +548,9 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   echo "all_upstream_sources_unmodified=true"
   echo "external_armada_original_root=128_source_oracles_PASS"
   echo "external_keboola_two_original_helpers=12_source_oracles_PASS"
-  echo "semantic_verification_of_selected_external_roots=armada_pass_newspeak_keboola_refused"
+  echo "external_keboola_original_root=256_source_oracles_PASS"
+  echo "substantial_external_project_roots_verified=2_of_3"
+  echo "semantic_verification_of_selected_external_roots=armada_pass_keboola_pass_newspeak_refused"
   echo "toolchain=$(lean --version)"
   sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt"
 } > "$out/receipt.txt"

@@ -131,6 +131,8 @@ export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand
     const proofFile = path.join(work, "Proof.lean");
     fs.writeFileSync(typedFile, probes.typed);
     fs.writeFileSync(proofFile, probes.proof);
+    fs.writeFileSync(path.join(destination, "Typed.lean"), probes.typed, {flag:"wx"});
+    fs.writeFileSync(path.join(destination, "Proof.lean"), probes.proof, {flag:"wx"});
     publicRecord.probe_hashes = {
       typed: sha256(Buffer.from(probes.typed)),
       proof: sha256(Buffer.from(probes.proof))
@@ -180,4 +182,57 @@ export function runSemanticCase({sourceFile, caseDir, leanifyDir, executeCommand
     if (namespaceDir) fs.rmSync(namespaceDir, {recursive:true, force:true});
     if (work) fs.rmSync(work, {recursive:true, force:true});
   }
+}
+
+
+// Offline receipt verification. This checks exact replay inputs and accounting;
+// a signed external runner or actual Lean replay is still needed to trust a
+// claimed successful process execution.
+export function verifySemanticCase(sourceFile, caseDir) {
+  const prepared = prepareSemanticCase(fs.readFileSync(sourceFile), caseDir);
+  const folder = path.join(caseDir, "semantic");
+  const record = JSON.parse(fs.readFileSync(path.join(folder, "comparison.json"), "utf8"));
+  assert(record.schema_version === 1, "unknown semantic report");
+  assert(record.source_sha256 === prepared.source_sha256 &&
+    record.translation_receipt_sha256 === prepared.translation_receipt_sha256,
+    "semantic source/receipt changed");
+  assert(record.semantic_faithfulness === "not_assessed" &&
+    record.proof_completion === "not_assessed", "invented semantic or proof completion credit");
+  if (prepared.status !== "ready") {
+    assert(record.status === prepared.status, "non-overlap status mismatch");
+    assert(record.checks?.kernel_checked === false, "non-overlap claims kernel proof");
+    return record;
+  }
+  assert(JSON.stringify(record.artifact_hashes) === JSON.stringify(prepared.artifact_hashes),
+    "compared artifact identity mismatch");
+  const probes = makeProbes(prepared);
+  for (const [file, textValue] of [["Typed.lean",probes.typed],["Proof.lean",probes.proof]]) {
+    const hash = sha256(Buffer.from(textValue));
+    const stage = file === "Typed.lean" ? "typed" : "proof";
+    assert(record.probe_hashes?.[stage] === hash, "probe source digest changed");
+    assert(sha256(fs.readFileSync(path.join(folder,file))) === hash,
+      "archived probe differs from original declarations");
+  }
+  for (const stage of ["build","elaboration","proof"]) {
+    if (!record[stage]) continue;
+    for (const stream of ["stdout","stderr"]) {
+      const name = stage + "." + stream;
+      assert(record[stage].logs?.[name] === sha256(fs.readFileSync(path.join(folder,name))),
+        "stage log hash mismatch: " + name);
+    }
+  }
+  if (record.checks?.kernel_checked) {
+    assert(record.status === "definitionally_equivalent" &&
+      record.checks.both_typed === true &&
+      record.checks.definitional_equivalence === true &&
+      record.build?.exit_code === 0 &&
+      record.elaboration?.exit_code === 0 &&
+      record.proof?.exit_code === 0 &&
+      !record.proof?.launch_error, "fabricated kernel result");
+  } else {
+    assert(record.status !== "definitionally_equivalent" &&
+      record.checks?.definitional_equivalence === false,
+      "unverified comparison claims equivalence");
+  }
+  return record;
 }

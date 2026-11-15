@@ -69,58 +69,63 @@ jobs:
           RA="$(rustup which --toolchain 1.99.1 rust-analyzer)"
           SCIP="$RUNNER_TEMP/scip-cli/scip"
           PREFIX=rust/native_lean_backend
-          BASE_REPO="$RUNNER_TEMP/lean-compiler-base"
-          git worktree add --detach "$BASE_REPO" "$BASE_SHA"
-          test "$(git -C "$BASE_REPO" rev-parse HEAD)" = "$BASE_SHA"
-          "$TOOL" analyze rust --repo "$BASE_REPO" --rev "$BASE_SHA" \
+          # Run both pinned revisions in the SAME detached worktree path.
+          # SCIP project_root is a physical URI; a different checkout directory
+          # cannot be rebound to another repository without losing provenance.
+          ANALYSIS_REPO="$RUNNER_TEMP/lean-compiler-analysis"
+          git worktree add --detach "$ANALYSIS_REPO" "$BASE_SHA"
+          test "$(git -C "$ANALYSIS_REPO" rev-parse HEAD)" = "$BASE_SHA"
+          "$TOOL" analyze rust --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
             --source-prefix "$PREFIX" --trusted-local true \
             --rust-analyzer "$RA" --scip "$SCIP" > "$OUT/native-rust-base.json"
-          "$TOOL" analyze rust --repo "$GITHUB_WORKSPACE" --rev "$HEAD_SHA" \
+          (
+            cd "$ANALYSIS_REPO/$PREFIX"
+            CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$OUT/base-target" \
+              "$RA" scip "$PWD" --output "$OUT/base.scip"
+          )
+          "$SCIP" print --json "$OUT/base.scip" > "$OUT/base-index.json"
+          git -C "$ANALYSIS_REPO" checkout --detach "$HEAD_SHA"
+          test "$(git -C "$ANALYSIS_REPO" rev-parse HEAD)" = "$HEAD_SHA"
+          "$TOOL" analyze rust --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
             --source-prefix "$PREFIX" --trusted-local true \
             --rust-analyzer "$RA" --scip "$SCIP" > "$OUT/native-rust-head.json"
+          (
+            cd "$ANALYSIS_REPO/$PREFIX"
+            CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$OUT/head-target" \
+              "$RA" scip "$PWD" --output "$OUT/head.scip"
+          )
+          "$SCIP" print --json "$OUT/head.scip" > "$OUT/head-index.json"
           jq -e --arg commit "$BASE_SHA" \
             '.schema == "excession.scip-observations.v1" and .source_commit == $commit and .indexer.name == "rust-analyzer"' \
             "$OUT/native-rust-base.json" >/dev/null
           jq -e --arg commit "$HEAD_SHA" \
             '.schema == "excession.scip-observations.v1" and .source_commit == $commit and .indexer.name == "rust-analyzer"' \
             "$OUT/native-rust-head.json" >/dev/null
-          # Retain raw native observations so agent verification and impact can
-          # use real Rust symbol edges at each exact Git revision.
-          (
-            cd "$BASE_REPO/$PREFIX"
-            CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$OUT/base-target" \
-              "$RA" scip "$PWD" --output "$OUT/base.scip"
-          )
-          (
-            cd "$GITHUB_WORKSPACE/$PREFIX"
-            CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$OUT/head-target" \
-              "$RA" scip "$PWD" --output "$OUT/head.scip"
-          )
-          "$SCIP" print --json "$OUT/base.scip" > "$OUT/base-index.json"
-          "$SCIP" print --json "$OUT/head.scip" > "$OUT/head-index.json"
+          # Import both source-bound observations into one evidence store; all
+          # subsequent agent queries consume these native relationships.
           DB="$OUT/native-evidence.sqlite"
-          "$TOOL" refactor scip-ingest --repo "$BASE_REPO" --rev "$BASE_SHA" \
+          "$TOOL" refactor scip-ingest --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
             --source-prefix "$PREFIX" --index "$OUT/base-index.json" --db "$DB" \
             > "$OUT/ingest-base.json"
-          "$TOOL" refactor scip-ingest --repo "$GITHUB_WORKSPACE" --rev "$HEAD_SHA" \
+          "$TOOL" refactor scip-ingest --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
             --source-prefix "$PREFIX" --index "$OUT/head-index.json" --db "$DB" \
             > "$OUT/ingest-head.json"
-          "$TOOL" refactor scip-suggest --repo "$GITHUB_WORKSPACE" --rev "$HEAD_SHA" \
+          "$TOOL" refactor scip-suggest --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
             --source-prefix "$PREFIX" --index "$OUT/head-index.json" \
             > "$OUT/native-refactor-candidates.json"
-          "$TOOL" refactor scip-audit --repo "$GITHUB_WORKSPACE" --rev "$HEAD_SHA" \
+          "$TOOL" refactor scip-audit --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
             --source-prefix "$PREFIX" --index "$OUT/head-index.json" \
             --report "$OUT/native-refactor-candidates.json" > "$OUT/native-refactor-audit.json"
-          "$TOOL" agent locate --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \
+          "$TOOL" agent locate --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
             --task 'Lean compiler IR Reader decoding, expression lowering, constructor cases and module dependency closure' \
             --roots rust/native_lean_backend/src --index-segments 256 --limit 20 --json > "$OUT/locate.json"
-          "$TOOL" agent context --repo "$GITHUB_WORKSPACE" --rev "$BASE_SHA" \
+          "$TOOL" agent context --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
             --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/primitive-registry.tsv,rust/native_lean_backend/runtime-primitive-registry.tsv \
             --roots rust/native_lean_backend/src --db "$DB" --limit 32 > "$OUT/context.json"
-          "$TOOL" agent context --repo "$GITHUB_WORKSPACE" --rev "$HEAD_SHA" \
+          "$TOOL" agent context --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
             --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/src/reader/mod.rs,rust/native_lean_backend/src/reader/decode.rs,rust/native_lean_backend/src/reader/expr.rs,rust/native_lean_backend/src/reader/cases.rs,rust/native_lean_backend/src/reader/body.rs,rust/native_lean_backend/src/reader/module.rs \
             --roots rust/native_lean_backend/src --db "$DB" --limit 32 > "$OUT/context-candidate.json"
-          "$TOOL" agent verify --repo "$GITHUB_WORKSPACE" --base "$BASE_SHA" \
+          "$TOOL" agent verify --repo "$ANALYSIS_REPO" --base "$BASE_SHA" \
             --candidate "$HEAD_SHA" --roots rust/native_lean_backend/src --db "$DB" --limit 32 > "$OUT/verify.json"
           jq -e '.schema == "excession.agent-context.v1"' "$OUT/context.json" > /dev/null
           jq -e '.schema == "excession.agent-context.v1"' "$OUT/context-candidate.json" > /dev/null

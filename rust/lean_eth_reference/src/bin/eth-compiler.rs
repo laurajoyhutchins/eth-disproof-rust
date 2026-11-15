@@ -420,7 +420,8 @@ fn execute(opts: &Options) -> Result<()> {
                     // Verification is reproducible from the persisted receipt
                     // without inventing a second backend report file.
                     let prior = contract::strict_json_value(&read_bounded(&opts.receipt)?)?;
-                    let embedded = prior.get("backend_report")
+                    let embedded = prior
+                        .get("backend_report")
                         .ok_or("missing native backend evidence in prior receipt")?;
                     Some(serde_json::to_vec(embedded).map_err(|e| e.to_string())?)
                 }
@@ -463,11 +464,12 @@ fn execute(opts: &Options) -> Result<()> {
         &source,
     )?;
     if opts.backend == Backend::CompilerIr {
-        let raw = backend_report.as_deref().ok_or("missing native compiler report")?;
+        let raw = backend_report
+            .as_deref()
+            .ok_or("missing native compiler report")?;
         let evidence = contract::strict_json_value(raw)?;
-        let original_sha256 = contract::digest(&read_bounded(
-            &opts.source_repo.join(&source.path),
-        )?);
+        let original_sha256 =
+            contract::digest(&read_bounded(&opts.source_repo.join(&source.path))?);
         ensure(
             evidence["source_lean_sha256"] == json!(original_sha256),
             "native bundle was compiled from a different source file",
@@ -564,23 +566,57 @@ mod tests {
     #[test]
     fn native_route_refuses_multiple_roots_before_compilation() {
         let args = [
-            "compile", "--backend", "compiler-ir", "--module", "Demo",
-            "--root", "Demo.f", "--root", "Demo.g",
-            "--source-repo", "/tmp/source", "--source-path", "Demo.lean",
-            "--source-revision", "a", "--output", "/tmp/generated.rs",
-            "--receipt", "/tmp/receipt.json",
-        ].iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            "compile",
+            "--backend",
+            "compiler-ir",
+            "--module",
+            "Demo",
+            "--root",
+            "Demo.f",
+            "--root",
+            "Demo.g",
+            "--source-repo",
+            "/tmp/source",
+            "--source-path",
+            "Demo.lean",
+            "--source-revision",
+            "a",
+            "--output",
+            "/tmp/generated.rs",
+            "--receipt",
+            "/tmp/receipt.json",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
         assert!(Options::parse(&args).is_err());
     }
     #[test]
     fn native_route_refuses_symbolic_producer() {
         let args = [
-            "compile", "--backend", "compiler-ir", "--module", "Demo",
-            "--root", "Demo.f", "--source-repo", "/tmp/source",
-            "--source-path", "Demo.lean", "--source-revision", "a",
-            "--producer", "ResidualGraph.lean", "--output", "/tmp/generated.rs",
-            "--receipt", "/tmp/receipt.json",
-        ].iter().map(|s| s.to_string()).collect::<Vec<_>>();
+            "compile",
+            "--backend",
+            "compiler-ir",
+            "--module",
+            "Demo",
+            "--root",
+            "Demo.f",
+            "--source-repo",
+            "/tmp/source",
+            "--source-path",
+            "Demo.lean",
+            "--source-revision",
+            "a",
+            "--producer",
+            "ResidualGraph.lean",
+            "--output",
+            "/tmp/generated.rs",
+            "--receipt",
+            "/tmp/receipt.json",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
         assert!(Options::parse(&args).is_err());
     }
 }

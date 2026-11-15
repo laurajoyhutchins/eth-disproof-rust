@@ -1498,7 +1498,11 @@ impl Reader {
                         return Err("constructor pointer index exceeds bound".into());
                     }
                     let value = Self::arg(Self::field(x, 2)?, env, "tobj")?;
-                    writeln!(code, "    let x_{id} = x_{id}.with_field({index}, {value});").unwrap();
+                    writeln!(
+                        code,
+                        "    let x_{id} = x_{id}.with_field({index}, {value});"
+                    )
+                    .unwrap();
                     env.insert(id, "obj");
                     x = Self::field(x, 3)?;
                 }

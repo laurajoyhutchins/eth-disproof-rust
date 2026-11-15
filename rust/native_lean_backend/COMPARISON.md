@@ -41,6 +41,38 @@ This includes launch/exit overhead. The GitHub runner is not isolated, and the
 sample covers only a scalar recursive function, not arrays, GMP, closures, or
 general Lean programs. Do not extrapolate the ratio to other workloads.
 
+## First compiled-pipeline measurement (PR #249)
+
+[Exact-head CI run 43660083941](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43660083941)
+passed at commit `64ac3afdd89149abc574bb219be4a22282e91405` on a
+four-CPU Ubuntu 24.04 hosted runner with clang 22.1.4. All freshly compiled
+binaries reproduced the original Lean checksum, and the generated Rust source
+was identical across three runs.
+
+| Median phase, three observations | Lean → C | Lean IR → Rust |
+| --- | ---: | ---: |
+| Compile original definition to C or `.olean` | 0.20 s | 0.21 s |
+| Compile Lean-language benchmark driver to C | 0.20 s | Not applicable |
+| Load already-compiled IR and emit Rust | Not applicable | 0.67 s |
+| Compile and link executable | 0.39 s | 0.07 s |
+| Largest observed peak RSS in codegen/preparation | ~494 MiB | ~1,575 MiB |
+| Unstripped executable byte size | 4,478,928 | 4,537,472 |
+
+The corresponding runtime medians were **29,235,601 ns (C)** and
+**6,935,221 ns (Rust)**, a **4.22×** observed difference; runtime RSS samples
+were **9,232–9,408 KiB** for C and **2,152 KiB** for Rust.
+
+The phase totals are not a controlled apples-to-apples compiler benchmark:
+one path emits C from source; the other consumes imported `.olean` and loads
+a plugin. In particular, the 0.67-second / ~1.54-GiB Rust emission process
+may be dominated by Lean import/startup costs. The follow-on **import-control**
+phase in `compare-c-rust.sh` measures exactly those imports and plugin loading
+without generating Rust, so we can quantify that confound separately.
+The C and Rust native build optimizations are also not identical:
+`leanc -O2` versus `rustc -O` (Rust optimization level 3).
+The two executable files are of similar size, but C's Lean runtime is
+dynamically linked and therefore excluded from its on-disk ELF size.
+
 ## Reproduce and extend the comparison
 
 Use Linux x86-64, the exact pinned Lean distribution with headers and
@@ -86,6 +118,7 @@ deterministic bytes across the repeated compilations.
 | Lean C | `driver-to-c` | Lean frontend plus C emission for the Lean driver |
 | Lean C | `c-compile-and-link` | `leanc -O2` for the two generated C files |
 | Lean Rust | `source-to-olean` | Lean frontend compilation of `PropertyDef` |
+| Lean Rust | `import-control` | Lean startup, exactly the same module imports and plugin load, **without** code generation; control, not additive pipeline phase |
 | Lean Rust | `in-process-ir-to-rust` | Lean startup, imported precompiled IR, FFI/backend Rust generation |
 | Lean Rust | `rust-compile-and-link` | `rustc -O` of generated implementation plus Rust driver |
 

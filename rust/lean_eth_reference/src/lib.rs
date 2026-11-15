@@ -589,3 +589,7 @@ pub mod matching_packing;
 
 /// Bounded structural packet layout from concrete vertex labels (no tensors).
 pub mod two_adic_packet_layout;
+
+/// Finite source-slot-preserving orbit-sparse packet layout, with explicit
+/// packet/port balance receipts. No source tensor or counting equivalence.
+pub mod two_adic_orbit_sparse;

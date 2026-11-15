@@ -220,7 +220,7 @@ impl __LeanValue {
     }
 
     fn source_release_children(&self) {
-        let mut release = |child: &Self| child.source_dec(1, true, false);
+        let release = |child: &Self| child.source_dec(1, true, false);
         match self.0.as_ref() {
             __LeanValueRepr::Ctor { fields, .. }
             | __LeanValueRepr::PullIn { fields, .. }

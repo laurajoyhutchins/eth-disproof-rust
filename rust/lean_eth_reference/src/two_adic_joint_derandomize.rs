@@ -23,9 +23,7 @@
 use crate::Error;
 use crate::matching_packing::{BipartiteGraph, greedy_edge_colors};
 use crate::two_adic_joint_potential::JointPotentialArithmetic;
-use crate::two_adic_orbit_sparse::{
-    OrbitSparsePacketLayout, construct_orbit_sparse_bounded,
-};
+use crate::two_adic_orbit_sparse::{OrbitSparsePacketLayout, construct_orbit_sparse_bounded};
 use crate::two_adic_packet_layout::BipartiteEdge;
 
 const MAX_EDGES: usize = 5;
@@ -124,7 +122,10 @@ impl<'a> ExactPotential<'a> {
             Ok(1)
         } else {
             add(
-                multiply(u128::try_from(self.r - 1).map_err(|_| overflow())?, self.powers_den[degree])?,
+                multiply(
+                    u128::try_from(self.r - 1).map_err(|_| overflow())?,
+                    self.powers_den[degree],
+                )?,
                 self.powers_num[degree],
             )
         }
@@ -151,8 +152,12 @@ impl<'a> ExactPotential<'a> {
         let common_matching_denominator = pow(add(d, 1)?, maximum_matching_size)?;
         let v = multiply(4, u128::try_from(delta).map_err(|_| overflow())?)?;
         let u = add(v, 1)?;
-        let powers_num = (0..=delta).map(|j| pow(u, j)).collect::<Result<Vec<_>, _>>()?;
-        let powers_den = (0..=delta).map(|j| pow(v, j)).collect::<Result<Vec<_>, _>>()?;
+        let powers_num = (0..=delta)
+            .map(|j| pow(u, j))
+            .collect::<Result<Vec<_>, _>>()?;
+        let powers_den = (0..=delta)
+            .map(|j| pow(v, j))
+            .collect::<Result<Vec<_>, _>>()?;
         let mut degrees_left = vec![0usize; graph.left_vertices];
         let mut degrees_right = vec![0usize; graph.right_vertices];
         for &(left, right) in &graph.edges {
@@ -175,7 +180,10 @@ impl<'a> ExactPotential<'a> {
             degrees_right,
             port_den_left: 1,
             port_den_right: 1,
-            number_ports: multiply(multiply(2, u128::from(a))?, u128::try_from(r).map_err(|_| overflow())?)?,
+            number_ports: multiply(
+                multiply(2, u128::from(a))?,
+                u128::try_from(r).map_err(|_| overflow())?,
+            )?,
             common_denominator: 0,
         };
         let mut left_den = 1;
@@ -189,16 +197,26 @@ impl<'a> ExactPotential<'a> {
         result.port_den_left = left_den;
         result.port_den_right = right_den;
         result.common_denominator = multiply(
-            multiply(multiply(u128::try_from(k).map_err(|_| overflow())?, d)?, common_matching_denominator)?,
+            multiply(
+                multiply(u128::try_from(k).map_err(|_| overflow())?, d)?,
+                common_matching_denominator,
+            )?,
             multiply(result.number_ports, multiply(left_den, right_den)?)?,
         )?;
         Ok(result)
     }
 
-    fn matching_numerator(&self, left: &[Option<usize>], right: &[Option<usize>]) -> Result<u128, Error> {
+    fn matching_numerator(
+        &self,
+        left: &[Option<usize>],
+        right: &[Option<usize>],
+    ) -> Result<u128, Error> {
         let mut total = 0;
         for matching in &self.matchings {
-            let pad = pow(self.d + 1, self.matchings.iter().map(Vec::len).max().unwrap_or(0) - matching.len())?;
+            let pad = pow(
+                self.d + 1,
+                self.matchings.iter().map(Vec::len).max().unwrap_or(0) - matching.len(),
+            )?;
             for row_label in 0..self.b {
                 for col_label in 0..self.b {
                     let mut term = pad;
@@ -221,11 +239,7 @@ impl<'a> ExactPotential<'a> {
         Ok(total)
     }
 
-    fn port_sum(
-        &self,
-        side_labels: &[Option<usize>],
-        degrees: &[usize],
-    ) -> Result<u128, Error> {
+    fn port_sum(&self, side_labels: &[Option<usize>], degrees: &[usize]) -> Result<u128, Error> {
         let mut result = 0;
         let r = u128::try_from(self.r).map_err(|_| overflow())?;
         let mut place = 1usize;
@@ -269,7 +283,13 @@ impl<'a> ExactPotential<'a> {
             self.common_matching_denominator,
         )?;
         add(
-            multiply(match_num, multiply(self.number_ports, multiply(self.port_den_left, self.port_den_right)?)?)?,
+            multiply(
+                match_num,
+                multiply(
+                    self.number_ports,
+                    multiply(self.port_den_left, self.port_den_right)?,
+                )?,
+            )?,
             multiply(port_combined, pair_factor)?,
         )
     }
@@ -288,7 +308,9 @@ impl<'a> ExactPotential<'a> {
             )?,
         )?;
         if matched > limit {
-            return Err(invalid("exact matching exponential potential above joint allowance"));
+            return Err(invalid(
+                "exact matching exponential potential above joint allowance",
+            ));
         }
         let port_bound = multiply(
             multiply(2, self.number_ports)?,
@@ -319,7 +341,9 @@ impl<'a> ExactPotential<'a> {
                         term = multiply(term, factor)?;
                     }
                     if multiply(term, other_den)? > port_bound {
-                        return Err(invalid("exact port exponential potential above joint allowance"));
+                        return Err(invalid(
+                            "exact port exponential potential above joint allowance",
+                        ));
                     }
                 }
             }
@@ -396,7 +420,10 @@ pub fn construct_joint_potential_labels_small(
     }
     evaluator.verify_final_partial_bounds(&left, &right)?;
     let left_labels = left.into_iter().map(|v| v.unwrap_or(0)).collect::<Vec<_>>();
-    let right_labels = right.into_iter().map(|v| v.unwrap_or(0)).collect::<Vec<_>>();
+    let right_labels = right
+        .into_iter()
+        .map(|v| v.unwrap_or(0))
+        .collect::<Vec<_>>();
     let d = usize::try_from(evaluator.d).map_err(|_| overflow())?;
     let mut pair_counts = vec![0usize; d];
     let mut real_edges = Vec::with_capacity(graph.edges.len());
@@ -411,11 +438,22 @@ pub fn construct_joint_potential_labels_small(
         u128::try_from(maximum_pair_class_load).map_err(|_| overflow())?,
     )?;
     let rhs = add(
-        multiply(3, u128::try_from(graph.edges.len()).map_err(|_| overflow())?)?,
-        multiply(multiply(multiply(2, evaluator.d)?, u128::try_from(k).map_err(|_| overflow())?)?, t)?,
+        multiply(
+            3,
+            u128::try_from(graph.edges.len()).map_err(|_| overflow())?,
+        )?,
+        multiply(
+            multiply(
+                multiply(2, evaluator.d)?,
+                u128::try_from(k).map_err(|_| overflow())?,
+            )?,
+            t,
+        )?,
     )?;
     if lhs > rhs {
-        return Err(invalid("derived joint maximum ordered-class load bound failed"));
+        return Err(invalid(
+            "derived joint maximum ordered-class load bound failed",
+        ));
     }
     let source_degree_cap = delta.max(2usize.checked_shl(a).ok_or_else(overflow)?);
     let layout = construct_orbit_sparse_bounded(
@@ -426,8 +464,20 @@ pub fn construct_joint_potential_labels_small(
         a,
         source_degree_cap,
     )?;
-    let max_row = layout.row_ports.iter().flat_map(|loads| loads.iter()).copied().max().unwrap_or(0);
-    let max_col = layout.column_ports.iter().flat_map(|loads| loads.iter()).copied().max().unwrap_or(0);
+    let max_row = layout
+        .row_ports
+        .iter()
+        .flat_map(|loads| loads.iter())
+        .copied()
+        .max()
+        .unwrap_or(0);
+    let max_col = layout
+        .column_ports
+        .iter()
+        .flat_map(|loads| loads.iter())
+        .copied()
+        .max()
+        .unwrap_or(0);
     let theorem = JointPotentialArithmetic::new(
         u128::try_from(graph.edges.len()).map_err(|_| overflow())?,
         u32::try_from(r).map_err(|_| overflow())?,
@@ -436,7 +486,9 @@ pub fn construct_joint_potential_labels_small(
         u128::try_from(source_degree_cap).map_err(|_| overflow())?,
     )?;
     if theorem.simultaneous_sufficient_arithmetic && !layout.original_packet_bounds_hold() {
-        return Err(invalid("new combined potential theorem contradicted by constructed layout"));
+        return Err(invalid(
+            "new combined potential theorem contradicted by constructed layout",
+        ));
     }
     Ok(JointPotentialCertificate {
         r,
@@ -473,7 +525,10 @@ mod tests {
         };
         for a in 1..=2 {
             let result = construct_joint_potential_labels_small(&graph, 2, a).unwrap();
-            assert_eq!(result.initial_potential_numerator, 2*result.common_positive_denominator);
+            assert_eq!(
+                result.initial_potential_numerator,
+                2 * result.common_positive_denominator
+            );
             assert!(result.final_potential_numerator <= result.initial_potential_numerator);
             assert_eq!(result.choices_evaluated, 1 + 2 * (1usize << a));
             assert_eq!(result.maximum_pair_class_load, 1);
@@ -513,7 +568,10 @@ mod tests {
             for a in 1..=2 {
                 let result = construct_joint_potential_labels_small(&graph, 2, a).unwrap();
                 assert!(result.final_potential_numerator <= result.initial_potential_numerator);
-                assert_eq!(result.initial_potential_numerator, 2*result.common_positive_denominator);
+                assert_eq!(
+                    result.initial_potential_numerator,
+                    2 * result.common_positive_denominator
+                );
                 assert!(result.pair_class_bound_verified);
                 assert!(result.all_conditional_average_identities_verified);
                 assert_eq!(

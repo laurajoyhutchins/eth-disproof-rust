@@ -229,8 +229,16 @@ LEAN
         # reuse path; do not infer RC-equivalence from the returned offsets.
         if [[ "$name" == "newspeak" && "$rustbuild" == "PASS" ]]; then
           verified="$case_dir/verified-crate"
-          mkdir -p "$verified/src" "$verified/tests"
+          mkdir -p "$verified/src" "$verified/oracles"
           cp "$target" "$verified/src/lib.rs"
+          cat >> "$verified/src/lib.rs" <<'RUST'
+
+#[cfg(test)]
+mod original_newspeak_source_oracles {
+    use super::*;
+    include!("../oracles/source_lean.rs");
+}
+RUST
           cat > "$verified/Cargo.toml" <<'TOML'
 [package]
 name = "lean_generated_newspeak"
@@ -247,7 +255,7 @@ import NativeRust
 import Newspeak.PEG
 open Lean Elab Command
 run_cmd do
-  let mut test := "use lean_generated_newspeak::*;\n#[test] fn original_newspeak_span_oracles() {\n"
+  let mut test := "#[test] fn original_newspeak_span_oracles() {\n"
   for i in [:256] do
     let a : Nat := if i % 17 == 0 then 2^1024 + i else i * 31 + 7
     let b : Nat := a + (i % 37) + 1
@@ -272,12 +280,12 @@ run_cmd do
       test := test ++ "drop(alias);\n"
   test := test ++ "}\n"
   liftIO <| IO.FS.writeFile
-    "artifacts/external-projects/newspeak/verified-crate/tests/oracle.rs" test
+    "artifacts/external-projects/newspeak/verified-crate/oracles/source_lean.rs" test
   logInfo "Generated 256 original Newspeak span source oracles"
 LEAN
           if ! (cd "$native" && timeout 45s lean "$case_dir/newspeak-oracles.lean") \
                > "$case_dir/newspeak-oracles.log" 2>&1 ||
-             [[ ! -s "$verified/tests/oracle.rs" ]]; then
+             [[ ! -s "$verified/oracles/source_lean.rs" ]]; then
             cat "$case_dir/newspeak-oracles.log" >&2
             echo "FATAL: original Newspeak oracle generation refused" >&2
             exit 1
@@ -297,7 +305,7 @@ LEAN
             --all-targets -- -D warnings >> "$case_dir/newspeak-cargo.log" 2>&1
           semantic_parity="256_original_Lean_Newspeak_span_cases_PASS"
           echo "verified_original_newspeak_span=PASS_256_cases" >> "$case_dir/identity.txt"
-          sha256sum "$verified/src/lib.rs" "$verified/tests/oracle.rs" \
+          sha256sum "$verified/src/lib.rs" "$verified/oracles/source_lean.rs" \
             "$verified/Cargo.toml" "$case_dir/newspeak-oracles.lean" \
             >> "$case_dir/identity.txt"
         fi

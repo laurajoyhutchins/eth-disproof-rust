@@ -127,6 +127,117 @@ theorem degree_weighted_symbol_port_moment
       exact single_symbol_exponential_sum target (z ^ degree v)
 
 /--
+A finite product of integer powers is the power of their exponent sum.
+This bridges the local product moments to the exact exponential load
+counts used by the source probability argument.
+-/
+theorem product_of_powers_is_power_of_sum
+    {V : Type*} [Fintype V] [DecidableEq V]
+    (z : ℚ) (exponent : V → ℕ) :
+    (∏ v : V, z ^ exponent v) =
+      z ^ (∑ v : V, exponent v) := by
+  classical
+  have h (s : Finset V) :
+      (∏ v ∈ s, z ^ exponent v) =
+        z ^ (∑ v ∈ s, exponent v) := by
+    induction s using Finset.induction_on with
+    | empty => simp
+    | @insert v s hv ih =>
+        simp [hv, ih, pow_add]
+  exact h Finset.univ
+
+/--
+The exact real-port exponential is a product of independent local
+degree factors. A vertex's degree is counted whole, never split.
+-/
+theorem port_power_equals_local_product
+    {V A : Type*} [Fintype V] [DecidableEq V]
+    [DecidableEq A] (labels : V → A)
+    (target : A) (degree : V → ℕ) (z : ℚ) :
+    z ^ (∑ v : V,
+      if labels v = target then degree v else 0) =
+      ∏ v, (if labels v = target then z ^ degree v else (1 : ℚ)) := by
+  classical
+  calc
+    _ = ∏ v : V,
+        z ^ (if labels v = target then degree v else 0) := by
+      symm
+      exact product_of_powers_is_power_of_sum z
+        (fun v => if labels v = target then degree v else 0)
+    _ = ∏ v : V,
+        (if labels v = target then z ^ degree v else (1 : ℚ)) := by
+      apply Finset.prod_congr rfl
+      intro v _
+      by_cases hv : labels v = target <;> simp [hv]
+
+/--
+Exact matching-class exponential moment in its `2^X` form,
+where `X` is the actual number of edge-local ordered classes
+equal to the chosen target.
+-/
+theorem matching_count_power_moment
+    {E A : Type*} [Fintype E] [DecidableEq E]
+    [Fintype A] [DecidableEq A] (target : A) :
+    (∑ labels ∈ Fintype.piFinset
+      (fun _ : E => (Finset.univ : Finset A)),
+      (2 : ℚ) ^ (∑ e : E,
+        if labels e = target then 1 else 0)) =
+    ((Fintype.card A : ℚ) + 1) ^ Fintype.card E := by
+  classical
+  calc
+    _ = (∑ labels ∈ Fintype.piFinset
+        (fun _ : E => (Finset.univ : Finset A)),
+        ∏ e, (if labels e = target then (2 : ℚ) else 1)) := by
+      apply Finset.sum_congr rfl
+      intro labels _
+      exact port_power_equals_local_product
+        labels target (fun _ => 1) (2 : ℚ)
+    _ = ((Fintype.card A : ℚ) + 1) ^ Fintype.card E :=
+      matching_two_exponential_moment target
+
+/--
+Exact degree-weighted real-port exponential moment in `z^C` form,
+where C is the total real edge incidence load of one symbol.
+-/
+theorem degree_weighted_port_power_moment
+    {V A : Type*} [Fintype V] [DecidableEq V]
+    [Fintype A] [DecidableEq A]
+    (degree : V → ℕ) (target : A) (z : ℚ) :
+    (∑ labels ∈ Fintype.piFinset
+      (fun _ : V => (Finset.univ : Finset A)),
+      z ^ (∑ v : V,
+        if labels v = target then degree v else 0)) =
+    ∏ v, ((Fintype.card A : ℚ) - 1 + z ^ degree v) := by
+  classical
+  calc
+    _ = (∑ labels ∈ Fintype.piFinset
+        (fun _ : V => (Finset.univ : Finset A)),
+        ∏ v, (if labels v = target then z ^ degree v else (1 : ℚ))) := by
+      apply Finset.sum_congr rfl
+      intro labels _
+      exact port_power_equals_local_product labels target degree z
+    _ = ∏ v, ((Fintype.card A : ℚ) - 1 + z ^ degree v) :=
+      degree_weighted_symbol_port_moment degree target z
+
+/--
+Divide the matching moment by the exact number D^m of equally
+weighted labelings. This is the rational mean
+`((D+1)/D)^m`, not a floating-point approximation.
+-/
+theorem normalized_matching_count_moment
+    {E A : Type*} [Fintype E] [DecidableEq E]
+    [Fintype A] [DecidableEq A] (target : A) :
+    (∑ labels ∈ Fintype.piFinset
+      (fun _ : E => (Finset.univ : Finset A)),
+      (2 : ℚ) ^ (∑ e : E,
+        if labels e = target then 1 else 0)) /
+      (Fintype.card A : ℚ) ^ Fintype.card E =
+    (((Fintype.card A : ℚ) + 1) /
+      (Fintype.card A : ℚ)) ^ Fintype.card E := by
+  rw [matching_count_power_moment]
+  rw [div_pow]
+
+/--
 Specialization to two independent endpoint labels on every matching
 edge, one of the source's `D=b²` ordered classes. This proves the
 moment without assuming any probabilistic estimate.
@@ -147,5 +258,11 @@ theorem matching_ordered_pair_moment
 #print axioms TwoAdicIndependentMoments.matching_two_exponential_moment
 #print axioms TwoAdicIndependentMoments.degree_weighted_symbol_port_moment
 #print axioms TwoAdicIndependentMoments.matching_ordered_pair_moment
+#print axioms TwoAdicIndependentMoments.product_of_powers_is_power_of_sum
+#print axioms TwoAdicIndependentMoments.port_power_equals_local_product
+#print axioms TwoAdicIndependentMoments.matching_count_power_moment
+#print axioms TwoAdicIndependentMoments.degree_weighted_port_power_moment
+#print axioms TwoAdicIndependentMoments.normalized_matching_count_moment
+
 
 end TwoAdicIndependentMoments

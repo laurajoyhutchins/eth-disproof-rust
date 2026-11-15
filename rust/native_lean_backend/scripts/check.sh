@@ -367,9 +367,9 @@ lean --load-dynlib="$NATIVE_LIB" examples/FunctionValues.lean
 # functions. The canonical runtime and appended tests also mention pap2 and
 # apply1, but cannot count as proof that source IR selected the fast path.
 program="$(sed -n '/^\/\/ Native in-process Lean IR closure/,/^#\[cfg(test)\]/p' examples/function-package/src/lib.rs)"
-if ! grep -Fq '__LeanValue::pap2(' <<< "$program" ||
+if ! grep -Fq '__LeanValue::pap3(' <<< "$program" ||
    ! grep -Eq '\.apply1(_owned)?\(' <<< "$program"; then
-  echo 'original source binary PAP or unary indirect AP did not use optimized lowering' >&2
+  echo 'original source ternary boxed PAP or unary indirect AP did not use optimized lowering' >&2
   grep -En 'pap2|apply1|pap\(|apply\(' <<< "$program" | head -n 24 >&2 || true
   exit 1
 fi

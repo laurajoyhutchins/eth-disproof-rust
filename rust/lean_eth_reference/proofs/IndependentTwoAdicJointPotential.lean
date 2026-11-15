@@ -118,8 +118,10 @@ theorem ordered_classes_partitioned_source_D (r a : ℕ) :
         (fun ordered => coordinateUnorderedSignature r a ordered = signature)).card) =
       r ^ (2 * a) := by
   rw [ordered_classes_partitioned_by_signature]
-  rw [mul_pow, ← pow_mul]
-  ring
+  calc
+    (r * r) ^ a = (r ^ a) ^ 2 := by simp [mul_pow, pow_two]
+    _ = r ^ (a * 2) := by rw [pow_mul]
+    _ = r ^ (2 * a) := by rw [Nat.mul_comm]
 
 /--
 An abstract orbit-sum lemma. It deliberately assumes the geometric

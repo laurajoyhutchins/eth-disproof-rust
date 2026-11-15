@@ -41,7 +41,7 @@ jobs:
           node --check benchmark/latex-to-lean/unified/semantic-verify.mjs
           node --check benchmark/latex-to-lean/unified/semantic.mjs
           node --check benchmark/latex-to-lean/unified/semantic-fixture.mjs
-          node --test benchmark/latex-to-lean/external/validate.test.mjs benchmark/latex-to-lean/external/assert-baseline.test.mjs
+          node --test benchmark/latex-to-lean/external/validate.test.mjs benchmark/latex-to-lean/external/assert-baseline.test.mjs benchmark/latex-to-lean/external/source-crosscheck.test.mjs
           node --check benchmark/latex-to-lean/external/summarize.mjs
           node --check benchmark/latex-to-lean/external/assert-baseline.mjs
           node --test benchmark/latex-to-lean/external/oracle/check.test.mjs

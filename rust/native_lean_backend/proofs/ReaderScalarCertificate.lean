@@ -202,3 +202,13 @@ run_cmd do
     unless certificate.emitted == certificate.expected do
       throwError "impossible certificate equality failure for {root}"
     logInfo m!"Reader exact-emission certificate passed: {root}"
+  -- The general compiler can emit UInt64.sub, but the proved target grammar
+  -- cannot certify it. A successful Reader emission must not widen the proof.
+  let refused ← try
+    let _ ← liftCoreM <| ReaderScalarCertificate.certify `ScalarFixture.subtract
+    pure false
+  catch _ =>
+    pure true
+  unless refused do
+    throwError "unproved UInt64.sub incorrectly received a scalar certificate"
+  logInfo "Reader scalar certificate correctly refused unsupported subtraction"

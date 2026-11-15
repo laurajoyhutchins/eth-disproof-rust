@@ -37,6 +37,7 @@ extern "C" {
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
     fn lr_nat_decimal(x: Obj) -> *mut c_char;
+    fn lr_param_borrow(x: Obj) -> i32;
     fn lr_free_string(x: *mut c_char);
     fn lr_string_size(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
@@ -275,6 +276,12 @@ mod erased_join_safety_tests {
     fn erased_equality_refuses() {
         assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
     }
+
+    #[test]
+    #[should_panic(expected = "isShared requires a heap-backed Lean value")]
+    fn tagged_immediate_sharedness_refuses() {
+        let _ = __LeanValue::tagged(0).is_shared();
+    }
 }
 
 "#;
@@ -460,6 +467,16 @@ impl Reader {
             t => Err(format!("unknown Lean.Name tag {t}")),
         }
     }
+    // Param.borrow is an unboxed Bool in pinned Lean IR.Param, not one of
+    // its two pointer fields. The Lean C ABI verifies its actual layout.
+    unsafe fn param_borrow(x: Obj) -> Result<bool, String> {
+        match lr_param_borrow(x) {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err("unsupported Lean IR.Param borrowed-flag layout".into()),
+        }
+    }
+
     unsafe fn var(x: Obj) -> Result<usize, String> {
         // A Lean single-field structure may be represented as its single field
         // after erasure; accept both representations, reject all other cases.
@@ -1855,11 +1872,17 @@ impl Reader {
                         return Err(format!("join point {id} shadows a visible join"));
                     }
                     let mut param_types = Vec::new();
+                    let join_shared = Self::shared_observations(Self::field(x, 2)?)?;
                     let mut value_env = env.clone();
                     let mut param_code = Vec::new();
                     for param in Self::array(Self::field(x, 1)?)? {
                         let var = Self::var(Self::field(param, 0)?)?;
                         let ty = Self::ty(Self::field(param, 1)?)?;
+                        if Self::param_borrow(param)? && join_shared.contains(&var) {
+                            return Err(format!(
+                                "borrowed join parameter x_{var} has unverified isShared ownership semantics"
+                            ));
+                        }
                         if value_env.insert(var, ty).is_some() {
                             return Err(format!(
                                 "join parameter x_{var} reused a visible variable"
@@ -1947,9 +1970,10 @@ impl Reader {
                     x = Self::field(x, 5)?;
                 }
                 6..=8 => {
-                    // Immutable Rc-backed emitted values own their references;
-                    // Lean's inc/dec/del bookkeeping is non-observable in this
-                    // subset because reset/reuse/isShared are refused.
+                    // Erasing Lean's reference bookkeeping is permitted
+                    // only inside the bounded value-semantic subset. An
+                    // ordered CFG preflight rejects any later isShared that
+                    // can observe a preceding source RC effect.
                     let id = Self::var(Self::field(x, 0)?)?;
                     let ty = env
                         .get(&id)
@@ -2058,6 +2082,15 @@ impl Reader {
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
+        let shared = Self::shared_observations(body)?;
+        // Reject physical observations only when preceding source RC
+        // effects may change them. The audit follows jumps into lexical
+        // joins rather than treating join bodies as declaration-time effects.
+        if !shared.is_empty() && Self::rc_may_precede_sharedness(body)? {
+            return Err(
+                "unverified isShared after source inc/dec/del reference bookkeeping".into(),
+            );
+        }
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
@@ -2071,6 +2104,11 @@ impl Reader {
             }
             let var = Self::var(Self::field(*param, 0)?)?;
             let ty = Self::ty(Self::field(*param, 1)?)?;
+            if Self::param_borrow(*param)? && shared.contains(&var) {
+                return Err(format!(
+                    "borrowed parameter x_{var} has unverified isShared ownership semantics"
+                ));
+            }
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}"));
             }
@@ -2095,12 +2133,133 @@ impl Reader {
 }
 
 impl Reader {
+    // Gather all physical sharing observations in one declaration body.
+    // IR variable identities are unique; unsupported shapes fail closed.
+    unsafe fn shared_observations(body: Obj) -> Result<BTreeSet<usize>, String> {
+        let mut observed = BTreeSet::new();
+        let mut pending = vec![body];
+        let mut count = 0usize;
+        while let Some(current) = pending.pop() {
+            count += 1;
+            if count > 100_000 {
+                return Err("sharedness audit exceeds 100000 IR instructions".into());
+            }
+            match Self::checked_tag(current, "FnBody")? {
+                0 => {
+                    let expr = Self::field(current, 2)?;
+                    if Self::checked_tag(expr, "Expr")? == 12 {
+                        observed.insert(Self::var(Self::field(expr, 0)?)?);
+                    }
+                    pending.push(Self::field(current, 3)?);
+                }
+                1 => {
+                    pending.push(Self::field(current, 2)?);
+                    pending.push(Self::field(current, 3)?);
+                }
+                2 => pending.push(Self::field(current, 3)?),
+                5 => pending.push(Self::field(current, 5)?),
+                6 | 7 => pending.push(Self::field(current, 2)?),
+                8 => pending.push(Self::field(current, 1)?),
+                9 => {
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let idx = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1,
+                            1 => 0,
+                            t => return Err(format!("unsupported sharedness audit Alt {t}")),
+                        };
+                        pending.push(Self::field(alt, idx)?);
+                    }
+                }
+                10 | 11 => {}
+                t => return Err(format!("unsupported sharedness audit FnBody {t}")),
+            }
+        }
+        Ok(observed)
+    }
+
+    // Follow the actual Lean FnBody control-flow graph, not its syntax tree:
+    // jdecl defines a join but does not execute its body until jmp.
+    // Carry one conservative RC-effect bit along each executable path;
+    // aliases are not assumed disjoint merely because VarIds differ.
+    // Scope snapshots exclude a join from its own body, matching the
+    // canonical emitter's nonrecursive join contract.
+    unsafe fn rc_may_precede_sharedness(body: Obj) -> Result<bool, String> {
+        #[derive(Clone)]
+        struct JoinScope {
+            id: usize,
+            body: Obj,
+            outer: Option<std::rc::Rc<JoinScope>>,
+        }
+        let mut pending = vec![(body, false, None::<std::rc::Rc<JoinScope>>, 0usize)];
+        let mut steps = 0usize;
+        while let Some((current, prior_rc, scope, depth)) = pending.pop() {
+            steps += 1;
+            if steps > 100_000 || depth > 128 {
+                return Err("source reference-count CFG audit limit exceeded".into());
+            }
+            match Self::checked_tag(current, "FnBody")? {
+                0 => {
+                    let expr = Self::field(current, 2)?;
+                    if prior_rc && Self::checked_tag(expr, "Expr")? == 12 {
+                        return Ok(true);
+                    }
+                    pending.push((Self::field(current, 3)?, prior_rc, scope, depth));
+                }
+                1 => {
+                    let id = Self::var(Self::field(current, 0)?)?;
+                    let value = Self::field(current, 2)?;
+                    let continuation = Self::field(current, 3)?;
+                    let visible = Some(std::rc::Rc::new(JoinScope {
+                        id,
+                        body: value,
+                        outer: scope,
+                    }));
+                    pending.push((continuation, prior_rc, visible, depth + 1));
+                }
+                2 => pending.push((Self::field(current, 3)?, prior_rc, scope, depth)),
+                5 => pending.push((Self::field(current, 5)?, prior_rc, scope, depth)),
+                6 | 7 => pending.push((Self::field(current, 2)?, true, scope, depth)),
+                8 => pending.push((Self::field(current, 1)?, true, scope, depth)),
+                9 => {
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let idx = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1,
+                            1 => 0,
+                            t => return Err(format!("unsupported RC CFG alternative {t}")),
+                        };
+                        pending.push((Self::field(alt, idx)?, prior_rc, scope.clone(), depth + 1));
+                    }
+                }
+                10 => {}
+                11 => {
+                    let id = Self::var(Self::field(current, 0)?)?;
+                    let mut candidate = scope.as_ref();
+                    let mut target = None;
+                    while let Some(join) = candidate {
+                        if join.id == id {
+                            target = Some((join.body, join.outer.clone()));
+                            break;
+                        }
+                        candidate = join.outer.as_ref();
+                    }
+                    let (body, outer) = target.ok_or_else(|| {
+                        format!("unsupported or recursive RC CFG jump to join {id}")
+                    })?;
+                    pending.push((body, prior_rc, outer, depth + 1));
+                }
+                t => return Err(format!("unsupported RC CFG FnBody constructor {t}")),
+            }
+        }
+        Ok(false)
+    }
+
     unsafe fn signature(decl: Obj) -> Result<Signature, String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
         let mut params = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
+            let _ = Self::param_borrow(param)?;
             params.push(Self::ty(Self::field(param, 1)?)?);
         }
         Ok(Signature {

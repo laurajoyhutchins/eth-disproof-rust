@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "description": "Externally sourced equations, evaluated separately from synthetic grammar probes. OpenStax is overlap discovery; DLMF and Nicholson are source-group holdouts.",
+  "capture_date": "2026-11-15",
+  "editorial_policy": "Math fragments are transcriptions of published displays, not claims to original publisher file bytes. LaTeX document wrapper and binders are recorded. Never tune a frontend against author_holdout and then report it as held out.",
+  "accuracy_policy": "No generated result is declared source-faithful by parsing, typing, claim equality, or theorem provability alone. Independent review of each gold oracle is required.",
+  "cases": [
+    {
+      "id": "O01",
+      "source_group": "openstax",
+      "cohort": "overlap_discovery",
+      "topic": "commutative_addition",
+      "transcribed_equation": "a+b=b+a",
+      "source_url": "https://openstax.org/books/college-algebra-2e/pages/1-1-real-numbers-algebra-essentials",
+      "source_location": "Properties of Real Numbers / commutative addition",
+      "transcription": "displayed equation unchanged, explicit real binders transcribed from prose"
+    },
+    {
+      "id": "O02",
+      "source_group": "openstax",
+      "cohort": "overlap_discovery",
+      "topic": "associative_addition",
+      "transcribed_equation": "a+\\left(b+c\\right)=\\left(a+b\\right)+c",
+      "source_url": "https://openstax.org/books/college-algebra-2e/pages/1-1-real-numbers-algebra-essentials",
+      "source_location": "Properties of Real Numbers / associative addition",
+      "transcription": "displayed equation unchanged, explicit real binders transcribed from prose"
+    },
+    {
+      "id": "O03",
+      "source_group": "openstax",
+      "cohort": "overlap_discovery",
+      "topic": "commutative_multiplication",
+      "transcribed_equation": "a\\cdot b=b\\cdot a",
+      "source_url": "https://openstax.org/books/college-algebra-2e/pages/1-1-real-numbers-algebra-essentials",
+      "source_location": "Properties of Real Numbers / commutative multiplication",
+      "transcription": "displayed equation unchanged, explicit real binders transcribed from prose"
+    },
+    {
+      "id": "O04",
+      "source_group": "openstax",
+      "cohort": "overlap_discovery",
+      "topic": "distributive_property",
+      "transcribed_equation": "a\\cdot \\left(b+c\\right)=a\\cdot b+a\\cdot c",
+      "source_url": "https://openstax.org/books/college-algebra-2e/pages/1-1-real-numbers-algebra-essentials",
+      "source_location": "Properties of Real Numbers / distributive property",
+      "transcription": "equation displayed with equivalent spacing; math spelling transcribed for LaTeX"
+    },
+    {
+      "id": "O05",
+      "source_group": "openstax",
+      "cohort": "overlap_discovery",
+      "topic": "additive_identity",
+      "transcribed_equation": "a+0=a",
+      "source_url": "https://openstax.org/books/college-algebra-2e/pages/1-1-real-numbers-algebra-essentials",
+      "source_location": "Properties of Real Numbers / identity",
+      "transcription": "displayed equation unchanged, explicit real binder from prose"
+    },
+    {
+      "id": "O06",
+      "source_group": "openstax",
+      "cohort": "overlap_discovery",
+      "topic": "multiplicative_identity",
+      "transcribed_equation": "a\\cdot 1=a",
+      "source_url": "https://openstax.org/books/college-algebra-2e/pages/1-1-real-numbers-algebra-essentials",
+      "source_location": "Properties of Real Numbers / identity",
+      "transcription": "displayed equation unchanged, explicit real binder from prose"
+    },
+    {
+      "id": "O07",
+      "source_group": "openstax",
+      "cohort": "overlap_discovery",
+      "topic": "additive_inverse",
+      "transcribed_equation": "a+(-a)=0",
+      "source_url": "https://openstax.org/books/college-algebra-2e/pages/1-1-real-numbers-algebra-essentials",
+      "source_location": "Properties of Real Numbers / inverse",
+      "transcription": "equivalent parentheses around negation; explicit real binder from prose"
+    },
+    {
+      "id": "D01",
+      "source_group": "dlmf",
+      "cohort": "author_holdout",
+      "topic": "binomial_sum",
+      "transcribed_equation": "\\binom{n}{0}+\\binom{n}{1}+\\cdots+\\binom{n}{n}=2^n",
+      "source_url": "https://dlmf.nist.gov/1.2.E3",
+      "source_location": "DLMF 1.2.3, binomial coefficients",
+      "transcription": "displayed formula transcribed to standard binom macro; domain from DLMF section"
+    },
+    {
+      "id": "D02",
+      "source_group": "dlmf",
+      "cohort": "author_holdout",
+      "topic": "pascal_recursion",
+      "transcribed_equation": "\\binom{z+1}{k}=\\binom{z}{k}+\\binom{z}{k-1}",
+      "source_url": "https://dlmf.nist.gov/1.2.E7",
+      "source_location": "DLMF 1.2.7, general binomial recursion",
+      "transcription": "formula-only transcription; domain/context external, not implied by grammar"
+    },
+    {
+      "id": "D03",
+      "source_group": "dlmf",
+      "cohort": "author_holdout",
+      "topic": "matrix_product_transpose",
+      "transcribed_equation": "(AB)^{\\mathrm{T}}=B^{\\mathrm{T}}A^{\\mathrm{T}}",
+      "source_url": "https://dlmf.nist.gov/1.2.E37",
+      "source_location": "DLMF 1.2.37, transpose of product",
+      "transcription": "matrix typography simplified from bold glyphs; dimensions from surrounding context"
+    },
+    {
+      "id": "N01",
+      "source_group": "nicholson",
+      "cohort": "author_holdout",
+      "topic": "transpose_involution",
+      "transcribed_equation": "(A^{T})^{T}=A",
+      "source_url": "https://math.libretexts.org/Bookshelves/Linear_Algebra/Linear_Algebra_with_Applications_%28Nicholson%29/02%3A_Matrix_Algebra/2.01%3A_Matrix_Addition_Scalar_Multiplication_and_Transposition",
+      "source_location": "Theorem 2, property 2",
+      "transcription": "transposed typography and prose adapted to theorem wrapper; equation unchanged"
+    },
+    {
+      "id": "N02",
+      "source_group": "nicholson",
+      "cohort": "author_holdout",
+      "topic": "transpose_additivity",
+      "transcribed_equation": "(A+B)^{T}=A^{T}+B^{T}",
+      "source_url": "https://math.libretexts.org/Bookshelves/Linear_Algebra/Linear_Algebra_with_Applications_%28Nicholson%29/02%3A_Matrix_Algebra/2.01%3A_Matrix_Addition_Scalar_Multiplication_and_Transposition",
+      "source_location": "Theorem 2, property 4",
+      "transcription": "prose adapted to theorem wrapper; equation unchanged"
+    }
+  ]
+}

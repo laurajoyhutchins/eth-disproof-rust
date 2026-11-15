@@ -39,8 +39,7 @@ impl RootPackingAudit {
     pub fn new(edges: u128, groups: u32, u: u32, degree_cap: u128) -> Result<Self, Error> {
         if edges == 0 || groups < 2 || u == 0 || degree_cap == 0 {
             return Err(Error::Invalid(
-                "root packing requires positive edges, groups >= 2, u >= 1, degree cap >= 1"
-                    .into(),
+                "root packing requires positive edges, groups >= 2, u >= 1, degree cap >= 1".into(),
             ));
         }
         let lambda = u128::BITS - (edges - 1).leading_zeros();
@@ -77,9 +76,11 @@ impl RootPackingAudit {
     pub fn packet_inequalities_hold(&self) -> bool {
         self.required_edges_collision
             .is_some_and(|required| required <= self.edges)
-            && self.required_edges_slots
+            && self
+                .required_edges_slots
                 .is_some_and(|required| required <= self.edges)
-            && self.required_new_degree
+            && self
+                .required_new_degree
                 .is_some_and(|ports| ports <= self.degree_cap)
     }
 
@@ -149,9 +150,11 @@ mod tests {
         assert!(!audit.source_asymptotic_u_bound_holds());
         assert!(audit.published_degree_envelope_obstructed());
         assert!(!audit.fully_source_admitted());
-        assert!(!RootPackingAudit::new((1 << 52) - 1, 64, 1, 8)
-            .unwrap()
-            .packet_inequalities_hold());
+        assert!(
+            !RootPackingAudit::new((1 << 52) - 1, 64, 1, 8)
+                .unwrap()
+                .packet_inequalities_hold()
+        );
     }
 
     #[test]

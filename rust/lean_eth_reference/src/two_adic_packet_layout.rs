@@ -275,8 +275,16 @@ mod tests {
             edges: edges.iter().map(|e| (e.left, e.right)).collect(),
         };
         let labels = construct_matching_labels(&graph, 2).unwrap();
-        let left = labels.left_labels.iter().map(|&x| x as usize).collect::<Vec<_>>();
-        let right = labels.right_labels.iter().map(|&x| x as usize).collect::<Vec<_>>();
+        let left = labels
+            .left_labels
+            .iter()
+            .map(|&x| x as usize)
+            .collect::<Vec<_>>();
+        let right = labels
+            .right_labels
+            .iter()
+            .map(|&x| x as usize)
+            .collect::<Vec<_>>();
         let layout = pack_bounded(&edges, &left, &right, 2, 1, 4).unwrap();
         assert_eq!(layout.slots_per_packet, 2);
         assert!(layout.packets.len() <= 3 * edges.len() / 2);

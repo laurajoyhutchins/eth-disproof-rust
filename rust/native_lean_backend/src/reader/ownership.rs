@@ -11,6 +11,9 @@ pub(super) struct OwnershipSummary {
     may_effect: BTreeSet<String>,
     pub(super) may_observe: BTreeSet<String>,
     known_functions: BTreeSet<String>,
+    // Scalar-returning observers expose their physical choice directly.
+    // Object-returning compiler COW paths remain value-semantic only.
+    exposed_observers: BTreeSet<String>,
 }
 
 #[derive(Default)]
@@ -134,6 +137,9 @@ impl Reader {
             }
             if effects.observe {
                 summary.may_observe.insert(name.clone());
+                if !is_value_type(Self::ty(Self::field(*decl, 2)?)?) {
+                    summary.exposed_observers.insert(name.clone());
+                }
             }
             locals.insert(name.clone(), effects);
         }
@@ -146,6 +152,9 @@ impl Reader {
                 }
                 if effects.direct_calls.iter().any(|callee| summary.may_observe.contains(callee)) {
                     changed |= summary.may_observe.insert(name.clone());
+                }
+                if effects.direct_calls.iter().any(|callee| summary.exposed_observers.contains(callee)) {
+                    changed |= summary.exposed_observers.insert(name.clone());
                 }
             }
             if !changed {
@@ -200,7 +209,7 @@ impl Reader {
                         6 => {
                             let name = Self::name(Self::field(expr, 0)?, 0)?;
                             if let Some(s) = summary {
-                                if prior_rc && s.may_observe.contains(&name) {
+                                if prior_rc && s.exposed_observers.contains(&name) {
                                     return Ok(true);
                                 }
                                 // If a primitive call is absent from the

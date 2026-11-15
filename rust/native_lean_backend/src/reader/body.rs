@@ -70,11 +70,17 @@ impl Reader {
                         return Err(format!("join point {id} shadows a visible join"));
                     }
                     let mut param_types = Vec::new();
+                    let join_shared = Self::shared_observations(Self::field(x, 2)?)?;
                     let mut value_env = env.clone();
                     let mut param_code = Vec::new();
                     for param in Self::array(Self::field(x, 1)?)? {
                         let var = Self::var(Self::field(param, 0)?)?;
                         let ty = Self::ty(Self::field(param, 1)?)?;
+                        if Self::param_borrow(param)? && join_shared.contains(&var) {
+                            return Err(format!(
+                                "borrowed join parameter x_{var} has unverified isShared ownership semantics"
+                            ));
+                        }
                         if value_env.insert(var, ty).is_some() {
                             return Err(format!(
                                 "join parameter x_{var} reused a visible variable"

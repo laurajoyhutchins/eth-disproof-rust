@@ -43,6 +43,22 @@ These are proposed statements, not yet kernel-checked; precise namespace, coerci
 
 The included Rust test `tests/anthropic_reference.rs` implements **only Level A** using the definitions in Anthropic `MainResults.lean`. It is intentionally independent of the crate's own `Cnf::eval` and `EnumeratingLeaf` when it produces expected counts. This finite oracle must never be called from the production counter.
 
+## Where to compare the actual proofs
+
+Anthropic's [proof-module map](https://github.com/anthropics/formal-math/blob/16a5ce41304fcdaea4e0be7c132e1c361dc26da5/eth/proof/README.md) identifies specific formal artifacts. These are **comparison candidates**, not established translations of our lemmas.
+
+| Independent proof area | Our corresponding question | Next concrete check |
+| --- | --- | --- |
+| `sparsification/SparsificationLemma` and `threesat/Enumerate` | Does OpenAI's disjoint sparsification conserve exact assignments and respect declared variables? | Prove the same partition-of-assignments equality with an explicit translation of branches; track whether Anthropic's intermediate lemma proves decision or exact count |
+| `networks/Groundwork`, `networks/Value`, `networks/Eight` | Are the network value, local replacement and group-routing equalities correct on finite concrete tensors? | Express each side as a finite sum on a common labelled graph; compare exact values and then prove the translation's hypotheses |
+| `rates/GeneralPieces`, `rates/CountedRecursion`, `rates/ExplicitCost` | Is there a simpler independently stated recursion and total-operation bound that exposes our large-parameter bottlenecks? | Separate shared *mathematical* invariants from distinct packet/piece parameter schedules; record every coefficient bit cost and recursive call |
+| `machines/ToTuring` and `machines/StepMachines` | How do finite-operation counts become primitive machine-step bounds? | Compare machine models and simulation hypotheses, not raw step counts or wall time |
+| `variables/VariableBound` and `consequences/CountKSat` | Are the claimed counting bounds uniform over the input variables and clause width? | Check quantifier order and the no-duplicate/all-occur hypotheses independently of the central contraction |
+
+Anthropic's proof map explicitly says some intermediate `threesat/` statements are **decision** forms even where the paper prints a **counting** theorem. Using such a statement as an exact-count oracle without checking its stronger companion would be a semantic error.
+
+For each proposed shared lemma, the acceptance record needs (i) both source declarations and pins; (ii) a total conversion of the objects; (iii) hypotheses and precision assumptions; (iv) a Lean equivalence theorem or two genuinely independent calculations; (v) a counterexample when an essential hypothesis is removed. A resemblance between the two papers is not evidence of source equivalence.
+
 ## Required adversarial corpus
 
 1. Empty clause (unsatisfiable), empty formula (all assignments), unused declared variables (factor of two per unused variable).

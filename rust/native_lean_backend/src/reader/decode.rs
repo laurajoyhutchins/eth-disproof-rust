@@ -1,4 +1,4 @@
-//! Borrowed Lean IR decoding with source-checked constructors and bounded reads.
+//! Borrows Lean IR objects under the pinned 4.34.1 ABI. No alternate IR or runtime.
 use super::*;
 
 impl Reader {
@@ -101,6 +101,16 @@ impl Reader {
             t => Err(format!("unknown Lean.Name tag {t}")),
         }
     }
+    // Param.borrow is an unboxed Bool in pinned Lean IR.Param, not one of
+    // its two pointer fields. The Lean C ABI verifies its actual layout.
+    pub(super) unsafe fn param_borrow(x: Obj) -> Result<bool, String> {
+        match lr_param_borrow(x) {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err("unsupported Lean IR.Param borrowed-flag layout".into()),
+        }
+    }
+
     pub(super) unsafe fn var(x: Obj) -> Result<usize, String> {
         // A Lean single-field structure may be represented as its single field
         // after erasure; accept both representations, reject all other cases.
@@ -182,4 +192,5 @@ impl Reader {
             t => Err(format!("literal constructor {t} unsupported")),
         }
     }
+
 }

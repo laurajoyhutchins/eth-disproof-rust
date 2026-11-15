@@ -1,4 +1,4 @@
-//! Family-checked cases, pattern alternatives and constructor layouts.
+//! Source-checked constructor case families and alternative lowering.
 use super::*;
 
 impl Reader {
@@ -493,4 +493,5 @@ impl Reader {
         writeln!(code, "    }}").unwrap();
         Ok(())
     }
+
 }

@@ -1,4 +1,4 @@
-//! Scoped IR function-body, join and control-flow lowering.
+//! Source-preserving FnBody lowering and lexical join scopes.
 use super::*;
 
 impl Reader {
@@ -25,15 +25,29 @@ impl Reader {
                     let name = Self::var(Self::field(x, 0)?)?;
                     let ty = Self::ty(Self::field(x, 1)?)?;
                     let expr = Self::field(x, 2)?;
-                    // A lexical join or nested control-flow arm may capture
-                    // this variable. Only top-level straight-line tails can
-                    // transfer ownership to the Rc array fast path.
-                    let consumed_array = if depth == 0 && ctx.joins.is_empty() {
-                        Self::consumable_array(expr, Self::field(x, 3)?)?
+                    // Only top-level array candidates can transfer ownership.
+                    // Their full tails are scanned for references through
+                    // branch and join bodies, conservatively preserving aliases.
+                    let straight_line = depth == 0 && ctx.joins.is_empty();
+                    let tail = Self::field(x, 3)?;
+                    let consumed_array = if straight_line {
+                        Self::consumable_array(expr, tail)?
                     } else {
                         None
                     };
-                    let value = Self::expr(expr, ty, env, ctx.functions, consumed_array)?;
+                    let consumed_calls = if straight_line {
+                        Self::consumable_call(expr, tail, ctx.functions)?
+                    } else {
+                        BTreeSet::new()
+                    };
+                    let value = Self::expr(
+                        expr,
+                        ty,
+                        env,
+                        ctx.functions,
+                        consumed_array,
+                        &consumed_calls,
+                    )?;
                     if env.insert(name, ty).is_some() {
                         return Err(format!("variable x_{name} defined more than once"));
                     }
@@ -50,11 +64,17 @@ impl Reader {
                         return Err(format!("join point {id} shadows a visible join"));
                     }
                     let mut param_types = Vec::new();
+                    let join_shared = Self::shared_observations(Self::field(x, 2)?)?;
                     let mut value_env = env.clone();
                     let mut param_code = Vec::new();
                     for param in Self::array(Self::field(x, 1)?)? {
                         let var = Self::var(Self::field(param, 0)?)?;
                         let ty = Self::ty(Self::field(param, 1)?)?;
+                        if Self::param_borrow(param)? && join_shared.contains(&var) {
+                            return Err(format!(
+                                "borrowed join parameter x_{var} has unverified isShared ownership semantics"
+                            ));
+                        }
                         if value_env.insert(var, ty).is_some() {
                             return Err(format!(
                                 "join parameter x_{var} reused a visible variable"
@@ -185,6 +205,18 @@ impl Reader {
                             // physically absent. Any later read must fail,
                             // never silently materialize an arbitrary value.
                             lowered.push("__LeanValue::erased()".into());
+                        } else if *ty == "obj" && Self::checked_tag(arg, "Arg")? == 0 {
+                            // Only a typed join argument may refine tobj
+                            // (tagged-or-heap) to a heap-only constructor.
+                            // All other IR uses keep the strict object type
+                            // contract; the runtime checks the actual value.
+                            let var = Self::var(Self::field(arg, 0)?)?;
+                            if env.get(&var) == Some(&"tobj") {
+                                lowered
+                                    .push(format!("x_{var}.clone().require_constructor_object()"));
+                            } else {
+                                lowered.push(Self::arg(arg, env, ty)?);
+                            }
                         } else {
                             lowered.push(Self::arg(arg, env, ty)?);
                         }

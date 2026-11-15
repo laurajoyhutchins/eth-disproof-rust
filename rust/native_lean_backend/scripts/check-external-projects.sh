@@ -224,6 +224,91 @@ LEAN
             "$verified/Cargo.toml" "$case_dir/armada-oracles.lean" \
             >> "$case_dir/identity.txt"
         fi
+        # A third independent source project: the original Newspeak tree
+        # projection. Test aliased and non-aliased inputs around its isShared
+        # reuse path; do not infer RC-equivalence or branch coverage from returned offsets.
+        if [[ "$name" == "newspeak" && "$rustbuild" == "PASS" ]]; then
+          verified="$case_dir/verified-crate"
+          mkdir -p "$verified/src" "$verified/oracles"
+          cp "$target" "$verified/src/lib.rs"
+          cat >> "$verified/src/lib.rs" <<'RUST'
+
+#[cfg(test)]
+mod original_newspeak_source_oracles {
+    use super::*;
+    include!("../oracles/source_lean.rs");
+}
+RUST
+          cat > "$verified/Cargo.toml" <<'TOML'
+[package]
+name = "lean_generated_newspeak"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[workspace]
+TOML
+          cat > "$case_dir/newspeak-oracles.lean" <<'LEAN'
+import NativeRust
+import Newspeak.PEG
+open Lean Elab Command
+run_cmd do
+  let mut test := "#[test] fn original_newspeak_span_oracles() {\n"
+  for i in [:256] do
+    let a : Nat := if i % 17 == 0 then 2^1024 + i else i * 31 + 7
+    let b : Nat := a + (i % 37) + 1
+    let tree : Newspeak.ConcreteTree :=
+      if i % 2 == 0 then .leaf a b
+      else .node "capture" a b []
+    let expected := Newspeak.ConcreteTree.span tree
+    let ra := s!"__LeanValue::nat_from_decimal(\"{a}\")"
+    let rb := s!"__LeanValue::nat_from_decimal(\"{b}\")"
+    let rust :=
+      if i % 2 == 0 then
+        s!"__LeanValue::ctor(0, \"Newspeak.ConcreteTree.leaf\", vec![{ra}, {rb}])"
+      else
+        s!"__LeanValue::ctor(1, \"Newspeak.ConcreteTree.node\", vec![__LeanValue::string(\"capture\"), {ra}, {rb}, __LeanValue::list(vec![])])"
+    test := test ++ s!"let input = {rust};\n"
+    if i % 4 == 0 then
+      test := test ++ "let alias = input.clone();\n"
+    test := test ++ "let result = external_root(input);\n"
+    test := test ++ s!"assert_eq!(result.field(0).nat_to_decimal(), \"{expected.fst}\", \"Newspeak case {i} start\");\n"
+    test := test ++ s!"assert_eq!(result.field(1).nat_to_decimal(), \"{expected.snd}\", \"Newspeak case {i} end\");\n"
+    if i % 4 == 0 then
+      test := test ++ "drop(alias);\n"
+  test := test ++ "}\n"
+  liftIO <| IO.FS.writeFile
+    "artifacts/external-projects/newspeak/verified-crate/oracles/source_lean.rs" test
+  logInfo "Generated 256 original Newspeak span source oracles"
+LEAN
+          if ! (cd "$native" && timeout 45s lean "$case_dir/newspeak-oracles.lean") \
+               > "$case_dir/newspeak-oracles.log" 2>&1 ||
+             [[ ! -s "$verified/oracles/source_lean.rs" ]]; then
+            cat "$case_dir/newspeak-oracles.log" >&2
+            echo "FATAL: original Newspeak oracle generation refused" >&2
+            exit 1
+          fi
+          if ! env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+             cargo test --offline --manifest-path "$verified/Cargo.toml" \
+             > "$case_dir/newspeak-cargo.log" 2>&1; then
+            cat "$case_dir/newspeak-cargo.log" >&2
+            echo "FATAL: original Newspeak emitted Rust disagreed with Lean" >&2
+            exit 1
+          fi
+          env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+            cargo test --release --offline --manifest-path "$verified/Cargo.toml" \
+            >> "$case_dir/newspeak-cargo.log" 2>&1
+          env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+            cargo clippy --offline --manifest-path "$verified/Cargo.toml" \
+            --all-targets -- -D warnings >> "$case_dir/newspeak-cargo.log" 2>&1
+          semantic_parity="256_original_Lean_Newspeak_span_cases_PASS"
+          echo "verified_original_newspeak_span=PASS_256_cases" >> "$case_dir/identity.txt"
+          sha256sum "$verified/src/lib.rs" "$verified/oracles/source_lean.rs" \
+            "$verified/Cargo.toml" "$case_dir/newspeak-oracles.lean" \
+            >> "$case_dir/identity.txt"
+        fi
         # Exercise the unchanged original Keboola pullDecide root, not a
         # rewritten decision procedure. Input values use the verified original
         # PullIn.mk layout, while all 256 outputs are evaluated by Lean itself.
@@ -536,9 +621,56 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
     "$positive/src/lib.rs" "$positive/tests/lean-oracle.rs" "$positive/Cargo.toml"
 } > "$out/keboola/positive-receipt.txt"
 
+# Exercise the public *one-command* interface on the same unchanged pinned
+# external Keboola project. This must generate identical source to the native
+# in-process package invocation above, then run the original Lean-derived
+# truth table in a Cargo process with no Lean environment.
+cli_package="$out/keboola/cli-package"
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  bash scripts/compile-project.sh "$scratch/keboola/formal/sync/lean" \
+  SyncModel.Pull 'SyncModel.sweepRemovesDir,SyncModel.dirAfterPull' \
+  "$scratch/keboola/formal/sync/lean/SyncModel/Pull.lean" \
+  "$cli_package" > "$out/keboola/cli-output.log"
+test -s "$cli_package/receipt.txt"
+grep -Fqx 'status=GENERATED_COMPILED_SEMANTICS_NOT_VERIFIED' "$cli_package/receipt.txt"
+grep -Fqx 'semantic_verification=NOT_PERFORMED' "$cli_package/receipt.txt"
+original_source_hash="$(sha256sum "$scratch/keboola/formal/sync/lean/SyncModel/Pull.lean" | cut -d' ' -f1)"
+grep -Fqx "source_sha256=$original_source_hash" "$cli_package/receipt.txt"
+cmp "$positive/src/lib.rs" "$cli_package/src/lib.rs"
+mkdir -p "$cli_package/tests"
+cp -- "$positive/tests/lean-oracle.rs" "$cli_package/tests/lean-oracle.rs"
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path "$cli_package/Cargo.toml" \
+  > "$out/keboola/cli-cargo.log" 2>&1
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --release --offline --manifest-path "$cli_package/Cargo.toml" \
+  >> "$out/keboola/cli-cargo.log" 2>&1
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo clippy --offline --manifest-path "$cli_package/Cargo.toml" \
+  --all-targets -- -D warnings >> "$out/keboola/cli-cargo.log" 2>&1
+{
+  echo 'original_project=keboola/cli'
+  echo 'original_roots=SyncModel.sweepRemovesDir,SyncModel.dirAfterPull'
+  echo 'native_compiler_path=same_process_Lean_IR_FFI'
+  echo 'external_CLI_invocations=1'
+  echo 'external_CLI_LEAN_PREFIX_LEAN_PATH_LD_LIBRARY_PATH=UNSET'
+  echo 'original_source_unchanged=true'
+  echo 'native_direct_vs_project_CLI_source=IDENTICAL'
+  echo 'original_Lean_oracle_comparisons=12_PASS'
+  echo 'cargo_debug_release_clippy=PASS'
+  echo 'general_G1_acceptance=NOT_ESTABLISHED'
+  sha256sum "$cli_package/receipt.txt" "$cli_package/src/lib.rs" \
+    "$cli_package/tests/lean-oracle.rs"
+} > "$out/keboola/cli-acceptance.txt"
+
 if ! grep -Fqx 'generated_rust_semantic_parity=256_original_Lean_Keboola_pullDecide_cases_PASS' \
     "$out/keboola/identity.txt"; then
   echo 'FATAL: full original Keboola pullDecide parity receipt missing or incomplete' >&2
+  exit 1
+fi
+if ! grep -Fqx 'generated_rust_semantic_parity=256_original_Lean_Newspeak_span_cases_PASS' \
+    "$out/newspeak/identity.txt"; then
+  echo 'FATAL: original Newspeak span parity or checked heap join is incomplete' >&2
   exit 1
 fi
 {
@@ -548,11 +680,14 @@ fi
   echo "all_upstream_sources_unmodified=true"
   echo "external_armada_original_root=128_source_oracles_PASS"
   echo "external_keboola_two_original_helpers=12_source_oracles_PASS"
+  echo "keboola_unmodified_project_CLI=multi_root_12_source_oracles_PASS"
   echo "external_keboola_original_root=256_source_oracles_PASS"
+  echo "external_newspeak_original_root=256_source_oracles_PASS"
+  echo "independent_external_source_roots_with_parity=3"
   echo "substantial_external_project_roots_verified=2_of_3"
-  echo "semantic_verification_of_selected_external_roots=armada_pass_keboola_pass_newspeak_refused"
+  echo "semantic_verification_of_selected_external_roots=armada_pass_keboola_pass_newspeak_span_pass"
   echo "toolchain=$(lean --version)"
-  sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt"
+  sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt" "$out/keboola/cli-acceptance.txt"
 } > "$out/receipt.txt"
 cat "$manifest"
 cat "$out/receipt.txt"

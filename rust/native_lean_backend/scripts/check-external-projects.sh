@@ -626,7 +626,8 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
 # in-process package invocation above, then run the original Lean-derived
 # truth table in a Cargo process with no Lean environment.
 cli_package="$out/keboola/cli-package"
-bash scripts/compile-project.sh "$scratch/keboola/formal/sync/lean" \
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  bash scripts/compile-project.sh "$scratch/keboola/formal/sync/lean" \
   SyncModel.Pull 'SyncModel.sweepRemovesDir,SyncModel.dirAfterPull' \
   "$scratch/keboola/formal/sync/lean/SyncModel/Pull.lean" \
   "$cli_package" > "$out/keboola/cli-output.log"
@@ -651,6 +652,8 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
   echo 'original_project=keboola/cli'
   echo 'original_roots=SyncModel.sweepRemovesDir,SyncModel.dirAfterPull'
   echo 'native_compiler_path=same_process_Lean_IR_FFI'
+  echo 'external_CLI_invocations=1'
+  echo 'external_CLI_LEAN_PREFIX_LEAN_PATH_LD_LIBRARY_PATH=UNSET'
   echo 'original_source_unchanged=true'
   echo 'native_direct_vs_project_CLI_source=IDENTICAL'
   echo 'original_Lean_oracle_comparisons=12_PASS'

@@ -59,6 +59,22 @@ Anthropic's proof map explicitly says some intermediate `threesat/` statements a
 
 For each proposed shared lemma, the acceptance record needs (i) both source declarations and pins; (ii) a total conversion of the objects; (iii) hypotheses and precision assumptions; (iv) a Lean equivalence theorem or two genuinely independent calculations; (v) a counterexample when an essential hypothesis is removed. A resemblance between the two papers is not evidence of source equivalence.
 
+## Verified source-level count bridge and local algebra check
+
+The Lean file [`IndependentCnfBridge.lean`](../rust/lean_eth_reference/proofs/IndependentCnfBridge.lean) imports the original pinned OpenAI `SAT.lean` and Anthropic `MainResults.lean` without changing their bytes and proves:
+
+```text
+IndependentETH.satisfiable_iff :
+  MainResults.Satisfiable φ ↔ OAI...SAT.Satisfiable (toCNF φ)
+
+IndependentETH.numSat_eq_count :
+  MainResults.numSat φ = OAI...SAT.count (toCNF φ)
+```
+
+The full theorem names are in the Lean file. This is **all finite formulas**, not merely Anthropic's narrower machine-theorem input domain. The exact-head Lean checkpoint [run #43727057523](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43727057523) passed with axioms `propext`, `Classical.choice`, `Quot.sound` for each theorem.
+
+The separate [`IndependentSwapIdentity.lean`](../rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean) formalizes a single two-bit integer matrix identity: in basis (00,01,10,11), `SWAP = I - vvᵀ` for `v=(0,1,-1,0)`. This is the local `SWAP = I - 2·singlet` formula described in Anthropic's pinned ETH exposition. The independent [Rust tensor test](../rust/lean_eth_reference/tests/independent_swap_identity.rs) checks exact mode sums and contracted integer values for 1–3 two-bit crossings after grouping by the number of singlet factors. These are **local** tests and do not prove OpenAI's packet routing, preservation of incidence support, polynomial contraction cost or either source's full recursion theorem.
+
 ## Required adversarial corpus
 
 1. Empty clause (unsatisfiable), empty formula (all assignments), unused declared variables (factor of two per unused variable).

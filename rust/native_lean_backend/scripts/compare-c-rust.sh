@@ -59,6 +59,10 @@ run_rust() {
   local trial="$1"
   measure "$trial" lean-rust source-to-olean \
     lean -o examples/PropertyDef.olean examples/PropertyDef.lean
+  # Same imports and plugin load, but no Rust emission. Diagnostic baseline,
+  # not an additional phase of the production pipeline.
+  measure "$trial" lean-rust import-control \
+    lean --load-dynlib="$lib" examples/PropertyControl.lean
   measure "$trial" lean-rust in-process-ir-to-rust \
     lean --load-dynlib="$lib" examples/PropertyCodegen.lean
   test -s examples/generated_property.rs

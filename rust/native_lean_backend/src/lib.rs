@@ -290,6 +290,92 @@ mod erased_join_safety_tests {
 
 "#;
 
+// These tests intentionally distinguish compiler-internal Rust Rc aliases
+// from source-program RC instructions. They do not claim equivalence for
+// every Lean heap representation or indirect control-flow path.
+const SOURCE_RC_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod source_reference_count_tests {
+    use super::__LeanValue;
+
+    #[test]
+    fn compiler_clones_do_not_change_source_exclusivity() {
+        let x = __LeanValue::ctor(1, "Cell", vec![__LeanValue::tagged(2)]);
+        let transient = x.clone();
+        assert_eq!(x.is_shared(), 0);
+        x.source_inc(1, true, false);
+        assert_eq!(x.is_shared(), 1);
+        assert_eq!(transient.is_shared(), 1);
+        x.source_dec(1, true, false);
+        assert_eq!(x.is_shared(), 0);
+    }
+
+    #[test]
+    fn source_increment_delta_and_persistence() {
+        let x = __LeanValue::array(Vec::new());
+        x.source_inc(3, true, false);
+        assert_eq!(x.1.get(), 4);
+        x.source_inc(42, false, true);
+        x.source_dec(1, true, true);
+        assert_eq!(x.1.get(), 4);
+        for _ in 0..3 { x.source_dec(1, true, false); }
+        assert_eq!(x.is_shared(), 0);
+    }
+
+    #[test]
+    fn source_decrement_releases_owned_child_references() {
+        let child = __LeanValue::string("retained");
+        child.source_inc(1, true, false);
+        let parent = __LeanValue::ctor(1, "Parent", vec![child.clone()]);
+        parent.source_dec(1, true, false);
+        assert_eq!(parent.1.get(), 0);
+        assert_eq!(child.1.get(), 1);
+        assert_eq!(child.is_shared(), 0);
+    }
+
+    #[test]
+    fn source_del_releases_only_shell_not_transferred_fields() {
+        let child = __LeanValue::string("moved");
+        let parent = __LeanValue::ctor(1, "Parent", vec![child.clone()]);
+        parent.source_del();
+        assert_eq!(parent.1.get(), 0);
+        assert_eq!(child.1.get(), 1);
+        assert_eq!(child.is_shared(), 0);
+    }
+
+    #[test]
+    fn checked_immediate_refcount_events_are_noops() {
+        let x = __LeanValue::tagged(17);
+        x.source_inc(3, true, false);
+        x.source_dec(1, true, false);
+        assert_eq!(x.tagged_nat(), 17);
+    }
+
+    #[test]
+    #[should_panic(expected = "source reference-count overflow")]
+    fn source_increment_overflow_refuses() {
+        let x = __LeanValue::array(Vec::new());
+        x.source_inc(usize::MAX, true, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "source inc on released object")]
+    fn source_use_after_release_refuses() {
+        let x = __LeanValue::string("gone");
+        x.source_dec(1, true, false);
+        x.source_inc(1, true, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "source del requires unique object")]
+    fn source_del_shared_refuses() {
+        let x = __LeanValue::array(Vec::new());
+        x.source_inc(1, true, false);
+        x.source_del();
+    }
+}
+"#;
+
 fn is_value_type(ty: &str) -> bool {
     matches!(ty, "obj" | "tobj" | "tagged")
 }
@@ -360,7 +446,7 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{closure_tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}")
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{closure_tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}\n{SOURCE_RC_TEST_SOURCE}")
     } else {
         source
     };

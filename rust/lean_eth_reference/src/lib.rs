@@ -578,3 +578,6 @@ pub mod two_adic_packing;
 /// Bounded, exact research reference for deterministic matching-potential labels.
 /// Not a production packet constructor or recursive counter.
 pub mod two_adic_matching_labels;
+
+/// Bounded structural packet layout from concrete vertex labels (no tensors).
+pub mod two_adic_packet_layout;

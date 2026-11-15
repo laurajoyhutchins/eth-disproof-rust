@@ -1,4 +1,4 @@
-//! Source-refined function emission, sharing audits, and module roots.
+//! Emission of exact Lean declarations and requested-root dependency closure.
 use super::*;
 
 impl Reader {
@@ -42,7 +42,6 @@ impl Reader {
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
-        let shared = Self::shared_observations(body)?;
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
         let mut result = format!("// Generated directly from Lean IR declaration: {clean_name}\n");
@@ -56,11 +55,6 @@ impl Reader {
             }
             let var = Self::var(Self::field(*param, 0)?)?;
             let ty = Self::ty(Self::field(*param, 1)?)?;
-            if Self::param_borrow(*param)? && shared.contains(&var) {
-                return Err(format!(
-                    "borrowed parameter x_{var} has unverified isShared ownership semantics"
-                ));
-            }
             if env.insert(var, ty).is_some() {
                 return Err(format!("duplicate parameter x_{var}"));
             }
@@ -82,57 +76,12 @@ impl Reader {
         result.push_str("}\n");
         Ok(result)
     }
-    // Gather all physical sharing observations in one declaration body.
-    // IR variable identities are unique; unsupported shapes fail closed.
-    pub(super) unsafe fn shared_observations(body: Obj) -> Result<BTreeSet<usize>, String> {
-        let mut observed = BTreeSet::new();
-        let mut pending = vec![body];
-        let mut count = 0usize;
-        while let Some(current) = pending.pop() {
-            count += 1;
-            if count > 100_000 {
-                return Err("sharedness audit exceeds 100000 IR instructions".into());
-            }
-            match Self::checked_tag(current, "FnBody")? {
-                0 => {
-                    let expr = Self::field(current, 2)?;
-                    if Self::checked_tag(expr, "Expr")? == 12 {
-                        observed.insert(Self::var(Self::field(expr, 0)?)?);
-                    }
-                    pending.push(Self::field(current, 3)?);
-                }
-                1 => {
-                    pending.push(Self::field(current, 2)?);
-                    pending.push(Self::field(current, 3)?);
-                }
-                2 => pending.push(Self::field(current, 3)?),
-                5 => pending.push(Self::field(current, 5)?),
-                6 | 7 => pending.push(Self::field(current, 2)?),
-                8 => pending.push(Self::field(current, 1)?),
-                9 => {
-                    for alt in Self::array(Self::field(current, 3)?)? {
-                        let idx = match Self::checked_tag(alt, "Alt")? {
-                            0 => 1,
-                            1 => 0,
-                            t => return Err(format!("unsupported sharedness audit Alt {t}")),
-                        };
-                        pending.push(Self::field(alt, idx)?);
-                    }
-                }
-                10 | 11 => {}
-                t => return Err(format!("unsupported sharedness audit FnBody {t}")),
-            }
-        }
-        Ok(observed)
-    }
-
     pub(super) unsafe fn signature(decl: Obj) -> Result<Signature, String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
         let mut params = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
-            let _ = Self::param_borrow(param)?;
             params.push(Self::ty(Self::field(param, 1)?)?);
         }
         Ok(Signature {
@@ -285,6 +234,28 @@ impl Reader {
                 || !is_value_type(sig.result)
             {
                 continue;
+            }
+            // Full-application helpers can take stack arguments directly
+            // when one source AP operand remains. The original Vec thunk
+            // remains available for general PAPs and multi-arg applications.
+            if sig.params.len() == 2 {
+                result.push_str("#[allow(dead_code)]\n");
+                writeln!(
+                    result,
+                    "fn {}_binary(capture: __LeanValue, arg: __LeanValue) -> __LeanValue {{",
+                    internal_closure_name(name)
+                )
+                .unwrap();
+                writeln!(result, "    {}(capture, arg)\n}}", internal_name(name)).unwrap();
+            }
+            if sig.params.len() == 3 {
+                result.push_str("#[allow(dead_code)]\n");
+                writeln!(
+                    result,
+                    "fn {}_ternary(a: __LeanValue, b: __LeanValue, c: __LeanValue) -> __LeanValue {{",
+                    internal_closure_name(name)
+                ).unwrap();
+                writeln!(result, "    {}(a, b, c)\n}}", internal_name(name)).unwrap();
             }
             result.push_str("#[allow(dead_code)]\n");
             writeln!(

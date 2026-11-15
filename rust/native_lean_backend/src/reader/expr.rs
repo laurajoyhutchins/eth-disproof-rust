@@ -1,4 +1,4 @@
-//! Expression lowering and conservative ownership/last-use analysis.
+//! Primitive lowering, typed expressions and conservative ownership reuse.
 use super::*;
 
 impl Reader {
@@ -187,6 +187,22 @@ impl Reader {
         Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
     }
 
+    // An indirect AP can consume its closure only at its proven last IR
+    // use. All branches and lexical joins are scanned; unknown constructs
+    // refuse the optimization. Arguments may not alias the function itself.
+    pub(super) unsafe fn consumable_ap(expr: Obj, tail: Obj) -> Result<Option<usize>, String> {
+        if Self::checked_tag(expr, "Expr")? != 8 {
+            return Ok(None);
+        }
+        let id = Self::var(Self::field(expr, 0)?)?;
+        for arg in Self::array(Self::field(expr, 1)?)? {
+            if Self::arg_refs(arg, id)? {
+                return Ok(None);
+            }
+        }
+        Ok(Self::tail_unused_on_all_paths(tail, id)?.then_some(id))
+    }
+
     // A direct callee takes ownership of its argument. Moving an object at
     // its unique final use avoids manufacturing a temporary Rust Rc alias.
     // Do not extend this analysis through joins, branches, indirect calls,
@@ -234,6 +250,7 @@ impl Reader {
         functions: Option<&FunctionTable>,
         consumed_array: Option<usize>,
         consumed_calls: &BTreeSet<usize>,
+        consumed_ap: Option<usize>,
     ) -> Result<String, String> {
         match Self::checked_tag(x, "Expr")? {
             0 => {
@@ -390,6 +407,25 @@ impl Reader {
                     // immutable value model; scalar operands still refuse.
                     captured.push(Self::arg(arg, env, "tobj")?);
                 }
+                if signature.params.len() == 2 && captured.len() == 1 {
+                    // Original binary PAP with one bound value.
+                    return Ok(format!(
+                        "__LeanValue::pap2({}_binary, {})",
+                        internal_closure_name(&name),
+                        captured[0]
+                    ));
+                }
+                if signature.params.len() == 3 && captured.len() == 2 {
+                    // The pinned Lean boxed-lambda IR for the benchmark
+                    // binds two values of a generated ternary helper. Embed
+                    // both captures in the Rc closure; no heap capture Vec.
+                    return Ok(format!(
+                        "__LeanValue::pap3({}_ternary, {}, {})",
+                        internal_closure_name(&name),
+                        captured[0],
+                        captured[1]
+                    ));
+                }
                 Ok(format!(
                     "__LeanValue::pap({}, {}, vec![{}])",
                     internal_closure_name(&name),
@@ -413,6 +449,14 @@ impl Reader {
                 let args = Self::array(Self::field(x, 1)?)?;
                 if args.is_empty() || args.len() > 16 {
                     return Err("AP requires 1..16 object arguments".into());
+                }
+                if args.len() == 1 {
+                    let arg = Self::arg(args[0], env, "tobj")?;
+                    return if consumed_ap == Some(fun) {
+                        Ok(format!("x_{fun}.apply1_owned({arg})"))
+                    } else {
+                        Ok(format!("x_{fun}.apply1({arg})"))
+                    };
                 }
                 let mut lowered = Vec::new();
                 for arg in args {

@@ -1,4 +1,4 @@
-//! Source-checked constructor case families and alternative lowering.
+//! Case-family validation and branch lowering from Lean IR CtorInfo.
 use super::*;
 
 impl Reader {

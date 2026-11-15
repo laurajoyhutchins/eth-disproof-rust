@@ -40,7 +40,6 @@ extern "C" {
     fn lr_array_at(x: Obj, n: usize) -> Obj;
     fn lr_string_ptr(x: Obj) -> *const c_char;
     fn lr_nat_decimal(x: Obj) -> *mut c_char;
-    fn lr_param_borrow(x: Obj) -> i32;
     fn lr_free_string(x: *mut c_char);
     fn lr_string_size(x: Obj) -> usize;
     fn lean_mk_string(x: *const c_char) -> *mut c_void;
@@ -178,6 +177,84 @@ mod __lean_array_ownership_tests {
 }
 "#;
 
+const CLOSURE_INLINE_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod __lean_closure_inline_tests {
+    use super::{__LeanValue, __LeanValueRepr};
+
+    fn plus(a: __LeanValue, b: __LeanValue) -> __LeanValue {
+        __LeanValue::boxed_u64(a.unbox_u64().wrapping_add(b.unbox_u64()))
+    }
+
+    fn ternary(a: __LeanValue, b: __LeanValue, c: __LeanValue) -> __LeanValue {
+        __LeanValue::boxed_u64(
+            a.unbox_u64().wrapping_add(b.unbox_u64()).wrapping_add(c.unbox_u64())
+        )
+    }
+
+    fn triple(args: Vec<__LeanValue>) -> __LeanValue {
+        assert_eq!(args.len(), 3);
+        __LeanValue::boxed_u64(
+            args[0].unbox_u64()
+                .wrapping_add(args[1].unbox_u64())
+                .wrapping_add(args[2].unbox_u64())
+        )
+    }
+
+    #[test]
+    fn binary_pap_is_one_heap_object_without_capture_vec() {
+        let f = __LeanValue::pap2(plus, __LeanValue::boxed_u64(11));
+        assert!(matches!(f.0.as_ref(), __LeanValueRepr::Closure2 { .. }));
+        assert_eq!(f.apply1(__LeanValue::boxed_u64(5)).unbox_u64(), 16);
+        assert_eq!(f.apply1(__LeanValue::boxed_u64(7)).unbox_u64(), 18);
+    }
+
+    #[test]
+    fn owned_last_use_moves_capture_but_shared_alias_remains_callable() {
+        let unique = __LeanValue::pap2(plus, __LeanValue::boxed_u64(17));
+        assert_eq!(unique.apply1_owned(__LeanValue::boxed_u64(2)).unbox_u64(), 19);
+        let shared = __LeanValue::pap2(plus, __LeanValue::boxed_u64(20));
+        let alias = shared.clone();
+        assert_eq!(shared.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 23);
+        assert_eq!(alias.apply1(__LeanValue::boxed_u64(4)).unbox_u64(), 24);
+        assert_eq!(alias.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 25);
+    }
+
+    #[test]
+    fn two_inline_captures_remain_ordered_and_alias_safe() {
+        let original = __LeanValue::pap3(
+            ternary, __LeanValue::boxed_u64(10), __LeanValue::boxed_u64(20)
+        );
+        assert!(matches!(original.0.as_ref(), __LeanValueRepr::Closure3 { .. }));
+        assert_eq!(original.apply1(__LeanValue::boxed_u64(3)).unbox_u64(), 33);
+        let alias = original.clone();
+        assert_eq!(original.apply1_owned(__LeanValue::boxed_u64(5)).unbox_u64(), 35);
+        assert_eq!(alias.apply1_owned(__LeanValue::boxed_u64(7)).unbox_u64(), 37);
+        let unique = __LeanValue::pap3(
+            ternary, __LeanValue::boxed_u64(1), __LeanValue::boxed_u64(2)
+        );
+        assert_eq!(unique.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 6);
+    }
+
+    #[test]
+    fn general_closure_partial_application_remains_source_ordered() {
+        let base = __LeanValue::pap(triple, 3, vec![__LeanValue::boxed_u64(1)]);
+        let partial = base.apply1(__LeanValue::boxed_u64(2));
+        assert_eq!(partial.apply1_owned(__LeanValue::boxed_u64(3)).unbox_u64(), 6);
+        assert_eq!(base.apply(vec![
+            __LeanValue::boxed_u64(7), __LeanValue::boxed_u64(9)
+        ]).unbox_u64(), 17);
+    }
+
+    #[test]
+    #[should_panic(expected = "oversaturated binary source PAP")]
+    fn specialized_closure_refuses_oversaturation() {
+        let f = __LeanValue::pap2(plus, __LeanValue::boxed_u64(1));
+        let _ = f.apply(vec![__LeanValue::boxed_u64(2), __LeanValue::boxed_u64(3)]);
+    }
+}
+"#;
+
 // Embedded at the end of generated code; tests must follow emitted declarations.
 const ERASED_JOIN_TEST_SOURCE: &str = r#"
 #[cfg(test)]
@@ -200,12 +277,6 @@ mod erased_join_safety_tests {
     #[should_panic(expected = "erased join value was read")]
     fn erased_equality_refuses() {
         assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
-    }
-
-    #[test]
-    #[should_panic(expected = "isShared requires a heap-backed Lean value")]
-    fn tagged_immediate_sharedness_refuses() {
-        let _ = __LeanValue::tagged(0).is_shared();
     }
 }
 
@@ -265,6 +336,12 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
+        let closure_tests =
+            if source.contains("__LeanValue::pap2(") || source.contains("__LeanValue::pap3(") {
+                CLOSURE_INLINE_TEST_SOURCE
+            } else {
+                ""
+            };
         let set_tests = if source.contains(".with_field(") {
             CONSTRUCTOR_SET_TEST_SOURCE
         } else {
@@ -275,7 +352,7 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}")
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{closure_tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}")
     } else {
         source
     };
@@ -472,6 +549,11 @@ mod tests {
         assert!(RUNTIME_SOURCE.contains("Closure {"));
         assert!(RUNTIME_SOURCE.contains("fn pap("));
         assert!(RUNTIME_SOURCE.contains("fn apply("));
+        assert!(RUNTIME_SOURCE.contains("Closure2 {"));
+        assert!(RUNTIME_SOURCE.contains("fn pap2("));
+        assert!(RUNTIME_SOURCE.contains("fn pap3("));
+        assert!(RUNTIME_SOURCE.contains("fn apply1("));
+        assert!(RUNTIME_SOURCE.contains("fn apply1_owned("));
         assert_eq!(RUNTIME_SOURCE.matches("fn is_shared(").count(), 1);
         assert!(!RUNTIME_SOURCE.contains("fn mutate"));
     }

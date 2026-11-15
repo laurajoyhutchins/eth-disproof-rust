@@ -84,6 +84,22 @@ impl Reader {
                 let name = Self::name(Self::field(expr, 0)?, 0)?;
                 let args = Self::array(Self::field(expr, 1)?)?;
                 let signature = functions.and_then(|table| table.get(&name));
+                // Preserve the production primitive validator as the sole
+                // authority for unknown/unsupported names. Otherwise this
+                // ownership preflight would hide the canonical structured
+                // Primitive refusal behind a less informative borrow error.
+                if signature.is_none()
+                    && !is_nat_primitive(&name)
+                    && !is_primitive(&name)
+                    && runtime_primitive_spec(&name).is_none()
+                    && !matches!(
+                        name.as_str(),
+                        "Array.mkEmpty" | "Array.getInternal"
+                            | "Array.getInternalBorrowed" | "Array.set!"
+                    )
+                {
+                    return Ok(());
+                }
                 if let Some(sig) = signature {
                     if args.len() != sig.params.len() || args.len() != sig.borrows.len() {
                         return Err(CompilerError::new(

@@ -14,9 +14,10 @@
 //! factor even with some vertex labels already fixed. Phi initially equals
 //! k*D. Choose the next vertex label minimizing Phi. Averaging over its
 //! q possible labels recovers the previous Phi, so Phi cannot increase.
-//! At completion, every matching/class term is <= kD, yielding
-//!
-//!   X_max <= (3/2) M/D + k*ceil(log2(kD)).
+//! At completion, for each class gamma, AM-GM averages its k terms:
+//!   (product_j A_gamma,j)^(1/k) <= (sum_j A_gamma,j)/k <= Phi/k <= D.
+//! Consequently X_max <= (3/2) M/D + k*ceil(log2 D).
+//! The normalization by k eliminates any extra log(k).
 //!
 //! The arithmetic evaluates Phi with a common integer denominator:
 //! the class/matching term numerator is
@@ -260,17 +261,13 @@ pub fn construct_matching_labels(
         .map_err(|_| overflow())?
         .checked_mul(d)
         .ok_or_else(overflow)?;
-    let log_kd = if kd == 0 {
-        0
-    } else {
-        u128::from(u128::BITS - (kd - 1).leading_zeros())
-    };
-    // Clear denominators in X <= 3M/(2D) + k*ceil(log2(kD)).
+    let log_d = u128::from(u128::BITS - (d - 1).leading_zeros());
+    // Clear denominators in X <= 3M/(2D) + k*ceil(log2(D)).
     let denominator = d.checked_mul(2).ok_or_else(overflow)?;
     let rhs = u128::try_from(graph.edges.len())
         .map_err(|_| overflow())?
         .checked_mul(3)
-        .and_then(|v| v.checked_add(kd.checked_mul(2)?.checked_mul(log_kd)?))
+        .and_then(|v| v.checked_add(kd.checked_mul(2)?.checked_mul(log_d)?))
         .ok_or_else(overflow)?;
     let lhs = u128::try_from(max_load)
         .map_err(|_| overflow())?

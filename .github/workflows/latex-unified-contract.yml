@@ -2,7 +2,7 @@ name: Unified mathematical source contract
 
 on:
   push:
-    branches: ['experiment/latex-to-lean-pilot', 'experiment/latex-unified-contract']
+    branches: ['experiment/latex-to-lean-pilot', 'experiment/latex-unified-contract', 'experiment/latex-elaborated-semantics']
     paths:
       - 'benchmark/latex-to-lean/unified/**'
       - 'benchmark/latex-to-lean/research/summarize.mjs'
@@ -34,6 +34,8 @@ jobs:
           node --check benchmark/latex-to-lean/unified/run.mjs
           node --check benchmark/latex-to-lean/unified/verify.mjs
           node --check benchmark/latex-to-lean/unified/generate-leanify.mjs
+          node --check benchmark/latex-to-lean/unified/semantic-check.mjs
+          node --check benchmark/latex-to-lean/unified/semantic-fixture.mjs
 
   corpus-integration:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deep]')
@@ -78,6 +80,8 @@ jobs:
           cd vendor/leanify
           lake exe cache get
           lake build leanify
+      - name: Check semantic comparator against real Lean fixtures
+        run: node benchmark/latex-to-lean/unified/semantic-fixture.mjs "$GITHUB_WORKSPACE/vendor/leanify"
       - name: Exercise both backends on untouched research corpus
         shell: bash
         run: |
@@ -102,6 +106,12 @@ jobs:
           node benchmark/latex-to-lean/unified/verify.mjs \
             benchmark/latex-to-lean/research/cases evidence/unified/research \
             evidence/unified/research-coverage.json --require-coverage
+          for file in benchmark/latex-to-lean/research/cases/*.tex; do
+            id="$(basename "$file" .tex)"
+            node benchmark/latex-to-lean/unified/semantic-check.mjs \
+              --source "$file" --receipt-dir "evidence/unified/research/$id" \
+              --leanify-dir "$GITHUB_WORKSPACE/vendor/leanify"
+          done
       - name: Exercise independent held-out mathematical examples
         shell: bash
         run: |
@@ -125,6 +135,12 @@ jobs:
           node benchmark/latex-to-lean/unified/verify.mjs \
             benchmark/latex-to-lean/structural/holdouts evidence/unified/holdouts \
             evidence/unified/holdout-coverage.json --require-coverage
+          for file in benchmark/latex-to-lean/structural/holdouts/*.tex; do
+            id="$(basename "$file" .tex)"
+            node benchmark/latex-to-lean/unified/semantic-check.mjs \
+              --source "$file" --receipt-dir "evidence/unified/holdouts/$id" \
+              --leanify-dir "$GITHUB_WORKSPACE/vendor/leanify"
+          done
       - name: Check that no parser receives proof credit
         run: |
           node - <<'JS'

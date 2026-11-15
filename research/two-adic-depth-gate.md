@@ -96,6 +96,23 @@ Both CLI calls intentionally return exit code 2 and print exact JSON with root \
 
 The receipt always has `full_recursion_admitted=false`, `degree_invariant_verified=false`, `precision_schedule_verified=false`, `tensor_contraction_executed=false`, and `sat_count=null`. Arithmetic success is never treated as an execution.
 
+## Replacement leaf cutoff is not sufficient either
+
+The original cutoff \(H\) is not the only depth obstruction.
+An [optimistic replacement base-case audit](two-adic-basecase-gap.md)
+sets every *hypothetical* positive width \(u_d\) to its smallest
+value one and the per-depth degree cap to the smallest value \(2L_d\).
+Even then, the required matching-potential packing threshold grows
+faster with depth than the source's child edge upper bound shrinks.
+
+For \(s=10^{10}\), a proposed \(B=20\)-edge direct leaf has a
+first uncovered active depth of 1 at \(r=64\) or 2 at \(r=7\),
+while the conditional upper-bound reduction guarantees a
+\(\le20\)-edge leaf only after 9 or 130 levels, respectively.
+An uncovered active child is not proved to exist; the conclusion is
+that these sufficient inequalities cannot certify a uniform
+all-depth schedule. The resulting CLI refuses count claims.
+
 ## Implications for the actual algorithm
 
 1. The new matching potential is a mathematically useful change of the packet **sufficient condition** and is independently testable in bounded Rust graphs.

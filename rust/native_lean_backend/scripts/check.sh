@@ -41,6 +41,8 @@ lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
 # Physical reference-count observations must be source checked.
 lean --load-dynlib="$NATIVE_LIB" examples/BorrowFlagFixture.lean
 lean --load-dynlib="$NATIVE_LIB" examples/ReferenceBookkeepingFixture.lean
+# Run the small same-source ownership trace before the long performance matrix.
+bash scripts/check-ownership-object-trace.sh
 # Compile an imported Lean module separately, then compile its transitive
 # dependency graph (including diamond sharing and recursive call cycles).
 export LEAN_PATH="$(pwd)/examples:${LEAN_PATH}"
@@ -483,8 +485,6 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --release --offlin
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo clippy --offline --manifest-path examples/mut-package/Cargo.toml --all-targets -- -D warnings
 # Same Lean definitions compiled by upstream C and native Rust backends.
 bash scripts/check-c-emitter-mut.sh
-# Same-source per-object identity and reference-count checkpoints.
-bash scripts/check-ownership-object-trace.sh
 # Original Lean cross-call ownership: unique consumption, retained aliases,
 # returned aliases, repeated argument aliases, and transitive noinline callees.
 rm -rf examples/cross-call-package

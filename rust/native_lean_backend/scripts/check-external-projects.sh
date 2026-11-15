@@ -543,6 +543,16 @@ LEAN
     fi
   fi
 
+  # Distinct substantial third-project probe. This may refuse, but always
+  # preserves an exact original-source/IR boundary and never upgrades G1.
+  if [[ "$name" == 'newspeak' && "$upstream" == 'PASS' ]]; then
+    NEWSPEAK_PROJECT="$project" \
+    NEWSPEAK_CASE_DIR="$case_dir" \
+    NEWSPEAK_NATIVE="$native" \
+    NEWSPEAK_PLUGIN="$plugin" \
+      bash "$native/scripts/probe-newspeak-certificate.sh"
+  fi
+
   # A successful C/Rust build with no cross-runtime typed adapter is NOT
   # semantic verification. Never upgrade this status implicitly.
   {

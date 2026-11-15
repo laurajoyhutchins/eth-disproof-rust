@@ -447,12 +447,12 @@ impl __LeanValue {
             let next = match cursor.0.as_ref() {
                 __LeanValueRepr::Tagged(0) => None,
                 __LeanValueRepr::List(values) => {
-                    items.extend(values.iter().map(Self::compiler_alias));
+                    items.extend(values.iter().cloned());
                     None
                 }
                 __LeanValueRepr::Ctor { tag: 1, name: "List.cons", fields }
                     if fields.len() == 2 => {
-                    items.push(fields[0].compiler_alias());
+                    items.push(fields[0].clone());
                     Some(fields[1].compiler_alias())
                 }
                 _ => panic!("List operation received unsupported value representation"),

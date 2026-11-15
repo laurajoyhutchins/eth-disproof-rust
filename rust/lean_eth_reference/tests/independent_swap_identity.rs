@@ -88,10 +88,7 @@ fn swap_equals_identity_minus_rank_one_singlet_numerator() {
                         * singlet_numerator(j)
                 })
                 .sum();
-            assert_eq!(
-                square,
-                2 * singlet_numerator(i) * singlet_numerator(j)
-            );
+            assert_eq!(square, 2 * singlet_numerator(i) * singlet_numerator(j));
         }
     }
 }

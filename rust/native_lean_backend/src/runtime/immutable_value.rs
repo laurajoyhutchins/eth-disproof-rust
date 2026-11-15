@@ -155,6 +155,12 @@ impl __LeanValue {
     }
     fn is_shared(&self) -> u8 {
         self.assert_not_erased();
+        // Tagged immediates have no Lean heap reference count. A Rust Rc
+        // allocation for the tagged adapter must not make them observable.
+        assert!(
+            !matches!(self.0.as_ref(), __LeanValueRepr::Tagged(_)),
+            "isShared requires a heap-backed Lean value"
+        );
         u8::from(std::rc::Rc::strong_count(&self.0) > 1)
     }
     fn with_field(mut self, index: usize, value: Self) -> Self {

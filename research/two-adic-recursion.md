@@ -87,6 +87,17 @@ maximum degree* is a genuinely different assumption, not a free parameter.
 See [the root-packing obstruction and exact hypothetical schedule checker](root-packing-feasibility.md).
 No full recursion or new complexity bound is claimed.
 
+### Packet-lemma floor independent of the degree envelope
+
+Even with an ideal maximum-degree cap, the *existing* packet lemma
+requires \(M\ge4LD_{\rm arr}^{2}\ge16r^8\) at a positive-width
+root. Preserving the original strict \(M/8\) child bound forces
+\(r\ge49\), giving
+\(M\ge 531{,}726{,}889{,}113{,}616\) edges. At the paper's \(r=64\)
+the floor is \(2^{52}\) edges. These are lower bounds on satisfying
+the *lemma's sufficient hypotheses*, not on all possible counting
+algorithms. See [the derivation](root-packing-feasibility.md).
+
 ### Executable necessary-condition preflight
 
 For every positive edge count `s` representable in a Rust `u128`,

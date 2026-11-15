@@ -37,6 +37,7 @@ fn run() -> Result<(), String> {
             "slots_l": a.slots_l.map(|v| v.to_string()),
             "label_classes_d": a.label_classes_d.map(|v| v.to_string()),
             "required_collision_edges": a.required_edges_collision.map(|v| v.to_string()),
+            "unavoidable_minimum_root_edges": a.minimum_root_edges_any_degree_cap().map(|v| v.to_string()),
             "required_slot_edges": a.required_edges_slots.map(|v| v.to_string()),
             "required_packet_degree": a.required_new_degree.map(|v| v.to_string()),
             "packing_arithmetic_holds": a.packet_inequalities_hold(),

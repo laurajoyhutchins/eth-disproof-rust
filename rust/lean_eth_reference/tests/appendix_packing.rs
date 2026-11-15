@@ -22,6 +22,7 @@ fn degree_bounded_candidate_is_a_nonterminal_refusal() {
     assert_eq!(value["source_asymptotic_u_bound_holds"], false);
     assert_eq!(value["published_degree_envelope_obstructed"], true);
     assert_eq!(value["required_collision_edges"], "4503599627370496");
+    assert_eq!(value["unavoidable_minimum_root_edges"], "4503599627370496");
     assert_eq!(value["source_degree_invariant_verified"], false);
     assert_eq!(value["active_recursion_executed"], false);
     assert!(value["sat_count"].is_null());

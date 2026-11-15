@@ -58,6 +58,49 @@ The paper uses `r=64`; its child bound is `6M/r=3M/32 < M/8`. Keeping the same s
 
 This is **not** a lower bound on alternative packet constructions, actual maximum degree, or other tensor algorithms. It assumes the root scale `M=s` and the global envelope `Delta=ceil(s^(9/10))`. If the theorem parameter `s` and the root edge count `M` are deliberately different, rerun the inequalities with both sizes: this proof does not silently replace `M<=Cs` by equality.
 
+## Unavoidable edge floor even with ideal degree
+
+The packet construction itself introduces vertices with at most `2L`
+ports, and its hypothesis requires `2L <= delta`. Therefore, independently
+of the published `s^(9/10)` maximum-degree envelope, the **same three
+packing inequalities** imply
+
+\[
+M\ge2D_{\rm arr}^{2}\delta
+ \ge 4L D_{\rm arr}^{2}.
+\]
+
+At the root, `u_0>=1` gives `a>=2`, `L>=4`,
+`D_arr=r^(2a)>=r^4`, so necessarily
+
+\[
+\boxed{M\ge 16r^8.}
+\]
+
+The source bounds each child's edges by `6M/r`. If one insists on
+the source's **strict** `M/8` child bound, `r>48`; hence the least
+possible edge count permitted by these *numeric* hypotheses is
+
+\[
+\boxed{M\ge16\cdot49^8=531{,}726{,}889{,}113{,}616.}
+\]
+
+At the published `r=64`, this minimum is `M>=2^52`.
+If only *some* guaranteed contraction (`6/r<1`) is required, `r>=7`
+and the minimum is `16*7^8=92,236,816` edges, but this loses the
+1/8 shrink and **does not** prove a usable recurrence at later depths.
+
+These are conditional lower bounds for invoking this **particular
+sufficient packing lemma**, not complexity lower bounds on general
+tensor contraction or on a better collision-packing construction.
+They are optimistic: they choose `u=1`, the smallest permissible
+new-vertex degree cap `delta=2L=8`, and ignore stronger source
+constraints and all counting costs.
+
+The CLI reports `unavoidable_minimum_root_edges` using checked integer
+arithmetic. A missing value means the bound exceeds `u128`, never
+that zero edges suffice.
+
 ## Distinguish the degree envelope from the measured degree
 
 The packing lemma's proof uses a *maximum-degree bound*. For a specific tensor network, an invariant `delta` satisfying the maximum original degree and every new packet degree could be smaller than the published worst-case `Delta`. At a single root, the same three **numerical packing inequalities** become

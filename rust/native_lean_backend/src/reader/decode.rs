@@ -147,7 +147,7 @@ impl Reader {
                     return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }
                 Ok(if is_value_type(found) {
-                    format!("x_{id}.clone()")
+                    format!("x_{id}.compiler_alias()")
                 } else {
                     format!("x_{id}")
                 })

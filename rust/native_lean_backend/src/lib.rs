@@ -301,7 +301,7 @@ mod source_reference_count_tests {
     #[test]
     fn compiler_clones_do_not_change_source_exclusivity() {
         let x = __LeanValue::ctor(1, "Cell", vec![__LeanValue::tagged(2)]);
-        let transient = x.clone();
+        let transient = x.compiler_alias();
         assert_eq!(x.is_shared(), 0);
         x.source_inc(1, true, false);
         assert_eq!(x.is_shared(), 1);
@@ -326,7 +326,7 @@ mod source_reference_count_tests {
     fn source_decrement_releases_owned_child_references() {
         let child = __LeanValue::string("retained");
         child.source_inc(1, true, false);
-        let parent = __LeanValue::ctor(1, "Parent", vec![child.clone()]);
+        let parent = __LeanValue::ctor(1, "Parent", vec![child.compiler_alias()]);
         parent.source_dec(1, true, false);
         assert_eq!(parent.1.get(), 0);
         assert_eq!(child.1.get(), 1);
@@ -336,7 +336,7 @@ mod source_reference_count_tests {
     #[test]
     fn source_del_releases_only_shell_not_transferred_fields() {
         let child = __LeanValue::string("moved");
-        let parent = __LeanValue::ctor(1, "Parent", vec![child.clone()]);
+        let parent = __LeanValue::ctor(1, "Parent", vec![child.compiler_alias()]);
         parent.source_del();
         assert_eq!(parent.1.get(), 0);
         assert_eq!(child.1.get(), 1);

@@ -230,7 +230,7 @@ impl Reader {
                             let var = Self::var(Self::field(arg, 0)?)?;
                             if env.get(&var) == Some(&"tobj") {
                                 lowered
-                                    .push(format!("x_{var}.clone().require_constructor_object()"));
+                                    .push(format!("x_{var}.compiler_alias().require_constructor_object()"));
                             } else {
                                 lowered.push(Self::arg(arg, env, ty)?);
                             }

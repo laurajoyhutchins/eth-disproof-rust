@@ -32,6 +32,9 @@ bash scripts/compile-project.sh "$project" Sample 'Sample.inc,Sample.twice' \
 test -s "$out/src/lib.rs"
 grep -Fqx 'status=GENERATED_COMPILED_SEMANTICS_NOT_VERIFIED' "$out/receipt.txt"
 grep -Fqx 'semantic_verification=NOT_PERFORMED' "$out/receipt.txt"
+source_hash="$(sha256sum "$project/Sample.lean" | cut -d' ' -f1)"
+grep -Fqx "source_sha256=$source_hash" "$out/receipt.txt"
+grep -Fqx 'phase_timeout_seconds=300' "$out/receipt.txt"
 grep -Fq 'Generated directly from Lean IR declaration: Sample.inc' "$out/src/lib.rs"
 grep -Fq 'Generated directly from Lean IR declaration: Sample.twice' "$out/src/lib.rs"
 mkdir -p "$out/tests"
@@ -69,5 +72,11 @@ if bash scripts/compile-project.sh "$project" Sample 'Sample.inc' \
   echo "Wrong project Lean version was accepted" >&2; exit 1
 fi
 test ! -e "$tmp/wrong-version"
+if NATIVE_PROJECT_TIMEOUT_SECONDS=invalid bash scripts/compile-project.sh \
+    "$project" Sample 'Sample.inc' "$project/Sample.lean" "$tmp/invalid-budget" \
+    > "$tmp/budget.log" 2>&1; then
+  echo "Invalid resource budget accepted" >&2; exit 1
+fi
+test ! -e "$tmp/invalid-budget"
 cp "$out/receipt.txt" artifacts/native-project-cli-receipt.txt
 echo 'PASS: unchanged imported Lake source, multi-root Cargo, refusals and no-overwrite'

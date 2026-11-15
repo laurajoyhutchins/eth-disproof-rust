@@ -208,3 +208,5 @@ semantic parity and transitive source identity have not yet been verified.
 Run scripts/check-project-cli.sh for a separate imported-Lake-project smoke
 and refusal matrix. This advances #193 G1-A and G1-F item 50, but does
 not satisfy either release gate or the three substantial-project requirement.
+
+Compilation phases have a 300-second default timeout; set NATIVE_PROJECT_TIMEOUT_SECONDS to a positive integer below 10000 to change it. The original module source is hashed before compilation and checked again before publication. A changing source file or an expired phase budget refuses without a success receipt.

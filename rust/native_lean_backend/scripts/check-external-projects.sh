@@ -621,6 +621,48 @@ env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
     "$positive/src/lib.rs" "$positive/tests/lean-oracle.rs" "$positive/Cargo.toml"
 } > "$out/keboola/positive-receipt.txt"
 
+# Exercise the public *one-command* interface on the same unchanged pinned
+# external Keboola project. This must generate identical source to the native
+# in-process package invocation above, then run the original Lean-derived
+# truth table in a Cargo process with no Lean environment.
+cli_package="$out/keboola/cli-package"
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  bash scripts/compile-project.sh "$scratch/keboola/formal/sync/lean" \
+  SyncModel.Pull 'SyncModel.sweepRemovesDir,SyncModel.dirAfterPull' \
+  "$scratch/keboola/formal/sync/lean/SyncModel/Pull.lean" \
+  "$cli_package" > "$out/keboola/cli-output.log"
+test -s "$cli_package/receipt.txt"
+grep -Fqx 'status=GENERATED_COMPILED_SEMANTICS_NOT_VERIFIED' "$cli_package/receipt.txt"
+grep -Fqx 'semantic_verification=NOT_PERFORMED' "$cli_package/receipt.txt"
+original_source_hash="$(sha256sum "$scratch/keboola/formal/sync/lean/SyncModel/Pull.lean" | cut -d' ' -f1)"
+grep -Fqx "source_sha256=$original_source_hash" "$cli_package/receipt.txt"
+cmp "$positive/src/lib.rs" "$cli_package/src/lib.rs"
+mkdir -p "$cli_package/tests"
+cp -- "$positive/tests/lean-oracle.rs" "$cli_package/tests/lean-oracle.rs"
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path "$cli_package/Cargo.toml" \
+  > "$out/keboola/cli-cargo.log" 2>&1
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --release --offline --manifest-path "$cli_package/Cargo.toml" \
+  >> "$out/keboola/cli-cargo.log" 2>&1
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo clippy --offline --manifest-path "$cli_package/Cargo.toml" \
+  --all-targets -- -D warnings >> "$out/keboola/cli-cargo.log" 2>&1
+{
+  echo 'original_project=keboola/cli'
+  echo 'original_roots=SyncModel.sweepRemovesDir,SyncModel.dirAfterPull'
+  echo 'native_compiler_path=same_process_Lean_IR_FFI'
+  echo 'external_CLI_invocations=1'
+  echo 'external_CLI_LEAN_PREFIX_LEAN_PATH_LD_LIBRARY_PATH=UNSET'
+  echo 'original_source_unchanged=true'
+  echo 'native_direct_vs_project_CLI_source=IDENTICAL'
+  echo 'original_Lean_oracle_comparisons=12_PASS'
+  echo 'cargo_debug_release_clippy=PASS'
+  echo 'general_G1_acceptance=NOT_ESTABLISHED'
+  sha256sum "$cli_package/receipt.txt" "$cli_package/src/lib.rs" \
+    "$cli_package/tests/lean-oracle.rs"
+} > "$out/keboola/cli-acceptance.txt"
+
 if ! grep -Fqx 'generated_rust_semantic_parity=256_original_Lean_Keboola_pullDecide_cases_PASS' \
     "$out/keboola/identity.txt"; then
   echo 'FATAL: full original Keboola pullDecide parity receipt missing or incomplete' >&2
@@ -638,13 +680,14 @@ fi
   echo "all_upstream_sources_unmodified=true"
   echo "external_armada_original_root=128_source_oracles_PASS"
   echo "external_keboola_two_original_helpers=12_source_oracles_PASS"
+  echo "keboola_unmodified_project_CLI=multi_root_12_source_oracles_PASS"
   echo "external_keboola_original_root=256_source_oracles_PASS"
   echo "external_newspeak_original_root=256_source_oracles_PASS"
   echo "independent_external_source_roots_with_parity=3"
   echo "substantial_external_project_roots_verified=2_of_3"
   echo "semantic_verification_of_selected_external_roots=armada_pass_keboola_pass_newspeak_span_pass"
   echo "toolchain=$(lean --version)"
-  sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt"
+  sha256sum "$manifest" "$out"/*/identity.txt "$out/keboola/positive-receipt.txt" "$out/keboola/cli-acceptance.txt"
 } > "$out/receipt.txt"
 cat "$manifest"
 cat "$out/receipt.txt"

@@ -37,3 +37,53 @@ The post-#221 combined mainline suite covers **16,344** scalar, join, multi-root
 The checked IR coverage ledger permits only **31 bounded constructor variants out of 48**. Erased arguments are accepted solely as type parameters for Array primitives, never as runtime values. All unsupported IR must produce structured refusal; negative cases cover unsupported Nat bitwise operations, String mutation and Array indexing, with previous output files preserved.
 
 Dynamic Rust `__LeanValue` inputs are a trusted caller boundary: wrong enum variants may panic. The tests do **not** establish general memory-sharing, mutation, exceptions/IO, arbitrary Char APIs, generic collections, malformed UTF-8, unrestricted first-class functions, or the original noncomputable ETH counting program. Finite differential testing is not a semantic-preservation theorem. G1/G2 remain separate acceptance gates.
+
+
+## Cross-call ownership: bounded transfer, not RC equivalence
+
+For directly compiled function calls, the emitter now transfers an object
+argument without cloning it **only** when all of these hold:
+
+- The call is in a top-level, straight-line body with no lexical join.
+- The object variable occurs exactly once in that call.
+- The remaining IR tail contains no use or reference-bookkeeping operation
+  involving the variable, and its unsupported control-flow forms conservatively
+  prevent the transfer.
+
+Otherwise the existing owned `Rc`-backed value is cloned, so aliases remain
+valid. This eliminates one class of artificial transient Rust references at
+known final uses, without introducing another runtime or accepting new IR tags.
+
+`examples/CrossCallFixture.lean` holds the source-defined interprocedural
+conformance cases. Its independently Lean-evaluated oracle produces 512
+comparisons covering consumed values, retained originals, returned aliases,
+and duplicated operands across noinline compiled functions. The integrated
+gate runs debug, release, and strict Clippy checks.
+
+**Not established:** physical reference-count correspondence with Lean.
+The generated runtime uses `Rc::strong_count` for `is_shared`, while
+Lean IR explicitly manages reference counts with `inc`, `dec`, and `del`.
+Object lifetimes, unique-owner mutations, incoming/outgoing ownership, and
+reference-count observations still need an exact operational simulation,
+especially across branches, joins, closures, and calls. End-to-end output
+equality on these fixtures is evidence for these executions, not a general
+equivalence theorem or a G2 resource guarantee.
+
+## Borrowed parameter observations
+
+Lean 4.34.1 `Lean.IR.Param` carries a packed `borrow : Bool` field.
+The canonical Lean C ABI shim now reads it from the source object and checks
+the exact pinned representation. `examples/BorrowFlagFixture.lean`
+constructs source-native owned and borrowed parameters and confirms that the
+C accessor agrees with Lean's field values.
+
+The emitter refuses `Expr.isShared` on a borrowed function or join parameter
+because the caller, not the callee, owns its reference-count lifetime. The
+current generated Rust signature does not yet represent that borrow contract.
+It also refuses `isShared` on tagged immediates at runtime, rather than
+observing the artificial `Rc` allocation used by the adapter.
+
+This is an explicit **restriction**, not a completion of reference-count
+equivalence. Owned values may still have mismatched physical traces where
+generated clones and erased `inc`/`dec`/`del` interact. Future acceptance
+must prove or refuse those patterns, with source-C execution evidence.

@@ -32,6 +32,8 @@ export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"
 lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
+# Verify the pinned packed Param.borrow ABI and fail-closed sharing contract.
+lean --load-dynlib="$NATIVE_LIB" examples/BorrowFlagFixture.lean
 # Compile an imported Lean module separately, then compile its transitive
 # dependency graph (including diamond sharing and recursive call cycles).
 export LEAN_PATH="$(pwd)/examples:${LEAN_PATH}"
@@ -461,6 +463,22 @@ fi
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --offline --manifest-path examples/mut-package/Cargo.toml
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --release --offline --manifest-path examples/mut-package/Cargo.toml
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo clippy --offline --manifest-path examples/mut-package/Cargo.toml --all-targets -- -D warnings
+# Original Lean cross-call ownership: unique consumption, retained aliases,
+# returned aliases, repeated argument aliases, and transitive noinline callees.
+rm -rf examples/cross-call-package
+lean --load-dynlib="$NATIVE_LIB" examples/CrossCallFixture.lean
+for callee in identity rotate first combine; do
+  if ! grep -Fq "Generated directly from Lean IR declaration: CrossCallFixture.${callee}" examples/cross-call-package/src/lib.rs; then
+    echo "original Lean noinline callee ${callee} absent from Rust closure" >&2
+    exit 1
+  fi
+done
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --offline --manifest-path examples/cross-call-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo test --release --offline --manifest-path examples/cross-call-package/Cargo.toml
+env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
+  cargo clippy --offline --manifest-path examples/cross-call-package/Cargo.toml --all-targets -- -D warnings
 # Original closed Lean Nat constants of 200-512 bits, with oracle inputs
 # through 4096 bits. The pinned Lean C shim reads the full decimal value.
 rm -rf examples/large-nat-package examples/rejected-nat-pow-package
@@ -542,6 +560,8 @@ mkdir -p artifacts
   cargo --version
   echo "differential_assertions=21131"
   echo "constructor_field_set_original_lean_oracles=176"
+  echo "cross_call_ownership_original_lean_oracles=512"
+  echo "pinned_param_borrow_abi_and_sharedness_refusal=PASS"
   echo "source_option_default_oracles=512"
   echo "generic_inductive_original_lean_oracles=338"
   echo "array_ownership_original_lean_oracles=768"
@@ -585,7 +605,9 @@ mkdir -p artifacts
     examples/large-nat-package/tests/literals.rs
   sha256sum examples/OptionDefaultFixture.lean examples/option-default-package/original-ir.txt examples/option-default-package/src/lib.rs examples/option-default-package/tests/oracle.rs examples/option-default-package/Cargo.toml
   sha256sum examples/MutFixture.lean examples/mut-package/src/lib.rs examples/mut-package/tests/optimized_mutation.rs
+  sha256sum examples/CrossCallFixture.lean examples/cross-call-package/src/lib.rs examples/cross-call-package/tests/cross_call.rs examples/cross-call-package/Cargo.toml
   sha256sum examples/Objects.lean examples/FunctionValues.lean examples/RefusalObjectNat.lean examples/RefusalObjectCtor.lean examples/RefusalFunctionValues.lean examples/object-package/src/lib.rs examples/function-package/src/lib.rs
+  sha256sum examples/BorrowFlagFixture.lean
   sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

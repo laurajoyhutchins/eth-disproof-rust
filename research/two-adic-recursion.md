@@ -73,6 +73,31 @@ H=\left\lceil\frac{s}{\lfloor\sqrt\lambda\rfloor}\right\rceil
 
 A direct \(2^H\) leaf is not computationally practical at this scale. This is a limitation of the **stated sufficient schedule**, not a proof that no tighter admissible schedule exists.
 
+### Exact obstruction to retuning the root alone
+
+The fixed \(\varepsilon\) is not the only obstacle. For a root with \(M=s\),
+the paper's \(\Delta=\lceil s^{9/10}\rceil\), and **any** positive
+\(u_0\), the packing requirement forces
+\(s\ge(2r^8)^{10}\). With \(r=64\) this is \(s\ge 2^{490}\).
+Indeed, for every positive \(s\) representable in \(u128\) and every
+\(r\ge3\), the first packing inequality is impossible under this
+envelope, even if \(\varepsilon\) changes. A smaller *proved invariant
+maximum degree* is a genuinely different assumption, not a free parameter.
+
+See [the root-packing obstruction and exact hypothetical schedule checker](root-packing-feasibility.md).
+No full recursion or new complexity bound is claimed.
+
+### Packet-lemma floor independent of the degree envelope
+
+Even with an ideal maximum-degree cap, the *existing* packet lemma
+requires \(M\ge4LD_{\rm arr}^{2}\ge16r^8\) at a positive-width
+root. Preserving the original strict \(M/8\) child bound forces
+\(r\ge49\), giving
+\(M\ge 531{,}726{,}889{,}113{,}616\) edges. At the paper's \(r=64\)
+the floor is \(2^{52}\) edges. These are lower bounds on satisfying
+the *lemma's sufficient hypotheses*, not on all possible counting
+algorithms. See [the derivation](root-packing-feasibility.md).
+
 ### Executable necessary-condition preflight
 
 For every positive edge count `s` representable in a Rust `u128`,

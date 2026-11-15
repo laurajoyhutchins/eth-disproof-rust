@@ -130,6 +130,7 @@ mod tests {
         }
         assert_eq!(ScheduleAudit::new(15).unwrap().leaf_threshold, Some(8));
         assert_eq!(ScheduleAudit::new(16).unwrap().leaf_threshold, Some(8));
-        assert_eq!(ScheduleAudit::new(17).unwrap().leaf_threshold, Some(6));
+        assert_eq!(ScheduleAudit::new(17).unwrap().leaf_threshold, Some(9));
+        assert_eq!(ScheduleAudit::new(257).unwrap().leaf_threshold, Some(86));
     }
 }

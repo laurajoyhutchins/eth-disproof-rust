@@ -37,8 +37,12 @@ theorem child_bound_from_two_ports
     (hcol : r * columnPorts ≤ 3 * M)
     (hchild : childEdges ≤ rowPorts + columnPorts) :
     r * childEdges ≤ 6 * M := by
-  have hmul := Nat.mul_le_mul_left r hchild
-  omega
+  calc
+    r * childEdges ≤ r * (rowPorts + columnPorts) :=
+      Nat.mul_le_mul_left r hchild
+    _ = r * rowPorts + r * columnPorts := Nat.mul_add r rowPorts columnPorts
+    _ ≤ 3 * M + 3 * M := Nat.add_le_add hrow hcol
+    _ = 6 * M := by omega
 
 /--
 For every nonempty finite set of candidate labels, if the average
@@ -106,8 +110,16 @@ theorem orbit_packet_budget
   have hcount :
       (∑ i ∈ orbits, (classes i * upper + L)) =
         D * upper + L * (orbits.card : ℚ) := by
-    simp [Finset.sum_add_distrib, ← Finset.sum_mul,
-      hclasses, mul_comm, mul_left_comm]
+    calc
+      (∑ i ∈ orbits, (classes i * upper + L)) =
+          (∑ i ∈ orbits, classes i * upper) +
+            (∑ _i ∈ orbits, L) := by rw [Finset.sum_add_distrib]
+      _ = (∑ i ∈ orbits, classes i) * upper +
+          (orbits.card : ℚ) * L := by
+        simp [← Finset.sum_mul]
+      _ = D * upper + L * (orbits.card : ℚ) := by
+        rw [hclasses]
+        ring
   have hlinear :
       D * upper = 3 * M / 2 + k * D * t := by
     nlinarith [hupper]

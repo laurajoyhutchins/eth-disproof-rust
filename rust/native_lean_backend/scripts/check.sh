@@ -363,14 +363,19 @@ for fixture in RefusalObjectCtor; do
   rm -f "examples/${fixture}.log"
 done
 lean --load-dynlib="$NATIVE_LIB" examples/FunctionValues.lean
-if ! grep -Fq '__LeanValue::pap2(' examples/function-package/src/lib.rs ||
-   ! grep -Fq '.apply1' examples/function-package/src/lib.rs ||
-   ! grep -Fq '__LeanValue::pap(' examples/function-package/src/lib.rs; then
-  echo 'original source binary PAP/AP or general partial application was omitted' >&2; exit 1
+# Restrict the codegen witness to actual Lean IR-emitted program
+# functions. The canonical runtime and appended tests also mention pap2 and
+# apply1, but cannot count as proof that source IR selected the fast path.
+program="$(sed -n '/^\/\/ Native in-process Lean IR closure/,/^#\[cfg(test)\]/p' examples/function-package/src/lib.rs)"
+if ! grep -Fq '__LeanValue::pap2(' <<< "$program" ||
+   ! grep -Eq '\.apply1(_owned)?\(' <<< "$program"; then
+  echo 'original source binary PAP or unary indirect AP did not use optimized lowering' >&2
+  grep -En 'pap2|apply1|pap\(|apply\(' <<< "$program" | head -n 24 >&2 || true
+  exit 1
 fi
-# Lean's AP count is source-defined. This corpus uses only one-argument
-# applications, so the general vector path is exercised via generated
-# runtime unit tests, not asserted to occur in the optimized algorithm.
+# The original runMulti and generated unit tests independently cover general
+# partial application. They need not contain a vector AP call after this
+# specialization, since the source compiles to unary AP instructions.
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH cargo test --offline --manifest-path examples/function-package/Cargo.toml
 cargo clippy --offline --manifest-path examples/function-package/Cargo.toml --all-targets -- -D warnings
 rm -rf examples/rejected-function-package

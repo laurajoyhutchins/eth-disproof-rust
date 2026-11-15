@@ -27,6 +27,7 @@ def shared (a b : Nat) : Nat :=
 end MutFixture
 
 -- Temporary source-IR diagnosis of source RC order and alias identities.
+open Lean Elab Command
 run_cmd do
   let targets : Array Lean.Name := #[
     `MutFixture.unique, `MutFixture.shared, `MutFixture.rotate, `MutFixture.first

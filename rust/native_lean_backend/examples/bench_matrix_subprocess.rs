@@ -34,7 +34,15 @@ fn run(path: &Path, workload: &str, iterations: &str, expected: &[u8]) -> Result
 
 fn median(values: &mut [u128]) -> u128 {
     values.sort_unstable();
-    values[values.len() / 2]
+    let n = values.len();
+    if n % 2 == 0 {
+        // Overflow-safe midpoint of the two middle samples.
+        let a = values[n / 2 - 1];
+        let b = values[n / 2];
+        a / 2 + b / 2 + (a % 2 + b % 2) / 2
+    } else {
+        values[n / 2]
+    }
 }
 
 fn main() -> Result<(), String> {

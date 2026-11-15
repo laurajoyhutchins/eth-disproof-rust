@@ -25,6 +25,21 @@ int lr_param_borrow(b_lean_obj_arg o) {
     return value <= 1 ? (int)value : -1;
 }
 
+/* The pinned Lean.IR.FnBody.inc/dec constructors (tags 6/7) have
+ * three pointer fields (x, n, next) followed by packed Bool bytes
+ * (checkRef, persistent). Return two flag bits or -1 for malformed IR.
+ * This deliberately avoids guessed Rust-side struct offsets. */
+int lr_rc_flags(b_lean_obj_arg o) {
+    if (!o || !lean_is_ctor((lean_object *)o) ||
+        (lean_obj_tag((lean_object *)o) != 6 && lean_obj_tag((lean_object *)o) != 7) ||
+        lean_ctor_num_objs((lean_object *)o) != 3) return -1;
+    const size_t offset = 3 * sizeof(void *);
+    uint8_t check_ref = lean_ctor_get_uint8((lean_object *)o, offset);
+    uint8_t persistent = lean_ctor_get_uint8((lean_object *)o, offset + 1);
+    if (check_ref > 1 || persistent > 1) return -1;
+    return (int)(check_ref | (persistent << 1));
+}
+
 size_t lr_array_len(b_lean_obj_arg o) { return o && lean_is_array((lean_object *)o) ? lean_array_size((lean_object *)o) : 0; }
 b_lean_obj_res lr_array_at(b_lean_obj_arg o, size_t n) {
     if (!o || !lean_is_array((lean_object *)o) || n >= lean_array_size((lean_object *)o)) return NULL;

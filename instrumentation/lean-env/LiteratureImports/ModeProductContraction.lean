@@ -38,7 +38,7 @@ theorem mode_product_contraction
     (contribution : Global → R)
     (child : ∀ g : Group, Choice g → R)
     (hvalid : ∀ a : Global,
-      a ∈ globalAssignments ↔ route a ∈ Finset.piFinset choices)
+      a ∈ globalAssignments ↔ route a ∈ Fintype.piFinset choices)
     (hfactor : ∀ a ∈ globalAssignments,
       contribution a = ∏ g : Group, child g (route a g)) :
     (∑ a ∈ globalAssignments, contribution a) =
@@ -46,7 +46,7 @@ theorem mode_product_contraction
   classical
   calc
     (∑ a ∈ globalAssignments, contribution a) =
-        ∑ x ∈ Finset.piFinset choices, ∏ g : Group, child g (x g) := by
+        ∑ x ∈ Fintype.piFinset choices, ∏ g : Group, child g (x g) := by
       apply Finset.sum_equiv route
       · exact hvalid
       · exact hfactor

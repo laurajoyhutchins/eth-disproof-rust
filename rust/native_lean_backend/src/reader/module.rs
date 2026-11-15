@@ -11,7 +11,7 @@ impl Reader {
         }
         let declaration = Self::name(Self::field(decl, 0)?, 0)?;
         let features = Cell::new(RuntimeFeatures::default());
-        let generated = Self::emit_function(decl, &Self::string(rust_name)?, None, &features)
+        let generated = Self::emit_function(decl, &Self::string(rust_name)?, None, None, &features)
             .map_err(|reason| reason.with_declaration(declaration))?;
         include_value_runtime(generated, features.get())
     }
@@ -20,6 +20,7 @@ impl Reader {
         decl: Obj,
         rust_name: &str,
         functions: Option<&FunctionTable>,
+        ownership: Option<&OwnershipSummary>,
         features: &Cell<RuntimeFeatures>,
     ) -> CompilerResult<String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
@@ -60,13 +61,23 @@ impl Reader {
             RuntimeFeatures::mark(features, RuntimeFeatures::VALUE);
         }
         let shared = Self::shared_observations(body)?;
-        // Source RC effects are erased in the bounded value runtime;
-        // reject physical observations after an earlier CFG effect.
-        if !shared.is_empty() && Self::rc_may_precede_sharedness(body)? {
+        // Preserve Lean source CFG order through calls, branches, and joins.
+        // Object-returning COW helpers remain value-only, not physical proofs.
+        let can_observe =
+            !shared.is_empty() || ownership.is_some_and(|s| s.may_observe.contains(&declared_name));
+        if can_observe && Self::rc_may_precede_sharedness(body, ownership)? {
             return Err(CompilerError::new(
                 RefusalKind::Decl,
-                "unverified isShared after source inc/dec/del reference bookkeeping",
+                "unverified isShared after source inc/dec/del reference bookkeeping or interprocedural call",
             ));
+        }
+        if let Some(summary) = ownership {
+            if Self::captures_observer(body, summary)? {
+                return Err(CompilerError::new(
+                    RefusalKind::Decl,
+                    "unverified isShared through closure capture and indirect application",
+                ));
+            }
         }
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
@@ -275,6 +286,7 @@ impl Reader {
             signatures.insert(name.clone(), sig);
             closure.insert(name, decl);
         }
+        let ownership = Self::ownership_summary(&closure)?;
         let features = Cell::new(RuntimeFeatures::default());
         let mut result = String::from(
             "// Native in-process Lean IR closure; no JSON or Lean runtime dependency.\n",
@@ -284,6 +296,7 @@ impl Reader {
                 *decl,
                 &internal_name(name),
                 Some(&signatures),
+                Some(&ownership),
                 &features,
             )?);
             result.push('\n');
@@ -347,6 +360,7 @@ impl Reader {
                 *closure.get(&root).unwrap(),
                 &public_name,
                 Some(&signatures),
+                Some(&ownership),
                 &features,
             )?;
             // Preserve the original Lean root name as the public API; Rust's

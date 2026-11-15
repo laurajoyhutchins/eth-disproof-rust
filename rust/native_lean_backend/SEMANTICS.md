@@ -113,12 +113,44 @@ already-verified source mutation programs without improving their
 reference-count correspondence.
 
 `examples/ReferenceBookkeepingFixture.lean` constructs actual Lean
-`IR.FnBody` terms. It tests six negative cases (each bookkeeping
+`IR.FnBody` terms. It tests seven negative cases (each bookkeeping
 instruction, possible alias across distinct IDs, paired increments and
-decrements, and a nested join) and four positive emissions (bookkeeping with no `isShared`,
+decrements, and a nested join) and seven positive emissions (bookkeeping with no `isShared`,
 `isShared` without bookkeeping, a sharing check followed by an
 increment, and the same ordering across a lexical join). These are
 emitter-contract checks, not a source execution trace theorem.
+
+The exact Lean 4.34.1 C emitter skips `inc` and `dec` on
+statically `persistent` objects. A packed-flag ABI reader now preserves
+this distinction instead of tainting an `isShared` observation after a
+true source no-op. Three positive persistent cases and a mixed-effect
+negative case exercise the pinned Bool layout through real Lean IR.
+
+The requested-root closure now has a monotone fixed-point *may-effect*
+and *may-observe* summary. Source-CFG analysis propagates possible RC
+effects through direct calls, including recursion, case alternatives and
+lexically entered joins. An `isShared` in a caller after a potential
+earlier RC effect is refused, as is a directly called *scalar-returning*
+observer after an earlier effect. Object-returning compiler copy-on-write
+paths remain in the established value-semantic subset. Their physical
+allocation/uniqueness choices are explicitly **not certified** by this
+check. This is a deliberately incomplete boundary, not a blanket
+ownership-equivalence claim.
+
+PAP creation does not eagerly
+execute the callee; observing closure captures remain refused until their
+capture/borrow ownership correspondence is verified. An unknown indirect
+AP taints subsequent observations. Source-native tests cover direct
+calls in both directions, a branch-hidden callee effect, unknown closure
+application, and observable closure captures, plus positive pure,
+observation-before-effect, and object-returning value-only cases.
+
+This is a **conservative admission guard**, not proof that `Rc`'s actual
+strong counts match Lean's physical counts at observable points. In
+particular, independent generated Rust clones, arbitrary closures,
+borrowed parameters, primitive implementations and destructor cascades
+still need a genuine operational simulation theorem or an executable
+cross-runtime physical trace witness.
 
 **Still unverified:** reference-count effects flowing through other
 called declarations, runtime alias identity across values and closures,

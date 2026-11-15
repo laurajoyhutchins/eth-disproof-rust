@@ -44,6 +44,25 @@ run_cmd do
       (joined.splitOn "inc/dec/del").length > 1 do
     throwError "join-scoped RC observation was not refused: {joined}"
 
+  -- Pinned native C backend skips `persistent` source RC bookkeeping.
+  -- The reader must use the real FnBody packed flags, not Rust Rc guesses.
+  let persistentCases : Array (String × Lean.IR.FnBody) := #[
+    ("persistent-inc", .inc ⟨0⟩ 1 true true observed),
+    ("persistent-dec", .dec ⟨0⟩ 1 true true observed),
+    ("persistent-both",
+      .inc ⟨0⟩ 1 false true (.dec ⟨1⟩ 1 false true observed))
+  ]
+  for (label, body) in persistentCases do
+    let result := NativeRust.emit (.fdecl name #[x, y] .uint8 body info) "persistent_rc"
+    unless result.startsWith "OK\n" do
+      throwError "persistent source RC noop {label} unexpectedly refused: {result}"
+  let mixed : Lean.IR.FnBody :=
+    .inc ⟨0⟩ 1 true true (.dec ⟨1⟩ 1 true false observed)
+  let mixedResult := NativeRust.emit (.fdecl name #[x, y] .uint8 mixed info) "mixed_rc"
+  unless mixedResult.startsWith "ERROR\n" &&
+      (mixedResult.splitOn "inc/dec/del").length > 1 do
+    throwError "real RC effect following persistent noop was accepted: {mixedResult}"
+
   -- Reference bookkeeping without an RC observation remains in the
   -- bounded value-semantic subset. This checks emission, not a physical
   -- reference-count trace or an executable ownership correspondence.
@@ -75,4 +94,107 @@ run_cmd do
     NativeRust.emit (.fdecl name #[x] .uint8 orderedJoin info) "rc_join_after_observation"
   unless acceptedJoin.startsWith "OK\n" do
     throwError "ordered join RC after sharing check unexpectedly refused: {acceptedJoin}"
-  logInfo "Source RC effect observations: 6 refusals, 4 bounded positive emissions"
+  -- Interprocedural effects must be tracked at the actual call site.
+  -- Build genuine Lean.IR.Decl objects and pass the same borrowed IR through
+  -- the production multi-declaration emitter, not a parallel interpreter.
+  let effectName := `ReferenceBookkeepingFixture.effect
+  let callerName := `ReferenceBookkeepingFixture.caller
+  let witnessName := `ReferenceBookkeepingFixture.witness
+  let pureName := `ReferenceBookkeepingFixture.pure
+  let closureName := `ReferenceBookkeepingFixture.closure
+  let calleeEffects : Lean.IR.Decl :=
+    .fdecl effectName #[x] .object
+      (.inc ⟨0⟩ 1 true false (.ret (.var ⟨0⟩))) info
+  let localCallObservation : Lean.IR.FnBody :=
+    .vdecl ⟨5⟩ .object (.fap effectName #[.var ⟨0⟩]) observed
+  let crossCall : Lean.IR.Decl :=
+    .fdecl callerName #[x] .uint8 localCallObservation info
+  let callRefused := NativeRust.emitModule #[calleeEffects, crossCall] callerName "cross_call"
+  unless callRefused.startsWith "ERROR\n" &&
+      (callRefused.splitOn "interprocedural").length > 1 do
+    throwError "source RC effect in direct callee was not refused: {callRefused}"
+
+  -- A caller's RC effect can also precede an observation *inside* a
+  -- directly called callee, even when the caller has no isShared itself.
+  let calleeObserver : Lean.IR.Decl :=
+    .fdecl witnessName #[x] .uint8 observed info
+  let observingCall : Lean.IR.FnBody :=
+    .inc ⟨0⟩ 1 true false
+      (.vdecl ⟨5⟩ .uint8 (.fap witnessName #[.var ⟨0⟩]) (.ret (.var ⟨5⟩)))
+  let acrossEntry : Lean.IR.Decl :=
+    .fdecl callerName #[x] .uint8 observingCall info
+  let entryRefused := NativeRust.emitModule #[calleeObserver, acrossEntry] callerName "caller"
+  unless entryRefused.startsWith "ERROR\n" &&
+      (entryRefused.splitOn "interprocedural").length > 1 do
+    throwError "source RC effect before observer callee was not refused: {entryRefused}"
+
+  -- A source branch can hide a real effect in an alternative. This remains
+  -- a may-analysis even when the exact branch condition is unknown.
+  let branchEffect : Lean.IR.FnBody :=
+    .case `Bool ⟨0⟩ .object #[.default (.inc ⟨0⟩ 1 true false (.ret (.var ⟨0⟩)))]
+  let branchCallee : Lean.IR.Decl :=
+    .fdecl effectName #[x] .object branchEffect info
+  let branchRefused := NativeRust.emitModule #[branchCallee, crossCall] callerName "branch_caller"
+  unless branchRefused.startsWith "ERROR\n" &&
+      (branchRefused.splitOn "interprocedural").length > 1 do
+    throwError "branch-hidden RC effect was not refused: {branchRefused}"
+
+  -- An unknown applied closure can mutate physical counts before the
+  -- following isShared, regardless of whether Rust clones a value.
+  let applied : Lean.IR.FnBody :=
+    .vdecl ⟨5⟩ .object (.ap ⟨1⟩ #[.var ⟨0⟩]) observed
+  let appliedDecl : Lean.IR.Decl :=
+    .fdecl callerName #[x, y] .uint8 applied info
+  let apRefused := NativeRust.emitModule #[appliedDecl] callerName "closure_apply"
+  unless apRefused.startsWith "ERROR\n" &&
+      (apRefused.splitOn "interprocedural").length > 1 do
+    throwError "indirect closure AP before isShared was accepted: {apRefused}"
+
+  -- Capturing an observing function in a PAP crosses the unsupported
+  -- closure ownership boundary, even though the closure body is deferred.
+  let capturing : Lean.IR.FnBody :=
+    .vdecl ⟨5⟩ .object (.pap witnessName #[.var ⟨0⟩]) (.ret (.var ⟨0⟩))
+  let captureDecl : Lean.IR.Decl :=
+    .fdecl closureName #[x] .object capturing info
+  let captureRefused := NativeRust.emitModule #[calleeObserver, captureDecl] closureName "capture"
+  unless captureRefused.startsWith "ERROR\n" &&
+      (captureRefused.splitOn "closure capture").length > 1 do
+    throwError "observer closure capture was not refused: {captureRefused}"
+
+  -- A pure direct callee has no RC effect; preserve this supported path.
+  let pureCallee : Lean.IR.Decl :=
+    .fdecl pureName #[x] .object (.ret (.var ⟨0⟩)) info
+  let pureCaller : Lean.IR.Decl :=
+    .fdecl callerName #[x] .uint8
+      (.vdecl ⟨5⟩ .object (.fap pureName #[.var ⟨0⟩]) observed) info
+  let pureAccepted := NativeRust.emitModule #[pureCallee, pureCaller] callerName "pure_caller"
+  unless pureAccepted.startsWith "OK\n" do
+    throwError "pure direct callee unexpectedly refused: {pureAccepted}"
+  -- Source sequencing is directional: an observation before an effectful
+  -- direct call does not see the later mutation.
+  let orderedCaller : Lean.IR.Decl :=
+    .fdecl callerName #[x] .uint8
+      (.vdecl ⟨2⟩ .uint8 (.isShared ⟨0⟩)
+        (.vdecl ⟨5⟩ .object (.fap effectName #[.var ⟨0⟩]) (.ret (.var ⟨2⟩)))) info
+  let orderedAccepted := NativeRust.emitModule #[calleeEffects, orderedCaller] callerName "ordered"
+  unless orderedAccepted.startsWith "OK\n" do
+    throwError "observation before effectful direct call unexpectedly refused: {orderedAccepted}"
+
+  -- Real Lean's copy-on-write optimizer may inspect sharing while returning
+  -- an object. Existing source programs remain in the value-semantic subset;
+  -- this admission is *not* a physical-RC certificate.
+  let objectObserverName := `ReferenceBookkeepingFixture.valueObserver
+  let objectObserver : Lean.IR.Decl :=
+    .fdecl objectObserverName #[x] .object
+      (.vdecl ⟨5⟩ .uint8 (.isShared ⟨0⟩) (.ret (.var ⟨0⟩))) info
+  let objectCaller : Lean.IR.Decl :=
+    .fdecl callerName #[x] .object
+      (.inc ⟨0⟩ 1 true false
+        (.vdecl ⟨6⟩ .object (.fap objectObserverName #[.var ⟨0⟩])
+          (.ret (.var ⟨6⟩)))) info
+  let valueAccepted := NativeRust.emitModule #[objectObserver, objectCaller] callerName "value_only"
+  unless valueAccepted.startsWith "OK\n" do
+    throwError "object-returning value-only source observation unexpectedly refused: {valueAccepted}"
+
+  logInfo "Source ownership boundary: 5 cross-call/branch/closure refusals, 3 ordered or value admissions"
+  logInfo "Source RC effect observations: 7 refusals, 7 bounded positive emissions"

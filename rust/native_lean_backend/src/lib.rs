@@ -1719,6 +1719,7 @@ impl Reader {
                         }
                     }
                 }
+                2 => pending.push(Self::field(body, 3)?),
                 6 | 7 => pending.push(Self::field(body, 2)?),
                 8 => pending.push(Self::field(body, 1)?),
                 10 | 11 => (),

@@ -426,6 +426,7 @@ pub mod native_node_readout;
 pub mod native_nodes;
 pub mod native_pair_setup;
 pub mod native_query_prefix;
+pub mod native_query_first_node;
 
 /// Literal cleanup across framed clauses on original 13x11 machine.
 pub mod native_literal_cleanup;

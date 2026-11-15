@@ -345,14 +345,6 @@ impl Reader {
                 let found = env
                     .get(&id)
                     .ok_or_else(|| format!("unknown input variable x_{id}"))?;
-                if *found == "tobj" && expected == "obj" {
-                    // A source-typed tagged-or-heap value may enter a heap-only
-                    // join. Do not reclassify all tobj values as object pointers:
-                    // the generated runtime checks the actual constructor.
-                    // Missing or erased values refuse instead of fabricating
-                    // an object, as in original Lean's guarded reuse path.
-                    return Ok(format!("x_{id}.clone().require_constructor_object()"));
-                }
                 if !ir_type_compatible(found, expected) {
                     return Err(format!("x_{id}: expected {expected}, got {found}"));
                 }
@@ -1647,6 +1639,19 @@ impl Reader {
                             // physically absent. Any later read must fail,
                             // never silently materialize an arbitrary value.
                             lowered.push("__LeanValue::erased()".into());
+                        } else if *ty == "obj" && Self::checked_tag(arg, "Arg")? == 0 {
+                            // Only a typed join argument may refine tobj
+                            // (tagged-or-heap) to a heap-only constructor.
+                            // All other IR uses keep the strict object type
+                            // contract; the runtime checks the actual value.
+                            let var = Self::var(Self::field(arg, 0)?)?;
+                            if env.get(&var) == Some(&"tobj") {
+                                lowered.push(format!(
+                                    "x_{var}.clone().require_constructor_object()"
+                                ));
+                            } else {
+                                lowered.push(Self::arg(arg, env, ty)?);
+                            }
                         } else {
                             lowered.push(Self::arg(arg, env, ty)?);
                         }

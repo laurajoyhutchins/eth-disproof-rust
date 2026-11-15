@@ -65,8 +65,8 @@ struct ImmutableCaseContext<'a> {
 }
 
 // Standalone immutable object model for the supported Lean IR subset.
-// Rc cloning models shared immutable values; source inc/dec instructions are
-// redundant only while mutation, isShared, reset and reuse remain unsupported.
+// Rc retains aliases for the bounded accepted value subset. Ownership-
+// observable programs still require Lean/Rust cross-call conformance.
 const RUNTIME_SOURCE: &str = include_str!("runtime/immutable_value.rs");
 
 const CONSTRUCTOR_SET_TEST_SOURCE: &str = r#"
@@ -134,6 +134,33 @@ mod __lean_array_ownership_tests {
 }
 "#;
 
+// Embedded at the end of generated code; tests must follow emitted declarations.
+const ERASED_JOIN_TEST_SOURCE: &str = r#"
+#[cfg(test)]
+mod erased_join_safety_tests {
+    use super::__LeanValue;
+
+    #[test]
+    #[should_panic(expected = "erased join value was read")]
+    fn erased_constructor_predicate_refuses() {
+        assert!(!__LeanValue::erased().has_ctor(0, "Unit", 0));
+    }
+
+    #[test]
+    #[should_panic(expected = "erased join value was read")]
+    fn erased_tagged_predicate_refuses() {
+        assert!(!__LeanValue::erased().has_tagged(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "erased join value was read")]
+    fn erased_equality_refuses() {
+        assert_ne!(__LeanValue::erased(), __LeanValue::tagged(0));
+    }
+}
+
+"#;
+
 fn is_value_type(ty: &str) -> bool {
     matches!(ty, "obj" | "tobj" | "tagged")
 }
@@ -193,7 +220,7 @@ fn include_value_runtime(source: String) -> Result<String, String> {
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}")
+        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}")
     } else {
         source
     };

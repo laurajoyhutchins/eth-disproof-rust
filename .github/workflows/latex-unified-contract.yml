@@ -2,9 +2,10 @@ name: Unified mathematical source contract
 
 on:
   push:
-    branches: ['experiment/latex-to-lean-pilot', 'experiment/latex-unified-contract', 'experiment/latex-elaborated-semantics']
+    branches: ['experiment/latex-to-lean-pilot', 'experiment/latex-unified-contract', 'experiment/latex-elaborated-semantics', 'experiment/latex-external-overlap-benchmark']
     paths:
       - 'benchmark/latex-to-lean/unified/**'
+      - 'benchmark/latex-to-lean/external/**'
       - 'benchmark/latex-to-lean/research/summarize.mjs'
       - 'benchmark/latex-to-lean/research/summarize.test.mjs'
       - '.github/workflows/latex-unified-contract.yml'
@@ -38,6 +39,8 @@ jobs:
           node --check benchmark/latex-to-lean/unified/semantic-verify.mjs
           node --check benchmark/latex-to-lean/unified/semantic.mjs
           node --check benchmark/latex-to-lean/unified/semantic-fixture.mjs
+          node --test benchmark/latex-to-lean/external/validate.test.mjs
+          node --check benchmark/latex-to-lean/external/summarize.mjs
 
   corpus-integration:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[deep]')
@@ -147,6 +150,41 @@ jobs:
             node benchmark/latex-to-lean/unified/semantic-verify.mjs \
               --source "$file" --receipt-dir "evidence/unified/holdouts/$id"
           done
+      - name: Evaluate frozen external source corpus and overlapping translations
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="benchmark/latex-to-lean/external"
+          node "$root/validate.mjs"
+          mkdir -p evidence/unified/external
+          bin="$GITHUB_WORKSPACE/benchmark/latex-to-lean/structural/target/release/structural-latex"
+          for file in "$root"/cases/*.tex; do
+            id="$(basename "$file" .tex)"
+            mkdir -p "evidence/unified/external/$id"
+            set +e
+            node benchmark/latex-to-lean/unified/run.mjs \
+              --source "$file" --out "evidence/unified/external/$id" \
+              --structural-bin "$bin" --leanify-dir "$GITHUB_WORKSPACE/vendor/leanify"
+            status=$?
+            set -e
+            echo "$status" > "evidence/unified/external/$id/driver.exit"
+            if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+              echo "Untrusted or broken parser invocation for $id: $status" >&2
+              exit 1
+            fi
+          done
+          node benchmark/latex-to-lean/unified/verify.mjs \
+            "$root/cases" evidence/unified/external evidence/unified/external-coverage.json
+          for file in "$root"/cases/*.tex; do
+            id="$(basename "$file" .tex)"
+            node benchmark/latex-to-lean/unified/semantic-check.mjs \
+              --source "$file" --receipt-dir "evidence/unified/external/$id" \
+              --leanify-dir "$GITHUB_WORKSPACE/vendor/leanify"
+            node benchmark/latex-to-lean/unified/semantic-verify.mjs \
+              --source "$file" --receipt-dir "evidence/unified/external/$id"
+          done
+          node "$root/summarize.mjs" "$root" \
+            evidence/unified/external evidence/unified/external-summary.json
       - name: Check that no parser receives proof credit
         run: |
           node - <<'JS'

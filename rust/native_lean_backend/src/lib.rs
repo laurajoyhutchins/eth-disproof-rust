@@ -1831,9 +1831,9 @@ impl Reader {
                 6..=8 => {
                     // Erasing Lean's reference bookkeeping is permitted
                     // only inside the bounded value-semantic subset. A
-                    // preflight refuses any declaration that also observes
-                    // physical sharedness through isShared; this is not a
-                    // claim of RC equivalence across function boundaries.
+                    // ordered preflight refuses a later isShared after
+                    // a possible source RC effect; this is not a claim of
+                    // RC equivalence across function boundaries.
                     let id = Self::var(Self::field(x, 0)?)?;
                     let ty = env
                         .get(&id)
@@ -1943,12 +1943,13 @@ impl Reader {
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
         let shared = Self::shared_observations(body)?;
-        // Source inc/dec/del are currently erased by the emitted runtime.
-        // Refuse any declaration with both physical sharing observations
-        // and explicit RC effects; even distinct variable IDs may alias.
-        if !shared.is_empty() && Self::has_reference_bookkeeping(body)? {
+        // Reject physical observations only when preceding source RC
+        // effects may change them. Ordered optimized mutations may inspect
+        // isShared first and increment fields afterwards; those remain
+        // supported in the established value-semantic subset.
+        if !shared.is_empty() && Self::rc_may_precede_sharedness(body)? {
             return Err(
-                "unverified isShared with source inc/dec/del reference bookkeeping".into(),
+                "unverified isShared after source inc/dec/del reference bookkeeping".into(),
             );
         }
         let mut env = BTreeMap::new();
@@ -2081,12 +2082,12 @@ impl Reader {
         Ok(observed)
     }
 
-    // An IR inc/dec/del changes Lean's physical reference count. These are
-    // intentionally erased in the immutable Rust value path, so any same-
-    // declaration isShared can observe a different count. Scan every branch
-    // and join body, not merely the linear continuation: aliases and calls
-    // can make differently named variables refer to the same allocation.
-    // Returning true is conservative; it is not an alias-equivalence proof.
+    // The emitted Rc runtime does not replay source inc/dec/del. It must
+    // therefore refuse a later isShared that may observe an earlier source
+    // reference-count effect. Track temporal order on each case path; a
+    // subsequent RC operation cannot retroactively change a previous read.
+    // Distinct variable IDs can alias, so any preceding RC effect taints
+    // the path. Joins are conservative until a complete CFG is available.
     unsafe fn has_reference_bookkeeping(body: Obj) -> Result<bool, String> {
         let mut pending = vec![body];
         let mut count = 0usize;
@@ -2116,6 +2117,55 @@ impl Reader {
                 }
                 10 | 11 => {}
                 t => return Err(format!("unsupported RC audit FnBody {t}")),
+            }
+        }
+        Ok(false)
+    }
+
+    unsafe fn rc_may_precede_sharedness(body: Obj) -> Result<bool, String> {
+        let mut pending = vec![(body, false)];
+        let mut count = 0usize;
+        while let Some((current, prior_rc)) = pending.pop() {
+            count += 1;
+            if count > 100_000 {
+                return Err("ordered reference-count audit exceeds 100000 IR instructions".into());
+            }
+            match Self::checked_tag(current, "FnBody")? {
+                0 => {
+                    let expr = Self::field(current, 2)?;
+                    if prior_rc && Self::checked_tag(expr, "Expr")? == 12 {
+                        return Ok(true);
+                    }
+                    pending.push((Self::field(current, 3)?, prior_rc));
+                }
+                1 => {
+                    // A join declaration is not executed until a jump. RC
+                    // effects in the continuation may reach its body. Without
+                    // explicit CFG flow, mixed RC and sharedness refuse.
+                    if Self::has_reference_bookkeeping(current)?
+                        && !Self::shared_observations(current)?.is_empty()
+                    {
+                        return Ok(true);
+                    }
+                    pending.push((Self::field(current, 2)?, prior_rc));
+                    pending.push((Self::field(current, 3)?, prior_rc));
+                }
+                2 => pending.push((Self::field(current, 3)?, prior_rc)),
+                5 => pending.push((Self::field(current, 5)?, prior_rc)),
+                6 | 7 => pending.push((Self::field(current, 2)?, true)),
+                8 => pending.push((Self::field(current, 1)?, true)),
+                9 => {
+                    for alt in Self::array(Self::field(current, 3)?)? {
+                        let idx = match Self::checked_tag(alt, "Alt")? {
+                            0 => 1,
+                            1 => 0,
+                            t => return Err(format!("unsupported ordered RC audit Alt {t}")),
+                        };
+                        pending.push((Self::field(alt, idx)?, prior_rc));
+                    }
+                }
+                10 | 11 => {}
+                t => return Err(format!("unsupported ordered RC audit FnBody {t}")),
             }
         }
         Ok(false)

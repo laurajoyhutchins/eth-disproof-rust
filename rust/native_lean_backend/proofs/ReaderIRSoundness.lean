@@ -81,11 +81,11 @@ inductive ExprMatches (env : SymbolicEnv) : IR.Expr → WordExpr → Prop where
       (hv : env b.idx = some v) :
       ExprMatches env (.fap `UInt64.mul args) (.mul u v)
 
-inductive BodyMatches (env : SymbolicEnv) : IR.FnBody → Program → Prop where
-  | ret (id : IR.VarId) (value : WordExpr)
+inductive BodyMatches : SymbolicEnv → IR.FnBody → Program → Prop where
+  | ret (env : SymbolicEnv) (id : IR.VarId) (value : WordExpr)
       (h : env id.idx = some value) :
       BodyMatches env (.ret (.var id)) (.ret value)
-  | bind (id : IR.VarId) (expr : IR.Expr) (tail : IR.FnBody)
+  | bind (env : SymbolicEnv) (id : IR.VarId) (expr : IR.Expr) (tail : IR.FnBody)
       (value : WordExpr) (result : Program)
       (hexpr : ExprMatches env expr value)
       (htail : BodyMatches (setVar env id.idx value) tail result) :
@@ -150,32 +150,40 @@ theorem body_sound {sym : SymbolicEnv} {body : IR.FnBody} {p : Program}
         (ih inputs (setVar runtime id.idx (evalActualUInt64 inputs value))
           (set_agrees agrees id.idx value))
 
+structure WordWitness (sym : SymbolicEnv) (expr : IR.Expr) where
+  word : WordExpr
+  derivation : ExprMatches sym expr word
+
+structure BodyWitness (sym : SymbolicEnv) (body : IR.FnBody) where
+  program : Program
+  derivation : BodyMatches sym body program
+
 /-- A second, proof-producing scanner. Unlike the independent Rust renderer,
 this scanner returns explicit constructors of BodyMatches; it cannot certify
 an unrecognized instruction or an arbitrary primitive name. -/
 private def wordExpr (sym : SymbolicEnv) (expr : IR.Expr) :
-    Option (Σ word : WordExpr, ExprMatches sym expr word) :=
+    Option (WordWitness sym expr) :=
   match expr with
   | .lit (.num n) =>
-      some ⟨.lit n, .literal n⟩
+      some {word := .lit n, derivation := .literal n}
   | .fap name args =>
     if hs : args.size = 2 then
       match ha : args[0]? with
-      | some (.var a) =>
+      | some (IR.Arg.var a) =>
         match hb : args[1]? with
-        | some (.var b) =>
+        | some (IR.Arg.var b) =>
           match hu : sym a.idx with
           | some u =>
             match hv : sym b.idx with
             | some v =>
               if hn : name = `UInt64.add then
-                some ⟨.add u v, by
+                some {word := .add u v, derivation := by
                   simpa only [hn] using
-                    (ExprMatches.add args a b u v hs ha hb hu hv)⟩
+                    (ExprMatches.add args a b u v hs ha hb hu hv)}
               else if hn : name = `UInt64.mul then
-                some ⟨.mul u v, by
+                some {word := .mul u v, derivation := by
                   simpa only [hn] using
-                    (ExprMatches.mul args a b u v hs ha hb hu hv)⟩
+                    (ExprMatches.mul args a b u v hs ha hb hu hv)}
               else none
             | none => none
           | none => none
@@ -185,18 +193,18 @@ private def wordExpr (sym : SymbolicEnv) (expr : IR.Expr) :
   | _ => none
 
 private partial def straightBody (sym : SymbolicEnv) (body : IR.FnBody) :
-    Option (Σ p : Program, BodyMatches sym body p) :=
+    Option (BodyWitness sym body) :=
   match body with
   | .ret (.var id) =>
       match hv : sym id.idx with
-      | some value => some ⟨.ret value, .ret id value hv⟩
+      | some value => some {program := .ret value, derivation := .ret sym id value hv}
       | none => none
   | .vdecl id .uint64 expr tail =>
       match wordExpr sym expr with
-      | some ⟨value, hexpr⟩ =>
+      | some {word := value, derivation := hexpr} =>
           match straightBody (setVar sym id.idx value) tail with
-          | some ⟨p, htail⟩ =>
-              some ⟨p, .bind id expr tail value p hexpr htail⟩
+          | some {program := p, derivation := htail} =>
+              some {program := p, derivation := .bind sym id expr tail value p hexpr htail}
           | none => none
       | none => none
   | _ => none
@@ -239,10 +247,10 @@ def reifyDecl (decl : IR.Decl) : Option StraightCertificate := do
          p0.borrow || p1.borrow || p0.x.idx == p1.x.idx then
         none
       else
-        let some ⟨program, matchIR⟩ ←
+        let some witness ←
           straightBody (initialSym p0.x.idx p1.x.idx) body | none
         some {left := p0.x.idx, right := p1.x.idx,
-              body, program, matchIR}
+              body, program := witness.program, matchIR := witness.derivation}
   | _ => none
 
 /-- For every pair of UInt64 inputs, the *actual Lean IR body* has the

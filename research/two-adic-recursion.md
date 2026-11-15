@@ -95,7 +95,7 @@ to obtain a sufficient loading condition of order
 \(D_{\rm arr}\Delta\log D_{\rm arr}+LD_{\rm arr}\), instead of
 \(D_{\rm arr}^{2}\Delta\). It gives the same packet count and
 degree/child bounds, provided the new sufficient condition holds.
-The proof has a bounded Rust labeling reference and arithmetic tests;
+The proof has bounded Rust labeling and actual slot-layout references, plus arithmetic tests;
 source-facing Lean formalization and active recursion are still open.
 
 The older floor below is conditional on the **original** packet lemma,

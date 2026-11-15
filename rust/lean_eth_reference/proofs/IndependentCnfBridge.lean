@@ -1,6 +1,6 @@
 import Mathlib
 import OAI.Algorithms.SubexponentialSAT.SAT
-import MainResults
+import OAI.IndependentAnthropic.MainResults
 
 /-!
 # Independent CNF semantics bridge

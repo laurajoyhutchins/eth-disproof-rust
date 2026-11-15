@@ -87,6 +87,20 @@ maximum degree* is a genuinely different assumption, not a free parameter.
 See [the root-packing obstruction and exact hypothetical schedule checker](root-packing-feasibility.md).
 No full recursion or new complexity bound is claimed.
 
+### Simultaneous collision and port existence theorem (source-structural)
+
+The [combined normalized-potential derivation](two-adic-simultaneous-potential.md)
+now gives one deterministic *theoretical* vertex labeling meeting
+both the \(3M/L\) orbit-sparse packet and \(3M/r\) real port
+caps, conditional on exact sufficient inequalities in \(M\),
+actual maximum degree, \(r\) and \(a\).
+For \(r=64,a=2,\delta=8\), the required edges fall to
+\(4{,}205{,}841{,}067\), from the earlier matching-only
+root sufficiency threshold \(6{,}106{,}906{,}624\).
+This is **not** a source-admitted root: the original degree
+envelope and fixed \(u_0\) remain independently obstructed;
+modified nonzero tensor deformation and mode routing are unproved.
+
 ### Per-coordinate port balancing can now be certified independently
 
 A [deterministic weighted vertex-label theorem](two-adic-joint-orbit-balance.md)

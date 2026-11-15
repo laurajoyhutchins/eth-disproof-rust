@@ -87,6 +87,20 @@ maximum degree* is a genuinely different assumption, not a free parameter.
 See [the root-packing obstruction and exact hypothetical schedule checker](root-packing-feasibility.md).
 No full recursion or new complexity bound is claimed.
 
+### Replacement collision-packing theorem under investigation
+
+A [matching-potential construction](matching-potential-packing.md)
+uses proper edge coloring and an exact conditional expectation
+to obtain a sufficient loading condition of order
+\(D_{\rm arr}\Delta\log D_{\rm arr}+LD_{\rm arr}\), instead of
+\(D_{\rm arr}^{2}\Delta\). It gives the same packet count and
+degree/child bounds, provided the new sufficient condition holds.
+The proof has bounded Rust labeling and actual slot-layout references, plus arithmetic tests;
+source-facing Lean formalization and active recursion are still open.
+
+The older floor below is conditional on the **original** packet lemma,
+not on all possible packing constructions.
+
 ### Packet-lemma floor independent of the degree envelope
 
 Even with an ideal maximum-degree cap, the *existing* packet lemma

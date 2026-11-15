@@ -154,6 +154,30 @@ In particular, \(H_{\mathrm{pad}}D/L\le3M/L\). The original packet construction 
 
 The source's orientation-by-slot grouping, canonical lifts and tensor identities remain unchanged under this stronger labeling argument.
 
+## Cost and certificate boundaries
+
+The construction is polynomial-time but the straightforward conditional
+estimator is not cheap. With \(N\) vertices, \(b=r^a\) labels per vertex,
+\(D=b^2\) ordered classes and \(k\le2\Delta-1\) matchings, recomputing
+the exact estimator independently for every label choice performs
+\(O(NbD(M+k))\) large-integer operations in the unoptimized reference
+model. Intermediate integers can have \(O(M\log D)\) bits. This expense
+**must be included** in the full counting benchmark, rather than hiding
+it as polynomial setup or assuming that lowering the sufficient edge
+threshold improves end-to-end runtime.
+
+The bounded Rust implementation verifies concrete edge assignments and
+packet placement. For a *particular* labelled network, these concrete
+certificates can establish the source packet conclusions even if the
+general matching-potential sufficient condition fails. Such a result is
+instance-specific; it does not imply a worst-case schedule.
+
+The next construction-level optimization is an incremental or sparse
+conditional estimator that reuses unaffected matching/color terms,
+with the exact integer potential as the correctness oracle. This is
+independent of (and cannot replace) the remaining 2-adic
+coefficient, interpolation, precision and recursion work.
+
 ## How much is gained?
 
 The old first inequality is \(M\ge2D^2\Delta\). The new sufficient inequality is

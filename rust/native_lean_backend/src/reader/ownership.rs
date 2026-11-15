@@ -9,7 +9,7 @@ use super::*;
 #[derive(Default)]
 pub(super) struct OwnershipSummary {
     may_effect: BTreeSet<String>,
-    may_observe: BTreeSet<String>,
+    pub(super) may_observe: BTreeSet<String>,
     known_functions: BTreeSet<String>,
 }
 

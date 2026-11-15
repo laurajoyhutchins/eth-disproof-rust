@@ -233,7 +233,7 @@ pub fn construct_joint_balanced_bounded(
     for _ in 0..passes {
         let mut improved = false;
         let mut place = 1usize;
-        for coordinate in 0..shifts.len() {
+        for coordinate_shift in &mut shifts {
             let mut best: Option<(usize, Vec<usize>, OrbitSparsePacketLayout)> = None;
             let best_packets = layout.packets.len();
             for shift in 1..r {
@@ -262,7 +262,7 @@ pub fn construct_joint_balanced_bounded(
             if let Some((shift, chosen_labels, chosen_layout)) = best {
                 right_labels = chosen_labels;
                 layout = chosen_layout;
-                shifts[coordinate] = (shifts[coordinate] + shift) % r;
+                *coordinate_shift = (*coordinate_shift + shift) % r;
                 improved = true;
             }
             place = place.checked_mul(r).ok_or_else(cap)?;

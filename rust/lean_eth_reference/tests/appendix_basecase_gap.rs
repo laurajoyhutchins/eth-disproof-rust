@@ -21,7 +21,10 @@ fn improved_root_condition_does_not_certify_next_level() {
     assert_eq!(value["optimistic_packing_prefix_stages"], 1);
     assert_eq!(value["first_uncovered_active_depth"], 1);
     assert_eq!(value["hypothetical_guaranteed_leaf_depth"], 8);
-    assert_eq!(value["stages"][0]["minimum_matching_required_edges"], "6106906624");
+    assert_eq!(
+        value["stages"][0]["minimum_matching_required_edges"],
+        "6106906624"
+    );
     assert_eq!(value["stages"][1]["optimistic_upper_edges"], "572522496");
     assert_eq!(
         value["minimum_matching_required_edges_at_first_gap"],
@@ -40,9 +43,18 @@ fn original_and_smaller_group_counts_have_opposing_depth_costs() {
     assert_eq!(large["hypothetical_guaranteed_leaf_depth"], 8);
     assert_eq!(small["first_uncovered_active_depth"], 2);
     assert_eq!(small["hypothetical_guaranteed_leaf_depth"], 123);
-    assert_eq!(small["stages"][0]["minimum_matching_required_edges"], "441784");
-    assert_eq!(small["stages"][1]["minimum_matching_required_edges"], "8445433465");
-    assert_eq!(small["stages"][2]["could_meet_sufficient_packing_arithmetic"], false);
+    assert_eq!(
+        small["stages"][0]["minimum_matching_required_edges"],
+        "441784"
+    );
+    assert_eq!(
+        small["stages"][1]["minimum_matching_required_edges"],
+        "8445433465"
+    );
+    assert_eq!(
+        small["stages"][2]["could_meet_sufficient_packing_arithmetic"],
+        false
+    );
     assert!(small["sat_count"].is_null());
 }
 

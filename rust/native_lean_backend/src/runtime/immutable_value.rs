@@ -40,6 +40,17 @@ enum __LeanValueRepr {
     List(Vec<__LeanValue>),
 }
 
+// A tagged Lean immediate has no heap identity. The Rust adapter used to
+// allocate a fresh Rc for every small Nat/constructor tag, even for an Array
+// length returned inside a tight bounds-check loop. Reuse a bounded set of
+// immutable adapters per thread. Never intern boxed scalars, constructors, or
+// other source heap objects, whose sharing behavior may be observable.
+const SMALL_TAGGED_CACHE_LEN: usize = 32;
+std::thread_local! {
+    static SMALL_TAGGED_CACHE: [std::rc::Rc<__LeanValueRepr>; SMALL_TAGGED_CACHE_LEN] =
+        std::array::from_fn(|n| std::rc::Rc::new(__LeanValueRepr::Tagged(n)));
+}
+
 // Nat is arbitrary precision in Lean. GMP is an established, maintained
 // arithmetic library, linked into standalone generated Rust. The backend
 // never truncates Nat to a machine-sized integer.
@@ -170,6 +181,13 @@ impl __LeanValue {
     }
     fn is_shared(&self) -> u8 {
         self.assert_not_erased();
+        // Source tagged immediates are not Lean heap references. Their
+        // synthetic Rc counts must never become an observable isShared
+        // result; this is the documented strict refusal boundary.
+        assert!(
+            !matches!(self.0.as_ref(), __LeanValueRepr::Tagged(_)),
+            "isShared requires a heap-backed Lean value"
+        );
         u8::from(std::rc::Rc::strong_count(&self.0) > 1)
     }
     fn with_field(mut self, index: usize, value: Self) -> Self {
@@ -201,7 +219,12 @@ impl __LeanValue {
         self
     }
     fn erased() -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Erased)) }
-    fn tagged(v: usize) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v))) }
+    fn tagged(v: usize) -> Self {
+        if v < SMALL_TAGGED_CACHE_LEN {
+            return SMALL_TAGGED_CACHE.with(|values| Self(std::rc::Rc::clone(&values[v])));
+        }
+        Self(std::rc::Rc::new(__LeanValueRepr::Tagged(v)))
+    }
     fn boxed_u8(v: u8) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U8(v))) }
     fn boxed_u16(v: u16) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U16(v))) }
     fn boxed_u32(v: u32) -> Self { Self(std::rc::Rc::new(__LeanValueRepr::U32(v))) }

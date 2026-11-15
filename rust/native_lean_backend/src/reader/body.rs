@@ -210,8 +210,18 @@ impl Reader {
                     .unwrap();
                     x = next;
                 }
-                FnBodyView::Inc { target, checked, persistent, next }
-                | FnBodyView::Dec { target, checked, persistent, next } => {
+                FnBodyView::Inc {
+                    target,
+                    checked,
+                    persistent,
+                    next,
+                }
+                | FnBodyView::Dec {
+                    target,
+                    checked,
+                    persistent,
+                    next,
+                } => {
                     // Record actual source IR bookkeeping; Rust Rc handles
                     // alone do not represent Lean's physical reference count.
                     let id = Self::var(target)?;
@@ -234,7 +244,11 @@ impl Reader {
                         ));
                     }
                     let operation = if is_dec { "source_dec" } else { "source_inc" };
-                    writeln!(code, "    x_{id}.{operation}({n}, {checked}, {persistent});").unwrap();
+                    writeln!(
+                        code,
+                        "    x_{id}.{operation}({n}, {checked}, {persistent});"
+                    )
+                    .unwrap();
                     x = next;
                 }
                 FnBodyView::Delete { target, next } => {
@@ -301,8 +315,9 @@ impl Reader {
                             // contract; the runtime checks the actual value.
                             let var = Self::var(Self::field(arg, 0)?)?;
                             if env.get(&var) == Some(&"tobj") {
-                                lowered
-                                    .push(format!("x_{var}.compiler_alias().require_constructor_object()"));
+                                lowered.push(format!(
+                                    "x_{var}.compiler_alias().require_constructor_object()"
+                                ));
                                 RuntimeFeatures::mark(
                                     ctx.features,
                                     RuntimeFeatures::HEAP_JOIN_TESTS,

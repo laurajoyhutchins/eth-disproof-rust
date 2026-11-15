@@ -118,7 +118,7 @@ impl Reader {
                     persistent,
                     next: Self::field(x, 2)?,
                 }
-            },
+            }
             7 => {
                 let (checked, persistent) = Self::rc_flags(x)?;
                 FnBodyView::Dec {
@@ -127,7 +127,7 @@ impl Reader {
                     persistent,
                     next: Self::field(x, 2)?,
                 }
-            },
+            }
             8 => FnBodyView::Delete {
                 target: Self::field(x, 0)?,
                 next: Self::field(x, 1)?,

@@ -8,6 +8,9 @@ enum __LeanValueRepr {
     Erased, // Physically absent optimized join parameter; any read must trap.
     U8(u8), U16(u16), U32(u32), U64(u64), USize(usize),
     Ctor { tag: usize, name: &'static str, fields: Vec<__LeanValue> },
+    // Verified Lean 4.34.1 SyncModel.PullIn.mk: four pointer fields and
+    // eight packed source Bool bytes. Not general mutable-heap support.
+    PullIn { fields: Vec<__LeanValue>, bytes: [u8; 8] },
     // Immutable first-class functions, represented by a statically generated
     // object-argument thunk and an Rc-shared vector of captured values.
     Closure {
@@ -222,6 +225,32 @@ impl __LeanValue {
         *updated.get_mut(index).expect("source Array.set! index out of bounds") = value;
         Self::array(updated)
     }
+    fn pull_in_ctor(fields: Vec<Self>) -> Self {
+        assert_eq!(fields.len(), 4, "source PullIn requires four object fields");
+        Self(std::rc::Rc::new(__LeanValueRepr::PullIn {
+            fields,
+            bytes: [0; 8],
+        }))
+    }
+    fn pull_in_set_u8(self, pointers: usize, offset: usize, value: u8) -> Self {
+        assert_eq!(pointers, 4, "source PullIn object width");
+        assert!(offset < 8 && value <= 1, "source PullIn Bool byte");
+        // Lean sset demands RC=1. Consume an unaliased Rc and refuse shared
+        // pointers rather than silently changing their mutation semantics.
+        let mut repr = std::rc::Rc::try_unwrap(self.0)
+            .expect("Lean sset requires unshared source constructor");
+        let __LeanValueRepr::PullIn { bytes, .. } = &mut repr
+        else { panic!("Lean sset target is not PullIn") };
+        bytes[offset] = value;
+        Self(std::rc::Rc::new(repr))
+    }
+    fn pull_in_sproj_u8(&self, pointers: usize, offset: usize) -> u8 {
+        assert_eq!(pointers, 4, "source PullIn object width");
+        assert!(offset < 8, "source PullIn Bool byte offset");
+        let __LeanValueRepr::PullIn { bytes, .. } = self.0.as_ref()
+        else { panic!("Lean sproj source is not PullIn") };
+        bytes[offset]
+    }
     pub fn list(values: Vec<Self>) -> Self {
         Self(std::rc::Rc::new(__LeanValueRepr::List(values)))
     }
@@ -375,6 +404,7 @@ impl __LeanValue {
         match self.0.as_ref() {
             __LeanValueRepr::Tagged(v) => *v,
             __LeanValueRepr::Ctor { tag, .. } => *tag,
+            __LeanValueRepr::PullIn { .. } => 0,
             __LeanValueRepr::List(values) => usize::from(!values.is_empty()),
             _ => panic!("tried to case-analyze a boxed scalar"),
         }
@@ -395,6 +425,8 @@ impl __LeanValue {
         match self.0.as_ref() {
             __LeanValueRepr::Ctor { fields, .. } =>
                 fields.get(index).expect("constructor field absent").clone(),
+            __LeanValueRepr::PullIn { fields, .. } =>
+                fields.get(index).expect("PullIn field absent").clone(),
             __LeanValueRepr::List(values) if !values.is_empty() => match index {
                 0 => values[0].clone(),
                 1 => Self::list(values[1..].to_vec()),
@@ -450,6 +482,8 @@ impl PartialEq for __LeanValue {
             (USize(a), USize(b)) => a == b,
             (Ctor {tag:a, name:an, fields:af}, Ctor {tag:b, name:bn, fields:bf}) =>
                 a == b && an == bn && af == bf,
+            (PullIn {fields:a, bytes:ab}, PullIn {fields:b, bytes:bb}) =>
+                a == b && ab == bb,
             (Closure { .. }, Closure { .. }) => std::rc::Rc::ptr_eq(&self.0, &other.0),
             _ => false,
         }

@@ -1,81 +1,61 @@
-# OpenAI ETH construction: Rust execution study
+# ETH: exact counting, from Lean to Rust
 
-This repository is an independent, source-pinned Rust implementation study of
-selected executable programs in OpenAI's Lean development,
-[*The Exponential Time Hypothesis is False*](https://github.com/openai/math/blob/main/lean/docs/378.md).
-It is **not** an independent proof of ETH's negation. In particular, the full
-native counting path, an independently executed Lean/Rust differential, and the
-claimed asymptotic resource bounds are not established on `main`.
+Can we execute the actual counting machine defined in [OpenAI's Lean ETH construction](https://github.com/openai/math/blob/main/lean/docs/378.md), and account for all of its work?
 
-## Run the source-defined frontend
+That is the purpose of this repository. We preserve source identities, compile what is supported, refuse what is not, and compare the result with independent Lean execution. Mathematical improvements are judged by the *whole counting cost*, not a faster isolated kernel.
 
-From the repository root, the checked-in `rust-toolchain.toml` pins **Rust 1.99.1**:
+**Current boundary:** the source-defined frontend and selected machine fragments run. A complete general nonterminal #SAT count and its primitive-machine complexity bound are not yet established on `main`.
+
+## Run something real
+
+The Rust toolchain is pinned to **1.99.1**. From the repository root:
 
 ```sh
 cargo test --locked --offline --all-targets
+
+# Execute the source-defined frontend (not a #SAT counter).
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
   cargo run --quiet --locked --offline -p lean-eth-reference --bin eth-frontend
 ```
 
-This runs the pinned `Native.frontendCommand` as a Rust finite
-register-and-stack machine. It parses and normalizes a CNF and reports the
-resulting physical stack words, instruction total and peak occupied stack bits.
-**It does not count satisfying assignments.** See the
-[frontend specification](rust/lean_eth_reference/docs/m2-runnable-frontend.md).
+That frontend runs `Native.frontendCommand` as a physical register-and-stack machine and reports instruction and occupied-stack-bit counts. It does not report the number of satisfying assignments.
 
-For a separate, explicitly **exponential** bounded #SAT correctness oracle:
+To check a small answer with the **separate exponential oracle**:
 
 ```sh
 printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
   cargo run --quiet --locked --offline -p lean-eth-reference --bin lean-eth-reference
 ```
 
-That example has 5 solutions. The oracle does not execute the proposed ETH
-algorithm and refuses unsupported instance sizes.
+The answer is **5**. The oracle never stands in for the proposed algorithm.
 
-## Current scope
+For executable boundaries, see [the evidence](rust/lean_eth_reference/docs/evidence.md), [missing source stages](rust/lean_eth_reference/docs/remaining-lean-port.md) and the [frontend interface](rust/lean_eth_reference/docs/m2-runnable-frontend.md).
 
-| Accepted on `main` | Still open |
-| --- | --- |
-| CNF parsing, encoding and bounded semantic oracle | Complete source-defined nonterminal #SAT count |
-| Rust bit-machine interpreter and runnable native frontend | Independently executed original Lean/Rust full-state differential |
-| Source-correlated instruction fragments, generated literal tables and supported terminal-family native counts | Primitive TM2 refinement and worst-case complexity argument |
+## Read the mathematics
 
-The root `Cargo.toml` is the canonical workspace manifest and the root `Cargo.lock` is the sole dependency lockfile. The Rust crate remains at `rust/lean_eth_reference`; from that directory, ordinary Cargo commands also resolve the workspace.
+- [The 2-adic recursion](research/two-adic-recursion.md): packets, weighted modes, group contraction and the Lean theorem still needed.
+- [Spectral group actions](research/spectral-group-actions.md): pair swaps, Krawtchouk structure and what compression must preserve.
+- [The cost of the complete algorithm](rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md): the enormous parameter regime, precision, packet work, interpolation and leaf sizes.
+- [Lean-to-Rust correspondence](research/lean-rust-acceptance.md): why a compiler-IR backend alone cannot execute a noncomputable source declaration.
+- [Research record](research/README.md) and [literature](research/literature.md).
 
-The authoritative [execution and evidence matrix](rust/lean_eth_reference/docs/evidence.md)
-explains what each test actually establishes and how to reproduce it. The
-[port dependency inventory](rust/lean_eth_reference/docs/remaining-lean-port.md)
-identifies missing stages; a constructor that is still unavailable must refuse
-rather than supply a synthetic answer.
+## Documentation
 
-## Research notebook (31 October–14 November 2026)
+The [MkDocs site source](docs/index.md) presents the same Markdown with navigation, search and rendered equations. There is no second copy of the research notes.
 
-The [research notebook](research/README.md) consolidates the [dated decision ledger](research/2026-10-31-to-2026-11-14-ledger.md), [spectral/group-action research](research/spectral-group-actions.md), [two-adic recursion proof map](research/two-adic-recursion.md), [Lean-to-Rust G1/G2 acceptance](research/lean-rust-acceptance.md), [end-to-end cost/benchmarks](research/cost-model-and-benchmarks.md), [annotated literature](research/literature.md) and [LaTeX-to-Lean evaluation plan](research/formalization-evaluation.md). Research results and open PRs are deliberately not presented as accepted native counting capabilities.
+```sh
+python3 -m pip install -r docs/requirements.txt
+python3 -m mkdocs serve
+# Check the generated site:
+python3 -m mkdocs build --strict
+```
 
-## Source, checks and history
+The documentation workflow builds a static-site artifact. A public GitHub Pages URL is not implied by that build.
 
-- [Rust crate and CLI guide](rust/lean_eth_reference/README.md)
-- [Pinned Lean source manifest](rust/lean_eth_reference/reference/source-manifest.json):
-  [`openai/math@4eaee875`](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT)
-- [Rust CI](.github/workflows/rust.yml): Rust formatting, tests and strict Clippy
-  on PRs, `main` pushes and manual dispatch
-- [Study guide to the Git history](rust/lean_eth_reference/docs/reading-the-history.md):
-  the first-parent teaching sequence is explicitly reconstructed, not
-  original chronological authorship
+## Source and provenance
 
-Earlier Python/Cython Sudoku research is retained on the
-[`python/sudoku-research` branch](https://github.com/laurajoyhutchins/eth-disproof-rust/tree/python/sudoku-research);
-it is not part of the default Rust executable.
+The [manifest](rust/lean_eth_reference/reference/source-manifest.json) pins `openai/math@4eaee87548250b2682affda7d05d947c05554bae`. The canonical Cargo workspace lives at the repository root; the implementation crate is `rust/lean_eth_reference`. [Source and tests](rust/lean_eth_reference/README.md), [contributing rules](CONTRIBUTING.md), and [the historical port record](rust/lean_eth_reference/docs/reading-the-history.md) explain the rest.
 
-## Contributing, provenance and licensing
+Earlier Python/Cython Sudoku experiments remain on the [historical research branch](https://github.com/laurajoyhutchins/eth-disproof-rust/tree/python/sudoku-research). They are not the active Rust counter.
 
-Please keep behavioral evidence distinct from source identity, native
-performance measurements and mathematical complexity proofs. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for source-linked changes and reproducible
-test requirements.
-
-This is independent research, not an official OpenAI release. Original
-contributions use the [MIT license](LICENSE); adapted upstream material has
-[Apache-2.0](LICENSE-APACHE) obligations described in [NOTICE](NOTICE). The
-Rust crate records `MIT AND Apache-2.0`.
+This is independent research, not an official OpenAI release. Original work is [MIT](LICENSE); upstream adaptations and notices are documented in [Apache-2.0](LICENSE-APACHE) and [NOTICE](NOTICE).

@@ -559,7 +559,7 @@ mkdir -p artifacts
   echo "canonical_value_runtime=ONE_IDENTICAL_SOURCE_NAT_OBJECT_CLOSURE"
   sha256sum src/runtime/immutable_value.rs
   echo "ir_constructor_inventory=PASS"
-  echo "runtime_tag_whitelist=33_scoped_IR_constructors"
+  echo "runtime_tag_whitelist=35_scoped_IR_constructors"
   echo "primitive_conformance=30_baseline_x_64_plus_38_extended_oracles"
   echo "extended_float_enum_bitwise_div_shift=PASS"
   echo "standalone_cargo_binary=PASS"

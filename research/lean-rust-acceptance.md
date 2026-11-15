@@ -1,58 +1,84 @@
-# Lean → Rust compilation: G1/G2 semantics and remaining acceptance
+# Compiling Lean is not the same as compiling the counting algorithm
 
-**Snapshot:** 14 November 2026. Scope is the source-pinned ETH construction, not a generic compiler maturity claim.
+There are two separate problems.
 
-## Two gates with different meanings
+**G1:** Compile ordinary executable Lean declarations to Rust, with the original runtime semantics.
 
-- **G1, ordinary executable Lean:** compile a *real* declaration's transitive compiler-IR closure into a standalone Rust artifact. Match original Lean semantics for Nat/Int, constructed objects, exact constructors/cases, closures, sharing/ownership and supported effects. Accept three substantial unchanged external Lean programs, not merely compiler-generated fixtures.
-- **G2, original noncomputable ETH closure:** compile the source-defined `SqrtLogSpace.QueryStreamProgram.program` and its real high-query/leaf/DFS/outer composition. Ordinary compiler IR extraction does not make a declaration inside a `noncomputable section` executable. Source-preserving symbolic residualization is required; if unavailable it must refuse.
+**G2:** Compile the actual ETH counting program, including the parts of the Lean source that do not have ordinary compiler IR.
 
-Both gates need a common, exact source identity and independent semantic agreement. G1 success does not imply G2 success.
+G1 can succeed without making a dent in G2. The original `SqrtLogSpace.QueryStreamProgram.program` appears inside a `noncomputable section`. Asking Lean for its compiler IR does not manufacture an executable program.
 
-## Fixed sources and runtimes
+## G1: the runtime is the specification
 
-- Upstream ETH source: [openai/math@4eaee87548250b2682affda7d05d947c05554bae](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT), tracked by [manifest](../rust/lean_eth_reference/reference/source-manifest.json).
-- Original Lean: **4.34.1**. Rust workspace: **1.99.1**, from [toolchain](../rust-toolchain.toml). External leanfran smoke work used Lean 4.35.0 and therefore cannot silently stand in for the original source/toolchain.
-- The preferred G1 implementation is the **single in-process compiler and canonical GMP/Rc runtime**, rather than competing JSON-IR transports and duplicate object/Nat runtimes. [Merged #230](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/230) supplied source-exact List constructor cases; [merged #234](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/234) reconciled Array and external source work. Inspect the exact main head and independent CI receipts before relying on numerical fixture totals.
+A generated Rust program must agree with the original Lean program, not just pass a test of equivalent-looking hand-written Rust.
 
-## Open semantic corners, anchored to concrete PRs
+| Source feature | What can go wrong |
+| --- | --- |
+| Constructors and cases | `Option`, `List`, `Sum` and custom inductives reuse tags; the family identity matters |
+| Mixed object/scalar fields | `sproj(n, offset, x)` addresses scalar bytes after \(n\) pointer fields. It is not `proj(i,x)` |
+| Arrays and sharing | An aliased `Rc` value cannot be mutated as though it were uniquely owned |
+| Closures and effects | Erased values, first-class functions, sharing observations and side effects need source-accurate behavior |
+| Transitive closure | A supported entrypoint is useless if one called declaration silently disappears |
 
-| Area | Failure mode | Acceptance |
-| --- | --- | --- |
-| Inductive representation | Tag/object identity conflated across Option, List, Sum or user constructors | Source CtorInfo family, tag and pointer/scalar field layout agree, otherwise refuse. [#239](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/239), open |
-| Object and scalar fields | Treating scalar `sproj(n,offset,x)` as ordinary object `proj(i,x)` changes field meaning | Capture actual Lean IR for mixed Bool/Nat/Option structure, match scalar byte offset after pointer fields, validate `proj` and `uproj`; [#237](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/237), [#238](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/238), open |
-| Mutable/persistent Array | A shared `Rc` alias cannot be mutated as though uniquely owned | Source-defined persistent behavior or verified last-use uniqueness; compare pointer identity, aliasing and values; [#239](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/239) |
-| Functions and effects | Callable objects, closures, erased proofs, sharing observations and effects differ from Lean runtime | Exact source-IR closure, no speculative externs, side-effect and ownership oracles, explicit refusals for unsupported constructs |
-| G1 external acceptance | A generated fixture is not an unchanged project | Pin external repo, build exact original Lean, compile untouched exported declaration, independently compare outputs and full tested behavior |
-| G2 symbolic source | Noncomputable definition lacks ordinary executable IR | Traverse elaborated original Lean `Expr` DAG, preserve sharing and finite reductions, prove each reduction; refuse opaque computational dependencies, unresolved recursors and exhausted budgets |
-| Query machine | Partial source fragments have incompatible labels/ports or do not compose | Complete original `QueryStreamProgram.command`: head loading, pair commitment, node visiting, count reconstruction; source-backed physical instruction graph; [#177](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/177) still draft |
-| Native count | High/leaf/DFS/outer exist individually but not together | One source-generated program, real nonterminal count and original-Lean differential; [#179](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/179) still draft |
+The intended implementation has **one** in-process Lean 4.34.1 compiler and one GMP/`Rc` value runtime. Do not maintain a second hand-translated object model.
 
-The [generic compiler-IR probe](../rust/lean_eth_reference/docs/compiler-ir-backend.md), [symbolic core residualizer](../rust/lean_eth_reference/docs/core-expr-residualizer.md), and [two-path receipt contract](../rust/lean_eth_reference/docs/two-path-acceptance-contract.md) are separate experiments. The desired direction is a single source-semantics contract with explicit applicability, not two mutually substitutable algorithms.
+Merged [#230](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/230) and [#234](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/234) are historical integration points. The November 14 follow-ups [#237](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/237), [#238](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/238) and [#239](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/239) record the scalar-projection and ownership issues. Their descriptions are not substitutes for checking the current head.
 
-## Formal refinement ladder
+G1 acceptance requires **three substantial, unchanged external Lean programs**: original Lean execution, source-IR capture, generated Rust execution, and independent output/state agreement. Compiler-generated fixtures alone do not count.
 
-1. **Source identity:** Git blob hashes, toolchains, Mathlib commit, original `Lean.Name`, exact declaration roots, compiler version and all transitive computational dependencies are recorded.
-2. **Lean declaration semantics:** identify actual compiler IR, or a kernel-justified residualized expression path. Unsupported source terms are refused.
-3. **BitProgram identity:** entry/exit labels, physical instructions, all ports, call relocations, original stack/register ABI and halting behavior agree with the pinned original Lean graph.
-4. **Independent execution:** original Lean and generated Rust produce equal bounded *full-state* traces, not just equal final counts. Include negative, malformed, sharing, overflow and resource-bound cases.
-5. **Abstract primitive-machine bridge:** [merged PR #178](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/178) proves that a completely identical source physical graph transfers to the same formal Lean primitive TM2 machine. This does **not** prove that Rust emitted/executed the missing complete graph.
-6. **Final theorem connection:** prove the actual complete native source counter and its primitive time/visited-space bound. Rust wall clock, allocations, or BitProgram instructions are not the TM2 bound.
+## G2: compile what Lean actually defines
 
-No level can be inferred solely from the evidence of another.
+The target sequence is
 
-## Noncomputable small-input branch
+```text
+QueryStreamProgram.command
+  → native high query
+  → native leaf
+  → DFSCountProgram.command
+  → Native.outerCommand
+  → Native.countingProgram
+```
 
-The original Lean cutoff uses a *noncomputably selected finite table*. Implementing brute force at runtime is **not** compilation of that branch. The correct runtime policy is source-refined fixed table with independently certified construction, or **unsupported**. A mathematically permitted large-input path may be used only after its entire source-defined counting program is compiled and verified; it cannot be inferred from the nominal cutoff alone. See [finite fallback disposition](../rust/lean_eth_reference/docs/m2-finite-fallback-decision.md).
+The query path needs signature-head loading, pair commitment, node processing and count reconstruction. Partial source graphs do not imply the composite graph.
 
-## Reproducible acceptance record
+For a source declaration without executable IR, inspect its elaborated Lean `Expr` definition. A residualizer must preserve binding, sharing, reduction and dependencies. It must refuse computational axioms, unknown opaque constants, unresolved recursors or exhausted budgets. It cannot replace them with a plausible Rust #SAT algorithm.
 
-For each candidate, retain:
+The [compiler-IR probe](../rust/lean_eth_reference/docs/compiler-ir-backend.md), [core-expression residualizer](../rust/lean_eth_reference/docs/core-expr-residualizer.md) and [shared receipt contract](../rust/lean_eth_reference/docs/two-path-acceptance-contract.md) explore these boundaries. None establishes the full ETH program by itself.
 
-- Immutable source Git revision and file blobs; Lean/Mathlib/Rust versions and Cargo lock hash.
-- Exact compiler and runtime commits, declared G1/G2 coverage, full refusal ledger and artifact SHA-256.
-- Original Lean command and all original-source test oracles; separate generated Rust command.
-- Per-input source and Rust result, trace hash, first divergent state if any, machine step/stack counts, bit operations and peak bytes.
-- Exact-head CI check id and external reproducibility instructions; cached artifacts only when their entire identity contract matches.
+The original query/composition drafts are [#177](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/177) and [#179](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/179).
 
-The authoritative existing [execution matrix](../rust/lean_eth_reference/docs/evidence.md) remains the mainline truth. Do not overwrite it with aspirational counts from this note.
+## The correspondence we need
+
+```text
+pinned Lean declaration
+          ↓
+actual IR or justified residualization
+          ↓
+source-equivalent BitProgram
+          ↓
+same physical instructions, labels and ports
+          ↓
+independently matched Lean/Rust state traces
+          ↓
+primitive TM2 time and visited-space bound
+```
+
+Source Git blobs, Mathlib and compiler pins belong in the certificate. Every unsupported construct must have a reason attached.
+
+[PR #178](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/178) established a formal identity bridge **conditional on complete physical graph agreement**. It does not establish that Rust produced the missing full graph. Matching final counts also does not prove matching states, instruction costs or tape use.
+
+## The small-input trap
+
+The Lean finite branch uses a noncomputably selected table. A Rust exhaustive search is not a compilation of that table.
+
+There are only two honest outcomes: construct and certify the exact table, or refuse the unsupported branch. The separate bounded #SAT oracle is for differential testing, never a silent runtime fallback.
+
+See [finite fallback](../rust/lean_eth_reference/docs/m2-finite-fallback-decision.md).
+
+## What would close the gap?
+
+Run one **nonterminal** instance through the complete original-source query, leaf, DFS and outer machine. Compare original Lean and generated Rust at each physical step: program counter, registers, stacks, output, halt and refusal. Bind the result to source SHAs, toolchains, emitted artifact hashes and the exact CI head. Then prove the primitive resource transfer.
+
+That is a far more useful milestone than another thousand fixtures that test only isolated fragments.
+
+[Current execution evidence](../rust/lean_eth_reference/docs/evidence.md) · [Remaining port](../rust/lean_eth_reference/docs/remaining-lean-port.md)

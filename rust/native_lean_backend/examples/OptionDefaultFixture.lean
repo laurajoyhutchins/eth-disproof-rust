@@ -33,7 +33,7 @@ run_cmd do
         | throwError "original Option source IR missing for {root}"
       return d
     source := source ++ s!"ORIGINAL {root}\n{decl}\nEND {root}\n"
-    logInfo s!"ORIGINAL_IR {root}:\n{Lean.IR.formatDecl decl |>.pretty}"
+
   liftIO <| IO.FS.writeFile "examples/option-default-package/original-ir.txt" source
 
 run_cmd do

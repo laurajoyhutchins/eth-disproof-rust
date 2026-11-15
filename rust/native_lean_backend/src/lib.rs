@@ -348,6 +348,7 @@ mod source_reference_count_tests {
         let x = __LeanValue::tagged(17);
         x.source_inc(3, true, false);
         x.source_dec(1, true, false);
+        x.source_del();
         assert_eq!(x.tagged_nat(), 17);
     }
 

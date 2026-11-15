@@ -86,10 +86,10 @@ mod tests {
 
     #[test]
     fn unsupported_runtime_primitives_are_not_inferred() {
-        for name in ["Nat.pow", "Array.pop", "IO.println", "Int.add", "Unknown.foo"] {
+        for name in ["Nat.pow", "Array.pop", "IO.println", "IO.getLine", "Unknown.foo"] {
             assert!(!is_primitive(name), "{name} must not silently lower");
         }
-        for name in ["Nat.add", "Nat.div", "Array.set!", "Array.getInternal"] {
+        for name in ["Nat.add", "Nat.div", "Int.add", "Array.set!", "Array.getInternal"] {
             assert!(is_primitive(name), "{name} must remain supported");
         }
     }

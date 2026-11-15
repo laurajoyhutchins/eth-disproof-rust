@@ -2,7 +2,7 @@
 use super::*;
 
 impl Reader {
-    pub(crate) unsafe fn emit(decl: Obj, rust_name: Obj) -> Result<String, String> {
+    pub(crate) unsafe fn emit(decl: Obj, rust_name: Obj) -> CompilerResult<String> {
         if lr_abi_probe() == 0 {
             return Err("Lean C ABI runtime probe failed".into());
         }
@@ -16,7 +16,7 @@ impl Reader {
         decl: Obj,
         rust_name: &str,
         functions: Option<&FunctionTable>,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern declaration without executable body".into());
         }
@@ -66,10 +66,10 @@ impl Reader {
             if Self::param_borrow(*param)? && shared.contains(&var) {
                 return Err(format!(
                     "borrowed parameter x_{var} has unverified isShared ownership semantics"
-                ));
+                ).into());
             }
             if env.insert(var, ty).is_some() {
-                return Err(format!("duplicate parameter x_{var}"));
+                return Err(format!("duplicate parameter x_{var}").into());
             }
             write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
         }
@@ -89,7 +89,7 @@ impl Reader {
         result.push_str("}\n");
         Ok(result)
     }
-    pub(super) unsafe fn signature(decl: Obj) -> Result<Signature, String> {
+    pub(super) unsafe fn signature(decl: Obj) -> CompilerResult<Signature> {
         if Self::checked_tag(decl, "Decl")? != 0 {
             return Err("extern or opaque declaration in native dependency closure".into());
         }
@@ -105,7 +105,7 @@ impl Reader {
     }
 
     // Source-bound, iterative reachability of directly called functions.
-    pub(super) unsafe fn body_calls(x: Obj, calls: &mut BTreeSet<String>) -> Result<(), String> {
+    pub(super) unsafe fn body_calls(x: Obj, calls: &mut BTreeSet<String>) -> CompilerResult<()> {
         let mut pending = vec![x];
         let mut count = 0;
         while let Some(body) = pending.pop() {
@@ -147,13 +147,13 @@ impl Reader {
         decls: Obj,
         root: Obj,
         public_name: Obj,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         let root = Self::name(root, 0)?;
         let public_name = Self::string(public_name)?;
         Self::emit_roots(decls, vec![(root, public_name)])
     }
 
-    pub(crate) unsafe fn emit_module_many(decls: Obj, roots: Obj) -> Result<String, String> {
+    pub(crate) unsafe fn emit_module_many(decls: Obj, roots: Obj) -> CompilerResult<String> {
         let mut public_roots = Vec::new();
         for item in Self::array(roots)? {
             let root = Self::name(item, 0)?;
@@ -168,7 +168,7 @@ impl Reader {
     pub(super) unsafe fn emit_roots(
         decls: Obj,
         roots: Vec<(String, String)>,
-    ) -> Result<String, String> {
+    ) -> CompilerResult<String> {
         if lr_abi_probe() == 0 {
             return Err("Lean C ABI runtime probe failed".into());
         }
@@ -180,7 +180,7 @@ impl Reader {
         for decl in entries {
             let name = Self::name(Self::field(decl, 0)?, 0)?;
             if definitions.insert(name.clone(), decl).is_some() {
-                return Err(format!("duplicate IR declaration in closure: {name}"));
+                return Err(format!("duplicate IR declaration in closure: {name}").into());
             }
         }
         let mut pending = Vec::new();
@@ -188,13 +188,13 @@ impl Reader {
         let mut root_names = BTreeSet::new();
         for (root, public) in &roots {
             if !root_names.insert(root.clone()) {
-                return Err(format!("duplicate public Lean root: {root}"));
+                return Err(format!("duplicate public Lean root: {root}").into());
             }
             if !public_names.insert(public.clone()) {
-                return Err(format!("duplicate Rust public API name: {public}"));
+                return Err(format!("duplicate Rust public API name: {public}").into());
             }
             if !definitions.contains_key(root) {
-                return Err(format!("requested Lean root {root} has no compiler IR"));
+                return Err(format!("requested Lean root {root} has no compiler IR").into());
             }
             pending.push(root.clone());
         }

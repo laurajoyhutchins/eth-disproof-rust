@@ -63,7 +63,7 @@ pub(super) enum AltView {
 }
 
 impl Reader {
-    pub(super) unsafe fn body_view(x: Obj) -> Result<FnBodyView, String> {
+    pub(super) unsafe fn body_view(x: Obj) -> CompilerResult<FnBodyView> {
         Ok(match Self::checked_tag(x, "FnBody")? {
             0 => FnBodyView::Decl {
                 defined: Self::field(x, 0)?,
@@ -114,11 +114,11 @@ impl Reader {
                 id: Self::field(x, 0)?,
                 arguments: Self::field(x, 1)?,
             },
-            t => return Err(format!("IR body constructor {t} unsupported")),
+            t => return Err(format!("IR body constructor {t} unsupported").into()),
         })
     }
 
-    pub(super) unsafe fn alt_view(x: Obj) -> Result<AltView, String> {
+    pub(super) unsafe fn alt_view(x: Obj) -> CompilerResult<AltView> {
         Ok(match Self::checked_tag(x, "Alt")? {
             0 => AltView::Constructor {
                 body: Self::field(x, 1)?,
@@ -126,7 +126,7 @@ impl Reader {
             1 => AltView::Default {
                 body: Self::field(x, 0)?,
             },
-            t => return Err(format!("IR alternative constructor {t} unsupported")),
+            t => return Err(format!("IR alternative constructor {t} unsupported").into()),
         })
     }
 }

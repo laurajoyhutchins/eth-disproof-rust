@@ -5,7 +5,7 @@ use super::*;
 impl Reader {
     // An isShared expression is a physical ownership observation even when
     // the current generated value representation is immutable and Rc-backed.
-    pub(super) unsafe fn shared_observations(body: Obj) -> Result<BTreeSet<usize>, String> {
+    pub(super) unsafe fn shared_observations(body: Obj) -> CompilerResult<BTreeSet<usize>> {
         let mut observed = BTreeSet::new();
         let mut pending = vec![body];
         let mut count = 0usize;
@@ -48,7 +48,7 @@ impl Reader {
     // jdecl makes its binding visible but only jmp executes the value body.
     // Conservatively remember reference-count effects across all paths.
     // VarIds do not imply disjoint heap objects.
-    pub(super) unsafe fn rc_may_precede_sharedness(body: Obj) -> Result<bool, String> {
+    pub(super) unsafe fn rc_may_precede_sharedness(body: Obj) -> CompilerResult<bool> {
         #[derive(Clone)]
         struct JoinScope {
             id: usize,

@@ -10,7 +10,7 @@ impl Reader {
         env: &mut BTreeMap<usize, &'static str>,
         ret_ty: &str,
         ctx: LoweringContext<'_>,
-    ) -> Result<(), String> {
+    ) -> CompilerResult<()> {
         if depth > 128 {
             return Err("IR control-flow nesting limit".into());
         }
@@ -59,7 +59,7 @@ impl Reader {
                         consumed_ap,
                     )?;
                     if env.insert(name, ty).is_some() {
-                        return Err(format!("variable x_{name} defined more than once"));
+                        return Err(format!("variable x_{name} defined more than once").into());
                     }
                     writeln!(code, "    let x_{name}: {} = {value};", rust_type(ty)).unwrap();
                     x = next;
@@ -76,7 +76,7 @@ impl Reader {
                     // scope: recursive join jumps are refused, not miscompiled.
                     let id = Self::var(join_id)?;
                     if ctx.joins.contains_key(&id) {
-                        return Err(format!("join point {id} shadows a visible join"));
+                        return Err(format!("join point {id} shadows a visible join").into());
                     }
                     let mut param_types = Vec::new();
                     let join_shared = Self::shared_observations(value)?;
@@ -88,12 +88,12 @@ impl Reader {
                         if Self::param_borrow(param)? && join_shared.contains(&var) {
                             return Err(format!(
                                 "borrowed join parameter x_{var} has unverified isShared ownership semantics"
-                            ));
+                            ).into());
                         }
                         if value_env.insert(var, ty).is_some() {
                             return Err(format!(
                                 "join parameter x_{var} reused a visible variable"
-                            ));
+                            ).into());
                         }
                         param_code.push(format!("x_{var}: {}", rust_type(ty)));
                         param_types.push(ty);
@@ -171,7 +171,7 @@ impl Reader {
                     {
                         return Err(format!(
                             "unverified sset layout n={pointers}, offset={offset}, type={ty}"
-                        ));
+                        ).into());
                     }
                     writeln!(
                         code,
@@ -217,7 +217,7 @@ impl Reader {
                             "join point {id} expects {} args, got {}",
                             types.len(),
                             args.len()
-                        ));
+                        ).into());
                     }
                     let mut lowered = Vec::new();
                     for (arg, ty) in args.into_iter().zip(types.iter()) {

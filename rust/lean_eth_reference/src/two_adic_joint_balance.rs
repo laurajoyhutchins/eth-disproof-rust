@@ -24,9 +24,7 @@
 //! and does not run the appendix's source-defined tensor contraction.
 
 use crate::Error;
-use crate::two_adic_orbit_sparse::{
-    OrbitSparsePacketLayout, construct_orbit_sparse_bounded,
-};
+use crate::two_adic_orbit_sparse::{OrbitSparsePacketLayout, construct_orbit_sparse_bounded};
 use crate::two_adic_packet_layout::BipartiteEdge;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
@@ -94,11 +92,7 @@ fn shore_degrees(edges: &[BipartiteEdge], count: usize, left: bool) -> Result<Ve
 
 /// Independently balance each coordinate's real-port loads. This
 /// routine needs no random choices, matching enumerator or SAT oracle.
-fn greedy_shore(
-    degree: &[usize],
-    r: usize,
-    a: u32,
-) -> Result<(Vec<usize>, usize), Error> {
+fn greedy_shore(degree: &[usize], r: usize, a: u32) -> Result<(Vec<usize>, usize), Error> {
     let mut order = (0..degree.len()).collect::<Vec<_>>();
     order.sort_by_key(|&v| (Reverse(degree[v]), v));
     let mut labels = vec![0usize; degree.len()];
@@ -113,9 +107,7 @@ fn greedy_shore(
             let symbol = (0..r)
                 .min_by_key(|&s| (loads[s], (s + r - preference) % r))
                 .expect("positive r");
-            loads[symbol] = loads[symbol]
-                .checked_add(degree[vertex])
-                .ok_or_else(cap)?;
+            loads[symbol] = loads[symbol].checked_add(degree[vertex]).ok_or_else(cap)?;
             labels[vertex] = labels[vertex]
                 .checked_add(symbol.checked_mul(place).ok_or_else(cap)?)
                 .ok_or_else(cap)?;
@@ -212,10 +204,7 @@ pub fn construct_joint_balanced_bounded(
         .checked_mul(delta)
         .and_then(|x| x.checked_add(m))
         .ok_or_else(cap)?;
-    let greedy_port_sufficient = (r - 1)
-        .checked_mul(delta)
-        .ok_or_else(cap)?
-        <= 2 * m;
+    let greedy_port_sufficient = (r - 1).checked_mul(delta).ok_or_else(cap)? <= 2 * m;
     let vertex_degree_necessary = r.checked_mul(delta).ok_or_else(cap)? <= 3 * m;
     // A vertex keeps one coordinate digit per coordinate, so a single
     // degree-Delta vertex contributes Delta ports to some symbol bin.
@@ -234,9 +223,8 @@ pub fn construct_joint_balanced_bounded(
         return Err(invalid("deterministic weighted greedy port theorem failed"));
     }
     let initial_right_labels = right_labels.clone();
-    let mut layout = construct_orbit_sparse_bounded(
-        edges, &left_labels, &right_labels, r, a, degree_cap,
-    )?;
+    let mut layout =
+        construct_orbit_sparse_bounded(edges, &left_labels, &right_labels, r, a, degree_cap)?;
     let initial_packets = layout.packets.len();
     let initial_unused_slots = layout.unused_slots;
     let mut evaluated = 1usize;
@@ -255,7 +243,12 @@ pub fn construct_joint_balanced_bounded(
                 }
                 let candidate_labels = rotate_coordinate(&right_labels, r, place, shift)?;
                 let candidate = construct_orbit_sparse_bounded(
-                    edges, &left_labels, &candidate_labels, r, a, degree_cap,
+                    edges,
+                    &left_labels,
+                    &candidate_labels,
+                    r,
+                    a,
+                    degree_cap,
                 )?;
                 // The current port loads are invariant under a
                 // permutation of right-side symbol names. Only P matters.
@@ -297,11 +290,17 @@ pub fn construct_joint_balanced_bounded(
         .max()
         .unwrap_or(0);
     if new_row_max != row_max || new_col_max != col_max {
-        return Err(invalid("digit relabeling modified symbol port multiset maximum"));
+        return Err(invalid(
+            "digit relabeling modified symbol port multiset maximum",
+        ));
     }
     let uniform_packets = uniform_packet_count(edges, &left_labels, &right_labels, r, a);
-    if uniform_packets.is_some_and(|p| p < u128::try_from(layout.packets.len()).unwrap_or(u128::MAX)) {
-        return Err(invalid("sparse packet count exceeded global uniform padding"));
+    if uniform_packets
+        .is_some_and(|p| p < u128::try_from(layout.packets.len()).unwrap_or(u128::MAX))
+    {
+        return Err(invalid(
+            "sparse packet count exceeded global uniform padding",
+        ));
     }
     Ok(JointBalanceReceipt {
         r,
@@ -340,7 +339,13 @@ pub fn construct_joint_balanced_admitted(
     passes: u32,
 ) -> Result<JointBalanceReceipt, Error> {
     let receipt = construct_joint_balanced_bounded(
-        edges, left_vertices, right_vertices, r, a, degree_cap, passes,
+        edges,
+        left_vertices,
+        right_vertices,
+        r,
+        a,
+        degree_cap,
+        passes,
     )?;
     if !receipt.structurally_admitted() {
         return Err(invalid(

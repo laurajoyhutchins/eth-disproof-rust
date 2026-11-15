@@ -72,6 +72,7 @@ jobs:
             bash ./scripts/check-evidence.sh
             bash ./scripts/check-imported-probes.sh
             bash ./scripts/check-bundle.sh
+            bash ./scripts/check-project-cli.sh
             bash ./scripts/check-native-runtime-parity.sh
             bash ./scripts/compare-c-rust.sh
             bash ./scripts/compare-c-rust-matrix.sh
@@ -113,6 +114,7 @@ jobs:
             rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
             rust/native_lean_backend/artifacts/imported-probes/*
             rust/native_lean_backend/artifacts/native-compiler-bundle-*.txt
+            rust/native_lean_backend/artifacts/native-project-cli-receipt.txt
             rust/native_lean_backend/artifacts/parity-native/*.txt
             rust/native_lean_backend/artifacts/parity-native/*.tsv
             rust/native_lean_backend/artifacts/parity-native/*.log

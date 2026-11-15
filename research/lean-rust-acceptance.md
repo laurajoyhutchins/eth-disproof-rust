@@ -1,16 +1,16 @@
-# Compiling Lean is not the same as compiling the counting algorithm
+# Lean-to-Rust semantic correspondence
 
-There are two separate problems.
+The compiler work has two independent acceptance targets.
 
 **G1:** Compile ordinary executable Lean declarations to Rust, with the original runtime semantics.
 
 **G2:** Compile the actual ETH counting program, including the parts of the Lean source that do not have ordinary compiler IR.
 
-G1 can succeed without making a dent in G2. The original `SqrtLogSpace.QueryStreamProgram.program` appears inside a `noncomputable section`. Asking Lean for its compiler IR does not manufacture an executable program.
+Passing G1 does not establish G2. The original `SqrtLogSpace.QueryStreamProgram.program` appears inside a `noncomputable section`; compiler-IR extraction does not automatically yield an executable version.
 
-## G1: the runtime is the specification
+## G1: executable declarations and runtime semantics
 
-A generated Rust program must agree with the original Lean program, not just pass a test of equivalent-looking hand-written Rust.
+A generated Rust program must match the original Lean program, including relevant runtime behavior. Tests of independently hand-written Rust are insufficient.
 
 | Source feature | What can go wrong |
 | --- | --- |
@@ -26,7 +26,7 @@ Merged [#230](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/230) an
 
 G1 acceptance requires **three substantial, unchanged external Lean programs**: original Lean execution, source-IR capture, generated Rust execution, and independent output/state agreement. Compiler-generated fixtures alone do not count.
 
-## G2: compile what Lean actually defines
+## G2: noncomputable ETH declarations
 
 The target sequence is
 
@@ -47,7 +47,7 @@ The [compiler-IR probe](../rust/lean_eth_reference/docs/compiler-ir-backend.md),
 
 The original query/composition drafts are [#177](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/177) and [#179](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/179).
 
-## The correspondence we need
+## Correspondence obligations
 
 ```text
 pinned Lean declaration
@@ -67,18 +67,18 @@ Source Git blobs, Mathlib and compiler pins belong in the certificate. Every uns
 
 [PR #178](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/178) established a formal identity bridge **conditional on complete physical graph agreement**. It does not establish that Rust produced the missing full graph. Matching final counts also does not prove matching states, instruction costs or tape use.
 
-## The small-input trap
+## Finite fallback
 
 The Lean finite branch uses a noncomputably selected table. A Rust exhaustive search is not a compilation of that table.
 
-There are only two honest outcomes: construct and certify the exact table, or refuse the unsupported branch. The separate bounded #SAT oracle is for differential testing, never a silent runtime fallback.
+The available outcomes are construction and certification of the exact table, or an explicit refusal for the unsupported branch. The separate bounded #SAT oracle is for differential testing, never a silent runtime fallback.
 
 See [finite fallback](../rust/lean_eth_reference/docs/m2-finite-fallback-decision.md).
 
-## What would close the gap?
+## Completion criteria
 
 Run one **nonterminal** instance through the complete original-source query, leaf, DFS and outer machine. Compare original Lean and generated Rust at each physical step: program counter, registers, stacks, output, halt and refusal. Bind the result to source SHAs, toolchains, emitted artifact hashes and the exact CI head. Then prove the primitive resource transfer.
 
-That is a far more useful milestone than another thousand fixtures that test only isolated fragments.
+Additional isolated fixtures do not substitute for this complete-program acceptance test.
 
 [Current execution evidence](../rust/lean_eth_reference/docs/evidence.md) · [Remaining port](../rust/lean_eth_reference/docs/remaining-lean-port.md)

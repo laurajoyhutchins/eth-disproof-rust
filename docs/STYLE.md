@@ -1,9 +1,10 @@
 # Writing these notes
 
-The mathematics is interesting enough. Give it room.
+Use technical titles that identify the mathematical object, implementation, or test result. Avoid slogans and rhetorical questions in headings.
 
-## Write for the next person who has to prove or run it
+## Editorial conventions
 
+- **Use descriptive headings.** Name the mathematical object, result, or implementation boundary. For example, use “Two-adic tensor contraction” instead of an imperative tagline.
 - **Start with the object.** A definition, equation, counterexample, trace or exact parameter is better than a paragraph saying why the topic matters.
 - **Say what happened.** “At \(s=10^6\), \(u_0=0\)” is useful. “Pre-asymptotic parameter ineligibility remains a critical challenge” is not.
 - **Keep the boundary close to the claim.** “This checks the original frontend, not the counter” is enough. Do not open every section with a disclaimer.
@@ -15,7 +16,7 @@ The mathematics is interesting enough. Give it room.
 - **No ornamental words.** Avoid “comprehensive”, “robust”, “seamless”, “leveraging”, “state-of-the-art”, “exciting”, “key takeaway”, “non-negotiable” and “game-changing” unless there is a literal, testable reason to use them.
 - **No hidden work.** If a theorem, oracle, paper or CI check was not run, say so. Never pass an unsupported branch as zero, or a brute-force oracle as the original computation.
 
-## A useful page structure
+## Page structure
 
 1. **Question:** one sentence.
 2. **Object:** the equation, source declaration or input family.
@@ -25,7 +26,7 @@ The mathematics is interesting enough. Give it room.
 
 Skip sections that add no information. Some pages need a single proof and nothing else.
 
-## Small example
+## Example
 
 **Before**
 
@@ -38,7 +39,7 @@ Skip sections that add no information. Some pages need a single proof and nothin
 > That is an avoidable \(s^4\)-size candidate space. Construct a certified
 > irreducible polynomial directly, then measure setup time and bit work.
 
-## Evidence words
+## Evidence labels
 
 Use **proved**, **executed**, **measured**, **refused**, or **proposed** with their ordinary meanings. If the claim depends on a specific source commit, toolchain, code path or hypothesis, put it in the same paragraph.
 

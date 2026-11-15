@@ -1,8 +1,8 @@
-# Where the time and space actually go
+# Full-pipeline cost model and benchmarks
 
-A smaller matrix is not enough. A faster Hermite kernel is not enough. We need a cheaper **exact count**, including everything that happens before and after the elegant algebra.
+An improvement to matrix rank or Hermite interpolation is an end-to-end optimization only when it reduces the cost of the **complete exact count**, including setup and reconstruction.
 
-## Count all the work
+## Cost decomposition
 
 For a formula \(x\), separate
 
@@ -16,7 +16,7 @@ Alongside time, track arithmetic **bit operations**, the widest intermediate coe
 
 An optimization needs to name the term it changes. Deleting an \(O(D)\)-sized iterator pool does not delete its \(D\) tuples. Faster multiplication does not delete the child contractions.
 
-## The bad parameters
+## Source parameter schedule
 
 The appendix's sufficient schedule includes
 
@@ -47,13 +47,13 @@ Five places worth instrumenting first:
 
 A literal irreducible-polynomial search can have an \(s^4\)-scale candidate space and a crude \(s^6\)-scale trial-pair envelope before polynomial arithmetic. This is **large polynomial** setup work, not \(2^{\Theta(s)}\); \(e=O(\log s)\). Replace it with a certified construction, not with a randomly chosen polynomial.
 
-The mode envelope \(\exp(O(\sqrt{Mp_t/D_t}))\) and packet-entry bound \(\exp(O(L\log s))\) are **subexponential** costs. Treating them as polynomial overhead would conceal the largest parts of the actual algorithm.
+The mode envelope \(\exp(O(\sqrt{Mp_t/D_t}))\) and packet-entry bound \(\exp(O(L\log s))\) are **subexponential** costs, not polynomial overhead.
 
 For full derivations, see [Worst-case stressors and polynomial overhead](../rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md).
 
-## Four informative families
+## Test input families
 
-### 1. Easy count, bad elimination
+### 1. Complete bipartite OR formulas
 
 \[
 B_k=\bigwedge_{i=1}^{k}\bigwedge_{j=1}^{k}
@@ -66,7 +66,7 @@ For \(2k\) variables its count is
 \#B_k=2^{k+1}-1.
 \]
 
-Why? Either all the \(x_i\) are true and every \(y_j\) is free, or at least one \(x_i\) is false and all \(y_j\) must be true. A dense elimination order may still materialize \(2^k\) entries. This separates an avoidable implementation blowup from intrinsic counting difficulty.
+Why? Either all the \(x_i\) are true and every \(y_j\) is free, or at least one \(x_i\) is false and all \(y_j\) must be true. A dense elimination order may still materialize \(2^k\) entries. The example distinguishes elimination-induced table growth from the complexity of computing the count itself.
 
 ### 2. Grids
 
@@ -82,7 +82,7 @@ Generate bounded-degree incidence graphs with fixed seeds, plus tiny hand-built 
 
 Also keep contradictory, empty and tautological CNFs as low-cost frontend tests. Mutation tests should swap ports, change a cutoff at \(p-1/p\), introduce nonunit interpolation differences and attempt a hidden finite fallback.
 
-## How to run a meaningful comparison
+## Measurement protocol
 
 For each input, pin the generator seed, CNF hash, source Lean Git revision, toolchains and actual Rust head. Record \(n,m,s\), branch admissibility, preprocessing expansion, full stage timings, arithmetic bits, peak live memory and exact count. Record the first divergent state when independent Lean/Rust traces differ.
 
@@ -90,7 +90,7 @@ Measure **cold** construction and cache-warmed execution separately. Include con
 
 Use the right baseline for the family: closed-form count for \(B_k\), row DP for a grid, Gaussian elimination for affine systems, and an independently implemented exact #SAT solver for general small CNFs. Do not use the solver under test as its own oracle.
 
-## Three distinct claims
+## Evaluation criteria
 
 **A local speedup:** the source-equivalent kernel is faster on a declared family. Record the measured total cost, even if unchanged.
 
@@ -98,6 +98,6 @@ Use the right baseline for the family: closed-form count for \(B_k\), row DP for
 
 **A better asymptotic algorithm:** the *whole* cost recurrence is proved with its field setup, precision, packet expansion, modes, children and memory accounted for. No finite benchmark proves this claim.
 
-Until the actual recursion is active, the most useful work is to complete its execution path and tighten certified setup costs. Do not optimize an algorithm that never gets called.
+The immediate priorities are a working source-defined recursive execution path and certified reductions in setup cost. Performance results from inactive recursion do not measure the proposed algorithm.
 
 [Recursion theorem](two-adic-recursion.md) · [Source/compiler acceptance](lean-rust-acceptance.md)

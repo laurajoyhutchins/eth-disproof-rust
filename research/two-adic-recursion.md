@@ -1,6 +1,6 @@
-# The recursive 2-adic identity
+# Two-adic packet contraction identity
 
-## The equation we need
+## Proposed recursion equation
 
 The appendix turns a bounded-degree #SAT instance into a tensor contraction. For \(n\) Boolean variables, exact recovery of the count uses a residue modulo \(2^{n+1}\).
 
@@ -16,7 +16,7 @@ F(t+2^{a+1}\zeta)
 }
 \]
 
-The hard part is the equality between the *original tensor network* on the left and the routed child networks on the right.
+The proof must establish equality between the original tensor network on the left and the routed child networks on the right.
 
 - \(F\) is the packet contraction at the current node.
 - \(t+2^{a+1}\zeta\) is the local deformation around an interpolation center.
@@ -25,15 +25,15 @@ The hard part is the equality between the *original tensor network* on the left 
 
 This is notation for the theorem we want, not a claim that the schematic equation above is already the exact source declaration. Source-specific normalizations, tuple indexing and coefficient maps must appear in Lean.
 
-## Why the cutoff works
+## Valuation cutoff
 
 A mode with valuation at least \(p\) vanishes in a coefficient algebra satisfying \(2^p=0\). Modes of weight \(p-1\) must survive; those of weight \(p\) must be discarded.
 
 The proof has to say exactly how mode weight controls valuation. It cannot assume arbitrary rational division in a quotient ring. Odd denominators need explicit unit witnesses; nonunits cannot be inverted by analogy with a field.
 
-The expansion is finite, but **finite is not synonymous with cheap**. The number of retained tuples and the bit length of their coefficients both matter.
+The expansion is finite. Its cost still depends on the number of retained tuples and the bit lengths of their coefficients.
 
-## Where the groups become independent
+## Group routing and factorization
 
 Fix one mode tuple \(\beta\). The routing map must send every edge, port and copy label to the correct child network. Only after proving a bijection between the original assignments and the tuple of child assignments may we rearrange the sum into
 
@@ -42,11 +42,11 @@ Fix one mode tuple \(\beta\). The routing map must send every edge, port and cop
   = \prod_g Z_{g,\beta}.
 \]
 
-This is factorization **across** independent routed groups. It is not permission to separate coupled factors inside one group. The [non-rank-one matrix counterexample](spectral-group-actions.md#a-two-by-two-obstruction) is a small test of that distinction.
+This is factorization **across** independent routed groups. It does not imply factorization of coupled factors within an individual group. The [non-rank-one matrix counterexample](spectral-group-actions.md#counterexample-internal-group-factorization) is a small test of that distinction.
 
 In earlier exploratory Lean work, a finite weighted identity with arbitrary groups was reported under \(2^p=0\). The source-facing theorem still relied on a packet hypothesis `hpacket`; a proved routing map `hroute`, generated packet cutoff and source correspondence were not established on this repository's `main`.
 
-## The enormous parameters
+## Parameter schedule and scale
 
 Let \(s\) be the tensor-network edge count and \(\lambda=\lceil\log_2s\rceil\). The recorded sufficient schedule chooses
 
@@ -71,7 +71,7 @@ H=\left\lceil\frac{s}{\lfloor\sqrt\lambda\rfloor}\right\rceil
 =250{,}000.
 \]
 
-A direct \(2^H\) leaf is not a practical computation. This is a limitation of the **stated sufficient schedule**, not a proof that no tighter admissible schedule exists.
+A direct \(2^H\) leaf is not computationally practical at this scale. This is a limitation of the **stated sufficient schedule**, not a proof that no tighter admissible schedule exists.
 
 At a node, one specified interpolation construction uses
 
@@ -89,7 +89,7 @@ A sharper local interpolation kernel does not eliminate its \(K\) recursive eval
 
 Derivations and qualifiers are in [the parameter study](../rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md).
 
-## The Lean proof, in pieces
+## Lean proof obligations
 
 | Lemma | What it must establish |
 | --- | --- |
@@ -104,12 +104,12 @@ Derivations and qualifiers are in [the parameter study](../rust/lean_eth_referen
 
 Test the exact boundaries, not just happy cases: weights \(p-1\) and \(p\), zeros and negative signs, nonunit interpolation differences, two coupled groups, and a deliberately corrupted route. A false route must make the theorem fail.
 
-## Work that might pay
+## Possible cost reductions
 
 Certified irreducible-polynomial construction can remove the literal field-search overhead. Sparse coefficient extraction can avoid coefficients already known to vanish. Product-tree interpolation may reduce arithmetic around the evaluations. A direct-jet method could be more interesting, but it needs a proof that truncation commutes with the relevant source operations and lifts.
 
 Any new packet schedule must satisfy all the original packing, shrinkage, precision and recovery hypotheses, or replace them with a new proof.
 
-The end point is **one source-backed Lean recursion theorem**, one matching executable nonterminal count, and one primitive-machine resource argument. These are three separate tests.
+Completion requires a source-backed Lean recursion theorem, a matching executable nonterminal count, and a separate primitive-machine resource argument. These are three separate tests.
 
 [Compiler correspondence](lean-rust-acceptance.md) · [Cost and adversarial instances](cost-model-and-benchmarks.md)

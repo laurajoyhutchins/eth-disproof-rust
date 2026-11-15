@@ -1,8 +1,8 @@
-# Worst-case stressors for OAI's claimed ETH counting algorithm
+# Worst-case inputs and complexity costs
 
 **Research note | Updated 14 November 2026 | Status: adversarial test plan and polynomial-overhead reduction agenda; not proved worst-case families**
 
-## Purpose and scope
+## Scope
 
 Identify the inputs and internal states that maximize **total exact counting cost**, and distinguish (a) genuine structural difficulty, (b) pathological overhead of the published construction, and (c) unfinished execution in the independent Rust port. Do not call a smaller matrix, a faster kernel, or a lower asymptotic upper-bound constant an optimization unless **complete cost** improves against an appropriate exact #SAT baseline.
 
@@ -13,7 +13,7 @@ Two different routes must be tracked separately:
 
 The present `eth-disproof-rust` main branch does not execute the complete source-defined nonterminal counting program. Thus current measurements of auxiliary prototypes or a bounded brute-force oracle are not runtime measurements of the complete Lean-defined algorithm.
 
-## The five highest-priority stressors
+## Principal cost drivers
 
 | Priority | Stressor | Why it matters | Status of claim |
 |---|---|---|---|
@@ -24,13 +24,13 @@ The present `eth-disproof-rust` main branch does not execute the complete source
 | P1 | **Dense/high-incidence CNFs invoking the general reduction** | Sparsification/branching, sparse parity tests, multilinearized factors, and `O(n log log n)`-wire encodings can dominate the fixed-density route. | **Directly identified stages**; instance-by-instance blowup needs measurement |
 | P1 | **Huge “polynomial-time” setup factors** | The appendix sets extension degree `e=4 lambda`, searches up to `2^e` binary polynomial candidates and tests divisors through degree `e/2`. A literal nested search has a crude worst-case `s^6`-scale trial envelope before lower-level arithmetic. | **Direct from stated construction**, not a necessary finite-field cost |
 
-### One concrete scale warning
+### Parameter example: one million edges
 
 At `s = 10^6` edges, `lambda = ceil(log2 s) = 20`, so the appendix's `u_0 = floor(20/131072) = 0`. The displayed leaf threshold is `H = ceil(10^6 / floor(sqrt(20))) = 250,000`. Merely running a direct `2^H` leaf is not remotely practical; the published quantitative assumptions also do not authorize running the active recursive construction at this scale.
 
 The appendix further imposes `u >= lambda^(4/5)` throughout active recursion. A **necessary** scale for the root's nominal `epsilon*lambda` to be at least `lambda^(4/5)` is `lambda >= (131072)^5 = 2^85`, before any packing and other constraints. This exhibits how conservative the **stated sufficient schedule** is; it is not proof that no better finite-size schedule exists.
 
-## Resource explosions by stage
+## Resource costs by stage
 
 | Stage | Formula or limiting mechanism | Worst-case signal to measure | Avoidable vs intrinsic |
 |---|---|---|---|
@@ -96,7 +96,7 @@ Add the following fields to the existing per-instance ledger:
 
 Compare `T_total` under **the same input and hardware** for the unchanged baseline and every proposed optimization. Include preprocessing, field initialization, tensor construction, all recursive children, arithmetic, interpolation, and leaves. Test easy instances as negative controls, bounded-degree expanders as structural stress tests, and synthetic dense-crossing networks as arithmetic stress tests. Record `unsupported`, `guarded_refusal`, `timed_out`, and `wrong_answer` separately.
 
-### Deliverables that would actually change our conclusion
+### Evidence required to revise the complexity assessment
 
 - A complete source-correlated, nonterminal counting path with a reproducible resource ledger; **or** an explicitly separate faithful implementation of the appendix. Do not confuse either with the bounded exponential oracle.
 - One or more **whole-pipeline speedups**, including field setup and all recursive work, with exact output parity and repeatable benchmark receipts.
@@ -139,7 +139,7 @@ Use paired networks with the same graph but different local values, including al
 
 Tseitin and path families deliberately test *different* weaknesses: structural hardness for standard decompositions versus avoidable overhead of the proposed general machinery.
 
-## What “worst” should mean
+## Worst-case criteria
 
 Store **both absolute cost and competitive cost**. For a family `F_n`, compare observed total work `T_A(F_n)` with the best justified available baseline `T_best(F_n)` among exhaustive count, connected-component decomposition, exact variable elimination, parity/linear-algebra counting, and a vetted #SAT solver. A useful benchmark objective is the worst observed ratio `T_A/T_best`, accompanied by raw wall time, exact operation counts, and peak memory. Do not claim a worst-case time lower bound for OAI from failure on a heuristic instance.
 
@@ -149,7 +149,7 @@ For each instance, record:
 
 Use deterministic seeds, fixed hardware/runtime limits, exact counts when feasible, and reproducible trace receipts. Report unsupported/unavailable separately from timeout or wrong answer.
 
-## Go/no-go criteria for real optimization
+## Optimization acceptance criteria
 
 1. **Correctness first:** small-instance exact counts and all intermediate identities agree with independent verification. No silent fallback from the source-defined machine to exponential counting.
 2. **Complete cost accounting:** any claimed win must include preprocessing, encoding, mode enumeration, all child calls, precision, interpolation and leaves. Report `T_total`, not only rank or kernel speed.
@@ -157,7 +157,7 @@ Use deterministic seeds, fixed hardware/runtime limits, exact counts when feasib
 4. **Use hard connected families for scaling:** increase `n` and track both the effective slope of `log2 T(n)` and the finite crossover with baselines. Do not infer an exponent from one or two small inputs.
 5. **Keep proofs separate:** practical acceleration, faithful execution of the appendix, equivalence to the original Lean source-defined machine, and the ETH complexity theorem are four different claims.
 
-## Immediate research order
+## Next experiments
 
 **First:** complete a source-defined nonterminal counting path or an explicitly independent, faithful appendix implementation; instrument the full cost ledger. Without that there is no measured worst case for the actual algorithm.
 

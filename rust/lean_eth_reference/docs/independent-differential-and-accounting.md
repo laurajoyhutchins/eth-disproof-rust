@@ -76,6 +76,39 @@ A nonterminal formula **fails closed** with `NotImplemented`, rather than
 becoming a successful false/zero answer. The complete recursive/nonterminal
 ETH #SAT engine is NOT implemented by this slice.
 
+## Cross-library finite reference and executable source stages
+
+The [reading library's measured Lean reference](https://github.com/laurajoyhutchins/reading/blob/d06b914f2e217203053b11ec303920b38fb74274/literature/experiments/finite-exact-counting-baseline.md)
+counts exact additions, multiplications and operand-bit widths in an uncached
+functional factor-elimination evaluator. These units are not BitProgram
+source instructions or TM2 controller steps; no direct mapping is proved.
+
+The existing `profile-full-machine --terminal` observer measures the real
+four-stage source-primitive terminal path. The new `--nonterminal` mode
+executes ONLY `Native.frontendCommand` and `NativeTerminal.readyCommand`
+on two nonterminal CNFs. For each stage it replays the ordinary production
+interpreter from the same complete initial physical state, checking all
+registers, stacks, PC, source instructions and peak live stack bits.
+The production terminal API must refuse with `NotImplemented`, and the
+observer emits `status=unsupported_nonterminal_count` and `count=NA`.
+No host SAT oracle, fabricated count or unsupported leaf stage executes.
+
+```sh
+cargo test --locked --offline --test profile_source_accounting
+cargo run --quiet --locked --offline --bin profile-full-machine -- --terminal
+cargo run --quiet --locked --offline --bin profile-full-machine -- --nonterminal
+```
+
+CSV fields record per-opcode source instructions, elapsed time and Rust
+allocation observations, plus peak live stack bits and capacity.
+`max_integer_bits=NA` because this does not measure interpolation
+coefficient bit heights. Stack capacity is not RSS; source instructions
+are not TM2 primitive tape steps. Both replays use the Rust port,
+not independently executed unchanged upstream Lean.
+
+The cross-project resource experiment remains in progress until one
+nonterminal QueryStream/high/leaf/DFS/outer source count is executed
+and checked against unchanged Lean with complete cost correspondence.
 ## Three disjoint resource accounts
 
 | Account | What is observed | What is *not* concluded |

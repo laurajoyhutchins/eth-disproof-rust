@@ -1,8 +1,8 @@
 # Rust port notes
 
-Start with [what runs](evidence.md) and [what is missing](remaining-lean-port.md). The historical chapters explain how individual fragments were constructed; they do not update the executable status of `main` by themselves.
+For executable coverage, see [execution evidence](evidence.md) and [remaining stages](remaining-lean-port.md). The historical chapters explain how individual fragments were constructed; they do not update the executable status of `main` by themselves.
 
-## Read for a specific problem
+## Documentation by subsystem
 
 **Machine execution:** [frontend](m2-runnable-frontend.md), [query table](compiled-query-table.md), [original Lean differential](independent-differential-and-accounting.md), [primitive TM2 resources](m3-tm2-resource-evidence.md).
 
@@ -14,7 +14,7 @@ Start with [what runs](evidence.md) and [what is missing](remaining-lean-port.md
 
 The [stage registry](../src/remaining/registry.rs) is the executable inventory. Do not maintain a competing manual status table.
 
-## Older experiments
+## Historical implementation notes
 
 These notes are useful when reproducing a specific fragment or recovering a design decision. Read the version in the filename literally.
 

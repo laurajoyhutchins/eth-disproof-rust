@@ -20,6 +20,9 @@ fn improved_root_condition_does_not_certify_next_level() {
     assert_eq!(value["published_root_width_u"], 0);
     assert_eq!(value["optimistic_packing_prefix_stages"], 1);
     assert_eq!(value["first_uncovered_active_depth"], 1);
+    assert_eq!(value["first_uniform_padding_gap_depth"], 1);
+    assert_eq!(value["optimistic_uniform_padding_prefix_stages"], 1);
+    assert_eq!(value["minimum_uniform_padding_edges_at_first_gap"], "1501199875790166");
     assert_eq!(value["hypothetical_guaranteed_leaf_depth"], 8);
     assert_eq!(
         value["stages"][0]["minimum_matching_required_edges"],
@@ -42,6 +45,8 @@ fn original_and_smaller_group_counts_have_opposing_depth_costs() {
     assert_eq!(large["first_uncovered_active_depth"], 1);
     assert_eq!(large["hypothetical_guaranteed_leaf_depth"], 8);
     assert_eq!(small["first_uncovered_active_depth"], 2);
+    assert_eq!(small["first_uniform_padding_gap_depth"], 2);
+    assert_eq!(small["minimum_uniform_padding_edges_at_first_gap"], "295280793622");
     assert_eq!(small["hypothetical_guaranteed_leaf_depth"], 123);
     assert_eq!(
         small["stages"][0]["minimum_matching_required_edges"],
@@ -64,8 +69,10 @@ fn maximum_128_bit_graph_still_has_an_uncovered_depth() {
     let (_, large) = observe(&max, "64", "128");
     let (_, small) = observe(&max, "7", "128");
     assert_eq!(large["first_uncovered_active_depth"], 4);
+    assert_eq!(large["first_uniform_padding_gap_depth"], 4);
     assert_eq!(large["hypothetical_guaranteed_leaf_depth"], 36);
     assert_eq!(small["first_uncovered_active_depth"], 8);
+    assert_eq!(small["first_uniform_padding_gap_depth"], 9);
     assert_eq!(small["hypothetical_guaranteed_leaf_depth"], 544);
     assert_eq!(small["optimistic_packing_prefix_stages"], 8);
     assert_eq!(small["source_recursion_admitted"], false);
@@ -78,6 +85,7 @@ fn already_small_root_is_zero_depth_with_no_executed_counter() {
     assert_eq!(code, 2);
     assert_eq!(receipt["hypothetical_guaranteed_leaf_depth"], 0);
     assert!(receipt["first_uncovered_active_depth"].is_null());
+    assert!(receipt["first_uniform_padding_gap_depth"].is_null());
     assert_eq!(receipt["stages"].as_array().unwrap().len(), 0);
     assert!(receipt["sat_count"].is_null());
 }

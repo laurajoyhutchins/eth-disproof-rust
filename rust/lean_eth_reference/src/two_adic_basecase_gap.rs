@@ -94,7 +94,7 @@ pub fn minimum_uniform_padding_edges(l: u128, d: u128) -> Option<u128> {
                     1 => 1,
                     _ => 2,
                 }
-        },
+        }
         _ => unreachable!("remainder modulo three"),
     };
     quotient.checked_add(remainder)

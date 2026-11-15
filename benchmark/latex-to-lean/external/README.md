@@ -58,3 +58,25 @@ node --test benchmark/latex-to-lean/external/*.test.mjs benchmark/latex-to-lean/
 
 Do not tune either parser on the reserved source groups and then continue reporting
 them as held out. Any such tuning requires a fresh source-family holdout.
+
+## Frozen CI evidence and regression gate
+
+The pinned reference run [#43704510203](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43704510203) passed the full toolchain and source-oracle integration at commit `5f37179b8af7aff78e66a43acb68545c8ceea365`.
+The original 12 research and six synthetic holdout coverage counts remain unchanged.
+The external corpus yielded seven accepted cases, five dual-frontend translations,
+four kernel-checked definitional matches across frontends, and eleven out of twelve
+accepted translations matching an independently written Lean reference proposition.
+The remaining source-oracle match and one frontend comparison are unresolved. All
+five external author/publisher holdout cases were unsupported.
+
+`baseline.json` records **observed engineering results**, not source-faithfulness
+or theorem-truth labels. The deep CI job runs `assert-baseline.mjs` after every
+stage. A changed count, a missing case, invented proof/source-review credit, or
+source-identity mismatch fails the job. Updating a baseline should require
+reviewing the full new evidence and preserving the previous observation.
+
+Ordinary pushes and pull requests run the fast checkpoint tests only. A push
+commit containing `[deep]` or an explicit workflow dispatch enables complete
+integration. Checkpoint concurrency cannot cancel an active deep run, and both
+jobs check out the exact commit head. Only the dedicated deep lane runs pinned
+Lean, Mathlib, Leanify and the external corpus.

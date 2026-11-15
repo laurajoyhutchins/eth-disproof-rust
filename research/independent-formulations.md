@@ -81,7 +81,7 @@ The same Lean module now contains `finite_contraction_grouped` and `finite_swap_
 
 Its states are an arbitrary finite set of joint boundary assignments; an arbitrary integer coefficient may encode all other node tensors, incidence constraints and shared wires. Neither independence of crossings nor a fixed network size is assumed. The identity holds for zero crossings, repeated/shared boundary variables, and negative coefficients.
 
-The proof uses `Finset.prod_add`, `Finset.sum_comm`, and `Finset.sum_powerset`; the exact-head Lean CI run must typecheck the new theorem before it is called verified. This is an **algebraic** theorem: expanding the powerset has `2^|E|` terms. Neither this grouping nor the local singlet identity establishes a fast algorithm, Anthropic's low-rank grouping bound, or correspondence with OpenAI's packet-mode routing.
+The proof uses `Finset.prod_add`, `Finset.sum_comm`, and `Finset.sum_powerset`. [Exact-head Lean workflow #43741399685](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43741399685) passed at commit `d757ce4` with only `propext`, `Classical.choice`, and `Quot.sound` for both new theorems. This is an **algebraic** theorem: expanding the powerset has `2^|E|` terms. Neither this grouping nor the local singlet identity establishes a fast algorithm, Anthropic's low-rank grouping bound, or correspondence with OpenAI's packet-mode routing.
 
 Most importantly, the correction `-vvᵀ` has odd entries. Singlet Hamming weight is **not** automatically 2-adic valuation. Discarding high-weight terms modulo `2^p` requires a separate divisibility proof, stated for the actual OpenAI coefficients and routing.
 
@@ -98,7 +98,7 @@ For an actual independent executable comparison, run the **original Anthropic ma
 ## Priority for our current work
 
 1. **Complete:** Pinned source-level CNF meaning bridge, all formulas; local signed-swap identity; finite Rust oracle.
-2. **Current Lean acceptance:** Exact-head compile and axiom-audit of the new arbitrary finite network contraction theorem. Do not promote it from proposed to verified before a green check on the new commit.
+2. **Complete:** Exact-head Lean kernel verification of arbitrary finite signed network contractions, including Hamming-weight grouping; no extra axioms.
 3. **Next mathematical bridge:** Construct a total, source-defined translation from Anthropic's grouped network objects to OpenAI's packet-mode objects; state a common contraction value and prove equality or a correctly justified `2^p` congruence. Keep Hamming weight and 2-adic precision distinct.
 4. **Independently required:** Finish [OpenAI source-to-Rust acceptance](lean-rust-acceptance.md), including the nonterminal query/leaf/DFS/outer chain, noncomputable finite fallback refusal, exact original traces and primitive TM2 accounting.
 

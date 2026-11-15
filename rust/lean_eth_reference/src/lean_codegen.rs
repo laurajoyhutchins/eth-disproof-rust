@@ -4,7 +4,7 @@ use serde::de::{DeserializeOwned, Error as _, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::path::{Component, Path};
@@ -552,31 +552,46 @@ pub fn validate_residual(raw: &[u8], root: &str) -> Result<()> {
 }
 
 #[derive(Debug, Deserialize)]
-struct PublicFn {
-    lean: String,
-    rust: String,
-}
-#[derive(Debug, Deserialize)]
-struct IrSummary {
-    module: String,
-    functions: u64,
-    skipped: Vec<Value>,
-    public: Vec<PublicFn>,
-}
-#[derive(Debug, Deserialize)]
-struct IrReport {
+#[serde(deny_unknown_fields)]
+struct NativeIrReport {
     format: String,
     status: String,
+    compiler: String,
     module: String,
     roots: Vec<String>,
     lean_toolchain: String,
     lean_version: String,
+    source_git_blob: String,
+    source_lean_sha256: String,
     semantic_verification: String,
     physical_bitprogram_verification: String,
     generated_sha256: String,
     generated_bytes: u64,
-    backend_summary: IrSummary,
+    native_bundle_receipt: String,
 }
+
+fn sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+/// Parse the *existing* native compiler's bundle receipt rather than
+/// maintaining another Rust emitter or trusting a backend's success flag.
+/// This receipt proves a compilation took place, not source-level semantics.
+fn native_bundle_fields(raw: &str) -> Result<HashMap<&str, &str>> {
+    ensure(raw.len() <= 8192, "native IR bundle receipt is oversized")?;
+    let mut fields = HashMap::new();
+    for line in raw.lines() {
+        let (key, value) = line.split_once('=').ok_or("malformed native bundle receipt")?;
+        ensure(
+            !key.is_empty() && !value.is_empty()
+                && key.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'),
+            "invalid native bundle receipt field",
+        )?;
+        ensure(fields.insert(key, value).is_none(), "duplicate native bundle receipt field")?;
+    }
+    Ok(fields)
+}
+
 pub fn validate_ir(
     raw: &[u8],
     artifact: &[u8],
@@ -584,48 +599,66 @@ pub fn validate_ir(
     roots: &[String],
     source: &SourceIdentity,
 ) -> Result<()> {
-    let doc: IrReport = strict_json(raw)?;
+    let doc: NativeIrReport = strict_json(raw)?;
     ensure(
-        doc.format == "lean-compiler-ir-backend-probe-v1" && doc.status == "generated-unverified",
-        "invalid compiler-IR receipt format/status",
+        doc.format == "lean-inprocess-ir-bundle-v1"
+            && doc.status == "generated-unverified"
+            && doc.compiler == "native-lean-4.34.1",
+        "invalid canonical native compiler-IR report",
     )?;
-    let mut sorted = roots.to_vec();
-    sorted.sort();
-    sorted.dedup();
     ensure(
-        doc.module == module && doc.roots == sorted,
-        "compiler-IR root/module mismatch",
+        roots.len() == 1 && doc.roots == roots && doc.module == module,
+        "native compiler-IR currently supports exactly one selected root",
     )?;
     ensure(
         doc.semantic_verification == "not-established"
             && doc.physical_bitprogram_verification == "not-established",
-        "compiler-IR receipt claims unproved verification",
+        "native IR report claims unproved semantic or physical verification",
     )?;
     ensure(
-        doc.generated_sha256 == digest(artifact) && doc.generated_bytes == artifact.len() as u64,
-        "compiler-IR generated source digest/length mismatch",
+        doc.generated_sha256 == digest(artifact)
+            && doc.generated_bytes == artifact.len() as u64,
+        "native IR generated Rust digest/length mismatch",
     )?;
     ensure(
         doc.lean_toolchain == source.lean_toolchain
+            && doc.lean_toolchain == "leanprover/lean4:v4.34.1"
             && version_matches(&doc.lean_version, &source.lean_toolchain),
-        "compiler-IR toolchain differs from source pin",
+        "native IR toolchain differs from original pinned Lean 4.34.1",
     )?;
     ensure(
-        doc.backend_summary.module == module
-            && doc.backend_summary.functions > 0
-            && doc.backend_summary.skipped.is_empty(),
-        "compiler-IR backend omitted/skipped declarations",
+        doc.source_git_blob == source.git_blob && sha256_hex(&doc.source_lean_sha256),
+        "native IR report is not bound to the original Git source",
     )?;
-    let mut names = HashSet::new();
-    for p in &doc.backend_summary.public {
-        ensure(
-            !p.lean.is_empty() && !p.rust.is_empty() && names.insert(&p.lean),
-            "invalid/duplicate compiler-IR public declaration",
-        )?;
-    }
+    let fields = native_bundle_fields(&doc.native_bundle_receipt)?;
+    let field = |key: &str| fields.get(key).copied().unwrap_or("");
     ensure(
-        roots.iter().all(|r| names.contains(r)),
-        "compiler-IR requested root not emitted",
+        field("status") == "GENERATED_COMPILED_UNVERIFIED"
+            && field("source_module") == module
+            && field("root_declaration") == roots[0]
+            && field("rust_export") == roots[0].rsplit('.').next().unwrap_or("")
+            && field("lean_toolchain") == doc.lean_toolchain
+            && field("lean_version") == doc.lean_version
+            && field("rust_version").starts_with("rustc 1.99.1 ")
+            && field("source_lean_sha256") == doc.source_lean_sha256
+            && field("generated_rust_sha256") == doc.generated_sha256
+            && field("semantic_verification") == "NOT_PERFORMED"
+            && field("lean_source_status")
+                == "source_hash_pinned_but_transitive_imports_not_fully_hashed"
+            && field("execution_runtime") == "standalone_rust_lib_without_lean",
+        "native IR bundle has unsupported identity or verification claims",
+    )?;
+    ensure(
+        sha1(field("source_revision"))
+            && [
+                "compiled_olean_sha256",
+                "native_abi_sha256",
+                "native_backend_sha256",
+                "native_shared_library_sha256",
+                "closure_names_sha256",
+                "generated_rlib_sha256",
+            ].iter().all(|key| sha256_hex(field(key))),
+        "native IR bundle is missing compiler and build provenance",
     )
 }
 
@@ -688,36 +721,33 @@ pub fn validate(
     }))
 }
 
-pub struct IrVersions<'a> {
-    pub toolchain: &'a str,
-    pub lean: &'a str,
-    pub backend: &'a str,
-    pub generator: &'a str,
-}
-
-pub fn ir_report(
+/// A wrapper around the canonical native compiler's generated-source bundle.
+/// This is an integrity record, never a kernel-checked extraction certificate.
+pub fn native_ir_report(
     module: &str,
     roots: &[String],
-    versions: IrVersions<'_>,
-    source: &[u8],
-    summary: Value,
+    toolchain: &str,
+    lean_version: &str,
+    source_git_blob: &str,
+    source_lean_sha256: &str,
+    generated: &[u8],
+    native_bundle_receipt: &str,
 ) -> Value {
-    let mut sorted = roots.to_vec();
-    sorted.sort();
-    sorted.dedup();
     json!({
-        "format": "lean-compiler-ir-backend-probe-v1",
-        "module": module, "roots": sorted,
+        "format": "lean-inprocess-ir-bundle-v1",
         "status": "generated-unverified",
-        "lean_toolchain": versions.toolchain,
-        "lean_version": versions.lean,
-        "backend_version": versions.backend,
-        "generator_version": versions.generator,
-        "generated_sha256": digest(source),
-        "generated_bytes": source.len(),
+        "compiler": "native-lean-4.34.1",
+        "module": module,
+        "roots": roots,
+        "lean_toolchain": toolchain,
+        "lean_version": lean_version,
+        "source_git_blob": source_git_blob,
+        "source_lean_sha256": source_lean_sha256,
+        "generated_sha256": digest(generated),
+        "generated_bytes": generated.len(),
         "semantic_verification": "not-established",
         "physical_bitprogram_verification": "not-established",
-        "backend_summary": summary
+        "native_bundle_receipt": native_bundle_receipt
     })
 }
 
@@ -729,7 +759,7 @@ mod tests {
             git_revision: "a".repeat(40),
             git_blob: "b".repeat(40),
             path: "Demo.lean".into(),
-            lean_toolchain: "leanprover/lean4:v4.35.0".into(),
+            lean_toolchain: "leanprover/lean4:v4.34.1".into(),
             lean_toolchain_git_blob: "c".repeat(40),
             lean_toolchain_path: "lean-toolchain".into(),
         }
@@ -790,58 +820,63 @@ mod tests {
         assert!(validate_residual(raw.as_bytes(), "Demo.double").is_err());
     }
     #[test]
-    fn compiler_ir_receipt_validates_and_refuses_skips() {
+    fn native_ir_receipt_requires_actual_compiler_bundle_and_source_binding() {
         let source = source();
         let code = b"pub fn double() {}";
-        let summary = json!({"module":"Demo","functions":1,"public":[{"lean":"Demo.double","rust":"double"}],"skipped":[]});
-        let report = ir_report(
+        let source_sha = "a".repeat(64);
+        let bundle = format!(
+            "status=GENERATED_COMPILED_UNVERIFIED\nsource_revision={}\nsource_module=Demo\nroot_declaration=Demo.double\nrust_export=double\nlean_toolchain={}\nlean_version=Lean (version 4.34.1, x86_64)\nrust_version=rustc 1.99.1 (test)\nsource_lean_sha256={}\ncompiled_olean_sha256={}\nnative_abi_sha256={}\nnative_backend_sha256={}\nnative_shared_library_sha256={}\nclosure_names_sha256={}\ngenerated_rust_sha256={}\ngenerated_rlib_sha256={}\nlean_source_status=source_hash_pinned_but_transitive_imports_not_fully_hashed\nsemantic_verification=NOT_PERFORMED\nexecution_runtime=standalone_rust_lib_without_lean\n",
+            "d".repeat(40),
+            source.lean_toolchain,
+            source_sha,
+            "e".repeat(64),
+            "e".repeat(64),
+            "e".repeat(64),
+            "e".repeat(64),
+            "e".repeat(64),
+            digest(code),
+            "e".repeat(64),
+        );
+        let report = native_ir_report(
             "Demo",
             &["Demo.double".into()],
-            IrVersions {
-                toolchain: &source.lean_toolchain,
-                lean: "Lean (version 4.35.0, test)",
-                backend: "leanfran 0.6.0",
-                generator: "4",
-            },
+            &source.lean_toolchain,
+            "Lean (version 4.34.1, x86_64)",
+            &source.git_blob,
+            &source_sha,
             code,
-            summary,
+            &bundle,
         );
         let raw = serde_json::to_vec(&report).unwrap();
-        assert!(
-            validate(
-                Backend::CompilerIr,
-                code,
-                Some(&raw),
-                "Demo",
-                &["Demo.double".into()],
-                &source
-            )
-            .is_ok()
-        );
+        let accepted = validate(
+            Backend::CompilerIr,
+            code,
+            Some(&raw),
+            "Demo",
+            &["Demo.double".into()],
+            &source,
+        ).unwrap();
+        assert_eq!(accepted["executable_approved"], false);
+        assert_eq!(accepted["status"], "generated-unverified");
+
         let mut bad = report.clone();
-        bad["backend_summary"]["skipped"] = json!([{"name":"bad","reason":"no IR"}]);
-        assert!(
-            validate_ir(
-                &serde_json::to_vec(&bad).unwrap(),
-                code,
-                "Demo",
-                &["Demo.double".into()],
-                &source
-            )
-            .is_err()
-        );
-        bad = report;
         bad["generated_sha256"] = json!("0".repeat(64));
-        assert!(
-            validate_ir(
-                &serde_json::to_vec(&bad).unwrap(),
-                code,
-                "Demo",
-                &["Demo.double".into()],
-                &source
-            )
-            .is_err()
-        );
+        assert!(validate_ir(&serde_json::to_vec(&bad).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
+        bad = report.clone();
+        bad["source_git_blob"] = json!("b".repeat(39) + "a");
+        assert!(validate_ir(&serde_json::to_vec(&bad).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
+        bad = report.clone();
+        bad["native_bundle_receipt"] = json!(bundle.replace(
+            "semantic_verification=NOT_PERFORMED",
+            "semantic_verification=PROVED",
+        ));
+        assert!(validate_ir(&serde_json::to_vec(&bad).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
+        bad = report.clone();
+        bad["native_bundle_receipt"] = json!(format!("{bundle}status=GENERATED_COMPILED_UNVERIFIED\n"));
+        assert!(validate_ir(&serde_json::to_vec(&bad).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
+        // The retired leanfran 4.35.0 report is not a valid native receipt.
+        let legacy = json!({"format":"lean-compiler-ir-backend-probe-v1"});
+        assert!(validate_ir(&serde_json::to_vec(&legacy).unwrap(), code, "Demo", &["Demo.double".into()], &source).is_err());
     }
     #[test]
     fn source_name_and_version_checks() {

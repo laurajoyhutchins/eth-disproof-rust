@@ -20,8 +20,7 @@ fn run() -> Result<(), String> {
     let budget = args[3]
         .parse::<u128>()
         .map_err(|_| "invalid direct-leaf budget".to_owned())?;
-    let audit = BasecaseGapAudit::new(edges, groups, budget)
-        .map_err(|err| err.to_string())?;
+    let audit = BasecaseGapAudit::new(edges, groups, budget).map_err(|err| err.to_string())?;
     let stages = audit
         .stages
         .iter()

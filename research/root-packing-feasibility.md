@@ -138,6 +138,18 @@ Both commands intentionally exit with status 2. The latter prints `packing_arith
 
 `src/two_adic_packing.rs` uses checked powers/multiplications and integer comparisons; `u^5>=lambda^4` checks the source asymptotic inequality without floating point. Unit and CLI tests include overflow, the exact packing threshold, loss of shrink when reducing `r`, and failures masquerading as counts.
 
+## Alternative matching-potential packing
+
+The earlier no-go bounds in this document assume the paper's original
+`M>=2D_arr^2 Delta` packing lemma. They are **not necessary conditions**
+for a different, stronger lemma. A [constructive matching-potential bound](matching-potential-packing.md)
+replaces that collision inequality with the sufficient
+`M>=D_arr*((2*Delta-1)*ceil(log2(D_arr))+L)`.
+It preserves the old slot-orientation and child-edge conclusions under
+the new explicit degree requirement. This does **not** establish the
+paper's fixed parameter schedule, full recursive correctness or an
+executable ETH disproof.
+
 ## Research implication
 
 A useful finite-size breakthrough must change more than the root's epsilon. Three substantive directions remain:

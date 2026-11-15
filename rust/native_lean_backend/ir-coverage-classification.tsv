@@ -8,7 +8,7 @@ Lean.IR.IRType.uint16	2	implemented_bounded	scalar_u16	matrix_or_baseline_fixtur
 Lean.IR.IRType.uint32	3	implemented_bounded	scalar_u32	matrix_or_baseline_fixture
 Lean.IR.IRType.uint64	4	implemented_bounded	scalar_u64	matrix_or_baseline_fixture
 Lean.IR.IRType.usize	5	implemented_bounded	scalar_usize_linux_x86_64	matrix_or_baseline_fixture
-Lean.IR.IRType.erased	6	implemented_bounded	proof_only_function_parameter_zero_sized_unit	ErasedParamFixture_source_oracle
+Lean.IR.IRType.erased	6	explicitly_unsupported	default_refusal	no_positive_semantics_claim
 Lean.IR.IRType.object	7	implemented_bounded	immutable_Rc_pointer_values	Objects_and_FunctionValues
 Lean.IR.IRType.tobject	8	implemented_bounded	tagged_or_immutable_Rc_values	Objects_and_FunctionValues
 Lean.IR.IRType.float32	9	explicitly_unsupported	default_refusal	no_positive_semantics_claim

@@ -574,3 +574,10 @@ pub mod two_adic_admission;
 /// Exact necessary packing inequalities for hypothetical two-adic root schedules.
 /// Arithmetic feasibility is not source proof or active recursion.
 pub mod two_adic_packing;
+
+/// Exact finite bipartite matching/label derandomization for improved packing.
+/// Does not run the source-defined tensor recursion.
+pub mod matching_packing;
+
+/// Bounded structural packet layout from concrete vertex labels (no tensors).
+pub mod two_adic_packet_layout;

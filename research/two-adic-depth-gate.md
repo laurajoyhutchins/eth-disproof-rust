@@ -27,6 +27,33 @@ For `lambda<=120`, `floor(sqrt(lambda))<=10`, so `H>=s/10`. But `M_1<=3s/32<s/10
 
 These are depth bounds for this source choice of `H` and child-size guarantee. They are **not** lower bounds on all #SAT or tensor algorithms. An alternate leaf cutoff would require an independent cost/precision proof and could change the argument.
 
+## The published degree envelope still defeats improved packing
+
+The matching-potential sufficient condition is strictly better than the
+original quadratic collision requirement, but substituting the original
+maximum-degree envelope \(\Delta=\lceil s^{9/10}\rceil\) still fails
+for every positive \(u\), \(r\ge7\) and \(2\le s\le2^{128}-1\).
+
+Indeed, \(s^{1/10}<2^{13}\) gives \(\Delta\ge s/8192\).
+At positive root width, \(a\ge2\) and
+\(D=r^{2a}\ge7^4=2401\), hence
+\(\lceil\log_2 D\rceil\ge12\). Since
+\(2\Delta-1\ge\Delta\) for \(\Delta\ge1\), the
+matching-potential sufficient condition would imply
+
+\[
+s\ge D(2\Delta-1)\lceil\log_2D\rceil
+\ge\frac{2401\cdot12}{8192}s>s,
+\]
+
+a contradiction. This is an obstruction to **using that worst-case
+degree bound to establish the sufficient condition**, not proof that
+actual graphs cannot be packed. A tighter degree invariant proved
+for the original network and all of its children is indispensable.
+
+The `appendix-packing` refusal receipt now reports this new
+obstruction separately from the *old lemma's* obstruction.
+
 ## The source schedule is still completely inactive
 
 The original `u_d=floor(lambda/(131072*2^d))` gives `u_0=0` for every such `s`. Our analysis permits **hypothetical nonzero widths** only to isolate what happens if that independent obstruction is removed. It must not be reported as a faithful execution of the original schedule.

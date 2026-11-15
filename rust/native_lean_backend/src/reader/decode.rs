@@ -100,7 +100,7 @@ impl Reader {
                 )
             });
         lr_free_string(raw);
-        Ok(decoded?)
+        decoded
     }
     pub(super) unsafe fn nat(x: Obj) -> CompilerResult<usize> {
         Self::scalar(x).map_err(|_| {

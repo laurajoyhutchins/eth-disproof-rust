@@ -13,7 +13,7 @@ open Finset
 namespace ETH.LiteratureImports
 
 universe u v w
-variable {Group : Type u} [Fintype Group]
+variable {Group : Type u} [Fintype Group] [DecidableEq Group]
 variable {Choice : Group → Type v}
 variable {R : Type w} [CommSemiring R]
 

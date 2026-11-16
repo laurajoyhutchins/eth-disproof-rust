@@ -98,8 +98,9 @@ import it and claims neither identical machines nor equal time bounds.
 -/
 
 /-
-The converse translation picks a deterministic finite-set list
-representation. It preserves distinct clauses: the input OpenAI
+The converse translation picks a computable finite-set list
+representation, by sorting actual finite sets rather than choosing a
+noncomputable list representative. It preserves distinct clauses: the input OpenAI
 Finset contains each clause at most once, and fromClause is injective
 because converting the result back returns that exact original clause.
 -/
@@ -117,23 +118,25 @@ def fromLiteral {n : ℕ}
 /-- Every OpenAI finite-set clause admits a unique chosen list encoding. -/
 def fromClause {n : ℕ}
     (C : SAT.Clause (Fin n)) : List (MainResults.Lit n) :=
-  C.toList.map fromLiteral
+  (C.image fromLiteral).sort
 
 @[simp] theorem toClause_fromClause {n : ℕ}
     (C : SAT.Clause (Fin n)) : toClause (fromClause C) = C := by
   classical
-  simp [toClause, fromClause, List.map_map, Function.comp_def]
+  ext l
+  simp [toClause, fromClause]
 
 /-- The source finite-set formula gives an Anthropic list-of-lists CNF. -/
 def fromCNF {n : ℕ}
     (F : SAT.CNF (Fin n)) : MainResults.CNF n :=
-  F.toList.map fromClause
+  (F.image fromClause).sort
 
 /-- The CNF translation is surjective, with an explicit right inverse. -/
 @[simp] theorem toCNF_fromCNF {n : ℕ}
     (F : SAT.CNF (Fin n)) : toCNF (fromCNF F) = F := by
   classical
-  simp [toCNF, fromCNF, List.map_map, Function.comp_def]
+  ext C
+  simp [toCNF, fromCNF]
 
 /--
 OpenAI's finite-set width property implies Anthropic's original
@@ -146,15 +149,18 @@ theorem fromCNF_IsKCNF
   classical
   constructor
   · intro C hC
-    simp only [fromCNF, List.mem_map, Finset.mem_toList] at hC
+    simp only [fromCNF, Finset.mem_sort, Finset.mem_image] at hC
     obtain ⟨C₀, hmem, rfl⟩ := hC
-    simpa [fromClause] using hw C₀ hmem
-  · have hInjective : Function.Injective
-        (fromClause : SAT.Clause (Fin n) → List (MainResults.Lit n)) := by
-      intro C D h
-      have hh := congrArg toClause h
-      simpa using hh
-    exact (Finset.nodup_toList F).map hInjective
+    have hInjective : Function.Injective
+        (fromLiteral : SAT.Literal (Fin n) → MainResults.Lit n) := by
+      intro a b h
+      simpa using congrArg toLiteral h
+    calc
+      (fromClause C₀).length = (C₀.image fromLiteral).card := by
+        simp [fromClause]
+      _ = C₀.card := Finset.card_image_of_injective C₀ hInjective
+      _ ≤ k := hw C₀ hmem
+  · exact Finset.sort_nodup _ _
 
 /-- Every OpenAI formula keeps exactly the same #SAT after the round trip. -/
 theorem fromCNF_count_eq {n : ℕ}
@@ -243,8 +249,12 @@ theorem original_anthropic_machine_counts_any_eligible_openai_cnf
     original_anthropic_machine_counts_openai_with_rate hMain
   refine ⟨M, C, hfinite, ?_⟩
   intro k n F hk hwidth hm hn hoc
+  have hInjective : Function.Injective
+      (fromClause : SAT.Clause (Fin n) → List (MainResults.Lit n)) := by
+    intro C D h
+    simpa using congrArg toClause h
   have hlength : (fromCNF F).length = F.card := by
-    simp [fromCNF]
+    simp [fromCNF, Finset.card_image_of_injective F hInjective]
   have hK := fromCNF_IsKCNF F hwidth
   have hrun' := (hrun k n (fromCNF F)
       (by omega) hK (by simpa [hlength] using hm) hn hoc).2

@@ -11,6 +11,7 @@ import unittest
 
 from query_stream_aot import (validate_query, run_bounded, verify_query_import_receipt,
                               record_query_refusal, reset_query_outputs, source_export_phase,
+                              overall_wall_budget, OverallBudgetError,
                               ResourceLimitError, OutputLimitError, MAX_PROCESS_OUTPUT_BYTES,
                               MODULE, SOURCE_COMMIT, DECLARATION, IDENTIFIER)
 
@@ -202,6 +203,29 @@ class QueryAotContract(unittest.TestCase):
                             log_base=root / "original-command",
                             rss_limit_bytes=32 * 1024 * 1024)
             self.assertIn("ALLOCATED", (root / "original-command.stdout.log").read_text())
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "POSIX alarm test")
+    def test_overall_wall_budget_interrupts_unbounded_python_phase(self):
+        started = time.monotonic()
+        with self.assertRaisesRegex(OverallBudgetError, "overall AOT wall budget exceeded"):
+            with overall_wall_budget(0.2):
+                time.sleep(5)
+        self.assertLess(time.monotonic() - started, 2)
+        # The timer and handler are restored, not left active for later tests.
+        self.assertEqual(signal.getitimer(signal.ITIMER_REAL)[0], 0)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "POSIX alarm test")
+    def test_overall_wall_budget_reaps_live_subprocess_group(self):
+        with tempfile.TemporaryDirectory(prefix="query-aot-overall-") as path:
+            root = Path(path)
+            script = "import time; time.sleep(10)"
+            start = time.monotonic()
+            with self.assertRaisesRegex(OverallBudgetError, "overall AOT wall budget exceeded"):
+                with overall_wall_budget(0.3):
+                    run_bounded([sys.executable, "-c", script], root, 20,
+                                log_base=root / "global")
+            self.assertLess(time.monotonic() - start, 3)
+            self.assertTrue((root / "global.stderr.log").is_file())
 
     def test_retry_clears_stale_graph_binary_receipt_and_phase(self):
         with tempfile.TemporaryDirectory(prefix="query-aot-retry-") as path:

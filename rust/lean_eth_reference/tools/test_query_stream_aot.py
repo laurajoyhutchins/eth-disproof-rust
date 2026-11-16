@@ -11,7 +11,7 @@ import unittest
 
 from query_stream_aot import (validate_query, run_bounded, verify_query_import_receipt,
                               record_query_refusal, reset_query_outputs, source_export_phase,
-                              overall_wall_budget, OverallBudgetError,
+                              overall_wall_budget, OverallBudgetError, record_overall_budget_refusal,
                               ResourceLimitError, OutputLimitError, MAX_PROCESS_OUTPUT_BYTES,
                               MODULE, SOURCE_COMMIT, DECLARATION, IDENTIFIER)
 
@@ -226,6 +226,21 @@ class QueryAotContract(unittest.TestCase):
                                 log_base=root / "global")
             self.assertLess(time.monotonic() - start, 3)
             self.assertTrue((root / "global.stderr.log").is_file())
+
+    def test_overall_budget_refusal_withdraws_published_binary_and_receipt(self):
+        with tempfile.TemporaryDirectory(prefix="query-aot-global-refusal-") as path:
+            root = Path(path)
+            for name in ("query-stream", "query-stream.receipt.json"):
+                (root / name).write_bytes(b"previously published")
+            (root / "original-command.stderr.log").write_text(
+                "SOURCE_GRAPH_PHASE=decode-original-structured-command\n")
+            record_overall_budget_refusal(root, OverallBudgetError("overall limit"))
+            self.assertFalse((root / "query-stream").exists())
+            self.assertFalse((root / "query-stream.receipt.json").exists())
+            report = json.loads((root / "report.json").read_text())
+            self.assertEqual(report["status"], "REFUSED")
+            self.assertEqual(report["stage"], "original-query-overall-wall-limit")
+            self.assertEqual(report["source_phase"], "decode-original-structured-command")
 
     def test_retry_clears_stale_graph_binary_receipt_and_phase(self):
         with tempfile.TemporaryDirectory(prefix="query-aot-retry-") as path:

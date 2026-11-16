@@ -39,6 +39,25 @@ For each fixed `k`, `n→∞` gives
 
 The `IsKCNF` condition on distinct ordered clauses of length at most `k` bounds `m ≤ (2n+1)^k` and makes **both native encoded input lengths polynomial in `n` for fixed `k`**. Hence the fixed-degree polynomial factor in OpenAI's machine bound is `2^{o(n)}` too. This establishes a **shared mathematical 2^{o(n)} classification** of the two *native* counting results. It does not establish equal run times or improve OpenAI's squared `log log n` numerator. The required logarithmic limits are standard calculus consequences; this repository does not yet have one combined Lean theorem importing both source final theorems and formalizing all of those asymptotic steps.
 
+## Original OpenAI packet appendix: the separate source-rate obligation
+
+The proven OpenAI source machine `SqrtLogSpace.exact_count_and_sat` is **not** a Lean proof that the October 25 Cauchy packet recursion is implemented or admits Anthropic's factorization. The packet paper's source [`quantitative-contraction.tex`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/The-Exponential-Time-Hypothesis-is-False-October-25-2026/build/quantitative-contraction.tex), especially lines 384–600, makes the following separate quantitative chain:
+
+1. The actual geometric row expansion (not the signed singlet expansion) must establish that every weight-`b+1` mode coefficient has a factor `2^{b+1}`, so modes of total weight at least `p_t` vanish.
+2. The surviving mode exponents have source bound `exp(O_C(s/√λ * (√2/8)^d))` at recursion depth `d`, with `λ=ceil(log₂s)`. This uses `M≤Cs·8^{-d}`, `u_d=Θ_C(λ·2^{-d})`, and the source's packing hypotheses.
+3. The source upper bound on the total number of calls is `exp(O_C(s/√λ)+O_C(λ log λ)) = exp(O_C(s/√λ))`; leaves cost `2^H` with `H≈s/√λ`, and implicit packet-entry evaluations cost `exp(O(s^{9/10}))`.
+4. The interpolation, canonical lifts, coefficient bit lengths, graph descriptions, and depth-first space costs must fit within the same total bound.
+
+The new Lean lemma `IndependentETH.PacketSourceRate.source_depth_exponent_bound` checks **one actual numerical implication** in item 3 without assuming a fixed depth: with `q=√2/8≤1/4`, for all real `A≥0` and `D`,
+
+```text
+Σ_{d<D} A*q^d ≤ 4A/3.
+```
+
+It discharges the summation of the per-depth exponent **if** the source-specific per-level budget has been proved. It does not discharge the cost of each node. No original-packet end-to-end time theorem or runtime implementation is claimed.
+
+The equality through a `2^M`-label Anthropic network is **disqualified as a cost-preserving bridge**. To prove the *same overall subexponential result via packet-to-piece correspondence*, one must construct a replacement with `2^{o(s)}` **total work**, formally bound its table creation and label enumeration (not just its final rank), and prove its recursive contraction identity in the actual coefficient ring. Showing independently that two different original native machines each run in `2^{o(n)}` is valid, but does not establish this stronger algorithm-to-algorithm statement.
+
 ## Why the earlier packet correspondence does not prove a rate
 
 The direct two-node packet-to-Anthropic-network conversion labels its shared edge by an entire `M`-bit column assignment. At `W=I`, the resulting interaction matrix is `I_{2^M}`, so its matrix rank is `2^M`. **Any factorization across that fixed two-node cut uses at least `2^M` labels** over a field. Even though the conversion preserves every integer contraction exactly, it cannot be used as a low-cost subexponential simulation.
@@ -47,7 +66,7 @@ Subexponential equality of results is established *by independent native machine
 
 ## Acceptance frontier
 
-1. **Proved in cross-source Lean:** literal, clause and CNF satisfaction/count correspondence; `IsKCNF ⇒ WidthAtMost`; the Anthropic time-bounded native machine theorem reformulated to output OpenAI's count, *conditional on the original Anthropic MainTheorem proof term*.
+1. **Proved in cross-source Lean:** literal, clause and CNF satisfaction/count correspondence; `IsKCNF ⇒ WidthAtMost`; the Anthropic time-bounded native machine theorem reformulated to output OpenAI's count, *conditional on the original Anthropic MainTheorem proof term*. A proposed reverse executable finite-set-to-list serializer was withdrawn after its typeclass/ordering proof did not compile; do not treat it as a verified machine preprocessor.
 2. **Proved separately in original Lean sources:** OpenAI's complete primitive-machine counting and its rate/space bound; Anthropic's complete TM2 counting theorem and its time bound.
 3. **Still open as a single mechanically checked composite:** import both final source proof terms in a compatible Lean environment, prove the native input length bounds and logarithmic asymptotics there, and typecheck one joint theorem. This is much stronger than testing matching outputs, but does not demand a false factorwise identification.
 4. **Still open for algorithm equivalence:** a cost-preserving translation of actual intermediate packet/piece factors and execution traces. Neither the verified CNF bridge nor the complete native-machine endpoint theorems entails this.

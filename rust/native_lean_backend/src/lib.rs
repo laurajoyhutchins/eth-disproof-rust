@@ -714,6 +714,49 @@ pub unsafe extern "C" fn l_NativeRust_emit___boxed(decl: Obj, name: Obj) -> *mut
     reply(decl, name)
 }
 
+// Read-only probe for a *borrowed original Lean.IR.Decl*. It uses the same
+// Reader decode and FnBodyView functions as production emission, and returns a
+// structural observation to compare with an independently rendered Lean IR.
+// This is runtime ABI evidence, not a formal proof of C pointer semantics.
+unsafe fn reply_scalar_abi_observe(decl: Obj) -> *mut c_void {
+    let text = match std::panic::catch_unwind(|| Reader::observe_scalar_ir(decl)) {
+        Ok(Ok(s)) => format!("OK\n{s}"),
+        Ok(Err(e)) => safety::refusal("scalar-abi-observation", &e),
+        Err(_) => safety::refusal(
+            "scalar-abi-observation",
+            &CompilerError::new(RefusalKind::Abi, "scalar ABI observation panic"),
+        ),
+    };
+    lean_mk_string(
+        CString::new(text.replace('\0', "\\0"))
+            .expect("NUL sanitized")
+            .as_ptr(),
+    )
+}
+
+/// # Safety
+/// The argument must be a live, borrowed Lean.IR.Decl in pinned Lean 4.34.1.
+#[no_mangle]
+pub unsafe extern "C" fn rs_scalar_ir_abi_observe(decl: Obj) -> *mut c_void {
+    reply_scalar_abi_observe(decl)
+}
+
+/// # Safety
+/// Pinned Lean interpreter entry point for the same borrowed object.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_scalarABIObserve(decl: Obj) -> *mut c_void {
+    reply_scalar_abi_observe(decl)
+}
+
+/// # Safety
+/// Boxed interpreter entry point, also borrowing the actual compiler IR.
+#[no_mangle]
+#[allow(non_snake_case)]
+pub unsafe extern "C" fn l_NativeRust_scalarABIObserve___boxed(decl: Obj) -> *mut c_void {
+    reply_scalar_abi_observe(decl)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

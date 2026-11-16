@@ -7,6 +7,9 @@ here="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$here"
 source "$here/scripts/pins.sh"
 
+# Lake dependencies may declare their own lean-toolchain. Forbid any
+# implicit switch away from the pinned original compiler during this run.
+export LEAN_TOOLCHAIN=leanprover/lean4:v4.34.1
 : "$LEAN_PREFIX"
 test "$(cat "$here/lean/lean-toolchain")" = 'leanprover/lean4:v4.34.1'
 test "$( "$LEAN_PREFIX/bin/lean" --version )" = "$BOOTSTRAP_LEAN_VERSION" || {
@@ -40,6 +43,7 @@ fi
 
 (
   cd "$here/lean"
+  test "$(lean --version)" = "$BOOTSTRAP_LEAN_VERSION"
   lake build Bootstrap
   lake env lean --run Oracle.lean > "$here/oracle.tsv"
 )

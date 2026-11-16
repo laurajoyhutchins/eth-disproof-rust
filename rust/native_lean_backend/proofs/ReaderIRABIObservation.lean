@@ -125,6 +125,42 @@ def observeDecl : IR.Decl → Option String
       return out ++ "RET u64\n" ++ rest
   | _ => none
 
+
+/-- Perturb the *actual* original Lean IR values, rather than feeding fabricated
+bytes to the native decoder. No mutated program is run as user code. -/
+private partial def rewriteFirstCase (body : IR.FnBody)
+    (rewrite : Array IR.Alt → Option (Array IR.Alt)) : Option IR.FnBody := do
+  match body with
+  | .vdecl id ty expr next =>
+    return .vdecl id ty expr (← rewriteFirstCase next rewrite)
+  | .case tid scr ty alts =>
+    return .case tid scr ty (← rewrite alts)
+  | _ => none
+
+def rewriteDecl (decl : IR.Decl)
+    (rewrite : Array IR.Alt → Option (Array IR.Alt)) : Option IR.Decl := do
+  match decl with
+  | .fdecl name params result body info =>
+    return .fdecl name params result (← rewriteFirstCase body rewrite) info
+  | _ => none
+
+def reverseTwo (alts : Array IR.Alt) : Option (Array IR.Alt) := do
+  if alts.size != 2 then none else
+  return #[← alts[1]?, ← alts[0]?]
+
+def duplicateFirst (alts : Array IR.Alt) : Option (Array IR.Alt) := do
+  let first ← alts[0]?
+  return #[first, first]
+
+def missingSecond (alts : Array IR.Alt) : Option (Array IR.Alt) := do
+  return #[← alts[0]?]
+
+def defaultFirst (alts : Array IR.Alt) : Option (Array IR.Alt) := do
+  match (← alts[0]?) with
+  | .ctor _ body => return #[.default body, ← alts[1]?]
+  | _ => none
+
+
 end ReaderIRABIObservation
 
 #print axioms ReaderIRABIObservation.bool_byte_roundtrip
@@ -155,3 +191,36 @@ run_cmd do
   unless observed.startsWith "ERROR\n" do
     throwError "native borrowed-IR observer incorrectly admitted subtraction"
   logInfo "Native borrowed IR observation correctly rejected unsupported subtraction"
+  -- Two valid constructor alternatives may occur in either array order.
+  let caseRoot := `ScalarFixture.choose
+  let some original ← liftCoreM <| IR.findDecl caseRoot
+    | throwError "Bool ABI probe source fixture missing"
+  let some swapped := ReaderIRABIObservation.rewriteDecl original
+      ReaderIRABIObservation.reverseTwo
+    | throwError "could not reverse original Bool IR alternatives"
+  let some expectedSwap := ReaderIRABIObservation.observeDecl swapped
+    | throwError "independent IR observer incorrectly refused reversed alternatives"
+  unless (ReaderIRBoolSoundness.certifyDecl swapped).isSome do
+    throwError "source IR semantic checker refused valid reversed Bool alternatives"
+  let observedSwap := NativeRust.scalarABIObserve swapped
+  unless observedSwap == "OK\n" ++ expectedSwap do
+    throwError "borrowed C/Rust ABI failed reversed Bool case observation"
+  logInfo "Both Bool constructor array orders agree between Lean and borrowed ABI"
+
+  -- Malformed original IR should refuse in *both* readers. Nothing is emitted.
+  for variant in #[0, 1, 2] do
+    let rewrite := match variant with
+      | 0 => ReaderIRABIObservation.duplicateFirst
+      | 1 => ReaderIRABIObservation.missingSecond
+      | _ => ReaderIRABIObservation.defaultFirst
+    let some malformed := ReaderIRABIObservation.rewriteDecl original rewrite
+      | throwError "could not construct malformed original Bool IR fixture"
+    unless (ReaderIRABIObservation.observeDecl malformed).isNone do
+      throwError "independent IR observer admitted malformed Bool alternatives {variant}"
+    unless (ReaderIRBoolSoundness.certifyDecl malformed).isNone do
+      throwError "source semantic checker admitted malformed Bool alternatives {variant}"
+    let report := NativeRust.scalarABIObserve malformed
+    unless report.startsWith "ERROR\n" do
+      throwError "C/Rust borrowed decoder admitted malformed Bool alternatives {variant}"
+    logInfo m!"Both original-IR readers refused malformed Bool case variant {variant}"
+

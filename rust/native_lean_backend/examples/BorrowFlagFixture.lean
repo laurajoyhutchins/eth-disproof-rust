@@ -436,6 +436,89 @@ run_cmd do
       (duplicateSwapResult.splitOn "incomplete or duplicate field-owner permutation").length > 1 do
     throwError "duplicated field source reference was admitted: {duplicateSwapResult}"
 
+
+  -- A source dec carries a multiplicity. An internal Rc alias must not
+  -- hide a final release when that multiplicity exceeds one.
+  let countedRelease : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.inc ⟨0⟩ 1 true false
+        (.dec ⟨0⟩ 2 true false
+          (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩)))))
+  let countedReleaseResult := NativeRust.emit
+    (.fdecl name #[owned] .object countedRelease info) "counted_final_parent_release"
+  unless countedReleaseResult.startsWith "ERROR\n" &&
+      (countedReleaseResult.splitOn "protecting parent release").length > 1 do
+    throwError "dec by two failed to invalidate projected child: {countedReleaseResult}"
+
+  -- Two decrements against three real source credits leave the parent live.
+  -- Its child can be retained before the final parent decrement.
+  let countedRetained : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.inc ⟨0⟩ 2 true false
+        (.dec ⟨0⟩ 2 true false
+          (.inc ⟨2⟩ 1 true false
+            (.dec ⟨0⟩ 1 true false (.ret (.var ⟨2⟩))))))
+  let countedRetainedResult := NativeRust.emit
+    (.fdecl name #[owned] .object countedRetained info) "counted_parent_still_live"
+  unless countedRetainedResult.startsWith "OK\n" do
+    throwError "source dec consumed more than its encoded multiplicity: {countedRetainedResult}"
+
+  let excessiveDec : Lean.IR.FnBody :=
+    .dec ⟨0⟩ 2 true false
+      (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let excessiveDecResult := NativeRust.emit
+    (.fdecl name #[owned] .object excessiveDec info) "source_decrement_exceeds_credits"
+  unless excessiveDecResult.startsWith "ERROR\n" &&
+      (excessiveDecResult.splitOn "exceeds").length > 1 do
+    throwError "unjustified source dec over-release was admitted: {excessiveDecResult}"
+
+  -- The parent is itself a source dereference, even if no child VarId has
+  -- previously been tracked. Both final dec and shell-only del kill it.
+  let directRootAfterDec : Lean.IR.FnBody :=
+    .dec ⟨0⟩ 1 true false
+      (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let directRootAfterDecResult := NativeRust.emit
+    (.fdecl name #[owned] .object directRootAfterDec info) "root_projected_after_dec"
+  unless directRootAfterDecResult.startsWith "ERROR\n" &&
+      (directRootAfterDecResult.splitOn "protecting parent release").length > 1 do
+    throwError "root projection read a source-released object: {directRootAfterDecResult}"
+
+  let directRootAfterDel : Lean.IR.FnBody :=
+    .del ⟨0⟩
+      (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let directRootAfterDelResult := NativeRust.emit
+    (.fdecl name #[owned] .object directRootAfterDel info) "root_projected_after_del"
+  unless directRootAfterDelResult.startsWith "ERROR\n" &&
+      (directRootAfterDelResult.splitOn "protecting parent release").length > 1 do
+    throwError "shell deletion left an invalid root readable: {directRootAfterDelResult}"
+
+  -- The C emitter elides persistent dec operations. The admission pass
+  -- must not invent a release for that source-no-op form.
+  let persistentDec : Lean.IR.FnBody :=
+    .dec ⟨0⟩ 2 true true
+      (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let persistentDecResult := NativeRust.emit
+    (.fdecl name #[owned] .object persistentDec info) "persistent_parent_dec_noop"
+  unless persistentDecResult.startsWith "OK\n" do
+    throwError "persistent source dec incorrectly invalidated its parent: {persistentDecResult}"
+
+  let rootAfterOwnedCall : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .uint8 (.fap ownedName #[.var ⟨0⟩])
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨3⟩ 1 true false (.ret (.var ⟨3⟩))))
+  let rootAfterOwnedCallResult := NativeRust.emitModule
+    #[ownedCallee, .fdecl callerName #[owned] .object rootAfterOwnedCall info]
+    callerName "root_after_owned_call"
+  unless rootAfterOwnedCallResult.startsWith "ERROR\n" &&
+      (rootAfterOwnedCallResult.splitOn "protecting parent release").length > 1 do
+    throwError "consuming callee left source-released root readable: {rootAfterOwnedCallResult}"
+
+  logInfo "Source lifetime regression: counted dec, over-release, direct root and persistent no-op cases passed"
+
   logInfo "Source constructor join transfer: verified unique two-slot swap, refused incomplete and duplicate swaps"
 
   logInfo "Source projected lifetimes: parent release, nested/retained children, calls, joins, shell deletion and field replacement"

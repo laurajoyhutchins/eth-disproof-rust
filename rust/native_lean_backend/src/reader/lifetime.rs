@@ -66,11 +66,10 @@ impl ProjectedLifetime {
     }
 
     fn check(&self, id: usize, context: &str) -> CompilerResult<()> {
-        // This pass establishes the safety of projected children only.
-        // A direct root's physical RC can include aliases we have not
-        // modeled. Do not make this conservative estimate into a global
-        // rejection of otherwise-supported direct-call/isShared programs.
-        if self.parents.contains_key(&id) && !self.alive(id) {
+        // A tracked root is also unsafe to read after its last modeled
+        // source owner is released. Rust Rc handles are not source owners.
+        // Untracked values remain outside this conservative admission.
+        if self.owners.contains_key(&id) && !self.alive(id) {
             return Err(CompilerError::new(
                 RefusalKind::Decl,
                 format!(
@@ -92,25 +91,24 @@ impl ProjectedLifetime {
         Ok(())
     }
 
-    fn take(&mut self, id: usize, context: &str) -> CompilerResult<()> {
+    fn take_n(&mut self, id: usize, n: usize, context: &str) -> CompilerResult<()> {
         self.check(id, context)?;
         if let Some(credits) = self.owners.get_mut(&id) {
-            if *credits == 0 {
-                if self.parents.contains_key(&id) {
-                    return Err(CompilerError::new(
-                        RefusalKind::Decl,
-                        format!(
-                            "projected/borrowed x_{id}: no owned source reference for {context}"
-                        ),
-                    ));
-                }
-                // Root alias counts are not complete. Only projected
-                // variables admit the stronger source ownership claim.
-                return Ok(());
+            if *credits < n {
+                return Err(CompilerError::new(
+                    RefusalKind::Decl,
+                    format!(
+                        "source object x_{id}: release of {n} source references exceeds {credits} known owned credits in {context}"
+                    ),
+                ));
             }
-            *credits -= 1;
+            *credits -= n;
         }
         Ok(())
+    }
+
+    fn take(&mut self, id: usize, context: &str) -> CompilerResult<()> {
+        self.take_n(id, 1, context)
     }
 
     fn transfer_old_field(
@@ -408,7 +406,8 @@ impl Reader {
                     ..
                 } => {
                     if !persistent {
-                        state.take(Self::var(target)?, "source dec")?;
+                        let n = Self::nat(Self::field(body, 1)?)?;
+                        state.take_n(Self::var(target)?, n, "source dec")?;
                     }
                     body = next;
                 }

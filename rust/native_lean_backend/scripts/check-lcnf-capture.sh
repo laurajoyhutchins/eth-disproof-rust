@@ -35,14 +35,14 @@ baseline_sha="$(sha256sum artifacts/lcnf-baseline.rs | cut -d' ' -f1)"
 observed_sha="$(sha256sum artifacts/lcnf-observed.rs | cut -d' ' -f1)"
 test "$baseline_sha" = "$observed_sha"
 {
-  printf 'lean=4.34.1\\n'
-  printf 'head=%s\\n' "$(git rev-parse HEAD)"
-  printf 'capture_source=Lean.Compiler.LCNF.getLocalImpureDecl?\\n'
-  printf 'captured_declarations=3\\n'
-  printf 'rust_sha256=%s\\n' "$observed_sha"
-  printf 'capture_sha256=%s\\n' "$(sha256sum artifacts/lcnf-capture.json | cut -d' ' -f1)"
-  printf 'rust_byte_parity=PASS\\n'
-  printf 'rust_execution_cases=3\\n'
-  printf 'result=PASS\\n'
+  printf 'lean=4.34.1\n'
+  printf 'head=%s\n' "$(git rev-parse HEAD)"
+  printf 'capture_source=Lean.Compiler.LCNF.getLocalImpureDecl?\n'
+  printf 'captured_declarations=3\n'
+  printf 'rust_sha256=%s\n' "$observed_sha"
+  printf 'capture_sha256=%s\n' "$(sha256sum artifacts/lcnf-capture.json | cut -d' ' -f1)"
+  printf 'rust_byte_parity=PASS\n'
+  printf 'rust_execution_cases=3\n'
+  printf 'result=PASS\n'
 } > artifacts/lcnf-capture-receipt.txt
 echo "Final saved impure LCNF inspected; Rust byte-parity and execution: PASS"

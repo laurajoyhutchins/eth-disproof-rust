@@ -389,7 +389,11 @@ impl Reader {
                     next,
                 } => {
                     let target = Self::var(defined)?;
-                    let value_type = is_value_type(Self::ty(ty)?);
+                    // Lean IR 'tagged' is a static immediate, not an
+                    // allocation. Reusing it does not spend a source RC credit.
+                    // Keep obj/tobj tracked: they may contain real heap pointers.
+                    let source_ty = Self::ty(ty)?;
+                    let value_type = is_value_type(source_ty) && source_ty != "tagged";
                     let projection = value_type && Self::checked_tag(expr, "Expr")? == 3;
                     let parent = if projection {
                         Some(Self::var(Self::field(expr, 1)?)?)

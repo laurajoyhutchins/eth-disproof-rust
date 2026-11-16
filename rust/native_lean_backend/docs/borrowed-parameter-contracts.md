@@ -91,6 +91,15 @@ returned reference protects that same allocation after the caller transfers
 the argument; the protection ends when the returned owner is released.
 Owned and borrowed join formals similarly preserve exact source identity.
 No other direct-call result alias, closure, or external return is inferred.
+A statically typed Lean IR `tagged` value is an immediate, not a
+refcounted source allocation. The lifetime pass therefore does not
+allocate or consume ownership credits for tagged declarations or tagged
+formals; the normal source IR emitter still checks each operation and
+its `checkRef`/persistent flags. Heap-capable `obj`/`tobj` values,
+including pointer-field projections, retain source-lifetime checks.
+The original optimized `OwnershipFixture.preserveShared` provides an
+independent source-native witness: its repeatedly used index `x_9`
+is `tagged 0`, not an already-freed heap pointer.
 The source runtime's actual reference counts may include unmodeled
 aliases, so potential final-owner release is conservatively treated as
 destruction. General call-result aliasing, externally-owned heap effects,

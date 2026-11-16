@@ -97,7 +97,8 @@ impl Reader {
         let mut lifetime_formals = Vec::new();
         for param in &params {
             let ty = Self::ty(Self::field(*param, 1)?)?;
-            if is_value_type(ty) {
+            // A statically tagged parameter has no source heap lifetime.
+            if is_value_type(ty) && ty != "tagged" {
                 lifetime_formals.push((
                     Self::var(Self::field(*param, 0)?)?,
                     Self::param_borrow(*param)?,

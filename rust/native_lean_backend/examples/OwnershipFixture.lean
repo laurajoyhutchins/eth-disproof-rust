@@ -17,19 +17,6 @@ namespace OwnershipFixture
     a.getD 0 0 + b.getD 0 0
 end OwnershipFixture
 
--- Diagnostic of the exact optimized Lean 4.34.1 source IR used by the
--- canonical Reader. This is temporary and will be removed after diagnosis.
-run_cmd do
-  let targets := #[`OwnershipFixture.chain, `OwnershipFixture.updateUnique, `OwnershipFixture.preserveShared]
-  let decls ← liftCoreM do
-    Lean.Compiler.compile targets
-    targets.mapM fun n => Lean.IR.findDecl n
-  for i in [:decls.size] do
-    if let some decl := decls[i]! then
-      logInfo m!"SOURCE-OWNERSHIP-IR {targets[i]!}:\n{Lean.IR.declToString decl}"
-    else
-      logInfo m!"SOURCE-OWNERSHIP-IR missing {targets[i]!}"
-
 #native_rust_package [OwnershipFixture.chain, OwnershipFixture.updateUnique, OwnershipFixture.preserveShared] to "examples/ownership-package"
 
 run_cmd do

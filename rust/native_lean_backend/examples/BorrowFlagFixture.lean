@@ -559,7 +559,33 @@ run_cmd do
       (identityReleasedResult.splitOn "protecting parent release").length > 1 do
     throwError "released identity result kept the source root alive: {identityReleasedResult}"
 
-  logInfo "Source lifetime regression: counted dec, over-release, direct root, identity returns and persistent no-op cases passed"
+
+  -- Source-native IR uses a tagged constant for Array indices. Tagged
+  -- immediates have no heap refcount, even when a generic primitive's
+  -- argument ownership is conservatively classified as consuming.
+  let reusableTagged : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .tagged (.lit (.num 0))
+      (.vdecl ⟨3⟩ .uint8 (.fap `Nat.decLt #[.var ⟨2⟩, .var ⟨2⟩])
+        (.vdecl ⟨4⟩ .uint8 (.fap `Nat.decLe #[.var ⟨2⟩, .var ⟨2⟩])
+          (.ret (.var ⟨4⟩))))
+  let taggedAllowed := NativeRust.emit
+    (.fdecl name #[] .uint8 reusableTagged info) "reused_statically_tagged_immediate"
+  unless taggedAllowed.startsWith "OK\n" do
+    throwError "statically tagged immediate was treated as a released heap owner: {taggedAllowed}"
+
+  let taggedFormal : Lean.IR.Param :=
+    { x := ⟨0⟩, ty := .tagged, borrow := false }
+  let reusableTaggedFormal : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .uint8 (.fap `Nat.decLt #[.var ⟨0⟩, .var ⟨0⟩])
+      (.vdecl ⟨3⟩ .uint8 (.fap `Nat.decLe #[.var ⟨0⟩, .var ⟨0⟩])
+        (.ret (.var ⟨3⟩)))
+  let taggedFormalAllowed := NativeRust.emit
+    (.fdecl name #[taggedFormal] .uint8 reusableTaggedFormal info)
+      "reused_statically_tagged_formal"
+  unless taggedFormalAllowed.startsWith "OK\n" do
+    throwError "statically tagged parameter acquired a fictitious heap credit: {taggedFormalAllowed}"
+
+  logInfo "Source lifetime regression: counted dec, over-release, direct root, identity returns, tagged immediates and persistent no-op cases passed"
 
   logInfo "Source constructor join transfer: verified unique two-slot swap, refused incomplete and duplicate swaps"
 

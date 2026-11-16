@@ -274,7 +274,7 @@ private def testExpr (sym : SymbolicEnv) (expr : IR.Expr) :
 structure ArmWitness (alts : Array IR.Alt) where
   falseBody : IR.FnBody
   trueBody : IR.FnBody
-  exact : BoolAlts alts falseBody trueBody
+  armsProof : BoolAlts alts falseBody trueBody
 
 private def reifyAlts (alts : Array IR.Alt) : Option (ArmWitness alts) :=
   if hs : alts.size = 2 then
@@ -287,7 +287,7 @@ private def reifyAlts (alts : Array IR.Alt) : Option (ArmWitness alts) :=
             if hc1 : info1.cidx = 1 then
               if hn1 : info1.name = `Bool.true then
                 some {falseBody := body0, trueBody := body1,
-                  exact := ⟨hs, Or.inl ⟨info0, info1,
+                  armsProof := ⟨hs, Or.inl ⟨info0, info1,
                     h0, h1, hc0, hn0, hc1, hn1⟩⟩}
               else none
             else none
@@ -297,7 +297,7 @@ private def reifyAlts (alts : Array IR.Alt) : Option (ArmWitness alts) :=
             if hc1 : info1.cidx = 0 then
               if hn1 : info1.name = `Bool.false then
                 some {falseBody := body1, trueBody := body0,
-                  exact := ⟨hs, Or.inr ⟨info0, info1,
+                  armsProof := ⟨hs, Or.inr ⟨info0, info1,
                     h0, h1, hc0, hn0, hc1, hn1⟩⟩}
               else none
             else none
@@ -310,7 +310,7 @@ private def reifyAlts (alts : Array IR.Alt) : Option (ArmWitness alts) :=
 structure BodyWitness (sw : SymbolicEnv) (st : SymTests)
     (body : IR.FnBody) where
   program : Program
-  exact : BodyMatches sw st body program
+  bodyProof : BodyMatches sw st body program
 
 /-- Total and fuel-bounded original-IR checker: every accepted node brings
 its exact constructor witness into the kernel-checkable proof. -/
@@ -323,22 +323,22 @@ private def scan (fuel : Nat) (sw : SymbolicEnv) (st : SymTests)
     | .ret (.var id) =>
       match h : sw id.idx with
       | some value =>
-        some {program := .ret value, exact := .ret sw st id value h}
+        some {program := .ret value, bodyProof := .ret sw st id value h}
       | none => none
     | .vdecl id .uint64 expr tail =>
       match ReaderIRSoundness.wordExpr sw expr with
       | some {word := value, derivation := hexpr} =>
         match scan fuel (setVar sw id.idx value) st tail with
-        | some {program := p, exact := htail} =>
-          some {program := p, exact := .word sw st id expr tail value p hexpr htail}
+        | some {program := p, bodyProof := htail} =>
+          some {program := p, bodyProof := .word sw st id expr tail value p hexpr htail}
         | none => none
       | none => none
     | .vdecl id .uint8 expr tail =>
       match testExpr sw expr with
       | some {condition := value, derivation := hexpr} =>
         match scan fuel sw (setVar st id.idx value) tail with
-        | some {program := p, exact := htail} =>
-          some {program := p, exact := .test sw st id expr tail value p hexpr htail}
+        | some {program := p, bodyProof := htail} =>
+          some {program := p, bodyProof := .test sw st id expr tail value p hexpr htail}
         | none => none
       | none => none
     | .case tid scr ty alts =>
@@ -347,13 +347,13 @@ private def scan (fuel : Nat) (sw : SymbolicEnv) (st : SymTests)
           match hs : st scr.idx with
           | some cond =>
             match reifyAlts alts with
-            | some {falseBody := fb, trueBody := tb, exact := harm} =>
+            | some {falseBody := fb, trueBody := tb, armsProof := harm} =>
               match scan fuel sw st tb with
-              | some {program := tp, exact := htp} =>
+              | some {program := tp, armsProof := htp} =>
                 match scan fuel sw st fb with
-                | some {program := fp, exact := hfp} =>
+                | some {program := fp, armsProof := hfp} =>
                   some {program := .branch cond tp fp,
-                    exact := .branch sw st tid scr ty alts fb tb cond tp fp
+                    bodyProof := .branch sw st tid scr ty alts fb tb cond tp fp
                       htid hty harm hs htp hfp}
                 | none => none
               | none => none
@@ -379,7 +379,7 @@ structure Certificate where
   right : Nat
   body : IR.FnBody
   program : Program
-  matches : BodyMatches (initialSym left right) initialTests body program
+  sourceProof : BodyMatches (initialSym left right) initialTests body program
 
 /-- Exactly two unborrowed UInt64 parameters and a UInt64 return, with
 source-IR semantic evidence for every instruction in the accepted body. -/
@@ -396,7 +396,7 @@ def certifyDecl (decl : IR.Decl) : Option Certificate := do
       let witness ← scan 100000
         (initialSym p0.x.idx p1.x.idx) initialTests body
       some {left := p0.x.idx, right := p1.x.idx, body,
-            program := witness.program, matches := witness.exact}
+            program := witness.program, sourceProof := witness.bodyProof}
   | _ => none
 
 /-- All input pairs: certified original Lean IR refines independent modeled
@@ -408,7 +408,7 @@ theorem original_ir_target_refines (c : Certificate) (a b : UInt64) :
       evalRustProgramSyntax (fun i => (inputWords a b i).toNat)
         (lowerProgram c.program) = value.toNat := by
   refine ⟨evalActualProgram (inputWords a b) c.program, ?_, ?_⟩
-  · exact body_sound c.matches (inputWords a b)
+  · exact body_sound c.sourceProof (inputWords a b)
       (initialRuntime c.left c.right a b) initialSourceTests
       (initial_agrees c.left c.right a b)
   · exact modeled_compiler_refines (inputWords a b) c.program

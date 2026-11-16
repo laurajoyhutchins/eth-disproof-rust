@@ -38,6 +38,10 @@ struct ProjectedLifetime {
     // Credits created by a real owned input, source-producing declaration,
     // or explicitly emitted IR.inc; Rust Rc aliases do not count.
     owners: BTreeMap<usize, usize>,
+    // A narrow source-proved direct identity return (or join transfer)
+    // gives two VarIds the same allocation identity. Ordinary calls do not.
+    source_identities: BTreeMap<usize, usize>,
+    aliased_identities: BTreeSet<usize>,
     // Borrowed function formals are protected by a caller-owned reference.
     external: BTreeSet<usize>,
     // A source del or constructor mutation can invalidate a projected edge.
@@ -45,17 +49,42 @@ struct ProjectedLifetime {
 }
 
 impl ProjectedLifetime {
+    fn identity(&self, id: usize) -> usize {
+        self.source_identities.get(&id).copied().unwrap_or(id)
+    }
+
+    fn bind_identity(&mut self, target: usize, source: usize) {
+        let identity = self.identity(source);
+        self.source_identities.insert(target, identity);
+        self.aliased_identities.insert(identity);
+    }
+
+    fn protected(&self, id: usize) -> bool {
+        if self.owners.get(&id).copied().unwrap_or(0) > 0 || self.external.contains(&id) {
+            return true;
+        }
+        let identity = self.identity(id);
+        // Most source values have no proved aliases, so the common case
+        // requires no scan of other VarIds.
+        self.aliased_identities.contains(&identity)
+            && (self
+                .owners
+                .iter()
+                .any(|(other, n)| *n > 0 && self.identity(*other) == identity)
+                || self
+                    .external
+                    .iter()
+                    .any(|other| self.identity(*other) == identity))
+    }
+
     fn alive(&self, id: usize) -> bool {
         let mut node = id;
         for _ in 0..128 {
-            if self.owners.get(&node).copied().unwrap_or(0) > 0 {
+            if self.protected(node) {
                 return true;
             }
             if self.invalidated.contains(&node) {
                 return false;
-            }
-            if self.external.contains(&node) {
-                return true;
             }
             match self.parents.get(&node) {
                 Some(parent) => node = *parent,
@@ -367,6 +396,26 @@ impl Reader {
                     } else {
                         None
                     };
+                    // The callee's original, entire IR body must directly
+                    // return an owned formal. Anything more complex stays
+                    // unproved, including arbitrary alias-producing calls.
+                    let returned_alias = if value_type && Self::checked_tag(expr, "Expr")? == 6 {
+                        let callee = Self::name(Self::field(expr, 0)?, 0)?;
+                        if let Some(index) = functions
+                            .and_then(|table| table.get(&callee))
+                            .and_then(|sig| sig.returned_owned_formal)
+                        {
+                            let args = Self::array(Self::field(expr, 1)?)?;
+                            args.get(index)
+                                .map(|arg| Self::lifetime_arg_id(*arg))
+                                .transpose()?
+                                .flatten()
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
                     Self::lifetime_expr(expr, state, functions)?;
                     if value_type {
                         if state
@@ -384,6 +433,9 @@ impl Reader {
                             state
                                 .field_indices
                                 .insert(target, Self::nat(Self::field(expr, 0)?)?);
+                        }
+                        if let Some(source) = returned_alias {
+                            state.bind_identity(target, source);
                         }
                     }
                     body = next;
@@ -582,10 +634,12 @@ impl Reader {
                             if *borrowed {
                                 destination.owners.insert(*formal, 0);
                                 destination.parents.insert(*formal, actual);
+                                destination.bind_identity(*formal, actual);
                             } else {
                                 destination.take(actual, "owned join argument")?;
                                 destination.owners.insert(*formal, 1);
                                 destination.parents.remove(formal);
+                                destination.bind_identity(*formal, actual);
                                 // A source owned join parameter is another
                                 // name for the SAME heap object, not a new
                                 // allocation. Redirect already projected

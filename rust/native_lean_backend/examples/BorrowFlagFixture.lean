@@ -530,7 +530,36 @@ run_cmd do
       (rootAfterOwnedCallResult.splitOn "protecting parent release").length > 1 do
     throwError "consuming callee left source-released root readable: {rootAfterOwnedCallResult}"
 
-  logInfo "Source lifetime regression: counted dec, over-release, direct root and persistent no-op cases passed"
+
+  -- Exact direct identity calls return the consumed source object. The
+  -- result's real owned reference protects the original VarId, whereas an
+  -- unrelated result must never be guessed to be an alias.
+  let identityName := `BorrowFlagFixture.returnIdentity
+  let identityCallee : Lean.IR.Decl :=
+    .fdecl identityName #[owned] .object (.ret (.var ⟨0⟩)) info
+  let identityProtected : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.fap identityName #[.var ⟨0⟩])
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨3⟩ 1 true false (.ret (.var ⟨3⟩))))
+  let identityProtectedResult := NativeRust.emitModule
+    #[identityCallee, .fdecl callerName #[owned] .object identityProtected info]
+    callerName "source_identity_return_preserves_root"
+  unless identityProtectedResult.startsWith "OK\n" do
+    throwError "source-exact identity return lost its protecting owner: {identityProtectedResult}"
+
+  let identityReleased : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.fap identityName #[.var ⟨0⟩])
+      (.dec ⟨2⟩ 1 true false
+        (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+          (.inc ⟨3⟩ 1 true false (.ret (.var ⟨3⟩)))))
+  let identityReleasedResult := NativeRust.emitModule
+    #[identityCallee, .fdecl callerName #[owned] .object identityReleased info]
+    callerName "source_identity_return_released"
+  unless identityReleasedResult.startsWith "ERROR\n" &&
+      (identityReleasedResult.splitOn "protecting parent release").length > 1 do
+    throwError "released identity result kept the source root alive: {identityReleasedResult}"
+
+  logInfo "Source lifetime regression: counted dec, over-release, direct root, identity returns and persistent no-op cases passed"
 
   logInfo "Source constructor join transfer: verified unique two-slot swap, refused incomplete and duplicate swaps"
 

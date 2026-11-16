@@ -164,14 +164,35 @@ impl Reader {
         }
         let mut params = Vec::new();
         let mut borrows = Vec::new();
+        let mut formal_ids = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
+            formal_ids.push(Self::var(Self::field(param, 0)?)?);
             borrows.push(Self::param_borrow(param)?);
             params.push(Self::ty(Self::field(param, 1)?)?);
         }
+        let result = Self::ty(Self::field(decl, 2)?)?;
+        // Source-exact identity return: the entire body returns an owned
+        // object formal unchanged. No preceding calls, mutation, or RC ops.
+        // A general call-result alias is never inferred from its type.
+        let returned_owned_formal = if is_value_type(result) {
+            match Self::body_view(Self::field(decl, 3)?)? {
+                FnBodyView::Return { value } if Self::checked_tag(value, "Arg")? == 0 => {
+                    let source = Self::var(Self::field(value, 0)?)?;
+                    formal_ids.iter().enumerate().find_map(|(i, id)| {
+                        (*id == source && !borrows[i] && is_value_type(params[i]))
+                            .then_some(i)
+                    })
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
         Ok(Signature {
             params,
             borrows,
-            result: Self::ty(Self::field(decl, 2)?)?,
+            result,
+            returned_owned_formal,
         })
     }
 

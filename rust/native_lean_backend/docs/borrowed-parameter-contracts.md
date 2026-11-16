@@ -85,6 +85,12 @@ The same source-liveness guard applies to direct object roots, not only
 projected children; a direct `proj` after final `dec`, shell `del`, or
 owned call is refused. Persistent `dec` remains a source no-op as in the
 pinned C emitter.
+One narrow source-derived alias is recognized: a direct callee whose
+**entire original IR body** returns an owned object formal unchanged. Its
+returned reference protects that same allocation after the caller transfers
+the argument; the protection ends when the returned owner is released.
+Owned and borrowed join formals similarly preserve exact source identity.
+No other direct-call result alias, closure, or external return is inferred.
 The source runtime's actual reference counts may include unmodeled
 aliases, so potential final-owner release is conservatively treated as
 destruction. General call-result aliasing, externally-owned heap effects,

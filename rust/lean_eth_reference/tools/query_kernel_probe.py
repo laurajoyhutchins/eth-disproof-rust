@@ -25,7 +25,9 @@ EXPECTED_FIELDS = {
     "format", "status", "root", "compiler", "source_kind",
     "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
     "command_name", "command_expression_nodes", "command_immediate_symbols",
-    "command_symbol_kinds", "transitive_computational_closure", "rust_executable",
+    "command_symbol_kinds", "same_module_local_declarations",
+    "external_module_edges_unresolved", "transitive_computational_closure",
+    "rust_executable",
     "independent_lean_rust_parity", "counting_parity",
     "resource_correspondence",
 }
@@ -51,6 +53,7 @@ def validate_kernel_root(raw: str) -> dict:
         "compiler": COMPILER,
         "source_kind": "definition",
         "command_name": MODULE + ".command",
+        "external_module_edges_unresolved": True,
         "transitive_computational_closure": False,
         "rust_executable": False,
         "independent_lean_rust_parity": False,
@@ -108,6 +111,64 @@ def validate_kernel_root(raw: str) -> dict:
                 type(item["kind"]) is not str or item["kind"] not in allowed
                 for item, name in zip(command_kinds, command_symbols))):
         raise ValueError("original command classifications are not bound to source symbols")
+    local = receipt["same_module_local_declarations"]
+    prefix = MODULE + "."
+    expected_keys = {
+        "name", "kind", "body_scanned", "expression_nodes", "immediate_symbols",
+    }
+    if not isinstance(local, list) or not 2 <= len(local) <= 32:
+        raise ValueError("same-module source declaration budget invalid")
+    local_by_name = {}
+    total_nodes = 0
+    for item in local:
+        if not isinstance(item, dict) or set(item) != expected_keys:
+            raise ValueError("same-module source declaration fields invalid")
+        name = item["name"]
+        kind = item["kind"]
+        scanned = item["body_scanned"]
+        count = item["expression_nodes"]
+        children = item["immediate_symbols"]
+        if (type(name) is not str or not name.startswith(prefix) or
+                len(name) > 512 or name in local_by_name):
+            raise ValueError("same-module declaration identity or uniqueness invalid")
+        if (type(kind) is not str or kind not in allowed or
+                type(scanned) is not bool or scanned != (kind == "definition")):
+            raise ValueError("same-module declaration proof/definition classification invalid")
+        if (type(count) is not int or not 0 <= count <= 2048 or
+                (scanned and count == 0) or (not scanned and count != 0)):
+            raise ValueError("same-module declaration node budget or erasure claim invalid")
+        if (not isinstance(children, list) or len(children) > 2048 or
+                any(type(child) is not str or not child or len(child) > 512
+                    for child in children) or len(set(children)) != len(children) or
+                (not scanned and children)):
+            raise ValueError("same-module declaration symbol list invalid")
+        local_by_name[name] = item
+        total_nodes += count
+    if total_nodes > 8192:
+        raise ValueError("same-module aggregate source node budget exceeded")
+    if (DECLARATION not in local_by_name or MODULE + ".command" not in local_by_name or
+            local_by_name[DECLARATION]["kind"] != "definition" or
+            local_by_name[MODULE + ".command"]["kind"] != "definition"):
+        raise ValueError("original root/command missing from same-module graph")
+    if local_by_name[DECLARATION]["immediate_symbols"] != symbols or (
+            local_by_name[MODULE + ".command"]["immediate_symbols"] != command_symbols):
+        raise ValueError("same-module root/command symbols disagree with verified direct inventory")
+    if (local_by_name[DECLARATION]["expression_nodes"] != nodes or
+            local_by_name[MODULE + ".command"]["expression_nodes"] != command_nodes):
+        raise ValueError("same-module root/command node counts disagree")
+    reached = set()
+    pending = [DECLARATION]
+    while pending:
+        current = pending.pop()
+        if current in reached:
+            continue
+        if current not in local_by_name:
+            raise ValueError(f"same-module referenced declaration missing: {current}")
+        reached.add(current)
+        pending.extend(child for child in local_by_name[current]["immediate_symbols"]
+                       if child.startswith(prefix))
+    if reached != set(local_by_name):
+        raise ValueError("same-module inventory contains an unreachable declaration")
     return receipt
 
 

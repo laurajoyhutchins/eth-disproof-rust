@@ -13,7 +13,7 @@ namespace NativeRust.LCNFCapture
 
 open Lean Compiler LCNF
 
-private initialize observedExt : EnvExtension NameSet ←
+private builtin_initialize observedExt : EnvExtension NameSet ←
   registerEnvExtension (mkInitial := pure {}) (asyncMode := .sync)
 
 private def observePass : Pass where

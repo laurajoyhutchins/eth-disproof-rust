@@ -169,6 +169,16 @@ def run_bounded(argv: list[str], cwd: Path, timeout: int,
         return subprocess.CompletedProcess(argv, child.returncode, stdout, stderr)
 
 
+def reset_query_outputs(out: Path) -> None:
+    """An unsuccessful retry must not expose any prior graph, binary or receipt."""
+    for name in (
+        "query-stream.receipt.json", "query-stream", "query-stream.source.json",
+        "query-stream.generated.rs", "report.json",
+        "original-command.stdout.log", "original-command.stderr.log",
+    ):
+        (out / name).unlink(missing_ok=True)
+
+
 def source_export_phase(stderr_path: Path) -> str:
     """Last Lean-export phase, or module loading if no Lean command executed.
 
@@ -270,10 +280,9 @@ def validate_query(raw: bytes, blob: str):
 def compile_query(args):
     out = args.output_dir
     out.mkdir(parents=True, exist_ok=True)
+    reset_query_outputs(out)
     receipt = out / "query-stream.receipt.json"
-    receipt.unlink(missing_ok=True)
     published_binary = out / "query-stream"
-    published_binary.unlink(missing_ok=True)
 
     def refuse(stage: str, details: str):
         phase = (source_export_phase(out / "original-command.stderr.log")

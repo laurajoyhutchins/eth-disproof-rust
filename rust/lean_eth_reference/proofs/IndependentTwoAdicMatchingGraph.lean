@@ -288,6 +288,380 @@ theorem matchingEndpointLabels_uniform_mean_cross_mul
   rw [htotal, hcard]
   ring
 
+/-
+The following partial-assignment lemmas use vertex-specific *finite*
+sets of allowed symbols. For the source's partial labels, each is
+either the entire alphabet or a singleton, but the result holds for
+arbitrary finite allowed sets, including an empty set.
+-/
+
+/-- Full vertex assignments realizing a matching label, constrained by
+an arbitrary allowed-set function at *every* vertex. -/
+def conditionalAssignmentFiber
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (target : E → A)
+    (allowed : V → Finset A) : Finset (V → A) :=
+  assignmentFiber endpoint target ∩ Fintype.piFinset allowed
+
+/-- Endpoint constraints and vertex allowed sets combine independently. -/
+theorem conditionalAssignmentFiber_eq_piFinset
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (target : E → A)
+    (allowed : V → Finset A)
+    (hinj : Function.Injective endpoint) :
+    conditionalAssignmentFiber endpoint target allowed =
+      Fintype.piFinset
+        (fun v => restrictedLabels endpoint target v ∩ allowed v) := by
+  classical
+  unfold conditionalAssignmentFiber
+  rw [assignmentFiber_eq_piFinset endpoint target hinj]
+  ext labels
+  simp only [Finset.mem_inter, Fintype.mem_piFinset]
+  constructor
+  · rintro ⟨h₁, h₂⟩ v
+    exact ⟨h₁ v, h₂ v⟩
+  · intro h
+    exact ⟨fun v => (h v).1, fun v => (h v).2⟩
+
+/-- Number of ways to label all vertices *outside* the matching.
+Every matched vertex has exactly one allowed value after prescribing
+its edge label, so the count does not depend on the prescribed label. -/
+noncomputable def unmatchedCompletionCount
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (allowed : V → Finset A) : ℕ := by
+  classical
+  exact ∏ v, if ∃ e : E, endpoint e = v then 1 else (allowed v).card
+
+/-- Any compatible matching-edge labeling has the same exact number
+of full vertex-label completions, even after arbitrary vertices have
+already been fixed to allowed singleton values. -/
+theorem conditionalAssignmentFiber_card
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (target : E → A)
+    (allowed : V → Finset A)
+    (hinj : Function.Injective endpoint)
+    (hallowed : ∀ e, target e ∈ allowed (endpoint e)) :
+    (conditionalAssignmentFiber endpoint target allowed).card =
+      unmatchedCompletionCount endpoint allowed := by
+  classical
+  rw [conditionalAssignmentFiber_eq_piFinset endpoint target allowed hinj,
+    Fintype.card_piFinset]
+  unfold unmatchedCompletionCount
+  apply Finset.prod_congr rfl
+  intro v _
+  by_cases hv : ∃ e : E, endpoint e = v
+  · obtain ⟨e, he⟩ := hv
+    subst v
+    rw [restrictedLabels_at_endpoint endpoint target hinj e]
+    simp [hallowed e]
+  · simp [restrictedLabels, hv]
+
+/-- Two matching assignments compatible with the same partial vertex
+constraints have equal numbers of completions. -/
+theorem conditionalAssignmentFiber_equidistributed
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (allowed : V → Finset A)
+    (hinj : Function.Injective endpoint)
+    (target₁ target₂ : E → A)
+    (h₁ : ∀ e, target₁ e ∈ allowed (endpoint e))
+    (h₂ : ∀ e, target₂ e ∈ allowed (endpoint e)) :
+    (conditionalAssignmentFiber endpoint target₁ allowed).card =
+      (conditionalAssignmentFiber endpoint target₂ allowed).card := by
+  rw [conditionalAssignmentFiber_card endpoint target₁ allowed hinj h₁,
+    conditionalAssignmentFiber_card endpoint target₂ allowed hinj h₂]
+
+/-- Allowed full graph labels on each shore, under an arbitrary
+partial assignment or other vertex-specific finite constraints. -/
+def bipartiteAllowedLabelings
+    {L R A : Type*} [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (allowedL : L → Finset A) (allowedR : R → Finset A) :
+    Finset ((L → A) × (R → A)) :=
+  (Fintype.piFinset allowedL).product (Fintype.piFinset allowedR)
+
+/-- A source matching edge receives an ordered pair consisting of
+an allowed symbol at each of its left/right endpoints. -/
+def matchingPairChoices
+    {E L R A : Type*} [Fintype A] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (e : E) : Finset (A × A) :=
+  (allowedL (left e)).product (allowedR (right e))
+
+/-- The compatible fiber of a prescribed pair of matching endpoint
+labels, with all other graph-vertex assignments still constrained. -/
+def conditionalBipartiteMatchingFiber
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (target : E → A × A) : Finset ((L → A) × (R → A)) :=
+  (conditionalAssignmentFiber left (fun e => (target e).1) allowedL).product
+    (conditionalAssignmentFiber right (fun e => (target e).2) allowedR)
+
+/-- The real graph-vertex matching restriction fiber is precisely
+the product of the two source-shore conditional fibers. -/
+theorem matchingEndpointLabels_conditional_preimage
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (target : E → A × A) :
+    (bipartiteAllowedLabelings allowedL allowedR).filter
+      (fun full => matchingEndpointLabels left right full = target) =
+    conditionalBipartiteMatchingFiber left right allowedL allowedR target := by
+  classical
+  ext full
+  rcases full with ⟨labL, labR⟩
+  change ((labL, labR) ∈
+      ((Fintype.piFinset allowedL).product
+        (Fintype.piFinset allowedR)).filter
+        (fun full => matchingEndpointLabels left right full = target)) ↔
+    ((labL, labR) ∈
+      (conditionalAssignmentFiber left
+        (fun e => (target e).1) allowedL).product
+      (conditionalAssignmentFiber right
+        (fun e => (target e).2) allowedR))
+  constructor
+  · intro h
+    obtain ⟨hfull, hmatch⟩ := Finset.mem_filter.mp h
+    obtain ⟨hL, hR⟩ := Finset.mem_product.mp hfull
+    have heqL : ∀ e, labL (left e) = (target e).1 := by
+      intro e
+      exact congrArg Prod.fst (congrFun hmatch e)
+    have heqR : ∀ e, labR (right e) = (target e).2 := by
+      intro e
+      exact congrArg Prod.snd (congrFun hmatch e)
+    apply Finset.mem_product.mpr
+    exact ⟨Finset.mem_inter.mpr
+        ⟨Finset.mem_filter.mpr ⟨Finset.mem_univ _, heqL⟩, hL⟩,
+      Finset.mem_inter.mpr
+        ⟨Finset.mem_filter.mpr ⟨Finset.mem_univ _, heqR⟩, hR⟩⟩
+  · intro h
+    obtain ⟨hLeft, hRight⟩ := Finset.mem_product.mp h
+    obtain ⟨hMatchL, hL⟩ := Finset.mem_inter.mp hLeft
+    obtain ⟨hMatchR, hR⟩ := Finset.mem_inter.mp hRight
+    have heqL := (Finset.mem_filter.mp hMatchL).2
+    have heqR := (Finset.mem_filter.mp hMatchR).2
+    apply Finset.mem_filter.mpr
+    refine ⟨Finset.mem_product.mpr ⟨hL, hR⟩, ?_⟩
+    funext e
+    exact Prod.ext (heqL e) (heqR e)
+
+/-- Every compatible source matching-pair assignment has the same
+number of full graph-vertex completions after arbitrary vertex
+constraints; the unmatched vertices contribute their allowed-set
+cardinalities, independently on each shore. -/
+theorem conditionalBipartiteMatchingFiber_card
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (hl : Function.Injective left) (hr : Function.Injective right)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (target : E → A × A)
+    (hcompatible : ∀ e, target e ∈
+      matchingPairChoices left right allowedL allowedR e) :
+    (conditionalBipartiteMatchingFiber
+      left right allowedL allowedR target).card =
+      unmatchedCompletionCount left allowedL *
+        unmatchedCompletionCount right allowedR := by
+  classical
+  have hL (e : E) : (target e).1 ∈ allowedL (left e) :=
+    (Finset.mem_product.mp (hcompatible e)).1
+  have hR (e : E) : (target e).2 ∈ allowedR (right e) :=
+    (Finset.mem_product.mp (hcompatible e)).2
+  simp only [conditionalBipartiteMatchingFiber,
+    Finset.product_eq_sprod, Finset.card_product]
+  rw [conditionalAssignmentFiber_card left
+      (fun e => (target e).1) allowedL hl hL,
+    conditionalAssignmentFiber_card right
+      (fun e => (target e).2) allowedR hr hR]
+
+/-- Conditional matching-edge weighted-sum transfer. All vertices
+have arbitrary finite allowed symbol sets. The equal-fiber factor
+counts the choices at vertices *not in the selected matching*,
+whereas the edge-local sum ranges only over label pairs compatible
+with every endpoint's allowed set.
+
+The result applies to **any** rational matching-dependent weight,
+not just a chosen exponential collision observable. -/
+theorem matchingEndpointLabels_conditional_weighted_sum
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (hl : Function.Injective left) (hr : Function.Injective right)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (weight : (E → A × A) → ℚ) :
+    (∑ full ∈ bipartiteAllowedLabelings allowedL allowedR,
+      weight (matchingEndpointLabels left right full)) =
+    ((unmatchedCompletionCount left allowedL *
+        unmatchedCompletionCount right allowedR : ℕ) : ℚ) *
+      (∑ pairs ∈ Fintype.piFinset
+          (matchingPairChoices left right allowedL allowedR),
+        weight pairs) := by
+  classical
+  let fulls : Finset ((L → A) × (R → A)) :=
+    bipartiteAllowedLabelings allowedL allowedR
+  let pairs : Finset (E → A × A) :=
+    Fintype.piFinset (matchingPairChoices left right allowedL allowedR)
+  let restrict : ((L → A) × (R → A)) → (E → A × A) :=
+    matchingEndpointLabels left right
+  let c : ℚ := ((unmatchedCompletionCount left allowedL *
+    unmatchedCompletionCount right allowedR : ℕ) : ℚ)
+  have hsource (full : (L → A) × (R → A)) (hf : full ∈ fulls) :
+      restrict full ∈ pairs := by
+    rcases full with ⟨labL, labR⟩
+    have hfull : (labL, labR) ∈
+        (Fintype.piFinset allowedL).product
+          (Fintype.piFinset allowedR) := hf
+    rcases Finset.mem_product.mp hfull with ⟨hL, hR⟩
+    apply Fintype.mem_piFinset.mpr
+    intro e
+    apply Finset.mem_product.mpr
+    exact ⟨(Fintype.mem_piFinset.mp hL) (left e),
+      (Fintype.mem_piFinset.mp hR) (right e)⟩
+  have hcount (p : E → A × A) (hp : p ∈ pairs) :
+      ((fulls.filter (fun full => restrict full = p)).card : ℚ) = c := by
+    have hcompat (e : E) : p e ∈
+        matchingPairChoices left right allowedL allowedR e :=
+      (Fintype.mem_piFinset.mp hp) e
+    dsimp only [fulls, restrict, c]
+    rw [matchingEndpointLabels_conditional_preimage left right allowedL allowedR p,
+      conditionalBipartiteMatchingFiber_card
+        left right hl hr allowedL allowedR p hcompat]
+  have hzero (p : E → A × A) (hp : p ∉ pairs) :
+      ((fulls.filter (fun full => restrict full = p)).card : ℚ) = 0 := by
+    have he : fulls.filter (fun full => restrict full = p) = ∅ := by
+      ext full
+      constructor
+      · intro hf
+        obtain ⟨hfull, heq⟩ := Finset.mem_filter.mp hf
+        exact False.elim (hp (by simpa [heq] using hsource full hfull))
+      · simp
+    simp [he]
+  calc
+    _ = ∑ p : E → A × A,
+        ∑ full ∈ fulls with restrict full = p, weight p := by
+      symm
+      exact Finset.sum_fiberwise' fulls restrict weight
+    _ = ∑ p : E → A × A,
+        (((fulls.filter (fun full => restrict full = p)).card : ℚ) *
+          weight p) := by
+      apply Finset.sum_congr rfl
+      intro p _
+      simp
+    _ = ∑ p : E → A × A, if p ∈ pairs then c * weight p else 0 := by
+      apply Finset.sum_congr rfl
+      intro p _
+      split_ifs with hp
+      · rw [hcount p hp]
+      · rw [hzero p hp]
+        ring
+    _ = ∑ p ∈ pairs, c * weight p := by
+      simp [Finset.sum_filter]
+    _ = c * (∑ p ∈ pairs, weight p) := by
+      rw [Finset.mul_sum]
+
+/-- Specialization of the conditional source-graph weighted transfer
+to the actual exponential load of a chosen ordered label class.
+The remaining edge-local sum factors by independent matching edges,
+because the *matching endpoint maps* were proved injective. -/
+theorem matchingEndpointLabels_conditional_class_moment
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (hl : Function.Injective left) (hr : Function.Injective right)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (target : A × A) :
+    (∑ full ∈ bipartiteAllowedLabelings allowedL allowedR,
+      (2 : ℚ) ^ (∑ e : E,
+        if matchingEndpointLabels left right full e = target then 1 else 0)) =
+    ((unmatchedCompletionCount left allowedL *
+        unmatchedCompletionCount right allowedR : ℕ) : ℚ) *
+      (∏ e : E,
+        (∑ pair ∈ matchingPairChoices left right allowedL allowedR e,
+          if pair = target then (2 : ℚ) else 1)) := by
+  classical
+  calc
+    _ = (∑ full ∈ bipartiteAllowedLabelings allowedL allowedR,
+      ∏ e, (if matchingEndpointLabels left right full e = target
+        then (2 : ℚ) else 1)) := by
+      apply Finset.sum_congr rfl
+      intro full _
+      have hf : (2 : ℚ) ^ (∑ e : E,
+          if matchingEndpointLabels left right full e = target then 1 else 0) =
+          ∏ e : E, (if matchingEndpointLabels left right full e = target
+            then (2 : ℚ) else 1) := by
+        rw [← Finset.prod_pow_eq_pow_sum]
+        apply Finset.prod_congr rfl
+        intro e _
+        by_cases he : matchingEndpointLabels left right full e = target <;>
+          simp [he]
+      exact hf
+    _ = ((unmatchedCompletionCount left allowedL *
+        unmatchedCompletionCount right allowedR : ℕ) : ℚ) *
+        (∑ pairs ∈ Fintype.piFinset
+            (matchingPairChoices left right allowedL allowedR),
+          ∏ e, (if pairs e = target then (2 : ℚ) else 1)) :=
+      matchingEndpointLabels_conditional_weighted_sum
+        left right hl hr allowedL allowedR
+        (fun pairs => ∏ e, if pairs e = target then (2 : ℚ) else 1)
+    _ = ((unmatchedCompletionCount left allowedL *
+        unmatchedCompletionCount right allowedR : ℕ) : ℚ) *
+        (∏ e : E, ∑ pair ∈ matchingPairChoices left right allowedL allowedR e,
+          if pair = target then (2 : ℚ) else 1) := by
+      rw [Finset.prod_univ_sum]
+
+/-- The uniform conditional mean over the **actual source graph
+vertex** completions agrees exactly with the uniform conditional mean
+over the independent, endpoint-compatible matching-edge pair choices.
+Cross multiplication avoids dividing by zero when a partial constraint
+makes the completion space empty.
+
+The theorem holds for every rational matching-dependent weight,
+including `2^X_gamma`, and for any finite allowable symbols per vertex.
+-/
+theorem matchingEndpointLabels_conditional_uniform_mean_cross_mul
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (hl : Function.Injective left) (hr : Function.Injective right)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (weight : (E → A × A) → ℚ) :
+    (∑ full ∈ bipartiteAllowedLabelings allowedL allowedR,
+      weight (matchingEndpointLabels left right full)) *
+        ((Fintype.piFinset
+          (matchingPairChoices left right allowedL allowedR)).card : ℚ) =
+    (∑ pairs ∈ Fintype.piFinset
+        (matchingPairChoices left right allowedL allowedR),
+        weight pairs) *
+      ((bipartiteAllowedLabelings allowedL allowedR).card : ℚ) := by
+  classical
+  have hweight := matchingEndpointLabels_conditional_weighted_sum
+    left right hl hr allowedL allowedR weight
+  have hone := matchingEndpointLabels_conditional_weighted_sum
+    left right hl hr allowedL allowedR (fun _ => (1 : ℚ))
+  have hcard :
+      ((bipartiteAllowedLabelings allowedL allowedR).card : ℚ) =
+      ((unmatchedCompletionCount left allowedL *
+        unmatchedCompletionCount right allowedR : ℕ) : ℚ) *
+      ((Fintype.piFinset
+        (matchingPairChoices left right allowedL allowedR)).card : ℚ) := by
+    simpa using hone
+  rw [hweight, hcard]
+  ring
+
 #print axioms TwoAdicMatchingGraph.restrictedLabels_at_endpoint
 #print axioms TwoAdicMatchingGraph.assignmentFiber_eq_piFinset
 #print axioms TwoAdicMatchingGraph.assignmentFiber_equidistributed
@@ -295,5 +669,13 @@ theorem matchingEndpointLabels_uniform_mean_cross_mul
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_preimage
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_weighted_sum
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_uniform_mean_cross_mul
+#print axioms TwoAdicMatchingGraph.conditionalAssignmentFiber_eq_piFinset
+#print axioms TwoAdicMatchingGraph.conditionalAssignmentFiber_card
+#print axioms TwoAdicMatchingGraph.conditionalAssignmentFiber_equidistributed
+#print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_preimage
+#print axioms TwoAdicMatchingGraph.conditionalBipartiteMatchingFiber_card
+#print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_weighted_sum
+#print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_class_moment
+#print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_uniform_mean_cross_mul
 
 end TwoAdicMatchingGraph

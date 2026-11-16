@@ -1,29 +1,29 @@
-# Observing final impure LCNF
+# Inspecting final impure LCNF
 
-Lean **4.34.1** exposes the ownership-lowered compiler representation immediately
-before conversion to `Lean.IR`. `LCNFCapture.lean` defines the observer; `LCNFCaptureActive.lean` registers the compiled installer as a read-only
-`@[cpass]` observer **after `saveImpure`**. This split avoids interpreting a same-module installer with an uncompiled body. It does not reimplement any
-compiler pass, and the Rust emitter still consumes `Lean.IR.Decl` in-process.
+Lean **4.34.1** already saves ownership-lowered LCNF immediately before
+converting it to `Lean.IR`. The experiment reads those saved declarations
+directly through `Lean.Compiler.LCNF.getLocalImpureDecl?`.
+
+**No new `@[cpass]`, alternative lowering, or serialized executable IR is
+needed.** The canonical in-process emitter still consumes `Lean.IR.Decl`.
 
 ```
 Lean source -> LCNF base -> LCNF mono -> LCNF impure
                                            |
-                                           +-> saveImpure -> observer
-                                           |                  |
-                                           |                  +-> saved local LCNF
-                                           |                       snapshot (JSON)
+                                           +-> saveImpure -> local LCNF snapshot
+                                           |                     |
+                                           |                  read only
+                                           v                     v
+                                        Lean.IR ----------> diagnostic report
+                                           |
                                            v
-                                        Lean.IR -> canonical Rust Reader -> Rust
+                                    canonical Rust Reader -> Rust
 ```
 
-The hook records declaration names in a process-local compiler environment extension,
-not a global mutable reference. Reporting retrieves the actual saved
-impure LCNF from Lean's local compiler environment, pretty-prints it, and
-refuses a root if the hook did not observe its compilation or the matching
-compiler IR is absent. This is deliberately **not** an alternative lowering
-or a serialized executable IR. Captured LCNF is process-local, so an imported
-`.olean` whose compiler IR is already present is not silently described as
-captured.
+`LCNFCapture.report` requires both the process-local saved impure declaration
+and matching executable `Lean.IR`. It fails closed if imported IR is present
+but the final impure LCNF body is unavailable. It doesn't reconstruct
+compiler state, infer unsupported source semantics, or modify compiler IR.
 
 ## Run
 
@@ -34,19 +34,17 @@ and `LEAN_PATH` as in `scripts/check.sh`:
 bash scripts/check-lcnf-capture.sh
 ```
 
-The test uses the same declarations with and without the observer. It requires
-byte-identical Rust emission, executes the Rust branch/join and call fixture,
-and writes `artifacts/lcnf-capture.json` for three original Lean declarations.
-The `List Nat` fixture is **capture-only**: it exercises ownership-lowered
-LCNF without pretending that the Rust backend supports its entire heap model.
+The test compiles the same source before and after importing the diagnostic
+module. It demands byte-identical Rust emission, executes the scalar branch
+and direct-call fixture, and writes `artifacts/lcnf-capture.json` for three
+original Lean declarations. `List Nat` is **capture-only**, not an admission
+of arbitrary heap semantics into the Rust backend.
 
-**What this establishes:** a real, nonmutating observation point for final
-impure LCNF and unchanged behavior on the tested scalar IR. **What remains
-open:** equivalence for every LCNF/IR instruction, imported declaration capture,
-physical heap/reference-count correspondence, and a general semantic refinement
-theorem. None follows from an observational hook alone.
+**What this establishes if CI passes:** real saved LCNF can be inspected
+without modifying Lean's compilation pipeline, while canonical Rust behavior
+remains unchanged on the tested inputs. It does **not** prove general compiler
+correctness, imported-program LCNF capture, or physical reference-count parity.
 
-Pinned implementation references:
-- [Lean compiler passes](https://github.com/leanprover/lean4/blob/v4.34.1/src/Lean/Compiler/LCNF/Passes.lean)
-- [`PassInstaller.installAfter`](https://github.com/leanprover/lean4/blob/v4.34.1/src/Lean/Compiler/LCNF/PassManager.lean)
+Pinned sources:
+- [Lean's existing `saveImpure` pass](https://github.com/leanprover/lean4/blob/v4.34.1/src/Lean/Compiler/LCNF/Passes.lean)
 - [Saved final impure declarations](https://github.com/leanprover/lean4/blob/v4.34.1/src/Lean/Compiler/LCNF/PhaseExt.lean)

@@ -1,50 +1,32 @@
 import Lean
 
 /-!
-Read-only observation of the final ownership-lowered LCNF in Lean 4.34.1.
+Capture Lean 4.34.1's actual final impure LCNF through the existing
+process-local compiler environment. No new compiler pass or alternate emitter.
 
-The compiler already stores final impure declarations in its local environment.
-This pass records *only* which names crossed the real pass boundary. Reports
-read those saved declarations from Lean itself, not from a parallel lowering
-or invented source representation.
+Lean.Compiler.LCNF.Pass.saveImpure already persists final declarations in
+LCNF.impureExt. Imported, previously compiled declarations do not have a
+process-local impure body and must be reported as unavailable.
 -/
 
 namespace NativeRust.LCNFCapture
 
 open Lean Compiler LCNF
 
-private builtin_initialize observedExt : EnvExtension NameSet ←
-  registerEnvExtension (mkInitial := pure {}) (asyncMode := .sync)
-
-private meta def observePass : Pass where
-  name := `nativeRustObserveImpure
-  phase := .impure
-  run decls := do
-    for decl in decls do
-      modifyEnv fun env => observedExt.modifyState env (·.insert decl.name)
-    return decls
-
-/-- Installed after Lean's final impure LCNF save; never changes compiler IR. -/
-meta def installObserver : PassInstaller :=
-  PassInstaller.installAfter .impure `saveImpure (fun _ => observePass)
-
-/-- Report a declaration observed by this process, refusing imported or
-    previously compiled declarations for which this pass did not run. -/
+/-- Produce diagnostic evidence for a locally compiled executable declaration.
+    Captures only final impure LCNF, never recreates it from Lean.IR. -/
 meta def report (root : Name) : CoreM Json := do
   if (← Lean.IR.findDecl root).isNone then
     Lean.Compiler.compile #[root]
-  let observed := observedExt.getState (← getEnv)
-  unless observed.contains root do
-    throwError "LCNF observation missing for {root}; it was not compiled with the observer"
   let some decl ← getLocalImpureDecl? root
-    | throwError "Final impure LCNF unavailable locally for {root}"
+    | throwError "Final impure LCNF unavailable locally for {root}; imported IR alone is insufficient"
   unless (← Lean.IR.findDecl root).isSome do
-    throwError "Lean compiler IR unavailable for observed declaration {root}"
+    throwError "Lean compiler IR unavailable for saved impure declaration {root}"
   let formatted ← ppDecl' decl .impure
   return Json.mkObj [
     ("name", .str root.toString),
     ("phase", .str "impure"),
-    ("hook", .str "after-saveImpure"),
+    ("source", .str "Lean.Compiler.LCNF.getLocalImpureDecl?"),
     ("lcnf_size", toJson decl.size),
     ("lcnf", .str (formatted.pretty 100))
   ]

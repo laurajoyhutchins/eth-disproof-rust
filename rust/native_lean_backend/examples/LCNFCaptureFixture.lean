@@ -1,5 +1,5 @@
 import NativeRust
-import LCNFCaptureActive
+import LCNFCapture
 
 namespace LCNFProbe
 
@@ -21,13 +21,12 @@ end LCNFProbe
 open Lean Elab Command
 
 run_cmd do
-  logInfo "LCNF capture: report select"
+  liftIO <| IO.eprintln "LCNF capture: reporting select"
   let scalar ← liftCoreM <| NativeRust.LCNFCapture.report `LCNFProbe.select
-  logInfo "LCNF capture: report bump"
+  liftIO <| IO.eprintln "LCNF capture: reporting bump"
   let helper ← liftCoreM <| NativeRust.LCNFCapture.report `LCNFProbe.bump
-  -- Captured for ownership inspection only. No unsupported heap semantics
-  -- are admitted into the canonical Rust emitter.
-  logInfo "LCNF capture: report tailOrEmpty"
+  -- Capture-only: no claim of supported Rust heap semantics.
+  liftIO <| IO.eprintln "LCNF capture: reporting tailOrEmpty"
   let object ← liftCoreM <| NativeRust.LCNFCapture.report `LCNFProbe.tailOrEmpty
   let json := Lean.Json.mkObj [
     ("lean_version", .str "4.34.1"),

@@ -24,7 +24,8 @@ STATUS = "SOURCE_ROOT_INVENTORIED_UNVERIFIED"
 EXPECTED_FIELDS = {
     "format", "status", "root", "compiler", "source_kind",
     "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
-    "transitive_computational_closure", "rust_executable",
+    "command_name", "command_expression_nodes", "command_immediate_symbols",
+    "command_symbol_kinds", "transitive_computational_closure", "rust_executable",
     "independent_lean_rust_parity", "counting_parity",
     "resource_correspondence",
 }
@@ -49,6 +50,7 @@ def validate_kernel_root(raw: str) -> dict:
         "root": DECLARATION,
         "compiler": COMPILER,
         "source_kind": "definition",
+        "command_name": MODULE + ".command",
         "transitive_computational_closure": False,
         "rust_executable": False,
         "independent_lean_rust_parity": False,
@@ -80,6 +82,32 @@ def validate_kernel_root(raw: str) -> dict:
         raise ValueError("kernel root expression exceeds node budget")
     if type(receipt["root_app_arity"]) is not int or receipt["root_app_arity"] != 5:
         raise ValueError("kernel source root application arity differs")
+    command_symbols = receipt["command_immediate_symbols"]
+    if (not isinstance(command_symbols, list) or
+            not 1 <= len(command_symbols) <= 1024 or
+            not all(isinstance(s, str) and s and len(s) <= 512 for s in command_symbols) or
+            len(set(command_symbols)) != len(command_symbols)):
+        raise ValueError("original command source symbols are invalid")
+    required = {
+        "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq",
+        "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh",
+        MODULE + ".nodes",
+        "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command",
+    }
+    if not required.issubset(command_symbols):
+        raise ValueError("original command high-query/nodes/reconstruction source shape differs")
+    command_nodes = receipt["command_expression_nodes"]
+    if type(command_nodes) is not int or not 1 <= command_nodes <= 1024:
+        raise ValueError("original command expression exceeds node budget")
+    command_kinds = receipt["command_symbol_kinds"]
+    if (not isinstance(command_kinds, list) or
+            len(command_kinds) != len(command_symbols) or
+            any(not isinstance(item, dict) or
+                set(item) != {"name", "kind"} or
+                item["name"] != name or
+                type(item["kind"]) is not str or item["kind"] not in allowed
+                for item, name in zip(command_kinds, command_symbols))):
+        raise ValueError("original command classifications are not bound to source symbols")
     return receipt
 
 

@@ -6,15 +6,15 @@ if (( $# != 5 )); then
   exit 2
 fi
 native="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "$native/scripts/lib/compilation-common.sh"
 project_arg="$1"; module="$2"; requested="$3"; source_arg="$4"; output_arg="$5"
-name_re='^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$'
-[[ "$module" =~ $name_re ]] || { echo "Invalid module name" >&2; exit 2; }
+native_declaration_name "$module" || { echo "Invalid module name" >&2; exit 2; }
 IFS=, read -r -a roots <<< "$requested"
 (( ${#roots[@]} > 0 )) && [[ "$requested" != ,* && "$requested" != *, && "$requested" != *,,* ]] || {
   echo "Empty root name" >&2; exit 2;
 }
 for root in "${roots[@]}"; do
-  [[ "$root" =~ $name_re ]] || { echo "Invalid root name: $root" >&2; exit 2; }
+  native_declaration_name "$root" || { echo "Invalid root name: $root" >&2; exit 2; }
 done
 [[ -d "$project_arg" && ! -L "$project_arg" && -f "$source_arg" && ! -L "$source_arg" ]] || {
   echo "Missing project/source or symlink refused" >&2; exit 2;
@@ -30,15 +30,8 @@ source_sha_before="$(sha256sum -- "$source" | cut -d' ' -f1)"
    "$(cat "$native/lean-toolchain")" == 'leanprover/lean4:v4.34.1' ]] || {
   echo "Refusing unpinned Lean project" >&2; exit 2;
 }
-basename="$(basename "$output_arg")"
-[[ "$basename" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ && "$basename" != . && "$basename" != .. ]] || {
-  echo "Invalid destination basename" >&2; exit 2;
-}
-parent="$(realpath -e -- "$(dirname "$output_arg")")"
-dest="$parent/$basename"
-[[ ! -e "$dest" && ! -L "$dest" ]] || {
-  echo "Refusing destination overwrite: $dest" >&2; exit 2;
-}
+dest="$(native_destination "$output_arg")"
+parent="$(dirname -- "$dest")"
 [[ "$(uname -sm)" == 'Linux x86_64' ]] || { echo "Unsupported host ABI" >&2; exit 2; }
 : "${LEAN_PREFIX:=$(lean --print-prefix)}"
 export PATH="$LEAN_PREFIX/bin:$PATH"
@@ -123,9 +116,6 @@ rm -rf -- "$publish/target"
   echo 'semantic_verification=NOT_PERFORMED'
   echo 'transitive_source_manifest=NOT_CAPTURED'
 } > "$publish/receipt.txt"
-mv -Tn -- "$publish" "$dest"
-if [[ -d "$publish" || ! -f "$dest/receipt.txt" ]]; then
-  echo "Concurrent output collision; no overwrite" >&2; exit 2
-fi
+native_publish_directory "$publish" "$dest" receipt.txt
 publish=''
 cat "$dest/receipt.txt"

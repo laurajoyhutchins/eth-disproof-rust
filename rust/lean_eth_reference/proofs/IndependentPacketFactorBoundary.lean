@@ -181,6 +181,74 @@ def packetRowProduct {n : ℕ} (W : Fin n → Fin n → ℤ)
     if Y i then packetRowArgument W X i
     else 1 - packetRowArgument W X i
 
+/-
+## The original cancelled Cauchy numerator at the undeformed point
+
+For slot difference d = y-x, the source's Cauchy kernel is the
+polynomial with factor (T-d) omitted from C(T), divided by C'(0).
+At T=0, C'(0) is the product over all grid points except zero.
+These finite rational products are exactly that specialization.
+The general T=t+αζ case and 2-adic integrality are not covered.
+-/
+
+/-- The exact grid S = {-L, ..., L-1} in the source packet. -/
+def cauchyGrid (L : ℕ) : Finset ℤ :=
+  Finset.Icc (-(L : ℤ)) ((L : ℤ) - 1)
+
+/-- The source denominator C'(0), written as the product of nonzero roots. -/
+def cauchyZeroDenominator (L : ℕ) : ℚ :=
+  ∏ q ∈ (cauchyGrid L).erase 0, -(q : ℚ)
+
+/-- The source numerator at T=0 with the difference root omitted. -/
+def cauchyZeroNumerator (L : ℕ) (x y : Fin L) : ℚ :=
+  ∏ q ∈ (cauchyGrid L).erase ((y.val : ℤ) - (x.val : ℤ)), -(q : ℚ)
+
+/-- Source kernel after cancellation of its difference factor. -/
+def cauchyZeroKernel (L : ℕ) (x y : Fin L) : ℚ :=
+  cauchyZeroNumerator L x y / cauchyZeroDenominator L
+
+private theorem cauchyGrid_zero_mem (L : ℕ) (hL : 0 < L) :
+    (0 : ℤ) ∈ cauchyGrid L := by
+  simp only [cauchyGrid, Finset.mem_Icc]
+  omega
+
+private theorem cauchyZeroDenominator_ne_zero (L : ℕ) :
+    cauchyZeroDenominator L ≠ 0 := by
+  classical
+  unfold cauchyZeroDenominator
+  apply Finset.prod_ne_zero_iff.mpr
+  intro q hq
+  have hq0 : q ≠ 0 := (Finset.mem_erase.mp hq).1
+  have hqr : (q : ℚ) ≠ 0 := by exact_mod_cast hq0
+  simpa using (neg_ne_zero.mpr hqr)
+
+/--
+For *every* packet length and pair of slots, the cancelled Cauchy
+formula gives the same Kronecker delta as the undeformed original
+edge identification. The source's W(0)=I claim is thereby checked at
+the concrete rational numerator/denominator level, not assumed here.
+-/
+theorem cauchyZeroKernel_eq_delta (L : ℕ) (x y : Fin L) :
+    cauchyZeroKernel L x y =
+      if x = y then (1 : ℚ) else 0 := by
+  classical
+  by_cases h : x = y
+  · subst y
+    simp [cauchyZeroKernel, cauchyZeroNumerator,
+      cauchyZeroDenominator_ne_zero L]
+  · have hd : (y.val : ℤ) - (x.val : ℤ) ≠ 0 := by
+      intro hz
+      have hv : x.val = y.val := by omega
+      exact h (Fin.ext hv)
+    have hL : 0 < L := by omega
+    have hz : (0 : ℤ) ∈
+        (cauchyGrid L).erase ((y.val : ℤ) - (x.val : ℤ)) :=
+      Finset.mem_erase.mpr ⟨Ne.symm hd, cauchyGrid_zero_mem L hL⟩
+    have hnum : cauchyZeroNumerator L x y = 0 := by
+      unfold cauchyZeroNumerator
+      exact Finset.prod_eq_zero hz (by simp)
+    simp [cauchyZeroKernel, hnum, h]
+
 /-- Identity packet matrix sends each column bit to the same row bit. -/
 theorem identity_packet_row_argument {n : ℕ} (X : Fin n → Bool) (i : Fin n) :
     packetRowArgument (fun j k => if j = k then (1 : ℤ) else 0) X i =
@@ -309,6 +377,7 @@ theorem packetAsNetwork_value_eq_packetContraction
   intro z _
   rw [hnodes z, hedge z]
 
+#print axioms IndependentETH.PacketFactorBoundary.cauchyZeroKernel_eq_delta
 #print axioms IndependentETH.PacketFactorBoundary.identity_packet_row_product
 #print axioms IndependentETH.PacketFactorBoundary.packetAsNetwork_pair_interaction
 #print axioms IndependentETH.PacketFactorBoundary.packetAsNetwork_value_eq_packetContraction

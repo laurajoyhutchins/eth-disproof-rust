@@ -745,8 +745,19 @@ theorem sum_by_vertex_choice
       (∑ symbol : A,
         ∑ labels ∈ vertexChoiceFiber allowed v symbol, weight labels) =
       ∑ labels ∈ full, weight labels := by
-    symm
-    exact Finset.sum_fiberwise' full (fun labels => labels v) weight
+    calc
+      _ = ∑ symbol : A, ∑ labels ∈ full,
+          if labels v = symbol then weight labels else 0 := by
+        apply Finset.sum_congr rfl
+        intro symbol _
+        simp [vertexChoiceFiber, Finset.sum_filter, full]
+      _ = ∑ labels ∈ full, ∑ symbol : A,
+          if labels v = symbol then weight labels else 0 := by
+        rw [Finset.sum_comm]
+      _ = ∑ labels ∈ full, weight labels := by
+        apply Finset.sum_congr rfl
+        intro labels _
+        simp
   have hzero (symbol : A) (hnot : symbol ∉ allowed v) :
       vertexChoiceFiber allowed v symbol = ∅ := by
     ext labels
@@ -795,7 +806,7 @@ theorem vertexChoice_total_card
         apply Finset.sum_congr rfl
         intro symbol hs
         exact_mod_cast vertexChoiceFiber_card allowed v symbol hs
-      _ = _ := by simp
+      _ = _ := by simp only [Finset.sum_const, nsmul_eq_mul]
   exact_mod_cast hcard.trans hconstant
 
 /-- One actual candidate next vertex label has combined conditional
@@ -847,8 +858,10 @@ theorem exists_nonincreasing_vertex_conditional_mean
       _ = ∑ labels ∈ full, weight labels := hsum
   have htotal :
       ((full.card : ℚ)) = (choices.card : ℚ) * common := by
+    dsimp only [full, choices, common]
     exact_mod_cast vertexChoice_total_card allowed v
   have hcommon : (0 : ℚ) < common := by
+    dsimp only [common]
     exact_mod_cast hfree
   have hchoices : (0 : ℚ) < (choices.card : ℚ) := by
     exact_mod_cast Finset.card_pos.mpr hne
@@ -856,6 +869,8 @@ theorem exists_nonincreasing_vertex_conditional_mean
     rw [htotal]
     positivity
   refine ⟨symbol, hs, ?_⟩
+  change (score symbol) / common ≤
+    (∑ labels ∈ full, weight labels) / (full.card : ℚ)
   apply (div_le_div_iff₀ hcommon hfull).mpr
   have hscaled := mul_le_mul_of_nonneg_right hchoice (le_of_lt hcommon)
   change score symbol * (full.card : ℚ) ≤

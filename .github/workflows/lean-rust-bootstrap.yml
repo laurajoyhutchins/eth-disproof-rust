@@ -39,7 +39,7 @@ jobs:
       - name: Install Lean 4.34.1
         uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
         with:
-          lake-package-directory: tools/lean-rust-bootstrap/lean
+          lake-package-directory: instrumentation/lean-env
           auto-config: false
           use-github-cache: false
           use-mathlib-cache: false
@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          LEAN_BINARY="$(cd tools/lean-rust-bootstrap/lean && elan which lean)"
+          LEAN_BINARY="$(cd instrumentation/lean-env && elan which lean)"
           export LEAN_PREFIX="$(dirname "$(dirname "$LEAN_BINARY")")"
           bash tools/lean-rust-bootstrap/scripts/check.sh
           {

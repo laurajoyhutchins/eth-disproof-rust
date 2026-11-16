@@ -14,6 +14,10 @@ def root_receipt():
         "compiler": COMPILER,
         "source_kind": "definition",
         "immediate_symbols": [COMPILER, DECLARATION.removesuffix(".program") + ".command"],
+        "immediate_symbol_kinds": [
+            {"name": COMPILER, "kind": "definition"},
+            {"name": DECLARATION.removesuffix(".program") + ".command", "kind": "definition"},
+        ],
         "expression_nodes": 8,
         "root_app_arity": 5,
         "transitive_computational_closure": False,
@@ -55,6 +59,20 @@ class KernelRootReceiptTests(unittest.TestCase):
                 fixture[key] = value
                 with self.assertRaises(ValueError):
                     validate_kernel_root(json.dumps(fixture))
+
+    def test_classifications_follow_actual_symbol_identities(self):
+        fixture = root_receipt()
+        fixture["immediate_symbol_kinds"][1]["name"] = "OAI.Forged.command"
+        with self.assertRaisesRegex(ValueError, "classifications"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["immediate_symbol_kinds"][0]["kind"] = "verified-computational"
+        with self.assertRaisesRegex(ValueError, "classifications"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["immediate_symbol_kinds"].pop()
+        with self.assertRaisesRegex(ValueError, "classifications"):
+            validate_kernel_root(json.dumps(fixture))
 
     def test_refuse_missing_extra_duplicate_and_unbounded_symbols(self):
         fixture = root_receipt()

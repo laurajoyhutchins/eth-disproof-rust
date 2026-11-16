@@ -551,20 +551,27 @@ fn include_value_runtime(source: String, features: RuntimeFeatures) -> CompilerR
     Ok(code)
 }
 
-unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
-    let text = match std::panic::catch_unwind(|| Reader::emit_module_many(decls, roots)) {
-        Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => safety::refusal("requested-root", &e),
+// All Rust codegen FFI entrypoints share one panic/refusal/status boundary.
+// The source compiler has already produced IR; no entrypoint substitutes a
+// second lowering or a fabricated success value.
+unsafe fn reply_codegen(
+    codegen: impl FnOnce() -> CompilerResult<String> + std::panic::UnwindSafe,
+) -> *mut c_void {
+    let text = match std::panic::catch_unwind(codegen) {
+        Ok(Ok(source)) => format!("OK\n{source}"),
+        Ok(Err(error)) => safety::refusal("requested-root", &error),
         Err(_) => safety::refusal(
             "requested-root",
             &CompilerError::new(RefusalKind::Compiler, "backend panic (no code emitted)"),
         ),
     };
-    lean_mk_string(
-        CString::new(text.replace('\0', "\\0"))
-            .expect("no interior NUL")
-            .as_ptr(),
-    )
+    let text = text.replace('\0', "\\0");
+    let encoded = CString::new(text).expect("NUL sanitized");
+    lean_mk_string(encoded.as_ptr())
+}
+
+unsafe fn reply_module_many(decls: Obj, roots: Obj) -> *mut c_void {
+    reply_codegen(|| Reader::emit_module_many(decls, roots))
 }
 
 /// # Safety
@@ -592,17 +599,7 @@ pub unsafe extern "C" fn l_NativeRust_emitModuleMany___boxed(
 }
 
 unsafe fn reply_module(decls: Obj, root: Obj, public_name: Obj) -> *mut c_void {
-    let text = match std::panic::catch_unwind(|| Reader::emit_module(decls, root, public_name)) {
-        Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => safety::refusal("requested-root", &e),
-        Err(_) => safety::refusal(
-            "requested-root",
-            &CompilerError::new(RefusalKind::Compiler, "backend panic (no code emitted)"),
-        ),
-    };
-    let text = text.replace('\0', "\\0");
-    let cstr = CString::new(text).expect("replaced NUL");
-    lean_mk_string(cstr.as_ptr())
+    reply_codegen(|| Reader::emit_module(decls, root, public_name))
 }
 
 /// # Safety
@@ -631,19 +628,7 @@ pub unsafe extern "C" fn l_NativeRust_emitModule___boxed(
 }
 
 unsafe fn reply(decl: Obj, name: Obj) -> *mut c_void {
-    let text = match std::panic::catch_unwind(|| Reader::emit(decl, name)) {
-        Ok(Ok(s)) => format!("OK\n{s}"),
-        Ok(Err(e)) => safety::refusal("requested-root", &e),
-        Err(_) => safety::refusal(
-            "requested-root",
-            &CompilerError::new(RefusalKind::Compiler, "backend panic (no code emitted)"),
-        ),
-    };
-    // Lean strings do not contain NUL bytes. Sanitizing inputs prevents interior
-    // NUL from causing an FFI panic; diagnostics remain safely in the error channel.
-    let text = text.replace('\0', "\\0");
-    let cstr = CString::new(text).expect("replaced NUL");
-    lean_mk_string(cstr.as_ptr())
+    reply_codegen(|| Reader::emit(decl, name))
 }
 
 unsafe fn reply_publish(path: Obj, source: Obj) -> *mut c_void {

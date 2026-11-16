@@ -2,6 +2,23 @@ import Lean
 
 namespace NativeRust
 
+/-- Existing compiler IR is authoritative, including imported modules.
+    Compiler-local LCNF is optional diagnostic evidence, never a fallback. -/
+private def resolveCompilerIR? (root : Lean.Name) : Lean.CoreM (Option Lean.IR.Decl) := do
+  if (← Lean.IR.findDecl root).isNone then
+    Lean.Compiler.compile #[root]
+  Lean.IR.findDecl root
+
+/-- One status protocol for every code-generating native entrypoint. -/
+private def decodeCompilerReply (reply refusalPrefix invalidMessage : String) :
+    Lean.CoreM String := do
+  if reply.startsWith "OK\n" then
+    return (reply.drop 3).toString
+  else if reply.startsWith "ERROR\n" then
+    throwError "{refusalPrefix}: {(reply.drop 6).toString}"
+  else
+    throwError "{invalidMessage}"
+
 /-- Stable, machine-readable refusal for failures before native IR reaches Rust. -/
 private def refusalMessage (decl : Lean.Name) (construct reason : String) : String :=
   "Rust native backend refused " ++ decl.toString ++ ": " ++
@@ -32,36 +49,22 @@ private def refusalMessage (decl : Lean.Name) (construct reason : String) : Stri
   (decl : @& Lean.IR.Decl) : String
 
 def observeScalarABI (root : Lean.Name) : Lean.CoreM String := do
-  if (← Lean.IR.findDecl root).isNone then
-    Lean.Compiler.compile #[root]
-  let some decl ← Lean.IR.findDecl root
+  let some decl ← resolveCompilerIR? root
     | throwError "ABI observation refused: {root} has no compiler IR"
-  let report := scalarABIObserve decl
-  if report.startsWith "OK\n" then
-    return (report.drop 3).toString
-  else if report.startsWith "ERROR\n" then
-    throwError "ABI observation refused: {(report.drop 6).toString}"
-  else
-    throwError "ABI observation returned invalid status for {root}"
+  decodeCompilerReply (scalarABIObserve decl) "ABI observation refused"
+    s!"ABI observation returned invalid status for {root}"
 
 /-- Compile one executable declaration with the pinned Lean compiler and emit Rust.
     Refuses declarations missing IR, or outside the backend's strict subset. -/
 def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   -- Existing imported .olean IR is already the compiler's executable artifact.
   -- Only compile roots missing IR; never substitute an alternative algorithm.
-  if (← Lean.IR.findDecl root).isNone then
-    Lean.Compiler.compile #[root]
-  let some decl ← Lean.IR.findDecl root
+  let some decl ← resolveCompilerIR? root
     | throwError "{refusalMessage root "CompilerIR" "no compiler IR (possibly noncomputable)"}"
   if let some blame := decl.getInfo.sorryDep? then
     throwError "{refusalMessage root "SorryAxiom" s!"dependency on sorry axiom {blame}"}"
-  let report := emit decl rustName
-  if report.startsWith "OK\n" then
-    return (report.drop 3).toString
-  else if report.startsWith "ERROR\n" then
-    throwError "Rust native backend refused {root}: {(report.drop 6).toString}"
-  else
-    throwError "Rust native backend returned an invalid response for {root}"
+  decodeCompilerReply (emit decl rustName) s!"Rust native backend refused {root}"
+    s!"Rust native backend returned an invalid response for {root}"
 
 /-- Output publication remains same-process via a pinned Rust FFI entrypoint.
     Its sibling stage, relative path check and refusal semantics are enforced
@@ -136,31 +139,21 @@ private def gatherClosure (roots : Array Lean.Name) : Lean.CoreM (Array Lean.IR.
 
 def compileClosure (root : Lean.Name) (rustName : String) : Lean.CoreM String := do
   let decls ← gatherClosure #[root]
-  let report := emitModule decls root rustName
-  if report.startsWith "OK\n" then
-    return (report.drop 3).toString
-  else if report.startsWith "ERROR\n" then
-    throwError "Rust native backend refused {root}: {(report.drop 6).toString}"
-  else
-    throwError "Rust native backend returned an invalid closure response for {root}"
+  decodeCompilerReply (emitModule decls root rustName)
+    s!"Rust native backend refused {root}"
+    s!"Rust native backend returned an invalid closure response for {root}"
 
 /-- Produce a complete standalone Rust library, sharing any overlapping roots. -/
 def compileMany (roots : Array Lean.Name) : Lean.CoreM String := do
   let decls ← gatherClosure roots
-  let report := emitModuleMany decls roots
-  if report.startsWith "OK\n" then
-    return (report.drop 3).toString
-  else if report.startsWith "ERROR\n" then
-    throwError "Rust native backend refused compilation: {(report.drop 6).toString}"
-  else
-    throwError "Rust native backend returned invalid multi-root response"
+  decodeCompilerReply (emitModuleMany decls roots)
+    "Rust native backend refused compilation"
+    "Rust native backend returned invalid multi-root response"
 
 /-- A complete binary needs a zero-argument scalar result. An arbitrary
     function is not a CLI entry point, so refuse rather than invent arguments. -/
 def compileExecutable (root : Lean.Name) : Lean.CoreM String := do
-  if (← Lean.IR.findDecl root).isNone then
-    Lean.Compiler.compile #[root]
-  let some (.fdecl _ params result _ _) ← Lean.IR.findDecl root
+  let some (.fdecl _ params result _ _) ← resolveCompilerIR? root
     | throwError "Rust native executable refused {root}: no executable function IR"
   unless params.isEmpty do
     throwError "Rust native executable refused {root}: entry requires zero arguments"

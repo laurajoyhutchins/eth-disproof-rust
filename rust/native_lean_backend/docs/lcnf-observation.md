@@ -6,6 +6,9 @@ directly through `Lean.Compiler.LCNF.getLocalImpureDecl?`.
 
 **No new `@[cpass]`, alternative lowering, or serialized executable IR is
 needed.** The canonical in-process emitter still consumes `Lean.IR.Decl`.
+Its ownership-sensitive admission is an independent check of the already
+lowered IR; it must not re-run Lean's LCNF ownership optimization. The public
+Rust wrapper validates its name without re-emitting its underlying body.
 
 ```
 Lean source -> LCNF base -> LCNF mono -> LCNF impure

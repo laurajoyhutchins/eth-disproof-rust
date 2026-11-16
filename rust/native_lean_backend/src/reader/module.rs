@@ -1,6 +1,36 @@
 //! Emission of exact Lean declarations and requested-root dependency closure.
 use super::*;
 
+// One policy for public exports, regardless of whether the caller requests
+// a single function or an entire dependency closure.
+fn validate_public_name(rust_name: &str) -> CompilerResult<()> {
+    if rust_name.is_empty()
+        || !rust_name.as_bytes()[0].is_ascii_alphabetic()
+        || !rust_name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    {
+        return Err(CompilerError::new(
+            RefusalKind::Decl,
+            "unsafe Rust function name",
+        ));
+    }
+    const KEYWORDS: &[&str] = &[
+        "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
+        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
+        "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
+        "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
+        "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
+    ];
+    if KEYWORDS.contains(&rust_name) || rust_name == "_" {
+        return Err(CompilerError::new(
+            RefusalKind::Decl,
+            "reserved Rust function name",
+        ));
+    }
+    Ok(())
+}
+
 impl Reader {
     pub(crate) unsafe fn emit(decl: Obj, rust_name: Obj) -> CompilerResult<String> {
         if lr_abi_probe() == 0 {
@@ -30,30 +60,7 @@ impl Reader {
             ));
         }
         let declared_name = Self::name(Self::field(decl, 0)?, 0)?;
-        if rust_name.is_empty()
-            || !rust_name.as_bytes()[0].is_ascii_alphabetic()
-            || !rust_name
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'_')
-        {
-            return Err(CompilerError::new(
-                RefusalKind::Decl,
-                "unsafe Rust function name",
-            ));
-        }
-        const KEYWORDS: &[&str] = &[
-            "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-            "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
-            "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
-            "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
-            "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
-        ];
-        if KEYWORDS.contains(&rust_name) || rust_name == "_" {
-            return Err(CompilerError::new(
-                RefusalKind::Decl,
-                "reserved Rust function name",
-            ));
-        }
+        validate_public_name(rust_name)?;
         let params = Self::array(Self::field(decl, 1)?)?;
         let ret = Self::ty(Self::field(decl, 2)?)?;
         let body = Self::field(decl, 3)?;
@@ -370,14 +377,9 @@ impl Reader {
                 RefusalKind::Dependency,
                 "requested root missing from closure",
             ))?;
-            // Validate the identifier, including Rust reserved words.
-            let _ = Self::emit_function(
-                *closure.get(&root).unwrap(),
-                &public_name,
-                Some(&signatures),
-                Some(&ownership),
-                &features,
-            )?;
+            // A public wrapper is only a forwarding call: never lower the
+            // already-checked source body twice just to validate its name.
+            validate_public_name(&public_name)?;
             // Preserve the original Lean root name as the public API; Rust's
             // naming lint must not force an observable symbol rename.
             result.push_str("#[allow(non_snake_case)]\n");
@@ -404,5 +406,21 @@ impl Reader {
             result.push_str(")\n}\n");
         }
         include_value_runtime(result, features.get())
+    }
+}
+
+#[cfg(test)]
+mod export_name_tests {
+    use super::*;
+
+    #[test]
+    fn public_exports_use_one_validator() {
+        for allowed in ["pipeline", "A1", "underscore_name", "Name_with_99"] {
+            assert!(validate_public_name(allowed).is_ok(), "{allowed}");
+        }
+        for rejected in ["", "_", "_leading", "9digit", "with-hyphen", "with space", "fn",
+                         "gen", "Self", "mod", "a.b", "line\nfeed"] {
+            assert!(validate_public_name(rejected).is_err(), "{rejected}");
+        }
     }
 }

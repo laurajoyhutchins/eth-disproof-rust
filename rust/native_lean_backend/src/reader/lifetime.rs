@@ -98,7 +98,12 @@ impl ProjectedLifetime {
         Ok(())
     }
 
-    fn transfer_old_field(&mut self, parent: usize, index: usize, still_stored: bool) {
+    fn transfer_old_field(
+        &mut self,
+        parent: usize,
+        index: usize,
+        still_stored: bool,
+    ) -> CompilerResult<()> {
         // Lean 4.34.1 lean_ctor_set overwrites a pointer slot without
         // decrementing the old value. lean_del_object frees the shell
         // without decrementing ANY field. Thus a previously projected
@@ -119,12 +124,15 @@ impl ProjectedLifetime {
         if still_stored {
             // Writing the same pointer back leaves the constructor's
             // ownership in place; a projection remains borrowed.
-            return;
+            return Ok(());
         }
         if matching.len() == 1 {
             let child = matching[0];
             if let Some(owned) = self.owners.get_mut(&child) {
-                *owned = owned.saturating_add(1);
+                *owned = owned.checked_add(1).ok_or(CompilerError::new(
+                    RefusalKind::ResourceLimit,
+                    "constructor field ownership transfer overflow",
+                ))?;
             }
         } else {
             // Without a uniquely identified projection, we do not
@@ -133,6 +141,7 @@ impl ProjectedLifetime {
                 self.invalidated.insert(child);
             }
         }
+        Ok(())
     }
 
     fn invalidate_children(&mut self, parent: usize) {
@@ -368,7 +377,7 @@ impl Reader {
                         .filter_map(|(child, _)| state.field_indices.get(child).copied())
                         .collect();
                     for index in indices {
-                        state.transfer_old_field(id, index, false);
+                        state.transfer_old_field(id, index, false)?;
                     }
                     state.invalidated.insert(id);
                     body = next;
@@ -390,7 +399,7 @@ impl Reader {
                     if !same_slot {
                         Self::lifetime_transfer_arg(value, state, "constructor field set")?;
                     }
-                    state.transfer_old_field(id, slot, same_slot);
+                    state.transfer_old_field(id, slot, same_slot)?;
                     body = next;
                 }
                 FnBodyView::ScalarSet { target, next, .. } => {

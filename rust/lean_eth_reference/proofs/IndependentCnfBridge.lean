@@ -162,6 +162,33 @@ theorem fromCNF_IsKCNF
       _ ≤ k := hw C₀ hmem
   · exact Finset.sort_nodup _ _
 
+/-- Original OpenAI-domain form of Anthropic's AllOccur condition. -/
+def everyVariableOccurs {n : ℕ} (F : SAT.CNF (Fin n)) : Prop :=
+  ∀ i : Fin n, ∃ C ∈ F, ∃ l ∈ C, l.variable = i
+
+/-- Occurrence eligibility survives the computable CNF translation. -/
+theorem fromCNF_allOccur_iff {n : ℕ} (F : SAT.CNF (Fin n)) :
+    MainResults.AllOccur (fromCNF F) ↔ everyVariableOccurs F := by
+  classical
+  constructor
+  · intro h i
+    obtain ⟨C, hC, l, hl, hi⟩ := h i
+    have hC' : C ∈ F.image fromClause := by
+      simpa only [fromCNF, Finset.mem_sort] using hC
+    obtain ⟨C₀, hmem, hEq⟩ := Finset.mem_image.mp hC'
+    subst C
+    have hl' : l ∈ C₀.image fromLiteral := by
+      simpa only [fromClause, Finset.mem_sort] using hl
+    obtain ⟨v, hv, hlv⟩ := Finset.mem_image.mp hl'
+    subst l
+    exact ⟨C₀, hmem, v, hv, by simpa [fromLiteral] using hi⟩
+  · intro h i
+    obtain ⟨C, hC, l, hl, hi⟩ := h i
+    refine ⟨fromClause C, ?_, fromLiteral l, ?_, ?_⟩
+    · simp [fromCNF, hC]
+    · simp [fromClause, hl]
+    · simpa [fromLiteral] using hi
+
 /-- Every OpenAI formula keeps exactly the same #SAT after the round trip. -/
 theorem fromCNF_count_eq {n : ℕ}
     (F : SAT.CNF (Fin n)) :
@@ -238,7 +265,7 @@ theorem original_anthropic_machine_counts_any_eligible_openai_cnf
       ∀ (k n : ℕ) (F : SAT.CNF (Fin n)),
         2 ≤ k → SAT.WidthAtMost k F →
         2 ≤ F.card → 4 ≤ n →
-        MainResults.AllOccur (fromCNF F) →
+        everyVariableOccurs F →
         Nonempty (Turing.TM2OutputsInTime M.tm
           ((MainResults.encInput k (fromCNF F)).map
             M.inputAlphabet.invFun)
@@ -256,13 +283,16 @@ theorem original_anthropic_machine_counts_any_eligible_openai_cnf
   have hlength : (fromCNF F).length = F.card := by
     simp [fromCNF, Finset.card_image_of_injective F hInjective]
   have hK := fromCNF_IsKCNF F hwidth
+  have hOccurs : MainResults.AllOccur (fromCNF F) :=
+    (fromCNF_allOccur_iff F).mpr hoc
   have hrun' := (hrun k n (fromCNF F)
-      (by omega) hK (by simpa [hlength] using hm) hn hoc).2
+      (by omega) hK (by simpa [hlength] using hm) hn hOccurs).2
   simpa only [toCNF_fromCNF, hlength] using hrun'
 
 #print axioms IndependentETH.toCNF_fromCNF
 #print axioms IndependentETH.fromCNF_IsKCNF
 #print axioms IndependentETH.fromCNF_count_eq
+#print axioms IndependentETH.fromCNF_allOccur_iff
 #print axioms IndependentETH.original_anthropic_machine_counts_any_eligible_openai_cnf
 
 

@@ -16,7 +16,7 @@ open Lean Compiler LCNF
 private builtin_initialize observedExt : EnvExtension NameSet ←
   registerEnvExtension (mkInitial := pure {}) (asyncMode := .sync)
 
-private def observePass : Pass where
+private meta def observePass : Pass where
   name := `nativeRustObserveImpure
   phase := .impure
   run decls := do

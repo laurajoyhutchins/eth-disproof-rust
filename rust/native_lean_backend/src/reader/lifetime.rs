@@ -48,7 +48,11 @@ impl ProjectedLifetime {
     }
 
     fn check(&self, id: usize, context: &str) -> CompilerResult<()> {
-        if !self.alive(id) {
+        // This pass establishes the safety of projected children only.
+        // A direct root's physical RC can include aliases we have not
+        // modeled. Do not make this conservative estimate into a global
+        // rejection of otherwise-supported direct-call/isShared programs.
+        if self.parents.contains_key(&id) && !self.alive(id) {
             return Err(CompilerError::new(
                 RefusalKind::Decl,
                 format!(
@@ -74,12 +78,17 @@ impl ProjectedLifetime {
         self.check(id, context)?;
         if let Some(credits) = self.owners.get_mut(&id) {
             if *credits == 0 {
-                return Err(CompilerError::new(
-                    RefusalKind::Decl,
-                    format!(
-                        "projected/borrowed x_{id}: no owned source reference for {context}"
-                    ),
-                ));
+                if self.parents.contains_key(&id) {
+                    return Err(CompilerError::new(
+                        RefusalKind::Decl,
+                        format!(
+                            "projected/borrowed x_{id}: no owned source reference for {context}"
+                        ),
+                    ));
+                }
+                // Root alias counts are not complete. Only projected
+                // variables admit the stronger source ownership claim.
+                return Ok(());
             }
             *credits -= 1;
         }

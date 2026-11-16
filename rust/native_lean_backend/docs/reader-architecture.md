@@ -75,12 +75,12 @@ The Excession output for the candidate retained `PARTIAL` source coverage, inclu
 ## Compilation and publication entrypoints
 
 Both compilation modes use the same Lean.IR Reader and Rust runtime, and
-share \`scripts/lib/compilation-common.sh\` for declaration/export-name
+share `scripts/lib/compilation-common.sh` for declaration/export-name
 validation, destination checks and no-overwrite staged-directory publication.
 
-- \`compile-project.sh\` builds an **unchanged Lake project** and publishes one
-  multi-root Cargo library. This is the public \`eth-compiler\` route.
-- \`compile-bundle.sh\` compiles a single **copied source fixture** and publishes
+- `compile-project.sh` builds an **unchanged Lake project** and publishes one
+  multi-root Cargo library. This is the public `eth-compiler` route.
+- `compile-bundle.sh` compiles a single **copied source fixture** and publishes
   a diagnostic bundle with the source, generated Rust, compiled rlib and hashes.
   It is a distinct evidence mode, not another backend or a replacement for
   unchanged-source admission.

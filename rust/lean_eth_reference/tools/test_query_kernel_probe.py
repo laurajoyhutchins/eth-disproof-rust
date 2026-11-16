@@ -20,6 +20,24 @@ def root_receipt():
         ],
         "expression_nodes": 8,
         "root_app_arity": 5,
+        "command_name": DECLARATION.removesuffix(".program") + ".command",
+        "command_expression_nodes": 24,
+        "command_immediate_symbols": [
+            "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq",
+            "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh",
+            DECLARATION.removesuffix(".program") + ".nodes",
+            "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command",
+        ],
+        "command_symbol_kinds": [
+            {"name": "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq",
+             "kind": "constructor"},
+            {"name": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh",
+             "kind": "definition"},
+            {"name": DECLARATION.removesuffix(".program") + ".nodes",
+             "kind": "definition"},
+            {"name": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command",
+             "kind": "definition"},
+        ],
         "transitive_computational_closure": False,
         "rust_executable": False,
         "independent_lean_rust_parity": False,
@@ -72,6 +90,21 @@ class KernelRootReceiptTests(unittest.TestCase):
         fixture = root_receipt()
         fixture["immediate_symbol_kinds"].pop()
         with self.assertRaisesRegex(ValueError, "classifications"):
+            validate_kernel_root(json.dumps(fixture))
+
+    def test_original_command_shape_cannot_be_silently_substituted(self):
+        fixture = root_receipt()
+        fixture["command_immediate_symbols"].remove(
+            "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command")
+        with self.assertRaisesRegex(ValueError, "source shape"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["command_symbol_kinds"][0]["name"] = "OAI.Forged.Cmd.seq"
+        with self.assertRaisesRegex(ValueError, "classifications"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["command_expression_nodes"] = 2048
+        with self.assertRaisesRegex(ValueError, "node budget"):
             validate_kernel_root(json.dumps(fixture))
 
     def test_refuse_missing_extra_duplicate_and_unbounded_symbols(self):

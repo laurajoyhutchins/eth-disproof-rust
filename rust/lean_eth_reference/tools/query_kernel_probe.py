@@ -26,7 +26,8 @@ EXPECTED_FIELDS = {
     "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
     "command_name", "command_expression_nodes", "command_immediate_symbols",
     "command_symbol_kinds", "same_module_local_declarations",
-    "external_module_edges", "external_module_edges_unresolved",
+    "external_module_edges", "external_definition_bodies",
+    "external_module_edges_unresolved",
     "transitive_computational_closure",
     "rust_executable",
     "independent_lean_rust_parity", "counting_parity",
@@ -48,7 +49,7 @@ def validate_kernel_root(raw: str) -> dict:
     if not isinstance(receipt, dict) or set(receipt) != EXPECTED_FIELDS:
         raise ValueError("kernel root evidence has a missing or extra field")
     fixed = {
-        "format": "original-query-kernel-root-v2",
+        "format": "original-query-kernel-root-v3",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -207,6 +208,58 @@ def validate_kernel_root(raw: str) -> dict:
             edge = (source, entry["name"])
             if edge in edge_kinds and edge_kinds[edge] != entry["kind"]:
                 raise ValueError("external declaration kind disagrees with direct inventory")
+
+    # One source-derived layer of external OAI definitions. No recursive
+    # closure, proof reduction, inferred executable semantics or partial
+    # symbol lists on budget refusal.
+    targets = {
+        edge["to"] for edge in edges
+        if (edge["target_kind"] == "definition" and
+            edge["to"].startswith("OAI.Algorithms.SubexponentialSAT."))
+    }
+    bodies = receipt["external_definition_bodies"]
+    if (not isinstance(bodies, list) or not 1 <= len(bodies) <= 32 or
+            len(bodies) != len(targets)):
+        raise ValueError("external source definition target coverage invalid")
+    seen_bodies = set()
+    total_external_nodes = 0
+    for item in bodies:
+        if not isinstance(item, dict) or set(item) != {
+            "name", "kind", "status", "expression_nodes",
+            "immediate_symbols", "immediate_symbol_kinds",
+        }:
+            raise ValueError("external source definition body fields invalid")
+        name = item["name"]
+        if (type(name) is not str or name not in targets or
+                name in seen_bodies or item["kind"] != "definition"):
+            raise ValueError("external source definition target missing, forged or duplicated")
+        seen_bodies.add(name)
+        status, count = item["status"], item["expression_nodes"]
+        children, child_kinds = item["immediate_symbols"], item["immediate_symbol_kinds"]
+        if (type(status) is not str or status not in {
+            "scanned", "node_budget_refused", "aggregate_budget_refused",
+        } or type(count) is not int or not 0 <= count <= 4096 or
+                not isinstance(children, list) or not isinstance(child_kinds, list)):
+            raise ValueError("external source definition body status/budget invalid")
+        if status == "scanned":
+            if not 1 <= count <= 4096:
+                raise ValueError("scanned external definition must have actual expression nodes")
+        elif count != 0 or children or child_kinds:
+            raise ValueError("refused external definition cannot claim partial source symbols")
+        if (len(children) > 4096 or len(children) != len(child_kinds) or
+                any(type(c) is not str or not c or len(c) > 512 for c in children) or
+                len(set(children)) != len(children)):
+            raise ValueError("external source definition symbol list invalid")
+        for symbol, kind_entry in zip(children, child_kinds):
+            if (not isinstance(kind_entry, dict) or
+                    set(kind_entry) != {"name", "kind"} or
+                    kind_entry["name"] != symbol or
+                    type(kind_entry["kind"]) is not str or
+                    kind_entry["kind"] not in allowed):
+                raise ValueError("external source definition child kind mismatch")
+        total_external_nodes += count
+    if seen_bodies != targets or total_external_nodes > 32768:
+        raise ValueError("external source definition coverage or aggregate budget invalid")
     return receipt
 
 
@@ -258,6 +311,8 @@ def probe(args):
           f"symbols={len(report['immediate_symbols'])} "
           f"local_declarations={len(report['same_module_local_declarations'])} "
           f"external_edges={len(report['external_module_edges'])} "
+          f"one_hop_targets={len(report['external_definition_bodies'])} "
+          f"one_hop_scanned={sum(b['status'] == 'scanned' for b in report['external_definition_bodies'])} "
           "transitive_closure=false rust_executable=false")
     return report
 

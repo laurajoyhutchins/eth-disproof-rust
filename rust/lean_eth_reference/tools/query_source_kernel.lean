@@ -83,12 +83,13 @@ source modules are unresolved edges; the result is not a computational closure.
 Theorem and opaque/axiom bodies are never unfolded or treated as executable.
 -/
 private def localDeclarations (env : Environment) (root : Name) :
-    IO (Array Json × Array Json) := do
+    IO (Array Json × Array Json × Array String) := do
   let localNamePrefix := "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram."
   let mut pending : Array String := #[root.toString]
   let mut seen : Std.HashSet String := {}
   let mut graph : Array Json := #[]
   let mut externalEdges : Array Json := #[]
+  let mut externalTargets : Array String := #[]
   let mut totalNodes := 0
   while !pending.isEmpty do
     let symbol := pending.back!
@@ -124,6 +125,12 @@ private def localDeclarations (env : Environment) (root : Name) :
           ("to", toJson child),
           ("target_kind", toJson (kindOf targetInfo))
         ]
+        if child.startsWith "OAI.Algorithms.SubexponentialSAT." &&
+            kindOf targetInfo == "definition" &&
+            !(externalTargets.contains child) then
+          if externalTargets.size >= 32 then
+            throw <| IO.userError "original external definition target budget exceeded"
+          externalTargets := externalTargets.push child
     graph := graph.push <| Json.mkObj [
       ("name", toJson symbol),
       ("kind", toJson (kindOf info)),
@@ -131,7 +138,44 @@ private def localDeclarations (env : Environment) (root : Name) :
       ("expression_nodes", toJson nodes),
       ("immediate_symbols", toJson children)
     ]
-  return (graph, externalEdges)
+  return (graph, externalEdges, externalTargets)
+
+/-!
+Expand exactly one source-derived layer beyond QueryStreamProgram. Targets
+come only from observed external edges, never a hand-written allowlist.
+A scanned body remains an inventory, not a compiled command. Oversized bodies
+are named refusals with no invented or truncated symbol lists.
+-/
+private def inspectExternalDefinitions (env : Environment)
+    (targets : Array String) : IO (Array Json) := do
+  let mut bodies : Array Json := #[]
+  let mut aggregateNodes := 0
+  for symbol in targets do
+    let some (.defnInfo info) := env.find? (qualified symbol)
+      | throw <| IO.userError s!"original external definition missing: {symbol}"
+    let (status, nodes, symbols) ←
+      match immediateSymbols info.value 4096 with
+      | .ok (children, count) =>
+        if aggregateNodes + count > 32768 then
+          pure ("aggregate_budget_refused", 0, #[])
+        else
+          aggregateNodes := aggregateNodes + count
+          pure ("scanned", count, children)
+      | .error reason =>
+        if reason == "kernel root expression exceeded finite node budget" then
+          pure ("node_budget_refused", 0, #[])
+        else
+          throw <| IO.userError s!"external definition {symbol}: {reason}"
+    let kinds ← classifySymbols env symbols
+    bodies := bodies.push <| Json.mkObj [
+      ("name", toJson symbol),
+      ("kind", toJson "definition"),
+      ("status", toJson status),
+      ("expression_nodes", toJson nodes),
+      ("immediate_symbols", toJson symbols),
+      ("immediate_symbol_kinds", toJson kinds)
+    ]
+  return bodies
 
 private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let some (.defnInfo info) := env.find? root
@@ -165,9 +209,10 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     | .ok result => pure result
     | .error reason => throw <| IO.userError s!"original command: {reason}"
   let commandKinds ← classifySymbols env commandSymbols
-  let (localGraph, externalEdges) ← localDeclarations env root
+  let (localGraph, externalEdges, externalTargets) ← localDeclarations env root
+  let externalBodies ← inspectExternalDefinitions env externalTargets
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v2"),
+    ("format", toJson "original-query-kernel-root-v3"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -182,6 +227,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("command_symbol_kinds", toJson commandKinds),
     ("same_module_local_declarations", toJson localGraph),
     ("external_module_edges", toJson externalEdges),
+    ("external_definition_bodies", toJson externalBodies),
     ("external_module_edges_unresolved", toJson true),
     ("transitive_computational_closure", toJson false),
     ("rust_executable", toJson false),

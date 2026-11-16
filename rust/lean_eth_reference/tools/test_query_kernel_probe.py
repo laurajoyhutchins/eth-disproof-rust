@@ -8,7 +8,7 @@ from query_stream_aot import DECLARATION
 
 def root_receipt():
     receipt = {
-        "format": "original-query-kernel-root-v2",
+        "format": "original-query-kernel-root-v3",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -85,6 +85,16 @@ def root_receipt():
         for item in receipt["same_module_local_declarations"]
         for child in item["immediate_symbols"]
         if not child.startswith(prefix)
+    ]
+    targets = dict.fromkeys(edge["to"] for edge in receipt["external_module_edges"]
+                            if edge["target_kind"] == "definition" and
+                            edge["to"].startswith("OAI.Algorithms.SubexponentialSAT."))
+    receipt["external_definition_bodies"] = [
+        {
+            "name": target, "kind": "definition", "status": "scanned",
+            "expression_nodes": 2, "immediate_symbols": ["Nat.zero"],
+            "immediate_symbol_kinds": [{"name": "Nat.zero", "kind": "constructor"}],
+        } for target in targets
     ]
     return receipt
 
@@ -237,6 +247,63 @@ class KernelRootReceiptTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "not in the original"):
             validate_kernel_root(json.dumps(fixture))
+
+    def test_one_hop_definitions_are_exact_bounded_source_evidence(self):
+        receipt = root_receipt()
+        actual = validate_kernel_root(json.dumps(receipt))
+        self.assertEqual(len(actual["external_definition_bodies"]), 3)
+        self.assertFalse(actual["transitive_computational_closure"])
+
+        fixture = root_receipt()
+        fixture["external_definition_bodies"].pop()
+        with self.assertRaisesRegex(ValueError, "coverage"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_definition_bodies"][0]["name"] = "OAI.Forged"
+        with self.assertRaisesRegex(ValueError, "forged"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_definition_bodies"][1]["name"] = (
+            fixture["external_definition_bodies"][0]["name"]
+        )
+        with self.assertRaisesRegex(ValueError, "duplicated"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_definition_bodies"][0]["kind"] = "theorem"
+        with self.assertRaisesRegex(ValueError, "target missing"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_definition_bodies"][0]["expression_nodes"] = 4097
+        with self.assertRaisesRegex(ValueError, "budget"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_definition_bodies"][0]["immediate_symbol_kinds"][0]["name"] = "OAI.Forged"
+        with self.assertRaisesRegex(ValueError, "kind mismatch"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_definition_bodies"][0]["status"] = "node_budget_refused"
+        with self.assertRaisesRegex(ValueError, "partial source symbols"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        refused = fixture["external_definition_bodies"][0]
+        refused.update(status="node_budget_refused", expression_nodes=0,
+                       immediate_symbols=[], immediate_symbol_kinds=[])
+        self.assertEqual(validate_kernel_root(json.dumps(fixture))[
+            "external_definition_bodies"][0]["status"], "node_budget_refused")
+
+        fixture = root_receipt()
+        refused = fixture["external_definition_bodies"][0]
+        refused.update(status="aggregate_budget_refused", expression_nodes=0,
+                       immediate_symbols=[], immediate_symbol_kinds=[])
+        self.assertEqual(validate_kernel_root(json.dumps(fixture))[
+            "external_definition_bodies"][0]["status"], "aggregate_budget_refused")
 
     def test_refuse_missing_extra_duplicate_and_unbounded_symbols(self):
         fixture = root_receipt()

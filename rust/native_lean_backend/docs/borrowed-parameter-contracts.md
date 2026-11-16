@@ -77,11 +77,14 @@ This is the exact two-field swap visible in the original pinned
 field, or intervening observable operation is rejected. This is a
 narrow optimized-IR admission, not certification of arbitrary
 reset/reuse or copy-on-write paths.
-Source-IR `dec` multiplicity is applied in full, with refusal when a
-tracked source value lacks enough owned credits. The same source-liveness
-guard applies to direct object roots, not only projected children; a direct
-`proj` after final `dec`, shell `del`, or owned call is refused.
-Persistent `dec` remains a source no-op as in the pinned C emitter.
+The lifetime admission accounts for the full source-IR `dec` count rather
+than silently consuming one modeled credit. The canonical code generator
+and runtime still **refuse nonpersistent `dec` with count != 1**; supporting
+larger decrements requires independent pinned Lean C and runtime evidence.
+The same source-liveness guard applies to direct object roots, not only
+projected children; a direct `proj` after final `dec`, shell `del`, or
+owned call is refused. Persistent `dec` remains a source no-op as in the
+pinned C emitter.
 The source runtime's actual reference counts may include unmodeled
 aliases, so potential final-owner release is conservatively treated as
 destruction. General call-result aliasing, externally-owned heap effects,

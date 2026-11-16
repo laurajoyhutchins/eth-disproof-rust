@@ -450,18 +450,31 @@ run_cmd do
       (countedReleaseResult.splitOn "protecting parent release").length > 1 do
     throwError "dec by two failed to invalidate projected child: {countedReleaseResult}"
 
-  -- Two decrements against three real source credits leave the parent live.
-  -- Its child can be retained before the final parent decrement.
+  -- Two supported unit decrements against three real source credits
+  -- leave the parent live until the child receives its independent inc.
   let countedRetained : Lean.IR.FnBody :=
     .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
       (.inc ⟨0⟩ 2 true false
-        (.dec ⟨0⟩ 2 true false
-          (.inc ⟨2⟩ 1 true false
-            (.dec ⟨0⟩ 1 true false (.ret (.var ⟨2⟩))))))
+        (.dec ⟨0⟩ 1 true false
+          (.dec ⟨0⟩ 1 true false
+            (.inc ⟨2⟩ 1 true false
+              (.dec ⟨0⟩ 1 true false (.ret (.var ⟨2⟩)))))))
   let countedRetainedResult := NativeRust.emit
-    (.fdecl name #[owned] .object countedRetained info) "counted_parent_still_live"
+    (.fdecl name #[owned] .object countedRetained info) "unit_decrements_leave_parent_live"
   unless countedRetainedResult.startsWith "OK\n" do
-    throwError "source dec consumed more than its encoded multiplicity: {countedRetainedResult}"
+    throwError "unit source decrements incorrectly destroyed a live parent: {countedRetainedResult}"
+
+  -- A nonpersistent source dec of more than one remains explicitly
+  -- unsupported by the pinned canonical code generator and runtime.
+  let unsupportedNonUnitDec : Lean.IR.FnBody :=
+    .inc ⟨0⟩ 1 true false
+      (.dec ⟨0⟩ 2 true false
+        (.vdecl ⟨2⟩ .uint8 (.lit (.num 1)) (.ret (.var ⟨2⟩))))
+  let unsupportedNonUnitResult := NativeRust.emit
+    (.fdecl name #[owned] .uint8 unsupportedNonUnitDec info) "nonunit_dec_refusal"
+  unless unsupportedNonUnitResult.startsWith "ERROR\n" &&
+      (unsupportedNonUnitResult.splitOn "source reference-count delta unsupported").length > 1 do
+    throwError "source non-unit dec was silently emitted: {unsupportedNonUnitResult}"
 
   let excessiveDec : Lean.IR.FnBody :=
     .dec ⟨0⟩ 2 true false

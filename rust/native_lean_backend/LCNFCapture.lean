@@ -13,14 +13,15 @@ namespace NativeRust.LCNFCapture
 
 open Lean Compiler LCNF
 
-private initialize observedNames : IO.Ref (Array Name) ← IO.mkRef #[]
+private initialize observedExt : EnvExtension NameSet ←
+  registerEnvExtension (mkInitial := pure {}) (asyncMode := .sync)
 
 private def observePass : Pass where
   name := `nativeRustObserveImpure
   phase := .impure
   run decls := do
-    liftM <| observedNames.modify fun names =>
-      names ++ decls.map (·.name)
+    for decl in decls do
+      modifyEnv fun env => observedExt.modifyState env (·.insert decl.name)
     return decls
 
 /-- Installed after Lean's final impure LCNF save; never changes compiler IR. -/
@@ -32,7 +33,7 @@ private def observePass : Pass where
 def report (root : Name) : CoreM Json := do
   if (← Lean.IR.findDecl root).isNone then
     Lean.Compiler.compile #[root]
-  let observed ← liftM observedNames.get
+  let observed := observedExt.getState (← getEnv)
   unless observed.contains root do
     throwError "LCNF observation missing for {root}; it was not compiled with the observer"
   let some decl ← getLocalImpureDecl? root

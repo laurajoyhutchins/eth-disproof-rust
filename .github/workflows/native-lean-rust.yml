@@ -165,6 +165,12 @@ jobs:
           retention-days: 14
           path: |
             rust/native_lean_backend/artifacts/native-smoke-receipt.txt
+            rust/native_lean_backend/artifacts/reader-rust-execution-receipt.txt
+            rust/native_lean_backend/artifacts/reader-rust-statement-axioms.txt
+            rust/native_lean_backend/artifacts/reader-rust-execution-inputs.txt
+            rust/native_lean_backend/artifacts/reader-rust-exec-*.rs
+            rust/native_lean_backend/artifacts/reader-rust-exec-*.expected
+            rust/native_lean_backend/artifacts/reader-rust-exec-*.actual
             rust/native_lean_backend/artifacts/ownership-object-trace/receipt.txt
             rust/native_lean_backend/artifacts/ownership-object-trace/c-*.txt
             rust/native_lean_backend/artifacts/ownership-object-trace/rust-*.txt

@@ -84,7 +84,7 @@ Theorem and opaque/axiom bodies are never unfolded or treated as executable.
 -/
 private def localDeclarations (env : Environment) (root : Name) :
     IO (Array Json) := do
-  let prefix := "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram."
+  let localNamePrefix := "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram."
   let mut pending : Array String := #[root.toString]
   let mut seen : Std.HashSet String := {}
   let mut graph : Array Json := #[]
@@ -93,7 +93,7 @@ private def localDeclarations (env : Environment) (root : Name) :
     let symbol := pending.back!
     pending := pending.pop
     if seen.contains symbol then continue
-    unless symbol.startsWith prefix do
+    unless symbol.startsWith localNamePrefix do
       throw <| IO.userError s!"out-of-scope local declaration: {symbol}"
     if graph.size >= 32 then
       throw <| IO.userError "original local declaration budget exceeded"
@@ -110,7 +110,7 @@ private def localDeclarations (env : Environment) (root : Name) :
     if totalNodes > 8192 then
       throw <| IO.userError "original local source graph node budget exceeded"
     for child in children do
-      if child.startsWith prefix && !(seen.contains child) then
+      if child.startsWith localNamePrefix && !(seen.contains child) then
         pending := pending.push child
     graph := graph.push <| Json.mkObj [
       ("name", toJson symbol),

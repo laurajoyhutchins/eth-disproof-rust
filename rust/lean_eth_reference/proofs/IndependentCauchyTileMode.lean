@@ -45,9 +45,9 @@ private theorem geometric_sum_identity
 /-- The finite inverse of the odd normalized Cauchy denominator. -/
 noncomputable def finiteTileInverse
     {R : Type*} [CommRing R] (p i v : ℕ) (j : R) (D : Rˣ) : R :=
-  (D⁻¹ : R) *
+  ((D⁻¹ : Rˣ) : R) *
     (∑ b ∈ Finset.range p,
-      ((2 : R) ^ (i + 1 - v) * j * (D⁻¹ : R)) ^ b)
+      ((2 : R) ^ (i + 1 - v) * j * ((D⁻¹ : Rˣ) : R)) ^ b)
 
 /--
 The normalized denominator has an exact inverse modulo 2^p
@@ -59,7 +59,7 @@ theorem finite_tile_inverse_correct
     (hvi : v ≤ i) (hmod : (2 : R) ^ p = 0) :
     ((D : R) - (2 : R) ^ (i + 1 - v) * j) *
       finiteTileInverse p i v j D = 1 := by
-  let s : R := (D⁻¹ : R)
+  let s : R := ((D⁻¹ : Rˣ) : R)
   let q : R := (2 : R) ^ (i + 1 - v) * j
   let r : R := q * s
   have hip : i + 1 - v = (i - v) + 1 := by omega
@@ -75,7 +75,7 @@ theorem finite_tile_inverse_correct
   have hden : ((D : R) - q) * s = 1 - r := by
     calc
       ((D : R) - q) * s = (D : R) * s - q * s := by ring
-      _ = 1 - r := by rw [hunit]; rfl
+      _ = 1 - r := by rw [hunit]
   change ((D : R) - q) *
     (s * (∑ b ∈ Finset.range p, r ^ b)) = 1
   calc
@@ -90,8 +90,8 @@ noncomputable def finiteTileSeries
     {R : Type*} [CommRing R]
     (p a i v : ℕ) (N j : R) (D : Rˣ) : R :=
   ∑ b ∈ Finset.range p,
-    (2 : R) ^ (a + 1 - v) * N * (D⁻¹ : R) *
-      ((2 : R) ^ (i + 1 - v) * j * (D⁻¹ : R)) ^ b
+    (2 : R) ^ (a + 1 - v) * N * ((D⁻¹ : Rˣ) : R) *
+      ((2 : R) ^ (i + 1 - v) * j * ((D⁻¹ : Rˣ) : R)) ^ b
 
 theorem finite_tile_series_eq
     {R : Type*} [CommRing R]
@@ -100,8 +100,16 @@ theorem finite_tile_series_eq
       ((2 : R) ^ (a + 1 - v) * N) *
         finiteTileInverse p i v j D := by
   unfold finiteTileSeries finiteTileInverse
-  rw [Finset.mul_sum]
-  ring
+  let A : R := (2 : R) ^ (a + 1 - v) * N
+  let s : R := ((D⁻¹ : Rˣ) : R)
+  let r : R := (2 : R) ^ (i + 1 - v) * j * s
+  change (∑ b ∈ Finset.range p, (A * s) * r ^ b) =
+    A * (s * (∑ b ∈ Finset.range p, r ^ b))
+  calc
+    (∑ b ∈ Finset.range p, (A * s) * r ^ b) =
+        (A * s) * (∑ b ∈ Finset.range p, r ^ b) := by
+      rw [Finset.mul_sum]
+    _ = A * (s * (∑ b ∈ Finset.range p, r ^ b)) := by ring
 
 /--
 The Cauchy numerator is reconstructed by the mode expansion.
@@ -118,8 +126,8 @@ theorem finite_tile_series_reconstructs
   have hinv := finite_tile_inverse_correct p i v j D hvi hmod
   calc
     (((D : R) - (2 : R) ^ (i + 1 - v) * j) *
-      ((2 : R) ^ (a + 1 - v) * N) *
-        finiteTileInverse p i v j D) =
+      (((2 : R) ^ (a + 1 - v) * N) *
+        finiteTileInverse p i v j D)) =
       ((2 : R) ^ (a + 1 - v) * N) *
       (((D : R) - (2 : R) ^ (i + 1 - v) * j) *
         finiteTileInverse p i v j D) := by ring
@@ -159,11 +167,11 @@ theorem tile_mode_coefficient_has_weight
     {R : Type*} [CommRing R]
     (a i v b : ℕ) (N j : R) (D : Rˣ)
     (hvi : v ≤ i) (hia : i ≤ a) :
-    ((2 : R) ^ (a + 1 - v) * N * (D⁻¹ : R)) *
-      ((2 : R) ^ (i + 1 - v) * j * (D⁻¹ : R)) ^ b =
+    ((2 : R) ^ (a + 1 - v) * N * ((D⁻¹ : Rˣ) : R)) *
+      ((2 : R) ^ (i + 1 - v) * j * ((D⁻¹ : Rˣ) : R)) ^ b =
       (2 : R) ^ (b + 1) *
-        ((2 : R) ^ (a - v) * N * (D⁻¹ : R) *
-          ((2 : R) ^ (i - v) * j * (D⁻¹ : R)) ^ b) := by
+        ((2 : R) ^ (a - v) * N * ((D⁻¹ : Rˣ) : R) *
+          ((2 : R) ^ (i - v) * j * ((D⁻¹ : Rˣ) : R)) ^ b) := by
   have hva : v ≤ a := le_trans hvi hia
   have ha : a + 1 - v = (a - v) + 1 := by omega
   have hi : i + 1 - v = (i - v) + 1 := by omega
@@ -181,8 +189,8 @@ theorem finite_tile_series_cutoff
     (hmod : (2 : R) ^ p = 0) :
     finiteTileSeries p a i v N j D =
       ∑ b ∈ (Finset.range p).filter (fun b => b + 1 < p),
-        (2 : R) ^ (a + 1 - v) * N * (D⁻¹ : R) *
-          ((2 : R) ^ (i + 1 - v) * j * (D⁻¹ : R)) ^ b := by
+        (2 : R) ^ (a + 1 - v) * N * ((D⁻¹ : Rˣ) : R) *
+          ((2 : R) ^ (i + 1 - v) * j * ((D⁻¹ : Rˣ) : R)) ^ b := by
   classical
   unfold finiteTileSeries
   rw [Finset.sum_filter]

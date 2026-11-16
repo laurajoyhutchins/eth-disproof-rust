@@ -428,10 +428,24 @@ theorem linked_reader_refines (c : LinkedCertificate) (a b : UInt64) :
   rw [← c.sameProgram]
   exact original_ir_target_refines c.source a b
 
+/-- The output certificate's *actual emitted source equality* is explicitly
+part of the conclusion. The second conjunct is a kernel-checked all-input
+value theorem for the certified original IR fragment, not a rustc theorem. -/
+theorem reader_emission_and_ir_refine (c : LinkedCertificate) (a b : UInt64) :
+    c.emission.emitted = c.emission.expected ∧
+    ∃ value,
+      BodyRuns c.source.body
+        (initialRuntime c.source.left c.source.right a b)
+        initialSourceTests value ∧
+      evalRustProgramSyntax (fun i => (inputWords a b i).toNat)
+        (lowerProgram c.emission.program) = value.toNat := by
+  exact ⟨c.emission.exact, linked_reader_refines c a b⟩
+
 end ReaderIRBoolSoundness
 
 #print axioms ReaderIRBoolSoundness.body_sound
 #print axioms ReaderIRBoolSoundness.linked_reader_refines
+#print axioms ReaderIRBoolSoundness.reader_emission_and_ir_refine
 
 open Lean Elab Command
 
@@ -446,7 +460,7 @@ run_cmd do
     if h : source.program = emitted.program then
       let linked : ReaderIRBoolSoundness.LinkedCertificate :=
         {source, emission := emitted, sameProgram := h}
-      let _ := ReaderIRBoolSoundness.linked_reader_refines linked
+      let _ := ReaderIRBoolSoundness.reader_emission_and_ir_refine linked
       logInfo m!"Original IR Bool branch semantics certified against Reader: {root}"
     else
       throwError "Bool source IR model differs from independently rendered Reader output"

@@ -286,9 +286,9 @@ private def reifyAlts (alts : Array IR.Alt) : Option (ArmWitness alts) :=
           if hn0 : info0.name = `Bool.false then
             if hc1 : info1.cidx = 1 then
               if hn1 : info1.name = `Bool.true then
-                some {falseBody := body0, trueBody := body1,
-                  armsProof := ⟨hs, Or.inl ⟨info0, info1,
-                    h0, h1, hc0, hn0, hc1, hn1⟩⟩}
+                some (ArmWitness.mk body0 body1
+                  ⟨hs, Or.inl ⟨info0, info1,
+                    h0, h1, hc0, hn0, hc1, hn1⟩⟩)
               else none
             else none
           else none
@@ -296,9 +296,9 @@ private def reifyAlts (alts : Array IR.Alt) : Option (ArmWitness alts) :=
           if hn0 : info0.name = `Bool.true then
             if hc1 : info1.cidx = 0 then
               if hn1 : info1.name = `Bool.false then
-                some {falseBody := body1, trueBody := body0,
-                  armsProof := ⟨hs, Or.inr ⟨info0, info1,
-                    h0, h1, hc0, hn0, hc1, hn1⟩⟩}
+                some (ArmWitness.mk body1 body0
+                  ⟨hs, Or.inr ⟨info0, info1,
+                    h0, h1, hc0, hn0, hc1, hn1⟩⟩)
               else none
             else none
           else none
@@ -352,9 +352,9 @@ private def scan (fuel : Nat) (sw : SymbolicEnv) (st : SymTests)
               | some {program := tp, bodyProof := htp} =>
                 match scan fuel sw st fb with
                 | some {program := fp, bodyProof := hfp} =>
-                  some {program := .branch cond tp fp,
-                    bodyProof := .branch sw st tid scr ty alts fb tb cond tp fp
-                      htid hty harm hs htp hfp}
+                  some (BodyWitness.mk (.branch cond tp fp)
+                    (.branch sw st tid scr ty alts fb tb cond tp fp
+                      htid hty harm hs htp hfp))
                 | none => none
               | none => none
             | none => none

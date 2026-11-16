@@ -558,14 +558,14 @@ unsafe fn reply_codegen(
     codegen: impl FnOnce() -> CompilerResult<String> + std::panic::UnwindSafe,
 ) -> *mut c_void {
     let text = match std::panic::catch_unwind(codegen) {
-        Ok(Ok(source)) => format!("OK\\n{source}"),
+        Ok(Ok(source)) => format!("OK\n{source}"),
         Ok(Err(error)) => safety::refusal("requested-root", &error),
         Err(_) => safety::refusal(
             "requested-root",
             &CompilerError::new(RefusalKind::Compiler, "backend panic (no code emitted)"),
         ),
     };
-    let text = text.replace('\\0', "\\\\0");
+    let text = text.replace('\0', "\\0");
     let encoded = CString::new(text).expect("NUL sanitized");
     lean_mk_string(encoded.as_ptr())
 }

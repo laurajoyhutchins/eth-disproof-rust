@@ -181,6 +181,43 @@ def packetRowProduct {n : ℕ} (W : Fin n → Fin n → ℤ)
     if Y i then packetRowArgument W X i
     else 1 - packetRowArgument W X i
 
+/-- Identity packet matrix sends each column bit to the same row bit. -/
+theorem identity_packet_row_argument {n : ℕ} (X : Fin n → Bool) (i : Fin n) :
+    packetRowArgument (fun j k => if j = k then (1 : ℤ) else 0) X i =
+      (X i).toNat := by
+  classical
+  simp [packetRowArgument, eq_comm]
+
+/-- Boolean equality is the original affine row factor at W = I. -/
+theorem identity_affine_gate (y x : Bool) :
+    (if y then (x.toNat : ℤ) else 1 - (x.toNat : ℤ)) =
+      if y = x then 1 else 0 := by
+  cases y <;> cases x <;> decide
+
+/--
+For every packet length, the original W(0) = I specializes the FULL
+row product to the equality of complete port assignments. This is
+the all-slot counterpart of the original one-slot example.
+-/
+theorem identity_packet_row_product {n : ℕ}
+    (Y X : Fin n → Bool) :
+    packetRowProduct (fun i j => if i = j then (1 : ℤ) else 0) Y X =
+      if Y = X then 1 else 0 := by
+  classical
+  simp only [packetRowProduct, identity_packet_row_argument]
+  simp_rw [identity_affine_gate]
+  by_cases h : Y = X
+  · subst X
+    simp
+  · simp only [h, if_false]
+    obtain ⟨i, hi⟩ : ∃ i, Y i ≠ X i := by
+      by_contra hnot
+      apply h
+      funext i
+      by_contra hine
+      exact hnot ⟨i, hine⟩
+    exact Finset.prod_eq_zero (Finset.mem_univ i) (by simp [hi])
+
 /--
 The two independent source assignments are encoded by the two entries
 of z : Fin 2 → (Fin n → Bool). The type is equivalent to a pair (Y,X).
@@ -272,6 +309,7 @@ theorem packetAsNetwork_value_eq_packetContraction
   intro z _
   rw [hnodes z, hedge z]
 
+#print axioms IndependentETH.PacketFactorBoundary.identity_packet_row_product
 #print axioms IndependentETH.PacketFactorBoundary.packetAsNetwork_pair_interaction
 #print axioms IndependentETH.PacketFactorBoundary.packetAsNetwork_value_eq_packetContraction
 #print axioms IndependentETH.PacketFactorBoundary.finite_relation_factors_through_columns

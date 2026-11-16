@@ -126,6 +126,56 @@ def observeDecl : IR.Decl → Option String
   | _ => none
 
 
+/-- All three checked boundaries in one certificate: original source-IR
+semantics, actual Reader-emitted Rust source equality, and C-backed borrowed
+IR structural observation equality. The latter equality is a live runtime
+test, not a kernel proof of arbitrary raw pointers. -/
+structure LiveCertificate where
+  linked : ReaderIRBoolSoundness.LinkedCertificate
+  observed : String
+  expected : String
+  observedEqual : observed = expected
+
+/-- Reject unless two independent source readers agree on the original IR,
+and the genuine native Reader emits exactly the independently modeled Rust
+source for the *same* program. -/
+def certifyLive (root : Name) : CoreM LiveCertificate := do
+  let some decl ← IR.findDecl root
+    | throwError "ABI/source proof refused missing original compiler IR: {root}"
+  let some source := ReaderIRBoolSoundness.certifyDecl decl
+    | throwError "ABI/source proof refused unproved source IR: {root}"
+  let emission ← ReaderScalarCertificate.certify root
+  let some expected := observeDecl decl
+    | throwError "ABI/source proof refused independent original IR observation"
+  let observed ← NativeRust.observeScalarABI root
+  if hs : source.program = emission.program then
+    if hd : observed = expected then
+      return {
+        linked := { source, emission, sameProgram := hs },
+        observed, expected, observedEqual := hd
+      }
+    else
+      throwError "native borrowed-object readback differs from original Lean IR: {root}"
+  else
+    throwError "native Reader and source-IR semantic reification disagree: {root}"
+
+/-- Conditional all-input semantic refinement AND independently checked
+emitted-source equality AND live borrowed-ABI readback equality, stated in
+one kernel-checked theorem. It does not claim a formal C/Rust pointer model. -/
+theorem live_reader_abi_refines (c : LiveCertificate) (a b : UInt64) :
+    c.observed = c.expected ∧
+    c.linked.emission.emitted = c.linked.emission.expected ∧
+    ∃ value,
+      ReaderIRBoolSoundness.BodyRuns c.linked.source.body
+        (ReaderIRSoundness.initialRuntime c.linked.source.left
+          c.linked.source.right a b)
+        ReaderIRBoolSoundness.initialSourceTests value ∧
+      evalRustProgramSyntax
+        (fun i => (ReaderIRSoundness.inputWords a b i).toNat)
+        (lowerProgram c.linked.emission.program) = value.toNat := by
+  exact ⟨c.observedEqual,
+    ReaderIRBoolSoundness.reader_emission_and_ir_refine c.linked a b⟩
+
 /-- Perturb the *actual* original Lean IR values, rather than feeding fabricated
 bytes to the native decoder. No mutated program is run as user code. -/
 private partial def rewriteFirstCase (body : IR.FnBody)
@@ -166,22 +216,16 @@ end ReaderIRABIObservation
 #print axioms ReaderIRABIObservation.bool_byte_roundtrip
 #print axioms ReaderIRABIObservation.bool_byte_nat
 #print axioms ReaderIRABIObservation.bool_byte_branch
+#print axioms ReaderIRABIObservation.live_reader_abi_refines
 
 open Lean Elab Command
 
 run_cmd do
   for root in #[`ScalarFixture.plus, `ScalarFixture.straightChain,
                 `ScalarFixture.choose, `ScalarFixture.nested] do
-    let some decl ← liftCoreM <| IR.findDecl root
-      | throwError "original compiler IR unavailable: {root}"
-    unless (ReaderIRBoolSoundness.certifyDecl decl).isSome do
-      throwError "ABI test fixture lacks source-IR semantic certificate: {root}"
-    let some expected := ReaderIRABIObservation.observeDecl decl
-      | throwError "independent Lean IR observer refused {root}"
-    let observed ← liftCoreM <| NativeRust.observeScalarABI root
-    unless observed == expected do
-      throwError "C/Rust borrowed-IR observation differs from original Lean IR for {root}\nExpected:\n{expected}\nObserved:\n{observed}"
-    logInfo m!"Actual borrowed C/Rust IR observation matched source Lean IR: {root}"
+    let certificate ← liftCoreM <| ReaderIRABIObservation.certifyLive root
+    let _ := ReaderIRABIObservation.live_reader_abi_refines certificate
+    logInfo m!"Live C/Rust ABI and exact Rust emission linked to source IR semantics: {root}"
   let root := `ScalarFixture.subtract
   let some decl ← liftCoreM <| IR.findDecl root
     | throwError "negative source IR missing"

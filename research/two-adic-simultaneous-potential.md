@@ -409,29 +409,114 @@ passed. All 12 `#print axioms` receipts reported only
 `propext`, `Classical.choice`, and `Quot.sound`.
 None depended on an unproved placeholder.
 
-**Remaining source boundary:** after an *arbitrary partial
-assignment of full graph vertices*, prove the complete
-**matching** conditional moment over the compatible
-edge-pair label choices and assemble the normalized matching
-and port terms into the same pointwise greedy potential.
-The global uniform matching moment has now been proved;
-the source's sequential partially fixed joint potential is
-**not** yet kernel-checked.
+**That was the source boundary at #314.** The arbitrary partial
+matching moment and the one-vertex joint conditional-choice theorem
+have subsequently been kernel-checked as described below. Their
+source-wide explicit normalized exponential specialization and
+analytic load bounds remain separate obligations.
+
+## Matching moments after arbitrary partial assignments (#319)
+
+[Merged PR #319](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/319),
+commit `d524399d2852d473c220cd214497a261320d3566`,
+proves the **actual source-graph matching moment after arbitrary
+partial graph-vertex assignments**.
+
+For every graph vertex, choose a finite set of permitted symbols.
+For the source fixed/free labeling scheme this is a singleton or
+the entire alphabet, but the theorem also covers empty permitted
+sets. Let \(E\) be a selected matching whose left and right
+endpoint maps are injective. If \(A_e\) is the permitted ordered
+pair-label set at edge \(e\), then the kernel proves
+
+\[
+\sum_{\ell\text{ compatible}}2^{X_\gamma(\ell)}
+= c_{\mathrm{unmatched}}\prod_{e\in E}
+  \sum_{p\in A_e}2^{\mathbf1[p=\gamma]}.
+\]
+
+Here \(c_{\mathrm{unmatched}}\) is the exact product of
+permitted-label counts at vertices not in the selected matching.
+The proof first establishes that all permitted matching-edge
+labelings have **the same number of full graph-label
+completions**, then proves a weighted-sum transfer for an
+arbitrary rational function of matching labels. It is not
+limited to exponential weights. A cross-multiplied conditional
+mean identity covers empty-completion boundary cases without
+division by zero.
+
+[Exact-head Lean verification](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43888791104)
+and [Rust regression](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43888791085)
+passed, with standard Lean axioms only. The endpoint
+injectivity hypothesis must still be connected in Lean to
+the source's specific greedy proper edge coloring.
+
+## One sequential choice for a combined potential (#322)
+
+[Merged PR #322](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/322),
+commit `886906402d8b4cc4f1d7d2e63f22391f9b52a687`,
+adds six more kernel-checked finite graph-labeling theorems.
+
+Fix finite allowable label sets at all graph vertices. At a
+chosen next vertex \(v\), every legal symbol \(x\) has the
+same number of completions:
+
+\[
+c_v=\prod_{u\ne v}|A_u|,\qquad
+|\mathcal C|=|A_v|c_v.
+\]
+
+The compatible full graph-labeling sum of **any rational
+weight** \(w\) partitions exactly over the choice fibers
+\(\mathcal C_x\). If \(|A_v|>0\) and \(c_v>0\), the
+kernel proves existence of a symbol \(x\in A_v\) such that
+
+\[
+\boxed{
+\frac{\sum_{\ell\in\mathcal C_x}w(\ell)}{c_v}
+\le
+\frac{\sum_{\ell\in\mathcal C}w(\ell)}{|\mathcal C|}.
+}
+\]
+
+Apply it to \(w(\ell)=w_{\mathrm{matching}}(\ell)+
+w_{\mathrm{ports}}(\ell)\). The **same** vertex-symbol
+choice controls the sum, not necessarily each summand
+separately. This is the deterministic finite
+conditional-expectation choice step needed by a joint
+labeling potential.
+
+[Exact-head Lean verification](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43894147103)
+and [Rust regression](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43894147132)
+both passed with no unproved axioms.
+
+**Exact boundary:** the weight functions in #322 are
+arbitrary rational functions on graph vertex labels. A Lean
+theorem still must define them as the original **explicit
+normalized** matching-class and shore/coordinate/symbol-port
+exponential sums, verify their full initial mean is 2,
+connect the source edge-color matching, and derive the
+analytical class/port bounds. A general nonincreasing
+conditional-choice result does not by itself establish those
+bounds or make the source's tensor recursion executable.
 
 ## Next acceptance frontier
 
 This is a **worst-case simultaneous sufficient theorem**, but
 it is not an all-depth or practical one. Further work must:
 
-1. **Finish** the combined theorem in Lean: the unconditional
-   source graph matching distribution and arbitrary partial vertex
-   **port** moments are now kernel-checked. Prove the remaining
-   matching conditional moment for *partially fixed graph vertices*,
-   combine both normalized potential terms into an exact
-   per-vertex greedy conditional expectation, establish the analytic
-   exponential upper bounds, and derive individual orbit multiplicities
-   and copy-slot counts. Do not confuse finite algebraic identities
-   with the entire source contraction theorem.
+1. **Finish the source-specific theorem in Lean.** Both the
+   arbitrary partial source graph **matching** moments and
+   **port** moments, and a *generic one-choice combined
+   conditional-expectation theorem*, are now kernel-checked.
+   Instantiate the source's **explicit** matching/port
+   exponential potential over actual graph vertices, prove
+   the normalization and initial expected value 2, tie
+   injective matchings to the source greedy coloring, prove
+   analytic class and port bounds, and derive individual
+   orbit multiplicities and packet copy-slot counts. Do not
+   treat the finite conditional expectation lemma as a
+   completed source tensor-contraction or complexity proof.
 2. Extend exact *constructive* realization beyond the small
    `u128` reference using a reused arbitrary-precision Rust
    package, with a measured total labeling bit-cost receipt.

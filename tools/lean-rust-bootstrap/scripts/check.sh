@@ -9,7 +9,7 @@ source "$here/scripts/pins.sh"
 
 : "$LEAN_PREFIX"
 test "$(cat "$here/lean/lean-toolchain")" = 'leanprover/lean4:v4.34.1'
-test "$(lean --version)" = "$BOOTSTRAP_LEAN_VERSION" || {
+test "$( "$LEAN_PREFIX/bin/lean" --version )" = "$BOOTSTRAP_LEAN_VERSION" || {
   echo "Refusing mismatched Lean binary/compiler commit" >&2
   exit 2
 }
@@ -52,7 +52,7 @@ mkdir -p "$here/artifacts"
   echo 'status=COMPILER_MODULE_EXECUTED_AND_DIFFERENTIALLY_CHECKED'
   echo 'self_hosted=false'
   echo 'lean_rust_refinement_theorem=NOT_ESTABLISHED'
-  echo "lean_version=$(lean --version)"
+  echo "lean_version=$( "$LEAN_PREFIX/bin/lean" --version )"
   echo "rust_version=$(rustc --version)"
   echo "lungo_revision=$(git -C "$vendor" rev-parse HEAD)"
   echo "source_revision=$(git -C "$here" rev-parse HEAD)"

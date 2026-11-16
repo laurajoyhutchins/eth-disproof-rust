@@ -37,6 +37,8 @@ cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"
+# The LCNF observer is diagnostic only: it must preserve canonical Rust output.
+bash scripts/check-lcnf-capture.sh
 # Check actual Reader-generated scalar Rust against an independent Lean IR
 # reifier and the all-inputs target semantic theorem. This is intentionally
 # narrower than the general backend's accepted IR.

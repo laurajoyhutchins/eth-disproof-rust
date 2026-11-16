@@ -622,6 +622,46 @@ theorem matchingEndpointLabels_conditional_class_moment
           if pair = target then (2 : ℚ) else 1) := by
       rw [Finset.prod_univ_sum]
 
+/-- The uniform conditional mean over the **actual source graph
+vertex** completions agrees exactly with the uniform conditional mean
+over the independent, endpoint-compatible matching-edge pair choices.
+Cross multiplication avoids dividing by zero when a partial constraint
+makes the completion space empty.
+
+The theorem holds for every rational matching-dependent weight,
+including `2^X_gamma`, and for any finite allowable symbols per vertex.
+-/
+theorem matchingEndpointLabels_conditional_uniform_mean_cross_mul
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (hl : Function.Injective left) (hr : Function.Injective right)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (weight : (E → A × A) → ℚ) :
+    (∑ full ∈ bipartiteAllowedLabelings allowedL allowedR,
+      weight (matchingEndpointLabels left right full)) *
+        ((Fintype.piFinset
+          (matchingPairChoices left right allowedL allowedR)).card : ℚ) =
+    (∑ pairs ∈ Fintype.piFinset
+        (matchingPairChoices left right allowedL allowedR),
+        weight pairs) *
+      ((bipartiteAllowedLabelings allowedL allowedR).card : ℚ) := by
+  classical
+  have hweight := matchingEndpointLabels_conditional_weighted_sum
+    left right hl hr allowedL allowedR weight
+  have hone := matchingEndpointLabels_conditional_weighted_sum
+    left right hl hr allowedL allowedR (fun _ => (1 : ℚ))
+  have hcard :
+      ((bipartiteAllowedLabelings allowedL allowedR).card : ℚ) =
+      ((unmatchedCompletionCount left allowedL *
+        unmatchedCompletionCount right allowedR : ℕ) : ℚ) *
+      ((Fintype.piFinset
+        (matchingPairChoices left right allowedL allowedR)).card : ℚ) := by
+    simpa using hone
+  rw [hweight, hcard]
+  ring
+
 #print axioms TwoAdicMatchingGraph.restrictedLabels_at_endpoint
 #print axioms TwoAdicMatchingGraph.assignmentFiber_eq_piFinset
 #print axioms TwoAdicMatchingGraph.assignmentFiber_equidistributed
@@ -636,5 +676,6 @@ theorem matchingEndpointLabels_conditional_class_moment
 #print axioms TwoAdicMatchingGraph.conditionalBipartiteMatchingFiber_card
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_weighted_sum
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_class_moment
+#print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_uniform_mean_cross_mul
 
 end TwoAdicMatchingGraph

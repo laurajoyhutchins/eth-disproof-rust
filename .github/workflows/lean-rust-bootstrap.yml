@@ -1,0 +1,75 @@
+name: Lean compiler module to Rust bootstrap
+
+on:
+  pull_request:
+    paths:
+      - 'tools/lean-rust-bootstrap/**'
+      - 'docs/lean-rust-replacement.md'
+      - '.github/workflows/lean-rust-bootstrap.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/lean-rust-bootstrap/**'
+      - 'docs/lean-rust-replacement.md'
+      - '.github/workflows/lean-rust-bootstrap.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lean-rust-bootstrap-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  stage0:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.99.1
+
+      - name: Install Lean 4.34.1
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: tools/lean-rust-bootstrap/lean
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: false
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Original Lean oracle, generated Rust and differential tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          LEAN_BINARY="$(cd tools/lean-rust-bootstrap/lean && elan which lean)"
+          export LEAN_PREFIX="$(dirname "$(dirname "$LEAN_BINARY")")"
+          bash tools/lean-rust-bootstrap/scripts/check.sh
+          {
+            echo 'Original upstream Lean compiler module: Lean.Compiler.IR.Basic'
+            echo 'Bridge IR: pinned lungo-rs'
+            echo 'Independent original-Lean/Rust comparisons: 1536'
+            echo 'Self-hosting and generalized semantics: NOT ESTABLISHED'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve exact-head bootstrap evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lean-rust-bootstrap-stage0
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            tools/lean-rust-bootstrap/oracle.tsv
+            tools/lean-rust-bootstrap/artifacts/receipt.txt
+            tools/lean-rust-bootstrap/Cargo.lock

@@ -378,7 +378,7 @@ def renderStmt : Stmt → String
       else
         "        0 => {\n" ++ renderStmt f ++ "        }\n" ++
         "        1 => {\n" ++ renderStmt t ++ "        }\n"
-      s!"    match x_{id} {{\n" ++ a ++
+      "    match x_" ++ toString id ++ " {\n" ++ a ++
       "        _ => unreachable!(\"invalid Lean Bool tag\"),\n    }\n"
 
 /-- Decode the actual Lean compiler IR into the restricted Rust *statement*
@@ -437,12 +437,13 @@ private def decodeStmt (fuel : Nat) (body : IR.FnBody) : Option Stmt :=
   | 0 => none
   | fuel + 1 =>
     match body with
-    | .ret arg => return .ret (← argVar arg)
-    | .vdecl id .uint64 expr tail =>
+    | .ret arg => do
+        return .ret (← argVar arg)
+    | .vdecl id .uint64 expr tail => do
         return .letWord id.idx (← decodeWord expr) (← decodeStmt fuel tail)
-    | .vdecl id .uint8 expr tail =>
+    | .vdecl id .uint8 expr tail => do
         return .letTest id.idx (← decodeTest expr) (← decodeStmt fuel tail)
-    | .case tid scr .uint8 alts =>
+    | .case tid scr .uint8 alts => do
         if tid != `UInt8 then none else
         let arms ← decodeArms alts
         return .switch scr.idx
@@ -474,7 +475,8 @@ def decodeDecl (decl : IR.Decl) : Option Function := do
 def renderFunction (f : Function) : String :=
   s!"// Generated directly from Lean IR declaration: {f.name}\n" ++
   "#[allow(clippy::needless_return)]\n" ++
-  s!"pub fn certified_scalar(x_{f.left}: u64, x_{f.right}: u64) -> u64 {{\n" ++
+  "pub fn certified_scalar(x_" ++ toString f.left ++ ": u64, x_" ++
+  toString f.right ++ ": u64) -> u64 {\n" ++
   renderStmt f.body ++ "}\n"
 
 def inputNat (a b : UInt64) : Nat → Nat :=

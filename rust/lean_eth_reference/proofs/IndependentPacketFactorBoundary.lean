@@ -1,4 +1,5 @@
 import Mathlib
+import Groundwork.Net.Net
 
 /-!
 # Packet factors and independent network factors: the normalization boundary
@@ -152,6 +153,127 @@ theorem odd_singlet_not_an_integral_weight_one_packet_coefficient :
   rintro ⟨coefficient, h⟩
   omega
 
+/-
+## Complete finite packet interaction, in Anthropic's original Network type
+
+OpenAI's original (deformed) packet expression for a matrix W is a sum
+over independent Boolean assignments Y and X of A(Y)B(X), times one
+affine row factor for each row. The integer-valued specialization below
+retains every row and every matrix entry, not merely one slot.
+
+Anthropic's exact pinned Groundwork.Network has two node states, shared
+edge labels, and pair factors f(row,label) * f(col,label). The following
+network uses the *entire* column assignment as the shared label. This
+is source-structure preserving for the finite contraction at an integral
+packet sample. It is not Anthropic's particular low-rank factorization
+and its label cardinality is 2^n.
+-/
+
+/-- The source's linear row argument (W X)_i, for integer-valued W. -/
+def packetRowArgument {n : ℕ} (W : Fin n → Fin n → ℤ)
+    (X : Fin n → Bool) (i : Fin n) : ℤ :=
+  ∑ j : Fin n, W i j * (X j).toNat
+
+/-- The complete OpenAI packet row product at a fixed W, Y and X. -/
+def packetRowProduct {n : ℕ} (W : Fin n → Fin n → ℤ)
+    (Y X : Fin n → Bool) : ℤ :=
+  ∏ i : Fin n,
+    if Y i then packetRowArgument W X i
+    else 1 - packetRowArgument W X i
+
+/--
+The two independent source assignments are encoded by the two entries
+of z : Fin 2 → (Fin n → Bool). The type is equivalent to a pair (Y,X).
+-/
+def packetContraction {n : ℕ} (W : Fin n → Fin n → ℤ)
+    (A B : (Fin n → Bool) → ℤ) : ℤ :=
+  ∑ z : Fin 2 → (Fin n → Bool),
+    A (z 0) * B (z 1) * packetRowProduct W (z 0) (z 1)
+
+/--
+Actual Anthropic Groundwork.Network, not an invented surrogate:
+node 0 has row state Y and weight A(Y); node 1 has column state X
+and weight B(X). The only shared label is a complete column state θ.
+The row-side factor is the entire source packet product at θ;
+the column-side factor forces θ = X. Both share the original label.
+-/
+def packetAsNetwork {n : ℕ} (W : Fin n → Fin n → ℤ)
+    (A B : (Fin n → Bool) → ℤ) :
+    Groundwork.Network (Fin 2) (Fin n → Bool) (Fin n → Bool) := by
+  classical
+  exact {
+    S := fun _ => Finset.univ
+    W := fun side z => if side = 0 then A z else B z
+    Θ := fun _ _ => Finset.univ
+    f := fun side _ z label =>
+      if side = 0 then packetRowProduct W z label
+      else if z = label then 1 else 0
+    c := fun _ _ => n
+  }
+
+/--
+The ORIGINAL Anthropic pair-interaction definition reduces exactly to
+the FULL OpenAI row-product factor. This holds for arbitrary integer
+matrices, arbitrary dimensions, and arbitrary row/column assignments.
+-/
+theorem packetAsNetwork_pair_interaction
+    {n : ℕ} (W : Fin n → Fin n → ℤ)
+    (A B : (Fin n → Bool) → ℤ)
+    (Y X : Fin n → Bool) :
+    (packetAsNetwork W A B).Ψ 0 1 Y X =
+      packetRowProduct W Y X := by
+  classical
+  change
+    (∑ label : Fin n → Bool,
+      packetRowProduct W Y label *
+        (if X = label then (1 : ℤ) else 0)) =
+      packetRowProduct W Y X
+  simpa only [eq_comm] using
+    (finite_relation_factors_through_columns (packetRowProduct W) Y X).symm
+
+/--
+For the actual ORIGINAL Anthropic Network.value definition, a network
+built from every packet row factor has EXACTLY the original packet
+contraction value. No replacement of the row product by a count oracle
+or a postulated network-value function occurs here.
+
+The result is exact over integers; a separate source-specific 2-adic
+precision/refinement theorem is required for the appendix ring A_p.
+-/
+theorem packetAsNetwork_value_eq_packetContraction
+    {n : ℕ} (W : Fin n → Fin n → ℤ)
+    (A B : (Fin n → Bool) → ℤ) :
+    (packetAsNetwork W A B).value = packetContraction W A B := by
+  classical
+  have hstates :
+      Fintype.piFinset (packetAsNetwork W A B).S =
+        (Finset.univ : Finset (Fin 2 → (Fin n → Bool))) := by
+    ext z
+    simp [packetAsNetwork]
+  have hfin : (Finset.univ : Finset (Fin 2)) = {0, 1} := by decide
+  have hpairs : Groundwork.pairs (Fin 2) =
+      ({((0 : Fin 2), (1 : Fin 2))} : Finset (Fin 2 × Fin 2)) := by
+    decide
+  have hnodes (z : Fin 2 → (Fin n → Bool)) :
+      (∏ side : Fin 2, (packetAsNetwork W A B).W side (z side)) =
+        A (z 0) * B (z 1) := by
+    rw [hfin]
+    simp [packetAsNetwork]
+  have hedge (z : Fin 2 → (Fin n → Bool)) :
+      (∏ pair ∈ Groundwork.pairs (Fin 2),
+        (packetAsNetwork W A B).Ψ pair.1 pair.2
+          (z pair.1) (z pair.2)) =
+        packetRowProduct W (z 0) (z 1) := by
+    rw [hpairs]
+    simp [packetAsNetwork_pair_interaction]
+  unfold Groundwork.Network.value packetContraction
+  rw [hstates]
+  apply Finset.sum_congr rfl
+  intro z _
+  rw [hnodes z, hedge z]
+
+#print axioms IndependentETH.PacketFactorBoundary.packetAsNetwork_pair_interaction
+#print axioms IndependentETH.PacketFactorBoundary.packetAsNetwork_value_eq_packetContraction
 #print axioms IndependentETH.PacketFactorBoundary.finite_relation_factors_through_columns
 #print axioms IndependentETH.PacketFactorBoundary.single_slot_deformation_at_zero
 #print axioms IndependentETH.PacketFactorBoundary.deformed_packet_not_pointwise_anthropic_edge

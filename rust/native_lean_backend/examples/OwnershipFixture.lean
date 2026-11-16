@@ -24,11 +24,11 @@ run_cmd do
   let decls ← liftCoreM do
     Lean.Compiler.compile targets
     targets.mapM fun n => Lean.IR.findDecl n
-  for h : i in [:decls.size] do
-    if let some decl := decls[i] then
-      logInfo m!"SOURCE-OWNERSHIP-IR {targets[i]}:\n{Lean.IR.declToString decl}"
+  for i in [:decls.size] do
+    if let some decl := decls[i]! then
+      logInfo m!"SOURCE-OWNERSHIP-IR {targets[i]!}:\n{Lean.IR.declToString decl}"
     else
-      logInfo m!"SOURCE-OWNERSHIP-IR missing {targets[i]}"
+      logInfo m!"SOURCE-OWNERSHIP-IR missing {targets[i]!}"
 
 #native_rust_package [OwnershipFixture.chain, OwnershipFixture.updateUnique, OwnershipFixture.preserveShared] to "examples/ownership-package"
 

@@ -55,6 +55,16 @@ Classify source constants from the imported kernel environment. The theorem
 classification does NOT assert that a corresponding argument is erased in any
 Rust representation or that transitive computational closure is complete.
 -/
+private def kindOf : ConstantInfo → String
+  | .defnInfo _ => "definition"
+  | .thmInfo _ => "theorem"
+  | .axiomInfo _ => "axiom"
+  | .opaqueInfo _ => "opaque"
+  | .inductInfo _ => "inductive"
+  | .ctorInfo _ => "constructor"
+  | .recInfo _ => "recursor"
+  | .quotInfo _ => "quotient"
+
 private def classifySymbols (env : Environment) (symbols : Array String) :
     IO (Array Json) := do
   let mut kinds : Array Json := #[]
@@ -62,19 +72,54 @@ private def classifySymbols (env : Environment) (symbols : Array String) :
     let name := qualified symbol
     let some info := env.find? name
       | throw <| IO.userError s!"original kernel symbol is missing: {symbol}"
-    let kind := match info with
-      | .defnInfo _ => "definition"
-      | .thmInfo _ => "theorem"
-      | .axiomInfo _ => "axiom"
-      | .opaqueInfo _ => "opaque"
-      | .inductInfo _ => "inductive"
-      | .ctorInfo _ => "constructor"
-      | .recInfo _ => "recursor"
-      | .quotInfo _ => "quotient"
     kinds := kinds.push <| Json.mkObj [
-      ("name", toJson symbol), ("kind", toJson kind)
+      ("name", toJson symbol), ("kind", toJson (kindOf info))
     ]
   return kinds
+
+/-!
+Bounded transitive discovery of *same-module* declarations only. External
+source modules are unresolved edges; the result is not a computational closure.
+Theorem and opaque/axiom bodies are never unfolded or treated as executable.
+-/
+private def localDeclarations (env : Environment) (root : Name) :
+    IO (Array Json) := do
+  let prefix := "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram."
+  let mut pending : Array String := #[root.toString]
+  let mut seen : Std.HashSet String := {}
+  let mut graph : Array Json := #[]
+  let mut totalNodes := 0
+  while !pending.isEmpty do
+    let symbol := pending.back!
+    pending := pending.pop
+    if seen.contains symbol then continue
+    unless symbol.startsWith prefix do
+      throw <| IO.userError s!"out-of-scope local declaration: {symbol}"
+    if graph.size >= 32 then
+      throw <| IO.userError "original local declaration budget exceeded"
+    seen := seen.insert symbol
+    let some info := env.find? (qualified symbol)
+      | throw <| IO.userError s!"missing original local declaration: {symbol}"
+    let (children, nodes) ← match info with
+      | .defnInfo value =>
+        match immediateSymbols value.value 2048 with
+        | .ok result => pure result
+        | .error reason => throw <| IO.userError s!"local declaration {symbol}: {reason}"
+      | _ => pure (#[], 0)
+    totalNodes := totalNodes + nodes
+    if totalNodes > 8192 then
+      throw <| IO.userError "original local source graph node budget exceeded"
+    for child in children do
+      if child.startsWith prefix && !(seen.contains child) then
+        pending := pending.push child
+    graph := graph.push <| Json.mkObj [
+      ("name", toJson symbol),
+      ("kind", toJson (kindOf info)),
+      ("body_scanned", toJson (kindOf info == "definition")),
+      ("expression_nodes", toJson nodes),
+      ("immediate_symbols", toJson children)
+    ]
+  return graph
 
 private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let some (.defnInfo info) := env.find? root
@@ -108,6 +153,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     | .ok result => pure result
     | .error reason => throw <| IO.userError s!"original command: {reason}"
   let commandKinds ← classifySymbols env commandSymbols
+  let localGraph ← localDeclarations env root
   return Json.mkObj [
     ("format", toJson "original-query-kernel-root-v1"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
@@ -122,6 +168,8 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("command_expression_nodes", toJson commandNodes),
     ("command_immediate_symbols", toJson commandSymbols),
     ("command_symbol_kinds", toJson commandKinds),
+    ("same_module_local_declarations", toJson localGraph),
+    ("external_module_edges_unresolved", toJson true),
     ("transitive_computational_closure", toJson false),
     ("rust_executable", toJson false),
     ("independent_lean_rust_parity", toJson false),

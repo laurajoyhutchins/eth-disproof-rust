@@ -91,6 +91,20 @@ impl Reader {
             }
         }
         Self::verify_direct_borrow_transfers(body, &borrowed, functions)?;
+        // Rust Rc handles may keep a projected allocation memory-safe after
+        // the Lean source has released its last protecting parent reference.
+        // Check source parent/child lifetimes independently of Rust Rc counts.
+        let mut lifetime_formals = Vec::new();
+        for param in &params {
+            let ty = Self::ty(Self::field(*param, 1)?)?;
+            if is_value_type(ty) {
+                lifetime_formals.push((
+                    Self::var(Self::field(*param, 0)?)?,
+                    Self::param_borrow(*param)?,
+                ));
+            }
+        }
+        Self::verify_projected_lifetimes(body, &lifetime_formals, functions)?;
 
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");

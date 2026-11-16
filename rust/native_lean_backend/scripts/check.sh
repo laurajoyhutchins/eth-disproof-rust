@@ -52,7 +52,13 @@ lean -o proofs/ReaderIRABIObservation.olean --load-dynlib="$NATIVE_LIB" proofs/R
 # Independently model the actual emitted *imperative* Rust statement grammar,
 # prove its value semantics for all inputs, compare full canonical text against
 # the actual Reader output, then execute those exact bytes under rustc.
-lean --load-dynlib="$NATIVE_LIB" proofs/ReaderRustStatement.lean | tee artifacts/reader-rust-statement-axioms.txt
+lean -o proofs/ReaderRustStatement.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderRustStatement.lean | tee artifacts/reader-rust-statement-axioms.txt
+# The actual MIR CFG has a separate register/edge semantics, including
+# comparison -> bool -> u8 materialization and 0/1 successor selection.
+lean -o proofs/ReaderMIRSoundness.olean proofs/ReaderMIRSoundness.lean | tee artifacts/reader-mir-soundness-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-mir-soundness-axioms.txt; then
+  echo 'MIR CFG theorem contains a sorry axiom' >&2; exit 2
+fi
 if grep -Fq 'sorryAx' artifacts/reader-rust-statement-axioms.txt; then
   echo 'Rust statement refinement contains sorryAx' >&2
   exit 2

@@ -277,6 +277,10 @@ run_cmd do
     let text ← liftIO <| IO.FS.readFile path
     let c ← liftCoreM <| ReaderMIRLive.certify root text
     let _ := ReaderMIRLive.actual_mir_cfg_refines c
+    liftIO <| IO.FS.writeFile s!"artifacts/reader-mir-cfg-{fixture}.txt"
+      ("source_program=\n" ++
+        (repr c.source.live.linked.source.program).pretty 100 ++
+        "\ninterpreted_mir_graph=\n" ++ (repr c.graph).pretty 100 ++ "\n")
     logInfo m!"Actual rustc MIR CFG admitted to all-input source theorem: {root}, blocks={c.graph.length}"
   -- The decoder, not just the earlier shell footprint check, must refuse a
   -- real arithmetic-operator substitution and reversed branch successors.

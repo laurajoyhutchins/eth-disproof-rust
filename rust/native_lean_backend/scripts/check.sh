@@ -122,6 +122,17 @@ if ! grep -Fq "'ReaderMIRLive.actual_mir_cfg_refines' depends on axioms:" \
     artifacts/reader-mir-live-axioms.txt; then
   echo 'Live MIR/original IR theorem axiom receipt missing' >&2; exit 2
 fi
+if ! grep -Fq "'ReaderMIR.run_sound' depends on axioms: [propext, Quot.sound]" \
+    artifacts/reader-mir-soundness-axioms.txt; then
+  echo 'MIR graph simulation has a new/unreviewed axiom' >&2; exit 2
+fi
+if ! grep -Fq "'ReaderMIRLive.actual_mir_cfg_refines' depends on axioms: [propext, Classical.choice, Quot.sound]" \
+    artifacts/reader-mir-live-axioms.txt; then
+  echo 'Actual MIR/source theorem has a new/unreviewed axiom' >&2; exit 2
+fi
+for name in plus straightChain choose nested; do
+  test -s "artifacts/reader-mir-cfg-${name}.txt"
+done
 # Accept the theorem only with the exact, expected Lean axiom boundary.
 for theorem in statement_sound certified_statement_refines original_ir_and_emitted_rust_agree; do
   if ! grep -Fq "'ReaderRustStatement.${theorem}' depends on axioms: [propext]" \

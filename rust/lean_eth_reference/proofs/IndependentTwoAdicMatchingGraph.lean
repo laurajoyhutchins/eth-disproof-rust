@@ -253,11 +253,47 @@ theorem matchingEndpointLabels_weighted_sum
         (∑ pairs : E → A × A, weight pairs) := by
         rw [Finset.mul_sum]
 
+/--
+Cross-multiplied equality of the **uniform** mean over all graph
+vertex labelings and the uniform mean over all matching edge-pair
+labels. It holds even at empty finite-alphabet boundary cases,
+without requiring division by a possibly zero cardinality.
+
+When the alphabet is nonempty, both denominators are positive,
+so this gives equality of the two rational expectations directly.
+-/
+theorem matchingEndpointLabels_uniform_mean_cross_mul
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (hl : Function.Injective left) (hr : Function.Injective right)
+    (reference : E → A × A)
+    (weight : (E → A × A) → ℚ) :
+    (∑ full : (L → A) × (R → A),
+      weight (matchingEndpointLabels left right full)) *
+        (Fintype.card (E → A × A) : ℚ) =
+    (∑ pairs : E → A × A, weight pairs) *
+        (Fintype.card ((L → A) × (R → A)) : ℚ) := by
+  classical
+  have htotal := matchingEndpointLabels_weighted_sum
+    left right hl hr reference weight
+  have hone := matchingEndpointLabels_weighted_sum
+    left right hl hr reference (fun _ => (1 : ℚ))
+  have hcard :
+      (Fintype.card ((L → A) × (R → A)) : ℚ) =
+        ((bipartiteMatchingFiber left right reference).card : ℚ) *
+          (Fintype.card (E → A × A) : ℚ) := by
+    simpa using hone
+  rw [htotal, hcard]
+  ring
+
 #print axioms TwoAdicMatchingGraph.restrictedLabels_at_endpoint
 #print axioms TwoAdicMatchingGraph.assignmentFiber_eq_piFinset
 #print axioms TwoAdicMatchingGraph.assignmentFiber_equidistributed
 #print axioms TwoAdicMatchingGraph.bipartiteMatchingFiber_equidistributed
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_preimage
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_weighted_sum
+#print axioms TwoAdicMatchingGraph.matchingEndpointLabels_uniform_mean_cross_mul
 
 end TwoAdicMatchingGraph

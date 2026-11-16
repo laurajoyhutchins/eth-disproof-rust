@@ -177,6 +177,9 @@ jobs:
             rust/native_lean_backend/artifacts/reader-rust-exec-*.actual
             rust/native_lean_backend/artifacts/reader-rust-exec-*.mir
             rust/native_lean_backend/artifacts/reader-rust-mir-footprint.log
+            rust/native_lean_backend/artifacts/reader-mir-soundness-axioms.txt
+            rust/native_lean_backend/artifacts/reader-mir-live-axioms.txt
+            rust/native_lean_backend/artifacts/reader-mir-cfg-*.txt
             rust/native_lean_backend/artifacts/ownership-object-trace/receipt.txt
             rust/native_lean_backend/artifacts/ownership-object-trace/c-*.txt
             rust/native_lean_backend/artifacts/ownership-object-trace/rust-*.txt

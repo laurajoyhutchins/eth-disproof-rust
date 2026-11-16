@@ -245,6 +245,55 @@ a theorem requires an independently specified semantics for the
 actual subset of MIR and a checked mapping of all control-flow edges
 and operations, rather than assuming the pretty-printer is normative.
 
+## Operational semantics of decoded rustc MIR control-flow graphs
+
+[ReaderMIRSoundness.lean](ReaderMIRSoundness.lean) models a second target
+language with actual MIR-shaped basic blocks, numbered successors, register
+assignments, typed comparison results and materialized 0/1 tags. Its concrete
+interpreter is defined independently of the existing source-Rust
+`ReaderRustStatement.Runs` model. The total, fuel-bounded symbolic interpreter
+rejects missing temporaries, malformed CFGs, cycles exceeding the bound,
+unexpected instructions and nontrapping invalid-tag edges.
+
+The Lean theorems `step_sound`, `ops_sound`, `run_sound`, and
+`certified_mir_refines` prove, for **every input to any accepted graph**, that
+symbolic and concrete MIR operations preserve the same result as the existing
+scalar `Program` model. The proof's axioms are exactly `propext` and
+`Quot.sound`, with no `sorryAx`.
+
+[ReaderMIRLive.lean](ReaderMIRLive.lean) reads **actual** unoptimized rustc
+1.99.1 `.function.mir` files from the same compiler invocations that produced
+the tested binaries. Its bounded, strict Lean-side parser recognizes every
+executable line of the admitted MIR graph, including explicit arithmetic,
+comparison, Bool conversion, copies, goto edges, `switchInt` 0/1/otherwise,
+returns, and the invalid-tag panic path. Unknown syntax refuses.
+
+A certificate is constructed only when the entire parsed MIR graph
+symbolically evaluates to **exactly** the independently certified original
+Lean IR `Program`. The theorem `actual_mir_cfg_refines` carries the
+literal MIR text-to-graph decoding equality and proves the decoded graph's
+concrete value agrees with the original Lean IR big-step execution for
+every pair of `UInt64` inputs. The four certified functions have 2, 4, 9,
+and 15 MIR blocks respectively. Both the live decoder and earlier shell
+fingerprint checker refuse arithmetic substitution and reversed Bool edges.
+The Lean decoder additionally refuses invalid-tag fallthrough and duplicate
+block identifiers. Axiom receipt: `propext`, `Classical.choice`,
+`Quot.sound`; no `sorryAx`.
+
+The CI artifact includes the actual MIR, its parsed symbolic CFG, the
+independent source program, complete theorem axiom audits, unchanged
+Reader-generated Rust, and original Lean runtime oracles. The optimized
+MIR remains retained and execution-tested but is **not** included in the
+formal MIR decoder's accepted fragment.
+
+**Unproved boundary:** the soundness theorem is for an independently
+specified, restricted MIR **operational model**. It does not mechanically
+prove that rustc's internal MIR matches its human-readable printer,
+that its optimizer implements the defined instruction semantics, or that
+LLVM/physical machine execution implements the MIR model. The matching
+real-rustc tests are separate finite evidence. General G1, physical C/Lean
+object ownership and reference counts, calls, joins, and ETH G2 remain open.
+
 ## Unproved obligations for a real G1 compiler theorem
 
 1. Prove that `Reader::decode` and `Reader::view` faithfully read and validate
@@ -253,10 +302,10 @@ and operations, rather than assuming the pretty-printer is normative.
    fragment and prove the independent IR reifier/typed target rendering
    relation compositionally. The general Reader `String` emitter is still
    unverified.
-3. Extend the now kernel-checked **restricted imperative Rust statement**
-   execution model beyond scalar/Bool IR, and establish an independently
-   checked `rustc` parsing-to-MIR or machine-code semantics correspondence.
-   Existing real-`rustc` oracle executions are tests, not that theorem.
+3. Extend the now kernel-checked **restricted MIR CFG** operational semantics
+   beyond scalar/Bool IR, and establish verified correspondence with rustc's
+   internal MIR, optimizer and compiled machine behavior. The actual printed
+   MIR parsing and real-rustc oracle executions do not prove that boundary.
 4. Generalize from a finite arithmetic/branch tree to lexical environments,
    joins, direct/indirect calls, recursion, allocation, closures, borrowing,
    mutations and physical reference counts. No general ownership theorem exists.

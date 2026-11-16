@@ -144,7 +144,7 @@ theorem original_anthropic_machine_counts_openai_with_rate
       (MainResults.timeMin C k φ.length n) :=
     hrun k n φ hk hK hm hn hoc
   dsimp [MainResults.CountsWithin] at hr
-  simpa only [numSat_eq_count] using hr
+  simpa only [Equiv.invFun_as_coe, numSat_eq_count] using hr
 
 #print axioms IndependentETH.satisfiable_iff
 #print axioms IndependentETH.numSat_eq_count

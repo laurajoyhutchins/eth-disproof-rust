@@ -35,6 +35,10 @@ if [[ ! -L "$vendor" ]]; then
   ln -s "$scratch/lungo-rs" "$vendor"
 fi
 test -d "$vendor/.git" || { echo "Missing pinned Lungo checkout" >&2; exit 2; }
+if [[ "$(grep -Fc "rev = \"$BOOTSTRAP_LUNGO_SHA\"" "$here/Cargo.toml")" != 2 ]]; then
+  echo "Cargo and Lake must pin the same Lungo source revision" >&2
+  exit 2
+fi
 if [[ "$(git -C "$vendor" rev-parse HEAD)" != "$BOOTSTRAP_LUNGO_SHA" ]] ||
    [[ -n "$(git -C "$vendor" status --porcelain --untracked-files=no)" ]]; then
   echo "Refusing wrong or modified lungo source checkout" >&2
@@ -45,6 +49,7 @@ fi
   cd "$here/lean"
   test "$(lean --version)" = "$BOOTSTRAP_LEAN_VERSION"
   lake build Bootstrap
+  test "$(lake env lean --version)" = "$BOOTSTRAP_LEAN_VERSION"
   lake env lean --run Oracle.lean > "$here/oracle.tsv"
 )
 if [[ "$(wc -l < "$here/oracle.tsv")" -ne 256 ]]; then

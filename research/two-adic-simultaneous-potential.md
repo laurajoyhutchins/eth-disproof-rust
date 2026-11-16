@@ -340,20 +340,98 @@ The independent Lean formalization now contains two separate verified layers:
 
 Both checks passed at exact heads using pinned Lean 4.34.1 and Mathlib, with only standard Lean axioms and no proof placeholders. See [#306 verification](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43771961460) and [#309 verification](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43774480582).
 
-**These are not yet a kernel proof of the complete combined theorem.** A matching's edge-local label space must be shown equivalent to the restriction of the original graph's vertex-label space using its actual pairwise endpoint-disjointness. The **partial-assignment** matching and port moments must then be proved and assembled into one normalized potential at every greedy choice. The rational moment proof itself supplies neither the analytic exponential tail estimates nor the source-specific \(2^{a-e}\) orbit fiber-size/copy-slot identities. The altered \(W(T)\) for nonzero \(T\), interpolation, weighted modes, precision, and recursive contraction also remain unverified.
+**Those first two layers were not a kernel proof of the complete combined theorem.** The subsequent graph-vertex conditioning and matching independence lemmas are described below. The full combined normalized conditional potential, analytic exponential estimates, individual orbit fiber-size/copy-slot identities, and nonzero Cauchy/weighted-mode/precision/recursion correspondence remain unverified.
+
+## Exact graph-vertex conditioning and matching uniformity (15 November 2026)
+
+[Merged PR #314](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/314)
+adds **12 Lean-kernel-checked lemmas** in two new source-shaped
+modules, without introducing assumptions about the independence of
+edges that share vertices.
+
+**Partial graph-vertex port moments.**
+[`IndependentTwoAdicConditionalMoments.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/lean_eth_reference/proofs/IndependentTwoAdicConditionalMoments.lean)
+represents a partial assignment by `fixed : V → Option A`.
+Each fixed vertex has one legal symbol, while each uncommitted
+vertex has the entire finite alphabet. If `C_s` is the sum of
+the **full degrees** of vertices assigned symbol `s`, then
+
+\[
+\sum_{\ell\text{ compatible with fixed}} z^{C_s(\ell)}
+ =\prod_{v} \begin{cases}
+ z^{d_v} & \text{fixed to }s,\\
+ 1 & \text{fixed to another symbol},\\
+ r-1+z^{d_v} & \text{uncommitted}.
+ \end{cases}
+\]
+
+This proves the conditional exponential **numerator** exactly,
+including arbitrary parallel edges and fixed/free vertices. The
+finite cardinality of compatible completions is also proved.
+An edge-local partial pair-label factorization is separate and
+does not by itself imply a source graph conditional matching identity.
+
+**Real matching-endpoint distribution.**
+[`IndependentTwoAdicMatchingGraph.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/lean_eth_reference/proofs/IndependentTwoAdicMatchingGraph.lean)
+works with finite left and right graph vertices, an index type
+`E` of selected matching edges, and injective endpoint maps
+`left : E → L` and `right : E → R`.
+The injections are necessary: distinct matching edges cannot
+share an endpoint on the same shore. Other graph edges may
+remain incident to the selected vertices, as they do not
+alter the **vertex-label sample space**.
+
+For any prescribed ordered edge-pair labeling `x : E → A×A`,
+the compatible full graph-label fiber equals the product of
+its left- and right-shore completion fibers. Lean proves
+their common cardinality `c_E` is independent of `x`.
+The stronger, fully weighted result holds for every
+`w : (E → A×A) → ℚ`:
+
+\[
+\boxed{
+\sum_{\ell\text{ on all graph vertices}}w(\ell|_E)
+ =c_E\sum_{x\text{ on matching edges}}w(x).
+}
+\]
+
+A separate cross-multiplied theorem equates the two **uniform
+means**, avoiding division by zero at empty-alphabet
+boundary cases. For a nonempty alphabet it yields ordinary
+equality of normalized expectations. Thus the earlier exact
+edge-local `2^X_gamma` matching moment genuinely transfers
+to an actual bipartite graph with a matching, with **no
+independence assumption on other graph edges**.
+
+[Exact-head Lean 4.34.1 / pinned Mathlib workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43793929792)
+and [Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43793929733)
+passed. All 12 `#print axioms` receipts reported only
+`propext`, `Classical.choice`, and `Quot.sound`.
+None depended on an unproved placeholder.
+
+**Remaining source boundary:** after an *arbitrary partial
+assignment of full graph vertices*, prove the complete
+**matching** conditional moment over the compatible
+edge-pair label choices and assemble the normalized matching
+and port terms into the same pointwise greedy potential.
+The global uniform matching moment has now been proved;
+the source's sequential partially fixed joint potential is
+**not** yet kernel-checked.
 
 ## Next acceptance frontier
 
 This is a **worst-case simultaneous sufficient theorem**, but
 it is not an all-depth or practical one. Further work must:
 
-1. **Finish** the combined theorem in Lean: transport the verified
-   edge-local matching moments to disjoint source endpoints, prove
-   partial-assignment conditional averages for both potentials,
-   establish the analytic exponential upper bounds, and derive
-   individual orbit multiplicities and copy-slot counts. The finite
-   independent-moment and abstract-budget lemmas are already checked,
-   but they do not discharge these remaining connections.
+1. **Finish** the combined theorem in Lean: the unconditional
+   source graph matching distribution and arbitrary partial vertex
+   **port** moments are now kernel-checked. Prove the remaining
+   matching conditional moment for *partially fixed graph vertices*,
+   combine both normalized potential terms into an exact
+   per-vertex greedy conditional expectation, establish the analytic
+   exponential upper bounds, and derive individual orbit multiplicities
+   and copy-slot counts. Do not confuse finite algebraic identities
+   with the entire source contraction theorem.
 2. Extend exact *constructive* realization beyond the small
    `u128` reference using a reused arbitrary-precision Rust
    package, with a measured total labeling bit-cost receipt.

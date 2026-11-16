@@ -24,7 +24,10 @@ fn upstream_compiler_irtype_predicates_match_lean_for_all_tags() {
         let fields: Vec<_> = line.split('\t').collect();
         assert_eq!(fields.len(), 7, "malformed oracle row: {line}");
         let tag: u8 = fields[0].parse().expect("oracle tag must be UInt8");
-        assert!(!seen[usize::from(tag)], "duplicate original Lean oracle tag {tag}");
+        assert!(
+            !seen[usize::from(tag)],
+            "duplicate original Lean oracle tag {tag}"
+        );
         seen[usize::from(tag)] = true;
         let actual = [
             probe_scalar(tag),

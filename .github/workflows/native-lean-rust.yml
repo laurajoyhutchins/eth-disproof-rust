@@ -175,6 +175,7 @@ jobs:
             rust/native_lean_backend/artifacts/reader-rust-exec-*.rs
             rust/native_lean_backend/artifacts/reader-rust-exec-*.expected
             rust/native_lean_backend/artifacts/reader-rust-exec-*.actual
+            rust/native_lean_backend/artifacts/reader-rust-exec-*.mir
             rust/native_lean_backend/artifacts/ownership-object-trace/receipt.txt
             rust/native_lean_backend/artifacts/ownership-object-trace/c-*.txt
             rust/native_lean_backend/artifacts/ownership-object-trace/rust-*.txt

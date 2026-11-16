@@ -64,8 +64,12 @@ for name in plus straightChain choose nested; do
   test -s "$expected"
   for opt in 0 3; do
     binary="artifacts/reader-rust-exec-${name}-opt${opt}"
+    # One rustc invocation links the executable AND exposes the corresponding
+    # human-readable MIR. Do not compare a MIR file from an unrelated build.
+    mir="artifacts/reader-rust-exec-${name}-opt${opt}.mir"
     rustc --edition=2024 -C "opt-level=${opt}" -C overflow-checks=on \
-      -o "$binary" "$src"
+      --emit="link,mir=${mir}" -o "$binary" "$src"
+    bash scripts/check-reader-mir.sh "$src" "$mir" "$name" "$opt"
     env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH "$binary" \
       < artifacts/reader-rust-execution-inputs.txt \
       > "artifacts/reader-rust-exec-${name}-opt${opt}.actual"
@@ -103,6 +107,7 @@ done
   sha256sum artifacts/reader-rust-exec-{plus,straightChain,choose,nested}.rs
   sha256sum artifacts/reader-rust-execution-inputs.txt
   sha256sum artifacts/reader-rust-exec-{plus,straightChain,choose,nested}.expected
+  sha256sum artifacts/reader-rust-exec-*.mir
 } > artifacts/reader-rust-execution-receipt.txt
 cat artifacts/reader-rust-execution-receipt.txt
 if grep -Fq 'sorryAx' artifacts/reader-ir-abi-observation.txt; then

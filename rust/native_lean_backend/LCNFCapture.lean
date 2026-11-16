@@ -19,7 +19,7 @@ private def observePass : Pass where
   name := `nativeRustObserveImpure
   phase := .impure
   run decls := do
-    liftIO <| observedNames.modify fun names =>
+    liftM <| observedNames.modify fun names =>
       names ++ decls.map (·.name)
     return decls
 
@@ -32,7 +32,7 @@ private def observePass : Pass where
 def report (root : Name) : CoreM Json := do
   if (← Lean.IR.findDecl root).isNone then
     Lean.Compiler.compile #[root]
-  let observed ← liftIO observedNames.get
+  let observed ← liftM observedNames.get
   unless observed.contains root do
     throwError "LCNF observation missing for {root}; it was not compiled with the observer"
   let some decl ← getLocalImpureDecl? root

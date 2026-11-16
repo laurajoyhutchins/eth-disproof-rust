@@ -167,6 +167,9 @@ does a `rustc` execution theorem.
 
 ## Imperative emitted Rust: semantics and actual rustc execution
 
+The separate final-impure-LCNF capture check runs before this proof and remains
+read-only; neither witness is allowed to change canonical Reader emission.
+
 [ReaderRustStatement.lean](ReaderRustStatement.lean) adds a target operational
 model of the **imperative statements Reader emits**, not another evaluation
 of the prior expression tree. It distinguishes typed `u64` and `u8`

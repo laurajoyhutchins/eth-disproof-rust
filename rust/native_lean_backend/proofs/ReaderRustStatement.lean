@@ -568,10 +568,42 @@ theorem certified_statement_refines (c : Certificate) (a b : UInt64) :
     rw [lowerProgram_correct] at h
     exact h
 
+/-- Final composite theorem for the certified fragment: the original Lean
+IR big-step execution and the emitted imperative Rust statement execution
+return the same value on *every* pair of UInt64 inputs, with both exact
+Reader-text and borrowed-ABI observation equalities in the premises/result.
+It does not prove that the independently invoked rustc implementation
+implements the mathematical Rust-statement semantics. -/
+theorem original_ir_and_emitted_rust_agree (c : Certificate) (a b : UInt64) :
+    c.text = c.live.linked.emission.emitted ∧
+    c.live.observed = c.live.expected ∧
+    ∃ sourceValue : UInt64,
+      ReaderIRBoolSoundness.BodyRuns c.live.linked.source.body
+        (initialRuntime c.live.linked.source.left
+          c.live.linked.source.right a b)
+        ReaderIRBoolSoundness.initialSourceTests sourceValue ∧
+      Runs c.statement
+        (initialWords c.live.linked.source.left
+          c.live.linked.source.right a b) initialTests sourceValue.toNat := by
+  obtain ⟨htext, habi, result, hruns, hresult⟩ :=
+    certified_statement_refines c a b
+  let sourceValue := evalActualProgram (inputWords a b)
+    c.live.linked.source.program
+  refine ⟨htext, habi, sourceValue, ?_, ?_⟩
+  · exact ReaderIRBoolSoundness.body_sound
+      c.live.linked.source.sourceProof (inputWords a b)
+      (initialRuntime c.live.linked.source.left
+        c.live.linked.source.right a b)
+      ReaderIRBoolSoundness.initialSourceTests
+      (ReaderIRBoolSoundness.initial_agrees
+        c.live.linked.source.left c.live.linked.source.right a b)
+  · exact hresult ▸ hruns
+
 end ReaderRustStatement
 
 #print axioms ReaderRustStatement.statement_sound
 #print axioms ReaderRustStatement.certified_statement_refines
+#print axioms ReaderRustStatement.original_ir_and_emitted_rust_agree
 
 open Lean Elab Command
 
@@ -624,7 +656,7 @@ run_cmd do
   for root in #[`ScalarFixture.plus, `ScalarFixture.straightChain,
                 `ScalarFixture.choose, `ScalarFixture.nested] do
     let c ← liftCoreM <| ReaderRustStatement.certify root
-    let _ := ReaderRustStatement.certified_statement_refines c
+    let _ := ReaderRustStatement.original_ir_and_emitted_rust_agree c
     let name := root.toString.replace "ScalarFixture." ""
     liftIO <| IO.FS.writeFile s!"artifacts/reader-rust-exec-{name}.rs"
       (c.live.linked.emission.emitted ++ rustDriver)

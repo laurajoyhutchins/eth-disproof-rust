@@ -111,6 +111,17 @@ for name in plus straightChain choose nested; do
     echo "rustc_execution=${name}:opt${opt}:612_original_Lean_oracles:PASS"
   done
 done
+# Decode each *real* opt0 rustc MIR CFG in Lean and kernel-check its
+# all-input correspondence with the previously certified original source IR.
+# Unknown operations, successors and loops fail closed.
+lean --load-dynlib="$NATIVE_LIB" proofs/ReaderMIRLive.lean | tee artifacts/reader-mir-live-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-mir-live-axioms.txt; then
+  echo 'Live MIR/original IR theorem contains sorryAx' >&2; exit 2
+fi
+if ! grep -Fq "'ReaderMIRLive.actual_mir_cfg_refines' depends on axioms:" \
+    artifacts/reader-mir-live-axioms.txt; then
+  echo 'Live MIR/original IR theorem axiom receipt missing' >&2; exit 2
+fi
 # Accept the theorem only with the exact, expected Lean axiom boundary.
 for theorem in statement_sound certified_statement_refines original_ir_and_emitted_rust_agree; do
   if ! grep -Fq "'ReaderRustStatement.${theorem}' depends on axioms: [propext]" \

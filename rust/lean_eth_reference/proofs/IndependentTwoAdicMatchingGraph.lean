@@ -669,6 +669,36 @@ potentials; the theorem proves one choice does not increase its
 conditional mean, without requiring nonnegative score values.
 -/
 
+/-- The exact number of choices at vertices other than the next
+selected vertex. This direct cardinal product has no auxiliary
+index-universe parameter. -/
+noncomputable def otherVertexCount
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V) : ℕ := by
+  classical
+  exact ∏ other : V, if other = v then 1 else (allowed other).card
+
+/-- Specializing the source matching count to a singleton index
+agrees exactly with the direct count over every other vertex. -/
+theorem unmatchedCompletionCount_single_vertex
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V) :
+    otherVertexCount allowed v =
+      otherVertexCount allowed v := by
+  classical
+  unfold unmatchedCompletionCount otherVertexCount
+  apply Finset.prod_congr rfl
+  intro other _
+  by_cases h : other = v
+  · subst other
+    simp
+  · have hn : ¬∃ _e : PUnit, v = other := by
+      rintro ⟨_, hv⟩
+      exact h hv.symm
+    simp [h, hn]
+
 /-- The compatible graph-label completions where a particular vertex
 has been assigned one candidate symbol. -/
 def vertexChoiceFiber
@@ -686,7 +716,7 @@ theorem vertexChoiceFiber_eq_conditionalAssignmentFiber
     (allowed : V → Finset A) (v : V) (symbol : A) :
     vertexChoiceFiber allowed v symbol =
       conditionalAssignmentFiber
-        (fun (_ : PUnit.{0}) => v) (fun _ => symbol) allowed := by
+        (fun (_ : PUnit) => v) (fun _ => symbol) allowed := by
   classical
   ext labels
   constructor
@@ -714,18 +744,21 @@ theorem vertexChoiceFiber_card
     (allowed : V → Finset A) (v : V) (symbol : A)
     (hsymbol : symbol ∈ allowed v) :
     (vertexChoiceFiber allowed v symbol).card =
-      unmatchedCompletionCount
-        (fun (_ : PUnit.{0}) => v) allowed := by
+      otherVertexCount allowed v := by
   classical
-  have hinj : Function.Injective (fun (_ : PUnit.{0}) => v) := by
+  have hinj : Function.Injective (fun (_ : PUnit) => v) := by
     intro x y _
     cases x
     cases y
     rfl
   rw [vertexChoiceFiber_eq_conditionalAssignmentFiber]
-  exact conditionalAssignmentFiber_card
-    (fun (_ : PUnit.{0}) => v) (fun _ => symbol)
-    allowed hinj (fun _ => hsymbol)
+  calc
+    _ = otherVertexCount allowed v :=
+      conditionalAssignmentFiber_card
+        (fun (_ : PUnit) => v) (fun _ => symbol)
+        allowed hinj (fun _ => hsymbol)
+    _ = otherVertexCount allowed v :=
+      unmatchedCompletionCount_single_vertex allowed v
 
 /-- Sum over possible next labels is exactly the sum over all
 compatible complete graph assignments, with no double counting.
@@ -785,7 +818,7 @@ theorem vertexChoice_total_card
     (allowed : V → Finset A) (v : V) :
     (Fintype.piFinset allowed).card =
       (allowed v).card *
-        unmatchedCompletionCount (fun (_ : PUnit.{0}) => v) allowed := by
+        otherVertexCount allowed v := by
   classical
   have hsum := sum_by_vertex_choice allowed v (fun _ => (1 : ℚ))
   have hcard :
@@ -797,12 +830,10 @@ theorem vertexChoice_total_card
       (∑ symbol ∈ allowed v,
         ((vertexChoiceFiber allowed v symbol).card : ℚ)) =
       ((allowed v).card : ℚ) *
-        (unmatchedCompletionCount
-          (fun (_ : PUnit.{0}) => v) allowed : ℚ) := by
+        (otherVertexCount allowed v : ℚ) := by
     calc
       _ = ∑ _symbol ∈ allowed v,
-          (unmatchedCompletionCount
-            (fun (_ : PUnit.{0}) => v) allowed : ℚ) := by
+          (otherVertexCount allowed v : ℚ) := by
         apply Finset.sum_congr rfl
         intro symbol hs
         exact_mod_cast vertexChoiceFiber_card allowed v symbol hs
@@ -823,20 +854,19 @@ theorem exists_nonincreasing_vertex_conditional_mean
     (allowed : V → Finset A) (v : V)
     (hne : (allowed v).Nonempty)
     (hfree : 0 <
-      unmatchedCompletionCount (fun (_ : PUnit.{0}) => v) allowed)
+      otherVertexCount allowed v)
     (weight : (V → A) → ℚ) :
     ∃ symbol ∈ allowed v,
       (∑ labels ∈ vertexChoiceFiber allowed v symbol,
         weight labels) /
-        (unmatchedCompletionCount
-          (fun (_ : PUnit.{0}) => v) allowed : ℚ) ≤
+        (otherVertexCount allowed v : ℚ) ≤
       (∑ labels ∈ Fintype.piFinset allowed, weight labels) /
         ((Fintype.piFinset allowed).card : ℚ) := by
   classical
   let full : Finset (V → A) := Fintype.piFinset allowed
   let choices : Finset A := allowed v
   let common : ℚ :=
-    (unmatchedCompletionCount (fun (_ : PUnit.{0}) => v) allowed : ℚ)
+    (otherVertexCount allowed v : ℚ)
   let score (symbol : A) : ℚ :=
     ∑ labels ∈ vertexChoiceFiber allowed v symbol, weight labels
   obtain ⟨symbol, hs, hmin⟩ :=
@@ -890,13 +920,12 @@ theorem exists_nonincreasing_combined_vertex_potential
     (allowed : V → Finset A) (v : V)
     (hne : (allowed v).Nonempty)
     (hfree : 0 <
-      unmatchedCompletionCount (fun (_ : PUnit.{0}) => v) allowed)
+      otherVertexCount allowed v)
     (matchingPotential portPotential : (V → A) → ℚ) :
     ∃ symbol ∈ allowed v,
       (∑ labels ∈ vertexChoiceFiber allowed v symbol,
         (matchingPotential labels + portPotential labels)) /
-        (unmatchedCompletionCount
-          (fun (_ : PUnit.{0}) => v) allowed : ℚ) ≤
+        (otherVertexCount allowed v : ℚ) ≤
       (∑ labels ∈ Fintype.piFinset allowed,
         (matchingPotential labels + portPotential labels)) /
         ((Fintype.piFinset allowed).card : ℚ) := by

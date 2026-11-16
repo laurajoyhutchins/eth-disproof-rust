@@ -349,9 +349,9 @@ private def scan (fuel : Nat) (sw : SymbolicEnv) (st : SymTests)
             match reifyAlts alts with
             | some {falseBody := fb, trueBody := tb, armsProof := harm} =>
               match scan fuel sw st tb with
-              | some {program := tp, armsProof := htp} =>
+              | some {program := tp, bodyProof := htp} =>
                 match scan fuel sw st fb with
-                | some {program := fp, armsProof := hfp} =>
+                | some {program := fp, bodyProof := hfp} =>
                   some {program := .branch cond tp fp,
                     bodyProof := .branch sw st tid scr ty alts fb tb cond tp fp
                       htid hty harm hs htp hfp}

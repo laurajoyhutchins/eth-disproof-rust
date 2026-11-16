@@ -8,6 +8,7 @@ The only codegen engine is the Rust original-source-codegen binary.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -47,6 +48,37 @@ MAX_EXPORT_RSS_BYTES = 14 * 1024 * 1024 * 1024
 
 class ResourceLimitError(RuntimeError):
     """A supervised process exceeded its finite execution resource budget."""
+
+
+class OverallBudgetError(TimeoutError):
+    """The source integration exceeded its bounded, process-wide wall time."""
+
+
+@contextmanager
+def overall_wall_budget(seconds: float):
+    """Bound all AOT phases, including pure-Python parsing and final publication.
+
+    Per-child supervision cannot bound work between subprocesses. POSIX SIGALRM
+    also interrupts a blocking wait; run_bounded catches TimeoutError and reaps
+    its own process group before this refusal propagates. Never install over a
+    pre-existing alarm owned by a caller.
+    """
+    if not hasattr(signal, "setitimer"):
+        raise RuntimeError("overall source-export guard requires POSIX interval timers")
+    if signal.getitimer(signal.ITIMER_REAL)[0] != 0:
+        raise RuntimeError("refuse to overwrite an existing process alarm")
+    previous = signal.getsignal(signal.SIGALRM)
+
+    def expired(_signum, _frame):
+        raise OverallBudgetError(f"overall AOT wall budget exceeded {seconds}s")
+
+    signal.signal(signal.SIGALRM, expired)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, seconds)
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 class OutputLimitError(ResourceLimitError):
@@ -502,10 +534,13 @@ def main():
     parser.add_argument("--build-timeout", type=int, default=3600)
     parser.add_argument("--import-receipt", type=Path,
                         help="Require an independently verified full QueryStream Lean stage receipt; never blindly skip Lake")
+    parser.add_argument("--overall-timeout", type=int, default=900,
+                        help="Finite global wall-clock budget across all AOT phases")
     parser.add_argument("--max-jobs", type=int, default=4)
     parser.add_argument("--max-source-labels", type=int, default=1_000_000_000)
     args = parser.parse_args()
     if not (60 <= args.timeout <= 3600 and 60 <= args.build_timeout <= 7200
+            and 60 <= args.overall_timeout <= 3600
             and 1 <= args.max_jobs <= 8 and 1 <= args.max_source_labels <= 1_000_000_000):
         parser.error("invalid bounded Lean build/export parameters")
     args.lake_root = args.lake_root.resolve()
@@ -514,7 +549,16 @@ def main():
     args.output_dir = args.output_dir.resolve()
     if args.import_receipt is not None:
         args.import_receipt = args.import_receipt.resolve()
-    compile_query(args)
+    try:
+        with overall_wall_budget(args.overall_timeout):
+            compile_query(args)
+    except OverallBudgetError as error:
+        # This also handles a deadline reached in Python-only validation/codegen,
+        # beyond the scope of any individual supervised subprocess.
+        record_query_refusal(
+            args.output_dir, "original-query-overall-wall-limit", str(error),
+            source_export_phase(args.output_dir / "original-command.stderr.log"))
+        raise
 
 
 if __name__ == "__main__":

@@ -104,6 +104,17 @@ jobs:
             lake env lean --version | grep -F 'Lean (version 4.34.1,'
           )
 
+      # Compile the probe without executing its dynamic QueryStream import.
+      # Catch Lean syntax/type errors before restoring or rebuilding large OAI caches.
+      - name: Typecheck kernel-only traversal with pinned Lean
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd "$LEAN_ROOT"
+            lake env lean -j 1 "$GITHUB_WORKSPACE/rust/lean_eth_reference/tools/query_source_kernel.lean"
+          )
+
       - name: Restore last available pinned original OAI modules
         id: restore-oai
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4

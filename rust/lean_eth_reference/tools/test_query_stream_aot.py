@@ -13,7 +13,9 @@ from query_stream_aot import (validate_query, run_bounded, verify_query_import_r
                               record_query_refusal, reset_query_outputs, source_export_phase,
                               overall_wall_budget, OverallBudgetError, record_overall_budget_refusal,
                               ResourceLimitError, OutputLimitError, MAX_PROCESS_OUTPUT_BYTES,
-                              MODULE, SOURCE_COMMIT, DECLARATION, IDENTIFIER)
+                              MODULE, SOURCE_COMMIT, DECLARATION, IDENTIFIER,
+                              original_graph_export_argv, LEAN_EXPORT_MEMORY_MB,
+                              LEAN_EXPORT_THREADS, MAX_EXPORT_RSS_BYTES)
 
 BLOB = "f" * 40
 
@@ -226,6 +228,17 @@ class QueryAotContract(unittest.TestCase):
                                 log_base=root / "global")
             self.assertLess(time.monotonic() - start, 3)
             self.assertTrue((root / "global.stderr.log").is_file())
+
+    def test_exporter_has_two_independent_memory_guards(self):
+        source = Path("/tmp/OriginalQuery.lean")
+        argv = original_graph_export_argv(source)
+        self.assertEqual(argv[:3], ["lake", "env", "lean"])
+        self.assertEqual(argv[-1], str(source))
+        self.assertEqual(int(argv[argv.index("-j") + 1]), LEAN_EXPORT_THREADS)
+        self.assertEqual(int(argv[argv.index("-M") + 1]), LEAN_EXPORT_MEMORY_MB)
+        self.assertEqual(LEAN_EXPORT_THREADS, 1)
+        self.assertLess(LEAN_EXPORT_MEMORY_MB * 1024 * 1024, MAX_EXPORT_RSS_BYTES)
+        self.assertLessEqual(MAX_EXPORT_RSS_BYTES, 12 * 1024 ** 3)
 
     def test_overall_budget_refusal_withdraws_published_binary_and_receipt(self):
         with tempfile.TemporaryDirectory(prefix="query-aot-global-refusal-") as path:

@@ -235,6 +235,15 @@ def record_query_refusal(out: Path, stage: str, details: str,
     atomic_write(out / "report.json", json.dumps(report, sort_keys=True, indent=2) + "\n")
 
 
+def record_overall_budget_refusal(out: Path, error: OverallBudgetError) -> None:
+    """A timed-out executable cannot remain published without verified completion."""
+    for name in ("query-stream", "query-stream.receipt.json", ".query-stream-partial"):
+        (out / name).unlink(missing_ok=True)
+    record_query_refusal(
+        out, "original-query-overall-wall-limit", str(error),
+        source_export_phase(out / "original-command.stderr.log"))
+
+
 def verify_query_import_receipt(receipt: Path, lake_root: Path, blob: str,
                                 pin: dict[str, str]) -> None:
     """Verify a fresh pinned original .olean before skipping a redundant build.
@@ -554,10 +563,9 @@ def main():
             compile_query(args)
     except OverallBudgetError as error:
         # This also handles a deadline reached in Python-only validation/codegen,
-        # beyond the scope of any individual supervised subprocess.
-        record_query_refusal(
-            args.output_dir, "original-query-overall-wall-limit", str(error),
-            source_export_phase(args.output_dir / "original-command.stderr.log"))
+        # beyond the scope of any individual supervised subprocess. Withdraw
+        # published outputs before recording the refusal.
+        record_overall_budget_refusal(args.output_dir, error)
         raise
 
 

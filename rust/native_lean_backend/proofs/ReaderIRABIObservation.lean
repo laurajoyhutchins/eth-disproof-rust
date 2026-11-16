@@ -136,14 +136,10 @@ open Lean Elab Command
 run_cmd do
   for root in #[`ScalarFixture.plus, `ScalarFixture.straightChain,
                 `ScalarFixture.choose, `ScalarFixture.nested] do
-    let source ← liftCoreM <| ReaderIRBoolSoundness.certifyDecl <$> do
-      let some decl ← IR.findDecl root
-        | throwError "original compiler IR missing for ABI observation: {root}"
-      return decl
-    unless source.isSome do
-      throwError "ABI test fixture lacks source-IR semantic certificate: {root}"
     let some decl ← liftCoreM <| IR.findDecl root
       | throwError "original compiler IR unavailable: {root}"
+    unless (ReaderIRBoolSoundness.certifyDecl decl).isSome do
+      throwError "ABI test fixture lacks source-IR semantic certificate: {root}"
     let some expected := ReaderIRABIObservation.observeDecl decl
       | throwError "independent Lean IR observer refused {root}"
     let observed ← liftCoreM <| NativeRust.observeScalarABI root

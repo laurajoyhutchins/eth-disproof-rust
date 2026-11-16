@@ -190,16 +190,65 @@ jobs:
             exit 1
           fi
 
-      # Diagnose source normalization in a three-minute bounded attempt.
-      # Completed original module import is cached and never substituted.
-      # Promote the limit only after named, reproducible graph progress exists.
-      - name: Attempt original QueryStream source graph and native Rust AOT
-        if: env.IMPORT_STAGE == 'query'
+      # The bounded kernel-only graph is an independent prerequisite for AOT.
+      # Its source/provenance receipt is retained even if AOT is unsupported.
+      - name: Inventory original QueryStream same-module graph without Meta
+        id: kernel-root
+        if: always() && env.IMPORT_STAGE == 'query'
         shell: bash
         run: |
           set -euo pipefail
-          # Only the verified *query* stage can reach this step. A successful
-          # signature stage or restored cache is never sufficient.
+          mkdir -p "$RUNNER_TEMP/original-query-kernel"
+          shopt -s nullglob
+          receipts=("$RUNNER_TEMP"/original-query-stage/round-*/stage.receipt.json)
+          if (( ${#receipts[@]} != 1 )); then
+            printf '%s\n' '{"status":"REFUSED","stage":"pinned-import","reason":"kernel-only probe requires exactly one verified original QueryStream import receipt"}' \
+              > "$RUNNER_TEMP/original-query-kernel/query-kernel-root.report.json"
+            echo "Kernel root inventory requires exactly one verified original QueryStream import" >&2
+            exit 1
+          fi
+          python3 rust/lean_eth_reference/tools/query_kernel_probe.py \
+            --upstream "$ORIGINAL_SOURCE" \
+            --lake-root "$LEAN_ROOT" \
+            --import-receipt "${receipts[0]}" \
+            --output-dir "$RUNNER_TEMP/original-query-kernel" \
+            --timeout 120
+          python3 - "$RUNNER_TEMP/original-query-kernel/query-kernel-root.report.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          if (report["status"] != "SOURCE_ROOT_INVENTORIED_UNVERIFIED" or
+                  not report["same_module_local_declarations"] or
+                  report["external_module_edges_unresolved"] is not True or
+                  any(report[name] is not False for name in (
+                      "transitive_computational_closure", "rust_executable",
+                      "independent_lean_rust_parity", "counting_parity",
+                      "resource_correspondence", "receipt_is_kernel_certificate"))):
+              raise SystemExit("kernel-only graph receipt does not preserve acceptance boundaries")
+          print("ORIGINAL_QUERY_KERNEL_GRAPH_OBSERVED "
+                f"local_declarations={len(report['same_module_local_declarations'])} "
+                "transitive_closure=false rust_executable=false")
+          PY
+          echo 'Original QueryStream same-module kernel graph observed; external computational closure and executable parity remain unverified.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain original kernel-only graph or typed refusal independently
+        if: always() && env.IMPORT_STAGE == 'query'
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-query-kernel-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/original-query-kernel/
+          retention-days: 14
+          if-no-files-found: error
+
+      # The Meta-heavy AOT is a deliberate manual diagnostic, never a repeated
+      # branch-push prerequisite for kernel-only source discovery.
+      # This still does not establish Lean/Rust physical or counting parity.
+      - name: Attempt original QueryStream source graph and native Rust AOT
+        if: env.IMPORT_STAGE == 'query' && github.event_name == 'workflow_dispatch' && steps.kernel-root.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
           shopt -s nullglob
           receipts=("$RUNNER_TEMP"/original-query-stage/round-*/stage.receipt.json)
           if (( ${#receipts[@]} != 1 )); then
@@ -218,28 +267,6 @@ jobs:
             --max-jobs 4 \
             --max-source-labels 1000000000
           echo 'Original source AOT generated: still requires independent Lean/Rust physical parity.' >> "$GITHUB_STEP_SUMMARY"
-
-      # A distinct kernel-environment-only observation: this does not
-      # turn a source-graph/AOT refusal into a successful compiler result.
-      # The original stage receipt and .olean digest are checked again.
-      - name: Inventory actual QueryStream root without Meta elaboration
-        if: always() && env.IMPORT_STAGE == 'query'
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          receipts=("$RUNNER_TEMP"/original-query-stage/round-*/stage.receipt.json)
-          if (( ${#receipts[@]} != 1 )); then
-            echo "Kernel root inventory requires exactly one completed original import" >&2
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/original-query-aot"
-          python3 rust/lean_eth_reference/tools/query_kernel_probe.py \
-            --upstream "$ORIGINAL_SOURCE" \
-            --lake-root "$LEAN_ROOT" \
-            --import-receipt "${receipts[0]}" \
-            --output-dir "$RUNNER_TEMP/original-query-aot" \
-            --timeout 120
 
       - name: Preserve source graph, Rust and typed AOT refusals
         if: always() && env.IMPORT_STAGE == 'query'

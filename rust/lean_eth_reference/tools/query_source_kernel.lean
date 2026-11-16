@@ -63,6 +63,26 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let (symbols, nodes) ← match immediateSymbols info.value 512 with
     | .ok result => pure result
     | .error reason => throw <| IO.userError reason
+  -- Classify immediate constants by the original kernel environment, not
+  -- their names. A theorem is noted as a proof declaration; its erasure
+  -- status in the transitive computational closure remains unproved.
+  let mut kinds : Array Json := #[]
+  for symbol in symbols do
+    let name := qualified symbol
+    let some info := env.find? name
+      | throw <| IO.userError s!"original kernel symbol is missing: {symbol}"
+    let kind := match info with
+      | .defnInfo _ => "definition"
+      | .thmInfo _ => "theorem"
+      | .axiomInfo _ => "axiom"
+      | .opaqueInfo _ => "opaque"
+      | .inductInfo _ => "inductive"
+      | .ctorInfo _ => "constructor"
+      | .recInfo _ => "recursor"
+      | .quotInfo _ => "quotient"
+    kinds := kinds.push <| Json.mkObj [
+      ("name", toJson symbol), ("kind", toJson kind)
+    ]
   let compiledName := compiled.toString
   unless symbols.contains compiledName do
     throw <| IO.userError "source root does not reference the pinned compiler declaration"
@@ -75,6 +95,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("compiler", toJson compiledName),
     ("source_kind", toJson "definition"),
     ("immediate_symbols", toJson symbols),
+    ("immediate_symbol_kinds", toJson kinds),
     ("expression_nodes", toJson nodes),
     ("root_app_arity", toJson info.value.getAppArgs.size),
     ("transitive_computational_closure", toJson false),

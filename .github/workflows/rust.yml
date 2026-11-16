@@ -38,5 +38,6 @@ jobs:
         run: |
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_stream_aot.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_kernel_probe.py' -v
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

@@ -97,6 +97,71 @@ source endpoint, SqrtLogSpace.exact_count_and_sat. This module does not
 import it and claims neither identical machines nor equal time bounds.
 -/
 
+/-
+The converse translation picks a deterministic finite-set list
+representation. It preserves distinct clauses: the input OpenAI
+Finset contains each clause at most once, and fromClause is injective
+because converting the result back returns that exact original clause.
+-/
+
+/-- Original OpenAI literal as an Anthropic pair of index and polarity. -/
+def fromLiteral {n : ℕ}
+    (l : SAT.Literal (Fin n)) : MainResults.Lit n :=
+  ⟨l.variable, l.positive⟩
+
+@[simp] theorem toLiteral_fromLiteral {n : ℕ}
+    (l : SAT.Literal (Fin n)) : toLiteral (fromLiteral l) = l := by
+  cases l
+  rfl
+
+/-- Every OpenAI finite-set clause admits a unique chosen list encoding. -/
+def fromClause {n : ℕ}
+    (C : SAT.Clause (Fin n)) : List (MainResults.Lit n) :=
+  C.toList.map fromLiteral
+
+@[simp] theorem toClause_fromClause {n : ℕ}
+    (C : SAT.Clause (Fin n)) : toClause (fromClause C) = C := by
+  classical
+  simp [toClause, fromClause, List.map_map, Function.comp_def]
+
+/-- The source finite-set formula gives an Anthropic list-of-lists CNF. -/
+def fromCNF {n : ℕ}
+    (F : SAT.CNF (Fin n)) : MainResults.CNF n :=
+  F.toList.map fromClause
+
+/-- The CNF translation is surjective, with an explicit right inverse. -/
+@[simp] theorem toCNF_fromCNF {n : ℕ}
+    (F : SAT.CNF (Fin n)) : toCNF (fromCNF F) = F := by
+  classical
+  simp [toCNF, fromCNF, List.map_map, Function.comp_def]
+
+/--
+OpenAI's finite-set width property implies Anthropic's original
+IsKCNF, including its requirement that no clause *list* repeats.
+-/
+theorem fromCNF_IsKCNF
+    {n k : ℕ} (F : SAT.CNF (Fin n))
+    (hw : SAT.WidthAtMost k F) :
+    MainResults.IsKCNF k (fromCNF F) := by
+  classical
+  constructor
+  · intro C hC
+    simp only [fromCNF, List.mem_map, Finset.mem_toList] at hC
+    obtain ⟨C₀, hmem, rfl⟩ := hC
+    simpa [fromClause] using hw C₀ hmem
+  · have hInjective : Function.Injective
+        (fromClause : SAT.Clause (Fin n) → List (MainResults.Lit n)) := by
+      intro C D h
+      have hh := congrArg toClause h
+      simpa using hh
+    exact (Finset.nodup_toList F).map hInjective
+
+/-- Every OpenAI formula keeps exactly the same #SAT after the round trip. -/
+theorem fromCNF_count_eq {n : ℕ}
+    (F : SAT.CNF (Fin n)) :
+    MainResults.numSat (fromCNF F) = SAT.count F := by
+  rw [numSat_eq_count, toCNF_fromCNF]
+
 /-- Anthropic's k-CNF eligibility implies OpenAI's width hypothesis. -/
 theorem toCNF_width_at_most
     {n k : ℕ} (φ : MainResults.CNF n)
@@ -150,5 +215,45 @@ theorem original_anthropic_machine_counts_openai_with_rate
 #print axioms IndependentETH.numSat_eq_count
 #print axioms IndependentETH.toCNF_width_at_most
 #print axioms IndependentETH.original_anthropic_machine_counts_openai_with_rate
+/--
+The reverse quantitative transport, for an ORIGINAL OpenAI Finset CNF.
+The original Anthropic machine runs on an Anthropic list encoding
+*constructed from that very Finset*, and its original bound uses the
+number of distinct OpenAI clauses, F.card. Its result is SAT.count F.
+
+The original eligibility requirement AllOccur remains explicit.
+No computation-time claim for preparing the input word from another
+machine's input encoding is smuggled into this theorem.
+-/
+theorem original_anthropic_machine_counts_any_eligible_openai_cnf
+    (hMain : MainResults.MainTheorem) :
+    ∃ (M : Turing.TM2ComputableAux Bool Bool) (C : ℕ),
+      (∀ i, Finite (M.tm.Γ i)) ∧
+      ∀ (k n : ℕ) (F : SAT.CNF (Fin n)),
+        2 ≤ k → SAT.WidthAtMost k F →
+        2 ≤ F.card → 4 ≤ n →
+        MainResults.AllOccur (fromCNF F) →
+        Nonempty (Turing.TM2OutputsInTime M.tm
+          ((MainResults.encInput k (fromCNF F)).map
+            M.inputAlphabet.invFun)
+          (some ((MainResults.binary n (SAT.count F)).map
+            M.outputAlphabet.invFun))
+          (MainResults.timeMin C k F.card n)) := by
+  obtain ⟨M, C, hfinite, hrun⟩ :=
+    original_anthropic_machine_counts_openai_with_rate hMain
+  refine ⟨M, C, hfinite, ?_⟩
+  intro k n F hk hwidth hm hn hoc
+  have hlength : (fromCNF F).length = F.card := by
+    simp [fromCNF]
+  have hK := fromCNF_IsKCNF F hwidth
+  have hrun' := (hrun k n (fromCNF F)
+      (by omega) hK (by simpa [hlength] using hm) hn hoc).2
+  simpa only [toCNF_fromCNF, hlength] using hrun'
+
+#print axioms IndependentETH.toCNF_fromCNF
+#print axioms IndependentETH.fromCNF_IsKCNF
+#print axioms IndependentETH.fromCNF_count_eq
+#print axioms IndependentETH.original_anthropic_machine_counts_any_eligible_openai_cnf
+
 
 end IndependentETH

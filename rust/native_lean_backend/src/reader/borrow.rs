@@ -184,21 +184,26 @@ impl Reader {
                 ));
             }
             match Self::body_view(body)? {
-                FnBodyView::Decl { defined, ty, expr, next } => {
+                FnBodyView::Decl {
+                    defined,
+                    ty,
+                    expr,
+                    next,
+                } => {
                     Self::borrow_expr(expr, rights, functions)?;
                     // A source .proj borrows the parent's pointer field. A
                     // projected object from a tracked source starts with no
                     // transferable reference, including nested projections.
-                    if is_value_type(Self::ty(ty)?)
-                        && Self::checked_tag(expr, "Expr")? == 3
-                    {
+                    if is_value_type(Self::ty(ty)?) && Self::checked_tag(expr, "Expr")? == 3 {
                         let source = Self::var(Self::field(expr, 1)?)?;
                         if rights.contains_key(&source) {
                             let target = Self::var(defined)?;
                             if rights.insert(target, 0).is_some() {
                                 return Err(CompilerError::new(
                                     RefusalKind::Decl,
-                                    format!("borrowed projection x_{target} shadows a tracked source"),
+                                    format!(
+                                        "borrowed projection x_{target} shadows a tracked source"
+                                    ),
                                 ));
                             }
                         }
@@ -258,7 +263,12 @@ impl Reader {
                     }
                     body = next;
                 }
-                FnBodyView::Set { target, value, next, .. } => {
+                FnBodyView::Set {
+                    target,
+                    value,
+                    next,
+                    ..
+                } => {
                     Self::borrow_take(value, rights, "constructor field mutation")?;
                     let id = Self::var(target)?;
                     if rights.contains_key(&id) {
@@ -279,7 +289,12 @@ impl Reader {
                     }
                     body = next;
                 }
-                FnBodyView::Join { id, params, value, next } => {
+                FnBodyView::Join {
+                    id,
+                    params,
+                    value,
+                    next,
+                } => {
                     let id = Self::var(id)?;
                     let mut join_rights = rights.clone();
                     let mut formal_borrows = Vec::new();
@@ -291,7 +306,9 @@ impl Reader {
                         if borrowed && join_rights.insert(param_id, 0).is_some() {
                             return Err(CompilerError::new(
                                 RefusalKind::Decl,
-                                format!("borrowed join parameter x_{param_id} shadows a tracked source"),
+                                format!(
+                                    "borrowed join parameter x_{param_id} shadows a tracked source"
+                                ),
                             ));
                         }
                     }
@@ -302,7 +319,14 @@ impl Reader {
                             format!("borrowed provenance cannot verify shadowed join point {id}"),
                         ));
                     }
-                    Self::borrow_body(value, &mut join_rights, functions, &scoped, depth + 1, steps)?;
+                    Self::borrow_body(
+                        value,
+                        &mut join_rights,
+                        functions,
+                        &scoped,
+                        depth + 1,
+                        steps,
+                    )?;
                     // Rights created in the join body cannot authorize a
                     // transfer in the lexical predecessor of its jump.
                     return Self::borrow_body(next, rights, functions, &scoped, depth + 1, steps);
@@ -313,7 +337,14 @@ impl Reader {
                             AltView::Constructor { body } | AltView::Default { body } => body,
                         };
                         let mut branch_rights = rights.clone();
-                        Self::borrow_body(branch, &mut branch_rights, functions, joins, depth + 1, steps)?;
+                        Self::borrow_body(
+                            branch,
+                            &mut branch_rights,
+                            functions,
+                            joins,
+                            depth + 1,
+                            steps,
+                        )?;
                     }
                     return Ok(());
                 }

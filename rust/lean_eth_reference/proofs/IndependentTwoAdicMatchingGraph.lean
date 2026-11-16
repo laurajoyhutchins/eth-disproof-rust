@@ -679,28 +679,8 @@ noncomputable def otherVertexCount
   classical
   exact ∏ other : V, if other = v then 1 else (allowed other).card
 
-/-- Specializing the source matching count to a singleton index
-agrees exactly with the direct count over every other vertex. -/
-theorem unmatchedCompletionCount_single_vertex
-    {V A : Type*} [Fintype V] [Fintype A]
-    [DecidableEq V] [DecidableEq A]
-    (allowed : V → Finset A) (v : V) :
-    unmatchedCompletionCount (fun (_ : PUnit) => v) allowed =
-      otherVertexCount allowed v := by
-  classical
-  unfold unmatchedCompletionCount otherVertexCount
-  apply Finset.prod_congr rfl
-  intro other _
-  by_cases h : other = v
-  · subst other
-    simp
-  · have hn : ¬∃ _e : PUnit, v = other := by
-      rintro ⟨_, hv⟩
-      exact h hv.symm
-    simp [h, hn]
-
-/-- The compatible graph-label completions where a particular vertex
-has been assigned one candidate symbol. -/
+/-- The compatible complete graph-label assignments with the selected
+vertex restricted to one candidate symbol. -/
 def vertexChoiceFiber
     {V A : Type*} [Fintype V] [Fintype A]
     [DecidableEq V] [DecidableEq A]
@@ -708,36 +688,55 @@ def vertexChoiceFiber
     Finset (V → A) :=
   (Fintype.piFinset allowed).filter (fun labels => labels v = symbol)
 
-/-- A single-vertex choice is the previously proved conditional
-matching-endpoint fiber, with the edge index specialized to PUnit. -/
-theorem vertexChoiceFiber_eq_conditionalAssignmentFiber
+/-- Constrain a *single* actual graph vertex without introducing an
+artificial edge-index type or any extra universe parameter. -/
+def vertexChoiceAllowed
+    {V A : Type*} [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V) (symbol : A) (u : V) :
+    Finset A :=
+  if u = v then {symbol} else allowed u
+
+/-- For a legal next symbol, its completion fiber is exactly the
+Cartesian product of unchanged allowed sets at all other vertices
+and a singleton choice at the selected vertex. -/
+theorem vertexChoiceFiber_eq_piFinset
     {V A : Type*} [Fintype V] [Fintype A]
     [DecidableEq V] [DecidableEq A]
-    (allowed : V → Finset A) (v : V) (symbol : A) :
+    (allowed : V → Finset A) (v : V) (symbol : A)
+    (hsymbol : symbol ∈ allowed v) :
     vertexChoiceFiber allowed v symbol =
-      conditionalAssignmentFiber
-        (fun (_ : PUnit) => v) (fun _ => symbol) allowed := by
+      Fintype.piFinset (vertexChoiceAllowed allowed v symbol) := by
   classical
   ext labels
   constructor
   · intro hf
-    obtain ⟨hfull, hsymbol⟩ := Finset.mem_filter.mp hf
-    apply Finset.mem_inter.mpr
-    constructor
-    · apply Finset.mem_filter.mpr
-      refine ⟨Finset.mem_univ _, ?_⟩
-      intro _
-      exact hsymbol
-    · exact hfull
+    obtain ⟨hfull, heq⟩ := Finset.mem_filter.mp hf
+    apply Fintype.mem_piFinset.mpr
+    intro u
+    by_cases hu : u = v
+    · subst u
+      simp [vertexChoiceAllowed, heq]
+    · simpa [vertexChoiceAllowed, hu] using
+        (Fintype.mem_piFinset.mp hfull) u
   · intro hf
-    obtain ⟨hmatch, hfull⟩ := Finset.mem_inter.mp hf
-    have hsymbol : labels v = symbol :=
-      (Finset.mem_filter.mp hmatch).2 PUnit.unit
-    exact Finset.mem_filter.mpr ⟨hfull, hsymbol⟩
+    have hall (u : V) : labels u ∈ allowed u := by
+      by_cases hu : u = v
+      · subst u
+        have hb := (Fintype.mem_piFinset.mp hf) v
+        have heq : labels v = symbol := by
+          simpa [vertexChoiceAllowed] using hb
+        simpa [heq] using hsymbol
+      · have hb := (Fintype.mem_piFinset.mp hf) u
+        simpa [vertexChoiceAllowed, hu] using hb
+    have heq : labels v = symbol := by
+      have hb := (Fintype.mem_piFinset.mp hf) v
+      simpa [vertexChoiceAllowed] using hb
+    exact Finset.mem_filter.mpr
+      ⟨Fintype.mem_piFinset.mpr hall, heq⟩
 
-/-- Every compatible candidate symbol leaves the same number of
-completions of the *other* graph vertices. This is a concrete
-uniform-fiber identity, not an abstract equal-fiber hypothesis. -/
+/-- Every legal next vertex symbol has the same number of exact
+completions, equal to the product of allowed-set cardinalities at
+the other vertices. This also handles empty sets correctly. -/
 theorem vertexChoiceFiber_card
     {V A : Type*} [Fintype V] [Fintype A]
     [DecidableEq V] [DecidableEq A]
@@ -746,19 +745,15 @@ theorem vertexChoiceFiber_card
     (vertexChoiceFiber allowed v symbol).card =
       otherVertexCount allowed v := by
   classical
-  have hinj : Function.Injective (fun (_ : PUnit) => v) := by
-    intro x y _
-    cases x
-    cases y
-    rfl
-  rw [vertexChoiceFiber_eq_conditionalAssignmentFiber]
-  calc
-    _ = unmatchedCompletionCount (fun (_ : PUnit) => v) allowed :=
-      conditionalAssignmentFiber_card
-        (fun (_ : PUnit) => v) (fun _ => symbol)
-        allowed hinj (fun _ => hsymbol)
-    _ = otherVertexCount allowed v :=
-      unmatchedCompletionCount_single_vertex allowed v
+  rw [vertexChoiceFiber_eq_piFinset allowed v symbol hsymbol,
+    Fintype.card_piFinset]
+  unfold otherVertexCount
+  apply Finset.prod_congr rfl
+  intro u _
+  by_cases hu : u = v
+  · subst u
+    simp [vertexChoiceAllowed]
+  · simp [vertexChoiceAllowed, hu]
 
 /-- Sum over possible next labels is exactly the sum over all
 compatible complete graph assignments, with no double counting.
@@ -948,7 +943,7 @@ theorem exists_nonincreasing_combined_vertex_potential
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_weighted_sum
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_class_moment
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_uniform_mean_cross_mul
-#print axioms TwoAdicMatchingGraph.vertexChoiceFiber_eq_conditionalAssignmentFiber
+#print axioms TwoAdicMatchingGraph.vertexChoiceFiber_eq_piFinset
 #print axioms TwoAdicMatchingGraph.vertexChoiceFiber_card
 #print axioms TwoAdicMatchingGraph.sum_by_vertex_choice
 #print axioms TwoAdicMatchingGraph.vertexChoice_total_card

@@ -598,6 +598,8 @@ mkdir -p artifacts
   echo "pinned_param_borrow_abi_and_sharedness_refusal=PASS"
   echo "pinned_direct_borrow_transfer_cases=8"
   echo "pinned_borrowed_direct_call_abi=SOURCE_DERIVED"
+  echo "pinned_borrowed_projection_join_cases=9"
+  echo "pinned_nested_projection_provenance=SOURCE_VAR_IDS"
   echo "source_rc_bookkeeping_sharedness_refusals=7"
   echo "source_rc_value_only_positive_emissions=7"
   echo "source_rc_interprocedural_refusals=5"

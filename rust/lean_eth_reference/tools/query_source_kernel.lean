@@ -54,15 +54,19 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let some (.defnInfo info) := env.find? root
     | throw <| IO.userError s!"original root is not a compiled definition: {root}"
   let head := info.value.getAppFn
-  unless head == Expr.const compiled [] do
-    throw <| IO.userError s!"original root is not the source compiler application: {head}"
+  match head with
+  | .const name _ =>
+    unless name == compiled do
+      throw <| IO.userError s!"original root compiler differs: {name}"
+  | _ =>
+    throw <| IO.userError s!"original root is not a source compiler application: {head}"
   let (symbols, nodes) ← match immediateSymbols info.value 512 with
     | .ok result => pure result
     | .error reason => throw <| IO.userError reason
   let compiledName := compiled.toString
   unless symbols.contains compiledName do
     throw <| IO.userError "source root does not reference the pinned compiler declaration"
-  unless env.find? compiled |>.isSome do
+  unless (env.find? compiled).isSome do
     throw <| IO.userError "pinned source compiler declaration missing in kernel environment"
   return Json.mkObj [
     ("format", toJson "original-query-kernel-root-v1"),
@@ -96,3 +100,6 @@ unsafe def main (args : List String) : IO Unit := do
       "usage: query_source_kernel.lean MODULE ROOT COMPILER; no substitute source accepted"
 
 end QuerySourceKernel
+
+unsafe def main (args : List String) : IO Unit :=
+  QuerySourceKernel.main args

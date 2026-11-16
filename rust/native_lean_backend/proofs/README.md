@@ -101,10 +101,38 @@ The native CI log prints the axioms of the compositional theorems and rejects
 
 This is not yet a proof that arbitrary real Lean IR executes correctly under
 the independently specified source operational rules, nor a proof about
-`rustc`'s execution of the emitted text. It also does not extend the
-source-IR proof to the previously emission-certified Bool branches. The
+`rustc`'s execution of the emitted text. The separate Bool-source extension below covers that narrower branch fragment.
+The
 `Reader::decode`/FFI boundary, runtime reference counts, calls, joins and
 remaining supported IR stay separate obligations.
+
+## Original IR comparison and Bool branch semantics
+
+[ReaderIRBoolSoundness.lean](ReaderIRBoolSoundness.lean) extends the
+source-IR theorem to `UInt64.decEq`, `UInt64.decLt`, and
+`UInt64.decLe` and both alternatives of a source `IR.FnBody.case`.
+
+The accepted source fragment now has:
+- Source-side big-step rules on actual `Lean.IR.Expr`, `FnBody` and
+  `Alt.ctor` nodes; genuine `UInt64` comparison operators and
+  branch-local environments.
+- A total, fuel-bounded, proof-producing scanner which checks the complete
+  pair of Bool constructors by original name and index, enforces
+  `UInt8`-typed scrutinees and refuses unknown instructions or defaults.
+- A compositional all-input `body_sound` theorem, including nested branches,
+  and `reader_emission_and_ir_refine`, explicitly asserting **both** byte
+  equality for the source produced by the production Reader FFI **and** the
+  source-IR-to-modeled-target all-input value relation.
+- Exact-head Lean CI tests for original compiled IR of `plus`,
+  `straightChain`, `choose`, and `nested`; `subtract` stays a
+  fail-closed negative. The axiom audit rejects `sorryAx`.
+
+The semantics of the comparison-result variable here is modeled as a
+Boolean selected by the actual `UInt64` comparison. Its correspondence to
+Lean's physical `UInt8` storage layout and the C FFI representation is **not**
+a proved low-level decoding theorem. Nor does text equality establish
+`rustc`/MIR/machine execution equivalence. Calls, joins, RC effects, and
+other IR instructions are outside this proof and must remain separate work.
 
 ## Unproved obligations for a real G1 compiler theorem
 

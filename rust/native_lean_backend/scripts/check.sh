@@ -75,7 +75,34 @@ for name in plus straightChain choose nested; do
     echo "rustc_execution=${name}:opt${opt}:612_original_Lean_oracles:PASS"
   done
 done
-sha256sum artifacts/reader-rust-exec-{plus,straightChain,choose,nested}.rs
+# Accept the theorem only with the exact, expected Lean axiom boundary.
+for theorem in statement_sound certified_statement_refines original_ir_and_emitted_rust_agree; do
+  if ! grep -Fq "'ReaderRustStatement.${theorem}' depends on axioms: [propext]" \
+      artifacts/reader-rust-statement-axioms.txt; then
+    echo "Imperative Rust execution theorem has an unreviewed axiom boundary: ${theorem}" >&2
+    exit 2
+  fi
+done
+{
+  echo "status=PASS"
+  echo "commit=$(git rev-parse --verify HEAD)"
+  echo "lean_version=$("$LEAN_PREFIX/bin/lean" --version)"
+  echo "rustc_version=$(rustc --version)"
+  echo "scope=certified_lean_ir_scalar_bool_to_imperative_Rust_statements"
+  echo "source_semantics=original_IR_big_step"
+  echo "target_semantics=typed_imperative_Rust_big_step"
+  echo "emission=exact_Reader_function_bytes"
+  echo "oracle=independent_original_Lean_functions"
+  echo "programs=plus,straightChain,choose,nested"
+  echo "pairs_per_program=612"
+  echo "rustc_modes=opt0_overflow_checks_on,opt3_overflow_checks_on"
+  echo "total_comparisons=4896"
+  echo "theorem_axioms=propext"
+  sha256sum artifacts/reader-rust-exec-{plus,straightChain,choose,nested}.rs
+  sha256sum artifacts/reader-rust-execution-inputs.txt
+  sha256sum artifacts/reader-rust-exec-{plus,straightChain,choose,nested}.expected
+} > artifacts/reader-rust-execution-receipt.txt
+cat artifacts/reader-rust-execution-receipt.txt
 if grep -Fq 'sorryAx' artifacts/reader-ir-abi-observation.txt; then
   echo 'Lean UInt8 Bool ABI representation proof uses sorryAx' >&2
   exit 2

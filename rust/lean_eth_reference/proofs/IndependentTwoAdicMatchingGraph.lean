@@ -142,9 +142,122 @@ theorem bipartiteMatchingFiber_equidistributed
     assignmentFiber_equidistributed right hr
         (fun e => (target₁ e).2) (fun e => (target₂ e).2)]
 
+/--
+Restrict an actual left/right graph-vertex labeling to the
+ordered label pair on each selected matching edge.
+-/
+def matchingEndpointLabels
+    {E L R A : Type*}
+    (left : E → L) (right : E → R)
+    (vertexLabels : (L → A) × (R → A)) : E → A × A :=
+  fun e => (vertexLabels.1 (left e), vertexLabels.2 (right e))
+
+/--
+The actual preimage of a matching edge-label assignment is exactly
+the Cartesian product of the two source-shore assignment fibers.
+-/
+theorem matchingEndpointLabels_preimage
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (target : E → A × A) :
+    ((Finset.univ : Finset ((L → A) × (R → A))).filter
+      (fun labels => matchingEndpointLabels left right labels = target)) =
+    bipartiteMatchingFiber left right target := by
+  classical
+  ext labels
+  rcases labels with ⟨labL, labR⟩
+  change (labL, labR) ∈
+      ((Finset.univ : Finset ((L → A) × (R → A))).filter
+        (fun labels => matchingEndpointLabels left right labels = target)) ↔
+    (labL, labR) ∈
+      (assignmentFiber left (fun e => (target e).1)).product
+        (assignmentFiber right (fun e => (target e).2))
+  constructor
+  · intro h
+    have hp : matchingEndpointLabels left right (labL, labR) = target :=
+      (Finset.mem_filter.mp h).2
+    apply Finset.mem_product.mpr
+    constructor
+    · apply Finset.mem_filter.mpr
+      refine ⟨Finset.mem_univ _, ?_⟩
+      intro e
+      exact congrArg Prod.fst (congrFun hp e)
+    · apply Finset.mem_filter.mpr
+      refine ⟨Finset.mem_univ _, ?_⟩
+      intro e
+      exact congrArg Prod.snd (congrFun hp e)
+  · intro h
+    rcases Finset.mem_product.mp h with ⟨hl, hr⟩
+    have hL := (Finset.mem_filter.mp hl).2
+    have hR := (Finset.mem_filter.mp hr).2
+    apply Finset.mem_filter.mpr
+    refine ⟨Finset.mem_univ _, ?_⟩
+    funext e
+    exact Prod.ext (hL e) (hR e)
+
+/--
+The matching-dependent weighted sum over *every graph vertex-label
+assignment* is the edge-local sum multiplied by the common number of
+global completions. Thus every edge-pair-label assignment has equal
+weight in the source graph's uniform labeling distribution.
+
+In particular, applying this to the exact `2^X_gamma` weight
+transfers its previously verified matching-edge moment without
+introducing an independence assumption on the other graph edges.
+-/
+theorem matchingEndpointLabels_weighted_sum
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (hl : Function.Injective left) (hr : Function.Injective right)
+    (reference : E → A × A)
+    (weight : (E → A × A) → ℚ) :
+    (∑ full : (L → A) × (R → A),
+      weight (matchingEndpointLabels left right full)) =
+    ((bipartiteMatchingFiber left right reference).card : ℚ) *
+      (∑ pairs : E → A × A, weight pairs) := by
+  classical
+  let restrict : ((L → A) × (R → A)) → (E → A × A) :=
+    matchingEndpointLabels left right
+  have hfiber (pairs : E → A × A) :
+      (((Finset.univ : Finset ((L → A) × (R → A))).filter
+        (fun full => restrict full = pairs)).card) =
+      (bipartiteMatchingFiber left right reference).card := by
+    change (((Finset.univ : Finset ((L → A) × (R → A))).filter
+      (fun full => matchingEndpointLabels left right full = pairs)).card) =
+      (bipartiteMatchingFiber left right reference).card
+    rw [matchingEndpointLabels_preimage left right pairs]
+    exact bipartiteMatchingFiber_equidistributed left right hl hr pairs reference
+  calc
+    _ = ∑ pairs : E → A × A,
+        ∑ full ∈ (Finset.univ : Finset ((L → A) × (R → A)))
+          with restrict full = pairs, weight pairs := by
+        symm
+        exact Finset.sum_fiberwise' Finset.univ restrict weight
+    _ = ∑ pairs : E → A × A,
+        (((Finset.univ : Finset ((L → A) × (R → A))).filter
+            (fun full => restrict full = pairs)).card : ℚ) * weight pairs := by
+        apply Finset.sum_congr rfl
+        intro pairs _
+        simp
+    _ = ∑ pairs : E → A × A,
+        ((bipartiteMatchingFiber left right reference).card : ℚ) *
+            weight pairs := by
+        apply Finset.sum_congr rfl
+        intro pairs _
+        rw [hfiber pairs]
+    _ = ((bipartiteMatchingFiber left right reference).card : ℚ) *
+        (∑ pairs : E → A × A, weight pairs) := by
+        rw [Finset.mul_sum]
+
 #print axioms TwoAdicMatchingGraph.restrictedLabels_at_endpoint
 #print axioms TwoAdicMatchingGraph.assignmentFiber_eq_piFinset
 #print axioms TwoAdicMatchingGraph.assignmentFiber_equidistributed
 #print axioms TwoAdicMatchingGraph.bipartiteMatchingFiber_equidistributed
+#print axioms TwoAdicMatchingGraph.matchingEndpointLabels_preimage
+#print axioms TwoAdicMatchingGraph.matchingEndpointLabels_weighted_sum
 
 end TwoAdicMatchingGraph

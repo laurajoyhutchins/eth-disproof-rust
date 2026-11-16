@@ -1,0 +1,10 @@
+name = "lean_rust_bootstrap"
+version = "0.1.0"
+defaultTargets = ["Bootstrap"]
+
+[[require]]
+name = "lungo"
+path = "../.vendor/lungo-rs/lean"
+
+[[lean_lib]]
+name = "Bootstrap"

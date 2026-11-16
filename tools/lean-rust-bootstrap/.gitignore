@@ -1,0 +1,5 @@
+/.vendor/
+/target/
+/lean/.lake/
+/oracle.tsv
+/artifacts/

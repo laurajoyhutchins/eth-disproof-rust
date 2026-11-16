@@ -25,6 +25,10 @@ struct ProjectedLifetime {
     // Record origin-slot mapping and require a bijection before any other
     // instruction observes the constructor or leaves the current block.
     slot_permutations: BTreeMap<usize, BTreeMap<usize, usize>>,
+    // A source Bool case establishes a path-local scalar constraint. Pass
+    // that exact value through join parameters so repeated tests do not
+    // invent infeasible combinations of unique and shared ownership.
+    scalar_cases: BTreeMap<usize, u8>,
     // Credits created by a real owned input, source-producing declaration,
     // or explicitly emitted IR.inc; Rust Rc aliases do not count.
     owners: BTreeMap<usize, usize>,
@@ -305,6 +309,19 @@ impl Reader {
         Ok(())
     }
 
+    unsafe fn lifetime_bool_arm(alt: Obj) -> CompilerResult<Option<u8>> {
+        if Self::checked_tag(alt, "Alt")? != 0 {
+            return Ok(None);
+        }
+        let info = Self::field(alt, 0)?;
+        let name = Self::name(Self::field(info, 0)?, 0)?;
+        Ok(match name.as_str() {
+            "Bool.false" => Some(0),
+            "Bool.true" => Some(1),
+            _ => None,
+        })
+    }
+
     unsafe fn lifetime_body(
         mut body: Obj,
         state: &mut ProjectedLifetime,
@@ -488,12 +505,51 @@ impl Reader {
                     scrutinee,
                     alternatives,
                 } => {
-                    state.check(Self::var(scrutinee)?, "case scrutinee")?;
-                    for alt in Self::array(alternatives)? {
+                    let tested = Self::var(scrutinee)?;
+                    state.check(tested, "case scrutinee")?;
+                    let alts = Self::array(alternatives)?;
+                    let bool_case =
+                        Self::name(Self::field(body, 0)?, 0)? == "Bool";
+                    let known = if bool_case {
+                        state.scalar_cases.get(&tested).copied()
+                    } else {
+                        None
+                    };
+                    let matching_ctor = if let Some(expected) = known {
+                        let mut present = false;
+                        for alt in &alts {
+                            if Self::lifetime_bool_arm(*alt)? == Some(expected) {
+                                present = true;
+                            }
+                        }
+                        present
+                    } else {
+                        false
+                    };
+                    for alt in alts {
+                        let constructor_value = if bool_case {
+                            Self::lifetime_bool_arm(alt)?
+                        } else {
+                            None
+                        };
+                        if let Some(expected) = known {
+                            if matching_ctor {
+                                if constructor_value != Some(expected) {
+                                    continue;
+                                }
+                            } else if Self::checked_tag(alt, "Alt")? == 0 {
+                                // No matching constructor: only the
+                                // source default arm is executable.
+                                continue;
+                            }
+                        }
                         let arm = match Self::alt_view(alt)? {
                             AltView::Constructor { body } | AltView::Default { body } => body,
                         };
                         let mut path = state.clone();
+                        if let Some(value) = constructor_value {
+                            path.scalar_cases.insert(tested, value);
+                        }
                         Self::lifetime_body(
                             arm,
                             &mut path,
@@ -520,6 +576,9 @@ impl Reader {
                         let actual = Self::lifetime_arg_id(arg)?;
                         if let Some(actual) = actual {
                             destination.check(actual, "join argument")?;
+                            if let Some(value) = destination.scalar_cases.get(&actual).copied() {
+                                destination.scalar_cases.insert(*formal, value);
+                            }
                             if *borrowed {
                                 destination.owners.insert(*formal, 0);
                                 destination.parents.insert(*formal, actual);

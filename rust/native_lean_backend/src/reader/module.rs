@@ -17,10 +17,10 @@ fn validate_public_name(rust_name: &str) -> CompilerResult<()> {
     }
     const KEYWORDS: &[&str] = &[
         "as", "async", "await", "break", "const", "continue", "crate", "dyn", "else", "enum",
-        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
-        "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super",
-        "trait", "true", "type", "unsafe", "use", "where", "while", "abstract", "become",
-        "box", "gen", "try", "typeof", "unsized", "virtual", "yield",
+        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move",
+        "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait",
+        "true", "type", "unsafe", "use", "where", "while", "abstract", "become", "box", "gen",
+        "try", "typeof", "unsized", "virtual", "yield",
     ];
     if KEYWORDS.contains(&rust_name) || rust_name == "_" {
         return Err(CompilerError::new(
@@ -418,8 +418,20 @@ mod export_name_tests {
         for allowed in ["pipeline", "A1", "underscore_name", "Name_with_99"] {
             assert!(validate_public_name(allowed).is_ok(), "{allowed}");
         }
-        for rejected in ["", "_", "_leading", "9digit", "with-hyphen", "with space", "fn",
-                         "gen", "Self", "mod", "a.b", "line\nfeed"] {
+        for rejected in [
+            "",
+            "_",
+            "_leading",
+            "9digit",
+            "with-hyphen",
+            "with space",
+            "fn",
+            "gen",
+            "Self",
+            "mod",
+            "a.b",
+            "line\nfeed",
+        ] {
             assert!(validate_public_name(rejected).is_err(), "{rejected}");
         }
     }

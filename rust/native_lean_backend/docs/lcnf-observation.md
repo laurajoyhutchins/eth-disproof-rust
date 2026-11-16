@@ -16,7 +16,8 @@ Lean source -> LCNF base -> LCNF mono -> LCNF impure
                                         Lean.IR -> canonical Rust Reader -> Rust
 ```
 
-The hook records declaration names only. Reporting retrieves the actual saved
+The hook records declaration names in a process-local compiler environment extension,
+not a global mutable reference. Reporting retrieves the actual saved
 impure LCNF from Lean's local compiler environment, pretty-prints it, and
 refuses a root if the hook did not observe its compilation or the matching
 compiler IR is absent. This is deliberately **not** an alternative lowering

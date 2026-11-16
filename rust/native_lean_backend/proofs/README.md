@@ -134,6 +134,37 @@ a proved low-level decoding theorem. Nor does text equality establish
 `rustc`/MIR/machine execution equivalence. Calls, joins, RC effects, and
 other IR instructions are outside this proof and must remain separate work.
 
+## Borrowed C-backed IR decoder observation and UInt8 tags
+
+[ReaderIRABIObservation.lean](ReaderIRABIObservation.lean) independently
+renders the original `Lean.IR.Decl` structure for the source-certified scalar
+and nested Bool fragment. The new native entry point
+`NativeRust.scalarABIObserve` traverses that **same live borrowed original
+object** using production Reader's `checked_tag`, `field`, `var`,
+`array`, `ty`, `name` and `FnBodyView` accessors, backed by the pinned
+`native/abi.c` shim. CI compares the complete structural readbacks.
+
+The verified runtime observations include declaration and parameter layouts,
+original source variable IDs, literal values, primitive names and operands,
+`UInt8` cases, constructor names and exact 0/1 tags, case alternative order,
+branch-local bodies and returns. Four positive original-IR fixtures are
+checked. A reversed Bool alternative array must still agree. Three malformed
+source IR values with duplicate, missing and default Bool alternatives must
+fail closed in both the original-Lean reifier and native observer. Neither
+path is allowed to execute malformed IR.
+
+The separate Lean theorems `bool_byte_roundtrip`, `bool_byte_nat` and
+`bool_byte_branch` establish the **abstract** valid `UInt8` tag
+representation (false=0, true=1), its round trip and branch selection,
+without axioms. These theorems do not depend on a physical pointer model.
+
+**Important trust boundary:** this is live differential evidence for the
+actual borrowed C/Rust decoder plus a kernel proof of the abstract tag
+semantics. It is **not** a formal refinement proof of arbitrary Lean heap
+objects through `lean.h`, `native/abi.c`, Rust unsafe reads or the Lean
+runtime's physical tagged-value layout. Those remain explicitly open, as
+does a `rustc` execution theorem.
+
 ## Unproved obligations for a real G1 compiler theorem
 
 1. Prove that `Reader::decode` and `Reader::view` faithfully read and validate

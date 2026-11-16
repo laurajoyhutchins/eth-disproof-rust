@@ -165,6 +165,55 @@ objects through `lean.h`, `native/abi.c`, Rust unsafe reads or the Lean
 runtime's physical tagged-value layout. Those remain explicitly open, as
 does a `rustc` execution theorem.
 
+## Imperative emitted Rust: semantics and actual rustc execution
+
+The separate final-impure-LCNF capture check runs before this proof and remains
+read-only; neither witness is allowed to change canonical Reader emission.
+
+[ReaderRustStatement.lean](ReaderRustStatement.lean) adds a target operational
+model of the **imperative statements Reader emits**, not another evaluation
+of the prior expression tree. It distinguishes typed `u64` and `u8`
+bindings, named registers, wrapping addition and multiplication, comparisons
+encoded as 0/1 tags, branch-local `match` arms and variable returns.
+
+The target `Runs` relation uses a separate register environment and
+explicit wrapping modulo `2^64`. A proof-producing, fuel-bounded checker
+constructs `StmtMatches` only for known instructions and existing operand
+bindings. Its canonical complete Rust function text must match the **actual**
+production Reader output byte for byte. Certification also requires the
+already-established source-IR semantics and live C-backed decoder readback.
+
+The all-input `statement_sound` theorem proves execution of every witnessed
+imperative target block according to the existing modeled Rust value
+semantics. `original_ir_and_emitted_rust_agree` combines the *original*
+Lean.IR big-step source execution with the imperative target execution,
+in one theorem for every pair of `UInt64` inputs. The exact Reader-source
+and live-ABI-observation equalities are explicit in the conclusion.
+Both theorems are kernel-checked under Lean 4.34.1, with only `propext`.
+
+Separately, native CI writes the **unchanged certified Reader functions**
+as Rust source, appends only an input/output driver, and executes them using
+the pinned real `rustc`. It tests `opt-level=0` and `opt-level=3` with
+overflow checking enabled, using 612 input pairs per original source
+definition (100 boundary pairs and 512 seeded pseudorandom pairs). The
+four source functions cover literal/add/mul, equality and ordering, both
+branch outcomes, and nested branches. `UInt64.sub` remains explicitly
+refused by the certified language even though general Reader supports it.
+There are 4,896 independent original Lean oracle comparisons.
+
+The native workflow retains `reader-rust-execution-receipt.txt`, the proof
+axiom output, exact generated Rust function source plus driver, oracle
+inputs, expected values, and observed unoptimized/optimized outputs. The
+receipt pins the Git revision, toolchain versions and source SHA-256 digests.
+
+**Unproved machine boundary:** `RustStatement.Runs` is a separately modeled
+semantics for a *restricted Rust statement grammar*, not a mechanized
+semantics of the real Rust parser, borrow checker, MIR, optimizer, or CPU.
+Finite `rustc` oracle comparisons test the real execution path, but do
+not establish universal compiler correctness. Native reference-count
+ownership, calls, joins, mutation, all remaining supported IR and G2 ETH
+source-program execution remain separate.
+
 ## Unproved obligations for a real G1 compiler theorem
 
 1. Prove that `Reader::decode` and `Reader::view` faithfully read and validate
@@ -173,8 +222,10 @@ does a `rustc` execution theorem.
    fragment and prove the independent IR reifier/typed target rendering
    relation compositionally. The general Reader `String` emitter is still
    unverified.
-3. Connect Rust execution to these target semantics, either through a trusted
-   Rust operational model or an independently checked source-to-bytecode bridge.
+3. Extend the now kernel-checked **restricted imperative Rust statement**
+   execution model beyond scalar/Bool IR, and establish an independently
+   checked `rustc` parsing-to-MIR or machine-code semantics correspondence.
+   Existing real-`rustc` oracle executions are tests, not that theorem.
 4. Generalize from a finite arithmetic/branch tree to lexical environments,
    joins, direct/indirect calls, recursion, allocation, closures, borrowing,
    mutations and physical reference counts. No general ownership theorem exists.

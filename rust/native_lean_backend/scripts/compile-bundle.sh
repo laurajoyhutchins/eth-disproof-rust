@@ -4,6 +4,7 @@
 # Generated code is only COMPILE-verified here; semantic acceptance is separate.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/lib/compilation-common.sh
 
 if (( $# < 4 || $# > 5 )); then
   echo "usage: compile-bundle.sh MODULE ROOT SOURCE_LEAN OUTPUT_DIRECTORY [RUST_EXPORT]" >&2
@@ -17,20 +18,14 @@ export_name="${5:-compiled_root}"
 
 # Lean names are inserted into a compiler command, never passed to a shell eval.
 # Restrict the first public CLI to ordinary ASCII components.
-name_re='^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$'
-export_re='^[a-zA-Z_][a-zA-Z0-9_]*$'
-if ! [[ "$module" =~ $name_re && "$root" =~ $name_re && "$export_name" =~ $export_re ]]; then
+if ! native_declaration_name "$module" ||
+   ! native_declaration_name "$root" ||
+   ! native_export_name "$export_name"; then
   echo "Refusing unsafe Lean module/root or Rust export name" >&2
   exit 2
 fi
 if [[ ! -f "$source" || -L "$source" || "$dest" = *'/../'* || "$dest" = '../'* ]]; then
   echo "Refusing missing/symlinked source or traversal in output path" >&2
-  exit 2
-fi
-filename="$(basename -- "$dest")"
-if ! [[ "$filename" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] ||
-    [[ "$filename" = '.' || "$filename" = '..' ]]; then
-  echo "Refusing unsafe bundle directory name" >&2
   exit 2
 fi
 : "${LEAN_PREFIX:?Set LEAN_PREFIX to exact Lean 4.34.1 distribution}"
@@ -46,18 +41,14 @@ NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 test -f "$NATIVE_LIB"
 test -f NativeRust.olean
 
-parent="$(realpath -e -- "$(dirname -- "$dest")")"
+dest="$(native_destination "$dest")"
+parent="$(dirname -- "$dest")"
 # The pinned same-process publisher accepts only workspace-relative .rs paths.
 # Refuse outside-workspace staging rather than weakening native path checks.
 case "$parent/" in
   "$PWD/"*) ;;
   *) echo "Bundle output parent must remain under the compiler workspace" >&2; exit 2 ;;
 esac
-dest="$parent/$filename"
-if [[ -e "$dest" || -L "$dest" ]]; then
-  echo "Refusing to overwrite existing bundle: $dest" >&2
-  exit 2
-fi
 staging="$(mktemp -d "$parent/.native-bundle.XXXXXXXX")"
 staging_rel="${staging#"$PWD/"}"
 # Never remove a caller's destination even on any error.
@@ -124,10 +115,6 @@ hash() { sha256sum -- "$1" | cut -d' ' -f1; }
 
 # Move the entire bundle as one unit, including generated source and receipt.
 # GNU -n may report success without actually moving; assert staged dir gone.
-mv -Tn -- "$staging" "$dest"
-if [[ -d "$staging" || ! -f "$dest/receipt.txt" ]]; then
-  echo "Output directory appeared concurrently; no bundle overwritten" >&2
-  exit 2
-fi
+native_publish_directory "$staging" "$dest" receipt.txt
 trap - EXIT
 cat "$dest/receipt.txt"

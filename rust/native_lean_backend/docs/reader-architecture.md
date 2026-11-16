@@ -71,3 +71,24 @@ The exact-head baseline `52fa5e8a544e278eb9fc9beff3dfb0e1da22dd93` and split-rea
 - The native backend/shared-library SHA-256 values changed, as expected from the refactored compiler source. Identity of the emitted Rust is an observed property of these checked inputs, not a universal equivalence proof.
 
 The Excession output for the candidate retained `PARTIAL` source coverage, including `UNSUPPORTED_LANGUAGE` for Rust; its independent test/build obligations were not fabricated as completed receipts.
+
+## Compilation and publication entrypoints
+
+Both compilation modes use the same Lean.IR Reader and Rust runtime, and
+share `scripts/lib/compilation-common.sh` for declaration/export-name
+validation, destination checks and no-overwrite staged-directory publication.
+
+- `compile-project.sh` builds an **unchanged Lake project** and publishes one
+  multi-root Cargo library. This is the public `eth-compiler` route.
+- `compile-bundle.sh` compiles a single **copied source fixture** and publishes
+  a diagnostic bundle with the source, generated Rust, compiled rlib and hashes.
+  It is a distinct evidence mode, not another backend or a replacement for
+  unchanged-source admission.
+
+The caller still chooses the source compilation, evidence fields and staging
+directory. Common publication refuses existing outputs and dangling symlinks,
+requires a complete staged receipt and checks that a no-overwrite move
+actually succeeded. Its no-overwrite check is not a defense against a hostile
+process concurrently manipulating the destination parent.
+
+LCNF remains an optional read-only diagnostic of local Lean compiler state.

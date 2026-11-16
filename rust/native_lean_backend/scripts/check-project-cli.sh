@@ -66,6 +66,14 @@ if bash scripts/compile-project.sh "$project" Sample 'Sample.inc]; #eval 0' \
   echo "Unsafe root name was accepted" >&2; exit 1
 fi
 test ! -e "$tmp/injected"
+# An output symlink, including a dangling one, must never be replaced.
+ln -s "$tmp/missing-target" "$tmp/dangling-link"
+if bash scripts/compile-project.sh "$project" Sample 'Sample.inc' \
+    "$project/Sample.lean" "$tmp/dangling-link" > "$tmp/link.log" 2>&1; then
+  echo "Project CLI accepted symlink destination" >&2; exit 1
+fi
+test -L "$tmp/dangling-link"
+
 printf 'leanprover/lean4:v4.35.0\n' > "$project/lean-toolchain"
 if bash scripts/compile-project.sh "$project" Sample 'Sample.inc' \
     "$project/Sample.lean" "$tmp/wrong-version" > "$tmp/version.log" 2>&1; then

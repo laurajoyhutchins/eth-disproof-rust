@@ -57,6 +57,15 @@ if bash scripts/compile-bundle.sh PropertyDef Property.hop \
   exit 1
 fi
 
+# Refuse even a dangling output symlink before compiling.
+ln -s "$sandbox/missing-target" "$sandbox/dangling-link"
+if bash scripts/compile-bundle.sh PropertyDef Property.hop \
+    examples/PropertyDef.lean "$sandbox/dangling-link" property_hop \
+    > "$sandbox/link.log" 2>&1; then
+  echo "Bundle CLI accepted symlink destination" >&2; exit 1
+fi
+test -L "$sandbox/dangling-link"
+
 # Check that the source in the accepted bundle matches exact original input.
 cmp examples/PropertyDef.lean "$out/PropertyDef.lean"
 cp "$out/receipt.txt" artifacts/native-compiler-bundle-receipt.txt

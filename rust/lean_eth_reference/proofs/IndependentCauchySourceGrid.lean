@@ -91,7 +91,7 @@ theorem cauchy_product_at_grid_point
   have hprod := Finset.mul_prod_erase (sourceGrid a)
     (fun q : ℤ => ((t : R) + (sourceAlpha a : R) * z) - (q : R)) ht
   calc
-    (∏ q ∈ sourceGrid a, ((t : R) + (sourceAlpha a : R) * z) - (q : R)) =
+    (∏ q ∈ (sourceGrid a), ((t : R) + (sourceAlpha a : R) * z) - (q : R)) =
         (((t : R) + (sourceAlpha a : R) * z) - (t : R)) *
           ∏ q ∈ (sourceGrid a).erase t,
             (((t : R) + (sourceAlpha a : R) * z) - (q : R)) :=

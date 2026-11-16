@@ -45,6 +45,23 @@ if [[ "$(git -C "$vendor" rev-parse HEAD)" != "$BOOTSTRAP_LUNGO_SHA" ]] ||
   exit 2
 fi
 
+
+# Keep upstream Lean source unchanged. Only the copied package's toolchain
+# selection is adapted from lungo's default 4.35.0 to our pinned 4.34.1.
+# Without this, Lake silently reexecutes under lungo's newer toolchain.
+overlay="$here/.vendor/lungo-lean"
+if [[ ! -d "$overlay" ]]; then
+  mkdir -p "$overlay"
+  cp -a "$vendor/lean/." "$overlay/"
+  printf 'leanprover/lean4:v4.34.1\n' > "$overlay/lean-toolchain"
+fi
+diff -rq --exclude=lean-toolchain "$vendor/lean" "$overlay" || {
+  echo "Lungo Lean source overlay diverged from the pinned commit" >&2
+  exit 2
+}
+test "$(cat "$overlay/lean-toolchain")" = 'leanprover/lean4:v4.34.1'
+
+
 (
   cd "$here/lean"
   test "$(lean --version)" = "$BOOTSTRAP_LEAN_VERSION"

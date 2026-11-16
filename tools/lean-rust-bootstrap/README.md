@@ -23,7 +23,9 @@ bash tools/lean-rust-bootstrap/scripts/check.sh
 ```
 
 The script clones the reviewed upstream lungo commit into ignored
-`.vendor/` and refuses a modified or wrong checkout. It builds an original
+`.vendor/` and refuses a modified or wrong checkout. For Lake it copies the exact
+Lean sources and overrides only their package toolchain pin to 4.34.1;
+Cargo consumes the exact Git revision directly. It builds an original
 Lean oracle, compiles the corresponding executable Lean IR through lungo,
 runs Rust differential tests and Clippy, and records an evidence receipt.
 

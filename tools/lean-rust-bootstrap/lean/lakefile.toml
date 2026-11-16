@@ -4,7 +4,7 @@ defaultTargets = ["Bootstrap"]
 
 [[require]]
 name = "lungo"
-path = "../.vendor/lungo-rs/lean"
+path = "../.vendor/lungo-lean"
 
 [[lean_lib]]
 name = "Bootstrap"

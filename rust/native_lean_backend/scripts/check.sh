@@ -46,7 +46,36 @@ lean -o proofs/ReaderScalarCertificate.olean --load-dynlib="$NATIVE_LIB" proofs/
 # Kernel-check actual Lean IR operational semantics linked to Reader emission.
 lean -o proofs/ReaderIRSoundness.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRSoundness.lean | tee artifacts/reader-ir-source-axioms.txt
 lean -o proofs/ReaderIRBoolSoundness.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRBoolSoundness.lean | tee artifacts/reader-ir-bool-axioms.txt
-lean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRABIObservation.lean | tee artifacts/reader-ir-abi-observation.txt
+lean -o proofs/ReaderIRABIObservation.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRABIObservation.lean | tee artifacts/reader-ir-abi-observation.txt
+# Independently model the actual emitted *imperative* Rust statement grammar,
+# prove its value semantics for all inputs, compare full canonical text against
+# the actual Reader output, then execute those exact bytes under rustc.
+lean --load-dynlib="$NATIVE_LIB" proofs/ReaderRustStatement.lean | tee artifacts/reader-rust-statement-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-rust-statement-axioms.txt; then
+  echo 'Rust statement refinement contains sorryAx' >&2
+  exit 2
+fi
+for name in plus straightChain choose nested; do
+  src="artifacts/reader-rust-exec-${name}.rs"
+  expected="artifacts/reader-rust-exec-${name}.expected"
+  test -s "$src"
+  test -s "$expected"
+  for opt in 0 3; do
+    binary="artifacts/reader-rust-exec-${name}-opt${opt}"
+    rustc --edition=2024 -C "opt-level=${opt}" -C overflow-checks=on \
+      -o "$binary" "$src"
+    env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH "$binary" \
+      < artifacts/reader-rust-execution-inputs.txt \
+      > "artifacts/reader-rust-exec-${name}-opt${opt}.actual"
+    if ! cmp -s "$expected" "artifacts/reader-rust-exec-${name}-opt${opt}.actual"; then
+      diff -u "$expected" "artifacts/reader-rust-exec-${name}-opt${opt}.actual" | head -n 55 >&2 || true
+      echo "rustc imperative execution mismatch: ${name}, opt-level=${opt}" >&2
+      exit 2
+    fi
+    echo "rustc_execution=${name}:opt${opt}:612_original_Lean_oracles:PASS"
+  done
+done
+sha256sum artifacts/reader-rust-exec-{plus,straightChain,choose,nested}.rs
 if grep -Fq 'sorryAx' artifacts/reader-ir-abi-observation.txt; then
   echo 'Lean UInt8 Bool ABI representation proof uses sorryAx' >&2
   exit 2

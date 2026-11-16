@@ -25,6 +25,25 @@ private def refusalMessage (decl : Lean.Name) (construct reason : String) : Stri
   (decls : @& Array Lean.IR.Decl) (roots : @& Array Lean.Name) : String
 
 
+/-- Observe the original borrowed Lean.IR.Decl via the production Reader's
+    C-backed field/tag and FnBodyView accessors. This readback does not emit
+    code; it is compared against a separately written Lean IR traversal. -/
+@[extern "rs_scalar_ir_abi_observe"] opaque scalarABIObserve
+  (decl : @& Lean.IR.Decl) : String
+
+def observeScalarABI (root : Lean.Name) : Lean.CoreM String := do
+  if (← Lean.IR.findDecl root).isNone then
+    Lean.Compiler.compile #[root]
+  let some decl ← Lean.IR.findDecl root
+    | throwError "ABI observation refused: {root} has no compiler IR"
+  let report := scalarABIObserve decl
+  if report.startsWith "OK\n" then
+    return (report.drop 3).toString
+  else if report.startsWith "ERROR\n" then
+    throwError "ABI observation refused: {(report.drop 6).toString}"
+  else
+    throwError "ABI observation returned invalid status for {root}"
+
 /-- Compile one executable declaration with the pinned Lean compiler and emit Rust.
     Refuses declarations missing IR, or outside the backend's strict subset. -/
 def compile (root : Lean.Name) (rustName : String) : Lean.CoreM String := do

@@ -45,7 +45,12 @@ lean -o proofs/ScalarFixture.olean proofs/ScalarFixture.lean
 lean -o proofs/ReaderScalarCertificate.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderScalarCertificate.lean
 # Kernel-check actual Lean IR operational semantics linked to Reader emission.
 lean -o proofs/ReaderIRSoundness.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRSoundness.lean | tee artifacts/reader-ir-source-axioms.txt
-lean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRBoolSoundness.lean | tee artifacts/reader-ir-bool-axioms.txt
+lean -o proofs/ReaderIRBoolSoundness.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRBoolSoundness.lean | tee artifacts/reader-ir-bool-axioms.txt
+lean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRABIObservation.lean | tee artifacts/reader-ir-abi-observation.txt
+if grep -Fq 'sorryAx' artifacts/reader-ir-abi-observation.txt; then
+  echo 'Lean UInt8 Bool ABI representation proof uses sorryAx' >&2
+  exit 2
+fi
 if grep -Fq 'sorryAx' artifacts/reader-ir-bool-axioms.txt; then
   echo 'Bool source IR operational correspondence contains sorryAx' >&2
   exit 2

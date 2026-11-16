@@ -17,6 +17,9 @@ struct ProjectedLifetime {
     // Projection/borrow-alias source identity. A field initially lives only
     // while its containing object keeps its original source-owned reference.
     parents: BTreeMap<usize, usize>,
+    // The exact source .proj offset is required for constructor overwrite
+    // and shell-deletion ownership transfer. Do not pool different fields.
+    field_indices: BTreeMap<usize, usize>,
     // Credits created by a real owned input, source-producing declaration,
     // or explicitly emitted IR.inc; Rust Rc aliases do not count.
     owners: BTreeMap<usize, usize>,
@@ -93,6 +96,43 @@ impl ProjectedLifetime {
             *credits -= 1;
         }
         Ok(())
+    }
+
+    fn transfer_old_field(&mut self, parent: usize, index: usize, still_stored: bool) {
+        // Lean 4.34.1 lean_ctor_set overwrites a pointer slot without
+        // decrementing the old value. lean_del_object frees the shell
+        // without decrementing ANY field. Thus a previously projected
+        // field can receive that existing source-owned reference when
+        // the containing slot is replaced or the shell is deleted.
+        //
+        // A slot has exactly one source ownership credit. Multiple
+        // projections of the same slot cannot all become owners.
+        let matching: Vec<usize> = self
+            .parents
+            .iter()
+            .filter(|(child, ancestor)| {
+                **ancestor == parent
+                    && self.field_indices.get(child) == Some(&index)
+            })
+            .map(|(child, _)| *child)
+            .collect();
+        if still_stored {
+            // Writing the same pointer back leaves the constructor's
+            // ownership in place; a projection remains borrowed.
+            return;
+        }
+        if matching.len() == 1 {
+            let child = matching[0];
+            if let Some(owned) = self.owners.get_mut(&child) {
+                *owned = owned.saturating_add(1);
+            }
+        } else {
+            // Without a uniquely identified projection, we do not
+            // fabricate one source owner for an arbitrary alias.
+            for child in matching {
+                self.invalidated.insert(child);
+            }
+        }
     }
 
     fn invalidate_children(&mut self, parent: usize) {
@@ -281,6 +321,10 @@ impl Reader {
                         }
                         if let Some(parent) = parent {
                             state.parents.insert(target, parent);
+                            state.field_indices.insert(
+                                target,
+                                Self::nat(Self::field(expr, 0)?)?,
+                            );
                         }
                     }
                     body = next;
@@ -313,22 +357,40 @@ impl Reader {
                 FnBodyView::Delete { target, next } => {
                     let id = Self::var(target)?;
                     state.take(id, "source del")?;
-                    // lean_del_object frees the shell, NOT its transferred
-                    // children. We do not assume those transfer obligations
-                    // have been established for the source projection graph.
+                    // The pinned C runtime frees only the shell. Each field
+                    // slot contributes at most one source-owned reference
+                    // to a uniquely projected child; nested descendants
+                    // remain protected by that child's transferred owner.
+                    let indices: BTreeSet<usize> = state
+                        .parents
+                        .iter()
+                        .filter(|(_, parent)| **parent == id)
+                        .filter_map(|(child, _)| state.field_indices.get(child).copied())
+                        .collect();
+                    for index in indices {
+                        state.transfer_old_field(id, index, false);
+                    }
                     state.invalidated.insert(id);
                     body = next;
                 }
                 FnBodyView::Set {
                     target,
+                    index,
                     value,
                     next,
-                    ..
                 } => {
                     let id = Self::var(target)?;
+                    let slot = Self::nat(index)?;
                     state.check(id, "constructor mutation")?;
-                    Self::lifetime_transfer_arg(value, state, "constructor field set")?;
-                    state.invalidate_children(id);
+                    let new_value = Self::lifetime_arg_id(value)?;
+                    let same_slot = new_value.is_some_and(|child| {
+                        state.parents.get(&child) == Some(&id)
+                            && state.field_indices.get(&child) == Some(&slot)
+                    });
+                    if !same_slot {
+                        Self::lifetime_transfer_arg(value, state, "constructor field set")?;
+                    }
+                    state.transfer_old_field(id, slot, same_slot);
                     body = next;
                 }
                 FnBodyView::ScalarSet { target, next, .. } => {

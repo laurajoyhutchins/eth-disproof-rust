@@ -234,8 +234,9 @@ theorem cauchyZeroKernel_eq_delta (L : ℕ) (x y : Fin L) :
   classical
   by_cases h : x = y
   · subst y
-    simp [cauchyZeroKernel, cauchyZeroNumerator,
-      cauchyZeroDenominator_ne_zero L]
+    have hnum : cauchyZeroNumerator L x x = cauchyZeroDenominator L := by
+      simp [cauchyZeroNumerator, cauchyZeroDenominator]
+    simp [cauchyZeroKernel, hnum, cauchyZeroDenominator_ne_zero L]
   · have hd : (y.val : ℤ) - (x.val : ℤ) ≠ 0 := by
       intro hz
       have hv : x.val = y.val := by omega
@@ -254,7 +255,7 @@ theorem identity_packet_row_argument {n : ℕ} (X : Fin n → Bool) (i : Fin n) 
     packetRowArgument (fun j k => if j = k then (1 : ℤ) else 0) X i =
       (X i).toNat := by
   classical
-  simp [packetRowArgument, eq_comm]
+  simp [packetRowArgument]
 
 /-- Boolean equality is the original affine row factor at W = I. -/
 theorem identity_affine_gate (y x : Bool) :

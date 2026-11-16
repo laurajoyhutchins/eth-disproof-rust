@@ -10,7 +10,7 @@ import time
 import unittest
 
 from query_stream_aot import (validate_query, run_bounded, verify_query_import_receipt,
-                              record_query_refusal, source_export_phase,
+                              record_query_refusal, reset_query_outputs, source_export_phase,
                               ResourceLimitError, OutputLimitError, MAX_PROCESS_OUTPUT_BYTES,
                               MODULE, SOURCE_COMMIT, DECLARATION, IDENTIFIER)
 
@@ -202,6 +202,19 @@ class QueryAotContract(unittest.TestCase):
                             log_base=root / "original-command",
                             rss_limit_bytes=32 * 1024 * 1024)
             self.assertIn("ALLOCATED", (root / "original-command.stdout.log").read_text())
+
+    def test_retry_clears_stale_graph_binary_receipt_and_phase(self):
+        with tempfile.TemporaryDirectory(prefix="query-aot-retry-") as path:
+            root = Path(path)
+            for name in ("query-stream.receipt.json", "query-stream",
+                         "query-stream.source.json", "query-stream.generated.rs",
+                         "report.json", "original-command.stderr.log",
+                         "original-command.stdout.log"):
+                (root / name).write_bytes(b"stale success cannot be reused")
+            reset_query_outputs(root)
+            self.assertEqual(list(root.iterdir()), [])
+            self.assertEqual(source_export_phase(root / "original-command.stderr.log"),
+                             "import-or-initialization")
 
     def test_resource_refusal_records_exact_last_phase_without_success(self):
         with tempfile.TemporaryDirectory(prefix="query-aot-refusal-") as path:

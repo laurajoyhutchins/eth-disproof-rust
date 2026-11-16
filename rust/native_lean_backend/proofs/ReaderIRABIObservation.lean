@@ -252,7 +252,7 @@ run_cmd do
   logInfo "Both Bool constructor array orders agree between Lean and borrowed ABI"
 
   -- Malformed original IR should refuse in *both* readers. Nothing is emitted.
-  for variant in #[0, 1, 2] do
+  for variant in (#[0, 1, 2] : Array Nat) do
     let rewrite := match variant with
       | 0 => ReaderIRABIObservation.duplicateFirst
       | 1 => ReaderIRABIObservation.missingSecond
@@ -267,4 +267,3 @@ run_cmd do
     unless report.startsWith "ERROR\n" do
       throwError "C/Rust borrowed decoder admitted malformed Bool alternatives {variant}"
     logInfo m!"Both original-IR readers refused malformed Bool case variant {variant}"
-

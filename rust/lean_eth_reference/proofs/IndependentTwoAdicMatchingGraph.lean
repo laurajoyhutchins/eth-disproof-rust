@@ -538,7 +538,6 @@ theorem matchingEndpointLabels_conditional_weighted_sum
     rw [matchingEndpointLabels_conditional_preimage left right allowedL allowedR p,
       conditionalBipartiteMatchingFiber_card
         left right hl hr allowedL allowedR p hcompat]
-    rfl
   have hzero (p : E → A × A) (hp : p ∉ pairs) :
       ((fulls.filter (fun full => restrict full = p)).card : ℚ) = 0 := by
     have he : fulls.filter (fun full => restrict full = p) = ∅ := by

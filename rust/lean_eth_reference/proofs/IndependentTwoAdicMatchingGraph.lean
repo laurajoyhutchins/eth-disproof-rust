@@ -685,7 +685,7 @@ theorem unmatchedCompletionCount_single_vertex
     {V A : Type*} [Fintype V] [Fintype A]
     [DecidableEq V] [DecidableEq A]
     (allowed : V → Finset A) (v : V) :
-    otherVertexCount allowed v =
+    unmatchedCompletionCount (fun (_ : PUnit) => v) allowed =
       otherVertexCount allowed v := by
   classical
   unfold unmatchedCompletionCount otherVertexCount
@@ -753,7 +753,7 @@ theorem vertexChoiceFiber_card
     rfl
   rw [vertexChoiceFiber_eq_conditionalAssignmentFiber]
   calc
-    _ = otherVertexCount allowed v :=
+    _ = unmatchedCompletionCount (fun (_ : PUnit) => v) allowed :=
       conditionalAssignmentFiber_card
         (fun (_ : PUnit) => v) (fun _ => symbol)
         allowed hinj (fun _ => hsymbol)

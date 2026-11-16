@@ -65,8 +65,18 @@ identified projection of that exact field** when the shell is deleted
 or the field is replaced. Duplicate projections of the same slot are
 not independently owned and remain refused without source `inc`.
 Fields left unchanged by a different-slot replacement retain their
-ordinary parent dependency. This is a deliberately narrow transfer
-rule, not certification of arbitrary reset/reuse or copy-on-write paths.
+ordinary parent dependency. For source **owned join parameters**, the
+analysis transfers the same object identity and redirects existing
+projected child dependencies to the new owning VarId, rather than
+pretending the original heap object was destroyed at the jump. When
+consecutive `FnBody.set` operations write projections of that same
+unique constructor into new slots, the reader admits them only when
+their combined origin-slot mapping is bijective on overwritten slots.
+This is the exact two-field swap visible in the original pinned
+`MutFixture.rotate` IR. A partial permutation, duplicate source
+field, or intervening observable operation is rejected. This is a
+narrow optimized-IR admission, not certification of arbitrary
+reset/reuse or copy-on-write paths.
 The source runtime's actual reference counts may include unmodeled
 aliases, so potential final-owner release is conservatively treated as
 destruction. General call-result aliasing, externally-owned heap effects,

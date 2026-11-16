@@ -128,7 +128,93 @@ theorem precision_discards_heavy_selections
     rw [chosen_product_has_weight weight constant amplitude pick]
     simp [h, hzero]
 
+/-- Number of row factors that select a particular crossing mode. -/
+def selectedMultiplicity {Row Mode : Type*}
+    [Fintype Row] [DecidableEq Row] [DecidableEq Mode]
+    (pick : Row → Option Mode) (mode : Mode) : ℕ :=
+  ((Finset.univ : Finset Row).filter (fun row => pick row = some mode)).card
+
+/--
+A distributed term's sum of selected row weights is the weighted
+degree of its mode monomial. This identifies the precision cutoff
+with the original appendix's mode-exponent budget.
+-/
+theorem selection_weight_eq_mode_degree
+    {Row Mode : Type*} [Fintype Row] [DecidableEq Row]
+    [Fintype Mode] [DecidableEq Mode]
+    (weight : Mode → ℕ) (pick : Row → Option Mode) :
+    (∑ row : Row, rowWeight weight pick row) =
+      ∑ mode : Mode, weight mode * selectedMultiplicity pick mode := by
+  classical
+  have hrow (row : Row) :
+      rowWeight weight pick row =
+        ∑ mode : Mode,
+          if pick row = some mode then weight mode else 0 := by
+    cases h : pick row with
+    | none => simp [rowWeight, h]
+    | some mode => simp [rowWeight, h]
+  calc
+    (∑ row : Row, rowWeight weight pick row) =
+        ∑ row : Row, ∑ mode : Mode,
+          if pick row = some mode then weight mode else 0 := by
+      apply Finset.sum_congr rfl
+      intro row _
+      exact hrow row
+    _ = ∑ mode : Mode, ∑ row : Row,
+          if pick row = some mode then weight mode else 0 := by
+      rw [Finset.sum_comm]
+    _ = ∑ mode : Mode, weight mode * selectedMultiplicity pick mode := by
+      apply Finset.sum_congr rfl
+      intro mode _
+      calc
+        (∑ row : Row, if pick row = some mode then weight mode else 0) =
+            ∑ row ∈ (Finset.univ : Finset Row).filter
+              (fun row => pick row = some mode), weight mode := by
+          rw [Finset.sum_filter]
+        _ = weight mode * selectedMultiplicity pick mode := by
+          simp [selectedMultiplicity, mul_comm]
+
+/--
+For a *fixed mode-exponent tuple*, the sum of all distributed
+affine-row selections with precisely those exponents contains the
+power of two dictated by the weighted degree. This is stronger than
+discarding individual heavy selections: it proves divisibility of
+the grouped coefficient itself.
+
+To identify this sum with the original Cauchy packet's polynomial
+coefficient still requires its source-specific affine expansion
+and valuation witness, which are not postulated as theorems here.
+-/
+theorem grouped_coefficient_has_weight
+    {Row Mode R : Type*} [Fintype Row] [DecidableEq Row]
+    [Fintype Mode] [DecidableEq Mode] [CommSemiring R]
+    (weight : Mode → ℕ) (constant : Row → R)
+    (amplitude : Row → Mode → R) (beta : Mode → ℕ) :
+    (∑ pick ∈ (Finset.univ : Finset (Row → Option Mode)).filter
+        (fun pick => ∀ mode, selectedMultiplicity pick mode = beta mode),
+      ∏ row : Row, chosenFactor weight constant amplitude pick row) =
+      (2 : R) ^ (∑ mode : Mode, weight mode * beta mode) *
+        (∑ pick ∈ (Finset.univ : Finset (Row → Option Mode)).filter
+            (fun pick => ∀ mode, selectedMultiplicity pick mode = beta mode),
+          ∏ row : Row, strippedFactor constant amplitude pick row) := by
+  classical
+  rw [Finset.mul_sum]
+  apply Finset.sum_congr rfl
+  intro pick hp
+  have hbeta : ∀ mode, selectedMultiplicity pick mode = beta mode :=
+    (Finset.mem_filter.mp hp).2
+  have hweight :
+      (∑ row : Row, rowWeight weight pick row) =
+        ∑ mode : Mode, weight mode * beta mode := by
+    rw [selection_weight_eq_mode_degree]
+    apply Finset.sum_congr rfl
+    intro mode _
+    rw [hbeta mode]
+  rw [chosen_product_has_weight, hweight]
+
 #print axioms IndependentETH.PacketModeSelection.chosen_product_has_weight
+#print axioms IndependentETH.PacketModeSelection.selection_weight_eq_mode_degree
+#print axioms IndependentETH.PacketModeSelection.grouped_coefficient_has_weight
 #print axioms IndependentETH.PacketModeSelection.precision_discards_heavy_selections
 
 end IndependentETH.PacketModeSelection

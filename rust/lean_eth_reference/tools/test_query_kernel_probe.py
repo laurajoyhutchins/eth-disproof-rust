@@ -7,8 +7,8 @@ from query_stream_aot import DECLARATION
 
 
 def root_receipt():
-    return {
-        "format": "original-query-kernel-root-v1",
+    receipt = {
+        "format": "original-query-kernel-root-v2",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -71,6 +71,22 @@ def root_receipt():
         "counting_parity": False,
         "resource_correspondence": False,
     }
+    prefix = DECLARATION.removesuffix(".program") + "."
+    receipt["external_module_edges"] = [
+        {
+            "from": item["name"],
+            "to": child,
+            "target_kind": (
+                "constructor"
+                if child == "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq"
+                else "definition"
+            ),
+        }
+        for item in receipt["same_module_local_declarations"]
+        for child in item["immediate_symbols"]
+        if not child.startswith(prefix)
+    ]
+    return receipt
 
 
 class KernelRootReceiptTests(unittest.TestCase):
@@ -187,6 +203,39 @@ class KernelRootReceiptTests(unittest.TestCase):
         fixture = root_receipt()
         fixture["same_module_local_declarations"] = fixture["same_module_local_declarations"] * 11
         with self.assertRaisesRegex(ValueError, "declaration budget"):
+            validate_kernel_root(json.dumps(fixture))
+
+    def test_external_frontier_is_exact_typed_and_still_unresolved(self):
+        fixture = root_receipt()
+        actual = validate_kernel_root(json.dumps(fixture))
+        self.assertEqual(len(actual["external_module_edges"]), 5)
+        self.assertTrue(actual["external_module_edges_unresolved"])
+
+        fixture = root_receipt()
+        fixture["external_module_edges"].pop()
+        with self.assertRaisesRegex(ValueError, "incomplete"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_module_edges"].append(dict(fixture["external_module_edges"][0]))
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_module_edges"][0]["target_kind"] = "axiom"
+        with self.assertRaisesRegex(ValueError, "disagrees"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_module_edges"][0]["to"] = "OAI.Forged.constant"
+        with self.assertRaisesRegex(ValueError, "not in the original"):
+            validate_kernel_root(json.dumps(fixture))
+
+        fixture = root_receipt()
+        fixture["external_module_edges"][0]["to"] = (
+            DECLARATION.removesuffix(".program") + ".command"
+        )
+        with self.assertRaisesRegex(ValueError, "not in the original"):
             validate_kernel_root(json.dumps(fixture))
 
     def test_refuse_missing_extra_duplicate_and_unbounded_symbols(self):

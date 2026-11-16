@@ -83,11 +83,12 @@ source modules are unresolved edges; the result is not a computational closure.
 Theorem and opaque/axiom bodies are never unfolded or treated as executable.
 -/
 private def localDeclarations (env : Environment) (root : Name) :
-    IO (Array Json) := do
+    IO (Array Json × Array Json) := do
   let localNamePrefix := "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram."
   let mut pending : Array String := #[root.toString]
   let mut seen : Std.HashSet String := {}
   let mut graph : Array Json := #[]
+  let mut externalEdges : Array Json := #[]
   let mut totalNodes := 0
   while !pending.isEmpty do
     let symbol := pending.back!
@@ -110,8 +111,19 @@ private def localDeclarations (env : Environment) (root : Name) :
     if totalNodes > 8192 then
       throw <| IO.userError "original local source graph node budget exceeded"
     for child in children do
-      if child.startsWith localNamePrefix && !(seen.contains child) then
-        pending := pending.push child
+      if child.startsWith localNamePrefix then
+        if !(seen.contains child) then
+          pending := pending.push child
+      else
+        if externalEdges.size >= 8192 then
+          throw <| IO.userError "original external declaration frontier budget exceeded"
+        let some targetInfo := env.find? (qualified child)
+          | throw <| IO.userError s!"missing original external declaration: {child}"
+        externalEdges := externalEdges.push <| Json.mkObj [
+          ("from", toJson symbol),
+          ("to", toJson child),
+          ("target_kind", toJson (kindOf targetInfo))
+        ]
     graph := graph.push <| Json.mkObj [
       ("name", toJson symbol),
       ("kind", toJson (kindOf info)),
@@ -119,7 +131,7 @@ private def localDeclarations (env : Environment) (root : Name) :
       ("expression_nodes", toJson nodes),
       ("immediate_symbols", toJson children)
     ]
-  return graph
+  return (graph, externalEdges)
 
 private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let some (.defnInfo info) := env.find? root
@@ -153,9 +165,9 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     | .ok result => pure result
     | .error reason => throw <| IO.userError s!"original command: {reason}"
   let commandKinds ← classifySymbols env commandSymbols
-  let localGraph ← localDeclarations env root
+  let (localGraph, externalEdges) ← localDeclarations env root
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v1"),
+    ("format", toJson "original-query-kernel-root-v2"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -169,6 +181,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("command_immediate_symbols", toJson commandSymbols),
     ("command_symbol_kinds", toJson commandKinds),
     ("same_module_local_declarations", toJson localGraph),
+    ("external_module_edges", toJson externalEdges),
     ("external_module_edges_unresolved", toJson true),
     ("transitive_computational_closure", toJson false),
     ("rust_executable", toJson false),

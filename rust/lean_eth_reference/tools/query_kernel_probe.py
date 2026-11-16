@@ -26,7 +26,8 @@ EXPECTED_FIELDS = {
     "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
     "command_name", "command_expression_nodes", "command_immediate_symbols",
     "command_symbol_kinds", "same_module_local_declarations",
-    "external_module_edges_unresolved", "transitive_computational_closure",
+    "external_module_edges", "external_module_edges_unresolved",
+    "transitive_computational_closure",
     "rust_executable",
     "independent_lean_rust_parity", "counting_parity",
     "resource_correspondence",
@@ -47,7 +48,7 @@ def validate_kernel_root(raw: str) -> dict:
     if not isinstance(receipt, dict) or set(receipt) != EXPECTED_FIELDS:
         raise ValueError("kernel root evidence has a missing or extra field")
     fixed = {
-        "format": "original-query-kernel-root-v1",
+        "format": "original-query-kernel-root-v2",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -169,6 +170,43 @@ def validate_kernel_root(raw: str) -> dict:
                        if child.startswith(prefix))
     if reached != set(local_by_name):
         raise ValueError("same-module inventory contains an unreachable declaration")
+
+    edges = receipt["external_module_edges"]
+    if not isinstance(edges, list) or not 1 <= len(edges) <= 8192:
+        raise ValueError("original external declaration frontier budget invalid")
+    edge_kinds = {}
+    for edge in edges:
+        if not isinstance(edge, dict) or set(edge) != {"from", "to", "target_kind"}:
+            raise ValueError("external dependency edge fields invalid")
+        source, target, kind = edge["from"], edge["to"], edge["target_kind"]
+        if (type(source) is not str or type(target) is not str or
+                type(kind) is not str or not source or not target or
+                len(source) > 512 or len(target) > 512 or kind not in allowed):
+            raise ValueError("external declaration identity or kind invalid")
+        if (source not in local_by_name or
+                not local_by_name[source]["body_scanned"] or
+                target.startswith(prefix) or
+                target not in local_by_name[source]["immediate_symbols"]):
+            raise ValueError("external dependency edge is not in the original local graph")
+        if (source, target) in edge_kinds:
+            raise ValueError("duplicate external declaration edge")
+        edge_kinds[source, target] = kind
+    expected_edges = {
+        (name, child)
+        for name, item in local_by_name.items()
+        for child in item["immediate_symbols"]
+        if not child.startswith(prefix)
+    }
+    if set(edge_kinds) != expected_edges:
+        raise ValueError("external declaration frontier is incomplete or forged")
+    for source, kinds in (
+        (DECLARATION, receipt["immediate_symbol_kinds"]),
+        (MODULE + ".command", receipt["command_symbol_kinds"]),
+    ):
+        for entry in kinds:
+            edge = (source, entry["name"])
+            if edge in edge_kinds and edge_kinds[edge] != entry["kind"]:
+                raise ValueError("external declaration kind disagrees with direct inventory")
     return receipt
 
 
@@ -218,6 +256,8 @@ def probe(args):
     atomic_write(receipt_path, json.dumps(report, sort_keys=True, indent=2) + "\n")
     print(f"ORIGINAL_QUERY_KERNEL_ROOT_OBSERVED nodes={report['expression_nodes']} "
           f"symbols={len(report['immediate_symbols'])} "
+          f"local_declarations={len(report['same_module_local_declarations'])} "
+          f"external_edges={len(report['external_module_edges'])} "
           "transitive_closure=false rust_executable=false")
     return report
 

@@ -20,6 +20,11 @@ struct ProjectedLifetime {
     // The exact source .proj offset is required for constructor overwrite
     // and shell-deletion ownership transfer. Do not pool different fields.
     field_indices: BTreeMap<usize, usize>,
+    // Lean's source .set writes one pointer slot without changing its RC.
+    // Consecutive in-place rewrites can permute existing field owners.
+    // Record origin-slot mapping and require a bijection before any other
+    // instruction observes the constructor or leaves the current block.
+    slot_permutations: BTreeMap<usize, BTreeMap<usize, usize>>,
     // Credits created by a real owned input, source-producing declaration,
     // or explicitly emitted IR.inc; Rust Rc aliases do not count.
     owners: BTreeMap<usize, usize>,
@@ -141,6 +146,23 @@ impl ProjectedLifetime {
                 self.invalidated.insert(child);
             }
         }
+        Ok(())
+    }
+
+    fn settle_permutations(&mut self) -> CompilerResult<()> {
+        for (target, updates) in &self.slot_permutations {
+            let overwritten: BTreeSet<usize> = updates.keys().copied().collect();
+            let sources: BTreeSet<usize> = updates.values().copied().collect();
+            if overwritten != sources || sources.len() != updates.len() {
+                return Err(CompilerError::new(
+                    RefusalKind::Decl,
+                    format!(
+                        "source constructor x_{target}: incomplete or duplicate field-owner permutation"
+                    ),
+                ));
+            }
+        }
+        self.slot_permutations.clear();
         Ok(())
     }
 
@@ -305,6 +327,13 @@ impl Reader {
                     "projected lifetime IR traversal exceeded 100000 instructions",
                 ));
             }
+            // Non-set operations cannot run in the middle of an unfinished
+            // permutation. The C runtime temporarily contains duplicates
+            // until the matching slots are restored; inc/dec/calls/cases
+            // would otherwise observe an unjustified ownership state.
+            if Self::checked_tag(body, "FnBody")? != 2 {
+                state.settle_permutations()?;
+            }
             match Self::body_view(body)? {
                 FnBodyView::Decl {
                     defined,
@@ -392,14 +421,30 @@ impl Reader {
                     let slot = Self::nat(index)?;
                     state.check(id, "constructor mutation")?;
                     let new_value = Self::lifetime_arg_id(value)?;
-                    let same_slot = new_value.is_some_and(|child| {
-                        state.parents.get(&child) == Some(&id)
-                            && state.field_indices.get(&child) == Some(&slot)
+                    let source_slot = new_value.and_then(|child| {
+                        (state.parents.get(&child) == Some(&id))
+                            .then(|| state.field_indices.get(&child).copied())
+                            .flatten()
                     });
-                    if !same_slot {
+                    if let Some(origin) = source_slot {
+                        if state.owners.get(&id).copied() != Some(1)
+                            || state.external.contains(&id)
+                        {
+                            return Err(CompilerError::new(
+                                RefusalKind::Decl,
+                                format!("source constructor x_{id}: unverified unique field permutation"),
+                            ));
+                        }
+                        // This is not an owned argument transfer. It is a
+                        // temporary in-place rewrite of the SAME object's
+                        // existing source pointer slots, with no RC delta.
+                        // The completed mapping must be a permutation.
+                        state.slot_permutations.entry(id).or_default().insert(slot, origin);
+                    } else {
+                        state.settle_permutations()?;
                         Self::lifetime_transfer_arg(value, state, "constructor field set")?;
+                        state.transfer_old_field(id, slot, false)?;
                     }
-                    state.transfer_old_field(id, slot, same_slot)?;
                     body = next;
                 }
                 FnBodyView::ScalarSet { target, next, .. } => {
@@ -482,6 +527,19 @@ impl Reader {
                                 destination.take(actual, "owned join argument")?;
                                 destination.owners.insert(*formal, 1);
                                 destination.parents.remove(formal);
+                                // A source owned join parameter is another
+                                // name for the SAME heap object, not a new
+                                // allocation. Redirect already projected
+                                // field dependents to the transferred owner.
+                                let children: Vec<usize> = destination
+                                    .parents
+                                    .iter()
+                                    .filter(|(_, parent)| **parent == actual)
+                                    .map(|(child, _)| *child)
+                                    .collect();
+                                for child in children {
+                                    destination.parents.insert(child, *formal);
+                                }
                             }
                         }
                     }

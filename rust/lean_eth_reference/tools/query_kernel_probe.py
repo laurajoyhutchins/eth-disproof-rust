@@ -16,7 +16,7 @@ from export_compiled_batch import atomic_write, ensure_pinned
 from extract_compiled_catalog import blob_hash
 from query_stream_aot import (
     DECLARATION, LEAN_EXPORT_MEMORY_MB, MAX_EXPORT_RSS_BYTES,
-    MODULE, RELATIVE, run_bounded, verify_query_import_receipt,
+    MODULE, RELATIVE, ResourceLimitError, run_bounded, verify_query_import_receipt,
 )
 
 COMPILER = "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled"
@@ -89,7 +89,7 @@ def probe(args):
     except (ValueError, OSError) as error:
         refuse("pinned-import", error)
 
-    script = Path(__file__).with_suffix(".lean")
+    script = Path(__file__).with_name("query_source_kernel.lean")
     try:
         run = run_bounded(
             ["lake", "env", "lean", "-j", "1", "-M", str(LEAN_EXPORT_MEMORY_MB),
@@ -102,7 +102,7 @@ def probe(args):
                    f"exit={run.returncode}; stdout_tail={run.stdout[-2000:]}; "
                    f"stderr_tail={run.stderr[-2000:]}")
         report = validate_kernel_root(run.stdout.strip())
-    except (TimeoutError, ValueError, OSError) as error:
+    except (TimeoutError, ResourceLimitError, ValueError, OSError) as error:
         refuse("bounded-kernel-inventory", error)
 
     report.update({

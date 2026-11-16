@@ -39,11 +39,15 @@ MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
 # The verified original QueryStream fresh import alone peaked at 8,460,263,424
 # bytes of process-group RSS on the hosted runner (run 43632313284).
 # A 5-GiB exporter limit therefore refused before entering the graph macro.
-# The combined importer/exporter run at exact head 66e9f8f exceeded 12 GiB
-# BEFORE emitting even the first source-phase marker (12,943,912,960 bytes).
-# Allow bounded headroom for the combined imports while retaining a strict
-# process-group cap. The next gate is still source graph output, not import.
-MAX_EXPORT_RSS_BYTES = 14 * 1024 * 1024 * 1024
+# A combined QueryStream/exporter import reached 14,297,427,968 resident
+# bytes (run 43898985507) and the hosted runner shut down at that point.
+# The 14-GiB guard was therefore too late to preserve refusal evidence.
+# Limit the whole process group safely below the demonstrated runner ceiling.
+MAX_EXPORT_RSS_BYTES = 12 * 1024 * 1024 * 1024
+# Lean's own memory guard constrains allocations before host termination.
+# Use one elaborator thread so startup has no additional worker heaps.
+LEAN_EXPORT_MEMORY_MB = 11 * 1024
+LEAN_EXPORT_THREADS = 1
 
 
 class ResourceLimitError(RuntimeError):
@@ -209,6 +213,12 @@ def reset_query_outputs(out: Path) -> None:
         "original-command.stdout.log", "original-command.stderr.log",
     ):
         (out / name).unlink(missing_ok=True)
+
+
+def original_graph_export_argv(source: Path) -> list[str]:
+    """Pinned Lean CLI with finite native heap and elaboration concurrency."""
+    return ["lake", "env", "lean", "-j", str(LEAN_EXPORT_THREADS), "-M",
+            str(LEAN_EXPORT_MEMORY_MB), str(source)]
 
 
 def source_export_phase(stderr_path: Path) -> str:
@@ -425,7 +435,7 @@ def compile_query(args):
             encoding="utf8",
         )
         try:
-            exported = run_bounded(["lake", "env", "lean", str(lean)],
+            exported = run_bounded(original_graph_export_argv(lean),
                                   args.lake_root, args.timeout,
                                   {**os.environ, "ORIGINAL_MAX_LABELS": str(args.max_source_labels),
                                    "ORIGINAL_SOURCE_GRAPH_TRACE": "1"},

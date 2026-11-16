@@ -686,7 +686,7 @@ theorem vertexChoiceFiber_eq_conditionalAssignmentFiber
     (allowed : V → Finset A) (v : V) (symbol : A) :
     vertexChoiceFiber allowed v symbol =
       conditionalAssignmentFiber
-        (fun (_ : PUnit) => v) (fun _ => symbol) allowed := by
+        (fun (_ : PUnit.{0}) => v) (fun _ => symbol) allowed := by
   classical
   ext labels
   constructor
@@ -715,16 +715,16 @@ theorem vertexChoiceFiber_card
     (hsymbol : symbol ∈ allowed v) :
     (vertexChoiceFiber allowed v symbol).card =
       unmatchedCompletionCount
-        (fun (_ : PUnit) => v) allowed := by
+        (fun (_ : PUnit.{0}) => v) allowed := by
   classical
-  have hinj : Function.Injective (fun (_ : PUnit) => v) := by
+  have hinj : Function.Injective (fun (_ : PUnit.{0}) => v) := by
     intro x y _
     cases x
     cases y
     rfl
   rw [vertexChoiceFiber_eq_conditionalAssignmentFiber]
   exact conditionalAssignmentFiber_card
-    (fun (_ : PUnit) => v) (fun _ => symbol)
+    (fun (_ : PUnit.{0}) => v) (fun _ => symbol)
     allowed hinj (fun _ => hsymbol)
 
 /-- Sum over possible next labels is exactly the sum over all
@@ -785,7 +785,7 @@ theorem vertexChoice_total_card
     (allowed : V → Finset A) (v : V) :
     (Fintype.piFinset allowed).card =
       (allowed v).card *
-        unmatchedCompletionCount (fun (_ : PUnit) => v) allowed := by
+        unmatchedCompletionCount (fun (_ : PUnit.{0}) => v) allowed := by
   classical
   have hsum := sum_by_vertex_choice allowed v (fun _ => (1 : ℚ))
   have hcard :
@@ -798,11 +798,11 @@ theorem vertexChoice_total_card
         ((vertexChoiceFiber allowed v symbol).card : ℚ)) =
       ((allowed v).card : ℚ) *
         (unmatchedCompletionCount
-          (fun (_ : PUnit) => v) allowed : ℚ) := by
+          (fun (_ : PUnit.{0}) => v) allowed : ℚ) := by
     calc
       _ = ∑ _symbol ∈ allowed v,
           (unmatchedCompletionCount
-            (fun (_ : PUnit) => v) allowed : ℚ) := by
+            (fun (_ : PUnit.{0}) => v) allowed : ℚ) := by
         apply Finset.sum_congr rfl
         intro symbol hs
         exact_mod_cast vertexChoiceFiber_card allowed v symbol hs
@@ -823,20 +823,20 @@ theorem exists_nonincreasing_vertex_conditional_mean
     (allowed : V → Finset A) (v : V)
     (hne : (allowed v).Nonempty)
     (hfree : 0 <
-      unmatchedCompletionCount (fun (_ : PUnit) => v) allowed)
+      unmatchedCompletionCount (fun (_ : PUnit.{0}) => v) allowed)
     (weight : (V → A) → ℚ) :
     ∃ symbol ∈ allowed v,
       (∑ labels ∈ vertexChoiceFiber allowed v symbol,
         weight labels) /
         (unmatchedCompletionCount
-          (fun (_ : PUnit) => v) allowed : ℚ) ≤
+          (fun (_ : PUnit.{0}) => v) allowed : ℚ) ≤
       (∑ labels ∈ Fintype.piFinset allowed, weight labels) /
         ((Fintype.piFinset allowed).card : ℚ) := by
   classical
   let full : Finset (V → A) := Fintype.piFinset allowed
   let choices : Finset A := allowed v
   let common : ℚ :=
-    (unmatchedCompletionCount (fun (_ : PUnit) => v) allowed : ℚ)
+    (unmatchedCompletionCount (fun (_ : PUnit.{0}) => v) allowed : ℚ)
   let score (symbol : A) : ℚ :=
     ∑ labels ∈ vertexChoiceFiber allowed v symbol, weight labels
   obtain ⟨symbol, hs, hmin⟩ :=
@@ -890,13 +890,13 @@ theorem exists_nonincreasing_combined_vertex_potential
     (allowed : V → Finset A) (v : V)
     (hne : (allowed v).Nonempty)
     (hfree : 0 <
-      unmatchedCompletionCount (fun (_ : PUnit) => v) allowed)
+      unmatchedCompletionCount (fun (_ : PUnit.{0}) => v) allowed)
     (matchingPotential portPotential : (V → A) → ℚ) :
     ∃ symbol ∈ allowed v,
       (∑ labels ∈ vertexChoiceFiber allowed v symbol,
         (matchingPotential labels + portPotential labels)) /
         (unmatchedCompletionCount
-          (fun (_ : PUnit) => v) allowed : ℚ) ≤
+          (fun (_ : PUnit.{0}) => v) allowed : ℚ) ≤
       (∑ labels ∈ Fintype.piFinset allowed,
         (matchingPotential labels + portPotential labels)) /
         ((Fintype.piFinset allowed).card : ℚ) := by

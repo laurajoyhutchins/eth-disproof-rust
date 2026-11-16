@@ -832,7 +832,7 @@ theorem vertexChoice_total_card
         apply Finset.sum_congr rfl
         intro symbol hs
         exact_mod_cast vertexChoiceFiber_card allowed v symbol hs
-      _ = _ := by simp only [Finset.sum_const, nsmul_eq_mul]; rfl
+      _ = _ := by simp only [Finset.sum_const, nsmul_eq_mul]
   exact_mod_cast hcard.trans hconstant
 
 /-- One actual candidate next vertex label has combined conditional

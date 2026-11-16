@@ -23,7 +23,7 @@ COMPILER = "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled"
 STATUS = "SOURCE_ROOT_INVENTORIED_UNVERIFIED"
 EXPECTED_FIELDS = {
     "format", "status", "root", "compiler", "source_kind",
-    "immediate_symbols", "expression_nodes", "root_app_arity",
+    "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
     "transitive_computational_closure", "rust_executable",
     "independent_lean_rust_parity", "counting_parity",
     "resource_correspondence",
@@ -63,6 +63,18 @@ def validate_kernel_root(raw: str) -> dict:
             all(isinstance(s, str) and s and len(s) <= 512 for s in symbols) and
             len(set(symbols)) == len(symbols) and COMPILER in symbols):
         raise ValueError("kernel root source symbol list invalid")
+    kinds = receipt["immediate_symbol_kinds"]
+    allowed = {
+        "definition", "theorem", "axiom", "opaque", "inductive",
+        "constructor", "recursor", "quotient",
+    }
+    if (not isinstance(kinds, list) or len(kinds) != len(symbols) or
+            any(not isinstance(entry, dict) or
+                set(entry) != {"name", "kind"} or
+                entry["name"] != symbol or
+                type(entry["kind"]) is not str or entry["kind"] not in allowed
+                for entry, symbol in zip(kinds, symbols))):
+        raise ValueError("source symbol classifications not bound to the original ordered symbols")
     nodes = receipt["expression_nodes"]
     if type(nodes) is not int or not (1 <= nodes <= 512):
         raise ValueError("kernel root expression exceeds node budget")

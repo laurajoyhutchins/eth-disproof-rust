@@ -10,18 +10,30 @@ use super::*;
 impl Reader {
     pub(crate) unsafe fn observe_scalar_ir(decl: Obj) -> CompilerResult<String> {
         if lr_abi_probe() == 0 {
-            return Err(CompilerError::new(RefusalKind::Abi, "pinned Lean ABI probe failed"));
+            return Err(CompilerError::new(
+                RefusalKind::Abi,
+                "pinned Lean ABI probe failed",
+            ));
         }
         if Self::checked_tag(decl, "Decl")? != 0 {
-            return Err(CompilerError::new(RefusalKind::Decl, "expected source IR fdecl"));
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                "expected source IR fdecl",
+            ));
         }
         let name = Self::name(Self::field(decl, 0)?, 0)?;
         let params = Self::array(Self::field(decl, 1)?)?;
         if params.len() != 2 {
-            return Err(CompilerError::new(RefusalKind::Decl, "scalar witness requires two arguments"));
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                "scalar witness requires two arguments",
+            ));
         }
         if Self::ty(Self::field(decl, 2)?)? != "u64" {
-            return Err(CompilerError::new(RefusalKind::Decl, "scalar witness requires UInt64 return"));
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                "scalar witness requires UInt64 return",
+            ));
         }
         let mut out = format!("DECL {name}\n");
         let mut ids = BTreeSet::new();
@@ -50,7 +62,10 @@ impl Reader {
 
     unsafe fn observe_scalar_arg(x: Obj) -> CompilerResult<usize> {
         if Self::checked_tag(x, "Arg")? != 0 {
-            return Err(CompilerError::new(RefusalKind::Arg, "erased scalar ABI argument"));
+            return Err(CompilerError::new(
+                RefusalKind::Arg,
+                "erased scalar ABI argument",
+            ));
         }
         Self::var(Self::field(x, 0)?)
     }
@@ -60,7 +75,10 @@ impl Reader {
             11 => {
                 let lit = Self::field(x, 0)?;
                 if Self::checked_tag(lit, "LitVal")? != 0 {
-                    return Err(CompilerError::new(RefusalKind::LitVal, "non-numeric literal"));
+                    return Err(CompilerError::new(
+                        RefusalKind::LitVal,
+                        "non-numeric literal",
+                    ));
                 }
                 let n = Self::nat(Self::field(lit, 0)?)?;
                 writeln!(out, "E L {n}").unwrap();
@@ -69,20 +87,30 @@ impl Reader {
                 let name = Self::name(Self::field(x, 0)?, 0)?;
                 if !matches!(
                     name.as_str(),
-                    "UInt64.add" | "UInt64.mul" | "UInt64.decEq"
-                        | "UInt64.decLt" | "UInt64.decLe"
+                    "UInt64.add" | "UInt64.mul" | "UInt64.decEq" | "UInt64.decLt" | "UInt64.decLe"
                 ) {
-                    return Err(CompilerError::new(RefusalKind::Expr, "unproved source primitive"));
+                    return Err(CompilerError::new(
+                        RefusalKind::Expr,
+                        "unproved source primitive",
+                    ));
                 }
                 let args = Self::array(Self::field(x, 1)?)?;
                 if args.len() != 2 {
-                    return Err(CompilerError::new(RefusalKind::Expr, "scalar fap arity != 2"));
+                    return Err(CompilerError::new(
+                        RefusalKind::Expr,
+                        "scalar fap arity != 2",
+                    ));
                 }
                 let a = Self::observe_scalar_arg(args[0])?;
                 let b = Self::observe_scalar_arg(args[1])?;
                 writeln!(out, "E F {name} {a} {b}").unwrap();
             }
-            _ => return Err(CompilerError::new(RefusalKind::Expr, "unproved source IR expression")),
+            _ => {
+                return Err(CompilerError::new(
+                    RefusalKind::Expr,
+                    "unproved source IR expression",
+                ))
+            }
         }
         Ok(())
     }
@@ -116,7 +144,10 @@ impl Reader {
                 let id = Self::var(defined)?;
                 let ty = Self::ty(ty)?;
                 if !matches!(ty, "u64" | "u8") {
-                    return Err(CompilerError::new(RefusalKind::IRType, "unproved binding type"));
+                    return Err(CompilerError::new(
+                        RefusalKind::IRType,
+                        "unproved binding type",
+                    ));
                 }
                 writeln!(out, "V {id} {ty}").unwrap();
                 Self::observe_scalar_expr(expr, out)?;
@@ -134,23 +165,34 @@ impl Reader {
                 let ty = Self::ty(Self::field(x, 2)?)?;
                 let id = Self::var(scrutinee)?;
                 if family != "UInt8" || ty != "u8" {
-                    return Err(CompilerError::new(RefusalKind::Alt, "unproved case representation"));
+                    return Err(CompilerError::new(
+                        RefusalKind::Alt,
+                        "unproved case representation",
+                    ));
                 }
                 let alts = Self::array(alternatives)?;
                 if alts.len() != 2 {
-                    return Err(CompilerError::new(RefusalKind::Alt, "expected two Bool alternatives"));
+                    return Err(CompilerError::new(
+                        RefusalKind::Alt,
+                        "expected two Bool alternatives",
+                    ));
                 }
                 writeln!(out, "CASE {family} {id} {ty} {}", alts.len()).unwrap();
                 let mut seen = [false; 2];
                 for alt in alts {
                     if Self::checked_tag(alt, "Alt")? != 0 {
-                        return Err(CompilerError::new(RefusalKind::Alt, "unproved default alternative"));
+                        return Err(CompilerError::new(
+                            RefusalKind::Alt,
+                            "unproved default alternative",
+                        ));
                     }
                     let info = Self::field(alt, 0)?;
                     let name = Self::name(Self::field(info, 0)?, 0)?;
                     let tag = Self::nat(Self::field(info, 1)?)?;
-                    if tag > 1 || seen[tag] ||
-                        name != if tag == 0 { "Bool.false" } else { "Bool.true" } {
+                    if tag > 1
+                        || seen[tag]
+                        || name != if tag == 0 { "Bool.false" } else { "Bool.true" }
+                    {
                         return Err(CompilerError::new(
                             RefusalKind::Alt,
                             "invalid, repeated or misnamed Bool constructor",
@@ -162,7 +204,10 @@ impl Reader {
                     out.push_str("ENDALT\n");
                 }
                 if !seen.into_iter().all(|v| v) {
-                    return Err(CompilerError::new(RefusalKind::Alt, "incomplete Bool alternatives"));
+                    return Err(CompilerError::new(
+                        RefusalKind::Alt,
+                        "incomplete Bool alternatives",
+                    ));
                 }
                 out.push_str("ENDCASE\n");
             }

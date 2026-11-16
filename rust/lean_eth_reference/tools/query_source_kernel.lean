@@ -50,22 +50,13 @@ private def immediateSymbols (root : Expr) (maxNodes : Nat) :
     | _ => pure ()
   return .ok (symbols, nodes)
 
-private def inspect (env : Environment) (root compiled : Name) : IO Json := do
-  let some (.defnInfo info) := env.find? root
-    | throw <| IO.userError s!"original root is not a compiled definition: {root}"
-  let head := info.value.getAppFn
-  match head with
-  | .const name _ =>
-    unless name == compiled do
-      throw <| IO.userError s!"original root compiler differs: {name}"
-  | _ =>
-    throw <| IO.userError s!"original root is not a source compiler application: {head}"
-  let (symbols, nodes) ← match immediateSymbols info.value 512 with
-    | .ok result => pure result
-    | .error reason => throw <| IO.userError reason
-  -- Classify immediate constants by the original kernel environment, not
-  -- their names. A theorem is noted as a proof declaration; its erasure
-  -- status in the transitive computational closure remains unproved.
+/-!
+Classify source constants from the imported kernel environment. The theorem
+classification does NOT assert that a corresponding argument is erased in any
+Rust representation or that transitive computational closure is complete.
+-/
+private def classifySymbols (env : Environment) (symbols : Array String) :
+    IO (Array Json) := do
   let mut kinds : Array Json := #[]
   for symbol in symbols do
     let name := qualified symbol
@@ -83,11 +74,40 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     kinds := kinds.push <| Json.mkObj [
       ("name", toJson symbol), ("kind", toJson kind)
     ]
+  return kinds
+
+private def inspect (env : Environment) (root compiled : Name) : IO Json := do
+  let some (.defnInfo info) := env.find? root
+    | throw <| IO.userError s!"original root is not a compiled definition: {root}"
+  let head := info.value.getAppFn
+  match head with
+  | .const name _ =>
+    unless name == compiled do
+      throw <| IO.userError s!"original root compiler differs: {name}"
+  | _ =>
+    throw <| IO.userError s!"original root is not a source compiler application: {head}"
+  let (symbols, nodes) ← match immediateSymbols info.value 512 with
+    | .ok result => pure result
+    | .error reason => throw <| IO.userError reason
+  let kinds ← classifySymbols env symbols
   let compiledName := compiled.toString
   unless symbols.contains compiledName do
     throw <| IO.userError "source root does not reference the pinned compiler declaration"
   unless (env.find? compiled).isSome do
     throw <| IO.userError "pinned source compiler declaration missing in kernel environment"
+  -- Follow exactly one source-defined computational edge from the original
+  -- program to its command. Do not expand transitive dependencies or evaluate.
+  let commandName := qualified
+    "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.command"
+  unless symbols.contains commandName.toString do
+    throw <| IO.userError "the original program does not reference QueryStreamProgram.command"
+  let some (.defnInfo commandInfo) := env.find? commandName
+    | throw <| IO.userError "the original QueryStream command is not a definition"
+  let (commandSymbols, commandNodes) ←
+    match immediateSymbols commandInfo.value 1024 with
+    | .ok result => pure result
+    | .error reason => throw <| IO.userError s!"original command: {reason}"
+  let commandKinds ← classifySymbols env commandSymbols
   return Json.mkObj [
     ("format", toJson "original-query-kernel-root-v1"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
@@ -98,6 +118,10 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("immediate_symbol_kinds", toJson kinds),
     ("expression_nodes", toJson nodes),
     ("root_app_arity", toJson info.value.getAppArgs.size),
+    ("command_name", toJson commandName.toString),
+    ("command_expression_nodes", toJson commandNodes),
+    ("command_immediate_symbols", toJson commandSymbols),
+    ("command_symbol_kinds", toJson commandKinds),
     ("transitive_computational_closure", toJson false),
     ("rust_executable", toJson false),
     ("independent_lean_rust_parity", toJson false),

@@ -1,4 +1,9 @@
-import Lean
+-- The generic Lean umbrella pulls in unrelated elaborator/tactic modules.
+-- Keep the producer's imports to core expressions, source elaboration and JSON;
+-- the actual OAI source remains pinned and imported unmodified.
+import Lean.Elab.Command
+import Lean.Meta
+import Lean.Data.Json
 import OAI.Algorithms.SubexponentialSAT.StructuredCalls
 import OAI.Algorithms.SubexponentialSAT.ProgramLinking
 

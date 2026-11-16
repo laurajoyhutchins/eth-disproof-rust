@@ -168,8 +168,8 @@ theorem add_word_agrees {sw : SymbolicEnv} {st : SymTests}
     cases hv
     rfl
   · have prev : sw i = some v := by
-      simpa only [setVar, if_neg hid] using hv
-    simpa only [setVar, if_neg hid] using h.word i v prev
+      simpa [setVar, hid] using hv
+    simpa [setVar, hid] using h.word i v prev
 
 theorem add_test_agrees {sw : SymbolicEnv} {st : SymTests}
     {words : WordStore} {tests : TestStore} {inputs : Nat → Nat}
@@ -184,8 +184,8 @@ theorem add_test_agrees {sw : SymbolicEnv} {st : SymTests}
     cases hd
     rfl
   · have prev : st i = some d := by
-      simpa only [setVar, if_neg hid] using hd
-    simpa only [setVar, if_neg hid] using h.test i d prev
+      simpa [setVar, hid] using hd
+    simpa [setVar, hid] using h.test i d prev
 
 theorem word_sound {sw : SymbolicEnv} {rhs : WordOp} {e : WordExpr}
     (h : WordMatches sw rhs e) (inputs : Nat → Nat)

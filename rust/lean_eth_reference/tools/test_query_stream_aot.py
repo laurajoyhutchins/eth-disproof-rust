@@ -10,7 +10,8 @@ import time
 import unittest
 
 from query_stream_aot import (validate_query, run_bounded, verify_query_import_receipt,
-                              OutputLimitError, MAX_PROCESS_OUTPUT_BYTES,
+                              record_query_refusal, source_export_phase,
+                              ResourceLimitError, OutputLimitError, MAX_PROCESS_OUTPUT_BYTES,
                               MODULE, SOURCE_COMMIT, DECLARATION, IDENTIFIER)
 
 BLOB = "f" * 40
@@ -186,6 +187,41 @@ class QueryAotContract(unittest.TestCase):
             self.assertLess(time.monotonic() - start, 6)
             self.assertGreater((root / "large.stdout.log").stat().st_size,
                                MAX_PROCESS_OUTPUT_BYTES)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux RSS accounting")
+    def test_process_group_rss_refuses_with_retained_diagnostics(self):
+        with tempfile.TemporaryDirectory(prefix="query-aot-rss-") as path:
+            root = Path(path)
+            script = ("import time\\n"
+                      "data = bytearray(64 * 1024 * 1024)\\n"
+                      "for i in range(0, len(data), 4096): data[i] = 1\\n"
+                      "print('ALLOCATED', flush=True)\\n"
+                      "time.sleep(10)\\n")
+            with self.assertRaisesRegex(ResourceLimitError, "RSS budget exceeded"):
+                run_bounded([sys.executable, "-c", script], root, 6,
+                            log_base=root / "original-command",
+                            rss_limit_bytes=32 * 1024 * 1024)
+            self.assertIn("ALLOCATED", (root / "original-command.stdout.log").read_text())
+
+    def test_resource_refusal_records_exact_last_phase_without_success(self):
+        with tempfile.TemporaryDirectory(prefix="query-aot-refusal-") as path:
+            root = Path(path)
+            stderr = root / "original-command.stderr.log"
+            self.assertEqual(source_export_phase(stderr), "import-or-initialization")
+            stderr.write_text("SOURCE_GRAPH_PHASE=source-identity-checked\\n"
+                              "SOURCE_GRAPH_PHASE=decode-original-structured-command\\n")
+            phase = source_export_phase(stderr)
+            self.assertEqual(phase, "decode-original-structured-command")
+            record_query_refusal(root, "original-command-export-resource-limit",
+                                 "RSS budget exceeded: observed 123", phase)
+            report = json.loads((root / "report.json").read_text())
+            self.assertEqual(report, {
+                "status": "REFUSED",
+                "stage": "original-command-export-resource-limit",
+                "reason": "RSS budget exceeded: observed 123",
+                "source_phase": "decode-original-structured-command",
+            })
+            self.assertFalse((root / "query-stream.receipt.json").exists())
 
     def test_does_not_claim_kernel_certification_from_derived_digest(self):
         code = (Path(__file__).parent / "query_stream_aot.py").read_text()

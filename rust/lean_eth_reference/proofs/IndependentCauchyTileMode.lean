@@ -42,6 +42,59 @@ private theorem geometric_sum_identity
       rw [Finset.sum_range_succ, mul_add, ih, pow_succ]
       ring
 
+/--
+An odd element of a 2-power quotient is a unit, with a constructive
+finite inverse. No field inverse or a valuation axiom is involved.
+-/
+theorem one_add_even_is_unit
+    {R : Type*} [CommRing R]
+    (p : ℕ) (hmod : (2 : R) ^ p = 0) (h : R) :
+    IsUnit (1 + (2 : R) * h) := by
+  let r : R := (2 : R) * (-h)
+  let inv : R := ∑ b ∈ Finset.range p, r ^ b
+  have hrpow : r ^ p = 0 := by
+    dsimp [r]
+    rw [mul_pow, hmod, zero_mul]
+  have hmul : (1 + (2 : R) * h) * inv = 1 := by
+    change (1 + (2 : R) * h) * (∑ b ∈ Finset.range p, r ^ b) = 1
+    calc
+      (1 + (2 : R) * h) * (∑ b ∈ Finset.range p, r ^ b) =
+          (1 - r) * (∑ b ∈ Finset.range p, r ^ b) := by
+        dsimp [r]
+        ring
+      _ = 1 - r ^ p := geometric_sum_identity r p
+      _ = 1 := by rw [hrpow]; ring
+  exact ⟨{
+    val := 1 + (2 : R) * h
+    inv := inv
+    val_inv := hmul
+    inv_val := by simpa only [mul_comm] using hmul
+  }, rfl⟩
+
+/--
+The actual normalized source denominator has the form
+  odd + 2^(a+1-v)·ζ
+when t-y₀+x = 2^v·odd. If v≤a it is a unit modulo 2^p.
+The source-specific missing step is to extract the odd integer
+from the grid crossing's actual valuation v₂(t-y₀+x).
+-/
+theorem normalized_odd_denominator_is_unit
+    {R : Type*} [CommRing R]
+    (p a v : ℕ) (hva : v ≤ a)
+    (d : ℤ) (hd : Odd d) (ζ : R)
+    (hmod : (2 : R) ^ p = 0) :
+    IsUnit ((d : R) + (2 : R) ^ (a + 1 - v) * ζ) := by
+  obtain ⟨k, hk⟩ := hd
+  have he : a + 1 - v = (a - v) + 1 := by omega
+  have hrewrite :
+      (d : R) + (2 : R) ^ (a + 1 - v) * ζ =
+        1 + (2 : R) * ((k : R) + (2 : R) ^ (a - v) * ζ) := by
+    rw [hk, he, pow_succ]
+    push_cast
+    ring
+  rw [hrewrite]
+  exact one_add_even_is_unit p hmod ((k : R) + (2 : R) ^ (a - v) * ζ)
+
 /-- The finite inverse of the odd normalized Cauchy denominator. -/
 noncomputable def finiteTileInverse
     {R : Type*} [CommRing R] (p i v : ℕ) (j : R) (D : Rˣ) : R :=
@@ -113,7 +166,7 @@ theorem finite_tile_series_eq
 
 /--
 The Cauchy numerator is reconstructed by the mode expansion.
-Every identity is *inside* the quotient coefficient ring.
+Every identity is valid in a quotient coefficient ring satisfying `2^p = 0`.
 -/
 theorem finite_tile_series_reconstructs
     {R : Type*} [CommRing R]
@@ -212,6 +265,8 @@ theorem finite_tile_series_cutoff
     rw [hterm, hz]
     simp [hb]
 
+#print axioms IndependentETH.CauchyTileMode.one_add_even_is_unit
+#print axioms IndependentETH.CauchyTileMode.normalized_odd_denominator_is_unit
 #print axioms IndependentETH.CauchyTileMode.finite_tile_inverse_correct
 #print axioms IndependentETH.CauchyTileMode.finite_tile_series_reconstructs
 #print axioms IndependentETH.CauchyTileMode.finite_tile_series_unique

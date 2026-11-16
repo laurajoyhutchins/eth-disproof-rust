@@ -180,8 +180,7 @@ impl Reader {
                 FnBodyView::Return { value } if Self::checked_tag(value, "Arg")? == 0 => {
                     let source = Self::var(Self::field(value, 0)?)?;
                     formal_ids.iter().enumerate().find_map(|(i, id)| {
-                        (*id == source && !borrows[i] && is_value_type(params[i]))
-                            .then_some(i)
+                        (*id == source && !borrows[i] && is_value_type(params[i])).then_some(i)
                     })
                 }
                 _ => None,

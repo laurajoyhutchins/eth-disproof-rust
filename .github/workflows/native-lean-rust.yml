@@ -165,6 +165,10 @@ jobs:
           retention-days: 14
           path: |
             rust/native_lean_backend/artifacts/native-smoke-receipt.txt
+            rust/native_lean_backend/artifacts/lcnf-capture.json
+            rust/native_lean_backend/artifacts/lcnf-capture-receipt.txt
+            rust/native_lean_backend/artifacts/lcnf-baseline.rs
+            rust/native_lean_backend/artifacts/lcnf-observed.rs
             rust/native_lean_backend/artifacts/reader-rust-execution-receipt.txt
             rust/native_lean_backend/artifacts/reader-rust-statement-axioms.txt
             rust/native_lean_backend/artifacts/reader-rust-execution-inputs.txt

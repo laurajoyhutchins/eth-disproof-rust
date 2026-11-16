@@ -21,6 +21,18 @@ Lean 4.34.1 -> Lean.Compiler.compile -> Lean.IR.Decl
                                   generated .rs -> rustc
 ```
 
+## Inspecting Lean's final impure LCNF
+
+The compiler's final ownership-lowered LCNF can be inspected without
+replacing the existing `Lean.IR → Rust` backend or installing another
+compiler pass. The exact-version experiment reads Lean's saved local
+declarations, retains a machine-readable snapshot, and checks that
+Rust emission remains byte-identical.
+
+See [the LCNF observation experiment](docs/lcnf-observation.md).
+Imported IR without a local saved impure body remains explicitly unsupported
+for LCNF capture.
+
 ## Build and usage
 
 Linux x86_64, pinned Lean 4.34.1 (including headers and shared runtime), Rust

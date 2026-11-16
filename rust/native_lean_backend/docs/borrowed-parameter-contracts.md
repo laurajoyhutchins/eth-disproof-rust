@@ -57,11 +57,16 @@ not at their lexical definition. Mutation conservatively invalidates
 projected children when an owning field can be overwritten.
 
 This is a fail-closed *static possible-use-after-release check*, not an
-exact runtime heap theorem. In particular, Lean's `lean_del_object` frees
-only a constructor shell, not its transferred child references. This
-admission does not yet establish uniqueness or single-field transfer
-requirements for those children, so using an unretained projection after
-shell deletion is refused instead of treating it as automatically owned.
+exact runtime heap theorem. The pinned Lean C runtime's `lean_del_object` frees only the constructor
+shell, not its child references; `lean_ctor_set` similarly overwrites a
+pointer field without decrementing its previous value. The admission
+therefore grants the existing slot's source ownership to **one uniquely
+identified projection of that exact field** when the shell is deleted
+or the field is replaced. Duplicate projections of the same slot are
+not independently owned and remain refused without source `inc`.
+Fields left unchanged by a different-slot replacement retain their
+ordinary parent dependency. This is a deliberately narrow transfer
+rule, not certification of arbitrary reset/reuse or copy-on-write paths.
 The source runtime's actual reference counts may include unmodeled
 aliases, so potential final-owner release is conservatively treated as
 destruction. General call-result aliasing, externally-owned heap effects,

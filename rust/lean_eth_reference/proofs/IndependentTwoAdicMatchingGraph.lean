@@ -420,24 +420,38 @@ theorem matchingEndpointLabels_conditional_preimage
   classical
   ext full
   rcases full with ⟨labL, labR⟩
-  simp only [bipartiteAllowedLabelings, conditionalBipartiteMatchingFiber,
-    Finset.mem_filter, Finset.mem_product, conditionalAssignmentFiber,
-    Finset.mem_inter]
+  change ((labL, labR) ∈
+      ((Fintype.piFinset allowedL).product
+        (Fintype.piFinset allowedR)).filter
+        (fun full => matchingEndpointLabels left right full = target)) ↔
+    ((labL, labR) ∈
+      (conditionalAssignmentFiber left
+        (fun e => (target e).1) allowedL).product
+      (conditionalAssignmentFiber right
+        (fun e => (target e).2) allowedR))
   constructor
   · intro h
-    rcases h with ⟨⟨hL, hR⟩, hmatch⟩
+    obtain ⟨hfull, hmatch⟩ := Finset.mem_filter.mp h
+    obtain ⟨hL, hR⟩ := Finset.mem_product.mp hfull
     have heqL : ∀ e, labL (left e) = (target e).1 := by
       intro e
       exact congrArg Prod.fst (congrFun hmatch e)
     have heqR : ∀ e, labR (right e) = (target e).2 := by
       intro e
       exact congrArg Prod.snd (congrFun hmatch e)
-    exact ⟨⟨Finset.mem_filter.mpr ⟨Finset.mem_univ _, heqL⟩, hL⟩,
-      ⟨Finset.mem_filter.mpr ⟨Finset.mem_univ _, heqR⟩, hR⟩⟩
-  · rintro ⟨⟨hMatchL, hL⟩, ⟨hMatchR, hR⟩⟩
+    apply Finset.mem_product.mpr
+    exact ⟨Finset.mem_inter.mpr
+        ⟨Finset.mem_filter.mpr ⟨Finset.mem_univ _, heqL⟩, hL⟩,
+      Finset.mem_inter.mpr
+        ⟨Finset.mem_filter.mpr ⟨Finset.mem_univ _, heqR⟩, hR⟩⟩
+  · intro h
+    obtain ⟨hLeft, hRight⟩ := Finset.mem_product.mp h
+    obtain ⟨hMatchL, hL⟩ := Finset.mem_inter.mp hLeft
+    obtain ⟨hMatchR, hR⟩ := Finset.mem_inter.mp hRight
     have heqL := (Finset.mem_filter.mp hMatchL).2
     have heqR := (Finset.mem_filter.mp hMatchR).2
-    refine ⟨⟨hL, hR⟩, ?_⟩
+    apply Finset.mem_filter.mpr
+    refine ⟨Finset.mem_product.mpr ⟨hL, hR⟩, ?_⟩
     funext e
     exact Prod.ext (heqL e) (heqR e)
 
@@ -464,10 +478,8 @@ theorem conditionalBipartiteMatchingFiber_card
     (Finset.mem_product.mp (hcompatible e)).1
   have hR (e : E) : (target e).2 ∈ allowedR (right e) :=
     (Finset.mem_product.mp (hcompatible e)).2
-  change (conditionalAssignmentFiber left
-      (fun e => (target e).1) allowedL).card *
-    (conditionalAssignmentFiber right
-      (fun e => (target e).2) allowedR).card = _
+  simp only [conditionalBipartiteMatchingFiber,
+    Finset.product_eq_sprod, Finset.card_product]
   rw [conditionalAssignmentFiber_card left
       (fun e => (target e).1) allowedL hl hL,
     conditionalAssignmentFiber_card right
@@ -522,8 +534,7 @@ theorem matchingEndpointLabels_conditional_weighted_sum
     have hcompat (e : E) : p e ∈
         matchingPairChoices left right allowedL allowedR e :=
       (Fintype.mem_piFinset.mp hp) e
-    change ((bipartiteAllowedLabelings allowedL allowedR).filter
-      (fun full => matchingEndpointLabels left right full = p)).card = _
+    dsimp only [fulls, restrict, c]
     rw [matchingEndpointLabels_conditional_preimage left right allowedL allowedR p,
       conditionalBipartiteMatchingFiber_card
         left right hl hr allowedL allowedR p hcompat]
@@ -531,10 +542,12 @@ theorem matchingEndpointLabels_conditional_weighted_sum
   have hzero (p : E → A × A) (hp : p ∉ pairs) :
       ((fulls.filter (fun full => restrict full = p)).card : ℚ) = 0 := by
     have he : fulls.filter (fun full => restrict full = p) = ∅ := by
-      apply Finset.eq_empty_iff_forall_not_mem.mpr
-      intro full hf
-      obtain ⟨hfull, heq⟩ := Finset.mem_filter.mp hf
-      exact hp (by simpa [heq] using hsource full hfull)
+      ext full
+      constructor
+      · intro hf
+        obtain ⟨hfull, heq⟩ := Finset.mem_filter.mp hf
+        exact False.elim (hp (by simpa [heq] using hsource full hfull))
+      · simp
     simp [he]
   calc
     _ = ∑ p : E → A × A,

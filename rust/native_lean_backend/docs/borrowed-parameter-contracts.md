@@ -43,9 +43,29 @@ borrowed parameters and the source VarIds of their nested pointer-field
 projections, plus explicit owned/borrowed join parameters and jumps.
 It does **not** infer aliasing from arbitrary direct-call results, general
 constructor storage, mutable object identity, indirect applications or
-external primitives. It does not prove that a borrowed child stays alive
-after its parent is destroyed: full lifetime and heap-event simulation
-remain separate obligations. The source verifier conservatively
+external primitives. The source-lifetime admission now independently tracks the source owner
+credits protecting projected objects, **including projections from owned
+formals** (which the borrowed-formal-only audit did not cover). A borrowed
+formal remains protected by its caller's owner; owned formals start with one
+transferable reference. A projection itself starts with none. Real source
+`inc`, `dec`, `del`, direct calls and join transfers update the abstract
+state. The reader refuses any projected child read or late `inc` once its
+last modeled protecting ancestor is released. Retaining a child before
+releasing its parent authorizes later use, including across nested
+projections and joins. Join bodies use the state **at each actual jump**,
+not at their lexical definition. Mutation conservatively invalidates
+projected children when an owning field can be overwritten.
+
+This is a fail-closed *static possible-use-after-release check*, not an
+exact runtime heap theorem. In particular, Lean's `lean_del_object` frees
+only a constructor shell, not its transferred child references. This
+admission does not yet establish uniqueness or single-field transfer
+requirements for those children, so using an unretained projection after
+shell deletion is refused instead of treating it as automatically owned.
+The source runtime's actual reference counts may include unmodeled
+aliases, so potential final-owner release is conservatively treated as
+destruction. General call-result aliasing, externally-owned heap effects,
+and source-level lifetime correctness for arbitrary programs remain open. The source verifier conservatively
 refuses some correct programs rather than pretending those proofs exist.
 
 The canonical Rust runtime's `Rc` remains a memory-safety mechanism and

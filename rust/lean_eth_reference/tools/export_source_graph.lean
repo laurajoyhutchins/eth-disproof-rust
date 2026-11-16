@@ -1,11 +1,12 @@
--- The generic Lean umbrella pulls in unrelated elaborator/tactic modules.
--- Keep the producer's imports to core expressions, source elaboration and JSON;
--- the actual OAI source remains pinned and imported unmodified.
+-- Compile the exporter against Lean metadata only. Importing OAI's
+-- StructuredCalls / ProgramLinking here loads its full dependency closure
+-- before the full QueryStream source is imported in the extraction process.
+-- The qualified constructor Names below are validated against the actual
+-- imported pinned OAI declaration bodies during extraction; they are not
+-- alternate implementations of OAI commands.
 import Lean.Elab.Command
 import Lean.Meta
 import Lean.Data.Json
-import OAI.Algorithms.SubexponentialSAT.StructuredCalls
-import OAI.Algorithms.SubexponentialSAT.ProgramLinking
 
 /-!
 Emit a typed, source-elaborated StructuredCalls graph. Only a bounded Call

@@ -36,11 +36,11 @@ bash scripts/check-lcnf-capture.sh
 
 The test compiles the same source before and after importing the diagnostic
 module. It demands byte-identical Rust emission, executes the scalar branch
-and direct-call fixture, and writes `artifacts/lcnf-capture.json` for three
+and direct-call fixture, and retains `artifacts/lcnf-capture.json` plus a checksum receipt for three
 original Lean declarations. `List Nat` is **capture-only**, not an admission
 of arbitrary heap semantics into the Rust backend.
 
-**What this establishes if CI passes:** real saved LCNF can be inspected
+**What passing CI establishes:** real saved LCNF can be inspected
 without modifying Lean's compilation pipeline, while canonical Rust behavior
 remains unchanged on the tested inputs. It does **not** prove general compiler
 correctness, imported-program LCNF capture, or physical reference-count parity.

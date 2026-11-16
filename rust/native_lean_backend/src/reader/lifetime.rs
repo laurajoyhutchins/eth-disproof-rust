@@ -125,8 +125,7 @@ impl ProjectedLifetime {
             .parents
             .iter()
             .filter(|(child, ancestor)| {
-                **ancestor == parent
-                    && self.field_indices.get(child) == Some(&index)
+                **ancestor == parent && self.field_indices.get(child) == Some(&index)
             })
             .map(|(child, _)| *child)
             .collect();
@@ -280,10 +279,8 @@ impl Reader {
                     }
                 }
                 for (i, arg) in args.into_iter().enumerate() {
-                    let borrowed = signature.map_or_else(
-                        || Self::primitive_borrows(&name, i),
-                        |sig| sig.borrows[i],
-                    );
+                    let borrowed = signature
+                        .map_or_else(|| Self::primitive_borrows(&name, i), |sig| sig.borrows[i]);
                     if borrowed {
                         Self::lifetime_read_arg(arg, state, "borrowed call")?;
                     } else {
@@ -368,7 +365,11 @@ impl Reader {
                     };
                     Self::lifetime_expr(expr, state, functions)?;
                     if value_type {
-                        if state.owners.insert(target, usize::from(!projection)).is_some() {
+                        if state
+                            .owners
+                            .insert(target, usize::from(!projection))
+                            .is_some()
+                        {
                             return Err(CompilerError::new(
                                 RefusalKind::Decl,
                                 format!("duplicate lifetime source variable x_{target}"),
@@ -376,10 +377,9 @@ impl Reader {
                         }
                         if let Some(parent) = parent {
                             state.parents.insert(target, parent);
-                            state.field_indices.insert(
-                                target,
-                                Self::nat(Self::field(expr, 0)?)?,
-                            );
+                            state
+                                .field_indices
+                                .insert(target, Self::nat(Self::field(expr, 0)?)?);
                         }
                     }
                     body = next;
@@ -391,10 +391,7 @@ impl Reader {
                     ..
                 } => {
                     if !persistent {
-                        state.retain(
-                            Self::var(target)?,
-                            Self::nat(Self::field(body, 1)?)?,
-                        )?;
+                        state.retain(Self::var(target)?, Self::nat(Self::field(body, 1)?)?)?;
                     }
                     body = next;
                 }
@@ -444,8 +441,7 @@ impl Reader {
                             .flatten()
                     });
                     if let Some(origin) = source_slot {
-                        if state.owners.get(&id).copied() != Some(1)
-                            || state.external.contains(&id)
+                        if state.owners.get(&id).copied() != Some(1) || state.external.contains(&id)
                         {
                             return Err(CompilerError::new(
                                 RefusalKind::Decl,
@@ -456,7 +452,11 @@ impl Reader {
                         // temporary in-place rewrite of the SAME object's
                         // existing source pointer slots, with no RC delta.
                         // The completed mapping must be a permutation.
-                        state.slot_permutations.entry(id).or_default().insert(slot, origin);
+                        state
+                            .slot_permutations
+                            .entry(id)
+                            .or_default()
+                            .insert(slot, origin);
                     } else {
                         state.settle_permutations()?;
                         Self::lifetime_transfer_arg(value, state, "constructor field set")?;
@@ -492,14 +492,7 @@ impl Reader {
                             format!("projected lifetime join point {id} is shadowed"),
                         ));
                     }
-                    return Self::lifetime_body(
-                        next,
-                        state,
-                        functions,
-                        &scoped,
-                        depth + 1,
-                        steps,
-                    );
+                    return Self::lifetime_body(next, state, functions, &scoped, depth + 1, steps);
                 }
                 FnBodyView::Case {
                     scrutinee,
@@ -559,14 +552,7 @@ impl Reader {
                         if let Some(value) = constructor_value {
                             path.scalar_cases.insert(tested, value);
                         }
-                        Self::lifetime_body(
-                            arm,
-                            &mut path,
-                            functions,
-                            joins,
-                            depth + 1,
-                            steps,
-                        )?;
+                        Self::lifetime_body(arm, &mut path, functions, joins, depth + 1, steps)?;
                     }
                     return Ok(());
                 }

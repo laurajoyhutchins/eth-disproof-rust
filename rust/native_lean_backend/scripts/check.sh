@@ -37,7 +37,7 @@ cargo build --offline --release
 export NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
 lean -o NativeRust.olean NativeRust.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH}"
-# The LCNF observer is diagnostic only: it must preserve canonical Rust output.
+# Inspect Lean's saved final impure LCNF without modifying code generation.
 bash scripts/check-lcnf-capture.sh
 # Check actual Reader-generated scalar Rust against an independent Lean IR
 # reifier and the all-inputs target semantic theorem. This is intentionally
@@ -47,7 +47,12 @@ lean -o proofs/ScalarFixture.olean proofs/ScalarFixture.lean
 lean -o proofs/ReaderScalarCertificate.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderScalarCertificate.lean
 # Kernel-check actual Lean IR operational semantics linked to Reader emission.
 lean -o proofs/ReaderIRSoundness.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRSoundness.lean | tee artifacts/reader-ir-source-axioms.txt
-lean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRBoolSoundness.lean | tee artifacts/reader-ir-bool-axioms.txt
+lean -o proofs/ReaderIRBoolSoundness.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRBoolSoundness.lean | tee artifacts/reader-ir-bool-axioms.txt
+lean --load-dynlib="$NATIVE_LIB" proofs/ReaderIRABIObservation.lean | tee artifacts/reader-ir-abi-observation.txt
+if grep -Fq 'sorryAx' artifacts/reader-ir-abi-observation.txt; then
+  echo 'Lean UInt8 Bool ABI representation proof uses sorryAx' >&2
+  exit 2
+fi
 if grep -Fq 'sorryAx' artifacts/reader-ir-bool-axioms.txt; then
   echo 'Bool source IR operational correspondence contains sorryAx' >&2
   exit 2

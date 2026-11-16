@@ -38,8 +38,11 @@ MAX_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024
 # The verified original QueryStream fresh import alone peaked at 8,460,263,424
 # bytes of process-group RSS on the hosted runner (run 43632313284).
 # A 5-GiB exporter limit therefore refused before entering the graph macro.
-# Keep a finite bound with measured headroom, not an arbitrary lower-than-import cap.
-MAX_EXPORT_RSS_BYTES = 12 * 1024 * 1024 * 1024
+# The combined importer/exporter run at exact head 66e9f8f exceeded 12 GiB
+# BEFORE emitting even the first source-phase marker (12,943,912,960 bytes).
+# Allow bounded headroom for the combined imports while retaining a strict
+# process-group cap. The next gate is still source graph output, not import.
+MAX_EXPORT_RSS_BYTES = 14 * 1024 * 1024 * 1024
 
 
 class ResourceLimitError(RuntimeError):
@@ -166,6 +169,30 @@ def run_bounded(argv: list[str], cwd: Path, timeout: int,
         return subprocess.CompletedProcess(argv, child.returncode, stdout, stderr)
 
 
+def source_export_phase(stderr_path: Path) -> str:
+    """Last Lean-export phase, or module loading if no Lean command executed.
+
+    A missing phase marker is not evidence that a particular source declaration
+    was reached. This is a diagnostic only, never a semantic success receipt.
+    """
+    if not stderr_path.is_file():
+        return "import-or-initialization"
+    phase = "import-or-initialization"
+    for line in stderr_path.read_text(encoding="utf8", errors="replace").splitlines():
+        if line.startswith("SOURCE_GRAPH_PHASE="):
+            phase = line.removeprefix("SOURCE_GRAPH_PHASE=").strip()[:256]
+    return phase
+
+
+def record_query_refusal(out: Path, stage: str, details: str,
+                         phase: str | None = None) -> None:
+    """Always retain an explicit typed refusal without publishing stale success."""
+    report = {"status": "REFUSED", "stage": stage, "reason": str(details)[-5000:]}
+    if phase is not None:
+        report["source_phase"] = phase
+    atomic_write(out / "report.json", json.dumps(report, sort_keys=True, indent=2) + "\n")
+
+
 def verify_query_import_receipt(receipt: Path, lake_root: Path, blob: str,
                                 pin: dict[str, str]) -> None:
     """Verify a fresh pinned original .olean before skipping a redundant build.
@@ -249,8 +276,9 @@ def compile_query(args):
     published_binary.unlink(missing_ok=True)
 
     def refuse(stage: str, details: str):
-        report = {"status": "REFUSED", "stage": stage, "reason": str(details)[-5000:]}
-        atomic_write(out / "report.json", json.dumps(report, sort_keys=True, indent=2) + "\n")
+        phase = (source_export_phase(out / "original-command.stderr.log")
+                 if stage.startswith("original-command-export") else None)
+        record_query_refusal(out, stage, details, phase)
         raise RuntimeError(f"original QueryStream {stage} refused: {details}")
 
     try:
@@ -353,7 +381,7 @@ def compile_query(args):
                                    "ORIGINAL_SOURCE_GRAPH_TRACE": "1"},
                                   log_base=out / "original-command",
                                   rss_limit_bytes=MAX_EXPORT_RSS_BYTES)
-        except (TimeoutError, OutputLimitError) as error:
+        except (TimeoutError, ResourceLimitError) as error:
             refuse("original-command-export-resource-limit", str(error))
         atomic_write(out / "lean-export.log", exported.stdout + "\n" + exported.stderr)
         if exported.returncode:

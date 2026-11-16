@@ -28,12 +28,12 @@ private def splitTwo (s separator : String) : Option (String × String) :=
   | _ => none
 
 private def register (s : String) : Option Nat := do
-  let (prefix, number) ← splitTwo s "_"
-  if prefix == "" then number.toNat? else none
+  let (pre, number) ← splitTwo s "_"
+  if pre == "" then number.toNat? else none
 
 private def blockId (s : String) : Option Nat := do
-  let (prefix, number) ← splitTwo s "bb"
-  if prefix == "" then number.toNat? else none
+  let (pre, number) ← splitTwo s "bb"
+  if pre == "" then number.toNat? else none
 
 private def operand (s : String) : Option Nat :=
   match s.splitOn " " with
@@ -56,9 +56,9 @@ private def pureInstruction (line : String) : Option Op := do
   let (rhs, suffix) ← splitTwo right ";"
   if suffix != "" then none else
     if rhs.startsWith "const " then do
-      let (prefix, numberText) ← splitTwo rhs "const "
+      let (pre, numberText) ← splitTwo rhs "const "
       let (number, ending) ← splitTwo numberText "_u64"
-      if prefix != "" || ending != "" then none else
+      if pre != "" || ending != "" then none else
         let n ← number.toNat?
         if n < modulus then some (.literal dst n) else none
     else if rhs.startsWith "copy " || rhs.startsWith "move " then do
@@ -93,14 +93,14 @@ private def terminalInstruction (line : String) :
   if line == "return;" then
     some ([], .ret)
   else if line.startsWith "goto -> " then do
-    let (prefix, rest) ← splitTwo line "goto -> "
+    let (pre, rest) ← splitTwo line "goto -> "
     let (target, suffix) ← splitTwo rest ";"
-    if prefix != "" || suffix != "" then none else
+    if pre != "" || suffix != "" then none else
       let id ← blockId target
       some ([], .goto id)
   else if line.startsWith "switchInt(" then do
-    let (prefix, rest) ← splitTwo line "switchInt("
-    if prefix != "" then none else
+    let (pre, rest) ← splitTwo line "switchInt("
+    if pre != "" then none else
       let (tagText, tail) ← splitTwo rest ") -> ["
       let tag ← operand tagText
       let (branches, suffix) ← splitTwo tail "];"
@@ -159,12 +159,15 @@ private def bodyLines : List String → List String →
       else
         bodyLines rest (line :: acc)
 
-private def parseBlocks : List String → Graph → Option Graph
-  | [], acc => some acc.reverse
-  | line :: rest, acc =>
+/-- Total, instruction-count-bounded decoder: the fuel decreases even
+when the parser skips an entire block with its enclosed lines. -/
+private def parseBlocks : Nat → List String → Graph → Option Graph
+  | 0, _, _ => none
+  | _ + 1, [], acc => some acc.reverse
+  | fuel + 1, line :: rest, acc =>
       let line := trim line
       if line.isEmpty then
-        parseBlocks rest acc
+        parseBlocks fuel rest acc
       else if line == "}" then
         if rest.all (fun x => (trim x).isEmpty) then
           some acc.reverse
@@ -176,21 +179,21 @@ private def parseBlocks : List String → Graph → Option Graph
           if acc.any (fun entry => entry.1 == id) then none else
             let (body, remaining) ← bodyLines rest []
             let block ← statementBlock body []
-            parseBlocks remaining ((id, block) :: acc)
+            parseBlocks fuel remaining ((id, block) :: acc)
 
 /-- Only field/scope metadata is ignored. Every executable line must be
 parsed into one of the typed operations or terminators above. -/
-private def startBlocks : List String → Option Graph
+private def startBlocks (budget : Nat) : List String → Option Graph
   | [] => none
   | line :: rest =>
       let line := trim line
       if line.startsWith "bb" then
-        parseBlocks (line :: rest) []
+        parseBlocks budget (line :: rest) []
       else if line.isEmpty || line == "}" ||
           line.startsWith "scope " ||
           line.startsWith "let " ||
           line.startsWith "debug " then
-        startBlocks rest
+        startBlocks budget rest
       else none
 
 /-- No parser fallback or permissive else branch: a single changed MIR
@@ -200,13 +203,15 @@ def decodeFunction (text : String) : Option Graph :=
   | first :: rest =>
       if first != "fn certified_scalar(_1: u64, _2: u64) -> u64 {" then none
       else do
-        let graph ← startBlocks rest
+        let graph ← startBlocks rest.length rest
         if (lookup graph 0).isSome then some graph else none
   | _ => none
 
 structure Certificate where
   source : ReaderRustStatement.Certificate
+  mirText : String
   graph : Graph
+  decoded : decodeFunction mirText = some graph
   fuel : Nat
   graphAgreement :
     symRun fuel graph 0 sourceSymbols =
@@ -216,25 +221,26 @@ structure Certificate where
 the real rustc .function.mir file, decode all executable blocks in Lean,
 reify their symbolic result, and compare it to the *independently*
 certified Reader/original-Lean-IR program. -/
-def certify (root : Name) : CoreM Certificate := do
+def certify (root : Name) (text : String) : CoreM Certificate := do
   let source ← ReaderRustStatement.certify root
-  let fixture := root.toString.replace "ScalarFixture." ""
-  let path := s!"artifacts/reader-rust-exec-{fixture}-opt0.function.mir"
-  let text ← liftIO <| IO.FS.readFile path
-  let some graph := decodeFunction text
-    | throwError "real rustc MIR contains unknown syntax or CFG: {root}"
-  let fuel := 1000
-  if h : symRun fuel graph 0 sourceSymbols =
-      some source.live.linked.source.program then
-    return {source, graph, fuel, graphAgreement := h}
-  else
-    throwError "real MIR CFG has different all-input semantics from original Lean IR: {root}"
+  match hd : decodeFunction text with
+  | none =>
+      throwError "real rustc MIR contains unknown syntax or CFG: {root}"
+  | some graph =>
+      let fuel := 1000
+      if h : symRun fuel graph 0 sourceSymbols =
+          some source.live.linked.source.program then
+        return {source, mirText := text, graph, decoded := hd,
+                fuel, graphAgreement := h}
+      else
+        throwError "real MIR CFG has different all-input semantics from original Lean IR: {root}"
 
 /-- Formal all-input execution of the admitted MIR graph equals actual
 source UInt64 arithmetic and case semantics. This is a theorem about
 the independently defined small MIR interpreter and the *decoded graph*.
 It does not assert that rustc machine code is a proven implementation. -/
 theorem actual_mir_cfg_refines (c : Certificate) (a b : UInt64) :
+    decodeFunction c.mirText = some c.graph ∧
     ∃ sourceValue,
       ReaderIRBoolSoundness.BodyRuns c.source.live.linked.source.body
         (ReaderIRSoundness.initialRuntime c.source.live.linked.source.left
@@ -244,7 +250,7 @@ theorem actual_mir_cfg_refines (c : Certificate) (a b : UInt64) :
         some sourceValue.toNat := by
   let value := evalActualProgram (ReaderIRSoundness.inputWords a b)
     c.source.live.linked.source.program
-  refine ⟨value, ?_, ?_⟩
+  refine ⟨c.decoded, value, ?_, ?_⟩
   · exact ReaderIRBoolSoundness.body_sound
       c.source.live.linked.source.sourceProof
       (ReaderIRSoundness.inputWords a b)
@@ -266,7 +272,10 @@ open Lean Elab Command
 run_cmd do
   for root in #[`ScalarFixture.plus, `ScalarFixture.straightChain,
                 `ScalarFixture.choose, `ScalarFixture.nested] do
-    let c ← liftCoreM <| ReaderMIRLive.certify root
+    let fixture := root.toString.replace "ScalarFixture." ""
+    let path := s!"artifacts/reader-rust-exec-{fixture}-opt0.function.mir"
+    let text ← liftIO <| IO.FS.readFile path
+    let c ← liftCoreM <| ReaderMIRLive.certify root text
     let _ := ReaderMIRLive.actual_mir_cfg_refines c
     logInfo m!"Actual rustc MIR CFG admitted to all-input source theorem: {root}, blocks={c.graph.length}"
   -- The decoder, not just the earlier shell footprint check, must refuse a

@@ -375,6 +375,104 @@ theorem conditionalAssignmentFiber_equidistributed
   rw [conditionalAssignmentFiber_card endpoint target₁ allowed hinj h₁,
     conditionalAssignmentFiber_card endpoint target₂ allowed hinj h₂]
 
+/-- Allowed full graph labels on each shore, under an arbitrary
+partial assignment or other vertex-specific finite constraints. -/
+def bipartiteAllowedLabelings
+    {L R A : Type*} [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (allowedL : L → Finset A) (allowedR : R → Finset A) :
+    Finset ((L → A) × (R → A)) :=
+  (Fintype.piFinset allowedL).product (Fintype.piFinset allowedR)
+
+/-- A source matching edge receives an ordered pair consisting of
+an allowed symbol at each of its left/right endpoints. -/
+def matchingPairChoices
+    {E L R A : Type*} [Fintype A] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (e : E) : Finset (A × A) :=
+  (allowedL (left e)).product (allowedR (right e))
+
+/-- The compatible fiber of a prescribed pair of matching endpoint
+labels, with all other graph-vertex assignments still constrained. -/
+def conditionalBipartiteMatchingFiber
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (target : E → A × A) : Finset ((L → A) × (R → A)) :=
+  (conditionalAssignmentFiber left (fun e => (target e).1) allowedL).product
+    (conditionalAssignmentFiber right (fun e => (target e).2) allowedR)
+
+/-- The real graph-vertex matching restriction fiber is precisely
+the product of the two source-shore conditional fibers. -/
+theorem matchingEndpointLabels_conditional_preimage
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (target : E → A × A) :
+    (bipartiteAllowedLabelings allowedL allowedR).filter
+      (fun full => matchingEndpointLabels left right full = target) =
+    conditionalBipartiteMatchingFiber left right allowedL allowedR target := by
+  classical
+  ext full
+  rcases full with ⟨labL, labR⟩
+  simp only [bipartiteAllowedLabelings, conditionalBipartiteMatchingFiber,
+    Finset.mem_filter, Finset.mem_product, conditionalAssignmentFiber,
+    Finset.mem_inter]
+  constructor
+  · intro h
+    rcases h with ⟨⟨hL, hR⟩, hmatch⟩
+    have heqL : ∀ e, labL (left e) = (target e).1 := by
+      intro e
+      exact congrArg Prod.fst (congrFun hmatch e)
+    have heqR : ∀ e, labR (right e) = (target e).2 := by
+      intro e
+      exact congrArg Prod.snd (congrFun hmatch e)
+    exact ⟨⟨Finset.mem_filter.mpr ⟨Finset.mem_univ _, heqL⟩, hL⟩,
+      ⟨Finset.mem_filter.mpr ⟨Finset.mem_univ _, heqR⟩, hR⟩⟩
+  · rintro ⟨⟨hMatchL, hL⟩, ⟨hMatchR, hR⟩⟩
+    have heqL := (Finset.mem_filter.mp hMatchL).2
+    have heqR := (Finset.mem_filter.mp hMatchR).2
+    refine ⟨⟨hL, hR⟩, ?_⟩
+    funext e
+    exact Prod.ext (heqL e) (heqR e)
+
+/-- Every compatible source matching-pair assignment has the same
+number of full graph-vertex completions after arbitrary vertex
+constraints; the unmatched vertices contribute their allowed-set
+cardinalities, independently on each shore. -/
+theorem conditionalBipartiteMatchingFiber_card
+    {E L R A : Type*}
+    [Fintype E] [Fintype L] [Fintype R] [Fintype A]
+    [DecidableEq E] [DecidableEq L] [DecidableEq R] [DecidableEq A]
+    (left : E → L) (right : E → R)
+    (hl : Function.Injective left) (hr : Function.Injective right)
+    (allowedL : L → Finset A) (allowedR : R → Finset A)
+    (target : E → A × A)
+    (hcompatible : ∀ e, target e ∈
+      matchingPairChoices left right allowedL allowedR e) :
+    (conditionalBipartiteMatchingFiber
+      left right allowedL allowedR target).card =
+      unmatchedCompletionCount left allowedL *
+        unmatchedCompletionCount right allowedR := by
+  classical
+  have hL (e : E) : (target e).1 ∈ allowedL (left e) :=
+    (Finset.mem_product.mp (hcompatible e)).1
+  have hR (e : E) : (target e).2 ∈ allowedR (right e) :=
+    (Finset.mem_product.mp (hcompatible e)).2
+  change (conditionalAssignmentFiber left
+      (fun e => (target e).1) allowedL).card *
+    (conditionalAssignmentFiber right
+      (fun e => (target e).2) allowedR).card = _
+  rw [conditionalAssignmentFiber_card left
+      (fun e => (target e).1) allowedL hl hL,
+    conditionalAssignmentFiber_card right
+      (fun e => (target e).2) allowedR hr hR]
+
 #print axioms TwoAdicMatchingGraph.restrictedLabels_at_endpoint
 #print axioms TwoAdicMatchingGraph.assignmentFiber_eq_piFinset
 #print axioms TwoAdicMatchingGraph.assignmentFiber_equidistributed
@@ -385,5 +483,7 @@ theorem conditionalAssignmentFiber_equidistributed
 #print axioms TwoAdicMatchingGraph.conditionalAssignmentFiber_eq_piFinset
 #print axioms TwoAdicMatchingGraph.conditionalAssignmentFiber_card
 #print axioms TwoAdicMatchingGraph.conditionalAssignmentFiber_equidistributed
+#print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_preimage
+#print axioms TwoAdicMatchingGraph.conditionalBipartiteMatchingFiber_card
 
 end TwoAdicMatchingGraph

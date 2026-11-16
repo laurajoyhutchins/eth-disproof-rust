@@ -161,7 +161,7 @@ structure BodyWitness (sym : SymbolicEnv) (body : IR.FnBody) where
 /-- A second, proof-producing scanner. Unlike the independent Rust renderer,
 this scanner returns explicit constructors of BodyMatches; it cannot certify
 an unrecognized instruction or an arbitrary primitive name. -/
-private def wordExpr (sym : SymbolicEnv) (expr : IR.Expr) :
+def wordExpr (sym : SymbolicEnv) (expr : IR.Expr) :
     Option (WordWitness sym expr) :=
   match expr with
   | .lit (.num n) =>

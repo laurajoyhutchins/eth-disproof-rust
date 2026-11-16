@@ -78,7 +78,77 @@ theorem numSat_eq_count {n : ℕ} (φ : MainResults.CNF n) :
   simp only [Finset.mem_filter, Finset.mem_univ, true_and]
   exact (cnf_eval_iff a φ).symm
 
+/-
+## Common-domain and complete Anthropic machine theorem transfer
+
+This is a consequence of the exact original Anthropic MainTheorem *statement*
+together with the already kernel-checked equivalence between its CNF lists
+and the OpenAI SAT finite-set representation. Unlike an output-only test, it
+retains one uniform original TM2 machine, its input encoding, and every
+quantified time bound from MainTheorem.
+
+The parameter hMain is the external published Anthropic proof
+MainResults.mainTheorem : MainResults.MainTheorem. This module imports the
+original *statement*, not its enormous proof dependencies. Accordingly
+the theorem is a proved implication, not a new unconditional proof of ETH.
+
+The original OpenAI primitive-machine runtime theorem is a separate
+source endpoint, SqrtLogSpace.exact_count_and_sat. This module does not
+import it and claims neither identical machines nor equal time bounds.
+-/
+
+/-- Anthropic's k-CNF eligibility implies OpenAI's width hypothesis. -/
+theorem toCNF_width_at_most
+    {n k : ℕ} (φ : MainResults.CNF n)
+    (hK : MainResults.IsKCNF k φ) :
+    SAT.WidthAtMost k (toCNF φ) := by
+  intro C hC
+  simp only [toCNF, List.mem_toFinset, List.mem_map] at hC
+  obtain ⟨C₀, hmem, rfl⟩ := hC
+  calc
+    (toClause C₀).card = (C₀.map toLiteral).toFinset.card := rfl
+    _ ≤ (C₀.map toLiteral).length := List.toFinset_card_le _
+    _ = C₀.length := by simp
+    _ ≤ k := hK.1 C₀ hmem
+
+/--
+**Quantitative machine-level bridge in Anthropic's exact native model.**
+
+Assuming the original source theorem MainTheorem, one *single*
+finite-alphabet Anthropic TM2 machine and one source-defined constant C
+work uniformly for all k,n,φ satisfying the original eligibility
+hypotheses. The output word denotes the actual OpenAI SAT.count of the
+translated formula, and the original precise timeMin bound is retained.
+
+This does NOT silently replace Anthropic's input word by OpenAI's
+encodeCNF: the machine still reads exactly Anthropic.encInput k φ.
+-/
+theorem original_anthropic_machine_counts_openai_with_rate
+    (hMain : MainResults.MainTheorem) :
+    ∃ (M : Turing.TM2ComputableAux Bool Bool) (C : ℕ),
+      (∀ i, Finite (M.tm.Γ i)) ∧
+      ∀ (k n : ℕ) (φ : MainResults.CNF n),
+        1 ≤ k → MainResults.IsKCNF k φ →
+        2 ≤ φ.length → 4 ≤ n → MainResults.AllOccur φ →
+        SAT.WidthAtMost k (toCNF φ) ∧
+        Nonempty (Turing.TM2OutputsInTime M.tm
+          ((MainResults.encInput k φ).map M.inputAlphabet.invFun)
+          (some ((MainResults.binary n (SAT.count (toCNF φ))).map
+            M.outputAlphabet.invFun))
+          (MainResults.timeMin C k φ.length n)) := by
+  obtain ⟨M, C, hfinite, hrun⟩ := hMain
+  refine ⟨M, C, hfinite, ?_⟩
+  intro k n φ hk hK hm hn hoc
+  refine ⟨toCNF_width_at_most φ hK, ?_⟩
+  have hr : MainResults.CountsWithin M k φ
+      (MainResults.timeMin C k φ.length n) :=
+    hrun k n φ hk hK hm hn hoc
+  dsimp [MainResults.CountsWithin] at hr
+  simpa only [numSat_eq_count] using hr
+
 #print axioms IndependentETH.satisfiable_iff
 #print axioms IndependentETH.numSat_eq_count
+#print axioms IndependentETH.toCNF_width_at_most
+#print axioms IndependentETH.original_anthropic_machine_counts_openai_with_rate
 
 end IndependentETH

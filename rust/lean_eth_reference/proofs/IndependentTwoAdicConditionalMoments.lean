@@ -39,7 +39,7 @@ theorem mem_admissible {V A : Type*} [Fintype A] [DecidableEq A]
   | some x => simp [admissible, h, eq_comm]
 
 /-- One symbol port's exact local conditional weight. -/
-def localPortMoment {V A : Type*} [Fintype A]
+def localPortMoment {V A : Type*} [Fintype A] [DecidableEq A]
     (degree : V → ℕ) (fixed : V → Option A)
     (target : A) (z : ℚ) (v : V) : ℚ :=
   match fixed v with

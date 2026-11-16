@@ -662,6 +662,231 @@ theorem matchingEndpointLabels_conditional_uniform_mean_cross_mul
   rw [hweight, hcard]
   ring
 
+/-
+Sequential selection on actual graph-vertex labelings. The score can
+be any exact rational combination of matching-class and real-port
+potentials; the theorem proves one choice does not increase its
+conditional mean, without requiring nonnegative score values.
+-/
+
+/-- The compatible graph-label completions where a particular vertex
+has been assigned one candidate symbol. -/
+def vertexChoiceFiber
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V) (symbol : A) :
+    Finset (V → A) :=
+  (Fintype.piFinset allowed).filter (fun labels => labels v = symbol)
+
+/-- A single-vertex choice is the previously proved conditional
+matching-endpoint fiber, with the edge index specialized to PUnit. -/
+theorem vertexChoiceFiber_eq_conditionalAssignmentFiber
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V) (symbol : A) :
+    vertexChoiceFiber allowed v symbol =
+      conditionalAssignmentFiber
+        (fun (_ : PUnit) => v) (fun _ => symbol) allowed := by
+  classical
+  ext labels
+  constructor
+  · intro hf
+    obtain ⟨hfull, hsymbol⟩ := Finset.mem_filter.mp hf
+    apply Finset.mem_inter.mpr
+    constructor
+    · apply Finset.mem_filter.mpr
+      refine ⟨Finset.mem_univ _, ?_⟩
+      intro _
+      exact hsymbol
+    · exact hfull
+  · intro hf
+    obtain ⟨hmatch, hfull⟩ := Finset.mem_inter.mp hf
+    have hsymbol : labels v = symbol :=
+      (Finset.mem_filter.mp hmatch).2 PUnit.unit
+    exact Finset.mem_filter.mpr ⟨hfull, hsymbol⟩
+
+/-- Every compatible candidate symbol leaves the same number of
+completions of the *other* graph vertices. This is a concrete
+uniform-fiber identity, not an abstract equal-fiber hypothesis. -/
+theorem vertexChoiceFiber_card
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V) (symbol : A)
+    (hsymbol : symbol ∈ allowed v) :
+    (vertexChoiceFiber allowed v symbol).card =
+      unmatchedCompletionCount
+        (fun (_ : PUnit) => v) allowed := by
+  classical
+  have hinj : Function.Injective (fun (_ : PUnit) => v) := by
+    intro x y _
+    cases x
+    cases y
+    rfl
+  rw [vertexChoiceFiber_eq_conditionalAssignmentFiber]
+  exact conditionalAssignmentFiber_card
+    (fun (_ : PUnit) => v) (fun _ => symbol)
+    allowed hinj (fun _ => hsymbol)
+
+/-- Sum over possible next labels is exactly the sum over all
+compatible complete graph assignments, with no double counting.
+This holds for any rational observable, even a signed tensor weight. -/
+theorem sum_by_vertex_choice
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V)
+    (weight : (V → A) → ℚ) :
+    (∑ symbol ∈ allowed v,
+        ∑ labels ∈ vertexChoiceFiber allowed v symbol,
+          weight labels) =
+      ∑ labels ∈ Fintype.piFinset allowed, weight labels := by
+  classical
+  let full : Finset (V → A) := Fintype.piFinset allowed
+  have houter :
+      (∑ symbol : A,
+        ∑ labels ∈ vertexChoiceFiber allowed v symbol, weight labels) =
+      ∑ labels ∈ full, weight labels := by
+    symm
+    exact Finset.sum_fiberwise' full (fun labels => labels v) weight
+  have hzero (symbol : A) (hnot : symbol ∉ allowed v) :
+      vertexChoiceFiber allowed v symbol = ∅ := by
+    ext labels
+    constructor
+    · intro h
+      obtain ⟨hfull, heq⟩ := Finset.mem_filter.mp h
+      have hallowed := (Fintype.mem_piFinset.mp hfull) v
+      exact False.elim (hnot (by simpa [heq] using hallowed))
+    · simp
+  calc
+    _ = ∑ symbol : A,
+        ∑ labels ∈ vertexChoiceFiber allowed v symbol, weight labels := by
+      apply Finset.sum_subset (Finset.subset_univ _)
+      intro symbol _ hnot
+      rw [hzero symbol hnot]
+      simp
+    _ = ∑ labels ∈ full, weight labels := houter
+
+/-- The source graph's total number of compatible labelings is the
+number of available symbols at the next vertex times the common
+number of completions at every other vertex. -/
+theorem vertexChoice_total_card
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V) :
+    (Fintype.piFinset allowed).card =
+      (allowed v).card *
+        unmatchedCompletionCount (fun (_ : PUnit) => v) allowed := by
+  classical
+  have hsum := sum_by_vertex_choice allowed v (fun _ => (1 : ℚ))
+  have hcard :
+      ((Fintype.piFinset allowed).card : ℚ) =
+      ∑ symbol ∈ allowed v,
+        ((vertexChoiceFiber allowed v symbol).card : ℚ) := by
+    simpa using hsum.symm
+  have hconstant :
+      (∑ symbol ∈ allowed v,
+        ((vertexChoiceFiber allowed v symbol).card : ℚ)) =
+      ((allowed v).card : ℚ) *
+        (unmatchedCompletionCount
+          (fun (_ : PUnit) => v) allowed : ℚ) := by
+    calc
+      _ = ∑ _symbol ∈ allowed v,
+          (unmatchedCompletionCount
+            (fun (_ : PUnit) => v) allowed : ℚ) := by
+        apply Finset.sum_congr rfl
+        intro symbol hs
+        exact_mod_cast vertexChoiceFiber_card allowed v symbol hs
+      _ = _ := by simp
+  exact_mod_cast hcard.trans hconstant
+
+/-- One actual candidate next vertex label has combined conditional
+mean no greater than the previous conditional mean. The only
+admission conditions are a nonempty candidate-symbol set and a
+positive common completion count, both automatically satisfied by
+the source's nonempty finite alphabets and genuinely free vertices.
+
+The argument applies to any rational weight. To represent the joint
+packet/port potential, take that weight to be their exact sum. -/
+theorem exists_nonincreasing_vertex_conditional_mean
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V)
+    (hne : (allowed v).Nonempty)
+    (hfree : 0 <
+      unmatchedCompletionCount (fun (_ : PUnit) => v) allowed)
+    (weight : (V → A) → ℚ) :
+    ∃ symbol ∈ allowed v,
+      (∑ labels ∈ vertexChoiceFiber allowed v symbol,
+        weight labels) /
+        (unmatchedCompletionCount
+          (fun (_ : PUnit) => v) allowed : ℚ) ≤
+      (∑ labels ∈ Fintype.piFinset allowed, weight labels) /
+        ((Fintype.piFinset allowed).card : ℚ) := by
+  classical
+  let full : Finset (V → A) := Fintype.piFinset allowed
+  let choices : Finset A := allowed v
+  let common : ℚ :=
+    (unmatchedCompletionCount (fun (_ : PUnit) => v) allowed : ℚ)
+  let score (symbol : A) : ℚ :=
+    ∑ labels ∈ vertexChoiceFiber allowed v symbol, weight labels
+  obtain ⟨symbol, hs, hmin⟩ :=
+    Finset.exists_min_image choices score hne
+  have hsum :
+      (∑ symbol ∈ choices, score symbol) =
+        ∑ labels ∈ full, weight labels :=
+    sum_by_vertex_choice allowed v weight
+  have hchoice :
+      ((choices.card : ℚ) * score symbol) ≤
+        ∑ labels ∈ full, weight labels := by
+    calc
+      (choices.card : ℚ) * score symbol =
+          ∑ other ∈ choices, score symbol := by simp
+      _ ≤ ∑ other ∈ choices, score other := by
+        exact Finset.sum_le_sum (by
+          intro other ho
+          exact hmin other ho)
+      _ = ∑ labels ∈ full, weight labels := hsum
+  have htotal :
+      ((full.card : ℚ)) = (choices.card : ℚ) * common := by
+    exact_mod_cast vertexChoice_total_card allowed v
+  have hcommon : (0 : ℚ) < common := by
+    exact_mod_cast hfree
+  have hchoices : (0 : ℚ) < (choices.card : ℚ) := by
+    exact_mod_cast Finset.card_pos.mpr hne
+  have hfull : (0 : ℚ) < (full.card : ℚ) := by
+    rw [htotal]
+    positivity
+  refine ⟨symbol, hs, ?_⟩
+  apply (div_le_div_iff₀ hcommon hfull).mpr
+  have hscaled := mul_le_mul_of_nonneg_right hchoice (le_of_lt hcommon)
+  change score symbol * (full.card : ℚ) ≤
+    (∑ labels ∈ full, weight labels) * common
+  rw [htotal]
+  nlinarith [hscaled]
+
+/-- The two source potential families are evaluated under the SAME
+conditional graph labeling and minimized by the SAME vertex choice.
+Their scores may contain differently normalized exact matching
+collisions and degree-weighted ports. -/
+theorem exists_nonincreasing_combined_vertex_potential
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V)
+    (hne : (allowed v).Nonempty)
+    (hfree : 0 <
+      unmatchedCompletionCount (fun (_ : PUnit) => v) allowed)
+    (matchingPotential portPotential : (V → A) → ℚ) :
+    ∃ symbol ∈ allowed v,
+      (∑ labels ∈ vertexChoiceFiber allowed v symbol,
+        (matchingPotential labels + portPotential labels)) /
+        (unmatchedCompletionCount
+          (fun (_ : PUnit) => v) allowed : ℚ) ≤
+      (∑ labels ∈ Fintype.piFinset allowed,
+        (matchingPotential labels + portPotential labels)) /
+        ((Fintype.piFinset allowed).card : ℚ) := by
+  exact exists_nonincreasing_vertex_conditional_mean
+    allowed v hne hfree
+    (fun labels => matchingPotential labels + portPotential labels)
+
 #print axioms TwoAdicMatchingGraph.restrictedLabels_at_endpoint
 #print axioms TwoAdicMatchingGraph.assignmentFiber_eq_piFinset
 #print axioms TwoAdicMatchingGraph.assignmentFiber_equidistributed
@@ -677,5 +902,11 @@ theorem matchingEndpointLabels_conditional_uniform_mean_cross_mul
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_weighted_sum
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_class_moment
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_uniform_mean_cross_mul
+#print axioms TwoAdicMatchingGraph.vertexChoiceFiber_eq_conditionalAssignmentFiber
+#print axioms TwoAdicMatchingGraph.vertexChoiceFiber_card
+#print axioms TwoAdicMatchingGraph.sum_by_vertex_choice
+#print axioms TwoAdicMatchingGraph.vertexChoice_total_card
+#print axioms TwoAdicMatchingGraph.exists_nonincreasing_vertex_conditional_mean
+#print axioms TwoAdicMatchingGraph.exists_nonincreasing_combined_vertex_potential
 
 end TwoAdicMatchingGraph

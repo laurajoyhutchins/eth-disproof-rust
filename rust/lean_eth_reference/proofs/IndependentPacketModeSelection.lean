@@ -98,7 +98,8 @@ To instantiate with the original packet, `amplitude` must come
 from a proved Cauchy-mode coefficient factorization in `A_p`.
 -/
 theorem precision_discards_heavy_selections
-    {Row Mode R : Type*} [Fintype Row] [Fintype Mode] [CommSemiring R]
+    {Row Mode R : Type*} [Fintype Row] [DecidableEq Row]
+    [Fintype Mode] [DecidableEq Mode] [CommSemiring R]
     (weight : Mode → ℕ) (constant : Row → R)
     (amplitude : Row → Mode → R)
     (p : ℕ) (hmod : (2 : R) ^ p = 0) :

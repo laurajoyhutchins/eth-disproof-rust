@@ -38,6 +38,33 @@ def root_receipt():
             {"name": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command",
              "kind": "definition"},
         ],
+        "same_module_local_declarations": [
+            {
+                "name": DECLARATION, "kind": "definition", "body_scanned": True,
+                "expression_nodes": 8,
+                "immediate_symbols": [
+                    COMPILER, DECLARATION.removesuffix(".program") + ".command",
+                ],
+            },
+            {
+                "name": DECLARATION.removesuffix(".program") + ".command",
+                "kind": "definition", "body_scanned": True,
+                "expression_nodes": 24,
+                "immediate_symbols": [
+                    "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq",
+                    "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh",
+                    DECLARATION.removesuffix(".program") + ".nodes",
+                    "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command",
+                ],
+            },
+            {
+                "name": DECLARATION.removesuffix(".program") + ".nodes",
+                "kind": "definition", "body_scanned": True,
+                "expression_nodes": 3,
+                "immediate_symbols": ["OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq"],
+            },
+        ],
+        "external_module_edges_unresolved": True,
         "transitive_computational_closure": False,
         "rust_executable": False,
         "independent_lean_rust_parity": False,
@@ -105,6 +132,61 @@ class KernelRootReceiptTests(unittest.TestCase):
         fixture = root_receipt()
         fixture["command_expression_nodes"] = 2048
         with self.assertRaisesRegex(ValueError, "node budget"):
+            validate_kernel_root(json.dumps(fixture))
+
+    def test_same_module_inventory_is_bounded_and_closed_without_executable_promotion(self):
+        actual = validate_kernel_root(json.dumps(root_receipt()))
+        self.assertEqual(len(actual["same_module_local_declarations"]), 3)
+        self.assertTrue(actual["external_module_edges_unresolved"])
+        self.assertFalse(actual["transitive_computational_closure"])
+
+    def test_same_module_refuses_missing_dangling_duplicate_and_unreachable_nodes(self):
+        fixture = root_receipt()
+        fixture["same_module_local_declarations"].pop()
+        with self.assertRaisesRegex(ValueError, "referenced declaration missing"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["same_module_local_declarations"].append(
+            dict(fixture["same_module_local_declarations"][2]))
+        with self.assertRaisesRegex(ValueError, "identity or uniqueness"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["same_module_local_declarations"].append({
+            "name": DECLARATION.removesuffix(".program") + ".orphan",
+            "kind": "definition", "body_scanned": True,
+            "expression_nodes": 2, "immediate_symbols": [],
+        })
+        with self.assertRaisesRegex(ValueError, "unreachable"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["same_module_local_declarations"][0]["immediate_symbols"].append(
+            DECLARATION.removesuffix(".program") + ".omitted")
+        with self.assertRaisesRegex(ValueError, "root/command symbols disagree"):
+            validate_kernel_root(json.dumps(fixture))
+
+    def test_same_module_refuses_forged_theorem_erasure_and_false_external_resolution(self):
+        fixture = root_receipt()
+        fixture["external_module_edges_unresolved"] = False
+        with self.assertRaisesRegex(ValueError, "mismatch"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        item = fixture["same_module_local_declarations"][2]
+        item["kind"] = "theorem"
+        with self.assertRaisesRegex(ValueError, "classification"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        item = fixture["same_module_local_declarations"][2]
+        item["kind"] = "theorem"
+        item["body_scanned"] = False
+        with self.assertRaisesRegex(ValueError, "erasure claim|symbol list"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["same_module_local_declarations"][2]["expression_nodes"] = 8193
+        with self.assertRaisesRegex(ValueError, "node budget"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["same_module_local_declarations"] = fixture["same_module_local_declarations"] * 11
+        with self.assertRaisesRegex(ValueError, "declaration budget"):
             validate_kernel_root(json.dumps(fixture))
 
     def test_refuse_missing_extra_duplicate_and_unbounded_symbols(self):

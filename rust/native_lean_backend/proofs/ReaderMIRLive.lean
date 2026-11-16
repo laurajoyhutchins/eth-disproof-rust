@@ -295,4 +295,16 @@ run_cmd do
     if ReaderMIR.symRun 1000 badGraph 0 ReaderMIR.sourceSymbols ==
         some source.live.linked.source.program then
       throwError "MIR semantic checker admitted reversed Bool successors"
-  logInfo "Actual MIR semantic checker refused substituted arithmetic and reversed Bool successors"
+  let badTrap := original.replace
+    "switchInt(copy _3) -> [0: bb4, 1: bb3, otherwise: bb2];"
+    "switchInt(copy _3) -> [0: bb4, 1: bb3, otherwise: bb4];"
+  if badTrap == original then
+    throwError "MIR trap-path negative control did not modify original source"
+  if let some badGraph := ReaderMIRLive.decodeFunction badTrap then
+    if (ReaderMIR.symRun 1000 badGraph 0 ReaderMIR.sourceSymbols).isSome then
+      throwError "MIR semantic checker admitted invalid-tag return path"
+  let badDuplicate := original.replace "bb8: {" "bb1: {"
+  if badDuplicate == original ||
+      (ReaderMIRLive.decodeFunction badDuplicate).isSome then
+    throwError "MIR parser admitted duplicate basic-block identifier"
+  logInfo "Actual MIR checker refused substituted arithmetic, reversed Bool edges, nontrapping invalid tag, and duplicate block"

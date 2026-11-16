@@ -308,8 +308,9 @@ theorem run_sound (fuel : Nat) (graph : Graph) (pc : Nat)
                   | some e =>
                       simp [symRun, hb, hs, ht, hv] at h
                       subst p
-                      simp [realRun, hb, hreal, ht, materialize, hv,
-                        evalRustProgram]
+                      simp only [realRun, hb, Option.bind_some, hreal,
+                        ht, Option.bind_some]
+                      simp [materialize, hv, evalRustProgram]
               | goto next =>
                   have hchild : symRun fuel graph next after = some p := by
                     simpa [symRun, hb, hs, ht] using h
@@ -334,11 +335,15 @@ theorem run_sound (fuel : Nat) (graph : Graph) (pc : Nat)
                                 have hf' := ih falsePc after fp hfalse
                                 cases hcond : evalRustCondition inputs cond with
                                 | true =>
-                                    simpa [realRun, hb, hreal, ht, materialize,
-                                      hc, hcond, rustBoolTag, evalRustProgram] using ht'
+                                    simp only [realRun, hb, Option.bind_some,
+                                      hreal, ht, Option.bind_some]
+                                    simpa [materialize, hc, hcond, rustBoolTag,
+                                      evalRustProgram] using ht'
                                 | false =>
-                                    simpa [realRun, hb, hreal, ht, materialize,
-                                      hc, hcond, rustBoolTag, evalRustProgram] using hf'
+                                    simp only [realRun, hb, Option.bind_some,
+                                      hreal, ht, Option.bind_some]
+                                    simpa [materialize, hc, hcond, rustBoolTag,
+                                      evalRustProgram] using hf'
                   · have hnot : trapEdge graph other = false := by
                       cases ht2 : trapEdge graph other <;> simp_all
                     simp [symRun, hb, hs, ht, hnot] at h

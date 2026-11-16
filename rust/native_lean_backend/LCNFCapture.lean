@@ -30,7 +30,7 @@ meta def installObserver : PassInstaller :=
 
 /-- Report a declaration observed by this process, refusing imported or
     previously compiled declarations for which this pass did not run. -/
-def report (root : Name) : CoreM Json := do
+meta def report (root : Name) : CoreM Json := do
   if (← Lean.IR.findDecl root).isNone then
     Lean.Compiler.compile #[root]
   let observed := observedExt.getState (← getEnv)

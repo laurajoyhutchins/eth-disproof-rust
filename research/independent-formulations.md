@@ -199,3 +199,32 @@ There is no source-defined equality between these two sets of individual factor 
 - There cannot be an integer coefficient `c` with `2c=-1`, the precise obstruction to naive identification of a packet weight-one coefficient with an odd signed-singlet entry.
 
 **Remaining theorem, still open:** Construct *both* original algorithms' complete embeddings into one labelled finite network, with compatible coefficient rings and exact ports, then prove equality of *complete contraction values* or the source-justified `2^p` congruence. A factorwise theorem additionally needs explicit label bijections, normalization and perhaps a gauge transformation. The equality of the two original local factor tables cannot be inferred from a shared final count or an abstract finite factorization; the original OpenAI source's coefficient-extraction and valuation steps must be included. This work proves no cross-algorithm complexity bound.
+
+## Full integer packet as a pinned Anthropic network
+
+The Lean module [`IndependentPacketFactorBoundary.lean`](../rust/lean_eth_reference/proofs/IndependentPacketFactorBoundary.lean) now constructs a `Groundwork.Network` **from all rows of one OpenAI packet**, using the original unmodified Anthropic `Groundwork.Net.Net` definitions at commit `16a5ce4`. This is stronger than the previous one-slot example.
+
+For a packet with `m` real row/column ports, an integer matrix `W : Fin m → Fin m → ℤ`, and integer boundary-tensor products `A(Y)` and `B(X)`, the complete original OpenAI **row-product form** is
+
+```text
+K_W(Y,X) = ∏_{i<m} ℓ_{Y_i}( Σ_{j<m} W_ij * X_j )
+F_W      = Σ_{Y,X ∈ {0,1}^m} A(Y) B(X) K_W(Y,X)
+```
+
+The translation uses precisely the source Anthropic network structure:
+
+```text
+nodes            : {row=0, column=1}
+states at node   : all {0,1}^m
+node weights     : A(Y), B(X)
+shared labels θ  : all {0,1}^m
+row factor       : f_01(Y,θ) = K_W(Y,θ)
+column factor    : f_10(X,θ) = [X=θ]
+pair interaction : Ψ_01(Y,X) = Σ_θ f_01(Y,θ) f_10(X,θ) = K_W(Y,X)
+```
+
+The source-network theorem `packetAsNetwork_pair_interaction` equates this original Anthropic `Network.Ψ` with the complete OpenAI packet kernel, **not merely its output count**. The theorem `packetAsNetwork_value_eq_packetContraction` then equates the original Anthropic `Network.value` with the complete OpenAI `F_W` finite sum. `identity_packet_row_product` additionally specializes `W=I` (the undeformed source point `T=0`) to exact equality of full Boolean assignments, for every packet length.
+
+**This is a representation bridge, not the requested identification with Anthropic's optimized factors.** The translation's shared-label cardinality is `2^m`, not the smaller `2^{c_{ab}}` from Anthropic's crossing decomposition. It does not show that the actual Anthropic tables `f_{ab}` equal OpenAI's coefficient-extracted child packet tables, nor that the original OpenAI `W(t+αζ)` is integral at general ring values, nor that its weighted-mode truncation or resource bounds transfer. The original Anthropic implementation remains over `ℤ`, whereas OpenAI uses `A_p`; that ring gap needs a precise specialization/base-change map rather than a silent integer identification.
+
+Required next steps: (1) verify the two new Lean source-network theorems at the exact pinned Mathlib and source heads; (2) formalize the actual OpenAI Cauchy matrix, its integral samples and coordinate-ring specialization; (3) prove coefficient-by-coefficient mode extraction and the `2^w` valuation certificate in that ring; (4) factor the resulting child tensor **through Anthropic's specific low-rank labels** with an explicit sign/normalization change, or show a concrete incompatibility; (5) only then compare full recursive values and operation counts.

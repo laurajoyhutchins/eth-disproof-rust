@@ -192,11 +192,11 @@ class QueryAotContract(unittest.TestCase):
     def test_process_group_rss_refuses_with_retained_diagnostics(self):
         with tempfile.TemporaryDirectory(prefix="query-aot-rss-") as path:
             root = Path(path)
-            script = ("import time\\n"
-                      "data = bytearray(64 * 1024 * 1024)\\n"
-                      "for i in range(0, len(data), 4096): data[i] = 1\\n"
-                      "print('ALLOCATED', flush=True)\\n"
-                      "time.sleep(10)\\n")
+            script = ("import time\n"
+                      "data = bytearray(64 * 1024 * 1024)\n"
+                      "for i in range(0, len(data), 4096): data[i] = 1\n"
+                      "print('ALLOCATED', flush=True)\n"
+                      "time.sleep(10)\n")
             with self.assertRaisesRegex(ResourceLimitError, "RSS budget exceeded"):
                 run_bounded([sys.executable, "-c", script], root, 6,
                             log_base=root / "original-command",
@@ -208,8 +208,8 @@ class QueryAotContract(unittest.TestCase):
             root = Path(path)
             stderr = root / "original-command.stderr.log"
             self.assertEqual(source_export_phase(stderr), "import-or-initialization")
-            stderr.write_text("SOURCE_GRAPH_PHASE=source-identity-checked\\n"
-                              "SOURCE_GRAPH_PHASE=decode-original-structured-command\\n")
+            stderr.write_text("SOURCE_GRAPH_PHASE=source-identity-checked\n"
+                              "SOURCE_GRAPH_PHASE=decode-original-structured-command\n")
             phase = source_export_phase(stderr)
             self.assertEqual(phase, "decode-original-structured-command")
             record_query_refusal(root, "original-command-export-resource-limit",

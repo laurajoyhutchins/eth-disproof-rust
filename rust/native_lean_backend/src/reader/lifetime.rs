@@ -508,8 +508,17 @@ impl Reader {
                     let tested = Self::var(scrutinee)?;
                     state.check(tested, "case scrutinee")?;
                     let alts = Self::array(alternatives)?;
-                    let bool_case =
-                        Self::name(Self::field(body, 0)?, 0)? == "Bool";
+                    // The pinned source stores Bool in UInt8 IR
+                    // representation. Discriminate using the ORIGINAL
+                    // constructor identities, not the scalar storage
+                    // type name (which is "UInt8", not "Bool").
+                    let mut bool_case = false;
+                    for alt in &alts {
+                        if Self::lifetime_bool_arm(*alt)?.is_some() {
+                            bool_case = true;
+                            break;
+                        }
+                    }
                     let known = if bool_case {
                         state.scalar_cases.get(&tested).copied()
                     } else {

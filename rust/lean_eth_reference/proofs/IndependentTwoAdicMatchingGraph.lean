@@ -288,6 +288,93 @@ theorem matchingEndpointLabels_uniform_mean_cross_mul
   rw [htotal, hcard]
   ring
 
+/-
+The following partial-assignment lemmas use vertex-specific *finite*
+sets of allowed symbols. For the source's partial labels, each is
+either the entire alphabet or a singleton, but the result holds for
+arbitrary finite allowed sets, including an empty set.
+-/
+
+/-- Full vertex assignments realizing a matching label, constrained by
+an arbitrary allowed-set function at *every* vertex. -/
+def conditionalAssignmentFiber
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (target : E → A)
+    (allowed : V → Finset A) : Finset (V → A) :=
+  assignmentFiber endpoint target ∩ Fintype.piFinset allowed
+
+/-- Endpoint constraints and vertex allowed sets combine independently. -/
+theorem conditionalAssignmentFiber_eq_piFinset
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (target : E → A)
+    (allowed : V → Finset A)
+    (hinj : Function.Injective endpoint) :
+    conditionalAssignmentFiber endpoint target allowed =
+      Fintype.piFinset
+        (fun v => restrictedLabels endpoint target v ∩ allowed v) := by
+  classical
+  unfold conditionalAssignmentFiber
+  rw [assignmentFiber_eq_piFinset endpoint target hinj]
+  ext labels
+  simp only [Finset.mem_inter, Fintype.mem_piFinset]
+  constructor
+  · rintro ⟨h₁, h₂⟩ v
+    exact ⟨h₁ v, h₂ v⟩
+  · intro h
+    exact ⟨fun v => (h v).1, fun v => (h v).2⟩
+
+/-- Number of ways to label all vertices *outside* the matching.
+Every matched vertex has exactly one allowed value after prescribing
+its edge label, so the count does not depend on the prescribed label. -/
+noncomputable def unmatchedCompletionCount
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (allowed : V → Finset A) : ℕ := by
+  classical
+  exact ∏ v, if ∃ e : E, endpoint e = v then 1 else (allowed v).card
+
+/-- Any compatible matching-edge labeling has the same exact number
+of full vertex-label completions, even after arbitrary vertices have
+already been fixed to allowed singleton values. -/
+theorem conditionalAssignmentFiber_card
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (target : E → A)
+    (allowed : V → Finset A)
+    (hinj : Function.Injective endpoint)
+    (hallowed : ∀ e, target e ∈ allowed (endpoint e)) :
+    (conditionalAssignmentFiber endpoint target allowed).card =
+      unmatchedCompletionCount endpoint allowed := by
+  classical
+  rw [conditionalAssignmentFiber_eq_piFinset endpoint target allowed hinj,
+    Fintype.card_piFinset]
+  unfold unmatchedCompletionCount
+  apply Finset.prod_congr rfl
+  intro v _
+  by_cases hv : ∃ e : E, endpoint e = v
+  · obtain ⟨e, he⟩ := hv
+    subst v
+    rw [restrictedLabels_at_endpoint endpoint target hinj e]
+    simp [hallowed e]
+  · simp [restrictedLabels, hv]
+
+/-- Two matching assignments compatible with the same partial vertex
+constraints have equal numbers of completions. -/
+theorem conditionalAssignmentFiber_equidistributed
+    {E V A : Type*} [Fintype E] [Fintype V] [Fintype A]
+    [DecidableEq E] [DecidableEq V] [DecidableEq A]
+    (endpoint : E → V) (allowed : V → Finset A)
+    (hinj : Function.Injective endpoint)
+    (target₁ target₂ : E → A)
+    (h₁ : ∀ e, target₁ e ∈ allowed (endpoint e))
+    (h₂ : ∀ e, target₂ e ∈ allowed (endpoint e)) :
+    (conditionalAssignmentFiber endpoint target₁ allowed).card =
+      (conditionalAssignmentFiber endpoint target₂ allowed).card := by
+  rw [conditionalAssignmentFiber_card endpoint target₁ allowed hinj h₁,
+    conditionalAssignmentFiber_card endpoint target₂ allowed hinj h₂]
+
 #print axioms TwoAdicMatchingGraph.restrictedLabels_at_endpoint
 #print axioms TwoAdicMatchingGraph.assignmentFiber_eq_piFinset
 #print axioms TwoAdicMatchingGraph.assignmentFiber_equidistributed
@@ -295,5 +382,8 @@ theorem matchingEndpointLabels_uniform_mean_cross_mul
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_preimage
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_weighted_sum
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_uniform_mean_cross_mul
+#print axioms TwoAdicMatchingGraph.conditionalAssignmentFiber_eq_piFinset
+#print axioms TwoAdicMatchingGraph.conditionalAssignmentFiber_card
+#print axioms TwoAdicMatchingGraph.conditionalAssignmentFiber_equidistributed
 
 end TwoAdicMatchingGraph

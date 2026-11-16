@@ -806,7 +806,7 @@ theorem vertexChoice_total_card
         apply Finset.sum_congr rfl
         intro symbol hs
         exact_mod_cast vertexChoiceFiber_card allowed v symbol hs
-      _ = _ := by simp only [Finset.sum_const, nsmul_eq_mul]
+      _ = _ := by simp only [Finset.sum_const, nsmul_eq_mul]; rfl
   exact_mod_cast hcard.trans hconstant
 
 /-- One actual candidate next vertex label has combined conditional
@@ -869,14 +869,16 @@ theorem exists_nonincreasing_vertex_conditional_mean
     rw [htotal]
     positivity
   refine ⟨symbol, hs, ?_⟩
-  change (score symbol) / common ≤
-    (∑ labels ∈ full, weight labels) / (full.card : ℚ)
-  apply (div_le_div_iff₀ hcommon hfull).mpr
-  have hscaled := mul_le_mul_of_nonneg_right hchoice (le_of_lt hcommon)
-  change score symbol * (full.card : ℚ) ≤
-    (∑ labels ∈ full, weight labels) * common
-  rw [htotal]
-  nlinarith [hscaled]
+  have hgoal :
+      score symbol / common ≤
+      (∑ labels ∈ full, weight labels) / (full.card : ℚ) := by
+    apply (div_le_div_iff₀ hcommon hfull).mpr
+    have hscaled := mul_le_mul_of_nonneg_right hchoice (le_of_lt hcommon)
+    change score symbol * (full.card : ℚ) ≤
+      (∑ labels ∈ full, weight labels) * common
+    rw [htotal]
+    nlinarith [hscaled]
+  simpa only [score, common, full] using hgoal
 
 /-- The two source potential families are evaluated under the SAME
 conditional graph labeling and minimized by the SAME vertex choice.

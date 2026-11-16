@@ -147,16 +147,22 @@ A scanned body remains an inventory, not a compiled command. Oversized bodies
 are named refusals with no invented or truncated symbol lists.
 -/
 private def inspectExternalDefinitions (env : Environment)
-    (targets : Array String) : IO (Array Json) := do
+    (targets : Array String) (bodyBudget typeBudget : Nat) (collectNext : Bool) :
+    IO (Array Json × Array String) := do
+  if targets.size > 96 then
+    throw <| IO.userError "original external definition target budget exceeded"
+  let localNamePrefix := "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram."
   let mut bodies : Array Json := #[]
+  let mut nextTargets : Array String := #[]
   let mut aggregateNodes := 0
+  let mut aggregateTypeNodes := 0
   for symbol in targets do
     let some (.defnInfo info) := env.find? (qualified symbol)
       | throw <| IO.userError s!"original external definition missing: {symbol}"
     let (status, nodes, symbols) ←
       match immediateSymbols info.value 4096 with
       | .ok (children, count) =>
-        if aggregateNodes + count > 32768 then
+        if aggregateNodes + count > bodyBudget then
           pure ("aggregate_budget_refused", 0, #[])
         else
           aggregateNodes := aggregateNodes + count
@@ -167,15 +173,46 @@ private def inspectExternalDefinitions (env : Environment)
         else
           throw <| IO.userError s!"external definition {symbol}: {reason}"
     let kinds ← classifySymbols env symbols
+    -- These are syntactic type-signature references, not an erasure proof.
+    -- A term-body reference may itself occur in proof or type arguments.
+    let (typeStatus, typeNodes, typeSymbols) ←
+      match immediateSymbols info.type 4096 with
+      | .ok (children, count) =>
+        if aggregateTypeNodes + count > typeBudget then
+          pure ("aggregate_budget_refused", 0, #[])
+        else
+          aggregateTypeNodes := aggregateTypeNodes + count
+          pure ("scanned", count, children)
+      | .error reason =>
+        if reason == "kernel root expression exceeded finite node budget" then
+          pure ("node_budget_refused", 0, #[])
+        else
+          throw <| IO.userError s!"external definition type {symbol}: {reason}"
+    let typeKinds ← classifySymbols env typeSymbols
+    if collectNext && status == "scanned" then
+      for child in symbols do
+        if child.startsWith "OAI.Algorithms.SubexponentialSAT." &&
+            !(child.startsWith localNamePrefix) &&
+            !(targets.contains child) && !(nextTargets.contains child) then
+          let some childInfo := env.find? (qualified child)
+            | throw <| IO.userError s!"missing original next-layer declaration: {child}"
+          if kindOf childInfo == "definition" then
+            if nextTargets.size >= 96 then
+              throw <| IO.userError "original next-layer definition target budget exceeded"
+            nextTargets := nextTargets.push child
     bodies := bodies.push <| Json.mkObj [
       ("name", toJson symbol),
       ("kind", toJson "definition"),
       ("status", toJson status),
       ("expression_nodes", toJson nodes),
       ("immediate_symbols", toJson symbols),
-      ("immediate_symbol_kinds", toJson kinds)
+      ("immediate_symbol_kinds", toJson kinds),
+      ("type_status", toJson typeStatus),
+      ("type_expression_nodes", toJson typeNodes),
+      ("type_immediate_symbols", toJson typeSymbols),
+      ("type_symbol_kinds", toJson typeKinds)
     ]
-  return bodies
+  return (bodies, nextTargets)
 
 private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let some (.defnInfo info) := env.find? root
@@ -210,9 +247,12 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     | .error reason => throw <| IO.userError s!"original command: {reason}"
   let commandKinds ← classifySymbols env commandSymbols
   let (localGraph, externalEdges, externalTargets) ← localDeclarations env root
-  let externalBodies ← inspectExternalDefinitions env externalTargets
+  let (externalBodies, secondTargets) ←
+    inspectExternalDefinitions env externalTargets 32768 32768 true
+  let (secondBodies, _) ←
+    inspectExternalDefinitions env secondTargets 65536 65536 false
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v3"),
+    ("format", toJson "original-query-kernel-root-v4"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -228,6 +268,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("same_module_local_declarations", toJson localGraph),
     ("external_module_edges", toJson externalEdges),
     ("external_definition_bodies", toJson externalBodies),
+    ("second_hop_definition_bodies", toJson secondBodies),
     ("external_module_edges_unresolved", toJson true),
     ("transitive_computational_closure", toJson false),
     ("rust_executable", toJson false),

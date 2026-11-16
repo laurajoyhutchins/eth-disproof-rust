@@ -8,7 +8,7 @@ from query_stream_aot import DECLARATION
 
 def root_receipt():
     receipt = {
-        "format": "original-query-kernel-root-v3",
+        "format": "original-query-kernel-root-v4",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -92,10 +92,31 @@ def root_receipt():
     receipt["external_definition_bodies"] = [
         {
             "name": target, "kind": "definition", "status": "scanned",
-            "expression_nodes": 2, "immediate_symbols": ["Nat.zero"],
-            "immediate_symbol_kinds": [{"name": "Nat.zero", "kind": "constructor"}],
-        } for target in targets
+            "expression_nodes": 2,
+            "immediate_symbols": (
+                ["Nat.zero", "OAI.Algorithms.SubexponentialSAT.SubexpSetupStorage.clearMany"]
+                if i == 0 else ["Nat.zero"]
+            ),
+            "immediate_symbol_kinds": (
+                [{"name": "Nat.zero", "kind": "constructor"},
+                 {"name": "OAI.Algorithms.SubexponentialSAT.SubexpSetupStorage.clearMany",
+                  "kind": "definition"}]
+                if i == 0 else [{"name": "Nat.zero", "kind": "constructor"}]
+            ),
+            "type_status": "scanned", "type_expression_nodes": 1,
+            "type_immediate_symbols": ["Nat"],
+            "type_symbol_kinds": [{"name": "Nat", "kind": "inductive"}],
+        } for i, target in enumerate(targets)
     ]
+    receipt["second_hop_definition_bodies"] = [{
+        "name": "OAI.Algorithms.SubexponentialSAT.SubexpSetupStorage.clearMany",
+        "kind": "definition", "status": "scanned",
+        "expression_nodes": 3, "immediate_symbols": ["Nat.zero"],
+        "immediate_symbol_kinds": [{"name": "Nat.zero", "kind": "constructor"}],
+        "type_status": "scanned", "type_expression_nodes": 1,
+        "type_immediate_symbols": ["Nat"],
+        "type_symbol_kinds": [{"name": "Nat", "kind": "inductive"}],
+    }]
     return receipt
 
 
@@ -295,6 +316,7 @@ class KernelRootReceiptTests(unittest.TestCase):
         refused = fixture["external_definition_bodies"][0]
         refused.update(status="node_budget_refused", expression_nodes=0,
                        immediate_symbols=[], immediate_symbol_kinds=[])
+        fixture["second_hop_definition_bodies"] = []
         self.assertEqual(validate_kernel_root(json.dumps(fixture))[
             "external_definition_bodies"][0]["status"], "node_budget_refused")
 
@@ -302,8 +324,47 @@ class KernelRootReceiptTests(unittest.TestCase):
         refused = fixture["external_definition_bodies"][0]
         refused.update(status="aggregate_budget_refused", expression_nodes=0,
                        immediate_symbols=[], immediate_symbol_kinds=[])
+        fixture["second_hop_definition_bodies"] = []
         self.assertEqual(validate_kernel_root(json.dumps(fixture))[
             "external_definition_bodies"][0]["status"], "aggregate_budget_refused")
+
+    def test_second_hop_is_exact_and_type_references_are_not_erasure(self):
+        receipt = root_receipt()
+        actual = validate_kernel_root(json.dumps(receipt))
+        self.assertEqual(len(actual["second_hop_definition_bodies"]), 1)
+        self.assertFalse(actual["transitive_computational_closure"])
+        fixture = root_receipt()
+        fixture["second_hop_definition_bodies"].clear()
+        with self.assertRaisesRegex(ValueError, "coverage"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["second_hop_definition_bodies"][0]["name"] = "OAI.Forged"
+        with self.assertRaisesRegex(ValueError, "forged"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["second_hop_definition_bodies"][0]["expression_nodes"] = 4097
+        with self.assertRaisesRegex(ValueError, "budget"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["second_hop_definition_bodies"][0]["type_symbol_kinds"][0]["kind"] = "verified-erased"
+        with self.assertRaisesRegex(ValueError, "kind mismatch"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        item = fixture["second_hop_definition_bodies"][0]
+        item.update(type_status="node_budget_refused",
+                    type_expression_nodes=0, type_immediate_symbols=[],
+                    type_symbol_kinds=[])
+        self.assertEqual(validate_kernel_root(json.dumps(fixture))[
+            "second_hop_definition_bodies"][0]["type_status"], "node_budget_refused")
+        fixture = root_receipt()
+        item = fixture["second_hop_definition_bodies"][0]
+        item["type_status"] = "node_budget_refused"
+        with self.assertRaisesRegex(ValueError, "partial source symbols"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["external_definition_bodies"][0]["immediate_symbols"].pop()
+        with self.assertRaisesRegex(ValueError, "symbol list"):
+            validate_kernel_root(json.dumps(fixture))
 
     def test_refuse_missing_extra_duplicate_and_unbounded_symbols(self):
         fixture = root_receipt()

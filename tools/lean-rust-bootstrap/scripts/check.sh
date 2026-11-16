@@ -19,14 +19,19 @@ test "$(rustc --version)" = "$BOOTSTRAP_RUST_VERSION" || {
 }
 mkdir -p "$here/.vendor"
 vendor="$here/.vendor/lungo-rs"
-if [[ ! -d "$vendor/.git" ]]; then
+# Keep the third-party Cargo workspace physically outside this Cargo
+# workspace; Cargo must resolve Lungo's own workspace.package metadata.
+if [[ ! -L "$vendor" ]]; then
   if [[ -e "$vendor" || -L "$vendor" ]]; then
-    echo "Refusing existing non-Git lungo checkout" >&2
+    echo "Refusing pre-existing vendor directory (expected verified symlink)" >&2
     exit 2
   fi
-  git clone --quiet --no-checkout https://github.com/machinefabric/lungo-rs.git "$vendor"
-  git -C "$vendor" checkout --quiet --detach "$BOOTSTRAP_LUNGO_SHA"
+  scratch="$(mktemp -d)"
+  git clone --quiet --no-checkout https://github.com/machinefabric/lungo-rs.git "$scratch/lungo-rs"
+  git -C "$scratch/lungo-rs" checkout --quiet --detach "$BOOTSTRAP_LUNGO_SHA"
+  ln -s "$scratch/lungo-rs" "$vendor"
 fi
+test -d "$vendor/.git" || { echo "Missing pinned Lungo checkout" >&2; exit 2; }
 if [[ "$(git -C "$vendor" rev-parse HEAD)" != "$BOOTSTRAP_LUNGO_SHA" ]] ||
    [[ -n "$(git -C "$vendor" status --porcelain --untracked-files=no)" ]]; then
   echo "Refusing wrong or modified lungo source checkout" >&2
@@ -43,7 +48,7 @@ if [[ "$(wc -l < "$here/oracle.tsv")" -ne 256 ]]; then
   exit 1
 fi
 
-cargo fmt --manifest-path "$here/Cargo.toml" --all --check
+cargo fmt --manifest-path "$here/Cargo.toml" --check
 cargo test --manifest-path "$here/Cargo.toml" --all-targets
 cargo clippy --manifest-path "$here/Cargo.toml" --all-targets -- -D warnings
 

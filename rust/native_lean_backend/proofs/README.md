@@ -214,6 +214,37 @@ not establish universal compiler correctness. Native reference-count
 ownership, calls, joins, mutation, all remaining supported IR and G2 ETH
 source-program execution remain separate.
 
+## Actual rustc MIR witness for the restricted scalar fragment
+
+The pinned `rustc 1.99.1` invocation that builds each of the eight
+certified Reader-generated executables also emits its real `mir` output
+(`--emit=link,mir=...`). The MIR source and binary therefore come from
+the **same compiler invocation**, with no intermediate recompilation.
+
+[check-reader-mir.sh](../scripts/check-reader-mir.sh) identifies the single
+`certified_scalar(_1: u64, _2: u64) -> u64` MIR function, preserves its
+basic-block graph, checks a return, and, for unoptimized MIR, checks the
+actual arithmetic/comparison/switch operation footprint against each
+certified Lean source fixture. Its `choose` check follows the two
+`switchInt` targets: tag 1 must reach `wrapping_add`, and tag 0 must
+reach `wrapping_mul`. The CI negative controls deliberately mutate a
+wrapping arithmetic call and swap the Bool edges. Both mutations must be
+refused. Optimized MIR is retained and checked for its function signature
+and control flow, with the existing execution-oracle parity required in
+both modes.
+
+The retained native CI artifact includes full MIR, extracted function
+MIR, operation/branch footprint receipts, exact generated Reader Rust,
+the original Lean oracles, and the actual binary outputs.
+
+**Trust boundary:** `rustc --emit=mir` prints human-facing, explicitly
+unstable text. Even a passing footprint check does not constitute a
+verified parser, a formal `rustc` source-to-MIR lowering theorem,
+universal MIR execution equivalence, or LLVM/machine correctness. Such
+a theorem requires an independently specified semantics for the
+actual subset of MIR and a checked mapping of all control-flow edges
+and operations, rather than assuming the pretty-printer is normative.
+
 ## Unproved obligations for a real G1 compiler theorem
 
 1. Prove that `Reader::decode` and `Reader::view` faithfully read and validate

@@ -352,16 +352,50 @@ run_cmd do
   unless joinSafeResult.startsWith "OK\n" do
     throwError "retained child lost ownership across join: {joinSafeResult}"
 
+  -- The pinned Lean C runtime's del is shell-only. If exactly one source
+  -- projection identifies a slot, its original owned reference can be
+  -- transferred from the deleted shell to that projected child.
   let shellDeleted : Lean.IR.FnBody :=
     .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
-      (.del ⟨0⟩ (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+      (.del ⟨0⟩ (.ret (.var ⟨2⟩)))
   let deletedResult := NativeRust.emit
-    (.fdecl name #[owned] .object shellDeleted info) "shell_delete_requires_transfer_proof"
-  unless deletedResult.startsWith "ERROR\n" &&
-      (deletedResult.splitOn "protecting parent release").length > 1 do
-    throwError "shell-only del was mistaken for a proved field transfer: {deletedResult}"
+    (.fdecl name #[owned] .object shellDeleted info) "unique_shell_field_transfer"
+  unless deletedResult.startsWith "OK\n" do
+    throwError "unique field transfer through shell-only del was refused: {deletedResult}"
 
-  logInfo "Source projected lifetimes: release, retained child, nested chain, owned/borrowed calls, joins and shell deletion"
+  let duplicateShellProjection : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+        (.del ⟨0⟩ (.ret (.var ⟨3⟩))))
+  let duplicateShellResult := NativeRust.emit
+    (.fdecl name #[owned] .object duplicateShellProjection info) "ambiguous_shell_field_owner"
+  unless duplicateShellResult.startsWith "ERROR\n" &&
+      (duplicateShellResult.splitOn "protecting parent release").length > 1 do
+    throwError "duplicate projections fabricated multiple owners: {duplicateShellResult}"
+
+  -- lean_ctor_set overwrites one pointer without releasing its old value.
+  -- A unique projection of that exact slot may receive the displaced owner.
+  let oldFieldReplaced : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.set ⟨0⟩ 0 (.var ⟨1⟩) (.ret (.var ⟨2⟩)))
+  let replacedResult := NativeRust.emit
+    (.fdecl name #[owned, { x := ⟨1⟩, borrow := false, ty := .object }]
+      .object oldFieldReplaced info) "unique_field_replacement"
+  unless replacedResult.startsWith "OK\n" do
+    throwError "old constructor field transfer was refused: {replacedResult}"
+
+  let duplicateFieldReplaced : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+        (.set ⟨0⟩ 0 (.var ⟨1⟩) (.ret (.var ⟨3⟩))))
+  let duplicateReplacedResult := NativeRust.emit
+    (.fdecl name #[owned, { x := ⟨1⟩, borrow := false, ty := .object }]
+      .object duplicateFieldReplaced info) "ambiguous_replaced_field"
+  unless duplicateReplacedResult.startsWith "ERROR\n" &&
+      (duplicateReplacedResult.splitOn "protecting parent release").length > 1 do
+    throwError "overwritten field with duplicate projections created ownership: {duplicateReplacedResult}"
+
+  logInfo "Source projected lifetimes: parent release, nested/retained children, calls, joins, shell deletion and field replacement"
 
   logInfo "Source borrowed provenance: nested projection, retained result, join borrowed/owned arguments passed"
 

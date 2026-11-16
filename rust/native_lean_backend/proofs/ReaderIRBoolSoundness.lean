@@ -341,25 +341,23 @@ private def scan (fuel : Nat) (sw : SymbolicEnv) (st : SymTests)
           some {program := p, bodyProof := .test sw st id expr tail value p hexpr htail}
         | none => none
       | none => none
-    | .case tid scr ty alts =>
+    | .case tid scr .uint8 alts =>
       if htid : tid = `UInt8 then
-        if hty : ty = .uint8 then
-          match hs : st scr.idx with
-          | some cond =>
-            match reifyAlts alts with
-            | some {falseBody := fb, trueBody := tb, armsProof := harm} =>
-              match scan fuel sw st tb with
-              | some {program := tp, bodyProof := htp} =>
-                match scan fuel sw st fb with
-                | some {program := fp, bodyProof := hfp} =>
-                  some (BodyWitness.mk (.branch cond tp fp)
-                    (.branch sw st tid scr ty alts fb tb cond tp fp
-                      htid hty harm hs htp hfp))
-                | none => none
+        match hs : st scr.idx with
+        | some cond =>
+          match reifyAlts alts with
+          | some {falseBody := fb, trueBody := tb, armsProof := harm} =>
+            match scan fuel sw st tb with
+            | some {program := tp, bodyProof := htp} =>
+              match scan fuel sw st fb with
+              | some {program := fp, bodyProof := hfp} =>
+                some (BodyWitness.mk (.branch cond tp fp)
+                  (.branch sw st tid scr .uint8 alts fb tb cond tp fp
+                    htid rfl harm hs htp hfp))
               | none => none
             | none => none
           | none => none
-        else none
+        | none => none
       else none
     | _ => none
 

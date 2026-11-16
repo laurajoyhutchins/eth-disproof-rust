@@ -395,6 +395,49 @@ run_cmd do
       (duplicateReplacedResult.splitOn "protecting parent release").length > 1 do
     throwError "overwritten field with duplicate projections created ownership: {duplicateReplacedResult}"
 
+
+  -- A unique object's owned join formal is an alias of the SAME source
+  -- allocation. Two consecutive writes can permute the old field owners
+  -- without manufacturing a reference; the final slot map must be bijective.
+  let swapJoin : Lean.IR.Param :=
+    { x := ⟨4⟩, ty := .object, borrow := false }
+  let swapFields : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 1 ⟨0⟩)
+        (.jdecl ⟨9⟩ #[swapJoin]
+          (.set ⟨4⟩ 1 (.var ⟨2⟩)
+            (.set ⟨4⟩ 0 (.var ⟨3⟩) (.ret (.var ⟨4⟩))))
+          (.jmp ⟨9⟩ #[.var ⟨0⟩])))
+  let swapResult := NativeRust.emit
+    (.fdecl name #[owned] .object swapFields info) "unique_constructor_swap"
+  unless swapResult.startsWith "OK\n" do
+    throwError "unique source slot permutation was refused: {swapResult}"
+
+  let incompleteSwap : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[swapJoin]
+        (.set ⟨4⟩ 1 (.var ⟨2⟩) (.ret (.var ⟨4⟩)))
+        (.jmp ⟨9⟩ #[.var ⟨0⟩]))
+  let incompleteResult := NativeRust.emit
+    (.fdecl name #[owned] .object incompleteSwap info) "incomplete_field_permutation"
+  unless incompleteResult.startsWith "ERROR\n" &&
+      (incompleteResult.splitOn "incomplete or duplicate field-owner permutation").length > 1 do
+    throwError "unbalanced source field permutation was admitted: {incompleteResult}"
+
+  let duplicateSwap : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[swapJoin]
+        (.set ⟨4⟩ 1 (.var ⟨2⟩)
+          (.set ⟨4⟩ 0 (.var ⟨2⟩) (.ret (.var ⟨4⟩))))
+        (.jmp ⟨9⟩ #[.var ⟨0⟩]))
+  let duplicateSwapResult := NativeRust.emit
+    (.fdecl name #[owned] .object duplicateSwap info) "duplicate_field_permutation"
+  unless duplicateSwapResult.startsWith "ERROR\n" &&
+      (duplicateSwapResult.splitOn "incomplete or duplicate field-owner permutation").length > 1 do
+    throwError "duplicated field source reference was admitted: {duplicateSwapResult}"
+
+  logInfo "Source constructor join transfer: verified unique two-slot swap, refused incomplete and duplicate swaps"
+
   logInfo "Source projected lifetimes: parent release, nested/retained children, calls, joins, shell deletion and field replacement"
 
   logInfo "Source borrowed provenance: nested projection, retained result, join borrowed/owned arguments passed"

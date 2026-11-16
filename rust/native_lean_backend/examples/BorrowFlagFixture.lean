@@ -237,6 +237,132 @@ run_cmd do
   unless projectedJoined.startsWith "OK\n" do
     throwError "source-retained projection through borrowed join refused: {projectedJoined}"
 
+
+  -- Source-protected child lifetime: these intentionally invalid programs
+  -- are NEVER executed against Lean C because that would read freed memory.
+  -- The native emitter must reject them before producing a Rust package.
+  let deadChild : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.dec ⟨0⟩ 1 true false
+        (.vdecl ⟨3⟩ .object (.proj 0 ⟨2⟩) (.ret (.var ⟨3⟩))))
+  let deadChildResult := NativeRust.emit
+    (.fdecl name #[owned] .object deadChild info) "parent_released_before_child_read"
+  unless deadChildResult.startsWith "ERROR\n" &&
+      (deadChildResult.splitOn "protecting parent release").length > 1 do
+    throwError "child read after parent release was admitted: {deadChildResult}"
+
+  let lateRetain : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.dec ⟨0⟩ 1 true false
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let lateRetainResult := NativeRust.emit
+    (.fdecl name #[owned] .object lateRetain info) "late_retained_child"
+  unless lateRetainResult.startsWith "ERROR\n" &&
+      (lateRetainResult.splitOn "protecting parent release").length > 1 do
+    throwError "late inc resurrected a dead projected child: {lateRetainResult}"
+
+  let earlyRetain : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.inc ⟨2⟩ 1 true false
+        (.dec ⟨0⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let earlyRetainResult := NativeRust.emit
+    (.fdecl name #[owned] .object earlyRetain info) "child_retained_before_parent_release"
+  unless earlyRetainResult.startsWith "OK\n" do
+    throwError "independently retained child lost after parent release: {earlyRetainResult}"
+
+  let nestedDead : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨2⟩)
+        (.dec ⟨0⟩ 1 true false
+          (.inc ⟨3⟩ 1 true false (.ret (.var ⟨3⟩)))))
+  let nestedDeadResult := NativeRust.emit
+    (.fdecl name #[owned] .object nestedDead info) "nested_descendant_after_release"
+  unless nestedDeadResult.startsWith "ERROR\n" &&
+      (nestedDeadResult.splitOn "protecting parent release").length > 1 do
+    throwError "nested descendant survived a dead source parent: {nestedDeadResult}"
+
+  -- An intermediate field retained before root release protects its child.
+  -- After retaining that grandchild independently, intermediate can drop.
+  let nestedSafe : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨2⟩)
+        (.inc ⟨2⟩ 1 true false
+          (.dec ⟨0⟩ 1 true false
+            (.inc ⟨3⟩ 1 true false
+              (.dec ⟨2⟩ 1 true false (.ret (.var ⟨3⟩)))))))
+  let nestedSafeResult := NativeRust.emit
+    (.fdecl name #[owned] .object nestedSafe info) "grandchild_independently_retained"
+  unless nestedSafeResult.startsWith "OK\n" do
+    throwError "retained intermediate did not protect its child: {nestedSafeResult}"
+
+  -- A borrowed formal remains protected by its caller's reference after
+  -- releasing only a temporary IR.inc reference acquired inside the callee.
+  let externallyProtected : Lean.IR.FnBody :=
+    .inc ⟨0⟩ 1 true false
+      (.dec ⟨0⟩ 1 true false
+        (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+          (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩)))))
+  let protectedResult := NativeRust.emit
+    (.fdecl name #[borrowed] .object externallyProtected info) "caller_protected_parent"
+  unless protectedResult.startsWith "OK\n" do
+    throwError "temporary inc/dec incorrectly destroyed a borrowed parent: {protectedResult}"
+
+  let parentMoved : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .uint8 (.fap ownedName #[.var ⟨0⟩])
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let movedResult := NativeRust.emitModule
+    #[ownedCallee, .fdecl callerName #[owned] .object parentMoved info]
+    callerName "parent_transferred_to_owned_callee"
+  unless movedResult.startsWith "ERROR\n" &&
+      (movedResult.splitOn "protecting parent release").length > 1 do
+    throwError "owned callee transfer left an unsafe child live: {movedResult}"
+
+  let parentBorrowed : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .uint8 (.fap borrowedName #[.var ⟨0⟩])
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let borrowedResult := NativeRust.emitModule
+    #[borrowedCallee, .fdecl callerName #[owned] .object parentBorrowed info]
+    callerName "parent_passed_to_borrowed_callee"
+  unless borrowedResult.startsWith "OK\n" do
+    throwError "borrowed callee falsely consumed its caller's parent: {borrowedResult}"
+
+  -- A join body must be evaluated at its actual jump state, not at its
+  -- lexical definition where the source parent may still be alive.
+  let joinAfterRelease : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[]
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩)))
+        (.dec ⟨0⟩ 1 true false (.jmp ⟨9⟩ #[])))
+  let joinDeadResult := NativeRust.emit
+    (.fdecl name #[owned] .object joinAfterRelease info) "join_child_after_release"
+  unless joinDeadResult.startsWith "ERROR\n" &&
+      (joinDeadResult.splitOn "protecting parent release").length > 1 do
+    throwError "join checked child at declaration instead of jump: {joinDeadResult}"
+
+  let joinBeforeRelease : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[]
+        (.ret (.var ⟨2⟩))
+        (.inc ⟨2⟩ 1 true false
+          (.dec ⟨0⟩ 1 true false (.jmp ⟨9⟩ #[]))))
+  let joinSafeResult := NativeRust.emit
+    (.fdecl name #[owned] .object joinBeforeRelease info) "join_child_retained_before_release"
+  unless joinSafeResult.startsWith "OK\n" do
+    throwError "retained child lost ownership across join: {joinSafeResult}"
+
+  let shellDeleted : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.del ⟨0⟩ (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let deletedResult := NativeRust.emit
+    (.fdecl name #[owned] .object shellDeleted info) "shell_delete_requires_transfer_proof"
+  unless deletedResult.startsWith "ERROR\n" &&
+      (deletedResult.splitOn "protecting parent release").length > 1 do
+    throwError "shell-only del was mistaken for a proved field transfer: {deletedResult}"
+
+  logInfo "Source projected lifetimes: release, retained child, nested chain, owned/borrowed calls, joins and shell deletion"
+
   logInfo "Source borrowed provenance: nested projection, retained result, join borrowed/owned arguments passed"
 
   logInfo "Pinned borrowed Param: direct transfer, balanced inc, direct-call ABI, PAP and branch refusal"

@@ -1,8 +1,8 @@
 # Observing final impure LCNF
 
 Lean **4.34.1** exposes the ownership-lowered compiler representation immediately
-before conversion to `Lean.IR`. `LCNFCapture.lean` installs a read-only
-`@[cpass]` observer **after `saveImpure`**. It does not reimplement any
+before conversion to `Lean.IR`. `LCNFCapture.lean` defines the observer; `LCNFCaptureActive.lean` registers the compiled installer as a read-only
+`@[cpass]` observer **after `saveImpure`**. This split avoids interpreting a same-module installer with an uncompiled body. It does not reimplement any
 compiler pass, and the Rust emitter still consumes `Lean.IR.Decl` in-process.
 
 ```

@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 mkdir -p artifacts
 
 lean -o LCNFCapture.olean LCNFCapture.lean
+lean -o LCNFCaptureActive.olean LCNFCaptureActive.lean
 export LEAN_PATH="$(pwd):${LEAN_PATH:-}"
 
 rm -f artifacts/lcnf-baseline.rs artifacts/lcnf-with-pass.rs artifacts/lcnf-capture.json

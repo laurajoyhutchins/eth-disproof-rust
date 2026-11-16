@@ -1,5 +1,5 @@
 import NativeRust
-import LCNFCapture
+import LCNFCaptureActive
 
 namespace LCNFProbe
 

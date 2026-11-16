@@ -25,7 +25,7 @@ private meta def observePass : Pass where
     return decls
 
 /-- Installed after Lean's final impure LCNF save; never changes compiler IR. -/
-@[cpass] meta def installObserver : PassInstaller :=
+meta def installObserver : PassInstaller :=
   PassInstaller.installAfter .impure `saveImpure (fun _ => observePass)
 
 /-- Report a declaration observed by this process, refusing imported or

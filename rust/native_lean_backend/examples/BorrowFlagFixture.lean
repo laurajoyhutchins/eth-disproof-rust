@@ -147,5 +147,97 @@ run_cmd do
   unless branchResult.startsWith "ERROR\n" &&
       (branchResult.splitOn "owned transfer in return value").length > 1 do
     throwError "branch-hidden borrowed return without inc accepted: {branchResult}"
+
+  -- Pointer projections are source borrows, not owned values. Provenance
+  -- follows the actual IR VarId, including a second projection.
+  let projected : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩) (.ret (.var ⟨2⟩))
+  let projectedRefusal := NativeRust.emit
+    (.fdecl name #[borrowed] .object projected info) "borrowed_projected_escape"
+  unless projectedRefusal.startsWith "ERROR\n" &&
+      (projectedRefusal.splitOn "borrowed parameter x_2").length > 1 do
+    throwError "unretained borrowed projection escaped: {projectedRefusal}"
+
+  let projectedOwned : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩)))
+  let projectedAllowed := NativeRust.emit
+    (.fdecl name #[borrowed] .object projectedOwned info) "borrowed_projected_retained"
+  unless projectedAllowed.startsWith "OK\n" &&
+      (projectedAllowed.splitOn "x_2.source_inc(1, true, false)").length > 1 do
+    throwError "source-retained borrowed projection refused: {projectedAllowed}"
+
+  let nestedProjection : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨2⟩) (.ret (.var ⟨3⟩)))
+  let nestedRefusal := NativeRust.emit
+    (.fdecl name #[borrowed] .object nestedProjection info) "nested_projection"
+  unless nestedRefusal.startsWith "ERROR\n" &&
+      (nestedRefusal.splitOn "borrowed parameter x_3").length > 1 do
+    throwError "transitive borrowed projection escaped: {nestedRefusal}"
+
+  -- Join point formals have their own source Param.borrow bit. Passing a
+  -- borrowed value into a borrowed formal is legal; returning it without
+  -- an owned inc from inside that join is not.
+  let joinBorrowed : Lean.IR.Param :=
+    { x := ⟨4⟩, ty := .object, borrow := true }
+  let joinOwned : Lean.IR.Param := { joinBorrowed with borrow := false }
+  let joinEscaped : Lean.IR.FnBody :=
+    .jdecl ⟨9⟩ #[joinBorrowed] (.ret (.var ⟨4⟩))
+      (.jmp ⟨9⟩ #[.var ⟨0⟩])
+  let joinEscapeResult := NativeRust.emit
+    (.fdecl name #[borrowed] .object joinEscaped info) "join_borrowed_escape"
+  unless joinEscapeResult.startsWith "ERROR\n" &&
+      (joinEscapeResult.splitOn "borrowed parameter x_4").length > 1 do
+    throwError "borrowed join formal escaped without inc: {joinEscapeResult}"
+
+  let joinSafe : Lean.IR.FnBody :=
+    .jdecl ⟨9⟩ #[joinBorrowed]
+      (.vdecl ⟨5⟩ .uint8 (.lit (.num 1)) (.ret (.var ⟨5⟩)))
+      (.jmp ⟨9⟩ #[.var ⟨0⟩])
+  let joinForward := NativeRust.emit
+    (.fdecl name #[borrowed] .uint8 joinSafe info) "join_borrowed_read"
+  unless joinForward.startsWith "OK\n" do
+    throwError "borrowed join-to-borrowed forwarding refused: {joinForward}"
+
+  let ownedJoin : Lean.IR.FnBody :=
+    .jdecl ⟨9⟩ #[joinOwned] (.ret (.var ⟨4⟩))
+      (.jmp ⟨9⟩ #[.var ⟨0⟩])
+  let ownedJoinRefusal := NativeRust.emit
+    (.fdecl name #[borrowed] .object ownedJoin info) "join_owned_without_inc"
+  unless ownedJoinRefusal.startsWith "ERROR\n" &&
+      (ownedJoinRefusal.splitOn "join point 9 argument 0").length > 1 do
+    throwError "owned join transfer without inc was admitted: {ownedJoinRefusal}"
+
+  let ownedJoinWithInc : Lean.IR.FnBody :=
+    .jdecl ⟨9⟩ #[joinOwned] (.ret (.var ⟨4⟩))
+      (.inc ⟨0⟩ 1 true false (.jmp ⟨9⟩ #[.var ⟨0⟩]))
+  let joinedOwned := NativeRust.emit
+    (.fdecl name #[borrowed] .object ownedJoinWithInc info) "join_owned_with_inc"
+  unless joinedOwned.startsWith "OK\n" do
+    throwError "source-inc-backed owned join transfer refused: {joinedOwned}"
+
+  let projectedJoin : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[joinBorrowed] (.ret (.var ⟨4⟩))
+        (.jmp ⟨9⟩ #[.var ⟨2⟩]))
+  let projectedJoinRefusal := NativeRust.emit
+    (.fdecl name #[borrowed] .object projectedJoin info) "join_projected_escape"
+  unless projectedJoinRefusal.startsWith "ERROR\n" &&
+      (projectedJoinRefusal.splitOn "borrowed parameter x_4").length > 1 do
+    throwError "join dropped projected provenance: {projectedJoinRefusal}"
+
+  let projectedJoinSafe : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[joinBorrowed]
+        (.inc ⟨4⟩ 1 true false (.ret (.var ⟨4⟩)))
+        (.jmp ⟨9⟩ #[.var ⟨2⟩]))
+  let projectedJoined := NativeRust.emit
+    (.fdecl name #[borrowed] .object projectedJoinSafe info) "join_projected_retained"
+  unless projectedJoined.startsWith "OK\n" do
+    throwError "source-retained projection through borrowed join refused: {projectedJoined}"
+
+  logInfo "Source borrowed provenance: nested projection, retained result, join borrowed/owned arguments passed"
+
   logInfo "Pinned borrowed Param: direct transfer, balanced inc, direct-call ABI, PAP and branch refusal"
   logInfo "Pinned Param.borrow ABI and source-IR sharedness refusal passed"

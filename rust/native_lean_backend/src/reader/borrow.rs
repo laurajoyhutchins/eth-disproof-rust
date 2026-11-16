@@ -5,9 +5,10 @@
 //! transferring that *same source variable* into an owned result, field,
 //! closure capture, or owned call requires an explicit prior source inc.
 //!
-//! This deliberately analyzes only direct parameter variables, not derived
-//! aliases, dynamically obtained fields, or arbitrary external operations.
-//! Joins and cases are scanned pathwise; unverified jump transfers refuse.
+//! Direct borrowed formals and their transitive constructor projections are
+//! tracked by source VarId. Join parameter flags and jump arguments come from
+//! pinned Lean IR. Call-result aliasing and other heap effects remain outside
+//! the certified subset; Rust Rc aliases never grant source ownership.
 //! The Rust compiler must never manufacture ownership from Rc::clone.
 use super::*;
 use std::collections::BTreeMap;
@@ -30,7 +31,7 @@ impl Reader {
                 ));
             }
         }
-        Self::borrow_body(body, &mut rights, functions, 0, &mut 0)
+        Self::borrow_body(body, &mut rights, functions, &BTreeMap::new(), 0, &mut 0)
     }
 
     unsafe fn borrow_take(
@@ -164,6 +165,7 @@ impl Reader {
         mut body: Obj,
         rights: &mut BTreeMap<usize, usize>,
         functions: Option<&FunctionTable>,
+        joins: &BTreeMap<usize, Vec<bool>>,
         depth: usize,
         steps: &mut usize,
     ) -> CompilerResult<()> {
@@ -182,8 +184,30 @@ impl Reader {
                 ));
             }
             match Self::body_view(body)? {
-                FnBodyView::Decl { expr, next, .. } => {
+                FnBodyView::Decl {
+                    defined,
+                    ty,
+                    expr,
+                    next,
+                } => {
                     Self::borrow_expr(expr, rights, functions)?;
+                    // A source .proj borrows the parent's pointer field. A
+                    // projected object from a tracked source starts with no
+                    // transferable reference, including nested projections.
+                    if is_value_type(Self::ty(ty)?) && Self::checked_tag(expr, "Expr")? == 3 {
+                        let source = Self::var(Self::field(expr, 1)?)?;
+                        if rights.contains_key(&source) {
+                            let target = Self::var(defined)?;
+                            if rights.insert(target, 0).is_some() {
+                                return Err(CompilerError::new(
+                                    RefusalKind::Decl,
+                                    format!(
+                                        "borrowed projection x_{target} shadows a tracked source"
+                                    ),
+                                ));
+                            }
+                        }
+                    }
                     body = next;
                 }
                 FnBodyView::Inc {
@@ -239,8 +263,13 @@ impl Reader {
                     }
                     body = next;
                 }
-                FnBodyView::Set { target, next, .. }
-                | FnBodyView::ScalarSet { target, next, .. } => {
+                FnBodyView::Set {
+                    target,
+                    value,
+                    next,
+                    ..
+                } => {
+                    Self::borrow_take(value, rights, "constructor field mutation")?;
                     let id = Self::var(target)?;
                     if rights.contains_key(&id) {
                         return Err(CompilerError::new(
@@ -250,12 +279,57 @@ impl Reader {
                     }
                     body = next;
                 }
-                FnBodyView::Join { value, next, .. } => {
-                    // A join's execution order depends on jumps. Check both
-                    // subgraphs with conservative independent input rights.
-                    let mut join_rights = rights.clone();
-                    Self::borrow_body(value, &mut join_rights, functions, depth + 1, steps)?;
+                FnBodyView::ScalarSet { target, next, .. } => {
+                    let id = Self::var(target)?;
+                    if rights.contains_key(&id) {
+                        return Err(CompilerError::new(
+                            RefusalKind::Decl,
+                            format!("borrowed parameter x_{id}: unverified in-place mutation"),
+                        ));
+                    }
                     body = next;
+                }
+                FnBodyView::Join {
+                    id,
+                    params,
+                    value,
+                    next,
+                } => {
+                    let id = Self::var(id)?;
+                    let mut join_rights = rights.clone();
+                    let mut formal_borrows = Vec::new();
+                    for param in Self::array(params)? {
+                        let param_id = Self::var(Self::field(param, 0)?)?;
+                        let is_object = is_value_type(Self::ty(Self::field(param, 1)?)?);
+                        let borrowed = is_object && Self::param_borrow(param)?;
+                        formal_borrows.push(borrowed);
+                        if borrowed && join_rights.insert(param_id, 0).is_some() {
+                            return Err(CompilerError::new(
+                                RefusalKind::Decl,
+                                format!(
+                                    "borrowed join parameter x_{param_id} shadows a tracked source"
+                                ),
+                            ));
+                        }
+                    }
+                    let mut scoped = joins.clone();
+                    if scoped.insert(id, formal_borrows).is_some() {
+                        return Err(CompilerError::new(
+                            RefusalKind::Decl,
+                            format!("borrowed provenance cannot verify shadowed join point {id}"),
+                        ));
+                    }
+                    Self::borrow_body(
+                        value,
+                        &mut join_rights,
+                        functions,
+                        &scoped,
+                        depth + 1,
+                        steps,
+                    )?;
+                    // Rights created in the join body cannot authorize a
+                    // transfer in the lexical predecessor of its jump.
+                    return Self::borrow_body(next, rights, functions, &scoped, depth + 1, steps);
                 }
                 FnBodyView::Case { alternatives, .. } => {
                     for alt in Self::array(alternatives)? {
@@ -263,19 +337,47 @@ impl Reader {
                             AltView::Constructor { body } | AltView::Default { body } => body,
                         };
                         let mut branch_rights = rights.clone();
-                        Self::borrow_body(branch, &mut branch_rights, functions, depth + 1, steps)?;
+                        Self::borrow_body(
+                            branch,
+                            &mut branch_rights,
+                            functions,
+                            joins,
+                            depth + 1,
+                            steps,
+                        )?;
                     }
                     return Ok(());
                 }
-                FnBodyView::Jump { arguments, .. } => {
-                    for arg in Self::array(arguments)? {
-                        if Self::checked_tag(arg, "Arg")? == 0 {
-                            let id = Self::var(Self::field(arg, 0)?)?;
-                            if rights.contains_key(&id) {
-                                return Err(CompilerError::new(
-                                    RefusalKind::Decl,
-                                    format!("borrowed parameter x_{id}: unverified join argument ownership"),
-                                ));
+                FnBodyView::Jump { id, arguments } => {
+                    let jump_id = Self::var(id)?;
+                    let args = Self::array(arguments)?;
+                    if let Some(formals) = joins.get(&jump_id) {
+                        if args.len() != formals.len() {
+                            // Preserve the ordinary reader's source join
+                            // arity diagnostic rather than replacing it.
+                            return Ok(());
+                        }
+                        for (index, (arg, borrowed)) in
+                            args.into_iter().zip(formals.iter()).enumerate()
+                        {
+                            if !borrowed {
+                                Self::borrow_take(
+                                    arg,
+                                    rights,
+                                    &format!("join point {jump_id} argument {index}"),
+                                )?;
+                            }
+                        }
+                    } else {
+                        for arg in args {
+                            if Self::checked_tag(arg, "Arg")? == 0 {
+                                let var = Self::var(Self::field(arg, 0)?)?;
+                                if rights.contains_key(&var) {
+                                    return Err(CompilerError::new(
+                                        RefusalKind::Decl,
+                                        format!("borrowed parameter x_{var}: unverified join argument ownership"),
+                                    ));
+                                }
                             }
                         }
                     }

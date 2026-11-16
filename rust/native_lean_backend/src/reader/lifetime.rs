@@ -12,6 +12,12 @@
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
+// Source join-point body and ordered (VarId, borrowed?) formals.
+// One type is shared by every path and prevents an accidental shadow
+// structural signature from diverging from the pinned IR layout.
+type LifetimeJoin = (Obj, Vec<(usize, bool)>);
+type LifetimeJoins = BTreeMap<usize, LifetimeJoin>;
+
 #[derive(Clone, Default)]
 struct ProjectedLifetime {
     // Projection/borrow-alias source identity. A field initially lives only
@@ -323,7 +329,7 @@ impl Reader {
         mut body: Obj,
         state: &mut ProjectedLifetime,
         functions: Option<&FunctionTable>,
-        joins: &BTreeMap<usize, (Obj, Vec<(usize, bool)>)>,
+        joins: &LifetimeJoins,
         depth: usize,
         steps: &mut usize,
     ) -> CompilerResult<()> {

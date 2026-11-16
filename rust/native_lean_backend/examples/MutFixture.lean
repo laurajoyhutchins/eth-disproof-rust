@@ -1,6 +1,21 @@
 import NativeRust
 import MutKernels
 
+-- Temporary compiler-IR diagnostic. Removed after source provenance
+-- and exact C runtime transfer rule are established.
+open Lean Elab Command
+run_cmd do
+  for declaration in #[`MutFixture.rotate, `MutFixture.unique, `MutFixture.shared] do
+    let result? ← liftCoreM do
+      if (← Lean.IR.findDecl declaration).isNone then
+        Lean.Compiler.compile #[declaration]
+      Lean.IR.findDecl declaration
+    let some decl := result?
+      | throwError "missing original mutation compiler IR for {declaration}"
+    logInfo m!"LIFETIME_MUT_IR_BEGIN {declaration}
+{decl}
+LIFETIME_MUT_IR_END {declaration}"
+
 #native_rust_package [MutFixture.unique, MutFixture.shared] to "examples/mut-package"
 
 open Lean Elab Command

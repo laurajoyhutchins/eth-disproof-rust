@@ -11,6 +11,8 @@ on:
     paths:
       - 'rust/lean_eth_reference/src/bin/original-query-build.rs'
       - 'rust/lean_eth_reference/tools/query_stream_aot.py'
+      - 'rust/lean_eth_reference/tools/query_source_kernel.lean'
+      - 'rust/lean_eth_reference/tools/query_kernel_probe.py'
       - 'rust/lean_eth_reference/tools/export_source_graph.lean'
       - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
       - 'rust/lean_eth_reference/tools/verify_source_graph.py'
@@ -216,6 +218,28 @@ jobs:
             --max-jobs 4 \
             --max-source-labels 1000000000
           echo 'Original source AOT generated: still requires independent Lean/Rust physical parity.' >> "$GITHUB_STEP_SUMMARY"
+
+      # A distinct kernel-environment-only observation: this does not
+      # turn a source-graph/AOT refusal into a successful compiler result.
+      # The original stage receipt and .olean digest are checked again.
+      - name: Inventory actual QueryStream root without Meta elaboration
+        if: always() && env.IMPORT_STAGE == 'query'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          receipts=("$RUNNER_TEMP"/original-query-stage/round-*/stage.receipt.json)
+          if (( ${#receipts[@]} != 1 )); then
+            echo "Kernel root inventory requires exactly one completed original import" >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/original-query-aot"
+          python3 rust/lean_eth_reference/tools/query_kernel_probe.py \
+            --upstream "$ORIGINAL_SOURCE" \
+            --lake-root "$LEAN_ROOT" \
+            --import-receipt "${receipts[0]}" \
+            --output-dir "$RUNNER_TEMP/original-query-aot" \
+            --timeout 120
 
       - name: Preserve source graph, Rust and typed AOT refusals
         if: always() && env.IMPORT_STAGE == 'query'

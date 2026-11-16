@@ -308,9 +308,13 @@ theorem run_sound (fuel : Nat) (graph : Graph) (pc : Nat)
                   | some e =>
                       simp [symRun, hb, hs, ht, hv] at h
                       subst p
-                      simp only [realRun, hb, Option.bind_some, hreal,
-                        ht, Option.bind_some]
-                      simp [materialize, hv, evalRustProgram]
+                      have finished :
+                          (realOps block.operations (materialize inputs s)).bind
+                            (fun state => state.words 0) =
+                          some (evalRustWord inputs e) := by
+                        rw [hreal]
+                        simp [materialize, hv]
+                      simpa [realRun, hb, ht, evalRustProgram] using finished
               | goto next =>
                   have hchild : symRun fuel graph next after = some p := by
                     simpa [symRun, hb, hs, ht] using h
@@ -335,15 +339,35 @@ theorem run_sound (fuel : Nat) (graph : Graph) (pc : Nat)
                                 have hf' := ih falsePc after fp hfalse
                                 cases hcond : evalRustCondition inputs cond with
                                 | true =>
-                                    simp only [realRun, hb, Option.bind_some,
-                                      hreal, ht, Option.bind_some]
-                                    simpa [materialize, hc, hcond, rustBoolTag,
-                                      evalRustProgram] using ht'
+                                    have finished :
+                                        (realOps block.operations (materialize inputs s)).bind
+                                          (fun state =>
+                                            (state.tags tag).bind fun value =>
+                                              if value == 1 then
+                                                realRun fuel graph truePc state
+                                              else if value == 0 then
+                                                realRun fuel graph falsePc state
+                                              else none) =
+                                        some (evalRustProgram inputs (.branch cond tp fp)) := by
+                                      rw [hreal]
+                                      simpa [materialize, hc, hcond,
+                                        rustBoolTag, evalRustProgram] using ht'
+                                    simpa [realRun, hb, ht] using finished
                                 | false =>
-                                    simp only [realRun, hb, Option.bind_some,
-                                      hreal, ht, Option.bind_some]
-                                    simpa [materialize, hc, hcond, rustBoolTag,
-                                      evalRustProgram] using hf'
+                                    have finished :
+                                        (realOps block.operations (materialize inputs s)).bind
+                                          (fun state =>
+                                            (state.tags tag).bind fun value =>
+                                              if value == 1 then
+                                                realRun fuel graph truePc state
+                                              else if value == 0 then
+                                                realRun fuel graph falsePc state
+                                              else none) =
+                                        some (evalRustProgram inputs (.branch cond tp fp)) := by
+                                      rw [hreal]
+                                      simpa [materialize, hc, hcond,
+                                        rustBoolTag, evalRustProgram] using hf'
+                                    simpa [realRun, hb, ht] using finished
                   · have hnot : trapEdge graph other = false := by
                       cases ht2 : trapEdge graph other <;> simp_all
                     simp [symRun, hb, hs, ht, hnot] at h

@@ -46,6 +46,7 @@ noncomputable def compatibleEquiv {I C : Type*}
     assignment per component. This does not enumerate equivalence classes. -/
 theorem sum_compatible_eq_class_choices
     {I C : Type*} [Fintype I] [Fintype C]
+    [DecidableEq I] [DecidableEq C]
     (classOf : I → C) (hs : Function.Surjective classOf)
     (weight : I → Bool → ℤ) :
     (∑ x : {x : I → Bool // Compatible classOf x},
@@ -64,6 +65,7 @@ theorem sum_compatible_eq_class_choices
 /-- A fixed class assignment groups a product into its component fibers. -/
 theorem product_by_components
     {I C : Type*} [Fintype I] [Fintype C]
+    [DecidableEq I] [DecidableEq C]
     (classOf : I → C) (weight : I → Bool → ℤ)
     (y : C → Bool) :
     (∏ i : I, weight i (y (classOf i))) =
@@ -92,6 +94,7 @@ theorem product_by_components
     exponentially many separated terms when the component map is known. -/
 theorem sum_compatible_eq_component_product
     {I C : Type*} [Fintype I] [Fintype C]
+    [DecidableEq I] [DecidableEq C]
     (classOf : I → C) (hs : Function.Surjective classOf)
     (weight : I → Bool → ℤ) :
     (∑ x : {x : I → Bool // Compatible classOf x},

@@ -237,6 +237,360 @@ run_cmd do
   unless projectedJoined.startsWith "OK\n" do
     throwError "source-retained projection through borrowed join refused: {projectedJoined}"
 
+
+  -- Source-protected child lifetime: these intentionally invalid programs
+  -- are NEVER executed against Lean C because that would read freed memory.
+  -- The native emitter must reject them before producing a Rust package.
+  let deadChild : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.dec ⟨0⟩ 1 true false
+        (.vdecl ⟨3⟩ .object (.proj 0 ⟨2⟩) (.ret (.var ⟨3⟩))))
+  let deadChildResult := NativeRust.emit
+    (.fdecl name #[owned] .object deadChild info) "parent_released_before_child_read"
+  unless deadChildResult.startsWith "ERROR\n" &&
+      (deadChildResult.splitOn "protecting parent release").length > 1 do
+    throwError "child read after parent release was admitted: {deadChildResult}"
+
+  let lateRetain : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.dec ⟨0⟩ 1 true false
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let lateRetainResult := NativeRust.emit
+    (.fdecl name #[owned] .object lateRetain info) "late_retained_child"
+  unless lateRetainResult.startsWith "ERROR\n" &&
+      (lateRetainResult.splitOn "protecting parent release").length > 1 do
+    throwError "late inc resurrected a dead projected child: {lateRetainResult}"
+
+  let earlyRetain : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.inc ⟨2⟩ 1 true false
+        (.dec ⟨0⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let earlyRetainResult := NativeRust.emit
+    (.fdecl name #[owned] .object earlyRetain info) "child_retained_before_parent_release"
+  unless earlyRetainResult.startsWith "OK\n" do
+    throwError "independently retained child lost after parent release: {earlyRetainResult}"
+
+  let nestedDead : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨2⟩)
+        (.dec ⟨0⟩ 1 true false
+          (.inc ⟨3⟩ 1 true false (.ret (.var ⟨3⟩)))))
+  let nestedDeadResult := NativeRust.emit
+    (.fdecl name #[owned] .object nestedDead info) "nested_descendant_after_release"
+  unless nestedDeadResult.startsWith "ERROR\n" &&
+      (nestedDeadResult.splitOn "protecting parent release").length > 1 do
+    throwError "nested descendant survived a dead source parent: {nestedDeadResult}"
+
+  -- An intermediate field retained before root release protects its child.
+  -- After retaining that grandchild independently, intermediate can drop.
+  let nestedSafe : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨2⟩)
+        (.inc ⟨2⟩ 1 true false
+          (.dec ⟨0⟩ 1 true false
+            (.inc ⟨3⟩ 1 true false
+              (.dec ⟨2⟩ 1 true false (.ret (.var ⟨3⟩)))))))
+  let nestedSafeResult := NativeRust.emit
+    (.fdecl name #[owned] .object nestedSafe info) "grandchild_independently_retained"
+  unless nestedSafeResult.startsWith "OK\n" do
+    throwError "retained intermediate did not protect its child: {nestedSafeResult}"
+
+  -- A borrowed formal remains protected by its caller's reference after
+  -- releasing only a temporary IR.inc reference acquired inside the callee.
+  let externallyProtected : Lean.IR.FnBody :=
+    .inc ⟨0⟩ 1 true false
+      (.dec ⟨0⟩ 1 true false
+        (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+          (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩)))))
+  let protectedResult := NativeRust.emit
+    (.fdecl name #[borrowed] .object externallyProtected info) "caller_protected_parent"
+  unless protectedResult.startsWith "OK\n" do
+    throwError "temporary inc/dec incorrectly destroyed a borrowed parent: {protectedResult}"
+
+  let parentMoved : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .uint8 (.fap ownedName #[.var ⟨0⟩])
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let movedResult := NativeRust.emitModule
+    #[ownedCallee, .fdecl callerName #[owned] .object parentMoved info]
+    callerName "parent_transferred_to_owned_callee"
+  unless movedResult.startsWith "ERROR\n" &&
+      (movedResult.splitOn "protecting parent release").length > 1 do
+    throwError "owned callee transfer left an unsafe child live: {movedResult}"
+
+  let parentBorrowed : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .uint8 (.fap borrowedName #[.var ⟨0⟩])
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let borrowedResult := NativeRust.emitModule
+    #[borrowedCallee, .fdecl callerName #[owned] .object parentBorrowed info]
+    callerName "parent_passed_to_borrowed_callee"
+  unless borrowedResult.startsWith "OK\n" do
+    throwError "borrowed callee falsely consumed its caller's parent: {borrowedResult}"
+
+  -- A join body must be evaluated at its actual jump state, not at its
+  -- lexical definition where the source parent may still be alive.
+  let joinAfterRelease : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[]
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩)))
+        (.dec ⟨0⟩ 1 true false (.jmp ⟨9⟩ #[])))
+  let joinDeadResult := NativeRust.emit
+    (.fdecl name #[owned] .object joinAfterRelease info) "join_child_after_release"
+  unless joinDeadResult.startsWith "ERROR\n" &&
+      (joinDeadResult.splitOn "protecting parent release").length > 1 do
+    throwError "join checked child at declaration instead of jump: {joinDeadResult}"
+
+  let joinBeforeRelease : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[]
+        (.ret (.var ⟨2⟩))
+        (.inc ⟨2⟩ 1 true false
+          (.dec ⟨0⟩ 1 true false (.jmp ⟨9⟩ #[]))))
+  let joinSafeResult := NativeRust.emit
+    (.fdecl name #[owned] .object joinBeforeRelease info) "join_child_retained_before_release"
+  unless joinSafeResult.startsWith "OK\n" do
+    throwError "retained child lost ownership across join: {joinSafeResult}"
+
+  -- The pinned Lean C runtime's del is shell-only. If exactly one source
+  -- projection identifies a slot, its original owned reference can be
+  -- transferred from the deleted shell to that projected child.
+  let shellDeleted : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.del ⟨0⟩ (.ret (.var ⟨2⟩)))
+  let deletedResult := NativeRust.emit
+    (.fdecl name #[owned] .object shellDeleted info) "unique_shell_field_transfer"
+  unless deletedResult.startsWith "OK\n" do
+    throwError "unique field transfer through shell-only del was refused: {deletedResult}"
+
+  let duplicateShellProjection : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+        (.del ⟨0⟩ (.ret (.var ⟨3⟩))))
+  let duplicateShellResult := NativeRust.emit
+    (.fdecl name #[owned] .object duplicateShellProjection info) "ambiguous_shell_field_owner"
+  unless duplicateShellResult.startsWith "ERROR\n" &&
+      (duplicateShellResult.splitOn "protecting parent release").length > 1 do
+    throwError "duplicate projections fabricated multiple owners: {duplicateShellResult}"
+
+  -- lean_ctor_set overwrites one pointer without releasing its old value.
+  -- A unique projection of that exact slot may receive the displaced owner.
+  let oldFieldReplaced : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.set ⟨0⟩ 0 (.var ⟨1⟩) (.ret (.var ⟨2⟩)))
+  let replacedResult := NativeRust.emit
+    (.fdecl name #[owned, { x := ⟨1⟩, borrow := false, ty := .object }]
+      .object oldFieldReplaced info) "unique_field_replacement"
+  unless replacedResult.startsWith "OK\n" do
+    throwError "old constructor field transfer was refused: {replacedResult}"
+
+  let duplicateFieldReplaced : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+        (.set ⟨0⟩ 0 (.var ⟨1⟩) (.ret (.var ⟨3⟩))))
+  let duplicateReplacedResult := NativeRust.emit
+    (.fdecl name #[owned, { x := ⟨1⟩, borrow := false, ty := .object }]
+      .object duplicateFieldReplaced info) "ambiguous_replaced_field"
+  unless duplicateReplacedResult.startsWith "ERROR\n" &&
+      (duplicateReplacedResult.splitOn "protecting parent release").length > 1 do
+    throwError "overwritten field with duplicate projections created ownership: {duplicateReplacedResult}"
+
+
+  -- A unique object's owned join formal is an alias of the SAME source
+  -- allocation. Two consecutive writes can permute the old field owners
+  -- without manufacturing a reference; the final slot map must be bijective.
+  let swapJoin : Lean.IR.Param :=
+    { x := ⟨4⟩, ty := .object, borrow := false }
+  let swapFields : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.vdecl ⟨3⟩ .object (.proj 1 ⟨0⟩)
+        (.jdecl ⟨9⟩ #[swapJoin]
+          (.set ⟨4⟩ 1 (.var ⟨2⟩)
+            (.set ⟨4⟩ 0 (.var ⟨3⟩) (.ret (.var ⟨4⟩))))
+          (.jmp ⟨9⟩ #[.var ⟨0⟩])))
+  let swapResult := NativeRust.emit
+    (.fdecl name #[owned] .object swapFields info) "unique_constructor_swap"
+  unless swapResult.startsWith "OK\n" do
+    throwError "unique source slot permutation was refused: {swapResult}"
+
+  let incompleteSwap : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[swapJoin]
+        (.set ⟨4⟩ 1 (.var ⟨2⟩) (.ret (.var ⟨4⟩)))
+        (.jmp ⟨9⟩ #[.var ⟨0⟩]))
+  let incompleteResult := NativeRust.emit
+    (.fdecl name #[owned] .object incompleteSwap info) "incomplete_field_permutation"
+  unless incompleteResult.startsWith "ERROR\n" &&
+      (incompleteResult.splitOn "incomplete or duplicate field-owner permutation").length > 1 do
+    throwError "unbalanced source field permutation was admitted: {incompleteResult}"
+
+  let duplicateSwap : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.jdecl ⟨9⟩ #[swapJoin]
+        (.set ⟨4⟩ 1 (.var ⟨2⟩)
+          (.set ⟨4⟩ 0 (.var ⟨2⟩) (.ret (.var ⟨4⟩))))
+        (.jmp ⟨9⟩ #[.var ⟨0⟩]))
+  let duplicateSwapResult := NativeRust.emit
+    (.fdecl name #[owned] .object duplicateSwap info) "duplicate_field_permutation"
+  unless duplicateSwapResult.startsWith "ERROR\n" &&
+      (duplicateSwapResult.splitOn "incomplete or duplicate field-owner permutation").length > 1 do
+    throwError "duplicated field source reference was admitted: {duplicateSwapResult}"
+
+
+  -- A source dec carries a multiplicity. An internal Rc alias must not
+  -- hide a final release when that multiplicity exceeds one.
+  let countedRelease : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.inc ⟨0⟩ 1 true false
+        (.dec ⟨0⟩ 2 true false
+          (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩)))))
+  let countedReleaseResult := NativeRust.emit
+    (.fdecl name #[owned] .object countedRelease info) "counted_final_parent_release"
+  unless countedReleaseResult.startsWith "ERROR\n" &&
+      (countedReleaseResult.splitOn "protecting parent release").length > 1 do
+    throwError "dec by two failed to invalidate projected child: {countedReleaseResult}"
+
+  -- Two supported unit decrements against three real source credits
+  -- leave the parent live until the child receives its independent inc.
+  let countedRetained : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+      (.inc ⟨0⟩ 2 true false
+        (.dec ⟨0⟩ 1 true false
+          (.dec ⟨0⟩ 1 true false
+            (.inc ⟨2⟩ 1 true false
+              (.dec ⟨0⟩ 1 true false (.ret (.var ⟨2⟩)))))))
+  let countedRetainedResult := NativeRust.emit
+    (.fdecl name #[owned] .object countedRetained info) "unit_decrements_leave_parent_live"
+  unless countedRetainedResult.startsWith "OK\n" do
+    throwError "unit source decrements incorrectly destroyed a live parent: {countedRetainedResult}"
+
+  -- A nonpersistent source dec of more than one remains explicitly
+  -- unsupported by the pinned canonical code generator and runtime.
+  let unsupportedNonUnitDec : Lean.IR.FnBody :=
+    .inc ⟨0⟩ 1 true false
+      (.dec ⟨0⟩ 2 true false
+        (.vdecl ⟨2⟩ .uint8 (.lit (.num 1)) (.ret (.var ⟨2⟩))))
+  let unsupportedNonUnitResult := NativeRust.emit
+    (.fdecl name #[owned] .uint8 unsupportedNonUnitDec info) "nonunit_dec_refusal"
+  unless unsupportedNonUnitResult.startsWith "ERROR\n" &&
+      (unsupportedNonUnitResult.splitOn "source reference-count delta unsupported").length > 1 do
+    throwError "source non-unit dec was silently emitted: {unsupportedNonUnitResult}"
+
+  let excessiveDec : Lean.IR.FnBody :=
+    .dec ⟨0⟩ 2 true false
+      (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let excessiveDecResult := NativeRust.emit
+    (.fdecl name #[owned] .object excessiveDec info) "source_decrement_exceeds_credits"
+  unless excessiveDecResult.startsWith "ERROR\n" &&
+      (excessiveDecResult.splitOn "exceeds").length > 1 do
+    throwError "unjustified source dec over-release was admitted: {excessiveDecResult}"
+
+  -- The parent is itself a source dereference, even if no child VarId has
+  -- previously been tracked. Both final dec and shell-only del kill it.
+  let directRootAfterDec : Lean.IR.FnBody :=
+    .dec ⟨0⟩ 1 true false
+      (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let directRootAfterDecResult := NativeRust.emit
+    (.fdecl name #[owned] .object directRootAfterDec info) "root_projected_after_dec"
+  unless directRootAfterDecResult.startsWith "ERROR\n" &&
+      (directRootAfterDecResult.splitOn "protecting parent release").length > 1 do
+    throwError "root projection read a source-released object: {directRootAfterDecResult}"
+
+  let directRootAfterDel : Lean.IR.FnBody :=
+    .del ⟨0⟩
+      (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let directRootAfterDelResult := NativeRust.emit
+    (.fdecl name #[owned] .object directRootAfterDel info) "root_projected_after_del"
+  unless directRootAfterDelResult.startsWith "ERROR\n" &&
+      (directRootAfterDelResult.splitOn "protecting parent release").length > 1 do
+    throwError "shell deletion left an invalid root readable: {directRootAfterDelResult}"
+
+  -- The C emitter elides persistent dec operations. The admission pass
+  -- must not invent a release for that source-no-op form.
+  let persistentDec : Lean.IR.FnBody :=
+    .dec ⟨0⟩ 2 true true
+      (.vdecl ⟨2⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨2⟩ 1 true false (.ret (.var ⟨2⟩))))
+  let persistentDecResult := NativeRust.emit
+    (.fdecl name #[owned] .object persistentDec info) "persistent_parent_dec_noop"
+  unless persistentDecResult.startsWith "OK\n" do
+    throwError "persistent source dec incorrectly invalidated its parent: {persistentDecResult}"
+
+  let rootAfterOwnedCall : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .uint8 (.fap ownedName #[.var ⟨0⟩])
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨3⟩ 1 true false (.ret (.var ⟨3⟩))))
+  let rootAfterOwnedCallResult := NativeRust.emitModule
+    #[ownedCallee, .fdecl callerName #[owned] .object rootAfterOwnedCall info]
+    callerName "root_after_owned_call"
+  unless rootAfterOwnedCallResult.startsWith "ERROR\n" &&
+      (rootAfterOwnedCallResult.splitOn "protecting parent release").length > 1 do
+    throwError "consuming callee left source-released root readable: {rootAfterOwnedCallResult}"
+
+
+  -- Exact direct identity calls return the consumed source object. The
+  -- result's real owned reference protects the original VarId, whereas an
+  -- unrelated result must never be guessed to be an alias.
+  let identityName := `BorrowFlagFixture.returnIdentity
+  let identityCallee : Lean.IR.Decl :=
+    .fdecl identityName #[owned] .object (.ret (.var ⟨0⟩)) info
+  let identityProtected : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.fap identityName #[.var ⟨0⟩])
+      (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+        (.inc ⟨3⟩ 1 true false (.ret (.var ⟨3⟩))))
+  let identityProtectedResult := NativeRust.emitModule
+    #[identityCallee, .fdecl callerName #[owned] .object identityProtected info]
+    callerName "source_identity_return_preserves_root"
+  unless identityProtectedResult.startsWith "OK\n" do
+    throwError "source-exact identity return lost its protecting owner: {identityProtectedResult}"
+
+  let identityReleased : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .object (.fap identityName #[.var ⟨0⟩])
+      (.dec ⟨2⟩ 1 true false
+        (.vdecl ⟨3⟩ .object (.proj 0 ⟨0⟩)
+          (.inc ⟨3⟩ 1 true false (.ret (.var ⟨3⟩)))))
+  let identityReleasedResult := NativeRust.emitModule
+    #[identityCallee, .fdecl callerName #[owned] .object identityReleased info]
+    callerName "source_identity_return_released"
+  unless identityReleasedResult.startsWith "ERROR\n" &&
+      (identityReleasedResult.splitOn "protecting parent release").length > 1 do
+    throwError "released identity result kept the source root alive: {identityReleasedResult}"
+
+
+  -- Source-native IR uses a tagged constant for Array indices. Tagged
+  -- immediates have no heap refcount, even when a generic primitive's
+  -- argument ownership is conservatively classified as consuming.
+  let reusableTagged : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .tagged (.lit (.num 0))
+      (.vdecl ⟨3⟩ .uint8 (.fap `Nat.decLt #[.var ⟨2⟩, .var ⟨2⟩])
+        (.vdecl ⟨4⟩ .uint8 (.fap `Nat.decLe #[.var ⟨2⟩, .var ⟨2⟩])
+          (.ret (.var ⟨4⟩))))
+  let taggedAllowed := NativeRust.emit
+    (.fdecl name #[] .uint8 reusableTagged info) "reused_statically_tagged_immediate"
+  unless taggedAllowed.startsWith "OK\n" do
+    throwError "statically tagged immediate was treated as a released heap owner: {taggedAllowed}"
+
+  let taggedFormal : Lean.IR.Param :=
+    { x := ⟨0⟩, ty := .tagged, borrow := false }
+  let reusableTaggedFormal : Lean.IR.FnBody :=
+    .vdecl ⟨2⟩ .uint8 (.fap `Nat.decLt #[.var ⟨0⟩, .var ⟨0⟩])
+      (.vdecl ⟨3⟩ .uint8 (.fap `Nat.decLe #[.var ⟨0⟩, .var ⟨0⟩])
+        (.ret (.var ⟨3⟩)))
+  let taggedFormalAllowed := NativeRust.emit
+    (.fdecl name #[taggedFormal] .uint8 reusableTaggedFormal info)
+      "reused_statically_tagged_formal"
+  unless taggedFormalAllowed.startsWith "OK\n" do
+    throwError "statically tagged parameter acquired a fictitious heap credit: {taggedFormalAllowed}"
+
+  logInfo "Source lifetime regression: counted dec, over-release, direct root, identity returns, tagged immediates and persistent no-op cases passed"
+
+  logInfo "Source constructor join transfer: verified unique two-slot swap, refused incomplete and duplicate swaps"
+
+  logInfo "Source projected lifetimes: parent release, nested/retained children, calls, joins, shell deletion and field replacement"
+
   logInfo "Source borrowed provenance: nested projection, retained result, join borrowed/owned arguments passed"
 
   logInfo "Pinned borrowed Param: direct transfer, balanced inc, direct-call ABI, PAP and branch refusal"

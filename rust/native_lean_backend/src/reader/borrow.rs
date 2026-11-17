@@ -58,7 +58,7 @@ impl Reader {
     // For a source runtime primitive, the owner policy is deliberately
     // narrower than the accepted value-semantic primitive inventory. Other
     // primitive calls with direct borrowed objects are refused.
-    fn primitive_borrows(name: &str, index: usize) -> bool {
+    pub(super) fn primitive_borrows(name: &str, index: usize) -> bool {
         match name {
             "Nat.add"
             | "Nat.sub"

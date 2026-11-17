@@ -98,6 +98,21 @@ impl Reader {
             }
         }
         Self::verify_direct_borrow_transfers(body, &borrowed, functions)?;
+        // Rust Rc handles may keep a projected allocation memory-safe after
+        // the Lean source has released its last protecting parent reference.
+        // Check source parent/child lifetimes independently of Rust Rc counts.
+        let mut lifetime_formals = Vec::new();
+        for param in &params {
+            let ty = Self::ty(Self::field(*param, 1)?)?;
+            // A statically tagged parameter has no source heap lifetime.
+            if is_value_type(ty) && ty != "tagged" {
+                lifetime_formals.push((
+                    Self::var(Self::field(*param, 0)?)?,
+                    Self::param_borrow(*param)?,
+                ));
+            }
+        }
+        Self::verify_projected_lifetimes(body, &lifetime_formals, functions)?;
 
         let mut env = BTreeMap::new();
         let clean_name = declared_name.replace(['\n', '\r'], "_");
@@ -157,14 +172,34 @@ impl Reader {
         }
         let mut params = Vec::new();
         let mut borrows = Vec::new();
+        let mut formal_ids = Vec::new();
         for param in Self::array(Self::field(decl, 1)?)? {
+            formal_ids.push(Self::var(Self::field(param, 0)?)?);
             borrows.push(Self::param_borrow(param)?);
             params.push(Self::ty(Self::field(param, 1)?)?);
         }
+        let result = Self::ty(Self::field(decl, 2)?)?;
+        // Source-exact identity return: the entire body returns an owned
+        // object formal unchanged. No preceding calls, mutation, or RC ops.
+        // A general call-result alias is never inferred from its type.
+        let returned_owned_formal = if is_value_type(result) {
+            match Self::body_view(Self::field(decl, 3)?)? {
+                FnBodyView::Return { value } if Self::checked_tag(value, "Arg")? == 0 => {
+                    let source = Self::var(Self::field(value, 0)?)?;
+                    formal_ids.iter().enumerate().find_map(|(i, id)| {
+                        (*id == source && !borrows[i] && is_value_type(params[i])).then_some(i)
+                    })
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
         Ok(Signature {
             params,
             borrows,
-            result: Self::ty(Self::field(decl, 2)?)?,
+            result,
+            returned_owned_formal,
         })
     }
 

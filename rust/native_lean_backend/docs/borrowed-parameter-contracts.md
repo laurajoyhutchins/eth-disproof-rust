@@ -43,9 +43,67 @@ borrowed parameters and the source VarIds of their nested pointer-field
 projections, plus explicit owned/borrowed join parameters and jumps.
 It does **not** infer aliasing from arbitrary direct-call results, general
 constructor storage, mutable object identity, indirect applications or
-external primitives. It does not prove that a borrowed child stays alive
-after its parent is destroyed: full lifetime and heap-event simulation
-remain separate obligations. The source verifier conservatively
+external primitives. The source-lifetime admission now independently tracks the source owner
+credits protecting projected objects, **including projections from owned
+formals** (which the borrowed-formal-only audit did not cover). A borrowed
+formal remains protected by its caller's owner; owned formals start with one
+transferable reference. A projection itself starts with none. Real source
+`inc`, `dec`, `del`, direct calls and join transfers update the abstract
+state. The reader refuses any projected child read or late `inc` once its
+last modeled protecting ancestor is released. Retaining a child before
+releasing its parent authorizes later use, including across nested
+projections and joins. Join bodies use the state **at each actual jump**,
+not at their lexical definition. Mutation conservatively invalidates
+projected children when an owning field can be overwritten.
+
+This is a fail-closed *static possible-use-after-release check*, not an
+exact runtime heap theorem. The pinned Lean C runtime's `lean_del_object` frees only the constructor
+shell, not its child references; `lean_ctor_set` similarly overwrites a
+pointer field without decrementing its previous value. The admission
+therefore grants the existing slot's source ownership to **one uniquely
+identified projection of that exact field** when the shell is deleted
+or the field is replaced. Duplicate projections of the same slot are
+not independently owned and remain refused without source `inc`.
+Fields left unchanged by a different-slot replacement retain their
+ordinary parent dependency. For source **owned join parameters**, the
+analysis transfers the same object identity and redirects existing
+projected child dependencies to the new owning VarId, rather than
+pretending the original heap object was destroyed at the jump. When
+consecutive `FnBody.set` operations write projections of that same
+unique constructor into new slots, the reader admits them only when
+their combined origin-slot mapping is bijective on overwritten slots.
+This is the exact two-field swap visible in the original pinned
+`MutFixture.rotate` IR. A partial permutation, duplicate source
+field, or intervening observable operation is rejected. This is a
+narrow optimized-IR admission, not certification of arbitrary
+reset/reuse or copy-on-write paths.
+The lifetime admission accounts for the full source-IR `dec` count rather
+than silently consuming one modeled credit. The canonical code generator
+and runtime still **refuse nonpersistent `dec` with count != 1**; supporting
+larger decrements requires independent pinned Lean C and runtime evidence.
+The same source-liveness guard applies to direct object roots, not only
+projected children; a direct `proj` after final `dec`, shell `del`, or
+owned call is refused. Persistent `dec` remains a source no-op as in the
+pinned C emitter.
+One narrow source-derived alias is recognized: a direct callee whose
+**entire original IR body** returns an owned object formal unchanged. Its
+returned reference protects that same allocation after the caller transfers
+the argument; the protection ends when the returned owner is released.
+Owned and borrowed join formals similarly preserve exact source identity.
+No other direct-call result alias, closure, or external return is inferred.
+A statically typed Lean IR `tagged` value is an immediate, not a
+refcounted source allocation. The lifetime pass therefore does not
+allocate or consume ownership credits for tagged declarations or tagged
+formals; the normal source IR emitter still checks each operation and
+its `checkRef`/persistent flags. Heap-capable `obj`/`tobj` values,
+including pointer-field projections, retain source-lifetime checks.
+The original optimized `OwnershipFixture.preserveShared` provides an
+independent source-native witness: its repeatedly used index `x_9`
+is `tagged 0`, not an already-freed heap pointer.
+The source runtime's actual reference counts may include unmodeled
+aliases, so potential final-owner release is conservatively treated as
+destruction. General call-result aliasing, externally-owned heap effects,
+and source-level lifetime correctness for arbitrary programs remain open. The source verifier conservatively
 refuses some correct programs rather than pretending those proofs exist.
 
 The canonical Rust runtime's `Rc` remains a memory-safety mechanism and

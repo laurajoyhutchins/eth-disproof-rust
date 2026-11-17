@@ -16,6 +16,7 @@ mod decode;
 mod expr;
 mod expr_call;
 mod expr_value;
+mod lifetime;
 mod module;
 mod ownership;
 mod usage;

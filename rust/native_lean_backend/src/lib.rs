@@ -56,6 +56,9 @@ struct Signature {
     // inference from how many temporary Rust Rc handles currently exist.
     borrows: Vec<bool>,
     result: &'static str,
+    // Only a body consisting of an owned formal's direct return establishes
+    // this physical source identity. Arbitrary call results remain unknown.
+    returned_owned_formal: Option<usize>,
 }
 
 type FunctionTable = BTreeMap<String, Signature>;

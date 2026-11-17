@@ -66,10 +66,19 @@ run_cmd do
       Lean.IR.declToString decl ++ "\n"
     rows := rows ++ s!"{root}\t{deletions}\t{joins}\n"
     logInfo m!"Pinned final IR {root}: del={deletions}, joins={joins}"
+    -- The two source-derived positive witnesses are now independently
+    -- observed on the pinned final IR. Fail closed if compiler drift
+    -- drops the real del or changes the join structure.
+    if root == `RuntimeHeapDel.rebuildOrDiscardByPayload ||
+       root == `RuntimeHeapDel.rebuildOrExtractByPayload then
+      unless deletions == 1 && joins == 2 do
+        throwError "Source-derived final IR witness drift: {root}: del={deletions}, joins={joins}"
   liftIO <| IO.FS.createDirAll "artifacts"
   liftIO <| IO.FS.writeFile "artifacts/source-del-final-ir.tsv" rows
   liftIO <| IO.FS.writeFile "artifacts/source-del-final-ir.txt" completeIR
   let status := if totalDel == 0 then "NO_SOURCE_DEL_CANDIDATE" else "SOURCE_DEL_FOUND_NOT_EXECUTED"
+  unless totalDel >= 2 do
+    throwError "Pinned final IR lost the source-derived deletion witnesses"
   liftIO <| IO.FS.writeFile "artifacts/source-del-final-ir-status.txt"
     s!"status={status}\nsource=RuntimeHeapDelKernels.lean\ncompiler=Lean.Compiler.compile\nfinal_ir=Lean.IR.findDecl\nfinal_del_count={totalDel}\nemitted_ir_source_del=NOT_YET_ESTABLISHED\n"
   logInfo m!"Source del candidate result: {status}"

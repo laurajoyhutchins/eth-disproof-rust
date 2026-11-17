@@ -51,7 +51,7 @@ fn overlapping_edges_and_cycles_are_supported_exactly() {
     assert_eq!(region.edge_count(), 4);
     assert_eq!(
         region.contract().unwrap().value,
-        (1 * 3 * 5 + 2 * 4 * 6) * (7 + 8)
+        (3 * 5 + 2 * 4 * 6) * (7 + 8)
     );
     assert_eq!(region.contract().unwrap().value, brute_force(&region));
     assert!(region.as_unary_product_if_unconstrained().is_err());

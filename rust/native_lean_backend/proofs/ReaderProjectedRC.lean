@@ -89,7 +89,9 @@ theorem cannot_retain_after_last_owner_released (rustCopies : Nat) :
       retainChild released = none := by
   intro released h
   have he : released = ⟨0, 0, rustCopies + 1⟩ := by
-    simpa [dropping_only_parent_invalidates_unretained_projection] using h
+    have h' : (⟨0, 0, rustCopies + 1⟩ : State) = released := by
+      simpa [dropping_only_parent_invalidates_unretained_projection] using h
+    exact h'.symm
   subst released
   rfl
 

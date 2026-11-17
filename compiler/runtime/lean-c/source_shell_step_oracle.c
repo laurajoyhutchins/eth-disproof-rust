@@ -206,7 +206,9 @@ static void run_fresh(FILE *f, lean_object *stamp) {
 /* Borrowed @& Nat parameter: all heap-field increments are explicit
  * above, and the caller retains its independent reference throughout. */
 lean_obj_res lr_heap_trace_source_credits(b_lean_obj_arg stamp) {
-    if (!stamp || lean_is_scalar(stamp) || !lean_is_st(stamp)) return lean_box(1);
+    if (!stamp) return lean_box(1);
+    if (lean_is_scalar(stamp)) return lean_box(2);
+    if (!lean_is_st(stamp)) return lean_box(3);
     const char *path = getenv("LR_SOURCE_TRACE");
     if (!path || !*path) return lean_box(2);
     FILE *f = fopen(path, "w");

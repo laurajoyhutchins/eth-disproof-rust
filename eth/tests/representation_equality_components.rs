@@ -113,7 +113,6 @@ fn empty_and_unconstrained_components_have_correct_identity() {
     assert_eq!(unconstrained.contract().unwrap().value, (2 + 3) * (4 + 5));
 }
 
-
 /// Completely independent reachability reference: repeated edge relaxation.
 /// Unlike union-find it never reads or updates the production parent array.
 fn reachable(n: usize, edges: &[(usize, usize)], start: usize, target: usize) -> bool {
@@ -156,7 +155,10 @@ fn component_labels_are_surjective_and_match_independent_paths() {
                 let labels = region.component_labels().unwrap();
                 assert_eq!(labels.len(), n);
                 assert_eq!(
-                    labels.iter().copied().collect::<std::collections::BTreeSet<_>>(),
+                    labels
+                        .iter()
+                        .copied()
+                        .collect::<std::collections::BTreeSet<_>>(),
                     (0..region.component_count()).collect(),
                     "surjective labels: n={n} graph={mask}"
                 );
@@ -188,7 +190,10 @@ fn duplicates_self_edges_and_reordered_insertions_preserve_partition() {
     for &(a, b) in edges.iter().rev() {
         reversed.apply_equality(b, a).unwrap();
     }
-    assert_eq!(reversed.component_labels().unwrap(), region.component_labels().unwrap());
+    assert_eq!(
+        reversed.component_labels().unwrap(),
+        region.component_labels().unwrap()
+    );
     assert_eq!(reversed.contract().unwrap().value, expected);
 }
 

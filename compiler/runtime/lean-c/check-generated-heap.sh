@@ -241,6 +241,9 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
   echo 'physical_c_operations=real_pinned_lean_inc_dec_ctor_get_ctor_set_is_exclusive_del_object'
   echo 'physical_trace=28_observations_in_4_allocation_episodes'
   echo 'source_shell_c_semantics_proof=NOT_ESTABLISHED'
+  echo 'source_shell_observed_refinement=LEAN_KERNEL_CHECKED_CONDITIONAL_THEOREMS'
+  echo 'source_shell_trace_tampering=IDENTITY_AND_OMISSION_REFUSED'
+  sha256sum "$out"/source-shell-mutated-*.tsv "$out"/source-shell-rejected-*.txt
   sha256sum proofs/ReaderShellSimulation.lean "$out/source-shell-simulation-lean.txt" \
     proofs/ReaderShellTraceAudit.lean runtime/lean-c/source_shell_step_oracle.c \
     "$out/source-shell-physical.tsv" "$out/source-shell-trace-audit.txt"

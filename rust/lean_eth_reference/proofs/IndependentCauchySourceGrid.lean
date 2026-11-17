@@ -110,10 +110,9 @@ theorem shiftedGridPoint_surjective (a : ℕ) (t : ℤ)
         t + (2 : ℤ) ^ a := Int.toNat_of_nonneg hzero
     omega
   refine ⟨⟨(t + (2 : ℤ) ^ a).toNat, hnat⟩, ?_⟩
-  unfold shiftedGridPoint
-  have heq : (((t + (2 : ℤ) ^ a).toNat : ℕ) : ℤ) =
-      t + (2 : ℤ) ^ a := Int.toNat_of_nonneg hzero
-  omega
+  change ((t + (2 : ℤ) ^ a).toNat : ℤ) - (2 : ℤ) ^ a = t
+  rw [Int.toNat_of_nonneg hzero]
+  ring
 
 /-- A bijective enumeration of the literal integer source grid. -/
 noncomputable def sourceGridFinEquiv (a : ℕ) :

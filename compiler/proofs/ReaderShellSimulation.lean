@@ -166,53 +166,44 @@ theorem step_simulation (s : Source) (instr : Instruction) :
       (sourceStep s instr).map represent := by
   cases instr with
   | borrowChild =>
-      simp [sourceStep, physicalStep, represent]
+      simp [sourceStep, physicalStep, represent] <;>
+        split_ifs <;> simp_all [represent]
   | inspectSharing =>
-      simp [sourceStep, physicalStep, represent]
+      simp [sourceStep, physicalStep, represent] <;>
+        split_ifs <;> simp_all [represent]
   | retainChild =>
-      simp [sourceStep, physicalStep, represent, credit, Nat.add_assoc]
+      simp [sourceStep, physicalStep, represent, credit] <;>
+        split_ifs <;>
+        simp_all [represent, credit, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm]
   | retainParent =>
-      simp [sourceStep, physicalStep, represent, credit]
+      simp [sourceStep, physicalStep, represent] <;>
+        split_ifs <;> simp_all [represent] <;> omega
   | releaseSharedParent =>
-      simp [sourceStep, physicalStep, represent, credit]
+      simp [sourceStep, physicalStep, represent] <;>
+        split_ifs <;> simp_all [represent] <;> omega
   | stampDec =>
-      cases hs : s.stampSlot with
-      | old =>
-          simp [sourceStep, physicalStep, represent, credit, hs, Nat.add_sub_cancel_right]
-      | spent =>
-          simp [sourceStep, physicalStep, represent, credit, hs]
-      | fresh =>
-          simp [sourceStep, physicalStep, represent, credit, hs]
+      cases hs : s.stampSlot <;>
+        simp [sourceStep, physicalStep, represent, credit, hs] <;>
+        split_ifs <;> simp_all [represent, credit] <;> omega
   | jumpOwned =>
-      simp [sourceStep, physicalStep, represent]
+      simp [sourceStep, physicalStep, represent] <;>
+        split_ifs <;> simp_all [represent]
   | setFreshStamp =>
-      cases hs : s.stampSlot with
-      | old =>
-          simp [sourceStep, physicalStep, represent, credit, hs]
-      | spent =>
-          simp [sourceStep, physicalStep, represent, credit, hs]
-      | fresh =>
-          simp [sourceStep, physicalStep, represent, credit, hs]
+      cases hs : s.stampSlot <;>
+        simp [sourceStep, physicalStep, represent, credit, hs] <;>
+        split_ifs <;> simp_all [represent, credit]
   | shellDel =>
-      cases hfield : s.childField with
-      | false =>
-          simp [sourceStep, physicalStep, represent, credit, hfield]
-      | true =>
-          cases hproj : s.childProjectionCredits with
-          | zero =>
-              cases hs : s.stampSlot <;>
-                simp [sourceStep, physicalStep, represent, credit,
-                  hfield, hproj, hs]
-          | succ n =>
-              cases hs : s.stampSlot <;>
-                simp [sourceStep, physicalStep, represent, credit,
-                  hfield, hproj, hs]
+      cases hfield : s.childField <;>
+        cases hs : s.stampSlot <;>
+        cases hproj : s.childProjectionCredits <;>
+        simp [sourceStep, physicalStep, represent, credit,
+              hfield, hs, hproj] <;>
+        split_ifs <;> simp_all [represent, credit, hfield, hs, hproj] <;> omega
   | releaseProjectedChild =>
-      cases hfield : s.childField with
-      | false =>
-          simp [sourceStep, physicalStep, represent, credit, hfield]
-      | true =>
-          simp [sourceStep, physicalStep, represent, credit, hfield]
+      cases hfield : s.childField <;>
+        simp [sourceStep, physicalStep, represent, credit, hfield] <;>
+        split_ifs <;> simp_all [represent, credit, hfield] <;> omega
+
 
 def runSource : List Instruction → Source → Option Source
   | [], s => some s
@@ -285,7 +276,8 @@ theorem physical_delete_trace (external : Nat) :
         childField := false
         stampSlot := .spent
         observedUnique := true } := by
-  simp [trace_simulation, source_delete_trace, represent, initial, credit]
+  rw [trace_simulation, source_delete_trace]
+  rfl
 
 theorem physical_reuse_trace (external : Nat) :
     runPhysical reuseTrace (represent (initial external)) =
@@ -296,17 +288,22 @@ theorem physical_reuse_trace (external : Nat) :
         borrowedChild := true
         stampSlot := .fresh
         observedUnique := true } := by
-  simp [trace_simulation, reuseTrace, runSource, sourceStep, initial, represent, credit]
+  rw [trace_simulation]
+  rfl
 
 /-- An unspent old stamp is a hard refusal: a shell-only deletion cannot
 erase its existing field credit. -/
+def uniqueBeforeStampDec (external : Nat) : Source :=
+  { (initial external) with borrowedChild := true, observedUnique := true }
+
 theorem no_del_before_stamp_release (external : Nat) :
-    sourceStep { initial external with borrowedChild := true,
-      observedUnique := true } .shellDel = none := rfl
+    sourceStep (uniqueBeforeStampDec external) .shellDel = none := rfl
+
+def sharedBeforeStampDec (external : Nat) : Source :=
+  { (initial external) with parentCredits := 2, observedUnique := false }
 
 theorem no_stamp_release_on_shared_parent (external : Nat) :
-    sourceStep { initial external with parentCredits := 2,
-      observedUnique := false } .stampDec = none := rfl
+    sourceStep (sharedBeforeStampDec external) .stampDec = none := rfl
 
 /-- A wrong implementation that recursively decrements the child during
 shell deletion violates the representation relation even when its
@@ -315,15 +312,24 @@ def incorrectRecursiveDel (p : Physical) : Physical :=
   { p with parentRC := 0, shellLive := false, childField := false,
     childRC := p.childRC - 1 }
 
+def beforeDel (external : Nat) : Source :=
+  { (initial external) with stampSlot := .spent,
+    borrowedChild := true, observedUnique := true }
+
+def afterDel (external : Nat) : Source :=
+  { (initial external) with parentCredits := 0,
+    stampSlot := .spent, childField := false,
+    childProjectionCredits := 1, borrowedChild := true,
+    observedUnique := true }
+
 theorem recursive_delete_is_not_shell_delete (external : Nat) :
-    incorrectRecursiveDel (represent { initial external with
-      stampSlot := .spent, borrowedChild := true,
-      observedUnique := true }) ≠
-      represent { initial external with parentCredits := 0,
-        stampSlot := .spent, childField := false,
-        childProjectionCredits := 1,
-        borrowedChild := true, observedUnique := true } := by
-  decide
+    incorrectRecursiveDel (represent (beforeDel external)) ≠
+      represent (afterDel external) := by
+  intro h
+  have hc := congrArg Physical.childRC h
+  simp [incorrectRecursiveDel, represent, beforeDel, afterDel,
+    initial, credit] at hc
+
 
 end ReaderShellSimulation
 

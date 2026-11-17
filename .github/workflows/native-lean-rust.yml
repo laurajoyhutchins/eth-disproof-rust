@@ -173,6 +173,7 @@ jobs:
             compiler/artifacts/lean-c-generated-heap/trace.txt
             compiler/artifacts/lean-c-generated-heap/exact-emitter.rs
             compiler/artifacts/source-del-final-ir.tsv
+            compiler/artifacts/source-del-final-ir.txt
             compiler/artifacts/source-del-final-ir-status.txt
             compiler/artifacts/lcnf-capture.json
             compiler/artifacts/lcnf-capture-receipt.txt

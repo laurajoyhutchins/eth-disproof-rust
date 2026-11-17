@@ -41,7 +41,10 @@ def main : IO Unit := do
                 s!"heap-stamp source-del mismatch a={a} b={b} threshold={threshold} shared={shared}: code {result}"
             cases := cases + 1
   IO.println s!"reader-generated-source-del-lean-c=PASS cases={cases}"
-  let traceStamp := (2^128 + 7 : Nat) + values[1]!
+  -- The input must be a runtime-created, single-threaded heap Nat,
+  -- not a compiler-persisted numeric literal with reference count zero.
+  let runtimeSalt ← IO.monoMsNow
+  let traceStamp := (2^128 + 7 : Nat) + runtimeSalt.toNat
   let traceResult := traceSourceCredits traceStamp
   if traceResult != 0 then
     throw <| IO.userError s!"Lean C physical step oracle refused: {traceResult}"

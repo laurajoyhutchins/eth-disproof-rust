@@ -16,9 +16,9 @@ watch:
   - README.md
   - CONTRIBUTING.md
   - research
-  - rust/lean_eth_reference/README.md
-  - rust/lean_eth_reference/docs
-  - rust/native_lean_backend
+  - eth/README.md
+  - eth/docs
+  - compiler
 
 theme:
   name: material
@@ -80,33 +80,39 @@ nav:
       - Literature: research/literature.md
       - Formalization evaluation: research/formalization-evaluation.md
   - Execution:
-      - Execution evidence: rust/lean_eth_reference/docs/evidence.md
-      - Remaining Lean port: rust/lean_eth_reference/docs/remaining-lean-port.md
+      - Execution evidence: eth/docs/evidence.md
+      - Remaining Lean port: eth/docs/remaining-lean-port.md
       - Lean–Rust acceptance: research/lean-rust-acceptance.md
-      - Independent differential: rust/lean_eth_reference/docs/independent-differential-and-accounting.md
-      - Source refinement: rust/lean_eth_reference/docs/m3-tm2-resource-evidence.md
-      - Finite fallback: rust/lean_eth_reference/docs/m2-finite-fallback-decision.md
-      - Two-path compiler contract: rust/lean_eth_reference/docs/two-path-acceptance-contract.md
+      - Independent differential: eth/docs/independent-differential-and-accounting.md
+      - Source refinement: eth/docs/m3-tm2-resource-evidence.md
+      - Finite fallback: eth/docs/m2-finite-fallback-decision.md
+      - Two-path compiler contract: eth/docs/two-path-acceptance-contract.md
   - Compiler:
-      - Rust executable: rust/lean_eth_reference/README.md
-      - Native frontend: rust/lean_eth_reference/docs/m2-runnable-frontend.md
-      - Lean compiler IR: rust/lean_eth_reference/docs/compiler-ir-backend.md
-      - Core expression residualizer: rust/lean_eth_reference/docs/core-expr-residualizer.md
-      - Generalization plan: rust/lean_eth_reference/docs/lean-to-rust-generalization.md
-      - Native Rust backend:
-          - Introduction: rust/native_lean_backend/README.md
-          - Coverage: rust/native_lean_backend/COVERAGE.md
-          - Semantics: rust/native_lean_backend/SEMANTICS.md
-          - Conformance: rust/native_lean_backend/CONFORMANCE.md
-          - Evidence: rust/native_lean_backend/EVIDENCE.md
+      - Backend-first architecture: compiler/docs/backend-first-architecture.md
+      - Current implementation status: compiler/docs/compiler-status.md
+      - Using the native compiler: eth/docs/compiler-ir-backend.md
+      - Execution runtime contract: compiler/docs/execution-runtime-contract.md
+      - Native compiler README: compiler/README.md
+      - IR coverage: compiler/COVERAGE.md
+      - Value semantics: compiler/SEMANTICS.md
+      - Source conformance: compiler/CONFORMANCE.md
+      - Comparison with Lean C: compiler/COMPARISON.md
+      - Execution evidence: compiler/EVIDENCE.md
+      - Optional compiler bootstrap: lean-rust-replacement.md
+  - ETH source execution:
+      - Rust machine: eth/README.md
+      - Native frontend: eth/docs/m2-runnable-frontend.md
+      - Core expression residualizer: eth/docs/core-expr-residualizer.md
+      - Original program generalization: eth/docs/lean-to-rust-generalization.md
   - Detailed notes:
-      - Documentation inventory: rust/lean_eth_reference/docs/README.md
-      - Worst-case parameter study: rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md
-      - Source query table: rust/lean_eth_reference/docs/compiled-query-table.md
-      - Signed signature pipeline: rust/lean_eth_reference/docs/signed-signature-pipeline.md
-      - Historical sequence: rust/lean_eth_reference/docs/reading-the-history.md
-      - Test accuracy audit: rust/lean_eth_reference/docs/tdd-accuracy-audit.md
+      - Documentation inventory: eth/docs/README.md
+      - Worst-case parameter study: eth/docs/worst-case-and-polynomial-overhead.md
+      - Source query table: eth/docs/compiled-query-table.md
+      - Signed signature pipeline: eth/docs/signed-signature-pipeline.md
+      - Historical sequence: eth/docs/reading-the-history.md
+      - Test accuracy audit: eth/docs/tdd-accuracy-audit.md
   - Repository:
+      - Directory layout: repository-layout.md
       - Project README: README.md
       - Contributing: CONTRIBUTING.md
       - Writing these notes: STYLE.md
@@ -114,5 +120,5 @@ nav:
 
 # Historical port chapters remain searchable but do not crowd the sidebar.
 not_in_nav: |
-  /rust/lean_eth_reference/docs/
-  /rust/native_lean_backend/
+  /eth/docs/
+  /compiler/

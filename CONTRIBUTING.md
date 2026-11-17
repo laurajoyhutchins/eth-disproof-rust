@@ -10,7 +10,7 @@ See [Writing these notes](docs/STYLE.md) for the editorial conventions: equation
 A pull request should answer four concrete questions:
 
 1. **Original source:** Which Lean symbol, file and pinned Git revision is the
-   implementation based on? See the [source manifest](rust/lean_eth_reference/reference/source-manifest.json).
+   implementation based on? See the [source manifest](eth/reference/source-manifest.json).
 2. **Execution:** Is the change an instruction-level source port, a host Rust
    semantic helper, a separate optimization, or a proof-only argument?
 3. **Evidence:** Which tests were run on the **exact PR head**, with what
@@ -25,27 +25,46 @@ Keep changes reviewable: one source-defined behavior or one distinct argument
 per PR. Do not combine source-faithful translation, performance optimization,
 and new mathematical conjectures without separately testing each claim.
 Follow the [PR template](.github/PULL_REQUEST_TEMPLATE.md) and
-[execution/evidence matrix](rust/lean_eth_reference/docs/evidence.md).
+[execution/evidence matrix](eth/docs/evidence.md).
 
 ## One Lean-to-Rust compiler path
 
-Maintain the existing source-grounded, compositional exporter and Rust backend;
-do not introduce a parallel `lean-rs` generator, runtime, or verification path.
-When incorporating ideas from other Lean compilers:
+The authoritative language pipeline is **Lean 4 source → Lean frontend and
+compiler → final ownership-explicit compiler IR**. Extend the one in-process
+Rust backend in `compiler/`. Do not add another surface
+parser, independent IR optimizer, parallel code generator or silent fallback
+to a source-graph substitution.
 
-- Let pinned Lean elaboration establish the typed source, rather than parsing
-  Lean surface syntax in Rust or guessing source definitions by name.
-- Preserve each exported declaration's original Lean name, source revision,
-  dependencies, and deterministic generation receipt.
-- Report skipped or unsupported definitions with explicit reasons, and refuse
-  missing executable dependencies instead of generating placeholder behavior.
-- Keep normal Cargo builds and tests independent of a live Lean toolchain;
-  source extraction and independent Lean trace checks have explicit gates.
-- Attribute copied or adapted implementation code with its upstream path,
-  revision and license; see [NOTICE](NOTICE) for design references.
+When changing this backend:
 
-These are compiler acceptance requirements, not claims that all features have
-already been implemented or that end-to-end Lean/Rust parity is established.
+1. Identify the original Lean declaration, pinned compiler-IR construct,
+   executable closure and borrow/ownership convention. Preserve source names
+   and recorded dependency identities.
+2. Lower into the one emitter, retaining explicit `inc`/`dec`/`del`,
+   borrow, move, call, reuse and release decisions. Rust `Rc`
+   handle counts are not Lean source reference counts by default.
+3. Keep generated Rust's runtime dependency explicit. The **first**
+   correspondence target is the pinned Lean C runtime through FFI.
+   Only promote a Rust-native runtime operation after comparing it
+   against that reference on the admitted domain.
+4. Make unsupported IR, externs and ownership shapes refuse as a whole
+   without publishing partial output. Bind accepted evidence to the
+   exact source and PR-head revisions.
+5. Compare independent Lean results and, for sharing-sensitive code,
+   observed object identity, allocation, release and reuse. Golden
+   output-only tests cannot certify ownership fidelity.
+
+The existing standalone GMP/`Rc` runtime remains an implementation
+of a **bounded tested subset**, not the baseline proof of physical
+runtime equivalence. LCNF inspection informs analysis; it is not
+another backend. A Rust proof kernel is a separate project.
+
+The [architecture](compiler/docs/backend-first-architecture.md),
+[execution runtime contract](compiler/docs/execution-runtime-contract.md)
+and [compiler status](compiler/docs/compiler-status.md)
+identify what is implemented, proposed or still unsupported.
+Original ETH QueryStream residualization is G2, not a reason to
+weaken G1's IR contract.
 
 ## Run local checks
 
@@ -56,7 +75,7 @@ with rustfmt and Clippy:
 cargo fetch --locked
 cargo fmt --all -- --check
 cargo test --locked --offline --all-targets
-python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
+python3 -m unittest discover -s eth/tools -p 'test_verify_source_graph.py'
 cargo clippy --locked --offline --all-targets -- -D warnings
 ```
 

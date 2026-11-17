@@ -20,7 +20,9 @@ A generated Rust program must match the original Lean program, including relevan
 | Closures and effects | Erased values, first-class functions, sharing observations and side effects need source-accurate behavior |
 | Transitive closure | A supported entrypoint is useless if one called declaration silently disappears |
 
-The intended implementation has **one** in-process Lean 4.34.1 compiler and one GMP/`Rc` value runtime. Do not maintain a second hand-translated object model.
+The intended implementation has **one** in-process Lean 4.34.1 compiler and one Rust emitter. The current generated code embeds a GMP/`Rc` value runtime for a bounded subset. This does **not** prove physical ownership fidelity: the backend must first be checked with generated Rust calling the pinned Lean C runtime through a separate execution-time adapter. Rust-native runtime operations are a subsequent replacement behind the same contract. A Rust proof kernel is an independent project.
+
+See the [backend-first architecture](../compiler/docs/backend-first-architecture.md), [status](../compiler/docs/compiler-status.md) and [runtime contract](../compiler/docs/execution-runtime-contract.md).
 
 Merged [#230](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/230) and [#234](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/234) are historical integration points. The November 14 follow-ups [#237](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/237), [#238](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/238) and [#239](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/239) record the scalar-projection and ownership issues. Their descriptions are not substitutes for checking the current head.
 
@@ -43,7 +45,7 @@ The query path needs signature-head loading, pair commitment, node processing an
 
 For a source declaration without executable IR, inspect its elaborated Lean `Expr` definition. A residualizer must preserve binding, sharing, reduction and dependencies. It must refuse computational axioms, unknown opaque constants, unresolved recursors or exhausted budgets. It cannot replace them with a plausible Rust #SAT algorithm.
 
-The [compiler-IR probe](../rust/lean_eth_reference/docs/compiler-ir-backend.md), [core-expression residualizer](../rust/lean_eth_reference/docs/core-expr-residualizer.md) and [shared receipt contract](../rust/lean_eth_reference/docs/two-path-acceptance-contract.md) explore these boundaries. None establishes the full ETH program by itself.
+The [compiler-IR probe](../eth/docs/compiler-ir-backend.md), [core-expression residualizer](../eth/docs/core-expr-residualizer.md) and [shared receipt contract](../eth/docs/two-path-acceptance-contract.md) explore these boundaries. None establishes the full ETH program by itself.
 
 The original query/composition drafts are [#177](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/177) and [#179](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/179).
 
@@ -73,7 +75,7 @@ The Lean finite branch uses a noncomputably selected table. A Rust exhaustive se
 
 The available outcomes are construction and certification of the exact table, or an explicit refusal for the unsupported branch. The separate bounded #SAT oracle is for differential testing, never a silent runtime fallback.
 
-See [finite fallback](../rust/lean_eth_reference/docs/m2-finite-fallback-decision.md).
+See [finite fallback](../eth/docs/m2-finite-fallback-decision.md).
 
 ## Completion criteria
 
@@ -81,4 +83,4 @@ Run one **nonterminal** instance through the complete original-source query, lea
 
 Additional isolated fixtures do not substitute for this complete-program acceptance test.
 
-[Current execution evidence](../rust/lean_eth_reference/docs/evidence.md) · [Remaining port](../rust/lean_eth_reference/docs/remaining-lean-port.md)
+[Current execution evidence](../eth/docs/evidence.md) · [Remaining port](../eth/docs/remaining-lean-port.md)

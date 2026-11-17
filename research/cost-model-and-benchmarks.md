@@ -114,7 +114,7 @@ A literal irreducible-polynomial search can have an \(s^4\)-scale candidate spac
 
 The mode envelope \(\exp(O(\sqrt{Mp_t/D_t}))\) and packet-entry bound \(\exp(O(L\log s))\) are **subexponential** costs, not polynomial overhead.
 
-For full derivations, see [Worst-case stressors and polynomial overhead](../rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md).
+For full derivations, see [Worst-case stressors and polynomial overhead](../eth/docs/worst-case-and-polynomial-overhead.md).
 
 ## Test input families
 

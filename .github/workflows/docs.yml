@@ -11,9 +11,9 @@ on:
       - README.md
       - CONTRIBUTING.md
       - research/**
-      - rust/lean_eth_reference/README.md
-      - rust/lean_eth_reference/docs/**
-      - rust/native_lean_backend/*.md
+      - eth/README.md
+      - eth/docs/**
+      - compiler/*.md
       - .github/workflows/docs.yml
   pull_request:
     paths:
@@ -24,9 +24,9 @@ on:
       - README.md
       - CONTRIBUTING.md
       - research/**
-      - rust/lean_eth_reference/README.md
-      - rust/lean_eth_reference/docs/**
-      - rust/native_lean_backend/*.md
+      - eth/README.md
+      - eth/docs/**
+      - compiler/*.md
       - .github/workflows/docs.yml
   workflow_dispatch:
 

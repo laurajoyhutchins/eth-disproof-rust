@@ -14,13 +14,14 @@ ROOT = Path(__file__).resolve().parent.parent
 REPO_URL = "https://github.com/laurajoyhutchins/eth-disproof-rust"
 SOURCE_DIRS = (
     "research",
-    "rust/lean_eth_reference/docs",
-    "rust/native_lean_backend",
+    "eth/docs",
+    "compiler",
+    "compiler/docs",
 )
 SINGLE_SOURCES = (
     "README.md",
     "CONTRIBUTING.md",
-    "rust/lean_eth_reference/README.md",
+    "eth/README.md",
 )
 
 LINK = re.compile(r'(?<!!)(\[[^\]]+\]\()(?P<href>[^\s)]+)(?P<title>\s+[^)]*)?(\))')

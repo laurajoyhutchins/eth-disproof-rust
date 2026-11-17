@@ -18,7 +18,7 @@ F(t+2^{a+1}\zeta)
 
 The notation above suppresses packet and routing definitions. Those are precisely the hard parts, not details to wave away.
 
-Read [the recursion](research/two-adic-recursion.md), [the pair-swap spectral construction](research/spectral-group-actions.md), or [the full cost analysis](rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md).
+Read [the recursion](research/two-adic-recursion.md), [the pair-swap spectral construction](research/spectral-group-actions.md), or [the full cost analysis](eth/docs/worst-case-and-polynomial-overhead.md).
 
 ## Executable coverage
 
@@ -30,7 +30,15 @@ Read [the recursion](research/two-adic-recursion.md), [the pair-swap spectral co
 
 The separate brute-force oracle is useful for checking an answer. It is **not** the algorithm being studied.
 
-Follow [execution evidence](rust/lean_eth_reference/docs/evidence.md), [the missing stages](rust/lean_eth_reference/docs/remaining-lean-port.md), and [the Lean-to-Rust acceptance conditions](research/lean-rust-acceptance.md).
+Follow [execution evidence](eth/docs/evidence.md), [the missing stages](eth/docs/remaining-lean-port.md), and [the Lean-to-Rust acceptance conditions](research/lean-rust-acceptance.md).
+
+## Lean compiler IR to Rust
+
+The general compiler (G1) uses Lean's own frontend and ownership-explicit compiler IR. There is one production Rust emitter, currently limited to a documented executable subset. The current standalone Rust value runtime is **not** a demonstrated substitute for Lean's entire runtime.
+
+The implementation order is: prove the backend against Lean C execution, define and test the ownership/FFI contract, then replace runtime operations in Rust. Compiling the noncomputable original ETH machine (G2) remains a separate issue, and an independent proof kernel is not part of the compiler.
+
+[Architecture](compiler/docs/backend-first-architecture.md) · [Current status](compiler/docs/compiler-status.md) · [Execution runtime contract](compiler/docs/execution-runtime-contract.md) · [Build and use](eth/docs/compiler-ir-backend.md)
 
 ## Complexity and implementation costs
 
@@ -38,10 +46,10 @@ At \(s=10^6\) edges, one stated schedule gives \(u_0=0\). The nominal leaf size 
 
 A performance comparison must include the **entire exact count**: coefficient construction, bit lengths, child contractions, memory, and reconstruction.
 
-Start with [the measured cost model](research/cost-model-and-benchmarks.md). The larger [parameter study](rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md) records the derivations.
+Start with [the measured cost model](research/cost-model-and-benchmarks.md). The larger [parameter study](eth/docs/worst-case-and-polynomial-overhead.md) records the derivations.
 
 ## Research notes
 
-[What changed, October 31–November 14](research/2026-10-31-to-2026-11-14-ledger.md) · [Literature](research/literature.md) · [Formalization experiments](research/formalization-evaluation.md) · [Historical port notes](rust/lean_eth_reference/docs/README.md)
+[What changed, October 31–November 14](research/2026-10-31-to-2026-11-14-ledger.md) · [Literature](research/literature.md) · [Formalization experiments](research/formalization-evaluation.md) · [Historical port notes](eth/docs/README.md)
 
-The [source manifest](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/lean_eth_reference/reference/source-manifest.json) pins the original Lean tree. The [repository](https://github.com/laurajoyhutchins/eth-disproof-rust) holds code, tests and the underlying documentation.
+The [source manifest](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/reference/source-manifest.json) pins the original Lean tree. The [repository](https://github.com/laurajoyhutchins/eth-disproof-rust) holds code, tests and the underlying documentation.

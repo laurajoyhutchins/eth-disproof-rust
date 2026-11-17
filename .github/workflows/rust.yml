@@ -29,8 +29,15 @@ jobs:
       # rust-toolchain.toml pins Rust 1.99.1, rustfmt and Clippy.
       - name: Restore locked crate dependencies
         run: cargo fetch --locked
+      - name: Repository layout contract
+        run: python3 -m unittest discover -s tools -p 'test_repository_layout.py'
       - name: Formatting (workspace)
         run: cargo fmt --all -- --check
+      - name: Compiler CLI independence, formatting and tests
+        run: |
+          cargo fmt --manifest-path compiler/cli/Cargo.toml -- --check
+          cargo test --locked --offline --manifest-path compiler/cli/Cargo.toml -p lean-compiler-cli --all-targets
+          cargo run --quiet --locked --offline --manifest-path compiler/cli/Cargo.toml --bin lean-rust-compiler --             verify --backend bogus >/dev/null 2>&1 && exit 1 || test "$?" -eq 2
       - name: Exact Rust tests
         run: cargo test --locked --offline --all-targets
       - name: Nonterminal source-prefix accounting receipt (unsupported count)
@@ -38,6 +45,6 @@ jobs:
       - name: First original QueryStream node physical composition receipt
         run: cargo test --locked --offline -p lean-eth-reference --test native_query_first_node_composition -- --nocapture
       - name: Source-graph compiler contract tests (offline)
-        run: python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
+        run: python3 -m unittest discover -s eth/tools -p 'test_verify_source_graph.py'
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

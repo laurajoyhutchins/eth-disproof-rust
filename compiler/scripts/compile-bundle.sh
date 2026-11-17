@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Reproducible, content-addressable evidence around the existing in-process
+# compiler. A bundle is an ATOMIC DIRECTORY publication (not paired file writes).
+# Generated code is only COMPILE-verified here; semantic acceptance is separate.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+source scripts/lib/compilation-common.sh
+
+if (( $# < 4 || $# > 5 )); then
+  echo "usage: compile-bundle.sh MODULE ROOT SOURCE_LEAN OUTPUT_DIRECTORY [RUST_EXPORT]" >&2
+  exit 2
+fi
+module="$1"
+root="$2"
+source="$3"
+dest="$4"
+export_name="${5:-compiled_root}"
+
+# Lean names are inserted into a compiler command, never passed to a shell eval.
+# Restrict the first public CLI to ordinary ASCII components.
+if ! native_declaration_name "$module" ||
+   ! native_declaration_name "$root" ||
+   ! native_export_name "$export_name"; then
+  echo "Refusing unsafe Lean module/root or Rust export name" >&2
+  exit 2
+fi
+if [[ ! -f "$source" || -L "$source" || "$dest" = *'/../'* || "$dest" = '../'* ]]; then
+  echo "Refusing missing/symlinked source or traversal in output path" >&2
+  exit 2
+fi
+: "${LEAN_PREFIX:?Set LEAN_PREFIX to exact Lean 4.34.1 distribution}"
+export PATH="${LEAN_PREFIX}/bin:${PATH}"
+export LEAN_PATH="$(pwd):$(pwd)/examples:${LEAN_PREFIX}/lib/lean${LEAN_PATH:+:${LEAN_PATH}}"
+export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+if [[ "$(lean --version)" != *'version 4.34.1'* ]] ||
+   [[ "$(rustc --version)" != 'rustc 1.99.1 '* ]]; then
+  echo "Unsupported toolchain; this bundle requires Lean 4.34.1 and Rust 1.99.1" >&2
+  exit 2
+fi
+NATIVE_LIB="$(pwd)/target/release/liblean_rust_native_backend.so"
+test -f "$NATIVE_LIB"
+test -f NativeRust.olean
+
+dest="$(native_destination "$dest")"
+parent="$(dirname -- "$dest")"
+# The pinned same-process publisher accepts only workspace-relative .rs paths.
+# Refuse outside-workspace staging rather than weakening native path checks.
+case "$parent/" in
+  "$PWD/"*) ;;
+  *) echo "Bundle output parent must remain under the compiler workspace" >&2; exit 2 ;;
+esac
+staging="$(mktemp -d "$parent/.native-bundle.XXXXXXXX")"
+staging_rel="${staging#"$PWD/"}"
+# Never remove a caller's destination even on any error.
+trap 'rm -rf -- "$staging"' EXIT
+if [[ "$staging" = *'"'* || "$staging" = *'\'* || "$staging" = *$'\n'* ]]; then
+  echo "Bundle parent cannot contain Lean string escape characters" >&2
+  exit 2
+fi
+
+module_file="${module//.//}"
+mkdir -p -- "$staging/$(dirname "$module_file")"
+cp -- "$source" "$staging/$module_file.lean"
+export LEAN_PATH="$staging:$LEAN_PATH"
+if ! lean -o "$staging/$module_file.olean" "$staging/$module_file.lean" > "$staging/lean-module.log" 2>&1; then
+  cat "$staging/lean-module.log" >&2
+  exit 1
+fi
+cat > "$staging/compile.lean" <<LEAN
+import NativeRust
+import $module
+#native_rust_closure $root as "$export_name" to "$staging_rel/generated.rs"
+LEAN
+if ! lean --load-dynlib="$NATIVE_LIB" "$staging/compile.lean" > "$staging/lean-codegen.log" 2>&1; then
+  cat "$staging/lean-codegen.log" >&2
+  exit 1
+fi
+test -s "$staging/generated.rs"
+
+# This is a standalone Rust library compilation check; not a semantic proof.
+if ! rustc --edition=2021 --crate-type=lib -D warnings -F unsafe-code \
+    -o "$staging/libgenerated.rlib" "$staging/generated.rs" > "$staging/rust-build.log" 2>&1; then
+  cat "$staging/rust-build.log" >&2
+  exit 1
+fi
+sed -n 's@^// Generated directly from Lean IR declaration: @@p' \
+  "$staging/generated.rs" | LC_ALL=C sort -u > "$staging/closure.txt"
+if [[ ! -s "$staging/closure.txt" ]] || ! grep -Fxq "$root" "$staging/closure.txt"; then
+  echo "Generated code lacks the root declaration's closure provenance" >&2
+  exit 1
+fi
+
+hash() { sha256sum -- "$1" | cut -d' ' -f1; }
+{
+  echo "status=GENERATED_COMPILED_UNVERIFIED"
+  echo "source_revision=$(git rev-parse --verify HEAD 2>/dev/null || echo unavailable)"
+  echo "source_module=$module"
+  echo "root_declaration=$root"
+  echo "rust_export=$export_name"
+  echo "lean_toolchain=$(cat lean-toolchain)"
+  echo "lean_version=$(lean --version)"
+  echo "rust_version=$(rustc --version)"
+  echo "source_lean_sha256=$(hash "$staging/$module_file.lean")"
+  echo "compiled_olean_sha256=$(hash "$staging/$module_file.olean")"
+  echo "native_abi_sha256=$(hash frontend/ffi/abi.c)"
+  echo "native_backend_sha256=$(hash backend/src/lib.rs)"
+  echo "native_shared_library_sha256=$(hash "$NATIVE_LIB")"
+  echo "closure_names_sha256=$(hash "$staging/closure.txt")"
+  echo "generated_rust_sha256=$(hash "$staging/generated.rs")"
+  echo "generated_rlib_sha256=$(hash "$staging/libgenerated.rlib")"
+  echo "lean_source_status=source_hash_pinned_but_transitive_imports_not_fully_hashed"
+  echo "semantic_verification=NOT_PERFORMED"
+  echo "execution_runtime=standalone_rust_lib_without_lean"
+} > "$staging/receipt.txt"
+
+# Move the entire bundle as one unit, including generated source and receipt.
+# GNU -n may report success without actually moving; assert staged dir gone.
+native_publish_directory "$staging" "$dest" receipt.txt
+trap - EXIT
+cat "$dest/receipt.txt"

@@ -13,6 +13,7 @@ unsafe extern "C" {
     fn lr_exec_ctor2(tag: u8, a: *mut __LeanCObject, b: *mut __LeanCObject) -> *mut __LeanCObject;
     fn lr_exec_inc(p: *mut __LeanCObject);
     fn lr_exec_dec(p: *mut __LeanCObject);
+    fn lr_exec_set_field(p: *mut __LeanCObject, index: usize, value: *mut __LeanCObject);
     fn lr_exec_del(p: *mut __LeanCObject);
     fn lr_exec_is_scalar(p: *const __LeanCObject) -> i32;
     fn lr_exec_unbox(p: *const __LeanCObject) -> usize;
@@ -34,6 +35,13 @@ struct __LeanCSlot {
     // A projection borrows the original C field: a weak parent tracking
     // source liveness, never an extra Lean C reference.
     parent: Option<std::rc::Weak<__LeanCSlot>>,
+    parent_index: Option<usize>,
+    // A field's physical credit can be released before the parent shell
+    // is recycled or deleted. Such a stale pointer must never be read
+    // or decremented a second time.
+    spent_fields: std::cell::RefCell<std::collections::BTreeSet<usize>>,
+    released_projection: std::cell::Cell<bool>,
+    erased: std::cell::Cell<bool>,
     // The source's borrowed C argument is live only for this FFI call.
     // It does NOT contribute an owned refcount credit or a Lean dec.
     external_borrow: bool,
@@ -67,6 +75,10 @@ impl __LeanValue {
         let ptr = std::ptr::NonNull::new(ptr).expect("null Lean source value");
         Self(std::rc::Rc::new(__LeanCSlot {
             ptr, credits: std::cell::Cell::new(1), parent: None,
+            parent_index: None,
+            spent_fields: std::cell::RefCell::new(std::collections::BTreeSet::new()),
+            released_projection: std::cell::Cell::new(false),
+            erased: std::cell::Cell::new(false),
             external_borrow: false,
             borrowed_fields: std::cell::RefCell::new(Vec::new()),
         }))
@@ -80,6 +92,10 @@ impl __LeanValue {
         let ptr = std::ptr::NonNull::new(ptr).expect("null borrowed Lean source value");
         Self(std::rc::Rc::new(__LeanCSlot {
             ptr, credits: std::cell::Cell::new(0), parent: None,
+            parent_index: None,
+            spent_fields: std::cell::RefCell::new(std::collections::BTreeSet::new()),
+            released_projection: std::cell::Cell::new(false),
+            erased: std::cell::Cell::new(false),
             external_borrow: true,
             borrowed_fields: std::cell::RefCell::new(Vec::new()),
         }))
@@ -99,10 +115,11 @@ impl __LeanValue {
     fn scalar(&self) -> bool { unsafe { lr_exec_is_scalar(self.raw()) != 0 } }
 
     fn slot_live(slot: &__LeanCSlot) -> bool {
-        slot.credits.get() > 0 || slot.external_borrow ||
+        !slot.released_projection.get() && !slot.erased.get() &&
+        (slot.credits.get() > 0 || slot.external_borrow ||
             slot.parent.as_ref()
                 .and_then(std::rc::Weak::upgrade)
-                .is_some_and(|owner| Self::slot_live(&owner))
+                .is_some_and(|owner| Self::slot_live(&owner)))
     }
 
     fn readable(&self) {
@@ -126,6 +143,20 @@ impl __LeanValue {
 
     // The emitter's compiler_alias does not correspond to a source IR.inc.
     fn compiler_alias(&self) -> Self { Self(std::rc::Rc::clone(&self.0)) }
+
+    fn erased() -> Self {
+        // Lean's erased join token is represented as scalar box(0), but
+        // cannot be inspected as an ordinary Nat. Only source_del admits it.
+        let token = Self::tagged(0);
+        token.0.erased.set(true);
+        token
+    }
+
+    fn require_constructor_object(self) -> Self {
+        self.readable();
+        assert!(!self.scalar(), "source join requires heap constructor");
+        self
+    }
 
     fn tagged(n: usize) -> Self {
         assert!(n <= usize::MAX >> 1, "Lean small Nat out of representable range");
@@ -153,6 +184,8 @@ impl __LeanValue {
 
     fn field(&self, n: usize) -> Self {
         self.readable();
+        assert!(!self.0.spent_fields.borrow().contains(&n),
+                "read of already released constructor field");
         assert!(!self.scalar(), "field projection from scalar");
         let field = unsafe { lr_exec_field(self.raw(), n) };
         assert!(!field.is_null(), "missing Lean C constructor field");
@@ -167,6 +200,10 @@ impl __LeanValue {
             ptr: std::ptr::NonNull::new(field).expect("null Lean C field"),
             credits: std::cell::Cell::new(0),
             parent: Some(std::rc::Rc::downgrade(&self.0)),
+            parent_index: Some(n),
+            spent_fields: std::cell::RefCell::new(std::collections::BTreeSet::new()),
+            released_projection: std::cell::Cell::new(false),
+            erased: std::cell::Cell::new(false),
             external_borrow: false,
             borrowed_fields: std::cell::RefCell::new(Vec::new()),
         }));
@@ -202,6 +239,32 @@ impl __LeanValue {
         self.0.credits.set(new);
     }
 
+    // The compiler proves this exceptional field credit using its
+    // original Box.mk case, isShared(false) branch, and join analysis.
+    // The runtime independently verifies physical exclusivity and the
+    // exact old stamp slot. It performs NO lean_inc.
+    fn adopt_exclusive_box_stamp(&self) {
+        assert!(!self.0.external_borrow && self.0.credits.get() == 0,
+                "borrowed stamp already owns a source credit");
+        let parent = self.0.parent.as_ref().and_then(std::rc::Weak::upgrade)
+            .expect("stamp release requires live parent");
+        assert_eq!(self.0.parent_index, Some(1), "only Box stamp slot admitted");
+        assert_eq!(parent.credits.get(), 1, "parent is not source-unique");
+        assert!(!parent.external_borrow && !parent.erased.get(), "invalid parent owner");
+        let raw = parent.ptr.as_ptr();
+        assert!(unsafe { lr_exec_exclusive(raw) } != 0, "parent physically shared");
+        assert_eq!(unsafe { lr_exec_tag(raw) }, 1, "stamp parent tag mismatch");
+        assert_eq!(unsafe { lr_exec_arity(raw) }, 2, "stamp parent arity mismatch");
+        assert_eq!(unsafe { lr_exec_field(raw, 1) }, self.raw(), "stamp slot identity mismatch");
+        assert!(!parent.spent_fields.borrow().contains(&1), "stamp slot already released");
+        let live_stamp_views = parent.borrowed_fields.borrow().iter()
+            .filter(|(index, view)| *index == 1 && view.upgrade().is_some())
+            .count();
+        assert_eq!(live_stamp_views, 1, "ambiguous borrowed stamp owner");
+        parent.spent_fields.borrow_mut().insert(1);
+        self.0.credits.set(1);
+    }
+
     fn source_dec(&self, n: usize, checked: bool, persistent: bool) {
         self.readable();
         assert!(!persistent, "persistent Lean ownership not verified");
@@ -210,8 +273,16 @@ impl __LeanValue {
             return;
         }
         assert_eq!(n, 1, "only source dec(1) admitted");
+        let transferred = self.0.credits.get() == 0;
+        if transferred {
+            assert!(checked, "unchecked projection credit transfer");
+            self.adopt_exclusive_box_stamp();
+        }
         let current = self.0.credits.get();
         self.0.credits.set(current.checked_sub(1).expect("source ownership underflow"));
+        if transferred {
+            self.0.released_projection.set(true);
+        }
         unsafe { lr_exec_dec(self.raw()) };
     }
 
@@ -230,9 +301,13 @@ impl __LeanValue {
         }
         let first = unsafe { lr_exec_field(self.raw(), 0) };
         let second = unsafe { lr_exec_field(self.raw(), 1) };
+        // A heap-valued stamp may already have been physically released
+        // by source_dec on the exclusive reset path. Do not dereference
+        // its now-stale pointer; shell deletion cannot release it again.
+        let stamp_spent = self.0.spent_fields.borrow().contains(&1);
         if first.is_null() || second.is_null() ||
            unsafe { lr_exec_is_scalar(first) } != 0 ||
-           unsafe { lr_exec_is_scalar(second) } == 0 {
+           (!stamp_spent && unsafe { lr_exec_is_scalar(second) } == 0) {
             return None;
         }
         let projections: Vec<_> = self.0.borrowed_fields.borrow().iter()
@@ -248,6 +323,10 @@ impl __LeanValue {
     }
 
     fn source_del(&self) {
+        if self.0.erased.get() || self.scalar() {
+            // lean_del_object(box(0)) is a no-op; no source credit.
+            return;
+        }
         self.readable();
         let child = self.shell_del_child().expect(
             "source del refused: unique owned Box shell and one live unretained child required"
@@ -255,7 +334,43 @@ impl __LeanValue {
         // Transfer the source credit held by the parent field. No lean_inc.
         child.credits.set(1);
         self.0.credits.set(0);
+        self.0.spent_fields.borrow_mut().clear();
         unsafe { lr_exec_del(self.raw()) };
+    }
+
+    fn with_field(self, index: usize, value: Self) -> Self {
+        self.readable();
+        assert_eq!(index, 1, "only boxed stamp reuse admitted");
+        assert!(!self.scalar(), "constructor field set on non-constructor");
+        assert_eq!(self.0.credits.get(), 1, "reuse requires one source parent credit");
+        assert!(unsafe { lr_exec_exclusive(self.raw()) } != 0, "cannot reuse shared Box");
+        assert_eq!(unsafe { lr_exec_tag(self.raw()) }, 1, "reuse requires Box.mk");
+        assert_eq!(unsafe { lr_exec_arity(self.raw()) }, 2, "reuse requires two fields");
+        let old = unsafe { lr_exec_field(self.raw(), 1) };
+        let was_spent = self.0.spent_fields.borrow().contains(&1);
+        assert!(was_spent || unsafe { lr_exec_is_scalar(old) } != 0,
+                "heap stamp must be released before replacement");
+        let transferred = value.into_transferred_field();
+        unsafe { lr_exec_set_field(self.raw(), 1, transferred) };
+        self.0.spent_fields.borrow_mut().remove(&1);
+        for (slot, view) in self.0.borrowed_fields.borrow().iter() {
+            if *slot == 1 {
+                if let Some(view) = view.upgrade() {
+                    view.released_projection.set(true);
+                }
+            }
+        }
+        self
+    }
+
+    fn nat_cmp(&self, other: &Self) -> i32 {
+        self.readable();
+        other.readable();
+        assert!(self.scalar() && other.scalar(),
+                "physical Lean C Nat comparison beyond tagged inputs unsupported");
+        let a = unsafe { lr_exec_unbox(self.raw()) };
+        let b = unsafe { lr_exec_unbox(other.raw()) };
+        i32::from(a > b) - i32::from(a < b)
     }
 
     fn is_shared(&self) -> u8 {

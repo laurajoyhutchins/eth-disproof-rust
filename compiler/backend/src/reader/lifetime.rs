@@ -162,15 +162,23 @@ impl ProjectedLifetime {
             return Ok(false);
         }
         // A source isShared(parent) == false path is a required witness.
-        if !self.sharedness_sources.iter().any(|(test, checked_parent)| {
-            *checked_parent == parent && self.scalar_cases.get(test) == Some(&0)
-        }) {
+        if !self
+            .sharedness_sources
+            .iter()
+            .any(|(test, checked_parent)| {
+                *checked_parent == parent && self.scalar_cases.get(test) == Some(&0)
+            })
+        {
             return Ok(false);
         }
         // Refuse ambiguous aliases: one constructor field has one credit.
-        let projections = self.parents.iter().filter(|(child, source)| {
-            **source == parent && self.field_indices.get(child) == Some(&1)
-        }).count();
+        let projections = self
+            .parents
+            .iter()
+            .filter(|(child, source)| {
+                **source == parent && self.field_indices.get(child) == Some(&1)
+            })
+            .count();
         if projections != 1 {
             return Ok(false);
         }
@@ -307,6 +315,7 @@ impl Reader {
     ) -> CompilerResult<()> {
         if let Some(id) = Self::lifetime_arg_id(arg)? {
             state.check(id, context)?;
+            state.check_no_spent_fields(id, context)?;
         }
         Ok(())
     }
@@ -317,6 +326,7 @@ impl Reader {
         context: &str,
     ) -> CompilerResult<()> {
         if let Some(id) = Self::lifetime_arg_id(arg)? {
+            state.check_no_spent_fields(id, context)?;
             state.take(id, context)?;
         }
         Ok(())
@@ -341,6 +351,7 @@ impl Reader {
             3 | 9 => {
                 let id = Self::var(Self::field(expr, 1)?)?;
                 state.check(id, "projection or box")?;
+                state.check_no_spent_fields(id, "projection or box")?;
             }
             5 => {
                 let id = Self::var(Self::field(expr, 2)?)?;
@@ -528,14 +539,21 @@ impl Reader {
                     if !persistent {
                         let n = Self::nat(Self::field(body, 1)?)?;
                         let id = Self::var(target)?;
-                        if n == 1 && state.owners.get(&id) == Some(&0) {
+                        let transferred = if n == 1 && state.owners.get(&id) == Some(&0) {
                             // This exceptional transfer is allowed only for
                             // a uniquely matched Box.mk stamp projection in
                             // its source-proved exclusive path.
-                            state.consume_exclusive_box_stamp(id)?;
-                        }
+                            state.consume_exclusive_box_stamp(id)?
+                        } else {
+                            false
+                        };
                         state.check_no_spent_fields(id, "source dec")?;
                         state.take_n(id, n, "source dec")?;
+                        if transferred {
+                            // A borrowed view of a released field must not be
+                            // read again while its parent shell remains live.
+                            state.invalidated.insert(id);
+                        }
                     }
                     body = next;
                 }
@@ -575,6 +593,12 @@ impl Reader {
                             .flatten()
                     });
                     if let Some(origin) = source_slot {
+                        if state.spent_fields.contains(&(id, origin)) {
+                            return Err(CompilerError::new(
+                                RefusalKind::Decl,
+                                "constructor set reuses an already released source field",
+                            ));
+                        }
                         if state.owners.get(&id).copied() != Some(1) || state.external.contains(&id)
                         {
                             return Err(CompilerError::new(
@@ -637,6 +661,7 @@ impl Reader {
                 } => {
                     let tested = Self::var(scrutinee)?;
                     state.check(tested, "case scrutinee")?;
+                    state.check_no_spent_fields(tested, "case scrutinee")?;
                     let alts = Self::array(alternatives)?;
                     // The pinned source stores Bool in UInt8 IR
                     // representation. Discriminate using the ORIGINAL
@@ -737,9 +762,12 @@ impl Reader {
                                 if destination.source_box_mk.remove(&actual) {
                                     destination.source_box_mk.insert(*formal);
                                 }
-                                let spent: Vec<usize> = destination.spent_fields.iter()
+                                let spent: Vec<usize> = destination
+                                    .spent_fields
+                                    .iter()
                                     .filter(|(parent, _)| *parent == actual)
-                                    .map(|(_, index)| *index).collect();
+                                    .map(|(_, index)| *index)
+                                    .collect();
                                 for index in spent {
                                     destination.spent_fields.remove(&(actual, index));
                                     destination.spent_fields.insert((*formal, index));

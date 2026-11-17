@@ -29,6 +29,8 @@ KINDS = {
     "sequence", "loop", "branch", "call", "base", "bind",
     "sum-range", "fold-range", "product-range", "query",
     "lift", "optional-bind", "substitution", "recursion",
+    "atom-set", "atom-copy", "atom-not", "atom-and", "atom-or",
+    "atom-xor", "atom-push", "atom-peek", "atom-pop",
 }
 DECL_KINDS = {
     "definition", "opaque", "theorem-boundary", "axiom-boundary",
@@ -102,6 +104,20 @@ def read_computation(path: Path) -> tuple[dict, dict[str, dict], int]:
                       and type(op.get("arity")) is int
                       and op["arity"] > 0,
                       f"invalid operator classification for {name}#{p}")
+                effects = op.get("operand_effects")
+                effect_fields = (
+                    "reg_reads_arg_positions", "reg_writes_arg_positions",
+                    "stack_reads_arg_positions", "stack_writes_arg_positions",
+                )
+                check(type(effects) is dict and set(effects) == set(effect_fields),
+                      f"invalid typed operand effects for {name}#{p}")
+                for field in effect_fields:
+                    values = effects[field]
+                    check(isinstance(values, list) and
+                          all(type(i) is int and 0 <= i < op["arity"]
+                              for i in values) and
+                          len(set(values)) == len(values),
+                          f"bad {field} for {name}#{p}")
                 heads = op.get("argument_heads")
                 check(isinstance(heads, list) and len(heads) == op["arity"]
                       and all(h is None or isinstance(h, str) for h in heads),

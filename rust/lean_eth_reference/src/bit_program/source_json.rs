@@ -1404,6 +1404,100 @@ mod native_interning_tests {
         assert!(limited.pc.is_some());
     }
 
+    /// The reference traces are produced by original pinned Lean BitProgram.step
+    /// from StackRoutines.clearProgram. Compare *every physical state* to Rust,
+    /// not just final effects or another Rust interpreter. Four finite examples
+    /// do not prove semantic correspondence for arbitrary programs.
+    #[test]
+    #[ignore = "requires actual pinned Lean BitProgram.step trace receipt"]
+    fn original_lean_clearprogram_reference_trace_agrees_with_rust_steps() {
+        let path = std::env::var("ORIGINAL_LEAN_CLEAR_TRACE_RECEIPT")
+            .expect("original Lean small-step output is required");
+        let trace: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(path).expect("original Lean small-step output must be readable"),
+        )
+        .expect("original Lean small-step receipt must be JSON");
+        let expansion = std::env::var("ORIGINAL_QUERY_PREPARE_CLEAR_RECEIPT")
+            .expect("pinned finite clearing source receipt must be present");
+        let source: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(expansion).expect("finite original clearing source receipt"),
+        )
+        .expect("finite original clearing source receipt must be JSON");
+        assert_eq!(trace["format"], "original-lean-clearprogram-steps-v1");
+        assert_eq!(trace["source_commit"], source["source_commit"]);
+        assert_eq!(
+            trace["declaration"],
+            "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram"
+        );
+        assert_eq!(trace["independent_lean_rust_parity_proved"].as_bool(), Some(false));
+        assert_eq!(trace["labels"], 3);
+        let cases = trace["cases"].as_array().expect("Lean reference cases");
+        assert_eq!(cases.len(), 4);
+        let physical = Program::<3, 4>::new(
+            1, 1, 0,
+            vec![
+                Instr::Pop { stack: 1, value: 0, present: 1, next: 1 },
+                Instr::Branch { test: 1, yes: 0, no: 2 },
+                Instr::Halt,
+            ],
+        ).expect("original source table must be valid");
+        for (i, sample) in cases.iter().enumerate() {
+            let word = sample["word"].as_array()
+                .expect("original Lean word must be an array")
+                .iter().map(|b| b.as_bool().expect("Boolean source word"))
+                .collect::<Vec<_>>();
+            let expected = [
+                vec![],
+                vec![true],
+                vec![false, true],
+                vec![true, false, true]
+            ];
+            assert_eq!(word, expected[i], "reference input order changed");
+            let mut config = super::super::Config::<3, 4> {
+                pc: Some(physical.entry()),
+                regs: [false, false, true],
+                stacks: std::array::from_fn(|stack| {
+                    let cells = if stack == 1 {
+                        word.clone()
+                    } else if stack == 3 {
+                        vec![false, true]
+                    } else {
+                        vec![]
+                    };
+                    std::collections::VecDeque::from(cells)
+                }),
+            };
+            let states = sample["states"].as_array()
+                .expect("original Lean physical states must be an array");
+            let steps = sample["source_steps"].as_u64()
+                .expect("original Lean step count must be integral") as usize;
+            assert_eq!(steps, 2 * word.len() + 3);
+            assert_eq!(states.len(), steps + 1);
+            for (step, lean_state) in states.iter().enumerate() {
+                let rust_state = serde_json::json!({
+                    "pc": config.pc,
+                    "regs": config.regs,
+                    "stacks": config.stacks.iter()
+                        .map(|stack| stack.iter().copied().collect::<Vec<bool>>())
+                        .collect::<Vec<_>>(),
+                });
+                assert_eq!(
+                    rust_state, *lean_state,
+                    "original Lean and physical Rust states diverged at case {i}, step {step}"
+                );
+                if step < steps {
+                    assert!(
+                        physical.step(&mut config)
+                            .expect("Rust physical clear step must be valid"),
+                        "original reference has an extra physical step"
+                    );
+                }
+            }
+            assert!(!physical.step(&mut config)
+                .expect("final original physical state must be a halt"));
+        }
+    }
+
     #[test]
     fn identical_callee_table_is_shared_and_distinct_abi_is_not() {
         let repeated = Command::Seq {

@@ -14,6 +14,9 @@ on:
       - 'rust/lean_eth_reference/tools/query_stream_aot.py'
       - 'rust/lean_eth_reference/tools/query_source_kernel.lean'
       - 'rust/lean_eth_reference/tools/query_sequence_reassociation.lean'
+      - 'rust/lean_eth_reference/tools/query_clear_trace_reference.lean'
+      - 'rust/lean_eth_reference/tools/lean_clear_trace_probe.py'
+      - 'rust/lean_eth_reference/tools/test_lean_clear_trace_probe.py'
       - 'rust/lean_eth_reference/tools/query_kernel_probe.py'
       - 'rust/lean_eth_reference/tools/test_query_kernel_probe.py'
       - 'rust/lean_eth_reference/tools/prepare_ports_dump.lean'
@@ -80,6 +83,7 @@ jobs:
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_prepare_ports_probe.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_prepare_ports_compositional.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_prepare_clear_expansion.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_lean_clear_trace_probe.py' -v
 
       - name: Test native Rust stage builder and strict refusal
         run: |
@@ -224,20 +228,24 @@ jobs:
 
       # The bounded kernel-only graph is an independent prerequisite for AOT.
       # Its source/provenance receipt is retained even if AOT is unsupported.
-      # Formal source-language proof: arbitrary reassociation of the same
-      # ordered Cmd.seq leaves preserves all Eval transitions and step counts.
-      # Separate from byte-level Lean-to-Rust correspondence.
-      - name: Prove original Cmd.seq ordered reassociation with pinned Lean
+      # Independently execute the pinned Lean BitProgram.step primitive on
+      # tiny finite cases. The reference is checked but has no theorem status.
+      - name: Observe original Lean clearProgram physical reference traces
         if: env.IMPORT_STAGE == 'query'
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/original-query-kernel"
           (
             cd "$LEAN_ROOT"
-            timeout --signal=TERM --kill-after=5s 180s \
-              lake env lean -j 1 -M 12288 \
-              "$GITHUB_WORKSPACE/rust/lean_eth_reference/tools/query_sequence_reassociation.lean"
-          )
+            timeout --signal=TERM --kill-after=5s 120s \
+              lake env lean -j 1 -M 8192 --run \
+              "$GITHUB_WORKSPACE/rust/lean_eth_reference/tools/query_clear_trace_reference.lean"
+          ) > "$RUNNER_TEMP/original-query-kernel/lean-clear-reference.stdout.log" \
+            2> "$RUNNER_TEMP/original-query-kernel/lean-clear-reference.stderr.log"
+          python3 rust/lean_eth_reference/tools/lean_clear_trace_probe.py \
+            --stdout "$RUNNER_TEMP/original-query-kernel/lean-clear-reference.stdout.log" \
+            --output "$RUNNER_TEMP/original-query-kernel/lean-clear-reference.json"
 
       - name: Inventory original QueryStream same-module graph without Meta
         id: kernel-root
@@ -363,6 +371,11 @@ jobs:
           ORIGINAL_QUERY_PREPARE_CLEAR_RECEIPT="$RUNNER_TEMP/original-query-kernel/prepare-clear-expansion.json" \
             cargo test --locked --offline -p lean-eth-reference --lib \
               pinned_original_clear_prefix_physical_trace_matches_source_budget -- --ignored --nocapture
+          test -s "$RUNNER_TEMP/original-query-kernel/lean-clear-reference.json"
+          ORIGINAL_LEAN_CLEAR_TRACE_RECEIPT="$RUNNER_TEMP/original-query-kernel/lean-clear-reference.json" \
+          ORIGINAL_QUERY_PREPARE_CLEAR_RECEIPT="$RUNNER_TEMP/original-query-kernel/prepare-clear-expansion.json" \
+            cargo test --locked --offline -p lean-eth-reference --lib \
+              original_lean_clearprogram_reference_trace_agrees_with_rust_steps -- --ignored --nocapture
 
       # The Meta-heavy AOT is a deliberate manual diagnostic, never a repeated
       # branch-push prerequisite for kernel-only source discovery.
@@ -402,6 +415,21 @@ jobs:
 
       # Save complete .olean dependencies even after a bounded refusal.
       # This is a compilation checkpoint, never a semantic success receipt.
+      # Formal source-language proof: arbitrary reassociation of the same
+      # ordered Cmd.seq leaves preserves all Eval transitions and step counts.
+      # Separate from byte-level Lean-to-Rust correspondence.
+      - name: Prove original Cmd.seq ordered reassociation with pinned Lean
+        if: env.IMPORT_STAGE == 'query'
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd "$LEAN_ROOT"
+            timeout --signal=TERM --kill-after=5s 180s \
+              lake env lean -j 1 -M 12288 \
+              "$GITHUB_WORKSPACE/rust/lean_eth_reference/tools/query_sequence_reassociation.lean"
+          )
+
       - name: Save pinned original dependency checkpoint
         if: always() && steps.restore-oai.outcome == 'success'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4

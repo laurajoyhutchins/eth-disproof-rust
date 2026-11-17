@@ -20,6 +20,7 @@ lean -o examples/RuntimeHeapKernels.olean examples/RuntimeHeapKernels.lean
 lean -o examples/RuntimeHeapDelKernels.olean examples/RuntimeHeapDelKernels.lean
 lean examples/RuntimeHeapDelIRProbe.lean
 test -s artifacts/source-del-final-ir.tsv
+test -s artifacts/source-del-final-ir.txt
 test -s artifacts/source-del-final-ir-status.txt
 grep -Fx 'emitted_ir_source_del=NOT_YET_ESTABLISHED' artifacts/source-del-final-ir-status.txt
 cat artifacts/source-del-final-ir.tsv
@@ -93,7 +94,8 @@ grep -Fx 'lean-c-shell-only-del-transfer=PASS' "$out/trace.txt"
   echo 'emitted_ir_source_del=NOT_YET_ESTABLISHED'
   cat artifacts/source-del-final-ir-status.txt
   sha256sum examples/RuntimeHeapDelKernels.lean examples/RuntimeHeapDelIRProbe.lean \
-    artifacts/source-del-final-ir.tsv artifacts/source-del-final-ir-status.txt
+    artifacts/source-del-final-ir.tsv artifacts/source-del-final-ir.txt \
+    artifacts/source-del-final-ir-status.txt
   echo 'join_transfer=NOT_YET_ESTABLISHED'
   echo 'unboxed_payload_argument=BORROWED'
   echo 'boxed_payload_wrapper=RELEASES_PARENT'

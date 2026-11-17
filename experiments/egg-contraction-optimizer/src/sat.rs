@@ -432,6 +432,58 @@ mod tests {
     }
 
     #[test]
+    fn seeded_cnf_families_match_independent_boolean_enumeration() {
+        // Deterministic variety: 96 small CNFs, including empty clauses,
+        // negative literals, repeated literals, tautologies, and cases with
+        // multiple boundary literals. No randomness dependency or snapshots.
+        fn draw(state: &mut u64) -> u64 {
+            *state ^= *state << 13;
+            *state ^= *state >> 7;
+            *state ^= *state << 17;
+            *state
+        }
+
+        let symbols = ["u", "v", "b", "c"];
+        for case in 1..=96_u64 {
+            let mut state = case;
+            let clause_count = (draw(&mut state) % 6) as usize;
+            let mut clauses = Vec::new();
+            for _ in 0..clause_count {
+                let length = (draw(&mut state) % 5) as usize;
+                let mut clause = Vec::new();
+                for _ in 0..length {
+                    let var = symbols[(draw(&mut state) % symbols.len() as u64) as usize];
+                    let sign = draw(&mut state) % 2 == 0;
+                    clause.push(Literal { name: var, positive: sign });
+                }
+                clauses.push(clause);
+            }
+            let region = Region {
+                internal: vec!["u", "v"],
+                boundary: vec!["b", "c"],
+                clauses,
+            };
+            let polynomial = region.compile_boundary(Association::Left, 4).unwrap();
+            let paired: egg::RecExpr<crate::Arithmetic> =
+                format!("(pair {polynomial} {polynomial})").parse().unwrap();
+            let plan = crate::Plan::from_expr(&paired).unwrap();
+            for mask in 0..4_u8 {
+                let boundary = BTreeMap::from([
+                    ("b".to_owned(), mask & 2 != 0),
+                    ("c".to_owned(), mask & 1 != 0),
+                ]);
+                let integer_bindings = boundary.iter()
+                    .map(|(name, bit)| (name.clone(), BigInt::from(u8::from(*bit))))
+                    .collect();
+                let direct = BigInt::from(region.direct_count(&boundary, 4).unwrap());
+                let evaluated = plan.evaluate(&integer_bindings).unwrap();
+                assert_eq!(evaluated.outputs, [direct.clone(), direct],
+                    "failed CNF case {case}, boundary {boundary:?}");
+            }
+        }
+    }
+
+    #[test]
     fn invalid_or_undeclared_variable_is_refused() {
         let bad = Region {
             internal: vec!["u"],

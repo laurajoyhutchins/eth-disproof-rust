@@ -27,11 +27,11 @@ does not belong in fast general ETH tests. Reorganizations must not silently
 combine these toolchain gates.
 
 The general compiler's current implementation is still physically in
-`compiler/src/`, including one Reader and its embedded
-`src/runtime/immutable_value.rs`. The proposed
+`compiler/backend/src/`, including one Reader and its embedded
+`runtime/rust/immutable_value.rs`. The proposed
 [backend-first architecture](compiler/docs/backend-first-architecture.md)
 separates IR lowering from runtime execution. The C **execution** adapter
-is not yet implemented; the existing `compiler/native/abi.c` only reads
+is not yet implemented; the existing `compiler/frontend/ffi/abi.c` only reads
 compiler IR during generation.
 
 The ETH crate currently holds many flat `native_*` modules. Grouping them

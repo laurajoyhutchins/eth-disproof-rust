@@ -2,9 +2,9 @@
 
 **Compiler:** `compiler/` is the canonical Lean 4.34.1 compiler-IR to Rust
 backend. Lean remains the parser, elaborator and compiler. The current Rust
-emitter lives in `compiler/src/lib.rs` and `compiler/src/reader/`, reads
-borrowed IR through `compiler/native/abi.c`, and embeds a bounded value
-runtime from `compiler/src/runtime/immutable_value.rs`. That runtime is not
+emitter lives in `compiler/backend/src/lib.rs` and `compiler/backend/src/reader/`, reads
+borrowed IR through `compiler/frontend/ffi/abi.c`, and embeds a bounded value
+runtime from `compiler/runtime/rust/immutable_value.rs`. That runtime is not
 verified as a general replacement for Lean C.
 
 **ETH implementation:** `eth/` is the source-pinned finite machine, research

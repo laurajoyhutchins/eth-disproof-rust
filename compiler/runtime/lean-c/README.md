@@ -36,7 +36,18 @@ Keep the exact emitted-file digest in the CI receipt.
 
 ## Still open
 
-**Generated heap-backed Rust does not yet use the C adapter.** The
+**A bounded generated heap mode now uses the physical Lean C adapter.**
+`--cfg lean_c_runtime` selects `generated_value.rs` for the
+*unchanged* IR-emitted functions. `check-generated-heap.sh` compiles the
+original `RuntimeHeapKernels.lean` source independently to Lean C and
+the existing Reader to Rust, then compares source/runtime outputs and
+physical reference counts. The admitted constructor
+`RuntimeHeap.Pair.mk` has two tagged Nat fields. A generated function
+projects a tagged field, and `observe` exercises the direct-call
+closure. The test hashes the exact generated source and refuses
+unsupported heap-child transfer or bignum projection.
+
+The wider compiler still does not use the C adapter by default. The
 scalar proof validates the ABI and basic execution against Lean C,
 while a different bounded handle test validates actual physical
 ownership. Combining both as if they proved all constructor,

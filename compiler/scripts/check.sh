@@ -84,6 +84,10 @@ lean -o proofs/ReaderRustStatement.olean --load-dynlib="$NATIVE_LIB" proofs/Read
 # Exercise exact Reader-emitted Rust in the pinned Lean C runtime process.
 # A distinct bounded heap control uses real lean_object physical refcounts.
 bash runtime/lean-c/check.sh
+# The *same* original Lean IR emitter now selects actual Lean C heap values.
+# This bounded test covers constructor allocation, scalar projection, source
+# rc transitions, and a source-defined direct call with C reference oracles.
+bash runtime/lean-c/check-generated-heap.sh
 # The actual MIR CFG has a separate register/edge semantics, including
 # comparison -> bool -> u8 materialization and 0/1 successor selection.
 lean -o proofs/ReaderMIRSoundness.olean proofs/ReaderMIRSoundness.lean | tee artifacts/reader-mir-soundness-axioms.txt

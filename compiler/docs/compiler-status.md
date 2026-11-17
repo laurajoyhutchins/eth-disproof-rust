@@ -14,7 +14,7 @@ result as accepted.
 | Physical source RC fidelity | Incomplete | Source RC ledger proposed in [PR #283](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/283); no general heap simulation |
 | Reader-emitted scalar Rust executed in Lean C host | Implemented for `ScalarFixture.plus` | [Lean C runtime check](../runtime/lean-c/README.md); 100 original-Lean comparisons, scalar only |
 | Rust/C ownership boundary witness | Implemented as a bounded integration test | [Lean C runtime bridge](../runtime/lean-c/README.md); not an emitted-Rust runtime |
-| Generated Rust using Lean C runtime | **Not yet implemented as a general execution target** | Next baseline: pinned Lean C adapter and output/physical-trace oracle |
+| Reader-generated heap constructor/projection via Lean C | **Bounded IR subset, undergoing exact-head verification** | [Heap executable comparison](../runtime/lean-c/README.md); small Nat fields only, no heap-child transfers |\n| Generated Rust using Lean C runtime generally | **Not implemented** | Physical ownership parity for remaining IR operations is open |
 | Rust-native runtime replacement | **Not established** | Migrate only after C-backed comparison under the [runtime contract](execution-runtime-contract.md) |
 | General G1 compiler release | **Open** | [Issue #193](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/193): original project coverage, ownership, ABI, integration |
 | Original noncomputable QueryStream (G2) | **Open** | Source-derived residualization, complete execution and resource correspondence |

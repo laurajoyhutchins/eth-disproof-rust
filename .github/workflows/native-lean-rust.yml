@@ -169,6 +169,9 @@ jobs:
             compiler/artifacts/native-smoke-receipt.txt
             compiler/artifacts/lean-c-runtime/receipt.txt
             compiler/artifacts/lean-c-runtime/trace.txt
+            compiler/artifacts/lean-c-generated-heap/receipt.txt
+            compiler/artifacts/lean-c-generated-heap/trace.txt
+            compiler/artifacts/lean-c-generated-heap/exact-emitter.rs
             compiler/artifacts/lcnf-capture.json
             compiler/artifacts/lcnf-capture-receipt.txt
             compiler/artifacts/lcnf-baseline.rs

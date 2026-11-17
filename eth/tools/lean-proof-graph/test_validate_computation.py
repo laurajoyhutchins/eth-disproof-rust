@@ -24,6 +24,8 @@ def records():
                 "path": "0", "operator": "StructuredCalls.Cmd.seq",
                 "control_kind": "sequence", "arity": 2,
                 "argument_heads": ["Helper", None],
+                "operand_effects": {"reg_reads_arg_positions": [], "reg_writes_arg_positions": [],
+                                    "stack_reads_arg_positions": [], "stack_writes_arg_positions": []},
             }],
         },
         {

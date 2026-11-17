@@ -98,7 +98,7 @@ structure ValidPacking (E P : Type*) (L : ℕ) where
 /-- Off-packet entries vanish, exactly as in the appendix.
 Unused padded slots have no corresponding E-index. -/
 def packetEntry {E P : Type*} {L : ℕ}
-    (packing : ValidPacking E P L) (e f : E) (T : ℚ) : ℚ :=
+    [DecidableEq P] (packing : ValidPacking E P L) (e f : E) (T : ℚ) : ℚ :=
   if packing.packet e = packing.packet f then
     cauchyEntry L (packing.slot e) (packing.slot f) T
   else 0
@@ -106,6 +106,7 @@ def packetEntry {E P : Type*} {L : ℕ}
 /-- The full packed Cauchy matrix, restricted to real ports, is the
 identity at T=0. No size or degree bound is needed. -/
 theorem packetEntry_zero {E P : Type*} {L : ℕ}
+    [DecidableEq E] [DecidableEq P]
     (packing : ValidPacking E P L) (e f : E) :
     packetEntry packing e f 0 = if e = f then 1 else 0 := by
   classical
@@ -165,7 +166,7 @@ theorem interpolation_selects_assignment
 and the original two sets of surrounding row/column tensor factors.
 R can be the source's commutative coefficient extension ring. -/
 def deformedContraction {E P R : Type*} {L : ℕ}
-    [Fintype E] [CommRing R]
+    [Fintype E] [DecidableEq E] [DecidableEq P] [CommRing R]
     (packing : ValidPacking E P L) (φ : ℚ →+* R)
     (row column : (E → Bool) → R) (T : ℚ) : R :=
   ∑ y : E → Bool, ∑ x : E → Bool,
@@ -175,12 +176,12 @@ def deformedContraction {E P R : Type*} {L : ℕ}
 
 /-- The undeformed contraction obtained by identifying the two
 endpoint bits of every real edge. -/
-def originalContraction {E R : Type*} [Fintype E] [CommRing R]
+def originalContraction {E R : Type*} [Fintype E] [DecidableEq E] [CommRing R]
     (row column : (E → Bool) → R) : R :=
   ∑ x : E → Bool, row x * column x
 
 private theorem packed_linear_zero {E P R : Type*} {L : ℕ}
-    [Fintype E] [CommRing R]
+    [Fintype E] [DecidableEq E] [DecidableEq P] [CommRing R]
     (packing : ValidPacking E P L) (φ : ℚ →+* R)
     (x : E → Bool) (e : E) :
     (∑ f : E, φ (packetEntry packing e f 0) * (bit (x f) : R)) =
@@ -198,7 +199,7 @@ private theorem packed_linear_zero {E P R : Type*} {L : ℕ}
 actual Cauchy-deformed sum at zero gives the original finite
 network contraction, for every valid packet/slot assignment. -/
 theorem deformedContraction_zero {E P R : Type*} {L : ℕ}
-    [Fintype E] [CommRing R]
+    [Fintype E] [DecidableEq E] [DecidableEq P] [CommRing R]
     (packing : ValidPacking E P L) (φ : ℚ →+* R)
     (row column : (E → Bool) → R) :
     deformedContraction packing φ row column 0 =

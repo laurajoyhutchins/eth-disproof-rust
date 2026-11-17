@@ -43,7 +43,53 @@ def opKind (name : Name) : Option String := Id.run do
   if s.endsWith ".QueryMachine.optBind" then return some "optional-bind"
   if s.endsWith ".QueryMachine.subst" then return some "substitution"
   if s.endsWith ".Tower.tower" then return some "recursion"
+  if s.endsWith ".Atom.set" then return some "atom-set"
+  if s.endsWith ".Atom.copy" then return some "atom-copy"
+  if s.endsWith ".Atom.bnot" then return some "atom-not"
+  if s.endsWith ".Atom.band" then return some "atom-and"
+  if s.endsWith ".Atom.bor" then return some "atom-or"
+  if s.endsWith ".Atom.bxor" then return some "atom-xor"
+  if s.endsWith ".Atom.push" then return some "atom-push"
+  if s.endsWith ".Atom.peek" then return some "atom-peek"
+  if s.endsWith ".Atom.pop" then return some "atom-pop"
   return none
+
+/--
+Static operand roles from original StructuredProgram.Atom constructors.
+Indices are positions in the elaborated application (including r/s binders).
+They are NOT evaluated numeric ports or dynamic state-dependency traces.
+-/
+def operandEffects (name : Name) : Json := Id.run do
+  let s := name.toString
+  let mut rr : Array Nat := #[]
+  let mut rw : Array Nat := #[]
+  let mut sr : Array Nat := #[]
+  let mut sw : Array Nat := #[]
+  if s.endsWith ".Atom.set" then rw := #[2]
+  if s.endsWith ".Atom.copy" || s.endsWith ".Atom.bnot" then
+    rr := #[3]
+    rw := #[2]
+  if s.endsWith ".Atom.band" || s.endsWith ".Atom.bor" ||
+      s.endsWith ".Atom.bxor" then
+    rr := #[3, 4]
+    rw := #[2]
+  if s.endsWith ".Atom.push" then
+    rr := #[3]
+    sw := #[2]
+  if s.endsWith ".Atom.peek" then
+    sr := #[2]
+    rw := #[3, 4]
+  if s.endsWith ".Atom.pop" then
+    sr := #[2]
+    sw := #[2]
+    rw := #[3, 4]
+  if s.endsWith ".Cmd.while" || s.endsWith ".Cmd.ite" then
+    rr := #[2]
+  return Json.mkObj [
+    ("reg_reads_arg_positions", toJson rr),
+    ("reg_writes_arg_positions", toJson rw),
+    ("stack_reads_arg_positions", toJson sr),
+    ("stack_writes_arg_positions", toJson sw)]
 
 def appHead (e : Expr) : Json :=
   match e.getAppFn with
@@ -63,7 +109,8 @@ partial def scanOps (e : Expr) (path : String) (initial : Array Json) : Array Js
           ("operator", toJson n.toString),
           ("control_kind", toJson kind),
           ("arity", toJson args.size),
-          ("argument_heads", toJson (args.map appHead))])
+          ("argument_heads", toJson (args.map appHead)),
+          ("operand_effects", operandEffects n)])
     | _ => pure ()
     for h in [:args.size] do
       out := scanOps args[h]! s!"{path}.{h}" out

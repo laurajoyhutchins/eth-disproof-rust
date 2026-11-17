@@ -56,9 +56,9 @@ jobs:
           export LEAN_PREFIX="$(dirname "$(dirname "$LEAN_BINARY")")"
           bash tools/lean-rust-bootstrap/scripts/check.sh
           {
-            echo 'Original upstream Lean compiler module: Lean.Compiler.IR.Basic'
+            echo 'Original upstream Lean compiler module: Lean.Compiler.LCNF.Simp.Config'
             echo 'Bridge IR: pinned lungo-rs'
-            echo 'Independent original-Lean/Rust comparisons: 1536'
+            echo 'Independent original-Lean/Rust comparisons: 1024'
             echo 'Self-hosting and generalized semantics: NOT ESTABLISHED'
           } >> "$GITHUB_STEP_SUMMARY"
 

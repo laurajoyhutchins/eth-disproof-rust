@@ -8,7 +8,7 @@ from query_stream_aot import DECLARATION
 
 def root_receipt():
     receipt = {
-        "format": "original-query-kernel-root-v5",
+        "format": "original-query-kernel-root-v6",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -139,6 +139,47 @@ def root_receipt():
         "type_immediate_symbols": ["Nat"],
         "type_symbol_kinds": [{"name": "Nat", "kind": "inductive"}],
     }]
+    # Synthetic fixture only. The original Lean probe supplies the actual
+    # applied lift head and its declaration-kind evidence at runtime.
+    lift = "OAI.Algorithms.SubexponentialSAT.TestFixture.liftCommand"
+    reconstruction = (
+        "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command"
+    )
+    observed = next(b for b in receipt["external_definition_bodies"]
+                    if b["name"] == reconstruction)
+    observed["immediate_symbols"].append(lift)
+    observed["immediate_symbol_kinds"].append({"name": lift, "kind": "definition"})
+    receipt["second_hop_definition_bodies"].append({
+        "name": lift, "kind": "definition", "status": "scanned",
+        "expression_nodes": 2, "immediate_symbols": ["Nat.zero"],
+        "immediate_symbol_kinds": [{"name": "Nat.zero", "kind": "constructor"}],
+        "type_status": "scanned", "type_expression_nodes": 1,
+        "type_immediate_symbols": ["Nat"],
+        "type_symbol_kinds": [{"name": "Nat", "kind": "inductive"}],
+    })
+    def unresolved(name, kind="definition"):
+        return {"kind": "unresolved", "declaration": name, "source_kind": kind}
+    def seq(first, second):
+        return {"kind": "seq", "first": first, "second": second}
+    receipt["source_command_expanded_ir"] = seq(
+        seq(
+            unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.resetHigh"),
+            unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.highCommand"),
+        ),
+        seq(
+            seq(
+                unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryAssembler.Nodes.initializeNodes"),
+                seq(
+                    unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryNodeFinish.guardCursor"),
+                    unresolved(DECLARATION.removesuffix(".program") + ".nodeLoop"),
+                ),
+            ),
+            seq(
+                unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.NodeAppendSpace.handoff"),
+                unresolved(lift, "application"),
+            ),
+        ),
+    )
     return receipt
 
 
@@ -376,10 +417,29 @@ class KernelRootReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "constructor order"):
             validate_kernel_root(json.dumps(fixture))
 
+    def test_three_named_source_expansions_are_bound_to_original_refs(self):
+        report = validate_kernel_root(json.dumps(root_receipt()))
+        self.assertEqual(report["source_command_expanded_ir"]["kind"], "seq")
+        self.assertFalse(report["source_command_ir_resolved"])
+        for mutation in ("high", "nodes", "lift", "promotion"):
+            with self.subTest(mutation=mutation):
+                report = root_receipt()
+                tree = report["source_command_expanded_ir"]
+                if mutation == "high":
+                    tree["first"]["second"]["declaration"] = "OAI.Forged.highCommand"
+                elif mutation == "nodes":
+                    tree["second"]["first"]["second"]["first"]["source_kind"] = "theorem"
+                elif mutation == "lift":
+                    tree["second"]["second"]["second"]["declaration"] = "OAI.Forged.liftCommand"
+                else:
+                    tree["second"]["second"]["second"]["source_kind"] = "definition"
+                with self.assertRaisesRegex(ValueError, "source expanded|lift application|reconstruction"):
+                    validate_kernel_root(json.dumps(report))
+
     def test_second_hop_is_exact_and_type_references_are_not_erasure(self):
         receipt = root_receipt()
         actual = validate_kernel_root(json.dumps(receipt))
-        self.assertEqual(len(actual["second_hop_definition_bodies"]), 1)
+        self.assertEqual(len(actual["second_hop_definition_bodies"]), 2)
         self.assertFalse(actual["transitive_computational_closure"])
         fixture = root_receipt()
         fixture["second_hop_definition_bodies"].clear()

@@ -222,12 +222,12 @@ is preserved as an unresolved reference, never replaced with a surrogate
 operation or treated as an executable leaf. No Meta whnf or evaluator.
 -/
 private partial def sourceCommandPrefix (env : Environment) (value : Expr)
-    (fuel : Nat) : IO Json := do
+    (fuel : Nat) (inlineTargets : Array String) : IO Json := do
   if fuel == 0 then
     throw <| IO.userError "original command prefix exceeds finite structural depth"
   match value with
   | .mdata _ nested =>
-    sourceCommandPrefix env nested (fuel - 1)
+    sourceCommandPrefix env nested (fuel - 1) inlineTargets
   | _ =>
     match value.getAppFn with
     | .const symbol _ =>
@@ -235,14 +235,18 @@ private partial def sourceCommandPrefix (env : Environment) (value : Expr)
       if symbol == qualified "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq" then
         if args.size != 4 then
           throw <| IO.userError "original source Cmd.seq application arity differs"
-        let first ← sourceCommandPrefix env args[2]! (fuel - 1)
-        let second ← sourceCommandPrefix env args[3]! (fuel - 1)
+        let first ← sourceCommandPrefix env args[2]! (fuel - 1) inlineTargets
+        let second ← sourceCommandPrefix env args[3]! (fuel - 1) inlineTargets
         return Json.mkObj [
           ("kind", toJson "seq"), ("first", first), ("second", second)
         ]
       if args.isEmpty then
         match env.find? symbol with
-        | some (.defnInfo _) =>
+        | some (.defnInfo info) =>
+          if inlineTargets.contains symbol.toString then
+            -- Expand only this explicitly requested source definition. Its
+            -- children remain named obligations, avoiding unbounded unfolding.
+            return (← sourceCommandPrefix env info.value (fuel - 1) #[])
           return Json.mkObj [
             ("kind", toJson "unresolved"),
             ("declaration", toJson symbol.toString),
@@ -252,7 +256,20 @@ private partial def sourceCommandPrefix (env : Environment) (value : Expr)
           throw <| IO.userError s!"source command leaf is not a definition: {symbol} ({kindOf info})"
         | none =>
           throw <| IO.userError s!"missing original command leaf: {symbol}"
-      throw <| IO.userError s!"original command prefix has unsupported constructor/application: {symbol}"
+      -- Preserve the head of an applied source definition as an explicit
+      -- unresolved obligation. Its arguments, including finite port maps,
+      -- are NOT lowered, discarded into executable code, or assumed erased.
+      match env.find? symbol with
+      | some (.defnInfo _) =>
+        return Json.mkObj [
+          ("kind", toJson "unresolved"),
+          ("declaration", toJson symbol.toString),
+          ("source_kind", toJson "application")
+        ]
+      | some info =>
+        throw <| IO.userError s!"unsupported applied source declaration: {symbol} ({kindOf info})"
+      | none =>
+        throw <| IO.userError s!"missing applied original source definition: {symbol}"
     | _ =>
       throw <| IO.userError "original command prefix is not a constructor or closed source definition"
 
@@ -288,14 +305,25 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     | .ok result => pure result
     | .error reason => throw <| IO.userError s!"original command: {reason}"
   let commandKinds ← classifySymbols env commandSymbols
-  let commandIR ← sourceCommandPrefix env commandInfo.value 32
+  let commandIR ← sourceCommandPrefix env commandInfo.value 32 #[]
+  -- The three immediate command dependencies are the only authorized
+  -- one-step expansion targets. Each is looked up in the pinned Lean env.
+  let inlinedNames : Array String := #[
+    "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh",
+    "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.nodes",
+    "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command"
+  ]
+  for name in inlinedNames do
+    unless commandSymbols.contains name do
+      throw <| IO.userError s!"original command no longer references expected source definition: {name}"
+  let expandedIR ← sourceCommandPrefix env commandInfo.value 64 inlinedNames
   let (localGraph, externalEdges, externalTargets) ← localDeclarations env root
   let (externalBodies, secondTargets) ←
     inspectExternalDefinitions env externalTargets 32768 32768 true
   let (secondBodies, _) ←
     inspectExternalDefinitions env secondTargets 65536 65536 false
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v5"),
+    ("format", toJson "original-query-kernel-root-v6"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -309,6 +337,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("command_immediate_symbols", toJson commandSymbols),
     ("command_symbol_kinds", toJson commandKinds),
     ("source_command_ir", commandIR),
+    ("source_command_expanded_ir", expandedIR),
     ("source_command_ir_resolved", toJson false),
     ("same_module_local_declarations", toJson localGraph),
     ("external_module_edges", toJson externalEdges),

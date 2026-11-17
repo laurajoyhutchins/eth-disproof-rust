@@ -25,7 +25,8 @@ EXPECTED_FIELDS = {
     "format", "status", "root", "compiler", "source_kind",
     "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
     "command_name", "command_expression_nodes", "command_immediate_symbols",
-    "command_symbol_kinds", "source_command_ir", "source_command_ir_resolved",
+    "command_symbol_kinds", "source_command_ir", "source_command_expanded_ir",
+    "source_command_ir_resolved",
     "same_module_local_declarations",
     "external_module_edges", "external_definition_bodies",
     "second_hop_definition_bodies",
@@ -51,7 +52,7 @@ def validate_kernel_root(raw: str) -> dict:
     if not isinstance(receipt, dict) or set(receipt) != EXPECTED_FIELDS:
         raise ValueError("kernel root evidence has a missing or extra field")
     fixed = {
-        "format": "original-query-kernel-root-v5",
+        "format": "original-query-kernel-root-v6",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -146,6 +147,60 @@ def validate_kernel_root(raw: str) -> dict:
            for name in expected_references):
         raise ValueError("source command IR references are not original definitions")
 
+    # Exact constructor boundaries of the three original source definitions.
+    # The applied reconstruction lift is a *named refusal*, not a lossless
+    # translation: its finite indices and port maps have not been decoded.
+    def seq(left, right):
+        return {"kind": "seq", "first": left, "second": right}
+
+    high_prefix = seq(
+        unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.resetHigh"),
+        unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.highCommand"),
+    )
+    nodes_prefix = seq(
+        unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryAssembler.Nodes.initializeNodes"),
+        seq(
+            unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryNodeFinish.guardCursor"),
+            unresolved(MODULE + ".nodeLoop"),
+        ),
+    )
+    expanded = receipt["source_command_expanded_ir"]
+    if not isinstance(expanded, dict) or set(expanded) != {"kind", "first", "second"}:
+        raise ValueError("source expanded command is not a canonical sequence")
+    if expanded.get("kind") != "seq" or expanded.get("first") != high_prefix:
+        raise ValueError("source expanded command changed original high-query sequence")
+    outer_tail = expanded.get("second")
+    if (not isinstance(outer_tail, dict) or outer_tail.get("kind") != "seq" or
+            outer_tail.get("first") != nodes_prefix):
+        raise ValueError("source expanded command changed original node sequence")
+    recon = outer_tail.get("second")
+    handoff = "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.NodeAppendSpace.handoff"
+    if (not isinstance(recon, dict) or set(recon) != {"kind", "first", "second"} or
+            recon.get("kind") != "seq" or
+            recon.get("first") != unresolved(handoff)):
+        raise ValueError("source expanded reconstruction sequence invalid")
+    lift = recon["second"]
+    if (not isinstance(lift, dict) or
+            set(lift) != {"kind", "declaration", "source_kind"} or
+            lift.get("kind") != "unresolved" or
+            lift.get("source_kind") != "application" or
+            not isinstance(lift.get("declaration"), str) or
+            not lift["declaration"].startswith("OAI.Algorithms.SubexponentialSAT.") or
+            not lift["declaration"].endswith(".liftCommand")):
+        raise ValueError("source reconstruction lift application is not an explicit refusal")
+    recon_observed = next(
+        (item for item in receipt["external_definition_bodies"]
+         if isinstance(item, dict) and item.get("name") == reconstruction), None,
+    )
+    if not isinstance(recon_observed, dict) or recon_observed.get("status") != "scanned":
+        raise ValueError("source reconstruction definition body is not observed")
+    observed_references = dict(
+        (item["name"], item["kind"])
+        for item in recon_observed.get("immediate_symbol_kinds", [])
+        if isinstance(item, dict) and "name" in item and "kind" in item
+    )
+    if observed_references.get(lift["declaration"]) != "definition":
+        raise ValueError("source lift refusal head is absent from original definition")
     local = receipt["same_module_local_declarations"]
     prefix = MODULE + "."
     expected_keys = {
@@ -376,6 +431,7 @@ def probe(args):
         "resolved": False,
         "rust_executable": False,
         "command": report["source_command_ir"],
+        "expanded_command": report["source_command_expanded_ir"],
     }
     atomic_write(out / "original-command-prefix.json",
                  json.dumps(prefix_receipt, sort_keys=True, indent=2) + "\n")

@@ -319,6 +319,11 @@ jobs:
           ORIGINAL_QUERY_KERNEL_RECEIPT="$RUNNER_TEMP/original-query-kernel/query-kernel-root.report.json" \
             cargo test --locked --offline -p lean-eth-reference --lib \
               pinned_original_partial_lift_is_typed_and_refused -- --ignored --nocapture
+          test -s "$RUNNER_TEMP/original-query-kernel/prepare-ports-compositional.json"
+          ORIGINAL_QUERY_KERNEL_RECEIPT="$RUNNER_TEMP/original-query-kernel/query-kernel-root.report.json" \
+          ORIGINAL_QUERY_PREPARE_PORTS_RECEIPT="$RUNNER_TEMP/original-query-kernel/prepare-ports-compositional.json" \
+            cargo test --locked --offline -p lean-eth-reference --lib \
+              pinned_original_prepare_ports_source_composition_is_nonexecutable -- --ignored --nocapture
 
       # The Meta-heavy AOT is a deliberate manual diagnostic, never a repeated
       # branch-push prerequisite for kernel-only source discovery.

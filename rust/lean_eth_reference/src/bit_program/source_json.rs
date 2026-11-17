@@ -1215,6 +1215,94 @@ mod native_interning_tests {
         assert!(callees.is_empty(), "refused Lean call must not populate callee cache");
     }
 
+    /// The separate, original-Git-pinned static composition is evidence only.
+    /// It must agree with the original kernel inventory and cannot promote
+    /// the unresolved bank recursion into executable native Rust commands.
+    #[test]
+    #[ignore = "requires original pinned source and compositional port receipts"]
+    fn pinned_original_prepare_ports_source_composition_is_nonexecutable() {
+        let kernel_path = std::env::var("ORIGINAL_QUERY_KERNEL_RECEIPT")
+            .expect("original source workflow must supply the pinned kernel receipt");
+        let port_path = std::env::var("ORIGINAL_QUERY_PREPARE_PORTS_RECEIPT")
+            .expect("original workflow must supply the source-compositional port receipt");
+        let kernel: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(kernel_path).expect("kernel receipt must be readable"),
+        )
+        .expect("kernel receipt must be JSON");
+        let ports_receipt: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(port_path).expect("port receipt must be readable"),
+        )
+        .expect("port receipt must be JSON");
+        assert_eq!(kernel["format"], "original-query-kernel-root-v11");
+        assert_eq!(
+            ports_receipt["format"],
+            "original-query-prepare-ports-compositional-v1"
+        );
+        assert_eq!(
+            ports_receipt["status"],
+            "PINNED_SOURCE_EXPRESSION_EVALUATED_UNCERTIFIED"
+        );
+        assert_eq!(ports_receipt["source_commit"], kernel["source_commit"]);
+        assert_eq!(ports_receipt["source_git_blob"], kernel["source_git_blob"]);
+        assert_eq!(
+            ports_receipt["original_olean_sha256"],
+            kernel["original_olean_sha256"]
+        );
+        assert_eq!(
+            ports_receipt["declaration"],
+            kernel["source_prepare_obligation"]["bank_port_declaration"]
+        );
+        assert_eq!(ports_receipt["method"], "bounded-pinned-source-composition");
+        for flag in [
+            "lean_kernel_certificate",
+            "rust_executable",
+            "independent_lean_runtime_parity",
+        ] {
+            assert_eq!(
+                ports_receipt[flag].as_bool(),
+                Some(false),
+                "source-compositional evidence cannot claim {flag}"
+            );
+        }
+        assert_eq!(
+            kernel["source_prepare_obligation"]["bank_port_values_resolved"].as_bool(),
+            Some(false),
+            "the original kernel-only IR still has an unresolved port list"
+        );
+        assert_eq!(kernel["rust_executable"].as_bool(), Some(false));
+        let file_hashes = ports_receipt["source_file_sha256"]
+            .as_object()
+            .expect("all source Git files must have digests");
+        assert_eq!(file_hashes.len(), 12);
+        for hash in file_hashes.values() {
+            assert_eq!(
+                hash.as_str().map(str::len),
+                Some(64),
+                "source digest is not a SHA-256 hex string"
+            );
+        }
+        let raw = ports_receipt["ports"]
+            .as_array()
+            .expect("source-composed original ports must be an array");
+        assert_eq!(raw.len(), 121);
+        assert_eq!(ports_receipt["port_count"], 121);
+        assert_eq!(ports_receipt["source_constructor_counts"]["pre_dedup"], 160);
+        assert_eq!(ports_receipt["source_constructor_counts"]["result"], 121);
+        let mut seen = std::collections::HashSet::new();
+        let mut actual = Vec::with_capacity(raw.len());
+        for value in raw {
+            let port = value.as_u64().expect("Fin port must be an integer");
+            assert!(port < 330, "original Fin port outside proven source bound");
+            assert!(seen.insert(port), "original List.dedup retained duplicate");
+            assert_ne!(port, 699);
+            actual.push(port);
+        }
+        assert_eq!(
+            &actual[actual.len() - 7..],
+            &[323, 324, 325, 326, 327, 328, 329]
+        );
+    }
+
     #[test]
     fn identical_callee_table_is_shared_and_distinct_abi_is_not() {
         let repeated = Command::Seq {

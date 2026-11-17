@@ -57,7 +57,7 @@ if [[ "$MODE" == computation ]]; then
     MODULE=CountedRecursion.SolverDefs
   fi
 fi
-${anchor}
+[[ "$(git -C "$REPO" rev-parse HEAD)" == "$SHA" ]] || {
   echo "Wrong original source commit" >&2; exit 1;
 }
 if [[ "$SOURCE" == openai ]]; then

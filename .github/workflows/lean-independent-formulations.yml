@@ -15,6 +15,7 @@ on:
       - 'rust/lean_eth_reference/proofs/IndependentPacketModeSelection.lean'
       - 'rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean'
       - 'rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean'
+      - 'rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean'
       - '.github/workflows/lean-independent-formulations.yml'
   workflow_dispatch:
 
@@ -91,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
-          if grep -nE '\b(sorry|admit)\b' rust/lean_eth_reference/proofs/IndependentCnfBridge.lean rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean rust/lean_eth_reference/proofs/IndependentTwoAdicMoments.lean rust/lean_eth_reference/proofs/IndependentTwoAdicConditionalMoments.lean rust/lean_eth_reference/proofs/IndependentTwoAdicMatchingGraph.lean rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean rust/lean_eth_reference/proofs/IndependentPacketSourceRate.lean rust/lean_eth_reference/proofs/IndependentPacketModeSelection.lean rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean; then
+          if grep -nE '\b(sorry|admit)\b' rust/lean_eth_reference/proofs/IndependentCnfBridge.lean rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean rust/lean_eth_reference/proofs/IndependentTwoAdicMoments.lean rust/lean_eth_reference/proofs/IndependentTwoAdicConditionalMoments.lean rust/lean_eth_reference/proofs/IndependentTwoAdicMatchingGraph.lean rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean rust/lean_eth_reference/proofs/IndependentPacketSourceRate.lean rust/lean_eth_reference/proofs/IndependentPacketModeSelection.lean rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean; then
             echo 'Independent proof contains unresolved admission' >&2
             exit 1
           fi
@@ -110,6 +111,7 @@ jobs:
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentPacketModeSelection.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean"
+            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean"
           )
           echo 'INDEPENDENT_CNF_COUNT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'INDEPENDENT_SWAP_IDENTITY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
@@ -124,5 +126,6 @@ jobs:
           echo 'OAI_PACKET_WEIGHTED_AFFINE_SELECTION_CUTOFF=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'OAI_CAUCHY_TILE_GEOMETRIC_AND_VALUATION_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'OAI_SOURCE_CAUCHY_GRID_ROOT_AND_RESIDUE_PROFILE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'OAI_CAUCHY_ODD_BINOMIAL_LUCAS_PARITY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'OpenAI source: 4eaee87548250b2682affda7d05d947c05554bae' >> "$GITHUB_STEP_SUMMARY"
           echo 'Anthropic source: 16a5ce41304fcdaea4e0be7c132e1c361dc26da5' >> "$GITHUB_STEP_SUMMARY"

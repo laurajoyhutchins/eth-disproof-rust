@@ -80,11 +80,12 @@ def incCaller (s : Ledger) : Option Ledger :=
 theorem callOwned_conserves {s t : Ledger}
     (h : callOwned s = some t) :
     sourceCount t = sourceCount s := by
-  unfold callOwned at h
-  split at h
-  · cases h
-  · cases h
-    simp [sourceCount]
+  by_cases hz : s.caller = 0
+  · simp [callOwned, hz] at h
+  · have hpos : 0 < s.caller := Nat.pos_of_ne_zero hz
+    simp [callOwned, hz] at h
+    subst t
+    simp only [sourceCount]
     omega
 
 theorem callBorrowed_conserves {s t : Ledger}
@@ -99,11 +100,12 @@ theorem callBorrowed_conserves {s t : Ledger}
 theorem jumpOwned_conserves {s t : Ledger}
     (h : jumpOwned s = some t) :
     sourceCount t = sourceCount s := by
-  unfold jumpOwned at h
-  split at h
-  · cases h
-  · cases h
-    simp [sourceCount]
+  by_cases hz : s.caller = 0
+  · simp [jumpOwned, hz] at h
+  · have hpos : 0 < s.caller := Nat.pos_of_ne_zero hz
+    simp [jumpOwned, hz] at h
+    subst t
+    simp only [sourceCount]
     omega
 
 theorem jumpBorrowed_conserves {s t : Ledger}
@@ -118,21 +120,23 @@ theorem jumpBorrowed_conserves {s t : Ledger}
 theorem returnOwnedCall_conserves {s t : Ledger}
     (h : returnOwnedCall s = some t) :
     sourceCount t = sourceCount s := by
-  unfold returnOwnedCall at h
-  split at h
-  · cases h
-  · cases h
-    simp [sourceCount]
+  by_cases hz : s.callee = 0
+  · simp [returnOwnedCall, hz] at h
+  · have hpos : 0 < s.callee := Nat.pos_of_ne_zero hz
+    simp [returnOwnedCall, hz] at h
+    subst t
+    simp only [sourceCount]
     omega
 
 theorem returnOwnedJoin_conserves {s t : Ledger}
     (h : returnOwnedJoin s = some t) :
     sourceCount t = sourceCount s := by
-  unfold returnOwnedJoin at h
-  split at h
-  · cases h
-  · cases h
-    simp [sourceCount]
+  by_cases hz : s.join = 0
+  · simp [returnOwnedJoin, hz] at h
+  · have hpos : 0 < s.join := Nat.pos_of_ne_zero hz
+    simp [returnOwnedJoin, hz] at h
+    subst t
+    simp only [sourceCount]
     omega
 
 theorem source_inc_increases_count {s t : Ledger}

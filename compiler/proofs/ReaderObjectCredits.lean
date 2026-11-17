@@ -163,8 +163,11 @@ theorem interleaved_distinct_objects (firstAliases secondAliases : Nat) :
       (∀ i, sourceCount (after i) =
         sourceCount ((twoObjects firstAliases secondAliases) i)) := by
   let initial := twoObjects firstAliases secondAliases
-  let after := put (put initial 0
-      ⟨0, 0, 0, 1, firstAliases + 1⟩) 1
+  let afterBorrow := put initial 0
+      ⟨0, 0, 0, 1, firstAliases + 1⟩
+  let afterOwnedCall := put afterBorrow 1
+      ⟨0, 1, 0, 0, secondAliases⟩
+  let after := put afterOwnedCall 1
       ⟨1, 0, 0, 0, secondAliases⟩
   have hr : run [(0, .callBorrowed), (1, .callOwned), (1, .returnOwnedCall)]
       initial = some after := by

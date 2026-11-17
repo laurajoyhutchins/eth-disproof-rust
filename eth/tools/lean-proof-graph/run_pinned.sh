@@ -68,6 +68,9 @@ lake update
 [[ "$(git -C .lake/packages/mathlib rev-parse HEAD)" == "$MATHLIB" ]] || {
   echo "Wrong Mathlib source pin" >&2; exit 1;
 }
+# Catch extractor type errors before building thousands of upstream modules.
+lake env lean "$HERE/Extract.lean"
+lake env lean "$HERE/ComputeExtract.lean"
 lake build "$MODULE"
 # The computational graph examines actual elaborated definition bodies.
 # This runs against the same pinned, compiled environment as the proof closure.

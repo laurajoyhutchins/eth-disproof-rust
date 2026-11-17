@@ -23,6 +23,9 @@ class RepositoryLayoutTests(unittest.TestCase):
             "compiler/cli/src/interface.rs",
             "compiler/cli/src/main.rs",
             "eth/src/bin/eth-compiler.rs",
+            "eth/src/machine/native_frontend.rs",
+            "eth/src/query/native_query_prefix.rs",
+            "eth/src/counting/native_terminal_count.rs",
             "experiments/lean-compiler-bootstrap/README.md",
         ):
             self.assertTrue((ROOT / path).is_file(), path)
@@ -35,6 +38,17 @@ class RepositoryLayoutTests(unittest.TestCase):
         )
         for old in ("rust/native_lean_backend", "rust/lean_eth_reference", "tools/lean-rust-bootstrap"):
             self.assertFalse((ROOT / old).exists(), old)
+
+    def test_eth_modules_preserve_public_paths(self):
+        source = (ROOT / "eth/src/lib.rs").read_text()
+        for group, module in (
+            ("machine", "native_frontend"),
+            ("query", "native_query_prefix"),
+            ("counting", "native_terminal_count"),
+        ):
+            self.assertIn(f'#[path = "{group}/{module}.rs"]', source)
+            self.assertIn(f"pub mod {module};", source)
+            self.assertFalse((ROOT / "eth/src" / f"{module}.rs").exists())
 
     def test_compiler_cli_uses_canonical_backend(self):
         manifest = tomllib.loads((ROOT / "compiler/cli/Cargo.toml").read_text())

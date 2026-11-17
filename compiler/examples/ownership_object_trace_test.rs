@@ -22,6 +22,10 @@ mod source_object_trace_tests {
         format!("{} {}", index + 1, count)
     }
 
+    fn id_from_observation(s: &str) -> &str {
+        s.split(' ').next().expect("source identity")
+    }
+
     #[test]
     fn trace() {
         let mut seen = Vec::new();
@@ -53,8 +57,28 @@ mod source_object_trace_tests {
         let inner = tree.field(0);
         let grandchild = inner.field(0);
         let sibling = tree.field(1);
+        let cousin = inner.field(1);
+        // First-observation boundary of the fully constructed graph.
+        // Rust's Rc handles do not grant additional source credits.
+        let root_obs = inspect(&tree, &mut seen);
+        let inner_obs = inspect(&inner, &mut seen);
+        let grand_obs = inspect(&grandchild, &mut seen);
+        let sibling_obs = inspect(&sibling, &mut seen);
+        let cousin_obs = inspect(&cousin, &mut seen);
+        writeln!(result, "HEAP seed {} 0", grand_obs).unwrap();
+        writeln!(result, "HEAP seed {} 0", cousin_obs).unwrap();
+        writeln!(result, "HEAP seed {} 2 {} {}", inner_obs, id_from_observation(&grand_obs), id_from_observation(&cousin_obs)).unwrap();
+        writeln!(result, "HEAP seed {} 0", sibling_obs).unwrap();
+        writeln!(result, "HEAP seed {} 2 {} {}", root_obs, id_from_observation(&inner_obs), id_from_observation(&sibling_obs)).unwrap();
+        for observed in [&root_obs, &inner_obs, &grand_obs, &cousin_obs, &sibling_obs] {
+            writeln!(result, "HEAP observe {}", observed).unwrap();
+        }
+        let grand_before = grandchild.1.get();
         grandchild.source_inc(1, true, false);
+        writeln!(result, "HEAP retain {} {} {}", id_from_observation(&grand_obs), grand_before, grandchild.1.get()).unwrap();
+        let sibling_before = sibling.1.get();
         sibling.source_inc(1, true, false);
+        writeln!(result, "HEAP retain {} {} {}", id_from_observation(&sibling_obs), sibling_before, sibling.1.get()).unwrap();
         writeln!(
             result,
             "TRACE graph-before {} {} {} {}",
@@ -65,14 +89,19 @@ mod source_object_trace_tests {
         ).unwrap();
         // The live Rust aliases are memory-safety handles, not extra Lean
         // source references. Only this source decrement destroys the tree.
+        writeln!(result, "HEAP release {}", inspect(&tree, &mut seen)).unwrap();
         tree.source_dec(1, true, false);
+        writeln!(result, "HEAP observe {}", inspect(&grandchild, &mut seen)).unwrap();
+        writeln!(result, "HEAP observe {}", inspect(&sibling, &mut seen)).unwrap();
         writeln!(
             result,
             "TRACE graph-after {} {}",
             inspect(&grandchild, &mut seen),
             inspect(&sibling, &mut seen),
         ).unwrap();
+        writeln!(result, "HEAP release {}", inspect(&grandchild, &mut seen)).unwrap();
         grandchild.source_dec(1, true, false);
+        writeln!(result, "HEAP release {}", inspect(&sibling, &mut seen)).unwrap();
         sibling.source_dec(1, true, false);
 
         std::fs::write(std::env::var_os("OWNERSHIP_OBJECT_TRACE_OUT").expect("trace output path"), result).unwrap();

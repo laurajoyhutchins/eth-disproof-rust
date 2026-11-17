@@ -73,6 +73,17 @@ for theorem in callOwned_conserves callBorrowed_conserves jumpOwned_conserves ju
 done
 # Prove per-allocation source-count conservation, including arbitrarily
 # interleaved calls and jumps on distinct identities (not just sum totals).
+lean proofs/ReaderHeapEvents.lean | tee artifacts/reader-heap-events-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-heap-events-axioms.txt; then
+  echo 'Heap-event operational proof contains sorryAx' >&2
+  exit 2
+fi
+for theorem in retain_requires_live release_requires_live release_last_leaf retain_changes_only_named_object seed_changes_only_named_object observation_preserves_heap nested_release_keeps_only_explicit_descendants seed_duplicate_is_refused release_of_dead_object_is_refused cannot_retain_source_freed_descendant; do
+  if ! grep -Fq "'ReaderHeapEvents.${theorem}' " artifacts/reader-heap-events-axioms.txt; then
+    echo "Missing heap-event theorem axiom receipt: ${theorem}" >&2
+    exit 2
+  fi
+done
 lean proofs/ReaderObjectCredits.lean | tee artifacts/reader-object-credits-axioms.txt
 if grep -Fq 'sorryAx' artifacts/reader-object-credits-axioms.txt; then
   echo 'Multi-allocation ownership theorem contains sorryAx' >&2

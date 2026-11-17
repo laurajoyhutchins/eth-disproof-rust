@@ -26,15 +26,24 @@ cat examples/ownership_object_trace_test.rs >> examples/ownership-object-trace-p
 # Mutation controls must demonstrate that a pooled-count checker cannot
 # confuse the first and second allocation or a retained descendant.
 python3 scripts/check-object-identity-transfers.py --self-test
+python3 scripts/check-heap-events.py --self-test
 for inputs in "0 1" "17 23" "901 702"; do
   read -r first second <<< "$inputs"
-  "$out/lean-c" "$first" "$second" | grep '^TRACE ' > "$out/c-$first-$second.txt"
+  "$out/lean-c" "$first" "$second" > "$out/c-full-$first-$second.txt"
+  grep '^TRACE ' "$out/c-full-$first-$second.txt" > "$out/c-$first-$second.txt"
+  grep '^HEAP ' "$out/c-full-$first-$second.txt" > "$out/c-events-$first-$second.txt"
   OWNERSHIP_OBJECT_TRACE_A="$first" OWNERSHIP_OBJECT_TRACE_B="$second" \
-  OWNERSHIP_OBJECT_TRACE_OUT="$out/rust-$first-$second.txt" \
+  OWNERSHIP_OBJECT_TRACE_OUT="$out/rust-full-$first-$second.txt" \
   env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \
     cargo test --offline --manifest-path examples/ownership-object-trace-package/Cargo.toml --lib source_object_trace_tests::trace -- --exact
+  grep '^TRACE ' "$out/rust-full-$first-$second.txt" > "$out/rust-$first-$second.txt"
+  grep '^HEAP ' "$out/rust-full-$first-$second.txt" > "$out/rust-events-$first-$second.txt"
   test -s "$out/c-$first-$second.txt"
   test -s "$out/rust-$first-$second.txt"
+  test -s "$out/c-events-$first-$second.txt"
+  test -s "$out/rust-events-$first-$second.txt"
+  python3 scripts/check-heap-events.py \
+    "$out/c-events-$first-$second.txt" "$out/rust-events-$first-$second.txt"
   # The two-identity audit is stricter than whole-file byte agreement:
   # it requires the physical direct-call and branch-selection object IDs,
   # counts, and allocation separation to be correct on EACH backend.
@@ -56,6 +65,11 @@ done
   echo "lean=$(lean --version)"
   echo "rust=$(rustc --version)"
   echo 'checkpoint_count=10'
+  echo 'bounded_heap_event_count=17'
+  echo 'heap_event_runtime_pairs=3'
+  echo 'heap_event_scope=initial_observed_graph_and_explicit_retains_releases'
+  echo 'source_allocator_event_timestamps=NOT_CAPTURED'
+  echo 'full_destructor_event_instrumentation=NOT_ESTABLISHED'
   echo 'direct_second_object_identity=CHECKED'
   echo 'branch_selected_object_identity=CHECKED'
   echo 'cross_object_credit_conservation=MODEL_ONLY'
@@ -63,6 +77,6 @@ done
   echo 'retained_descendant_counts=CHECKED_AFTER_ROOT_RELEASE'
   echo 'runtime_input_pairs=3'
   echo 'source_heap_simulation=UNPROVED_BEYOND_OBSERVED_BOUNDARIES'
-  sha256sum examples/OwnershipObjectTraceKernels.lean examples/OwnershipObjectTraceFixture.lean examples/OwnershipObjectTraceCDriver.lean examples/ownership_object_trace_test.rs native/object_trace_probe.c scripts/check-object-identity-transfers.py "$out/OwnershipObjectTraceKernels.c" examples/ownership-object-trace-package/src/lib.rs "$out"/c-*.txt "$out"/rust-*.txt
+  sha256sum examples/OwnershipObjectTraceKernels.lean examples/OwnershipObjectTraceFixture.lean examples/OwnershipObjectTraceCDriver.lean examples/ownership_object_trace_test.rs native/object_trace_probe.c scripts/check-object-identity-transfers.py scripts/check-heap-events.py "$out/OwnershipObjectTraceKernels.c" examples/ownership-object-trace-package/src/lib.rs "$out"/c-*.txt "$out"/rust-*.txt
 } > "$out/receipt.txt"
 cat "$out/receipt.txt"

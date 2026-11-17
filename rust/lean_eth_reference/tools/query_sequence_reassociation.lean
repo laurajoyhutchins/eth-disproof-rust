@@ -1,4 +1,4 @@
-import OAI.Algorithms.SubexponentialSAT.StructuredCalls
+import OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgramCountPrepare
 
 /-!
 # Reassociation of original finite StructuredCalls sequences
@@ -57,7 +57,7 @@ private theorem relSeq_id_left {r s : ℕ} (x : CostRel r s) :
     subst mid
     have hn' : n = q := by simpa using hn
     subst n
-    exact hx
+    simpa using hx
   · intro hx
     exact ⟨0, n, a, by simp, ⟨rfl, rfl⟩, hx⟩
 
@@ -150,5 +150,66 @@ theorem tree_reassociation {r s : ℕ} (a b : SeqTree r s)
     ((congrArg listDenotes same_order).trans (tree_denotes_order b).symm)
   change denotes a.command n start finish ↔ denotes b.command n start finish
   rw [h]
+
+
+/-- The original right-recursive BankRoutines.clearCmd, represented as an
+unbalanced tree of its actual source commands. No ports are invented. -/
+def sourceBankTree (tmp : Fin 768) (value present : Fin 40) :
+    List (Fin 768) → SeqTree 40 768
+  | [] => .leaf (.call (StackRoutines.clearProgram tmp value present))
+  | port :: rest =>
+      .node (.leaf (.call (StackRoutines.clearProgram port value present)))
+        (sourceBankTree tmp value present rest)
+
+private theorem sourceBankTree_command (tmp : Fin 768) (value present : Fin 40)
+    (ports : List (Fin 768)) :
+    (sourceBankTree tmp value present ports).command =
+      BankRoutines.clearCmd tmp value present ports := by
+  induction ports with
+  | nil => rfl
+  | cons port rest ih =>
+      change
+        C.seq (.call (StackRoutines.clearProgram port value present))
+          (sourceBankTree tmp value present rest).command =
+        C.seq (.call (StackRoutines.clearProgram port value present))
+          (BankRoutines.clearCmd tmp value present rest)
+      rw [ih]
+
+/-- The original Count.Prepare.command's exact source association tree. -/
+def sourcePrepareTree : SeqTree 40 768 :=
+  .node (.leaf (.call (StackRoutines.clearProgram 699 0 1)))
+    (sourceBankTree 699 0 1 SqrtLog.LeafProgram.Count.Prepare.ports)
+
+private theorem sourcePrepareTree_command :
+    sourcePrepareTree.command =
+      SqrtLog.LeafProgram.Count.Prepare.command := by
+  change
+    C.seq (.call (StackRoutines.clearProgram 699 0 1))
+      (sourceBankTree 699 0 1 SqrtLog.LeafProgram.Count.Prepare.ports).command =
+    C.seq (.call (StackRoutines.clearProgram 699 0 1))
+      (BankRoutines.clearCmd 699 0 1 SqrtLog.LeafProgram.Count.Prepare.ports)
+  rw [sourceBankTree_command]
+
+/-- Actual original Count.Prepare semantics survive any candidate tree
+whose ordered leaves are the original source program's leaves.
+
+This applies to the balanced adjacent tree produced by Rust's source-bound
+expander *once* the separately tested JSON decoder is shown to preserve
+these leaves. The theorem does not certify that external equality test.
+-/
+theorem original_prepare_reassociated_eval (balanced : SeqTree 40 768)
+    (same_order : balanced.leaves = sourcePrepareTree.leaves)
+    (a : SqrtLog.LeafProgram.Count.Data) :
+    StructuredCalls.Eval balanced.command
+      (SqrtLog.LeafProgram.Count.Prepare.budget a)
+      a (SqrtLog.LeafProgram.Count.Prepare.output a) := by
+  have horiginal : StructuredCalls.Eval sourcePrepareTree.command
+      (SqrtLog.LeafProgram.Count.Prepare.budget a)
+      a (SqrtLog.LeafProgram.Count.Prepare.output a) := by
+    rw [sourcePrepareTree_command]
+    exact SqrtLog.LeafProgram.Count.Prepare.command_eval a
+  exact (tree_reassociation sourcePrepareTree balanced same_order.symm
+    (SqrtLog.LeafProgram.Count.Prepare.budget a) a
+    (SqrtLog.LeafProgram.Count.Prepare.output a)).mp horiginal
 
 end OAI.Algorithms.SubexponentialSAT.PrepareReassociation

@@ -45,20 +45,26 @@ def prodList (xs : List (Circuit Atom)) : Circuit Atom :=
     eval env (sumList xs) = (xs.map (eval env)).sum := by
   induction xs with
   | nil => simp [sumList, eval]
-  | cons x xs ih => simp [sumList, eval, ih]
+  | cons x xs ih =>
+      change eval env (.add x (sumList xs)) =
+        eval env x + (xs.map (eval env)).sum
+      simp only [eval, ih]
 
 @[simp] theorem eval_prodList (env : Atom → ℤ) (xs : List (Circuit Atom)) :
     eval env (prodList xs) = (xs.map (eval env)).prod := by
   induction xs with
   | nil => simp [prodList, eval]
-  | cons x xs ih => simp [prodList, eval, ih]
+  | cons x xs ih =>
+      change eval env (.mul x (prodList xs)) =
+        eval env x * (xs.map (eval env)).prod
+      simp only [eval, ih]
 
 /-- Finset-shaped gates are explicitly lowered to finite lists. -/
-def sumFinset {α : Type*} [DecidableEq α]
+noncomputable def sumFinset {α : Type*} [DecidableEq α]
     (s : Finset α) (f : α → Circuit Atom) : Circuit Atom :=
   sumList (s.toList.map f)
 
-def prodFinset {α : Type*} [DecidableEq α]
+noncomputable def prodFinset {α : Type*} [DecidableEq α]
     (s : Finset α) (f : α → Circuit Atom) : Circuit Atom :=
   prodList (s.toList.map f)
 

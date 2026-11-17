@@ -13,7 +13,7 @@ compiler-generated constant references.
 | OpenAI math | 7ef5c0cc5ca4b0e072b7a050fca09ab24bc6fa3a | 4.34.1 | d13f23b723b8a846827a245b89c10fc7d3f11612 |
 | Anthropic formal-math | 16a5ce41304fcdaea4e0be7c132e1c361dc26da5 | 4.33.1 | 0df444a360eaa60ab8c11dca51a86af692955474 |
 
-OpenAI roots: exact_count_and_sat, original_sat_main, QueryStreamProgram.command,
+OpenAI roots: exact_count_and_sat, exact_count_eth, original_sat_main, QueryStreamProgram.command,
 and all three SqrtLog.Execution.Final endpoints (mainTheorem,
 binaryIdentifierMainTheorem, fullMainTheorem), under
 OAI.Algorithms.SubexponentialSAT.

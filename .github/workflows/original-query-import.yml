@@ -17,6 +17,8 @@ on:
       - 'rust/lean_eth_reference/tools/prepare_ports_dump.lean'
       - 'rust/lean_eth_reference/tools/prepare_ports_probe.py'
       - 'rust/lean_eth_reference/tools/test_prepare_ports_probe.py'
+      - 'rust/lean_eth_reference/tools/prepare_ports_compositional.py'
+      - 'rust/lean_eth_reference/tools/test_prepare_ports_compositional.py'
       - 'rust/lean_eth_reference/tools/export_source_graph.lean'
       - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
       - 'rust/lean_eth_reference/tools/verify_source_graph.py'
@@ -72,6 +74,7 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_kernel_probe.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_prepare_ports_probe.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_prepare_ports_compositional.py' -v
 
       - name: Test native Rust stage builder and strict refusal
         run: |
@@ -255,6 +258,20 @@ jobs:
                 "transitive_closure=false rust_executable=false")
           PY
           echo 'Original QueryStream same-module kernel graph observed; external computational closure and executable parity remain unverified.' >> "$GITHUB_STEP_SUMMARY"
+
+      # Source-compositional, bounded evaluation of the actual original
+      # Count.Prepare.ports expression. This reads 12 files from the *exact*
+      # pinned Git tree and accepts only the supported closed list fragment.
+      # It is not Lean runtime parity, a kernel theorem, or executable Rust.
+      - name: Compose original preparation port list from pinned Lean source
+        if: env.IMPORT_STAGE == 'query' && steps.kernel-root.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/prepare_ports_compositional.py \
+            --upstream "$ORIGINAL_SOURCE" \
+            --source-receipt "$RUNNER_TEMP/original-query-kernel/query-kernel-root.report.json" \
+            --output "$RUNNER_TEMP/original-query-kernel/prepare-ports-compositional.json"
 
       # Independent Lean *runtime* observation of the actual finite port list.
       # Not a Lean-kernel theorem, an executable Rust command, or a replacement

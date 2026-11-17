@@ -29,6 +29,10 @@ The formula has **5** satisfying assignments. The oracle uses bounded enumeratio
 
 For executable boundaries, see [the evidence](eth/docs/evidence.md), [missing source stages](eth/docs/remaining-lean-port.md) and the [frontend interface](eth/docs/m2-runnable-frontend.md).
 
+## Repository layout
+
+The [directory map](docs/repository-layout.md) separates the generic `compiler/`, the ETH-specific `eth/` crate, and optional `experiments/`. These are distinct acceptance gates and are deliberately not one Cargo workspace.
+
 ## Lean compiler IR to Rust
 
 This is a separate G1 compiler project within the repository, not a replacement Lean parser or proof kernel. Lean 4.34.1 remains responsible for parsing, elaboration, ownership lowering and executable compiler IR. The [canonical native backend](compiler/README.md) reads that IR in process and emits Rust for a bounded supported subset. The current generated code embeds a Rust value runtime; it has not established complete physical reference-count equivalence with Lean.

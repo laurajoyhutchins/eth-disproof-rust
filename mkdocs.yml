@@ -112,6 +112,7 @@ nav:
       - Historical sequence: eth/docs/reading-the-history.md
       - Test accuracy audit: eth/docs/tdd-accuracy-audit.md
   - Repository:
+      - Directory layout: repository-layout.md
       - Project README: README.md
       - Contributing: CONTRIBUTING.md
       - Writing these notes: STYLE.md

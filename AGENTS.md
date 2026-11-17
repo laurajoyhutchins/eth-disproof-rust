@@ -7,6 +7,12 @@ borrowed IR through `compiler/frontend/ffi/abi.c`, and embeds a bounded value
 runtime from `compiler/runtime/rust/immutable_value.rs`. That runtime is not
 verified as a general replacement for Lean C.
 
+**Public compiler CLI:** `compiler/cli/` is a standalone Rust crate, with the original
+artifact contract and native Lean-IR CLI. Its binary is `lean-rust-compiler`.
+`eth/src/bin/eth-compiler.rs` only delegates for compatibility; no ETH source
+module participates in the canonical compiler. Build and test it with
+`cargo test --locked --offline --manifest-path compiler/cli/Cargo.toml -p lean-compiler-cli`.
+
 **ETH implementation:** `eth/` is the source-pinned finite machine, research
 execution engine and original ETH-specific source compiler. It is the root
 Cargo workspace member. The `eth-compiler` CLI currently lives in

@@ -34,6 +34,8 @@ separates IR lowering from runtime execution. The C **execution** adapter
 is not yet implemented; the existing `compiler/frontend/ffi/abi.c` only reads
 compiler IR during generation.
 
+The standalone `compiler/cli/` crate owns the public `lean-rust-compiler` entry point and artifact contract, with no dependency on `eth/`. The old `eth-compiler` executable is a delegating compatibility wrapper. The first compiler acceptance target is an unchanged external Lean project.
+
 The ETH crate currently holds many flat `native_*` modules. Grouping them
 into `machine/`, `query/`, `counting/` and `verification/` should follow
 independent tests, not be forced into the directory relocation. Likewise

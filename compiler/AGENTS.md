@@ -1,7 +1,8 @@
 # Compiler boundary
 
 This directory owns the **single production executable-IR to Rust
-backend** for Lean 4.34.1.
+backend** for Lean 4.34.1. The public `cli/` crate also owns the single
+artifact-validation contract and standalone `lean-rust-compiler` binary.
 
 Current concrete layout:
 

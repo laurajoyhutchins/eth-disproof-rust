@@ -1,0 +1,19 @@
+[package]
+name = "lean-compiler-cli"
+version = "0.1.0"
+edition = "2024"
+license = "MIT AND Apache-2.0"
+description = "Standalone, source-pinned Lean compiler IR to Rust CLI and artifact contract"
+
+[lib]
+name = "lean_compiler_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lean-rust-compiler"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+sha2 = "=0.10.9"

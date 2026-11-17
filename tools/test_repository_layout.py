@@ -18,6 +18,10 @@ class RepositoryLayoutTests(unittest.TestCase):
             "compiler/backend/src/reader/mod.rs",
             "compiler/runtime/rust/immutable_value.rs",
             "eth/Cargo.toml",
+            "compiler/cli/Cargo.toml",
+            "compiler/cli/src/contract.rs",
+            "compiler/cli/src/interface.rs",
+            "compiler/cli/src/main.rs",
             "eth/src/bin/eth-compiler.rs",
             "experiments/lean-compiler-bootstrap/README.md",
         ):
@@ -33,9 +37,18 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertFalse((ROOT / old).exists(), old)
 
     def test_compiler_cli_uses_canonical_backend(self):
-        source = (ROOT / "eth/src/bin/eth-compiler.rs").read_text()
-        self.assertIn('.join("compiler")', source)
+        manifest = tomllib.loads((ROOT / "compiler/cli/Cargo.toml").read_text())
+        self.assertEqual(manifest["package"]["name"], "lean-compiler-cli")
+        self.assertEqual(manifest["bin"][0]["name"], "lean-rust-compiler")
+        source = (ROOT / "compiler/cli/src/interface.rs").read_text()
         self.assertIn('scripts/compile-project.sh', source)
+        self.assertIn('env!("CARGO_MANIFEST_DIR")', source)
+        self.assertNotIn("lean_eth_reference", source)
+        legacy = (ROOT / "eth/src/bin/eth-compiler.rs").read_text()
+        self.assertIn("lean_compiler_cli::run()", legacy)
+        self.assertNotIn("fn execute(", legacy)
+        self.assertIn('lean-compiler-cli = { path = "../compiler/cli" }',
+                      (ROOT / "eth/Cargo.toml").read_text())
 
     def test_active_workflows_use_current_paths(self):
         old = ("rust/native_lean_backend", "rust/lean_eth_reference", "tools/lean-rust-bootstrap")

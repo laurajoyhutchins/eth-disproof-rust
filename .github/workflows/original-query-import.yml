@@ -252,6 +252,20 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+      # This check consumes the actual emitted original Lean receipt, not a
+      # synthetic Rust test fixture. It validates IR admission and intentional
+      # execution refusal, never a Lean/Rust semantic correspondence claim.
+      - name: Verify original partial lift with canonical Rust refusal
+        if: env.IMPORT_STAGE == 'query' && steps.kernel-root.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/original-query-kernel/query-kernel-root.report.json"
+          cargo fetch --locked
+          ORIGINAL_QUERY_KERNEL_RECEIPT="$RUNNER_TEMP/original-query-kernel/query-kernel-root.report.json" \
+            cargo test --locked --offline -p lean-eth-reference --lib \
+              pinned_original_partial_lift_is_typed_and_refused -- --ignored --nocapture
+
       # The Meta-heavy AOT is a deliberate manual diagnostic, never a repeated
       # branch-push prerequisite for kernel-only source discovery.
       # This still does not establish Lean/Rust physical or counting parity.

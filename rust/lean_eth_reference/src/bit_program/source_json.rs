@@ -1097,6 +1097,35 @@ mod native_interning_tests {
         assert!(callees.is_empty(), "refused call must not create callee cache entries");
     }
 
+    /// Executed by the original-source import workflow with its *actual*
+    /// pinned Lean receipt. This never accepts the incomplete program as
+    /// executable, even though its nested call is valid canonical Rust IR.
+    #[test]
+    #[ignore = "requires the original pinned Lean v8 kernel receipt"]
+    fn pinned_original_partial_lift_is_typed_and_refused() {
+        let path = std::env::var("ORIGINAL_QUERY_KERNEL_RECEIPT")
+            .expect("original source workflow must supply the retained receipt");
+        let bytes = std::fs::read(path).expect("original Lean receipt must be readable");
+        let report: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("original Lean receipt must be JSON");
+        assert_eq!(report["format"], "original-query-kernel-root-v8");
+        assert_eq!(
+            report["root"],
+            "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.program"
+        );
+        assert_eq!(report["source_command_ir_resolved"].as_bool(), Some(false));
+        assert_eq!(report["rust_executable"].as_bool(), Some(false));
+        assert_eq!(report["receipt_is_kernel_certificate"].as_bool(), Some(false));
+        let call: Command = serde_json::from_value(report["source_lift_call_ir"].clone())
+            .expect("original Lean partial call must match the canonical Rust IR");
+        let mut remaining = MAX_NODES;
+        let mut callees = HashMap::new();
+        let err = lower::<40, 896>(call, &mut remaining, &mut callees)
+            .expect_err("original source cannot execute with unresolved coreCommand");
+        assert!(err.to_string().contains("QueryReconstruction.coreCommand"), "{err}");
+        assert!(callees.is_empty(), "refused Lean call must not populate callee cache");
+    }
+
     #[test]
     fn identical_callee_table_is_shared_and_distinct_abi_is_not() {
         let repeated = Command::Seq {

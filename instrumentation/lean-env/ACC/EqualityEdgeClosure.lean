@@ -95,8 +95,46 @@ theorem edge_contraction_eq_component_product
   exact sum_compatible_eq_component_product
     (edgeClass edges) (edgeClass_surjective edges) weight
 
+/-- Translate a list of raw edge constraints to its canonical class
+    predicate without changing the underlying Boolean assignment. -/
+noncomputable def edgeAssignmentEquiv
+    [Fintype I] [DecidableEq I] (edges : List (I × I)) :
+    {x : I → Bool // ∀ e ∈ edges, x e.1 = x e.2} ≃
+    {x : I → Bool // Compatible (edgeClass edges) x} where
+  toFun x := ⟨x.1, (edge_values_iff_class_compatible edges x.1).mp x.2⟩
+  invFun x := ⟨x.1, (edge_values_iff_class_compatible edges x.1).mpr x.2⟩
+  left_inv x := by
+    apply Subtype.ext
+    rfl
+  right_inv x := by
+    apply Subtype.ext
+    rfl
+
+/-- Fully source-facing theorem: the assignments are constrained by the
+    actual input list, and the output is indexed by *its* quotient classes.
+    Neither an external partition nor a correctness oracle is assumed. -/
+theorem edge_list_contraction_eq_component_product
+    [Fintype I] [DecidableEq I]
+    (edges : List (I × I)) (weight : I → Bool → ℤ) :
+    (∑ x : {x : I → Bool // ∀ e ∈ edges, x e.1 = x e.2},
+       ∏ i : I, weight i (x.1 i)) =
+    ∏ c : Quotient (edgeSetoid edges), ∑ bit : Bool,
+      ∏ i ∈ (Finset.univ : Finset I) with edgeClass edges i = c,
+        weight i bit := by
+  classical
+  calc
+    (∑ x : {x : I → Bool // ∀ e ∈ edges, x e.1 = x e.2},
+       ∏ i : I, weight i (x.1 i)) =
+      ∑ x : {x : I → Bool // Compatible (edgeClass edges) x},
+        ∏ i : I, weight i (x.1 i) := by
+      refine Fintype.sum_equiv (edgeAssignmentEquiv edges) _ _ ?_
+      intro x
+      rfl
+    _ = _ := edge_contraction_eq_component_product edges weight
+
 #print axioms ACC.EqualityEdgeClosure.edge_values_iff_connected
 #print axioms ACC.EqualityEdgeClosure.edge_values_iff_class_compatible
 #print axioms ACC.EqualityEdgeClosure.edge_contraction_eq_component_product
+#print axioms ACC.EqualityEdgeClosure.edge_list_contraction_eq_component_product
 
 end ACC.EqualityEdgeClosure

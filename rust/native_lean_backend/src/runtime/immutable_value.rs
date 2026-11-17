@@ -280,6 +280,21 @@ impl __LeanValue {
     fn assert_not_erased(&self) {
         assert!(!matches!(self.0.as_ref(), __LeanValueRepr::Erased), "erased join value was read");
     }
+    // A Rust Rc is an implementation-lifetime handle, not a Lean source
+    // reference. In particular, .proj returns compiler_alias() without a
+    // source inc; releasing the final parent may cascade the source child
+    // count to zero while its Rust allocation remains resident. Reject the
+    // *read* of that object, not merely a later source_inc/source_dec.
+    #[track_caller]
+    fn assert_source_readable(&self) {
+        self.assert_not_erased();
+        if self.source_heap() {
+            assert!(
+                self.1.get() > 0,
+                "source object read after final release (Rc alias is not ownership)"
+            );
+        }
+    }
     fn is_shared(&self) -> u8 {
         self.assert_not_erased();
         // Tagged immediates have no Lean heap reference count. A Rust Rc
@@ -292,6 +307,7 @@ impl __LeanValue {
         u8::from(self.1.get() != 1)
     }
     fn with_field(mut self, index: usize, value: Self) -> Self {
+        self.assert_source_readable();
         if let Some(__LeanValueRepr::Ctor { fields, .. }) = std::rc::Rc::get_mut(&mut self.0) {
             *fields.get_mut(index).expect("constructor set: invalid pointer index") = value;
             return self;
@@ -310,6 +326,7 @@ impl __LeanValue {
     // Other heap representations need their own source-checked contract.
     // This guard is also the backstop against reading an erased join arg.
     fn require_constructor_object(self) -> Self {
+        self.assert_source_readable();
         assert!(
             matches!(
                 self.0.as_ref(),
@@ -363,6 +380,7 @@ impl __LeanValue {
         }
     }
     fn array_get_tagged(&self, index: usize) -> Self {
+        self.assert_source_readable();
         let __LeanValueRepr::Array(values) = self.0.as_ref()
         else { panic!("Array.getInternal expected an Array"); };
         values.get(index).expect("source Array.getInternal index out of bounds").clone()
@@ -370,6 +388,7 @@ impl __LeanValue {
     // Lean's lean_array_uget_borrowed returns a borrowed element with no
     // refcount increment; lean_array_uget owns its result and does increment.
     fn array_get_tagged_borrowed(&self, index: usize) -> Self {
+        self.assert_source_readable();
         let __LeanValueRepr::Array(values) = self.0.as_ref()
         else { panic!("Array.getInternalBorrowed expected an Array"); };
         values.get(index).expect("source Array.getInternalBorrowed index out of bounds")
@@ -570,6 +589,7 @@ impl __LeanValue {
         Self::from_repr(__LeanValueRepr::Ctor { tag, name, fields })
     }
     fn tag(&self) -> usize {
+        self.assert_source_readable();
         match self.0.as_ref() {
             __LeanValueRepr::Tagged(v) => *v,
             __LeanValueRepr::Ctor { tag, .. } => *tag,
@@ -593,6 +613,7 @@ impl __LeanValue {
         matches!(self.0.as_ref(), __LeanValueRepr::Tagged(v) if *v == value)
     }
     fn field(&self, index: usize) -> Self {
+        self.assert_source_readable();
         match self.0.as_ref() {
             __LeanValueRepr::Ctor { fields, .. } =>
                 fields.get(index).expect("constructor field absent").compiler_alias(),
@@ -606,11 +627,11 @@ impl __LeanValue {
             _ => panic!("projection from a non-constructor"),
         }
     }
-    fn unbox_u8(&self) -> u8 { match self.0.as_ref() {__LeanValueRepr::U8(x) => *x, _ => panic!("incorrect boxed u8") } }
-    fn unbox_u16(&self) -> u16 { match self.0.as_ref() {__LeanValueRepr::U16(x) => *x, _ => panic!("incorrect boxed u16") } }
-    fn unbox_u32(&self) -> u32 { match self.0.as_ref() {__LeanValueRepr::U32(x) => *x, _ => panic!("incorrect boxed u32") } }
-    fn unbox_u64(&self) -> u64 { match self.0.as_ref() {__LeanValueRepr::U64(x) => *x, _ => panic!("incorrect boxed u64") } }
-    fn unbox_usize(&self) -> usize { match self.0.as_ref() {__LeanValueRepr::USize(x) => *x, _ => panic!("incorrect boxed usize") } }
+    fn unbox_u8(&self) -> u8 { self.assert_source_readable(); match self.0.as_ref() {__LeanValueRepr::U8(x) => *x, _ => panic!("incorrect boxed u8") } }
+    fn unbox_u16(&self) -> u16 { self.assert_source_readable(); match self.0.as_ref() {__LeanValueRepr::U16(x) => *x, _ => panic!("incorrect boxed u16") } }
+    fn unbox_u32(&self) -> u32 { self.assert_source_readable(); match self.0.as_ref() {__LeanValueRepr::U32(x) => *x, _ => panic!("incorrect boxed u32") } }
+    fn unbox_u64(&self) -> u64 { self.assert_source_readable(); match self.0.as_ref() {__LeanValueRepr::U64(x) => *x, _ => panic!("incorrect boxed u64") } }
+    fn unbox_usize(&self) -> usize { self.assert_source_readable(); match self.0.as_ref() {__LeanValueRepr::USize(x) => *x, _ => panic!("incorrect boxed usize") } }
 
     fn pap(invoke: fn(Vec<Self>) -> Self, arity: usize, captures: Vec<Self>) -> Self {
         assert!(arity > 0 && captures.len() < arity, "invalid source PAP arity");

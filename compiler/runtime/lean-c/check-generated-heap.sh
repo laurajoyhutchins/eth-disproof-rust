@@ -30,11 +30,23 @@ rustc --edition=2021 --cfg 'feature="lean-c-runtime"' \
   -C panic=abort --crate-type staticlib -O \
   "$out/combined.rs" -o "$out/liblean_c_generated.a"
 (cd examples && lean -c "$out/RuntimeHeapKernels.c" RuntimeHeapKernels.lean)
-# Report original Lean C ABI and ownership branch before the differential
-# comparison. These are diagnostic source facts, not assumptions about IR.
-grep -nE 'l_RuntimeHeap_(first|make|observe|nest|payload|nestedFirst)[(]' "$out/RuntimeHeapKernels.c" | head -32
-# Source-level ownership actions at the exact C ABI boundary.
-sed -n '290,325p' "$out/RuntimeHeapKernels.c"
+# Ground the host wrapper's parameter mode in the unchanged original C
+# compiler output. The unboxed function must borrow the parent; the boxed
+# entry point applies the caller's source-defined parent decrement.
+python3 - "$out/RuntimeHeapKernels.c" <<'PY'
+from pathlib import Path
+import sys
+s = Path(sys.argv[1]).read_text()
+start = s.index("LEAN_EXPORT lean_object* l_RuntimeHeap_payload(")
+boxed = s.index("LEAN_EXPORT lean_object* l_RuntimeHeap_payload___boxed(", start)
+end = s.index("LEAN_EXPORT lean_object* l_RuntimeHeap_nestedFirst(", boxed)
+body, boxed_body = s[start:boxed], s[boxed:end]
+if "lean_ctor_get(" not in body or "lean_inc(" not in body:
+    raise SystemExit("original Lean C payload does not borrow/retain child")
+if "lean_dec(" in body or "lean_dec(" not in boxed_body:
+    raise SystemExit("original Lean C unboxed/boxed parent ownership ABI changed")
+print("original_lean_payload_abi=BORROWED_PARENT_OWNED_CHILD")
+PY
 lean -c "$out/HeapDriver.c" runtime/lean-c/HeapDriver.lean
 leanc -O2 -o "$out/lean-c-generated-heap" \
   "$out/RuntimeHeapKernels.c" "$out/HeapDriver.c" \
@@ -56,6 +68,9 @@ grep -Fx 'reader-generated-lean-c-nested-retain=PASS' "$out/trace.txt"
   echo 'heap_field_retain=source_IR_inc_one_physical_Lean_C_credit'
   echo 'heap_ctor_field_transfer=source_credit_moved_without_increment'
   echo 'parent_release=retained_child_still_physically_owned'
+  echo 'unboxed_payload_argument=BORROWED'
+  echo 'boxed_payload_wrapper=RELEASES_PARENT'
+  echo 'host_wrapper=FROM_BORROWED_RAW_NO_INVENTED_DEC'
   echo 'comparison=original_Lean_C_vs_same_emitter_Rust_C'
   echo 'physical_source_reference_counts=before_and_after_inc_dec'
   echo 'heap_child_scope=RuntimeHeap.Box.mk_of_RuntimeHeap.Pair.mk'

@@ -4,6 +4,7 @@
  */
 #include <lean/lean.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stddef.h>
 extern lean_obj_res l_RuntimeHeap_make(lean_obj_arg, lean_obj_arg);
 extern lean_obj_res l_RuntimeHeap_observe(lean_obj_arg, lean_obj_arg);
@@ -120,6 +121,12 @@ lean_obj_res lr_heap_compare_nested(lean_obj_arg a, lean_obj_arg b, lean_obj_arg
     if (old_projected != old_child || new_projected != new_child ||
         source_rc(original) != 1 || source_rc(emitted) != 1 ||
         source_rc(old_projected) != 2 || source_rc(new_projected) != 2) {
+        fprintf(stderr,
+            "BORROW-CHECK source_ptr=%d rust_ptr=%d source_parent_rc=%d "
+            "rust_parent_rc=%d source_child_rc=%d rust_child_rc=%d\\n",
+            old_projected == old_child, new_projected == new_child,
+            source_rc(original), source_rc(emitted),
+            source_rc(old_projected), source_rc(new_projected));
         status = 5;
     }
     lean_dec(original);

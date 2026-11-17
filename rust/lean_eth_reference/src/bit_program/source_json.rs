@@ -161,6 +161,22 @@ fn invalid(message: &str) -> Error {
     Error::Invalid(format!("original source graph: {message}"))
 }
 
+/// A definition reference remains an explicit source obligation. Neither
+/// interpreter lowering nor physical/AOT lowering may substitute a default
+/// instruction, and both must report the same refusal.
+fn unresolved_source(declaration: &str, source_kind: &str) -> Error {
+    if declaration.is_empty()
+        || declaration.len() > 512
+        || source_kind.is_empty()
+        || source_kind.len() > 64
+    {
+        return invalid("malformed unresolved source declaration");
+    }
+    invalid(&format!(
+        "unresolved source declaration cannot be executed: {declaration} ({source_kind})"
+    ))
+}
+
 fn finite(raw: &str, bound: usize) -> Result<usize, Error> {
     if raw.is_empty()
         || (raw.len() > 1 && raw.starts_with('0'))
@@ -571,6 +587,10 @@ fn lower_native_block(
     }
     *remaining -= 1;
     let (size, kind) = match command {
+        Command::Unresolved {
+            declaration,
+            source_kind,
+        } => return Err(unresolved_source(&declaration, &source_kind)),
         Command::Skip => (0, NativeBlockKind::Skip),
         Command::Atom { opcode } => (1, NativeBlockKind::Atom(parse_source_atom(&opcode, r, s)?)),
         Command::Call { program } => {
@@ -812,18 +832,7 @@ fn lower<const R: usize, const S: usize>(
         Command::Unresolved {
             declaration,
             source_kind,
-        } => {
-            if declaration.is_empty()
-                || declaration.len() > 512
-                || source_kind.is_empty()
-                || source_kind.len() > 64
-            {
-                return Err(invalid("malformed unresolved source declaration"));
-            }
-            Err(invalid(&format!(
-                "unresolved source declaration cannot be executed: {declaration} ({source_kind})"
-            )))
-        }
+        } => Err(unresolved_source(&declaration, &source_kind)),
         Command::Skip => Ok(Block::skip()),
         Command::Atom { opcode } => Block::atom(parse_atom::<R, S>(&opcode)?),
         Command::Call {
@@ -1038,6 +1047,15 @@ mod native_interning_tests {
             err.to_string().contains("HighQueryAdapter.prepareHigh"),
             "{err}"
         );
+        let nested: Command = serde_json::from_str(
+            r#"{"kind":"unresolved","declaration":"OAI.Unexpanded","source_kind":"definition"}"#,
+        )
+        .unwrap();
+        let mut native_remaining = MAX_NODES;
+        let err = lower_native_block(nested, 40, 896, &mut native_remaining, 0)
+            .err()
+            .expect("physical lowering must refuse unresolved source");
+        assert!(err.to_string().contains("OAI.Unexpanded"), "{err}");
         let forged = r#"{"kind":"unresolved","declaration":"OAI.Ref","source_kind":"definition","resolved":true}"#;
         assert!(serde_json::from_str::<Command>(forged).is_err());
         let executable = r#"{"kind":"seq","first":{"kind":"skip"},"second":{"kind":"skip"}}"#;

@@ -35,10 +35,15 @@ mod source_object_trace_tests {
         writeln!(result, "TRACE direct {} {}", inspect(&a, &mut seen), inspect(&same, &mut seen)).unwrap();
         let b = create(__LeanValue::tagged(second));
         writeln!(result, "TRACE second {}", inspect(&b, &mut seen)).unwrap();
+        // A second independent object crosses a genuine source-defined
+        // direct call; Rust Rc aliases do not merge its source identity.
+        let same_b = identity(b.clone());
+        writeln!(result, "TRACE second-direct {} {} {}", inspect(&a, &mut seen), inspect(&b, &mut seen), inspect(&same_b, &mut seen)).unwrap();
         let left = select(1u8, same.clone(), b.clone());
         writeln!(result, "TRACE branch-left {} {} {}", inspect(&same, &mut seen), inspect(&left, &mut seen), inspect(&b, &mut seen)).unwrap();
         let right = select(0u8, same.clone(), b.clone());
         writeln!(result, "TRACE branch-right {} {} {}", inspect(&same, &mut seen), inspect(&right, &mut seen), inspect(&b, &mut seen)).unwrap();
+        writeln!(result, "TRACE branch-owners {} {} {} {}", inspect(&same, &mut seen), inspect(&left, &mut seen), inspect(&b, &mut seen), inspect(&right, &mut seen)).unwrap();
         let captured = throughClosure(left.clone());
         writeln!(result, "TRACE closure {} {}", inspect(&left, &mut seen), inspect(&captured, &mut seen)).unwrap();
         // Descendant ownership is observable without reading freed memory.

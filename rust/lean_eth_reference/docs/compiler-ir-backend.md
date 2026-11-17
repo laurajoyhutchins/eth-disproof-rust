@@ -2,7 +2,9 @@
 
 The executable-IR backend is `rust/native_lean_backend` (Lean 4.34.1, Rust 1.99.1). The public `eth-compiler` CLI delegates to its existing [multi-root Lake-project compiler](../../native_lean_backend/scripts/compile-project.sh), which consumes genuine borrowed `Lean.IR.Decl` objects in the Lean process and emits a standalone Rust Cargo package.
 
-This is **one** Rust emitter and **one** GMP/`Rc` runtime. The old experimental leanfran 0.6.0 / Lean 4.35.0 adapter remains in Git history as an experiment, but is not invoked or accepted by the canonical `compiler-ir` route. Missing IR and unsupported runtime semantics refuse without switching backends.
+This is **one** production Rust emitter. Its current emitted Rust includes the existing GMP/`Rc` value runtime for a bounded supported subset. That is an implementation fact, not evidence that its physical ownership traces match Lean C. A generated-Rust target linked through a pinned Lean C execution-runtime adapter is the next acceptance baseline; native Rust runtime replacement follows only after that comparison. The experimental leanfran adapter and the separate Lungo compiler-bootstrap probe are not alternate production code generators. Missing IR and unsupported runtime semantics refuse without switching backends.
+
+See the [architecture](../../native_lean_backend/docs/backend-first-architecture.md), [runtime seam](../../native_lean_backend/docs/execution-runtime-contract.md) and [current status](../../native_lean_backend/docs/compiler-status.md).
 
 ## Use it on an unchanged Lake project
 

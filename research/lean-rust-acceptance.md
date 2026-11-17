@@ -20,7 +20,9 @@ A generated Rust program must match the original Lean program, including relevan
 | Closures and effects | Erased values, first-class functions, sharing observations and side effects need source-accurate behavior |
 | Transitive closure | A supported entrypoint is useless if one called declaration silently disappears |
 
-The intended implementation has **one** in-process Lean 4.34.1 compiler and one GMP/`Rc` value runtime. Do not maintain a second hand-translated object model.
+The intended implementation has **one** in-process Lean 4.34.1 compiler and one Rust emitter. The current generated code embeds a GMP/`Rc` value runtime for a bounded subset. This does **not** prove physical ownership fidelity: the backend must first be checked with generated Rust calling the pinned Lean C runtime through a separate execution-time adapter. Rust-native runtime operations are a subsequent replacement behind the same contract. A Rust proof kernel is an independent project.
+
+See the [backend-first architecture](../rust/native_lean_backend/docs/backend-first-architecture.md), [status](../rust/native_lean_backend/docs/compiler-status.md) and [runtime contract](../rust/native_lean_backend/docs/execution-runtime-contract.md).
 
 Merged [#230](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/230) and [#234](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/234) are historical integration points. The November 14 follow-ups [#237](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/237), [#238](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/238) and [#239](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/239) record the scalar-projection and ownership issues. Their descriptions are not substitutes for checking the current head.
 

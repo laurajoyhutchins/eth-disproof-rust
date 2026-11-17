@@ -472,4 +472,92 @@ theorem quotient_merge_states_commute
 
 #print axioms ACC.BoundaryQuotient.quotient_merge_states_commute
 
+
+/-- An exact fiber-sum product lemma for a group of independent source
+    coordinates. The quotient is only required to be constant on each
+    *admissible* merged group state, not on arbitrary invalid functions. -/
+theorem tuple_fiber_product
+    {J S K : Type*}
+    [Fintype J] [DecidableEq J] [DecidableEq S] [DecidableEq K]
+    (P : J → Prop) [DecidablePred P]
+    (states : J → Finset S) (defaultState : S)
+    (label : S → K) (z : J → K)
+    (hz : ∀ a, ¬ P a → z a = label defaultState)
+    (weight : J → S → ℤ) :
+    (∑ w ∈ (Groundwork.tuples P states defaultState).filter
+        (fun w => (fun a => label (w a)) = z),
+        ∏ a with P a, weight a (w a)) =
+      ∏ a with P a,
+        ∑ s ∈ (states a).filter (fun s => label s = z a), weight a s := by
+  classical
+  have hfiber :
+      (Groundwork.tuples P states defaultState).filter
+        (fun w => (fun a => label (w a)) = z) =
+      Groundwork.tuples P
+        (fun a => (states a).filter (fun s => label s = z a))
+        defaultState := by
+    ext w
+    simp only [Finset.mem_filter]
+    constructor
+    · rintro ⟨hw, hmap⟩
+      have hw' := (Groundwork.mem_tuples P states defaultState w).mp hw
+      apply (Groundwork.mem_tuples P
+        (fun a => (states a).filter (fun s => label s = z a))
+        defaultState w).mpr
+      intro a
+      constructor
+      · intro ha
+        exact Finset.mem_filter.mpr ⟨(hw' a).1 ha, congrFun hmap a⟩
+      · intro ha
+        exact (hw' a).2 ha
+    · intro hw
+      have hw' := (Groundwork.mem_tuples P
+        (fun a => (states a).filter (fun s => label s = z a))
+        defaultState w).mp hw
+      apply And.intro
+      · apply (Groundwork.mem_tuples P states defaultState w).mpr
+        intro a
+        constructor
+        · intro ha
+          exact (Finset.mem_filter.mp ((hw' a).1 ha)).1
+        · intro ha
+          exact (hw' a).2 ha
+      · funext a
+        by_cases ha : P a
+        · exact (Finset.mem_filter.mp ((hw' a).1 ha)).2
+        · calc
+            label (w a) = label defaultState := by
+              rw [(hw' a).2 ha]
+            _ = z a := (hz a ha).symm
+  rw [hfiber]
+  exact Groundwork.sum_tuples_prod P
+    (fun a => (states a).filter (fun s => label s = z a))
+    defaultState weight
+
+/-- Source pair interactions are also unchanged by replacing each state
+    with its quotient representative. This holds for all pair labels. -/
+theorem quotient_pair_interaction
+    {J σ τ K : Type*} [LinearOrder J]
+    (N : Groundwork.Network J σ τ)
+    (label : σ → K) (representative : K → σ)
+    (hf : ∀ a b s t,
+      N.f a b s t = N.f a b (representative (label s)) t)
+    (a b : J) (s t : σ) :
+    N.Ψ a b s t =
+      (quotientNetwork N label representative).Ψ a b
+        (label s) (label t) := by
+  classical
+  change
+    (∑ θ ∈ N.Θ (min a b) (max a b),
+      N.f a b s θ * N.f b a t θ) =
+    (∑ θ ∈ N.Θ (min a b) (max a b),
+      N.f a b (representative (label s)) θ *
+      N.f b a (representative (label t)) θ)
+  apply Finset.sum_congr rfl
+  intro θ hθ
+  rw [hf a b s θ, hf b a t θ]
+
+#print axioms ACC.BoundaryQuotient.tuple_fiber_product
+#print axioms ACC.BoundaryQuotient.quotient_pair_interaction
+
 end ACC.BoundaryQuotient

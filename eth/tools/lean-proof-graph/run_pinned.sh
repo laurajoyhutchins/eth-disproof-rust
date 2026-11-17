@@ -16,6 +16,9 @@ case "$SOURCE" in
       OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.exact_count_and_sat
       OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.original_sat_main
       OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.command
+      OAI.Algorithms.SubexponentialSAT.SqrtLog.Execution.Final.mainTheorem
+      OAI.Algorithms.SubexponentialSAT.SqrtLog.Execution.Final.binaryIdentifierMainTheorem
+      OAI.Algorithms.SubexponentialSAT.SqrtLog.Execution.Final.fullMainTheorem
     )
     PREFIXES=(--project-prefix OAI.Algorithms.SubexponentialSAT)
     ;;

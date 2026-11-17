@@ -12,6 +12,41 @@ test "$(lean --version)" = 'Lean (version 4.34.1, x86_64-unknown-linux-gnu, comm
 test "$(rustc --version)" = 'rustc 1.99.1 (58cf8f9c3 2026-10-13)'
 out="$(pwd)/artifacts/lean-c-generated-heap"
 mkdir -p "$out"
+# Kernel-check the abstract source-credit / physical-count simulation
+# before compiling expensive generated Rust and Lean C integrations.
+lean proofs/ReaderShellSimulation.lean | tee "$out/source-shell-simulation-lean.txt"
+# The proof may use only Lean's built-in logical axioms. The kernel
+# already rejects unsolved goals; a separate provenance gate rejects
+# sorryAx, custom axioms, and missing theorem audit lines.
+python3 - "$out/source-shell-simulation-lean.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+transcript = Path(sys.argv[1]).read_text()
+allowed = {"propext", "Quot.sound", "Classical.choice"}
+names = (
+    "step_simulation",
+    "trace_simulation",
+    "source_delete_trace",
+    "physical_delete_trace",
+    "physical_reuse_trace",
+    "no_del_before_stamp_release",
+    "no_stamp_release_on_shared_parent",
+    "recursive_delete_is_not_shell_delete",
+)
+for name in names:
+    token = re.escape(f"'ReaderShellSimulation.{name}'")
+    m = re.search(
+        token + r" (does not depend on any axioms|depends on axioms: \[([^\]]*)\])",
+        transcript,
+    )
+    if not m:
+        raise SystemExit(f"missing kernel axiom audit for {name}")
+    used = set((m.group(2) or "").split(", ")) - {""}
+    if not used <= allowed:
+        raise SystemExit(f"unapproved Lean axioms in {name}: {sorted(used - allowed)}")
+print("source_shell_simulation_kernel=PASS_STANDARD_AXIOMS_ONLY")
+PY
 rm -rf examples/lean-c-heap-package
 lean -o examples/RuntimeHeapKernels.olean examples/RuntimeHeapKernels.lean
 # Examine the compiler's actual final IR for source-derived reset/reuse
@@ -137,6 +172,9 @@ echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_720' \
 echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.txt"
 {
   echo 'status=PASS_ORIGINAL_LEAN_C_AND_READER_GENERATED_HEAP'
+  echo 'source_shell_abstract_trace_simulation=LEAN_KERNEL_VERIFIED_RESTRICTED_MACHINE'
+  echo 'source_shell_original_lean_c_refinement=NOT_ESTABLISHED'
+  sha256sum proofs/ReaderShellSimulation.lean "$out/source-shell-simulation-lean.txt"
   echo "revision=$(git rev-parse HEAD)"
   echo "lean=$(lean --version)"
   echo "rust=$(rustc --version)"

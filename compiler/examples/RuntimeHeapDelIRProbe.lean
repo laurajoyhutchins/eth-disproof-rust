@@ -44,7 +44,9 @@ run_cmd do
     `RuntimeHeapDel.rebuild,
     `RuntimeHeapDel.rebuildOrDiscard,
     `RuntimeHeapDel.rebuildOrExtract,
-    `RuntimeHeapDel.rebuildThenExtract
+    `RuntimeHeapDel.rebuildThenExtract,
+    `RuntimeHeapDel.rebuildOrDiscardByPayload,
+    `RuntimeHeapDel.rebuildOrExtractByPayload
   ]
   -- Uses the same real compiler entrypoint as NativeRust.resolveCompilerIR?.
   liftCoreM <| Lean.Compiler.compile roots

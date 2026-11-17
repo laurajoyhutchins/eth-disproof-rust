@@ -2,6 +2,9 @@ name: Complete original Lean proof dependency graphs
 
 on:
   workflow_dispatch:
+  # A manual label works on a draft PR before the workflow lands on main.
+  pull_request:
+    types: [labeled]
 
 permissions:
   contents: read
@@ -12,6 +15,10 @@ concurrency:
 
 jobs:
   extract:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.label.name == 'run-complete-lean-graph')
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:

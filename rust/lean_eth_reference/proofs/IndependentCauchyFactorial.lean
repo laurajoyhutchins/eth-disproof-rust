@@ -1,4 +1,5 @@
 import Mathlib
+import IndependentCauchySourceGrid
 
 /-!
 # Exact factorial identity for a consecutive Cauchy derivative grid
@@ -85,7 +86,67 @@ theorem integer_interval_derivative_factorial_at
   conv_lhs => rw [← hN]
   exact integer_interval_derivative_factorial k (N - 1 - k)
 
+/--
+The factorial identity now applies to the *literal original* Cauchy
+derivative product. There is no abstract replacement of the source
+grid or assumption about its factors.
+-/
+theorem source_derivative_factorial
+    (a : ℕ) (t : ℤ)
+    (ht : t ∈ IndependentETH.CauchySourceGrid.sourceGrid a) :
+    IndependentETH.CauchySourceGrid.sourceDerivativeAt a t =
+      (-1 : ℤ) ^ (2 ^ (a + 1) - 1 -
+        IndependentETH.CauchySourceGrid.gridIndex a t) *
+      ((IndependentETH.CauchySourceGrid.gridIndex a t).factorial : ℤ) *
+      ((2 ^ (a + 1) - 1 -
+        IndependentETH.CauchySourceGrid.gridIndex a t).factorial : ℤ) := by
+  rw [IndependentETH.CauchySourceGrid.source_derivative_reindexed a t ht]
+  exact integer_interval_derivative_factorial_at
+    (2 ^ (a + 1))
+    (IndependentETH.CauchySourceGrid.gridIndex a t)
+    (IndependentETH.CauchySourceGrid.gridIndex_lt a t ht)
+
+/--
+The source derivative, multiplied by its indexed binomial
+coefficient, has the uniform signed factorial numerator.
+This is an exact identity over integers, not a cancellation in
+a quotient where the derivative may be a nonunit.
+-/
+theorem source_derivative_mul_choose
+    (a : ℕ) (t : ℤ)
+    (ht : t ∈ IndependentETH.CauchySourceGrid.sourceGrid a) :
+    IndependentETH.CauchySourceGrid.sourceDerivativeAt a t *
+      (((2 ^ (a + 1) - 1).choose
+        (IndependentETH.CauchySourceGrid.gridIndex a t) : ℕ) : ℤ) =
+      (-1 : ℤ) ^ (2 ^ (a + 1) - 1 -
+        IndependentETH.CauchySourceGrid.gridIndex a t) *
+      (((2 ^ (a + 1) - 1).factorial : ℕ) : ℤ) := by
+  let n : ℕ := 2 ^ (a + 1) - 1
+  let k : ℕ := IndependentETH.CauchySourceGrid.gridIndex a t
+  have hkn : k ≤ n := by
+    have hlt := IndependentETH.CauchySourceGrid.gridIndex_lt a t ht
+    dsimp [n, k]
+    omega
+  have hchoose := Nat.choose_mul_factorial_mul_factorial hkn
+  change IndependentETH.CauchySourceGrid.sourceDerivativeAt a t *
+    (n.choose k : ℤ) = (-1 : ℤ) ^ (n - k) * (n.factorial : ℤ)
+  rw [source_derivative_factorial a t ht]
+  change ((-1 : ℤ) ^ (n - k) * (k.factorial : ℤ) *
+      ((n - k).factorial : ℤ)) * (n.choose k : ℤ) =
+        (-1 : ℤ) ^ (n - k) * (n.factorial : ℤ)
+  calc
+    ((-1 : ℤ) ^ (n - k) * (k.factorial : ℤ) *
+        ((n - k).factorial : ℤ)) * (n.choose k : ℤ) =
+      (-1 : ℤ) ^ (n - k) *
+        ((n.choose k * k.factorial * (n - k).factorial : ℕ) : ℤ) := by
+        push_cast
+        ring
+    _ = (-1 : ℤ) ^ (n - k) * (n.factorial : ℤ) := by
+      rw [hchoose]
+
 #print axioms IndependentETH.CauchyFactorial.integer_interval_derivative_factorial
 #print axioms IndependentETH.CauchyFactorial.integer_interval_derivative_factorial_at
+#print axioms IndependentETH.CauchyFactorial.source_derivative_factorial
+#print axioms IndependentETH.CauchyFactorial.source_derivative_mul_choose
 
 end IndependentETH.CauchyFactorial

@@ -9,7 +9,8 @@ case "$SOURCE" in
     SHA=7ef5c0cc5ca4b0e072b7a050fca09ab24bc6fa3a
     MATHLIB=d13f23b723b8a846827a245b89c10fc7d3f11612
     VERSION=4.34.1
-    PROJECT="$REPO/lean"
+    # Narrow pinned package, not the unrelated upstream OAI Lake project.
+    PROJECT="$HERE/../../../instrumentation/lean-env"
     MODULE=OAI.Algorithms.SubexponentialSAT.Main
     ROOTS=(
       OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.exact_count_and_sat
@@ -39,6 +40,19 @@ esac
 [[ "$(git -C "$REPO" rev-parse HEAD)" == "$SHA" ]] || {
   echo "Wrong original source commit" >&2; exit 1;
 }
+if [[ "$SOURCE" == openai ]]; then
+  ORIG_SRC="$REPO/lean/OAI"
+  LINK="$PROJECT/OAI"
+  [[ -d "$ORIG_SRC" ]] || { echo "Original OAI source directory absent" >&2; exit 1; }
+  if [[ -L "$LINK" ]]; then
+    [[ "$(readlink -f "$LINK")" == "$(realpath "$ORIG_SRC")" ]] || {
+      echo "OAI source link points at another tree" >&2; exit 1;
+    }
+  else
+    [[ ! -e "$LINK" ]] || { echo "Refusing to overwrite existing OAI path" >&2; exit 1; }
+    ln -s "$(realpath "$ORIG_SRC")" "$LINK"
+  fi
+fi
 cd "$PROJECT"
 [[ "$(cat lean-toolchain)" == "leanprover/lean4:v$VERSION" ]] || {
   echo "Wrong Lean toolchain pin" >&2; exit 1;

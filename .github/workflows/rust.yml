@@ -38,6 +38,9 @@ jobs:
       - name: First original QueryStream node physical composition receipt
         run: cargo test --locked --offline -p lean-eth-reference --test native_query_first_node_composition -- --nocapture
       - name: Source-graph compiler contract tests (offline)
-        run: python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
+        run: |
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_stream_aot.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_kernel_probe.py' -v
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

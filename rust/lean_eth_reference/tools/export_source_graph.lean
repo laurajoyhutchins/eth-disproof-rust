@@ -1,6 +1,12 @@
-import Lean
-import OAI.Algorithms.SubexponentialSAT.StructuredCalls
-import OAI.Algorithms.SubexponentialSAT.ProgramLinking
+-- Compile the exporter against Lean metadata only. Importing OAI's
+-- StructuredCalls / ProgramLinking here loads its full dependency closure
+-- before the full QueryStream source is imported in the extraction process.
+-- The qualified constructor Names below are validated against the actual
+-- imported pinned OAI declaration bodies during extraction; they are not
+-- alternate implementations of OAI commands.
+import Lean.Elab.Command
+import Lean.Meta
+import Lean.Data.Json
 
 /-!
 Emit a typed, source-elaborated StructuredCalls graph. Only a bounded Call
@@ -10,6 +16,16 @@ The wrapper pins git source, Lean, and Mathlib before this command executes.
 -/
 namespace OriginalSourceGraph
 open Lean Meta Elab Command
+
+/-!
+The producer is compiled without importing any OAI module. Each qualified
+constant identity is reconstructed as a Lean Name from its full namespace.
+Only the *separately imported original* OAI environment can supply matching
+source definitions or constructors during reduction. No fallback program,
+instruction or alternative OAI definition is created by this helper.
+-/
+private def originalConst (fullName : String) : Name :=
+  (fullName.splitOn ".").foldl Name.str Name.anonymous
 
 private def number (e : Expr) : MetaM Nat := do
   let e ← whnf e
@@ -36,23 +52,23 @@ private def atom (e : Expr) : MetaM String := do
   match v.getAppFn with
   | .const n _ =>
     let a := v.getAppArgs
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.set then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.set") then
       return s!"set:{← fin a[2]!}:{← bit a[3]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.copy then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.copy") then
       return s!"copy:{← fin a[2]!}:{← fin a[3]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.bnot then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.bnot") then
       return s!"not:{← fin a[2]!}:{← fin a[3]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.band then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.band") then
       return s!"and:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.bor then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.bor") then
       return s!"or:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.bxor then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.bxor") then
       return s!"xor:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.push then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.push") then
       return s!"push:{← fin a[2]!}:{← fin a[3]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.peek then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.peek") then
       return s!"peek:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.pop then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Atom.pop") then
       return s!"pop:{← fin a[2]!}:{← fin a[3]!}:{← fin a[4]!}"
     throwError m!"unsupported original atom constructor: {n}"
   | _ => throwError m!"original atom did not reduce to a constructor: {v}"
@@ -62,29 +78,29 @@ private def physicalInstr (e : Expr) : MetaM String := do
   match v.getAppFn with
   | .const n _ =>
     let a := v.getAppArgs
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.halt then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.halt") then
       return "halt"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.goto then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.goto") then
       return s!"goto:{← fin a[3]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.set then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.set") then
       return s!"set:{← fin a[3]!}:{← bit a[4]!}:{← fin a[5]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.copy then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.copy") then
       return s!"copy:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.bnot then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.bnot") then
       return s!"not:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.band then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.band") then
       return s!"and:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.bor then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.bor") then
       return s!"or:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.bxor then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.bxor") then
       return s!"xor:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.branch then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.branch") then
       return s!"branch:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.push then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.push") then
       return s!"push:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.peek then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.peek") then
       return s!"peek:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
-    if n == ``OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.pop then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Instr.pop") then
       return s!"pop:{← fin a[3]!}:{← fin a[4]!}:{← fin a[5]!}:{← fin a[6]!}"
     throwError m!"unsupported original physical opcode: {n}"
   | _ => throwError m!"original physical instruction remains opaque: {v}"
@@ -98,12 +114,12 @@ private def boundedTable (p : Expr) (maxLabels : Nat) : MetaM Json := do
   let l ← number args[2]!
   if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
     throwError m!"unsupported bounded callee dimensions: {r} {s} {l}"
-  let entry ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 2 p)
-  let input ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 0 p)
-  let output ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 1 p)
+  let entry ← fin (mkProj (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Program") 2 p)
+  let input ← fin (mkProj (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Program") 0 p)
+  let output ← fin (mkProj (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Program") 1 p)
   if entry >= l || input >= s || output >= s then
     throwError "callee has invalid finite entry or I/O port"
-  let code := mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 3 p
+  let code := mkProj (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Program") 3 p
   let mut rows : Array String := #[]
   for i in [:l] do
     let bound := mkNatLit l
@@ -135,6 +151,53 @@ Preserve original ProgramLinking constructors as a typed graph instead of
 reducing their entire `Fin labels → Instr` code to a table. Unknown cases
 still use the existing bounded finite-leaf exporter.
 -/
+/-!
+The original `StructuredCalls.compiled` has type
+`Program r s (StructuredCalls.size command + 1)`. Reducing that enormous
+type-level Nat into one literal before traversing the command overflows the
+metaprogramming recursion limit, even though the original module imports.
+
+Mirror the original `size` equations on the *source-elaborated* typed graph,
+without materializing a flat instruction table. Keep independent physical
+equivalence and kernel-certification obligations open: computing this size is
+a source-derived structural measurement, not a standalone certificate.
+-/
+mutual
+private partial def graphCommandSize (j : Json) (fuel : Nat) : Except String Nat := do
+  if fuel == 0 then throw "source command size graph depth exceeded"
+  let kind ← j.getObjValAs? String "kind"
+  if kind == "skip" then return 0
+  if kind == "atom" then return 1
+  if kind == "call" then
+    graphProgramLabels (← j.getObjVal? "program") (fuel - 1)
+  else if kind == "seq" then
+    return (← graphCommandSize (← j.getObjVal? "first") (fuel - 1)) +
+      (← graphCommandSize (← j.getObjVal? "second") (fuel - 1))
+  else if kind == "if" then
+    return (← graphCommandSize (← j.getObjVal? "yes") (fuel - 1)) +
+      (← graphCommandSize (← j.getObjVal? "no") (fuel - 1)) + 1
+  else if kind == "while" then
+    return (← graphCommandSize (← j.getObjVal? "body") (fuel - 1)) + 1
+  else if kind == "repeat" then
+    return (← j.getObjValAs? Nat "count") *
+      (← graphCommandSize (← j.getObjVal? "body") (fuel - 1))
+  else throw s!"unsupported source command for physical size: {kind}"
+
+private partial def graphProgramLabels (j : Json) (fuel : Nat) : Except String Nat := do
+  if fuel == 0 then throw "source callee size graph depth exceeded"
+  match j.getObjValAs? String "kind" with
+  | .error _ => j.getObjValAs? Nat "labels"
+  | .ok kind =>
+    if kind == "composed" then
+      return (← graphCommandSize (← j.getObjVal? "command") (fuel - 1)) + 1
+    else if kind == "lift" then
+      graphProgramLabels (← j.getObjVal? "source") (fuel - 1)
+    else if kind == "link" || kind == "link_into" then
+      return (← graphProgramLabels (← j.getObjVal? "left") (fuel - 1)) +
+        (← graphProgramLabels (← j.getObjVal? "right") (fuel - 1))
+    else throw s!"unsupported source program for physical size: {kind}"
+end
+
 mutual
 private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json := do
   if fuel == 0 then throwError "source program linking exceeds recursion bound"
@@ -144,14 +207,15 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
     throwError m!"source callee is not a closed BitProgram.Program: {tp}"
   let r ← number args[0]!
   let s ← number args[1]!
-  let labels ← number args[2]!
-  if r == 0 || s == 0 || labels == 0 || r > 256 ||
-      s > 4096 || labels > maxLabels then
-    throwError m!"source linked program dimensions unsupported: {r} {s} {labels}"
+  -- Do not normalize the type-level label Nat until a genuinely finite
+  -- leaf table is selected. Large compiled/linked programs derive labels
+  -- from the exact source constructors after structural decoding.
+  if r == 0 || s == 0 || r > 256 || s > 4096 then
+    throwError m!"source linked program dimensions unsupported: {r} {s}"
   match p.getAppFn with
   | .const n _ =>
     let a := p.getAppArgs
-    if n == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram &&
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram") &&
         a.size >= 3 then
       let source := a[a.size - 3]!
       let srcArgs := (← inferType source).getAppArgs
@@ -165,7 +229,7 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
         ("stacks", toJson (← sourcePortMap a[a.size - 1]! ss s)),
         ("source", ← programGraph source maxLabels (fuel - 1))
       ]
-    if n == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.linkInto &&
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.ProgramLinking.linkInto") &&
         a.size >= 6 then
       let left := a[a.size - 6]!
       let right := a[a.size - 5]!
@@ -187,19 +251,32 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
         ("left", ← programGraph left maxLabels (fuel - 1)),
         ("right", ← programGraph right maxLabels (fuel - 1))
       ]
-    -- Large source-defined compiled callees are preserved as commands, never
-    -- expanded into a Fin-indexed physical table. Small callees retain the
-    -- separately verified table path for stable finite fixtures.
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled &&
-        a.size == 5 && labels > 4096 then
-      return Json.mkObj [
-        ("kind", toJson "composed"),
-        ("r", toJson r), ("s", toJson s),
-        ("input", toJson (← fin a[3]!)),
-        ("output", toJson (← fin a[4]!)),
-        ("command", ← structured a[2]! maxLabels 512)
-      ]
-    if n == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link &&
+    -- Decode the source command *before* deciding whether it is finite.
+    -- A naive whnf of its type-level "size command + 1" diverges for the
+    -- original QueryStream's large linked subroutines. This branch only
+    -- materializes an instruction table when its structural size is small.
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled") &&
+        a.size == 5 then
+      let command ← structured a[2]! maxLabels 512
+      let sites ← match graphCommandSize command 512 with
+        | .ok n => pure n
+        | .error error => throwError m!"nested source-structured-size refused: {error}"
+      let labels := sites + 1
+      if labels > maxLabels then
+        throwError m!"nested source compiled label budget exceeded: {labels}"
+      if labels > 4096 then
+        return Json.mkObj [
+          ("kind", toJson "composed"),
+          ("r", toJson r), ("s", toJson s),
+          ("input", toJson (← fin a[3]!)),
+          ("output", toJson (← fin a[4]!)),
+          ("command", command)
+        ]
+      -- Maintain the independently checked concrete-table representation
+      -- for small leaf callees, including their true physical instruction
+      -- addresses and source-defined halt.
+      return (← boundedTable p (min maxLabels 4096))
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.ProgramLinking.link") &&
         a.size >= 2 then
       return Json.mkObj [
         ("kind", toJson "link"),
@@ -215,11 +292,10 @@ private partial def programGraph (p : Expr) (maxLabels fuel : Nat) : MetaM Json 
       | .defnInfo v =>
         match v.value.getAppFn with
         | .const head _ =>
-          if head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram ||
-             head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.linkInto ||
-             head == ``OAI.Algorithms.SubexponentialSAT.ProgramLinking.link ||
-             (head == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled &&
-              labels > 4096) ||
+          if head == (originalConst "OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram") ||
+             head == (originalConst "OAI.Algorithms.SubexponentialSAT.ProgramLinking.linkInto") ||
+             head == (originalConst "OAI.Algorithms.SubexponentialSAT.ProgramLinking.link") ||
+             head == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled") ||
              (v.value.getAppArgs.isEmpty && head != n) then
             return (← programGraph v.value maxLabels (fuel - 1))
         | _ => pure ()
@@ -259,7 +335,7 @@ private partial def structured (e : Expr) (maxLabels fuel : Nat) : MetaM Json :=
         | .lam _ _ (.lam _ _ step _) _ =>
           match step.getAppFn with
           | .const op _ =>
-            if op != ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq then
+            if op != (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq") then
               throwError "unsupported source Nat.rec: step is not sequencing"
             let stepArgs := step.getAppArgs
             if stepArgs.size != 4 then
@@ -286,20 +362,20 @@ private partial def structured (e : Expr) (maxLabels fuel : Nat) : MetaM Json :=
   match v.getAppFn with
   | .const n _ =>
     let a := v.getAppArgs
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.base then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.base") then
       return (← basic a[2]! maxLabels (fuel - 1))
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call") then
       return Json.mkObj [("kind", toJson "call"),
         ("program", ← programGraph a[3]! maxLabels 64)]
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq") then
       return Json.mkObj [("kind", toJson "seq"),
         ("first", ← structured a[2]! maxLabels (fuel - 1)),
         ("second", ← structured a[3]! maxLabels (fuel - 1))]
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.ite then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.ite") then
       return Json.mkObj [("kind", toJson "if"), ("test", toJson (← fin a[2]!)),
         ("yes", ← structured a[3]! maxLabels (fuel - 1)),
         ("no", ← structured a[4]! maxLabels (fuel - 1))]
-    if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.while then
+    if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.while") then
       return Json.mkObj [("kind", toJson "while"), ("test", toJson (← fin a[2]!)),
         ("body", ← structured a[3]! maxLabels (fuel - 1))]
     throwError m!"unsupported StructuredCalls command: {n}"
@@ -311,25 +387,26 @@ where
     match v.getAppFn with
     | .const n _ =>
       let a := v.getAppArgs
-      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.skip then
+      if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.skip") then
         return Json.mkObj [("kind", toJson "skip")]
-      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.atom then
+      if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.atom") then
         return Json.mkObj [("kind", toJson "atom"), ("opcode", toJson (← atom a[2]!))]
-      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.seq then
+      if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.seq") then
         return Json.mkObj [("kind", toJson "seq"),
           ("first", ← basic a[2]! maxLabels (fuel - 1)),
           ("second", ← basic a[3]! maxLabels (fuel - 1))]
-      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.ite then
+      if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.ite") then
         return Json.mkObj [("kind", toJson "if"), ("test", toJson (← fin a[2]!)),
           ("yes", ← basic a[3]! maxLabels (fuel - 1)),
           ("no", ← basic a[4]! maxLabels (fuel - 1))]
-      if n == ``OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.while then
+      if n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredProgram.Cmd.while") then
         return Json.mkObj [("kind", toJson "while"), ("test", toJson (← fin a[2]!)),
           ("body", ← basic a[3]! maxLabels (fuel - 1))]
       throwError m!"unsupported StructuredProgram command: {n}"
     | _ => throwError m!"source StructuredProgram command is not a constructor: {v}"
 
 end
+
 
 syntax (name := exportOriginalSourceGraph)
   "#export_original_source_graph " ident str str : command
@@ -363,47 +440,67 @@ elab_rules : command
       | _ => throwError m!"source program is not a definitional constant: {programName}"
     if diagnose then
       liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=infer-original-type"
-    let graph ← liftTermElabM do
+    -- Split pure term elaboration from CommandElabM diagnostic IO.
+    -- A type-level label normalization failure must have its own phase,
+    -- rather than being mistaken for the complete command traversal.
+    let (r, s) ← liftTermElabM do
       let tp ← inferType (mkConst programName)
       let a := tp.getAppArgs
       if a.size != 3 then throwError m!"expected a closed BitProgram.Program: {tp}"
       let r ← number a[0]!
       let s ← number a[1]!
-      let l ← number a[2]!
-      if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
-        throwError m!"source machine out of bounded test dimensions: {r} {s} {l}"
-      -- A compiled command and a linked physical Program are both legitimate
-      -- top-level entrypoints. Preserve their exact source label spaces; never
-      -- wrap a linked root in an extra Cmd.call (which adds a halt site).
-      let (kind, field, value) ←
-        match body.getAppFn with
-        | .const n _ =>
-          if n == ``OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled then
-            let args := body.getAppArgs
-            if args.size != 5 then
-              throwError m!"unexpected compiled command arity {args.size}"
-            let command ← structured args[2]! maxLabels 512
-            pure ("original-structured-source-v1", "command", command)
-          else
-            let program ← programGraph (mkConst programName) maxLabels 64
-            pure ("original-linked-source-v1", "program", program)
-        | _ =>
-          let program ← programGraph (mkConst programName) maxLabels 64
-          pure ("original-linked-source-v1", "program", program)
-      let input ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 0
-        (mkConst programName))
-      let output ← fin (mkProj ``OAI.Algorithms.SubexponentialSAT.BitProgram.Program 1
-        (mkConst programName))
-      return Json.mkObj [
-        ("kind", toJson kind),
-        ("source_commit", toJson "4eaee87548250b2682affda7d05d947c05554bae"),
-        ("source_blob", toJson sourceBlob),
-        ("declaration", toJson (toString programName)),
-        ("id", toJson label),
-        ("abi", Json.mkObj [("r", toJson r), ("s", toJson s),
-          ("labels", toJson l), ("input", toJson input), ("output", toJson output)]),
-        (field, value)
-      ]
+      return (r, s)
+    -- The exact source root decides which length calculation is legitimate.
+    -- For StructuredCalls.compiled, infer the physical label count from its
+    -- original command constructors. Normalizing its type-level size would
+    -- unfold a huge constant expression, exceeding MetaM recursion depth.
+    let compiledRoot := match body.getAppFn with
+      | .const n _ => n == (originalConst "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled")
+      | _ => false
+    if diagnose then
+      liftIO <| IO.eprintln
+        (if compiledRoot then
+          "SOURCE_GRAPH_PHASE=decode-original-structured-command"
+         else
+          "SOURCE_GRAPH_PHASE=normalize-type-level-label-count")
+    let (kind, field, value, input, output, l) ← liftTermElabM do
+      if compiledRoot then
+        let args := body.getAppArgs
+        if args.size != 5 then
+          throwError m!"unexpected compiled command arity {args.size}"
+        let command ← structured args[2]! maxLabels 512
+        let labels ← match graphCommandSize command 512 with
+          | .ok n => pure (n + 1)
+          | .error error => throwError m!"source-structured-size refused: {error}"
+        let input ← fin args[3]!
+        let output ← fin args[4]!
+        pure ("original-structured-source-v1", "command", command,
+          input, output, labels)
+      else
+        let program ← programGraph (mkConst programName) maxLabels 64
+        let l ← match graphProgramLabels program 512 with
+          | .ok n => pure n
+          | .error error => throwError m!"source-linked-size refused: {error}"
+        let input ← fin (mkProj (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Program") 0
+          (mkConst programName))
+        let output ← fin (mkProj (originalConst "OAI.Algorithms.SubexponentialSAT.BitProgram.Program") 1
+          (mkConst programName))
+        pure ("original-linked-source-v1", "program", program,
+          input, output, l)
+    if diagnose then
+      liftIO <| IO.eprintln s!"SOURCE_GRAPH_PHASE=source-physical-labels-derived labels={l}"
+    if r == 0 || s == 0 || l == 0 || r > 256 || s > 4096 || l > maxLabels then
+      throwError m!"source machine out of bounded test dimensions: {r} {s} {l}"
+    let graph := Json.mkObj [
+      ("kind", toJson kind),
+      ("source_commit", toJson "4eaee87548250b2682affda7d05d947c05554bae"),
+      ("source_blob", toJson sourceBlob),
+      ("declaration", toJson (toString programName)),
+      ("id", toJson label),
+      ("abi", Json.mkObj [("r", toJson r), ("s", toJson s),
+        ("labels", toJson l), ("input", toJson input), ("output", toJson output)]),
+      (field, value)
+    ]
     if diagnose then
       liftIO <| IO.eprintln "SOURCE_GRAPH_PHASE=emit-complete-source-graph"
     liftIO <| IO.println graph.compress

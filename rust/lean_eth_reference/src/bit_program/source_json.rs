@@ -124,6 +124,14 @@ enum LinkedProgram {
 #[derive(Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 enum Command {
+    /// A named original declaration reached by kernel-only source inspection.
+    /// This is an IR obligation, not a runtime instruction or fallback.
+    /// Only the same canonical lowering function can eventually admit it.
+    #[serde(rename = "unresolved")]
+    Unresolved {
+        declaration: String,
+        source_kind: String,
+    },
     #[serde(rename = "skip")]
     Skip,
     #[serde(rename = "atom")]
@@ -151,6 +159,22 @@ enum Command {
 
 fn invalid(message: &str) -> Error {
     Error::Invalid(format!("original source graph: {message}"))
+}
+
+/// A definition reference remains an explicit source obligation. Neither
+/// interpreter lowering nor physical/AOT lowering may substitute a default
+/// instruction, and both must report the same refusal.
+fn unresolved_source(declaration: &str, source_kind: &str) -> Error {
+    if declaration.is_empty()
+        || declaration.len() > 512
+        || source_kind.is_empty()
+        || source_kind.len() > 64
+    {
+        return invalid("malformed unresolved source declaration");
+    }
+    invalid(&format!(
+        "unresolved source declaration cannot be executed: {declaration} ({source_kind})"
+    ))
 }
 
 fn finite(raw: &str, bound: usize) -> Result<usize, Error> {
@@ -563,6 +587,10 @@ fn lower_native_block(
     }
     *remaining -= 1;
     let (size, kind) = match command {
+        Command::Unresolved {
+            declaration,
+            source_kind,
+        } => return Err(unresolved_source(&declaration, &source_kind)),
         Command::Skip => (0, NativeBlockKind::Skip),
         Command::Atom { opcode } => (1, NativeBlockKind::Atom(parse_source_atom(&opcode, r, s)?)),
         Command::Call { program } => {
@@ -801,6 +829,10 @@ fn lower<const R: usize, const S: usize>(
     }
     *remaining -= 1;
     match command {
+        Command::Unresolved {
+            declaration,
+            source_kind,
+        } => Err(unresolved_source(&declaration, &source_kind)),
         Command::Skip => Ok(Block::skip()),
         Command::Atom { opcode } => Block::atom(parse_atom::<R, S>(&opcode)?),
         Command::Call {
@@ -998,6 +1030,34 @@ mod native_interning_tests {
                 code: vec!["halt".into(), "goto:0".into()],
             }),
         }
+    }
+
+    /// Same typed native command IR as the eventual executable graph, but
+    /// every source reference must be resolved before calling the backend.
+    #[test]
+    fn source_prefix_ref_is_typed_but_lowering_refuses_execution() {
+        let prefix = r#"{"kind":"seq","first":{"kind":"unresolved","declaration":"OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh","source_kind":"definition"},"second":{"kind":"seq","first":{"kind":"unresolved","declaration":"OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.nodes","source_kind":"definition"},"second":{"kind":"unresolved","declaration":"OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command","source_kind":"definition"}}}"#;
+        let command: Command = serde_json::from_str(prefix).unwrap();
+        let mut remaining = MAX_NODES;
+        let mut callees = HashMap::new();
+        let err = lower::<40, 896>(command, &mut remaining, &mut callees)
+            .expect_err("unresolved source references must refuse lowering");
+        assert!(
+            err.to_string().contains("HighQueryAdapter.prepareHigh"),
+            "{err}"
+        );
+        let nested: Command = serde_json::from_str(
+            r#"{"kind":"unresolved","declaration":"OAI.Unexpanded","source_kind":"definition"}"#,
+        )
+        .unwrap();
+        let mut native_remaining = MAX_NODES;
+        let err = lower_native_block(nested, 40, 896, &mut native_remaining, 0)
+            .expect_err("physical lowering must refuse unresolved source");
+        assert!(err.to_string().contains("OAI.Unexpanded"), "{err}");
+        let forged = r#"{"kind":"unresolved","declaration":"OAI.Ref","source_kind":"definition","resolved":true}"#;
+        assert!(serde_json::from_str::<Command>(forged).is_err());
+        let executable = r#"{"kind":"seq","first":{"kind":"skip"},"second":{"kind":"skip"}}"#;
+        assert!(serde_json::from_str::<Command>(executable).is_ok());
     }
 
     #[test]

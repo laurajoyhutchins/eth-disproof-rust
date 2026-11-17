@@ -69,6 +69,19 @@ lake update
   echo "Wrong Mathlib source pin" >&2; exit 1;
 }
 lake build "$MODULE"
+# The computational graph examines actual elaborated definition bodies.
+# This runs against the same pinned, compiled environment as the proof closure.
+if [[ "$SOURCE" == openai ]]; then
+  COMPUTE_ROOTS=(OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.command)
+else
+  COMPUTE_ROOTS=(ExplicitCost.recursion ExplicitCost.levelSolver ExplicitCost.solver ExplicitCost.patternValue)
+fi
+lake env lean --run "$HERE/ComputeExtract.lean" "$SOURCE" "$MODULE" \
+  "$OUT/$SOURCE-computation.jsonl" "${COMPUTE_ROOTS[@]}"
+python3 "$HERE/validate_computation.py" "$OUT/$SOURCE-computation.jsonl" \
+  --output "$OUT/$SOURCE-computation-view.json" \
+  --summary "$OUT/$SOURCE-computation-summary.json" \
+  --source-sha "$SHA" --mathlib-sha "$MATHLIB" --lean-version "$VERSION"
 lake env lean --run "$HERE/Extract.lean" "$MODULE" "$OUT/$SOURCE.jsonl" "${ROOTS[@]}"
 python3 "$HERE/validate.py" "$OUT/$SOURCE.jsonl" \
   --summary "$OUT/$SOURCE-summary.json" \

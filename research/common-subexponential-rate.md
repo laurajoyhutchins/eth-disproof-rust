@@ -56,34 +56,33 @@ The new Lean lemma `IndependentETH.PacketSourceRate.source_depth_exponent_bound`
 
 It discharges the summation of the per-depth exponent **if** the source-specific per-level budget has been proved. It does not discharge the cost of each node. No original-packet end-to-end time theorem or runtime implementation is claimed.
 
-### The original Cauchy grid and its normalization boundary
+### The original Cauchy grid: scalar normalization now kernel-checked
 
-The actual grid is `S = {-L, …, L-1}` where `L = 2^a` and `α = 2^(a+1) = 2L`. New Lean files now distinguish the parts that have been checked from the parts still needed:
+The pinned October 25 appendix fixes the grid `S={-L,…,L-1}`, `L=2^a`, `α=2^(a+1)=2L`. Its coefficient ring is `O=ℤ_(2)[U]/(f)`. The proof now works in that concrete two-local ring shape, rather than treating its integrality assertion as a premise.
 
-| File | Kernel-checked result | Missing source attachment |
-| --- | --- | --- |
-| `IndependentCauchySourceGrid.lean` | Literal source interval; `|t-q|<α` for grid points; exact factorization `C(t+αz)=αz·∏_{q≠t}(t-q+αz)`; nonzero `D(0)` product; `S ≃ Fin α ≃ ZMod α`; center-independent residue divisibility counts; **exact reindexing of the original derivative product** | Identify the integer differences' two-local quotients `α/(t-q)` inside the actual coefficient ring |
-| `IndependentCauchyBinomialParity.lean` | For every `m` and `k<2^m`, `((2^m-1).choose k)%2=1`, by the imported Mathlib Lucas congruence | Joined to the actual grid in `IndependentCauchyFactorial.lean` |
-| `IndependentCauchyFactorial.lean` | Exact signed factorial identity for every consecutive grid; **source-specific** `D(t)=(-1)^(n-k) k! (n-k)!` and `D(t)·choose(n,k)=(-1)^(n-k)n!`; Lucas-derived `Odd (choose(n,k))` and `IsUnit (choose(n,k) : ZMod (2^p))` at every precision | Construct the complete two-local polynomial normalization, not only its binomial unit denominator |\n| `IndependentCauchyTileMode.lean` | Exact finite geometric inverse, reconstruction, uniqueness and `2^(b+1)` coefficient divisibility for a normalized unit denominator; odd denominators are constructively invertible in a ring with `2^p=0` | Identify the normalized numerator and denominator with the literal `W_xy(T)` inside `A_p` |
-| `IndependentPacketModeSelection.lean` | A fixed mode-exponent coefficient retains `2^(Σ_Z w_Z β_Z)`, and heavy coefficients vanish | Identify source row-polynomial coefficients with those selected-mode sums |
+| Source module under `eth/proofs/` | Kernel-checked result |
+| --- | --- |
+| `IndependentCauchySourceGrid.lean` | Literal source interval, exact root product and grid-index bijection `S ≃ Fin α ≃ ZMod α`, difference bound `|t-q|<α` and source derivative-product reindexing |
+| `IndependentCauchyBinomialParity.lean` | Lucas parity: every `choose(2^m-1,k)` is odd for `k<2^m` |
+| `IndependentCauchyFactorial.lean` | Source-specific derivative products `D(t)=(-1)^(n-k)k!(n-k)!`, `D(t)·choose(n,k)=(-1)^(n-k)n!` with `n=2L-1`, `k=t+L`; each binomial is a unit modulo `2^p` |
+| `IndependentCauchyTwoLocal.lean` | Every nonzero source difference `t-q=2^v d` with `v≤a` and odd `d`; a constructive `w` with `(t-q)w=α`, first in `2^p=0` rings and then in every odd-local ring; `C(t+αz)=αD(t)N_t(z)` |
+| `IndependentCauchyNormalization.lean` | Since the source binomial is odd, `D(t)=D(0)u_t` without cancellation of the generally nonunit `D(0)`; for every odd-local ring `R`, a polynomial `P_t∈R[X]` satisfies `C(t+αX)=αD(0)P_t(X)` |
+| `IndependentCauchyLocalRing.lean` | Construct `ℤ_(2)` as localization at all odd integers and `O_f=ℤ_(2)[U]/(f)`; prove all odd integers become units and instantiate `C(t+αX)=αD(0)P_t(X)` in `O_f[X]` for every `f` |
+| `IndependentCauchyFormalDerivative.lean` | Define the actual source polynomial as the nodal product; prove it agrees with `C` and that `eval₀ (derivative C)=D(0)` exactly |
+| `IndependentCauchyTileMode.lean` | The normalized crossing-tile finite inverse, its uniqueness and degree-`b` factor `2^(b+1)` in a `2^p=0` ring |
+| `IndependentPacketModeSelection.lean` | Fixed-mode-exponent aggregation retains `2^(Σ_Z w_Z β_Z)`, including all row selections, with heavy coefficients vanishing modulo `2^p` |
 
-There is a direct factorial reduction of the missing Cauchy normalization. Put `n=2L-1` and `k=t+L`, with `0≤k≤n`. The integer product at a source grid point has the mathematical identity
-
+In particular, the source's fixed-denominator normalization is no longer merely a rational calculation:
 ```text
-D(t) := ∏_{q∈S, q≠t} (t-q) = (-1)^(n-k) · k! · (n-k)!
-D(t)/D(0) = (-1)^|t| · choose(n,L)/choose(n,k).
+D(t) = ∏_{q∈S, q≠t} (t-q)
+C(t+αX) = α·D(0)·P_t(X)     in O_f[X]
+D(0) = (d/dT C(T))|_{T=0}  over ℤ.
 ```
+The quotient polynomial is constructed by multiplying finite, explicitly integral factors. Its proof never cancels a nonunit denominator in `O_f`. The `O_f` theorem is valid for every polynomial `f`; the manuscript's additional monicity and mod-two irreducibility hypotheses are needed elsewhere, not for this scalar divisibility result.
 
-The **kernel-checked** parity theorem verifies the oddness of both binomial coefficients (because `n=2^(a+1)-1`). The imported source-specific theorem now proves that the relevant binomial coefficient is a unit in `ZMod (2^p)` for every `p`. The displayed rational ratio is consequently a unit in `ℤ_(2)`, but the latter fact has not yet been expressed as a Lean theorem in a concrete 2-local rational ring. For every distinct pair `t,q∈S`, the checked bound `0<|t-q|<α` implies that `α/(t-q)` is two-locally integral. Consequently, over the fraction field the normalized numerator has the exact factorization
+**Remaining attachment to the original recursive algorithm.** The source defines the entrywise Cauchy weight `W_xy(T)=C(T)/(C'(0)(T-(y-x)))` in the fraction field. The just-proved scalar normalization does **not** by itself establish integrality of those punctured products after removing the `T-(y-x)` factor. Prove `W_xy(t+αX)∈O[X]` directly, including the cases `y-x=t` and `y-x≠t`, identify the resulting crossing-tile coefficients with the verified `IndependentCauchyTileMode` series, and construct the original `A_p` quotient and its coefficient maps.
 
-```text
-C(t+αz) / (α C'(0))
-  = z · [D(t)/D(0)] · ∏_{q∈S, q≠t} (1 + αz/(t-q)).
-```
-
-Every displayed factor is then two-locally integral. This is a **mathematical derivation** of the source's scalar-integrality claim, not yet a single Lean theorem. The actual derivative product, its signed factorial form, its exact binomial identity, and odd binomial units modulo all powers of two are now **proved** in Lean. Still missing are a formal proof that every `α/(t-q)` lies in the two-local integers, construction of `ℤ_(2)` (or the appropriate localization) and the actual `O`/`A_p` coefficient embeddings, and a theorem assembling those verified factors into the original normalized polynomial. The raw product `D(t)` is the source's derivative-at-root formula; formal identification with `Polynomial.derivative` is not separately claimed. In particular, do not replace this with the weaker fact that a generic finite mode series can be truncated.
-
-Once that literal `W_xy` bridge exists, the original packet-to-child coefficient identity and per-node work bound are still separate obligations. Completing scalar integrality alone is not a proof of the source's subexponential algorithm.
+Even after those links, the independent group-child contraction identity, restricted-partition enumeration and bit-operation/peak-space bounds remain separate. The verified scalar lemma is not a full ETH disproof or a cost-preserving OpenAI/Anthropic algorithm equivalence.
 
 The equality through a `2^M`-label Anthropic network is **disqualified as a cost-preserving bridge**. To prove the *same overall subexponential result via packet-to-piece correspondence*, one must construct a replacement with `2^{o(s)}` **total work**, formally bound its table creation and label enumeration (not just its final rank), and prove its recursive contraction identity in the actual coefficient ring. Showing independently that two different original native machines each run in `2^{o(n)}` is valid, but does not establish this stronger algorithm-to-algorithm statement.
 

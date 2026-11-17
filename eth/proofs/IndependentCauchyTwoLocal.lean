@@ -110,21 +110,20 @@ theorem source_difference_odd_is_unit
   exact one_add_even_is_unit p hmod (k : R)
 
 /--
-Construct the quotient of α by an actual nonzero difference inside
-the target coefficient ring. This does not cancel an element
-which may be a nonunit: it explicitly factors it as 2^v times
-a *proved odd unit*.
+Inverting odd integers is the *only* ring-theoretic requirement for
+the source Cauchy quotient. It holds in the original two-local ring
+O, not merely in its finite precision quotients.
 -/
-theorem source_difference_divides_alpha
+theorem source_difference_divides_alpha_of_odd_units
     {R : Type*} [CommRing R]
-    (a p : ℕ) (t q : ℤ)
+    (a : ℕ) (t q : ℤ)
     (ht : t ∈ sourceGrid a) (hq : q ∈ sourceGrid a)
     (htq : t ≠ q)
-    (hmod : (2 : R) ^ p = 0) :
+    (hoddUnits : ∀ d : ℤ, Odd d → IsUnit (d : R)) :
     ∃ w : R, ((t - q : ℤ) : R) * w = (sourceAlpha a : R) := by
   obtain ⟨v, d, hv, hd, hdiff⟩ :=
     source_difference_two_factor a t q ht hq htq
-  obtain ⟨u, hu⟩ := source_difference_odd_is_unit p hmod d hd
+  obtain ⟨u, hu⟩ := hoddUnits d hd
   refine ⟨(2 : R) ^ (a + 1 - v) * ((u⁻¹ : Rˣ) : R), ?_⟩
   have he : v + (a + 1 - v) = a + 1 := by omega
   have hdiffR : ((t - q : ℤ) : R) = (2 : R) ^ v * (d : R) := by
@@ -140,6 +139,22 @@ theorem source_difference_divides_alpha
           ring
     _ = (2 : R) ^ (a + 1) := by rw [← pow_add, he]; simp
     _ = (sourceAlpha a : R) := by simp [sourceAlpha]
+
+/--
+Construct the quotient of α by an actual nonzero difference inside
+the target coefficient ring. This does not cancel an element
+which may be a nonunit: it explicitly factors it as 2^v times
+a *proved odd unit*.
+-/
+theorem source_difference_divides_alpha
+    {R : Type*} [CommRing R]
+    (a p : ℕ) (t q : ℤ)
+    (ht : t ∈ sourceGrid a) (hq : q ∈ sourceGrid a)
+    (htq : t ≠ q)
+    (hmod : (2 : R) ^ p = 0) :
+    ∃ w : R, ((t - q : ℤ) : R) * w = (sourceAlpha a : R) := by
+  exact source_difference_divides_alpha_of_odd_units a t q ht hq htq
+    (fun d hd => source_difference_odd_is_unit p hmod d hd)
 
 /--
 If every factor of a finite product is divisible by its matching
@@ -170,10 +185,10 @@ is divisible by α times its *actual center derivative product*.
 It is proved for every commutative 2^p-torsion coefficient ring,
 and applies to polynomial rings over such quotients as well.
 -/
-theorem source_cauchy_product_divides_alpha_derivative
+theorem source_cauchy_product_divides_alpha_derivative_of_odd_units
     {R : Type*} [CommRing R]
-    (a p : ℕ) (t : ℤ) (ht : t ∈ sourceGrid a)
-    (z : R) (hmod : (2 : R) ^ p = 0) :
+    (a : ℕ) (t : ℤ) (ht : t ∈ sourceGrid a)
+    (z : R) (hoddUnits : ∀ d : ℤ, Odd d → IsUnit (d : R)) :
     ∃ w : R,
       cauchyProduct a ((t : R) + (sourceAlpha a : R) * z) =
         (sourceAlpha a : R) * (sourceDerivativeAt a t : R) * w := by
@@ -188,7 +203,7 @@ theorem source_cauchy_product_divides_alpha_derivative
       intro heq
       exact (Finset.mem_erase.mp hq).1 heq.symm
     obtain ⟨w, hw⟩ :=
-      source_difference_divides_alpha a p t q ht hqS htq hmod
+      source_difference_divides_alpha_of_odd_units a t q ht hqS htq hoddUnits
     refine ⟨1 + w * z, ?_⟩
     calc
       (t : R) - (q : R) + (sourceAlpha a : R) * z =
@@ -216,10 +231,23 @@ theorem source_cauchy_product_divides_alpha_derivative
       rw [hw, hD]
       ring
 
+/-- Finite precision specialization of the generic two-local factorization. -/
+theorem source_cauchy_product_divides_alpha_derivative
+    {R : Type*} [CommRing R]
+    (a p : ℕ) (t : ℤ) (ht : t ∈ sourceGrid a)
+    (z : R) (hmod : (2 : R) ^ p = 0) :
+    ∃ w : R,
+      cauchyProduct a ((t : R) + (sourceAlpha a : R) * z) =
+        (sourceAlpha a : R) * (sourceDerivativeAt a t : R) * w := by
+  exact source_cauchy_product_divides_alpha_derivative_of_odd_units a t ht z
+    (fun d hd => source_difference_odd_is_unit p hmod d hd)
+
 #print axioms IndependentETH.CauchyTwoLocal.bounded_natural_two_factor
 #print axioms IndependentETH.CauchyTwoLocal.source_difference_two_factor
 #print axioms IndependentETH.CauchyTwoLocal.source_difference_odd_is_unit
+#print axioms IndependentETH.CauchyTwoLocal.source_difference_divides_alpha_of_odd_units
 #print axioms IndependentETH.CauchyTwoLocal.source_difference_divides_alpha
+#print axioms IndependentETH.CauchyTwoLocal.source_cauchy_product_divides_alpha_derivative_of_odd_units
 #print axioms IndependentETH.CauchyTwoLocal.source_cauchy_product_divides_alpha_derivative
 
 end IndependentETH.CauchyTwoLocal

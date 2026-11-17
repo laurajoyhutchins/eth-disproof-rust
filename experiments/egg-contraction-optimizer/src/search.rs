@@ -128,6 +128,7 @@ impl Search<'_> {
 /// When complete, optimal only among *single-representative-per-e-class*
 /// choices in this finite e-graph under the operation-count cost function.
 /// Incomplete saturation or a search budget never becomes an optimality claim.
+#[derive(Debug)]
 pub struct Report {
     pub baseline: Plan,
     pub optimized: Plan,

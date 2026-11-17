@@ -230,7 +230,8 @@ pub fn compile_pair(
 /// Internal states 00,01,10 contribute b,c,third respectively; 11 is
 /// forbidden by (!u OR !v).
 pub fn three_branch_region(third: &'static str) -> Region {
-    use Literal::{negative as neg, positive as pos};
+    let neg = Literal::negative;
+    let pos = Literal::positive;
     Region {
         internal: vec!["u", "v"],
         boundary: vec!["b", "c", "d", "e"],
@@ -254,6 +255,7 @@ pub struct BoundaryReceipt {
     pub weighted_outer_context_checked: bool,
 }
 
+#[derive(Debug)]
 pub struct SatReport {
     pub source_expression: String,
     pub optimization: Report,
@@ -323,8 +325,8 @@ pub fn optimize_and_verify(
         // weights, but we independently check these two mixtures as well.
         for i in 0..2 {
             let weight = if (mask + i) % 3 == 0 { -2 } else if (mask + i) % 3 == 1 { 0 } else { 3 };
-            weighted_oracle[i] += &expected[i] * weight;
-            weighted_extracted[i] += &extracted.outputs[i] * weight;
+            weighted_oracle[i] += &expected[i] * BigInt::from(weight);
+            weighted_extracted[i] += &extracted.outputs[i] * BigInt::from(weight);
         }
     }
     if weighted_oracle != weighted_extracted {

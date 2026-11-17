@@ -63,3 +63,41 @@ against an unchanged exact #SAT oracle. Include coefficient bit widths,
 peak live bytes and certificate-checking overhead.
 
 Notebook: [Equality saturation and certified graph extraction](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/concepts/equality-saturation-and-extraction.md).
+
+
+## Source-derived finite CNF boundary experiment
+
+The `sat` module compiles **actual CNF clauses**, rather than handwritten
+arithmetic polynomials, to a two-output boundary contraction. The local
+compiler enumerates all internal Boolean assignments and leaves boundary
+variables symbolic. This is exponential in the number of internal variables,
+so it is **not a faster general #SAT constructor**.
+
+The fixture uses internal variables `u,v`, boundary `b,c,d,e`, and two
+regions distinguished by the last literal (`d` versus `e`). Each region
+contains four CNF clauses: `(!u | !v)`, `(u | v | b)`,
+`(u | !v | c)`, and `(!u | v | third)`. Its four internal states
+contribute `b`, `c`, `third`, and zero, respectively. The generated
+boundary polynomials are `b+(c+d)` and `(b+c)+e`.
+The two regions agree at some boundary values and disagree at others;
+agreement at a single boundary assignment would be unsound.
+
+The oracle enumerates CNF truth assignments independently, without
+using the arithmetic compiler or egg. It checks **all 16 boundary
+assignments** and two signed weighted outer-context sums. This tests
+the entire interface rather than one closed count.
+
+The fixture targets a **4 to 3** unique-addition DAG reduction through
+equality saturation and cross-output extraction. Across all 16 boundary
+assignments, this is **64 to 48** arithmetic evaluations of the
+already-constructed boundary functions. The CLI also prints a byte-work
+*proxy*, not a true bit-operation or runtime speedup. The costs of CNF
+compilation, search, checking and memory must all enter any end-to-end
+claim.
+
+Run the test and run commands above. Enumeration budgets and egg search
+limits are explicit and cause refusals rather than partial truth tables.
+Optimization equality is independently checked as an integer polynomial
+identity, which is stronger than equality only on Boolean boundaries.
+There is no Lean kernel certificate, no formalized compilation theorem,
+and no integration with the original ETH recursion.

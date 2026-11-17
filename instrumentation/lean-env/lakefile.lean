@@ -14,3 +14,6 @@ require mathlib from git
 -- Imported unchanged from Anthropic's pinned Groundwork/Net modules.
 -- Build only the explicit network dependency closure in this test workflow.
 lean_lib Groundwork
+
+-- The small, reusable arithmetic-circuit semantics module.
+lean_lib ACC

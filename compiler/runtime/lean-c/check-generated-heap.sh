@@ -15,6 +15,25 @@ mkdir -p "$out"
 # Kernel-check the abstract source-credit / physical-count simulation
 # before compiling expensive generated Rust and Lean C integrations.
 lean -o proofs/ReaderShellSimulation.olean proofs/ReaderShellSimulation.lean | tee "$out/source-shell-simulation-lean.txt"
+lean -o proofs/ReaderCReleaseSemantics.olean proofs/ReaderCReleaseSemantics.lean \
+  | tee "$out/reader-c-release-axioms.txt"
+python3 - "$out/reader-c-release-axioms.txt" <<'PY'
+import re, sys
+from pathlib import Path
+raw=Path(sys.argv[1]).read_text()
+allowed={"propext","Quot.sound","Classical.choice"}
+for name in ("store_fresh_does_not_increment",
+             "shell_del_preserves_child_rc",
+             "last_parent_release_drops_unretained_child",
+             "last_parent_release_preserves_retained_child",
+             "last_parent_release_fresh_stamp"):
+    label=re.escape(f"'ReaderCReleaseSemantics.{name}'")
+    m=re.search(label+r" (does not depend on any axioms|depends on axioms: \[([^\]]*)\])",raw)
+    if not m: raise SystemExit("Missing C release branch proof receipt: "+name)
+    used=set((m.group(2) or "").split(", "))-{""}
+    if not used <= allowed: raise SystemExit(f"Unapproved release axioms in {name}: {sorted(used-allowed)}")
+print("c_release_selected_branches=KERNEL_MODEL_PROVED")
+PY
 # The proof may use only Lean's built-in logical axioms. The kernel
 # already rejects unsolved goals; a separate provenance gate rejects
 # sorryAx, custom axioms, and missing theorem audit lines.

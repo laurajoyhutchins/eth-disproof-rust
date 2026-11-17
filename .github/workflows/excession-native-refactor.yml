@@ -68,7 +68,12 @@ jobs:
           # not the Python/JavaScript static module resolver.
           RA="$(rustup which --toolchain 1.99.1 rust-analyzer)"
           SCIP="$RUNNER_TEMP/scip-cli/scip"
-          PREFIX=compiler
+          # Source roots differ only during the directory migration.
+          BASE_PREFIX=compiler
+          if ! git cat-file -e "${BASE_SHA}:compiler/Cargo.toml" 2>/dev/null; then
+            BASE_PREFIX=rust/native_lean_backend
+          fi
+          HEAD_PREFIX=compiler
           # Run both pinned revisions in the SAME detached worktree path.
           # SCIP project_root is a physical URI; a different checkout directory
           # cannot be rebound to another repository without losing provenance.
@@ -76,10 +81,10 @@ jobs:
           git worktree add --detach "$ANALYSIS_REPO" "$BASE_SHA"
           test "$(git -C "$ANALYSIS_REPO" rev-parse HEAD)" = "$BASE_SHA"
           "$TOOL" analyze rust --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
-            --source-prefix "$PREFIX" --trusted-local true \
+            --source-prefix "$BASE_PREFIX" --trusted-local true \
             --rust-analyzer "$RA" --scip "$SCIP" > "$OUT/native-rust-base.json"
           (
-            cd "$ANALYSIS_REPO/$PREFIX"
+            cd "$ANALYSIS_REPO/$BASE_PREFIX"
             CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$OUT/base-target" \
               "$RA" scip "$PWD" --output "$OUT/base.scip"
           )
@@ -87,10 +92,10 @@ jobs:
           git -C "$ANALYSIS_REPO" checkout --detach "$HEAD_SHA"
           test "$(git -C "$ANALYSIS_REPO" rev-parse HEAD)" = "$HEAD_SHA"
           "$TOOL" analyze rust --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
-            --source-prefix "$PREFIX" --trusted-local true \
+            --source-prefix "$HEAD_PREFIX" --trusted-local true \
             --rust-analyzer "$RA" --scip "$SCIP" > "$OUT/native-rust-head.json"
           (
-            cd "$ANALYSIS_REPO/$PREFIX"
+            cd "$ANALYSIS_REPO/$HEAD_PREFIX"
             CARGO_NET_OFFLINE=true CARGO_TARGET_DIR="$OUT/head-target" \
               "$RA" scip "$PWD" --output "$OUT/head.scip"
           )
@@ -105,28 +110,28 @@ jobs:
           # subsequent agent queries consume these native relationships.
           DB="$OUT/native-evidence.sqlite"
           "$TOOL" refactor scip-ingest --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
-            --source-prefix "$PREFIX" --index "$OUT/base-index.json" --db "$DB" \
+            --source-prefix "$BASE_PREFIX" --index "$OUT/base-index.json" --db "$DB" \
             > "$OUT/ingest-base.json"
           "$TOOL" refactor scip-ingest --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
-            --source-prefix "$PREFIX" --index "$OUT/head-index.json" --db "$DB" \
+            --source-prefix "$HEAD_PREFIX" --index "$OUT/head-index.json" --db "$DB" \
             > "$OUT/ingest-head.json"
           "$TOOL" refactor scip-suggest --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
-            --source-prefix "$PREFIX" --index "$OUT/head-index.json" \
+            --source-prefix "$HEAD_PREFIX" --index "$OUT/head-index.json" \
             > "$OUT/native-refactor-candidates.json"
           "$TOOL" refactor scip-audit --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
-            --source-prefix "$PREFIX" --index "$OUT/head-index.json" \
+            --source-prefix "$HEAD_PREFIX" --index "$OUT/head-index.json" \
             --report "$OUT/native-refactor-candidates.json" > "$OUT/native-refactor-audit.json"
           "$TOOL" agent locate --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
             --task 'Lean compiler IR Reader decoding, expression lowering, constructor cases and module dependency closure' \
-            --roots compiler/src --index-segments 256 --limit 20 --json > "$OUT/locate.json"
+            --roots $BASE_PREFIX/src --index-segments 256 --limit 20 --json > "$OUT/locate.json"
           "$TOOL" agent context --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
-            --focus compiler/src/lib.rs,compiler/primitive-registry.tsv,compiler/runtime-primitive-registry.tsv \
-            --roots compiler/src --db "$DB" --limit 32 > "$OUT/context.json"
+            --focus $BASE_PREFIX/src/lib.rs,$BASE_PREFIX/primitive-registry.tsv,$BASE_PREFIX/runtime-primitive-registry.tsv \
+            --roots $BASE_PREFIX/src --db "$DB" --limit 32 > "$OUT/context.json"
           "$TOOL" agent context --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
-            --focus compiler/src/lib.rs,compiler/src/reader/mod.rs,compiler/src/reader/decode.rs,compiler/src/reader/expr.rs,compiler/src/reader/cases.rs,compiler/src/reader/body.rs,compiler/src/reader/module.rs \
-            --roots compiler/src --db "$DB" --limit 32 > "$OUT/context-candidate.json"
+            --focus $HEAD_PREFIX/src/lib.rs,$HEAD_PREFIX/src/reader/mod.rs,$HEAD_PREFIX/src/reader/decode.rs,$HEAD_PREFIX/src/reader/expr.rs,$HEAD_PREFIX/src/reader/cases.rs,$HEAD_PREFIX/src/reader/body.rs,$HEAD_PREFIX/src/reader/module.rs \
+            --roots $HEAD_PREFIX/src --db "$DB" --limit 32 > "$OUT/context-candidate.json"
           "$TOOL" agent verify --repo "$ANALYSIS_REPO" --base "$BASE_SHA" \
-            --candidate "$HEAD_SHA" --roots compiler/src --db "$DB" --limit 32 > "$OUT/verify.json"
+            --candidate "$HEAD_SHA" --roots $HEAD_PREFIX/src --db "$DB" --limit 32 > "$OUT/verify.json"
           jq -e '.schema == "excession.agent-context.v1"' "$OUT/context.json" > /dev/null
           jq -e '.schema == "excession.agent-context.v1"' "$OUT/context-candidate.json" > /dev/null
           jq -e '.schema == "excession.agent-verification.v1"' "$OUT/verify.json" > /dev/null

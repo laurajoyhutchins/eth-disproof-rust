@@ -14,6 +14,16 @@ out="$(pwd)/artifacts/lean-c-generated-heap"
 mkdir -p "$out"
 rm -rf examples/lean-c-heap-package
 lean -o examples/RuntimeHeapKernels.olean examples/RuntimeHeapKernels.lean
+# Examine the compiler's actual final IR for source-derived reset/reuse
+# candidates. The probe records negative findings instead of inventing
+# a final IR del or asserting runtime execution.
+lean -o examples/RuntimeHeapDelKernels.olean examples/RuntimeHeapDelKernels.lean
+lean examples/RuntimeHeapDelIRProbe.lean
+test -s artifacts/source-del-final-ir.tsv
+test -s artifacts/source-del-final-ir-status.txt
+grep -Fx 'emitted_ir_source_del=NOT_YET_ESTABLISHED' artifacts/source-del-final-ir-status.txt
+cat artifacts/source-del-final-ir.tsv
+cat artifacts/source-del-final-ir-status.txt
 lean --load-dynlib="$NATIVE_LIB" examples/RuntimeHeapFixture.lean
 file=examples/lean-c-heap-package/src/lib.rs
 test -s "$file"
@@ -81,6 +91,9 @@ grep -Fx 'lean-c-shell-only-del-transfer=PASS' "$out/trace.txt"
   echo 'shell_del_no_projection=REFUSED'
   echo 'shell_del_shared_parent=REFUSED'
   echo 'emitted_ir_source_del=NOT_YET_ESTABLISHED'
+  cat artifacts/source-del-final-ir-status.txt
+  sha256sum examples/RuntimeHeapDelKernels.lean examples/RuntimeHeapDelIRProbe.lean \
+    artifacts/source-del-final-ir.tsv artifacts/source-del-final-ir-status.txt
   echo 'join_transfer=NOT_YET_ESTABLISHED'
   echo 'unboxed_payload_argument=BORROWED'
   echo 'boxed_payload_wrapper=RELEASES_PARENT'

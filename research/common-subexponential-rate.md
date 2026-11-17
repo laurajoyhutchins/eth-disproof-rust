@@ -56,6 +56,35 @@ The new Lean lemma `IndependentETH.PacketSourceRate.source_depth_exponent_bound`
 
 It discharges the summation of the per-depth exponent **if** the source-specific per-level budget has been proved. It does not discharge the cost of each node. No original-packet end-to-end time theorem or runtime implementation is claimed.
 
+### The original Cauchy grid and its normalization boundary
+
+The actual grid is `S = {-L, …, L-1}` where `L = 2^a` and `α = 2^(a+1) = 2L`. New Lean files now distinguish the parts that have been checked from the parts still needed:
+
+| File | Kernel-checked result | Missing source attachment |
+| --- | --- | --- |
+| `IndependentCauchySourceGrid.lean` | Literal source interval; `|t-q|<α` for grid points; exact factorization `C(t+αz)=αz·∏_{q≠t}(t-q+αz)`; explicit nonzero `C'(0)` product; `S ≃ Fin α ≃ ZMod α`; center-independent divisibility counts for residues | Prove that casting the actual integer differences to `ZMod α` preserves each two-adic valuation and establish the derivative factorial formula |
+| `IndependentCauchyBinomialParity.lean` | For every `m` and `k<2^m`, `((2^m-1).choose k)%2=1`, by the imported Mathlib Lucas congruence | Connect this parity to the factorials of the actual derivative products |
+| `IndependentCauchyTileMode.lean` | Exact finite geometric inverse, reconstruction, uniqueness and `2^(b+1)` coefficient divisibility for a normalized unit denominator; odd denominators are constructively invertible in a ring with `2^p=0` | Identify the normalized numerator and denominator with the literal `W_xy(T)` inside `A_p` |
+| `IndependentPacketModeSelection.lean` | A fixed mode-exponent coefficient retains `2^(Σ_Z w_Z β_Z)`, and heavy coefficients vanish | Identify source row-polynomial coefficients with those selected-mode sums |
+
+There is a direct factorial reduction of the missing Cauchy normalization. Put `n=2L-1` and `k=t+L`, with `0≤k≤n`. The integer product at a source grid point has the mathematical identity
+
+```text
+D(t) := ∏_{q∈S, q≠t} (t-q) = (-1)^(n-k) · k! · (n-k)!
+D(t)/D(0) = (-1)^t · choose(n,L)/choose(n,k).
+```
+
+The parity theorem verifies the oddness of both binomial coefficients on the right (because `n=2^(a+1)-1`). Their ratio is therefore a unit in `ℤ_(2)`. For every distinct pair `t,q∈S`, the checked bound `0<|t-q|<α` implies that `α/(t-q)` is two-locally integral. Consequently, over the fraction field the normalized numerator has the exact factorization
+
+```text
+C(t+αz) / (α C'(0))
+  = z · [D(t)/D(0)] · ∏_{q∈S, q≠t} (1 + αz/(t-q)).
+```
+
+Every displayed factor is then two-locally integral. This is a **mathematical derivation** of the source's scalar-integrality claim, not yet a single Lean theorem: the factorial identities, integer-to-residue valuation transfer, and construction of the `ℤ_(2)` and `A_p` embeddings remain to be formalized and joined. In particular, do not replace this with the weaker fact that a generic finite mode series can be truncated.
+
+Once that literal `W_xy` bridge exists, the original packet-to-child coefficient identity and per-node work bound are still separate obligations. Completing scalar integrality alone is not a proof of the source's subexponential algorithm.
+
 The equality through a `2^M`-label Anthropic network is **disqualified as a cost-preserving bridge**. To prove the *same overall subexponential result via packet-to-piece correspondence*, one must construct a replacement with `2^{o(s)}` **total work**, formally bound its table creation and label enumeration (not just its final rank), and prove its recursive contraction identity in the actual coefficient ring. Showing independently that two different original native machines each run in `2^{o(n)}` is valid, but does not establish this stronger algorithm-to-algorithm statement.
 
 ## Why the earlier packet correspondence does not prove a rate

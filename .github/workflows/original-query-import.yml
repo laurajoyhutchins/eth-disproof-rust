@@ -13,6 +13,7 @@ on:
       - 'rust/lean_eth_reference/tools/query_stream_aot.py'
       - 'rust/lean_eth_reference/tools/query_source_kernel.lean'
       - 'rust/lean_eth_reference/tools/query_kernel_probe.py'
+      - 'rust/lean_eth_reference/tools/test_query_kernel_probe.py'
       - 'rust/lean_eth_reference/tools/export_source_graph.lean'
       - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
       - 'rust/lean_eth_reference/tools/verify_source_graph.py'

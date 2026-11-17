@@ -46,7 +46,6 @@ structure Physical where
   parentRC : Nat
   childRC : Nat
   oldStampRC : Nat
-  shellLive : Bool
   childField : Bool
   borrowedChild : Bool
   stampSlot : StampSlot
@@ -61,7 +60,6 @@ def represent (s : Source) : Physical :=
   { parentRC := s.parentCredits
     childRC := s.childProjectionCredits + credit s.childField
     oldStampRC := s.oldStampExternal + credit (s.stampSlot == .old)
-    shellLive := s.parentCredits != 0
     childField := s.childField
     borrowedChild := s.borrowedChild
     stampSlot := s.stampSlot
@@ -153,10 +151,18 @@ def physicalStep (p : Physical) : Instruction → Option Physical
   | .shellDel =>
       if !p.observedUnique || p.parentRC != 1 || !p.childField ||
          !p.borrowedChild || p.stampSlot == .old || p.childRC != 1 then none
-      else some { p with parentRC := 0, shellLive := false, childField := false }
+      else some { p with parentRC := 0, childField := false }
   | .releaseProjectedChild =>
       if p.childField || p.childRC == 0 then none
       else some { p with childRC := p.childRC - 1 }
+
+/-- Distribution through a guarded instruction is the only
+option functor bookkeeping needed by the simulation proof. -/
+@[simp] theorem option_map_ite {α β : Type} (f : α → β)
+    (P : Prop) [Decidable P] (x y : Option α) :
+    (if P then x else y).map f =
+      if P then x.map f else y.map f := by
+  by_cases hp : P <;> simp [hp]
 
 /-- The restricted source and physical instructions commute with the
 representation map, including *refusals*. The right side is not the
@@ -166,43 +172,41 @@ theorem step_simulation (s : Source) (instr : Instruction) :
       (sourceStep s instr).map represent := by
   cases instr with
   | borrowChild =>
-      simp [sourceStep, physicalStep, represent] <;>
-        split_ifs <;> simp_all [represent]
+      simp [sourceStep, physicalStep, represent]
   | inspectSharing =>
-      simp [sourceStep, physicalStep, represent] <;>
-        split_ifs <;> simp_all [represent]
+      simp [sourceStep, physicalStep, represent]
   | retainChild =>
-      simp [sourceStep, physicalStep, represent, credit] <;>
-        split_ifs <;>
-        simp_all [represent, credit, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm]
+      simp [sourceStep, physicalStep, represent, credit, Nat.add_assoc,
+        Nat.add_comm, Nat.add_left_comm]
   | retainParent =>
-      simp [sourceStep, physicalStep, represent] <;>
-        split_ifs <;> simp_all [represent] <;> omega
+      simp [sourceStep, physicalStep, represent]
   | releaseSharedParent =>
-      simp [sourceStep, physicalStep, represent] <;>
-        split_ifs <;> simp_all [represent] <;> omega
+      simp [sourceStep, physicalStep, represent]
   | stampDec =>
       cases hs : s.stampSlot <;>
-        simp [sourceStep, physicalStep, represent, credit, hs] <;>
-        split_ifs <;> simp_all [represent, credit] <;> omega
+        simp [sourceStep, physicalStep, represent, credit, hs]
   | jumpOwned =>
-      simp [sourceStep, physicalStep, represent] <;>
-        split_ifs <;> simp_all [represent]
+      simp [sourceStep, physicalStep, represent]
   | setFreshStamp =>
       cases hs : s.stampSlot <;>
-        simp [sourceStep, physicalStep, represent, credit, hs] <;>
-        split_ifs <;> simp_all [represent, credit]
+        simp [sourceStep, physicalStep, represent, credit, hs]
   | shellDel =>
-      cases hfield : s.childField <;>
-        cases hs : s.stampSlot <;>
-        cases hproj : s.childProjectionCredits <;>
-        simp [sourceStep, physicalStep, represent, credit,
-              hfield, hs, hproj] <;>
-        split_ifs <;> simp_all [represent, credit, hfield, hs, hproj] <;> omega
+      cases hfield : s.childField with
+      | false =>
+          simp [sourceStep, physicalStep, represent, credit, hfield]
+      | true =>
+          cases hproj : s.childProjectionCredits with
+          | zero =>
+              cases hs : s.stampSlot <;>
+                simp [sourceStep, physicalStep, represent, credit,
+                  hfield, hproj, hs]
+          | succ n =>
+              cases hs : s.stampSlot <;>
+                simp [sourceStep, physicalStep, represent, credit,
+                  hfield, hproj, hs]
   | releaseProjectedChild =>
       cases hfield : s.childField <;>
-        simp [sourceStep, physicalStep, represent, credit, hfield] <;>
-        split_ifs <;> simp_all [represent, credit, hfield] <;> omega
+        simp [sourceStep, physicalStep, represent, credit, hfield]
 
 
 def runSource : List Instruction → Source → Option Source
@@ -271,7 +275,6 @@ theorem physical_delete_trace (external : Nat) :
         parentRC := 0
         childRC := 1
         oldStampRC := external
-        shellLive := false
         borrowedChild := true
         childField := false
         stampSlot := .spent
@@ -309,7 +312,7 @@ theorem no_stamp_release_on_shared_parent (external : Nat) :
 shell deletion violates the representation relation even when its
 returned data values happen to match. -/
 def incorrectRecursiveDel (p : Physical) : Physical :=
-  { p with parentRC := 0, shellLive := false, childField := false,
+  { p with parentRC := 0, childField := false,
     childRC := p.childRC - 1 }
 
 def beforeDel (external : Nat) : Source :=
@@ -322,13 +325,21 @@ def afterDel (external : Nat) : Source :=
     childProjectionCredits := 1, borrowedChild := true,
     observedUnique := true }
 
+theorem incorrect_child_rc_zero (external : Nat) :
+    (incorrectRecursiveDel (represent (beforeDel external))).childRC = 0 := by
+  rfl
+
+theorem shell_child_rc_one (external : Nat) :
+    (represent (afterDel external)).childRC = 1 := by
+  rfl
+
 theorem recursive_delete_is_not_shell_delete (external : Nat) :
     incorrectRecursiveDel (represent (beforeDel external)) ≠
       represent (afterDel external) := by
   intro h
   have hc := congrArg Physical.childRC h
-  simp [incorrectRecursiveDel, represent, beforeDel, afterDel,
-    initial, credit] at hc
+  rw [incorrect_child_rc_zero, shell_child_rc_one] at hc
+  cases hc
 
 
 end ReaderShellSimulation

@@ -30,8 +30,21 @@ def edgeSetoid (edges : List (I × I)) : Setoid I where
   r := EdgeConnected edges
   iseqv := ⟨
     (fun a => Relation.EqvGen.refl a),
-    (fun _ _ h => Relation.EqvGen.symm _ _ h),
-    (fun _ _ _ h k => Relation.EqvGen.trans _ _ _ h k)⟩
+    (fun h => Relation.EqvGen.symm _ _ h),
+    (fun h k => Relation.EqvGen.trans _ _ _ h k)⟩
+
+/-- Finite input vertices imply finitely many quotient classes. -/
+noncomputable instance edgeQuotientFintype
+    [Fintype I] (edges : List (I × I)) :
+    Fintype (Quotient (edgeSetoid edges)) := by
+  classical
+  exact Fintype.ofFinite _
+
+/-- Component-label equality is decidable classically in finite proofs.
+    This is a typeclass construction, not an executable quotient algorithm. -/
+noncomputable instance edgeQuotientDecidableEq
+    (edges : List (I × I)) :
+    DecidableEq (Quotient (edgeSetoid edges)) := Classical.decEq _
 
 /-- The actual boundary representation labels are equivalence classes. -/
 def edgeClass (edges : List (I × I)) (i : I) :

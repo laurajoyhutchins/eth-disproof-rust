@@ -31,7 +31,7 @@ theorem accepted_physical_step_has_source_step
   | none => simp [hs] at h
   | some s' =>
       simp [hs] at h
-      exact ⟨s', hs, h.symm⟩
+      exact ⟨s', rfl, h.symm⟩
 
 /-- An actual refused operation is represented as a rejection, never
 as a secretly successful physical transition in the source model. -/
@@ -41,7 +41,7 @@ theorem rejected_physical_step_rejects_source
     sourceStep s i = none := by
   rw [step_simulation] at h
   cases hs : sourceStep s i with
-  | none => exact hs
+  | none => rfl
   | some x => simp [hs] at h
 
 structure Row where

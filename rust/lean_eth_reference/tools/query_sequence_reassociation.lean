@@ -169,9 +169,9 @@ private theorem sourceBankTree_command (tmp : Fin 768) (value present : Fin 40)
   | nil => rfl
   | cons port rest ih =>
       change
-        C.seq (.call (StackRoutines.clearProgram port value present))
+        StructuredCalls.Cmd.seq (.call (StackRoutines.clearProgram port value present))
           (sourceBankTree tmp value present rest).command =
-        C.seq (.call (StackRoutines.clearProgram port value present))
+        StructuredCalls.Cmd.seq (.call (StackRoutines.clearProgram port value present))
           (BankRoutines.clearCmd tmp value present rest)
       rw [ih]
 
@@ -184,9 +184,9 @@ private theorem sourcePrepareTree_command :
     sourcePrepareTree.command =
       SqrtLog.LeafProgram.Count.Prepare.command := by
   change
-    C.seq (.call (StackRoutines.clearProgram 699 0 1))
+    StructuredCalls.Cmd.seq (.call (StackRoutines.clearProgram 699 0 1))
       (sourceBankTree 699 0 1 SqrtLog.LeafProgram.Count.Prepare.ports).command =
-    C.seq (.call (StackRoutines.clearProgram 699 0 1))
+    StructuredCalls.Cmd.seq (.call (StackRoutines.clearProgram 699 0 1))
       (BankRoutines.clearCmd 699 0 1 SqrtLog.LeafProgram.Count.Prepare.ports)
   rw [sourceBankTree_command]
 

@@ -36,6 +36,75 @@ pub struct AffineInterface {
     pub elimination_xors: usize,
 }
 
+/// A canonical four-clause 3-CNF encoding of x XOR y XOR z = rhs.
+/// A clause blocks one assignment with the opposite parity.
+pub fn encode_xor3_cnf(x: &'static str, y: &'static str, z: &'static str, rhs: bool)
+    -> Vec<Vec<crate::sat::Literal>>
+{
+    use crate::sat::Literal;
+    let parity = |bits: [bool; 3]| bits.into_iter().fold(false, |a, b| a ^ b);
+    let mut result = Vec::new();
+    for bits in [
+        [false, false, false], [false, false, true],
+        [false, true, false], [false, true, true],
+        [true, false, false], [true, false, true],
+        [true, true, false], [true, true, true],
+    ] {
+        if parity(bits) == rhs { continue; }
+        result.push([x, y, z].into_iter().zip(bits).map(|(name, value)| {
+            Literal { name, positive: !value }
+        }).collect());
+    }
+    result
+}
+
+/// Recognize only an **exact canonical** four-clause block encoding for
+/// each three-variable XOR equation. If a block differs, refuse rather
+/// than assuming general 3-CNF clauses denote parity equations.
+/// The source CNF has the same variables; this routine never enumerates
+/// its satisfying assignments or expands the boundary polynomial.
+pub fn recognize_strict_xor3_cnf(source: &crate::sat::Region) -> Result<AffineRegion, String> {
+    let mut declared = BTreeSet::new();
+    for &name in source.internal.iter().chain(&source.boundary) {
+        if !declared.insert(name) {
+            return Err("duplicate source CNF variable".into());
+        }
+    }
+    if source.clauses.len() % 4 != 0 {
+        return Err("not a whole number of canonical XOR3 clause blocks".into());
+    }
+    let mut equations = Vec::new();
+    for clauses in source.clauses.chunks(4) {
+        if clauses[0].len() != 3 {
+            return Err("noncanonical XOR3 block first clause".into());
+        }
+        let vars = clauses[0].iter().map(|lit| lit.name).collect::<Vec<_>>();
+        if vars.iter().any(|name| !declared.contains(name)) ||
+            vars.iter().copied().collect::<BTreeSet<_>>().len() != 3
+        {
+            return Err("XOR3 block must use three distinct declared variables".into());
+        }
+        let rhs = if clauses == encode_xor3_cnf(vars[0], vars[1], vars[2], false) {
+            false
+        } else if clauses == encode_xor3_cnf(vars[0], vars[1], vars[2], true) {
+            true
+        } else {
+            return Err("CNF block not equal to the checked XOR3 encoding".into());
+        };
+        equations.push(Equation {
+            variables: vars.into_iter().map(str::to_owned).collect(),
+            rhs,
+        });
+    }
+    let affine = AffineRegion {
+        internal: source.internal.iter().map(|s| (*s).to_owned()).collect(),
+        boundary: source.boundary.iter().map(|s| (*s).to_owned()).collect(),
+        equations,
+    };
+    affine.validate()?;
+    Ok(affine)
+}
+
 impl AffineRegion {
     fn validate(&self) -> Result<(), String> {
         let mut declared = BTreeSet::new();
@@ -239,6 +308,43 @@ mod tests {
         ["b", "c", "d"].into_iter().enumerate()
             .map(|(i, s)| (s.into(), mask & (1 << i) != 0))
             .collect()
+    }
+
+    #[test]
+    fn strict_cnf_xor_blocks_eliminate_without_enumerating() {
+        let source = crate::sat::Region {
+            internal: vec!["u", "v"],
+            boundary: vec!["b", "c", "d"],
+            clauses: [
+                encode_xor3_cnf("u", "v", "b", false),
+                encode_xor3_cnf("u", "v", "c", false),
+            ].concat(),
+        };
+        let detected = recognize_strict_xor3_cnf(&source).unwrap();
+        let iface = detected.eliminate().unwrap();
+        assert_eq!(iface.rank, 1);
+        assert_eq!(iface.free_internal, 1);
+        for mask in 0..8 {
+            let boundary = assign(mask);
+            assert_eq!(iface.evaluate(&boundary).unwrap(),
+                BigUint::from(source.direct_count(&boundary, 4).unwrap()));
+        }
+    }
+
+    #[test]
+    fn strict_cnf_recognizer_refuses_modified_or_reordered_clauses() {
+        let mut source = crate::sat::Region {
+            internal: vec!["u", "v"],
+            boundary: vec!["b"],
+            clauses: encode_xor3_cnf("u", "v", "b", false),
+        };
+        source.clauses[0][0].positive = !source.clauses[0][0].positive;
+        assert!(recognize_strict_xor3_cnf(&source).unwrap_err().contains("not equal"));
+        source.clauses = encode_xor3_cnf("u", "v", "b", false);
+        source.clauses.swap(0, 1);
+        assert!(recognize_strict_xor3_cnf(&source).is_err());
+        source.clauses.pop();
+        assert!(recognize_strict_xor3_cnf(&source).is_err());
     }
 
     #[test]

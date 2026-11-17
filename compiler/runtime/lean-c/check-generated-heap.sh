@@ -32,6 +32,7 @@ names = (
     "physical_reuse_trace",
     "no_del_before_stamp_release",
     "no_stamp_release_on_shared_parent",
+    "no_del_of_fresh_stamp",
     "recursive_delete_is_not_shell_delete",
 )
 for name in names:

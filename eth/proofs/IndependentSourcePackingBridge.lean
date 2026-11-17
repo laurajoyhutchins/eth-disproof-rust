@@ -24,33 +24,34 @@ namespace IndependentETH.SourcePackingBridge
 open scoped BigOperators
 open IndependentETH.OpenAIPackets
 
-/-- Enumerate the real edges once and place index k in packet k/L,
-slot k mod L. Both endpoints use this same packet-slot location. -/
-noncomputable def enumeratePacking (E : Type*) [Fintype E] (L : ℕ)
-    (hL : 0 < L) : ValidPacking E ℕ L where
-  packet e := ((Fintype.equivFin E e).val) / L
-  slot e := ⟨((Fintype.equivFin E e).val) % L, Nat.mod_lt _ hL⟩
+/-- A fully explicit deterministic packet assignment from a supplied
+edge enumeration, k |-> (packet k/L, slot k mod L). The caller controls
+the enumeration, so no choice principle is required by this constructor. -/
+def packingFromEnumeration (E : Type*) [Fintype E]
+    (rank : E ≃ Fin (Fintype.card E))
+    (L : ℕ) (hL : 0 < L) : ValidPacking E ℕ L where
+  packet e := (rank e).val / L
+  slot e := ⟨(rank e).val % L, Nat.mod_lt _ hL⟩
   injective := by
     intro e f h
-    have hpacket :
-        ((Fintype.equivFin E e).val) / L =
-        ((Fintype.equivFin E f).val) / L := congrArg Prod.fst h
-    have hslot :
-        ((Fintype.equivFin E e).val) % L =
-        ((Fintype.equivFin E f).val) % L :=
+    have hpacket : (rank e).val / L = (rank f).val / L :=
+      congrArg Prod.fst h
+    have hslot : (rank e).val % L = (rank f).val % L :=
       congrArg Fin.val (congrArg Prod.snd h)
-    have hrank :
-        ((Fintype.equivFin E e).val) =
-        ((Fintype.equivFin E f).val) := by
+    have hrank : (rank e).val = (rank f).val := by
       calc
-        _ = ((Fintype.equivFin E e).val) % L +
-            L * (((Fintype.equivFin E e).val) / L) :=
-              (Nat.mod_add_div _ _).symm
-        _ = ((Fintype.equivFin E f).val) % L +
-            L * (((Fintype.equivFin E f).val) / L) := by
-              rw [hpacket, hslot]
-        _ = ((Fintype.equivFin E f).val) := Nat.mod_add_div _ _
-    exact (Fintype.equivFin E).injective (Fin.ext hrank)
+        _ = (rank e).val % L + L * ((rank e).val / L) :=
+          (Nat.mod_add_div _ _).symm
+        _ = (rank f).val % L + L * ((rank f).val / L) := by
+          rw [hpacket, hslot]
+        _ = (rank f).val := Nat.mod_add_div _ _
+    exact rank.injective (Fin.ext hrank)
+
+/-- Abstract convenience witness; the executable constructor above
+accepts its enumeration explicitly. -/
+noncomputable def enumeratePacking (E : Type*) [Fintype E] (L : ℕ)
+    (hL : 0 < L) : ValidPacking E ℕ L :=
+  packingFromEnumeration E (Fintype.equivFin E) L hL
 
 /-- The manuscript's zero-point Cauchy equality, without a
 postulated packing: the witness is constructed from every finite E. -/

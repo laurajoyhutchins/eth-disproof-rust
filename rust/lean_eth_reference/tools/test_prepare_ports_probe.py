@@ -22,14 +22,14 @@ def source():
 
 class PortListTests(unittest.TestCase):
     def test_valid_original_shaped_observation_remains_uncertified(self):
-        p = [448, 451, 323, 324, 325, 326, 327, 328, 329]
+        p = [190, 191, 323, 324, 325, 326, 327, 328, 329]
         r = validate(PREFIX + str(p).replace("'", '"'), source())
         self.assertEqual(r["ports"], p)
         self.assertFalse(r["rust_executable"])
         self.assertFalse(r["receipt_is_kernel_certificate"])
 
     def test_refuse_missing_duplicate_or_promoted_observations(self):
-        base = [448, 323, 324, 325, 326, 327, 328, 329]
+        base = [190, 323, 324, 325, 326, 327, 328, 329]
         for change in ("missing", "duplicate", "overbound", "scratch",
                        "noninteger", "mismatched_decl", "promoted_port",
                        "promoted_execution", "forged_certificate"):
@@ -39,9 +39,9 @@ class PortListTests(unittest.TestCase):
                 if change == "missing":
                     data.remove(323)
                 elif change == "duplicate":
-                    data.append(448)
+                    data.append(190)
                 elif change == "overbound":
-                    data.append(768)
+                    data.append(330)
                 elif change == "scratch":
                     data.append(699)
                 elif change == "noninteger":

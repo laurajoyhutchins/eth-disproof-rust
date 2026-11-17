@@ -18,7 +18,9 @@ def validate(original_stdout: str, source_receipt: dict) -> dict:
         raise ValueError("exactly one original compiled Lean port-list output required")
     values = json.loads(lines[0])
     if (not isinstance(values, list) or not 7 <= len(values) <= 768 or
-            any(type(n) is not int or not 0 <= n < 768 for n in values) or
+            # The pinned original proves all Count.Prepare.ports are < 330.
+            # Fin.castAdd 448 widens the type but preserves each port value.
+            any(type(n) is not int or not 0 <= n < 330 for n in values) or
             len(set(values)) != len(values) or
             not set(range(323, 330)).issubset(values) or 699 in values):
         raise ValueError("original prepared finite port list violates source constraints")

@@ -179,6 +179,8 @@ jobs:
             compiler/artifacts/lean-c-generated-heap/source-del-trace.txt
             compiler/artifacts/lean-c-generated-heap/source-shell-physical.tsv
             compiler/artifacts/lean-c-generated-heap/source-shell-trace-audit.txt
+            compiler/artifacts/lean-c-generated-heap/source-shell-mutated-*.tsv
+            compiler/artifacts/lean-c-generated-heap/source-shell-rejected-*.txt
             compiler/artifacts/lean-c-generated-heap/source-shell-simulation-lean.txt
             compiler/artifacts/lean-c-generated-heap/RuntimeHeapDelKernels.c
             compiler/artifacts/lean-c-generated-heap/SourceDelDriver.c

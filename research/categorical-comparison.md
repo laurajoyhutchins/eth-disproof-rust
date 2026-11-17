@@ -77,3 +77,25 @@ The count-definition square and the Anthropic merge square genuinely
 commute; the unproved network-encoding square remains an explicit open
 research question. None of this asserts an ETH disproof, improved complexity
 bound, or executable Lean-to-Rust correspondence.
+
+
+## OpenAI October 25 Cauchy-packet identity at the source algebra boundary
+
+[`IndependentOpenAIPacketPreservation.lean`](../eth/proofs/IndependentOpenAIPacketPreservation.lean)
+formalizes the cancelled polynomial
+\(W_{xy}(T)=\prod_{q\in S\setminus\{y-x\}}(T-q)/C'(0)\),
+where \(S=\{-L,\ldots,L-1\}\). The proof establishes that \(W(0)\)
+is the identity on every *real* edge, for any injective map from edges
+to (packet, slot) with aligned row/column slots; padded slots contribute
+no edge indices. It then proves, for arbitrary row/column tensor products
+in any commutative coefficient ring admitting a homomorphism from the
+rationals, that the paper's Boolean-selector deformation satisfies
+\(F(0)=\sum_X A(X)B(X)\) exactly.
+
+The source's construction of a balanced labeled packet packing is **not**
+verified by this proof. The proof consumes its essential disjointness
+and endpoint-alignment invariant as `ValidPacking.injective`. Neither the
+Cauchy perturbation at nonzero \(t+2^{a+1}\zeta\), precision pruning, nor
+the source-derived OpenAI-to-Anthropic factor-network adapter is covered.
+The file is included in the independent Lean gate, and its typechecking
+status must be read from CI rather than presumed.

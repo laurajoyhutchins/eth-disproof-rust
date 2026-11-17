@@ -22,7 +22,7 @@ lean examples/RuntimeHeapDelIRProbe.lean
 test -s artifacts/source-del-final-ir.tsv
 test -s artifacts/source-del-final-ir.txt
 test -s artifacts/source-del-final-ir-status.txt
-grep -Fx 'emitted_ir_source_del=NOT_YET_ESTABLISHED' artifacts/source-del-final-ir-status.txt
+grep -Fx 'stage=FINAL_IR_DISCOVERY_ONLY' artifacts/source-del-final-ir-status.txt
 cat artifacts/source-del-final-ir.tsv
 cat artifacts/source-del-final-ir-status.txt
 # Probe the canonical Reader closure of the positive source. A refusal is
@@ -131,9 +131,10 @@ leanc -O2 -o "$out/source-del-execute" \
   "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \
   runtime/lean-c/abi.c "$out/libsource_del_generated.a"
 "$out/source-del-execute" | tee "$out/source-del-trace.txt"
-grep -Fx 'reader-generated-source-del-lean-c=PASS cases=360' "$out/source-del-trace.txt"
-echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_360' \
+grep -Fx 'reader-generated-source-del-lean-c=PASS cases=720' "$out/source-del-trace.txt"
+echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_720' \
   > "$out/source-del-execution-status.txt"
+echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.txt"
 {
   echo 'status=PASS_ORIGINAL_LEAN_C_AND_READER_GENERATED_HEAP'
   echo "revision=$(git rev-parse HEAD)"
@@ -151,7 +152,7 @@ echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_360' \
   echo 'shell_only_child_transfer=ONE_CREDIT_NO_INC'
   echo 'shell_del_no_projection=REFUSED'
   echo 'shell_del_shared_parent=REFUSED'
-  echo 'emitted_ir_source_del=PASS_BOUNDED_360_PHYSICAL_FINAL_STATES'
+  echo 'emitted_ir_source_del=PASS_BOUNDED_720_PHYSICAL_FINAL_STATES'
   echo 'source_del_full_traces_and_general_equivalence=NOT_ESTABLISHED'
   cat "$out/source-del-execution-status.txt"
   sha256sum runtime/lean-c/source_del_host.rs runtime/lean-c/source_del_oracle.c \

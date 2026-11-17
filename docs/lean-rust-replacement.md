@@ -2,7 +2,7 @@
 
 Status: **stage-zero experiment; existing compiler retained**.
 
-The [standalone fixture](../tools/lean-rust-bootstrap/README.md) evaluates
+The [standalone fixture](https://github.com/laurajoyhutchins/eth-disproof-rust/tree/main/tools/lean-rust-bootstrap) evaluates
 pinned `machinefabric/lungo-rs` on unmodified Lean compiler declarations.
 It is a candidate replacement for the custom native backend, not an
 alternative executable path for the ETH counting algorithm.

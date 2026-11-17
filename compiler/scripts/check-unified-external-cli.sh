@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Execute the three unmodified upstream projects through the *public*
-# eth-compiler interface, not only through the native FFI smoke harness.
+# lean-rust-compiler interface, not only through the native FFI smoke harness.
 # The third substantial-program gate still requires a larger Newspeak root.
 set -euo pipefail
 
@@ -72,8 +72,8 @@ for spec in "${specs[@]}"; do
   # project; source identity is read from *its own* Git tree, not our checkout.
   /usr/bin/time -f 'wall_seconds=%e peak_rss_kb=%M' \
     -o "$case_dir/unified-cli.time" \
-    cargo run --locked --offline --manifest-path "$workspace/Cargo.toml" \
-      -p lean-eth-reference --bin eth-compiler -- compile \
+    cargo run --locked --offline --manifest-path "$workspace/compiler/cli/Cargo.toml" \
+      --bin lean-rust-compiler -- compile \
       --backend compiler-ir \
       --source-repo "$checkout" --source-revision "$revision" \
       --source-path "$subdir/$source" \
@@ -88,8 +88,8 @@ for spec in "${specs[@]}"; do
     exit 1
   }
 
-  cargo run --locked --offline --manifest-path "$workspace/Cargo.toml" \
-      -p lean-eth-reference --bin eth-compiler -- verify \
+  cargo run --locked --offline --manifest-path "$workspace/compiler/cli/Cargo.toml" \
+      --bin lean-rust-compiler -- verify \
       --backend compiler-ir \
       --source-repo "$checkout" --source-revision "$revision" \
       --source-path "$subdir/$source" \

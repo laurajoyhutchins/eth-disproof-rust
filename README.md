@@ -39,6 +39,9 @@ This is a separate G1 compiler project within the repository, not a replacement 
 
 The next step is to execute generated Rust against **Lean's existing C runtime through an audited adapter**, compare output and ownership traces, and only then replace individual runtime operations with native Rust equivalents. No C-backed generated execution adapter is claimed complete today. An independent Rust proof kernel belongs to a separate project. The Lungo experiment is not the production code generator.
 
+Build the independent CLI with `cargo test --locked --offline --manifest-path compiler/cli/Cargo.toml -p lean-compiler-cli`.
+The `lean-rust-compiler` binary lives in `compiler/cli`; the ETH crate retains only a thin legacy entry point and contract re-export. No ETH algorithm is loaded by the compiler.
+
 Read the [architecture](compiler/docs/backend-first-architecture.md), [current status](compiler/docs/compiler-status.md), [runtime contract](compiler/docs/execution-runtime-contract.md) and [compiler CLI](eth/docs/compiler-ir-backend.md). The ETH-specific noncomputable QueryStream source still has its own G2 executable-correspondence obligation.
 
 ## Mathematical research

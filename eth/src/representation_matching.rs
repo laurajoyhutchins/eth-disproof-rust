@@ -93,10 +93,10 @@ impl MatchingRegion {
             return Err(Error::Invalid("assignment width mismatch".into()));
         }
         for (i, partner) in self.partner.iter().enumerate() {
-            if let Some(j) = partner {
-                if assignment[i] != assignment[*j] {
-                    return Ok(0);
-                }
+            if let Some(j) = partner
+                && assignment[i] != assignment[*j]
+            {
+                return Ok(0);
             }
         }
         assignment

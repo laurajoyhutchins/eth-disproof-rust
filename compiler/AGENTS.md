@@ -27,7 +27,7 @@ physical FFI witness, **not yet** a replacement runtime for generated
 Rust source.
 The limited `RuntimeHeap.Pair.mk` constructor and projection path now
 selects a physical Lean C execution runtime for the **same emitted Rust
-functions** through `--cfg lean_c_runtime`. Only tagged Nat fields
+functions** through `--cfg 'feature="lean-c-runtime"'`. Only tagged Nat fields
 are admitted, and this does not establish general source heap ownership.
 The exact Reader-emitted `ScalarFixture.plus` is linked into a Lean
 C-hosted executable in the same runtime gate, with original Lean output

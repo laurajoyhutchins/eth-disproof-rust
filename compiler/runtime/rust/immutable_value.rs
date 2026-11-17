@@ -2,14 +2,14 @@
 // Rust Rc tracks actual memory safety. The second Rc tracks the reference
 // count observed by Lean IR, independently of transient Rust value clones.
 // A direct Rust clone is not a source IR.inc instruction.
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 #[derive(Debug)]
 pub struct __LeanValue(
     std::rc::Rc<__LeanValueRepr>,
     std::rc::Rc<std::cell::Cell<usize>>,
 );
 
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 #[derive(Debug)]
 enum __LeanValueRepr {
     Tagged(usize),
@@ -51,7 +51,7 @@ enum __LeanValueRepr {
 // A public Clone represents a second owned Lean reference. Generated
 // compiler temporaries instead call compiler_alias, which has no source RC
 // effect. This distinction is essential at exported function boundaries.
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 impl Clone for __LeanValue {
     fn clone(&self) -> Self {
         self.source_inc(1, true, false);
@@ -62,7 +62,7 @@ impl Clone for __LeanValue {
 // Nat is arbitrary precision in Lean. GMP is an established, maintained
 // arithmetic library, linked into standalone generated Rust. The backend
 // never truncates Nat to a machine-sized integer.
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 #[repr(C)]
 #[derive(Debug)]
 struct __LeanMpz {
@@ -71,7 +71,7 @@ struct __LeanMpz {
     limbs: *mut std::ffi::c_ulong,
 }
 
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 #[link(name = "gmp")]
 unsafe extern "C" {
     #[link_name = "__gmpz_init"]
@@ -102,11 +102,11 @@ unsafe extern "C" {
     fn __gmpz_cmp(a: *const __LeanMpz, b: *const __LeanMpz) -> std::ffi::c_int;
 }
 
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 #[derive(Debug)]
 struct __LeanBigNat { value: __LeanMpz }
 
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 impl __LeanBigNat {
     fn zero() -> Self {
         // GMP initializes the owned representation in place.
@@ -166,17 +166,17 @@ impl __LeanBigNat {
         out
     }
 }
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 impl Drop for __LeanBigNat {
     fn drop(&mut self) { unsafe { __gmpz_clear(&mut self.value); } }
 }
 
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 enum __LeanNatOperand<'a> {
     Borrowed(&'a __LeanBigNat),
     Temporary(__LeanBigNat),
 }
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 impl __LeanNatOperand<'_> {
     fn as_ref(&self) -> &__LeanBigNat {
         match self {
@@ -186,7 +186,7 @@ impl __LeanNatOperand<'_> {
     }
 }
 
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 #[allow(dead_code)]
 impl __LeanValue {
     fn compiler_alias(&self) -> Self {
@@ -718,7 +718,7 @@ impl __LeanValue {
     }
 }
 
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 impl PartialEq for __LeanValue {
     fn eq(&self, other: &Self) -> bool {
         self.assert_not_erased();
@@ -756,5 +756,5 @@ impl PartialEq for __LeanValue {
         }
     }
 }
-#[cfg(not(lean_c_runtime))]
+#[cfg(not(feature = "lean-c-runtime"))]
 impl Eq for __LeanValue {}

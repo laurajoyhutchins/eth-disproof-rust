@@ -58,7 +58,7 @@ The runtime gate now additionally links the **exact Reader-generated**
 compares 100 scalar input pairs against the original Lean source. This
 validates the initial emitted-function C ABI, but only for an unboxed
 scalar function. A restricted generated-heap mode now selects the physical C runtime at
-Rust compilation time by `--cfg lean_c_runtime`, without changing the
+Rust compilation time by `--cfg 'feature="lean-c-runtime"'`, without changing the
 canonical IR emitter or emitted function bodies. The currently admitted
 `RuntimeHeap.Pair.mk` constructor takes two tagged immediate Nat fields;
 projection returns only tagged immediate fields. The system refuses

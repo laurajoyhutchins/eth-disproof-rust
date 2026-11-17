@@ -26,7 +26,7 @@ done
 # glue is appended, and the alternate runtime is built from an emitted cfg.
 cp "$file" "$out/exact-emitter.rs"
 cat "$file" runtime/lean-c/heap_host.rs > "$out/combined.rs"
-rustc --edition=2021 --cfg lean_c_runtime \
+rustc --edition=2021 --cfg 'feature="lean-c-runtime"' \
   -C panic=abort --crate-type staticlib -O \
   "$out/combined.rs" -o "$out/liblean_c_generated.a"
 (cd examples && lean -c "$out/RuntimeHeapKernels.c" RuntimeHeapKernels.lean)

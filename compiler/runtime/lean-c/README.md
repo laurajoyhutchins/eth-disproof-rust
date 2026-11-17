@@ -37,7 +37,7 @@ Keep the exact emitted-file digest in the CI receipt.
 ## Still open
 
 **A bounded generated heap mode now uses the physical Lean C adapter.**
-`--cfg lean_c_runtime` selects `generated_value.rs` for the
+`--cfg 'feature="lean-c-runtime"'` selects `generated_value.rs` for the
 *unchanged* IR-emitted functions. `check-generated-heap.sh` compiles the
 original `RuntimeHeapKernels.lean` source independently to Lean C and
 the existing Reader to Rust, then compares source/runtime outputs and

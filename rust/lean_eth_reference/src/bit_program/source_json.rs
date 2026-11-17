@@ -1371,7 +1371,7 @@ mod native_interning_tests {
             let before = initial.clone();
             let mut dynamic = initial.clone();
             let mut flat = initial;
-            let budget = RunLimits { max_steps: 10000, max_stack_bits: 10000 };
+            let budget = super::super::RunLimits { max_steps: 10000, max_stack_bits: 10000 };
             let a = deferred.run(&mut dynamic, budget)
                 .expect("source finite clear prefix must halt on bounded input");
             let b = materialized.run(&mut flat, budget)
@@ -1398,7 +1398,7 @@ mod native_interning_tests {
         limited.stacks[699].extend([true, false]);
         let refusal = deferred.run(
             &mut limited,
-            RunLimits { max_steps: 1, max_stack_bits: 10000 },
+            super::super::RunLimits { max_steps: 1, max_stack_bits: 10000 },
         ).expect_err("bounded execution must refuse, not report an incomplete success");
         assert!(matches!(refusal, Error::Capacity(_)));
         assert!(limited.pc.is_some());

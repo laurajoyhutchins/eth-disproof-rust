@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
-[[ $# == 3 ]] || { echo "Usage: $0 openai|anthropic UPSTREAM_REPO OUTPUT_DIR" >&2; exit 2; }
+[[ $# == 3 || $# == 4 ]] || {
+  echo "Usage: $0 openai|anthropic UPSTREAM_REPO OUTPUT_DIR [all|computation|proof]" >&2; exit 2;
+}
 SOURCE=$1; REPO=$(realpath "$2"); OUT=$(realpath -m "$3")
+MODE=${4:-all}
+case "$MODE" in
+  all|computation|proof) ;;
+  *) echo "Unknown graph extraction mode: $MODE" >&2; exit 2 ;;
+esac
 HERE=$(cd "$(dirname "$0")" && pwd)
 mkdir -p "$OUT"
 case "$SOURCE" in
@@ -41,7 +48,16 @@ case "$SOURCE" in
     ;;
   *) echo "Unknown source $SOURCE" >&2; exit 2 ;;
 esac
-[[ "$(git -C "$REPO" rev-parse HEAD)" == "$SHA" ]] || {
+# Computational graph targets the smallest original module importing its entrypoint.
+# Proof closure deliberately retains the full original endpoint module.
+if [[ "$MODE" == computation ]]; then
+  if [[ "$SOURCE" == openai ]]; then
+    MODULE=OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram
+  else
+    MODULE=CountedRecursion.SolverDefs
+  fi
+fi
+${anchor}
   echo "Wrong original source commit" >&2; exit 1;
 }
 if [[ "$SOURCE" == openai ]]; then
@@ -68,12 +84,16 @@ lake update
 [[ "$(git -C .lake/packages/mathlib rev-parse HEAD)" == "$MATHLIB" ]] || {
   echo "Wrong Mathlib source pin" >&2; exit 1;
 }
-# Catch extractor type errors before building thousands of upstream modules.
-lake env lean "$HERE/Extract.lean"
-lake env lean "$HERE/ComputeExtract.lean"
+# Typecheck only the extractors that this job actually needs.
+if [[ "$MODE" != computation ]]; then
+  lake env lean "$HERE/Extract.lean"
+fi
+if [[ "$MODE" != proof ]]; then
+  lake env lean "$HERE/ComputeExtract.lean"
+fi
 lake build "$MODULE"
-# The computational graph examines actual elaborated definition bodies.
-# This runs against the same pinned, compiled environment as the proof closure.
+if [[ "$MODE" != proof ]]; then
+# A narrow source module is enough for computational entrypoint inspection.
 if [[ "$SOURCE" == openai ]]; then
   COMPUTE_ROOTS=(OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.command)
 else
@@ -85,9 +105,13 @@ python3 "$HERE/validate_computation.py" "$OUT/$SOURCE-computation.jsonl" \
   --output "$OUT/$SOURCE-computation-view.json" \
   --summary "$OUT/$SOURCE-computation-summary.json" \
   --source-sha "$SHA" --mathlib-sha "$MATHLIB" --lean-version "$VERSION"
+fi
+if [[ "$MODE" != computation ]]; then
 lake env lean --run "$HERE/Extract.lean" "$MODULE" "$OUT/$SOURCE.jsonl" "${ROOTS[@]}"
 python3 "$HERE/validate.py" "$OUT/$SOURCE.jsonl" \
   --summary "$OUT/$SOURCE-summary.json" \
   --project-view "$OUT/$SOURCE-project-graph.json" \
   --source-sha "$SHA" --mathlib-sha "$MATHLIB" --lean-version "$VERSION" \
   "${PREFIXES[@]}"
+
+fi

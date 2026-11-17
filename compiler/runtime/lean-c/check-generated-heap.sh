@@ -38,8 +38,13 @@ if lean --load-dynlib="$NATIVE_LIB" examples/RuntimeHeapDelEmitFixture.lean \
     echo 'Final source del missing from canonical Reader output' >&2
     exit 2
   }
-  echo 'source_del_reader=EMITTED_NOT_EXECUTED' > "$out/source-del-reader-status.txt"
   cp "$del_rs" "$out/source-del-exact-reader.rs"
+  # Type-check the exact, unedited emitted function against the real
+  # Lean C-backed adapter. This is NOT an execution or physical parity gate.
+  rustc --edition=2021 --cfg 'feature="lean-c-runtime"' \
+    -C panic=abort --crate-type lib --emit=metadata \
+    "$out/source-del-exact-reader.rs" -o "$out/source-del-exact-reader.rmeta"
+  echo 'source_del_reader=TYPED_LEAN_C_NOT_EXECUTED' > "$out/source-del-reader-status.txt"
 else
   grep -Fq 'Rust native backend refused' "$out/source-del-emit.log" || {
     echo 'Source del Reader probe failed before a recorded backend refusal' >&2

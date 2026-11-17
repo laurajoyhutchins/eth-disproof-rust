@@ -171,6 +171,9 @@ jobs:
             compiler/artifacts/lean-c-runtime/trace.txt
             compiler/artifacts/lean-c-generated-heap/receipt.txt
             compiler/artifacts/lean-c-generated-heap/trace.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-reader-status.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-emit.log
+            compiler/artifacts/lean-c-generated-heap/source-del-exact-reader.rs
             compiler/artifacts/lean-c-generated-heap/exact-emitter.rs
             compiler/artifacts/source-del-final-ir.tsv
             compiler/artifacts/source-del-final-ir.txt

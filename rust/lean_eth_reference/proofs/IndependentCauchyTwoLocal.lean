@@ -140,9 +140,85 @@ theorem source_difference_divides_alpha
     _ = (2 : R) ^ (a + 1) := by rw [← pow_add, he]; simp
     _ = (sourceAlpha a : R) := by simp [sourceAlpha]
 
+/--
+If every factor of a finite product is divisible by its matching
+integer base factor, then the entire product is divisible too.
+-/
+private theorem product_of_factorwise_multiples
+    {R : Type*} [CommRing R] {ι : Type*}
+    (s : Finset ι) (f g : ι → R)
+    (h : ∀ x ∈ s, ∃ w : R, f x = g x * w) :
+    ∃ w : R, s.prod f = s.prod g * w := by
+  classical
+  have hchoice : ∀ x : ι, ∃ w : R, x ∈ s → f x = g x * w := by
+    intro x
+    by_cases hx : x ∈ s
+    · obtain ⟨w, hw⟩ := h x hx
+      exact ⟨w, fun _ => hw⟩
+    · exact ⟨1, fun hmem => (hx hmem).elim⟩
+  choose w hw using hchoice
+  refine ⟨s.prod w, ?_⟩
+  calc
+    s.prod f = s.prod (fun x => g x * w x) :=
+      Finset.prod_congr rfl (fun x hx => hw x hx)
+    _ = s.prod g * s.prod w := Finset.prod_mul_distrib
+
+/--
+At every original Cauchy interpolation node the source numerator
+is divisible by α times its *actual center derivative product*.
+It is proved for every commutative 2^p-torsion coefficient ring,
+and applies to polynomial rings over such quotients as well.
+-/
+theorem source_cauchy_product_divides_alpha_derivative
+    {R : Type*} [CommRing R]
+    (a p : ℕ) (t : ℤ) (ht : t ∈ sourceGrid a)
+    (z : R) (hmod : (2 : R) ^ p = 0) :
+    ∃ w : R,
+      cauchyProduct a ((t : R) + (sourceAlpha a : R) * z) =
+        (sourceAlpha a : R) * (sourceDerivativeAt a t : R) * w := by
+  classical
+  let s : Finset ℤ := (sourceGrid a).erase t
+  have hfac : ∀ q ∈ s, ∃ w : R,
+      ((t : R) - (q : R) + (sourceAlpha a : R) * z) =
+        ((t - q : ℤ) : R) * w := by
+    intro q hq
+    have hqS : q ∈ sourceGrid a := (Finset.mem_erase.mp hq).2
+    have htq : t ≠ q := by
+      intro heq
+      exact (Finset.mem_erase.mp hq).1 heq.symm
+    obtain ⟨w, hw⟩ :=
+      source_difference_divides_alpha a p t q ht hqS htq hmod
+    refine ⟨1 + w * z, ?_⟩
+    calc
+      (t : R) - (q : R) + (sourceAlpha a : R) * z =
+          ((t - q : ℤ) : R) + (sourceAlpha a : R) * z := by
+            push_cast
+            ring
+      _ = ((t - q : ℤ) : R) * (1 + w * z) := by
+        rw [← hw]
+        ring
+  obtain ⟨w, hw⟩ :=
+    product_of_factorwise_multiples s
+      (fun q : ℤ => (t : R) - (q : R) + (sourceAlpha a : R) * z)
+      (fun q : ℤ => ((t - q : ℤ) : R)) hfac
+  have hD : (sourceDerivativeAt a t : R) =
+      s.prod (fun q : ℤ => ((t - q : ℤ) : R)) := by
+    simp [sourceDerivativeAt, s]
+  refine ⟨z * w, ?_⟩
+  calc
+    cauchyProduct a ((t : R) + (sourceAlpha a : R) * z) =
+      (sourceAlpha a : R) * z *
+        s.prod (fun q : ℤ =>
+          (t : R) - (q : R) + (sourceAlpha a : R) * z) :=
+        cauchy_product_at_grid_point a t ht z
+    _ = (sourceAlpha a : R) * (sourceDerivativeAt a t : R) * (z * w) := by
+      rw [hw, hD]
+      ring
+
 #print axioms IndependentETH.CauchyTwoLocal.bounded_natural_two_factor
 #print axioms IndependentETH.CauchyTwoLocal.source_difference_two_factor
 #print axioms IndependentETH.CauchyTwoLocal.source_difference_odd_is_unit
 #print axioms IndependentETH.CauchyTwoLocal.source_difference_divides_alpha
+#print axioms IndependentETH.CauchyTwoLocal.source_cauchy_product_divides_alpha_derivative
 
 end IndependentETH.CauchyTwoLocal

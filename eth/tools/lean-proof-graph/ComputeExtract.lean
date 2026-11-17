@@ -51,8 +51,8 @@ def appHead (e : Expr) : Json :=
   | _ => Json.null
 
 /-- Inspect expression nodes without reduction. Application spines count once. -/
-partial def collectOps (e : Expr) (path : String) : Array Json := Id.run do
-  let mut out := #[]
+partial def scanOps (e : Expr) (path : String) (initial : Array Json) : Array Json := Id.run do
+  let mut out := initial
   let args := e.getAppArgs
   if !args.isEmpty then
     match e.getAppFn with
@@ -66,25 +66,28 @@ partial def collectOps (e : Expr) (path : String) : Array Json := Id.run do
           ("argument_heads", toJson (args.map appHead))])
     | _ => pure ()
     for h in [:args.size] do
-      out := out ++ collectOps args[h]! s!"{path}.{h}"
+      out := scanOps args[h]! s!"{path}.{h}" out
   else
     match e with
     | .lam _ type body _ =>
-      out := out ++ collectOps type s!"{path}.type"
-      out := out ++ collectOps body s!"{path}.body"
+      out := scanOps type s!"{path}.type" out
+      out := scanOps body s!"{path}.body" out
     | .forallE _ type body _ =>
-      out := out ++ collectOps type s!"{path}.type"
-      out := out ++ collectOps body s!"{path}.body"
+      out := scanOps type s!"{path}.type" out
+      out := scanOps body s!"{path}.body" out
     | .letE _ type value body _ =>
-      out := out ++ collectOps type s!"{path}.type"
-      out := out ++ collectOps value s!"{path}.value"
-      out := out ++ collectOps body s!"{path}.body"
+      out := scanOps type s!"{path}.type" out
+      out := scanOps value s!"{path}.value" out
+      out := scanOps body s!"{path}.body" out
     | .proj _ _ value =>
-      out := out ++ collectOps value s!"{path}.project"
+      out := scanOps value s!"{path}.project" out
     | .mdata _ value =>
-      out := out ++ collectOps value s!"{path}.metadata"
+      out := scanOps value s!"{path}.metadata" out
     | _ => pure ()
   return out
+
+def collectOps (e : Expr) (path : String) : Array Json :=
+  scanOps e path #[]
 
 def declarationKind (ci : ConstantInfo) : String :=
   match ci with

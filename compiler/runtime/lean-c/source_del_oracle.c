@@ -1,7 +1,8 @@
 /* Independent original-Lean-C versus exact Reader-generated Rust/C.
  * Both calls consume one parent and replacement Nat reference; the
  * threshold is borrowed. No source ownership operations are replaced by
- * equivalent-looking host code. Cases use only tagged Nat arguments.
+ * equivalent-looking host code. Parent stamps may be heap Nat objects;
+ * those tests additionally check actual reference-count transitions.
  */
 #include <lean/lean.h>
 #include <stdint.h>
@@ -35,25 +36,36 @@ lean_obj_res lr_heap_compare_source_del(
     lean_obj_arg new_stamp, lean_obj_arg threshold, lean_obj_arg shared)
 {
     if (!lean_is_scalar(a) || !lean_is_scalar(b) ||
-        !lean_is_scalar(old_stamp) || !lean_is_scalar(new_stamp) ||
-        !lean_is_scalar(threshold) || !lean_is_scalar(shared))
+        !lean_is_scalar(new_stamp) || !lean_is_scalar(threshold) ||
+        !lean_is_scalar(shared))
         return lean_box(2);
 
+    const int heap_stamp = !lean_is_scalar(old_stamp);
+    if (heap_stamp && physical_rc(old_stamp) != 1) return lean_box(2);
     const size_t left = lean_unbox(a), right = lean_unbox(b);
-    const size_t old = lean_unbox(old_stamp), replacement = lean_unbox(new_stamp);
+    const size_t replacement = lean_unbox(new_stamp);
     const size_t test = lean_unbox(threshold), is_shared = lean_unbox(shared);
     if (is_shared > 1) return lean_box(2);
 
+    // The C oracle receives one owned old_stamp reference. Give each
+    // source-created Box a distinct *credit* to the same old stamp;
+    // retain the caller's credit for before/after RC observation. These
+    // two increments prepare independent parent references, not a
+    // replacement for any source instruction in either function.
+    lean_inc(old_stamp);
+    lean_inc(old_stamp);
     lean_object *original = l_RuntimeHeap_nest(
-        lean_box(left), lean_box(right), lean_box(old));
+        lean_box(left), lean_box(right), old_stamp);
     lean_object *generated = l_RuntimeHeap_nest(
-        lean_box(left), lean_box(right), lean_box(old));
+        lean_box(left), lean_box(right), old_stamp);
+    const int initial_stamp_rc = heap_stamp ? physical_rc(old_stamp) : -1;
     if (!lean_is_ctor(original) || !lean_is_ctor(generated) ||
         lean_obj_tag(original) != 1 || lean_obj_tag(generated) != 1 ||
         lean_ctor_num_objs(original) != 2 ||
         lean_ctor_num_objs(generated) != 2) {
         lean_dec(original);
         lean_dec(generated);
+        lean_dec(old_stamp);
         return lean_box(3);
     }
     lean_object *original_child = lean_ctor_get(original, 0);
@@ -64,9 +76,11 @@ lean_obj_res lr_heap_compare_source_del(
         physical_rc(original) != 1 || physical_rc(generated) != 1 ||
         physical_rc(original_child) != 1 ||
         physical_rc(generated_child) != 1 ||
-        !lean_is_exclusive(original) || !lean_is_exclusive(generated)) {
+        !lean_is_exclusive(original) || !lean_is_exclusive(generated) ||
+        (heap_stamp && initial_stamp_rc != 3)) {
         lean_dec(original);
         lean_dec(generated);
+        lean_dec(old_stamp);
         return lean_box(4);
     }
     if (is_shared) {
@@ -76,6 +90,7 @@ lean_obj_res lr_heap_compare_source_del(
             lean_is_exclusive(original) || lean_is_exclusive(generated)) {
             lean_dec(original); lean_dec(original);
             lean_dec(generated); lean_dec(generated);
+            lean_dec(old_stamp);
             return lean_box(5);
         }
     }
@@ -83,19 +98,22 @@ lean_obj_res lr_heap_compare_source_del(
     // No C host reset/reuse/del/dec acts on that reference.
     lean_object *expected = l_RuntimeHeapDel_rebuildOrExtractByPayload(
         original, lean_box(replacement), lean_box(test));
+    int status = 0;
+    if (heap_stamp && physical_rc(old_stamp) != (is_shared ? 3 : 2))
+        status = 10;
     lean_object *actual = lr_heap_generated_source_del_extract(
         generated, lean_box(replacement), lean_box(test));
-
-    int status = 0;
+    if (heap_stamp && physical_rc(old_stamp) != (is_shared ? 3 : 1))
+        status = 11;
     if (expected != original_child || actual != generated_child ||
         expected == actual || !pair_matches(expected, left, right) ||
         !pair_matches(actual, left, right)) {
-        status = 6;
+        if (!status) status = 6;
     } else if (physical_rc(expected) != (is_shared ? 2 : 1) ||
                physical_rc(actual) != (is_shared ? 2 : 1) ||
                (is_shared == 0 &&
                 (!lean_is_exclusive(expected) || !lean_is_exclusive(actual)))) {
-        status = 7;
+        if (!status) status = 7;
     }
     if (is_shared) {
         // The caller's second reference is still live and unchanged.
@@ -110,7 +128,10 @@ lean_obj_res lr_heap_compare_source_del(
                         !lean_is_exclusive(expected) ||
                         !lean_is_exclusive(actual))) status = 9;
     }
+    if (heap_stamp && physical_rc(old_stamp) != 1 && !status)
+        status = 12;
     lean_dec(expected);
     lean_dec(actual);
+    lean_dec(old_stamp);
     return lean_box(status);
 }

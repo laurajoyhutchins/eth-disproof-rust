@@ -59,11 +59,14 @@ compares 100 scalar input pairs against the original Lean source. This
 validates the initial emitted-function C ABI, but only for an unboxed
 scalar function. A restricted generated-heap mode now selects the physical C runtime at
 Rust compilation time by `--cfg 'feature="lean-c-runtime"'`, without changing the
-canonical IR emitter or emitted function bodies. The currently admitted
+canonical IR emitter or emitted function bodies. The admitted
 `RuntimeHeap.Pair.mk` constructor takes two tagged immediate Nat fields;
-projection returns only tagged immediate fields. The system refuses
-unsupported heap-child transfers, bignum fields, persistent counts, and
-unproved runtime operations. It compares generated constructor, projection,
+`RuntimeHeap.Box.mk` transfers one such heap child into a two-slot parent.
+The source-defined `payload` projection retains its borrowed heap field
+before parent release, using real Lean C `inc` and `dec` credits.
+The system refuses unsupported constructor families, shell-only
+deletion, heap-valued grandchildren, persistent counts, bignums,
+and unproved runtime operations. It compares generated constructor, projection,
 and direct-call behavior against original Lean C using actual physical
 heap state. This is not general Lean heap equivalence.
 

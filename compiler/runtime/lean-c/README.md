@@ -45,7 +45,19 @@ physical reference counts. The admitted constructor
 `RuntimeHeap.Pair.mk` has two tagged Nat fields. A generated function
 projects a tagged field, and `observe` exercises the direct-call
 closure. The test hashes the exact generated source and refuses
-unsupported heap-child transfer or bignum projection.
+unsupported constructor layouts or bignum projection.
+
+The nested `RuntimeHeap.Box.mk` fixture now transfers a heap child into
+a parent without inventing an increment. The exact Reader-generated
+`RuntimeHeap.payload` must retain a borrowed heap field before the
+parent's last source-owned reference disappears. A shared-parent path
+compares the original Lean C and emitted Rust C physical counts 1 → 2
+and 2 → 1 and checks that the retained child survives. The unique-parent
+path exercises the corresponding final-parent release. Both preserve
+the original child allocation identity, validated independently on
+300 additional pairs/stamps. Nested descendants currently contain
+immediate fields; shell-only `del`, heap grandchildren and joins are
+not yet established.
 
 The wider compiler still does not use the C adapter by default. The
 scalar proof validates the ABI and basic execution against Lean C,

@@ -4,7 +4,7 @@ This experimental branch lowers serialized, pinned finite BitProgram instruction
 
 ## Reproduce
 
-With Rust 1.99.1, from rust/lean_eth_reference:
+With Rust 1.99.1, from eth:
 
     cargo test --locked --offline --test lean_table_codegen
     cargo test --locked --offline --bin lean-table-codegen
@@ -159,7 +159,7 @@ instruction tables are in `tools/fixtures/original/all-literal.bundle`.
 Command to independently rebuild the catalog from authentic source:
 
 ```sh
-cd rust/lean_eth_reference
+cd eth
 cargo run --locked --offline --bin extract-lean-tables -- \
     --upstream /path/to/original/openai-math \
     --output-dir tools/fixtures/original --check

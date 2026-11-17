@@ -13,7 +13,7 @@ port and emits **every** (label, registers, complete stacks) state through halt.
 The two trace producers are run independently, with 62 boundary/dirty cases.
 
 ```sh
-cd rust/lean_eth_reference
+cd eth
 scripts/verify-lean-differential.sh --lean-repo /path/to/pinned/openai-math --suite full
 # all available source-instrumented suites:
 scripts/verify-lean-differential.sh --lean-repo /path/to/pinned/openai-math --suite all
@@ -42,7 +42,7 @@ golden-answer replacement, or a successful independent differential test.
 ## One actual source-native counting slice
 
 ```sh
-cd rust/lean_eth_reference
+cd eth
 printf 'p cnf 3 0\n' | cargo run --locked --offline --bin eth-terminal-count
 printf 'p cnf 3 1\n0\n' | cargo run --locked --offline --bin eth-terminal-count
 ```
@@ -177,7 +177,7 @@ finite table has no certified constructive representation.
 ## Live instrumented Rust per-stage profile (no Lean assertion)
 
 ```sh
-cd rust/lean_eth_reference
+cd eth
 cargo run --release --locked --offline --bin profile-full-machine -- --terminal > terminal-profile.csv
 ```
 

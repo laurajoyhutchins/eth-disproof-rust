@@ -18,7 +18,7 @@ SHA-256 from its kernel-certificate receipt. It emits a deterministic Rust
 ```sh
 cargo run --locked --offline --bin original-source-codegen -- \
   /path/to/graph.jsonl CERT_ID CERT_DECLARATION CERT_BLOB CERT_SHA256 \
-  rust/lean_eth_reference/src/bin/source-generated-local.rs
+  eth/src/bin/source-generated-local.rs
 cargo build --locked --offline --bin source-generated-local
 # Run the resulting binary with: lookup PC | run BITS MAX_STEPS MAX_STACK_BITS
 ```

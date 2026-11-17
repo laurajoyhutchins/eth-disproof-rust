@@ -46,6 +46,6 @@ printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
   cargo run --quiet --locked --offline -p lean-eth-reference --bin lean-eth-reference
 ```
 
-The [Rust workflow](../../../.github/workflows/rust.yml) reports the exact head checked. A green run from yesterday validates yesterday's commit, not today's.
+The [Rust workflow](../../.github/workflows/rust.yml) reports the exact head checked. A green run from yesterday validates yesterday's commit, not today's.
 
-[Compiler acceptance](../../../research/lean-rust-acceptance.md) · [Independent differential specification](independent-differential-and-accounting.md)
+[Compiler acceptance](../../research/lean-rust-acceptance.md) · [Independent differential specification](independent-differential-and-accounting.md)

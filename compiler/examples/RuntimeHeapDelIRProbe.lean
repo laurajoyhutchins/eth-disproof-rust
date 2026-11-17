@@ -1,4 +1,5 @@
 import Lean
+import Lean.Compiler.IR.Format
 import RuntimeHeapDelKernels
 
 /-!
@@ -49,16 +50,23 @@ run_cmd do
   liftCoreM <| Lean.Compiler.compile roots
   let mut rows := "declaration\tfinal_ir_del\tfinal_ir_jdecl\n"
   let mut totalDel := 0
+  let mut completeIR := ""
   for root in roots do
-    let some (.fdecl _ _ _ body _) ← liftCoreM <| Lean.IR.findDecl root
-      | throwError "No final Lean.IR.fdecl for {root}"
+    let some decl ← liftCoreM <| Lean.IR.findDecl root
+      | throwError "No final Lean.IR declaration for {root}"
+    let .fdecl _ _ _ body _ := decl
+      | throwError "Final compiler declaration is not a function: {root}"
     let deletions := countDel body
     let joins := countJoins body
     totalDel := totalDel + deletions
+    -- Preserve the real final IR, including control flow and ownership ops.
+    completeIR := completeIR ++ s!"=== {root} ===\n" ++
+      Lean.IR.declToString decl ++ "\n"
     rows := rows ++ s!"{root}\t{deletions}\t{joins}\n"
     logInfo m!"Pinned final IR {root}: del={deletions}, joins={joins}"
   liftIO <| IO.FS.createDirAll "artifacts"
   liftIO <| IO.FS.writeFile "artifacts/source-del-final-ir.tsv" rows
+  liftIO <| IO.FS.writeFile "artifacts/source-del-final-ir.txt" completeIR
   let status := if totalDel == 0 then "NO_SOURCE_DEL_CANDIDATE" else "SOURCE_DEL_FOUND_NOT_EXECUTED"
   liftIO <| IO.FS.writeFile "artifacts/source-del-final-ir-status.txt"
     s!"status={status}\nsource=RuntimeHeapDelKernels.lean\ncompiler=Lean.Compiler.compile\nfinal_ir=Lean.IR.findDecl\nfinal_del_count={totalDel}\nemitted_ir_source_del=NOT_YET_ESTABLISHED\n"

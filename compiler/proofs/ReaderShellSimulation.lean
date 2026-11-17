@@ -111,7 +111,7 @@ def sourceStep (s : Source) : Instruction → Option Source
       else some { s with stampSlot := .fresh }
   | .shellDel =>
       if !s.observedUnique || s.parentCredits != 1 || !s.childField ||
-         !s.borrowedChild || s.stampSlot == .old ||
+         !s.borrowedChild || s.stampSlot != .spent ||
          s.childProjectionCredits != 0 then none
       else some { s with
         parentCredits := 0
@@ -150,7 +150,7 @@ def physicalStep (p : Physical) : Instruction → Option Physical
       else some { p with stampSlot := .fresh }
   | .shellDel =>
       if !p.observedUnique || p.parentRC != 1 || !p.childField ||
-         !p.borrowedChild || p.stampSlot == .old || p.childRC != 1 then none
+         !p.borrowedChild || p.stampSlot != .spent || p.childRC != 1 then none
       else some { p with parentRC := 0, childField := false }
   | .releaseProjectedChild =>
       if p.childField || p.childRC == 0 then none
@@ -312,6 +312,16 @@ def sharedBeforeStampDec (external : Nat) : Source :=
 theorem no_stamp_release_on_shared_parent (external : Nat) :
     sourceStep (sharedBeforeStampDec external) .stampDec = none := rfl
 
+/-- The new stamp may be heap-allocated. Its owned field credit is not
+tracked by this tiny machine, so shell deletion after replacement is
+deliberately outside the admitted subset. -/
+def afterFreshSet (external : Nat) : Source :=
+  let s := uniqueBeforeStampDec external
+  { s with stampSlot := .fresh }
+
+theorem no_del_of_fresh_stamp (external : Nat) :
+    sourceStep (afterFreshSet external) .shellDel = none := rfl
+
 /-- A wrong implementation that recursively decrements the child during
 shell deletion violates the representation relation even when its
 returned data values happen to match. -/
@@ -364,4 +374,5 @@ end ReaderShellSimulation
 #print axioms ReaderShellSimulation.physical_reuse_trace
 #print axioms ReaderShellSimulation.no_del_before_stamp_release
 #print axioms ReaderShellSimulation.no_stamp_release_on_shared_parent
+#print axioms ReaderShellSimulation.no_del_of_fresh_stamp
 #print axioms ReaderShellSimulation.recursive_delete_is_not_shell_delete

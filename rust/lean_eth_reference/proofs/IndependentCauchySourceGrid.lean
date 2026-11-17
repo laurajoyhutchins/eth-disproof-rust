@@ -66,6 +66,77 @@ theorem source_difference_abs_lt_alpha
   rw [abs_lt, sourceAlpha_eq_two_mul]
   constructor <;> omega
 
+/-- Enumerate the exact integer grid with its offset from -2^a. -/
+def shiftedGridPoint (a : ℕ) (q : Fin (2 ^ (a + 1))) : ℤ :=
+  (q.val : ℤ) - (2 : ℤ) ^ a
+
+theorem shiftedGridPoint_mem (a : ℕ) (q : Fin (2 ^ (a + 1))) :
+    shiftedGridPoint a q ∈ sourceGrid a := by
+  rw [sourceGrid_mem_iff]
+  have hb : (q.val : ℤ) < (2 : ℤ) ^ (a + 1) := by
+    exact_mod_cast q.isLt
+  have hz : 0 ≤ (q.val : ℤ) := by positivity
+  have ha : (2 : ℤ) ^ (a + 1) = 2 * (2 : ℤ) ^ a := by
+    rw [pow_succ]
+    ring
+  unfold shiftedGridPoint
+  constructor <;> omega
+
+theorem shiftedGridPoint_injective (a : ℕ) :
+    Function.Injective (shiftedGridPoint a) := by
+  intro q r h
+  apply Fin.ext
+  dsimp [shiftedGridPoint] at h
+  omega
+
+/--
+Every integer in the original interval is hit exactly once. Together
+with the residue-ring equivalence, this makes the original source
+grid a certified complete residue system, not an assumed list.
+-/
+theorem shiftedGridPoint_surjective (a : ℕ) (t : ℤ)
+    (ht : t ∈ sourceGrid a) :
+    ∃ q : Fin (2 ^ (a + 1)), shiftedGridPoint a q = t := by
+  obtain ⟨hl, hu⟩ := (sourceGrid_mem_iff a t).mp ht
+  have hN : (2 : ℤ) ^ (a + 1) = 2 * (2 : ℤ) ^ a := by
+    rw [pow_succ]
+    ring
+  have hzero : 0 ≤ t + (2 : ℤ) ^ a := by omega
+  have htop : t + (2 : ℤ) ^ a < (2 : ℤ) ^ (a + 1) := by omega
+  have hc : (((2 : ℕ) ^ (a + 1) : ℕ) : ℤ) =
+      (2 : ℤ) ^ (a + 1) := by norm_cast
+  have hnat : (t + (2 : ℤ) ^ a).toNat < (2 : ℕ) ^ (a + 1) := by
+    have heq : (((t + (2 : ℤ) ^ a).toNat : ℕ) : ℤ) =
+        t + (2 : ℤ) ^ a := Int.toNat_of_nonneg hzero
+    omega
+  refine ⟨⟨(t + (2 : ℤ) ^ a).toNat, hnat⟩, ?_⟩
+  unfold shiftedGridPoint
+  have heq : (((t + (2 : ℤ) ^ a).toNat : ℕ) : ℤ) =
+      t + (2 : ℤ) ^ a := Int.toNat_of_nonneg hzero
+  omega
+
+/-- A bijective enumeration of the literal integer source grid. -/
+noncomputable def sourceGridFinEquiv (a : ℕ) :
+    Fin (2 ^ (a + 1)) ≃ {t : ℤ // t ∈ sourceGrid a} := by
+  classical
+  let F : Fin (2 ^ (a + 1)) → {t : ℤ // t ∈ sourceGrid a} :=
+    fun q => ⟨shiftedGridPoint a q, shiftedGridPoint_mem a q⟩
+  apply Equiv.ofBijective F
+  constructor
+  · intro q r h
+    apply shiftedGridPoint_injective a
+    exact congrArg Subtype.val h
+  · intro ⟨t, ht⟩
+    obtain ⟨q, hq⟩ := shiftedGridPoint_surjective a t ht
+    refine ⟨q, ?_⟩
+    exact Subtype.ext hq
+
+/-- The literal source grid is equivalent to one complete residue ring. -/
+noncomputable def sourceGridResidueEquiv (a : ℕ) :
+    {t : ℤ // t ∈ sourceGrid a} ≃ ZMod (2 ^ (a + 1)) := by
+  letI : NeZero (2 ^ (a + 1)) := ⟨by positivity⟩
+  exact (sourceGridFinEquiv a).symm.trans (ZMod.finEquiv (2 ^ (a + 1))).toEquiv
+
 /--
 The Cauchy numerator as the source's finite product, evaluated
 inside an arbitrary commutative ring.
@@ -162,6 +233,11 @@ theorem residue_difference_divisibility_count
   simpa [Finset.sum_ite] using h
 
 #print axioms IndependentETH.CauchySourceGrid.zero_mem_sourceGrid
+#print axioms IndependentETH.CauchySourceGrid.shiftedGridPoint_mem
+#print axioms IndependentETH.CauchySourceGrid.shiftedGridPoint_injective
+#print axioms IndependentETH.CauchySourceGrid.shiftedGridPoint_surjective
+#print axioms IndependentETH.CauchySourceGrid.sourceGridFinEquiv
+#print axioms IndependentETH.CauchySourceGrid.sourceGridResidueEquiv
 #print axioms IndependentETH.CauchySourceGrid.source_difference_abs_lt_alpha
 #print axioms IndependentETH.CauchySourceGrid.cauchy_product_at_grid_point
 #print axioms IndependentETH.CauchySourceGrid.sourceDerivativeAtZero_ne_zero

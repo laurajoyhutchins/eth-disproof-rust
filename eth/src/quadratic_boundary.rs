@@ -202,17 +202,19 @@ impl QuadraticMode {
         }
         if self.zero
             || self.equations.iter().any(|eq| {
-                eq.coefficients.iter().zip(assignment).fold(
-                    false,
-                    |acc, (&c, &b)| acc ^ (c && b),
-                ) != eq.rhs
+                eq.coefficients
+                    .iter()
+                    .zip(assignment)
+                    .fold(false, |acc, (&c, &b)| acc ^ (c && b))
+                    != eq.rhs
             })
         {
             return Ok(SignedPower::Zero);
         }
-        let negative = self.phase.iter().fold(false, |acc, term| {
-            acc ^ term.iter().all(|&i| assignment[i])
-        });
+        let negative = self
+            .phase
+            .iter()
+            .fold(false, |acc, term| acc ^ term.iter().all(|&i| assignment[i]));
         Ok(if negative {
             SignedPower::Negative(self.exponent)
         } else {
@@ -251,52 +253,50 @@ impl QuadraticMode {
             return Ok(Self::zero(self.variables - 1));
         }
         let mut equations = self.equations.clone();
-        let (phase, exponent) = if let Some(pivot) = equations
-            .iter()
-            .position(|eq| eq.coefficients[variable])
-        {
-            let pivot_eq = equations.remove(pivot);
-            let phase = substitute(
-                &self.phase,
-                variable,
-                &affine_replacement(&pivot_eq, variable),
-            );
-            for eq in &mut equations {
-                if eq.coefficients[variable] {
-                    xor_equation(eq, &pivot_eq);
+        let (phase, exponent) =
+            if let Some(pivot) = equations.iter().position(|eq| eq.coefficients[variable]) {
+                let pivot_eq = equations.remove(pivot);
+                let phase = substitute(
+                    &self.phase,
+                    variable,
+                    &affine_replacement(&pivot_eq, variable),
+                );
+                for eq in &mut equations {
+                    if eq.coefficients[variable] {
+                        xor_equation(eq, &pivot_eq);
+                    }
                 }
-            }
-            (phase, self.exponent)
-        } else {
-            let mut base = Anf::new();
-            let mut mixed = Anf::new();
-            for term in &self.phase {
-                if term.binary_search(&variable).is_ok() {
-                    toggle(
-                        &mut mixed,
-                        term.iter().copied().filter(|&i| i != variable).collect(),
-                    );
-                } else {
-                    toggle(&mut base, term.clone());
+                (phase, self.exponent)
+            } else {
+                let mut base = Anf::new();
+                let mut mixed = Anf::new();
+                for term in &self.phase {
+                    if term.binary_search(&variable).is_ok() {
+                        toggle(
+                            &mut mixed,
+                            term.iter().copied().filter(|&i| i != variable).collect(),
+                        );
+                    } else {
+                        toggle(&mut base, term.clone());
+                    }
                 }
-            }
-            debug_assert!(mixed.iter().all(|term| term.len() <= 1));
-            let mut coefficients = vec![false; self.variables];
-            for term in &mixed {
-                if let [index] = term.as_slice() {
-                    coefficients[*index] = true;
+                debug_assert!(mixed.iter().all(|term| term.len() <= 1));
+                let mut coefficients = vec![false; self.variables];
+                for term in &mixed {
+                    if let [index] = term.as_slice() {
+                        coefficients[*index] = true;
+                    }
                 }
-            }
-            equations.push(Equation {
-                coefficients,
-                rhs: mixed.contains(&vec![]),
-            });
-            let exponent = self
-                .exponent
-                .checked_add(1)
-                .ok_or(BoundaryError::ExponentOverflow)?;
-            (base, exponent)
-        };
+                equations.push(Equation {
+                    coefficients,
+                    rhs: mixed.contains(&vec![]),
+                });
+                let exponent = self
+                    .exponent
+                    .checked_add(1)
+                    .ok_or(BoundaryError::ExponentOverflow)?;
+                (base, exponent)
+            };
         let equations = equations
             .into_iter()
             .map(|mut eq| {
@@ -468,20 +468,25 @@ mod tests {
             let v = bits(2, word);
             assert_eq!(
                 joined.value(&v).unwrap().to_i128().unwrap(),
-                a.value(&v).unwrap().to_i128().unwrap()
-                    + b.value(&v).unwrap().to_i128().unwrap()
+                a.value(&v).unwrap().to_i128().unwrap() + b.value(&v).unwrap().to_i128().unwrap()
             );
         }
         let a = QuadraticMode::new(
             3,
-            vec![Equation { coefficients: vec![true, false, false], rhs: false }],
+            vec![Equation {
+                coefficients: vec![true, false, false],
+                rhs: false,
+            }],
             Anf::new(),
             0,
         )
         .unwrap();
         let b = QuadraticMode::new(
             3,
-            vec![Equation { coefficients: vec![true, false, false], rhs: true }],
+            vec![Equation {
+                coefficients: vec![true, false, false],
+                rhs: true,
+            }],
             terms(&[&[1, 2]]),
             0,
         )

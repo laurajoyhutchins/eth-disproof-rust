@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../.."
 : "${LEAN_PREFIX:?Set LEAN_PREFIX to pinned Lean 4.34.1}"
 test -s "${NATIVE_LIB:?Build the canonical backend first}"
 export PATH="$LEAN_PREFIX/bin:$PATH"
-export LEAN_PATH="$(pwd)/examples:$(pwd):$LEAN_PREFIX/lib/lean"
+export LEAN_PATH="$(pwd)/proofs:$(pwd)/examples:$(pwd):$LEAN_PREFIX/lib/lean"
 export LD_LIBRARY_PATH="$LEAN_PREFIX/lib/lean${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 test "$(lean --version)" = 'Lean (version 4.34.1, x86_64-unknown-linux-gnu, commit 5045d0056413266e57c625dcd7c365b10e377c52, Release)'
 test "$(rustc --version)" = 'rustc 1.99.1 (58cf8f9c3 2026-10-13)'
@@ -14,7 +14,7 @@ out="$(pwd)/artifacts/lean-c-generated-heap"
 mkdir -p "$out"
 # Kernel-check the abstract source-credit / physical-count simulation
 # before compiling expensive generated Rust and Lean C integrations.
-lean proofs/ReaderShellSimulation.lean | tee "$out/source-shell-simulation-lean.txt"
+lean -o proofs/ReaderShellSimulation.olean proofs/ReaderShellSimulation.lean | tee "$out/source-shell-simulation-lean.txt"
 # The proof may use only Lean's built-in logical axioms. The kernel
 # already rejects unsolved goals; a separate provenance gate rejects
 # sorryAx, custom axioms, and missing theorem audit lines.
@@ -165,8 +165,21 @@ lean -c "$out/SourceDelDriver.c" runtime/lean-c/SourceDelDriver.lean
 leanc -O2 -o "$out/source-del-execute" \
   "$out/RuntimeHeapKernels.c" "$out/RuntimeHeapDelKernels.c" \
   "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \
+  runtime/lean-c/source_shell_step_oracle.c \
   runtime/lean-c/abi.c "$out/libsource_del_generated.a"
-"$out/source-del-execute" | tee "$out/source-del-trace.txt"
+# The physically observed trace comes from actual pinned Lean C calls,
+# not a Rust or Lean reimplementation of those primitive operations.
+LR_SOURCE_TRACE="$out/source-shell-physical.tsv" \
+  "$out/source-del-execute" | tee "$out/source-del-trace.txt"
+grep -Fx 'reader-source-shell-physical-checkpoints=RECORDED' "$out/source-del-trace.txt"
+test -s "$out/source-shell-physical.tsv"
+# Kernel's already-proved physicalStep checks the *independently measured*
+# C rows and refuses omissions, reordering, illegal transitions and ID drift.
+lean proofs/ReaderShellTraceAudit.lean | tee "$out/source-shell-trace-audit.txt"
+grep -Fq 'source-shell-physical-trace=PASS rows=28 cases=4 complete-order-and-identity' \
+  "$out/source-shell-trace-audit.txt"
+grep -Fq "'ReaderShellTraceAudit.accepted_physical_step_has_source_step' depends on axioms:" \
+  "$out/source-shell-trace-audit.txt"
 grep -Fx 'reader-generated-source-del-lean-c=PASS cases=720' "$out/source-del-trace.txt"
 echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_720' \
   > "$out/source-del-execution-status.txt"
@@ -174,8 +187,13 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
 {
   echo 'status=PASS_ORIGINAL_LEAN_C_AND_READER_GENERATED_HEAP'
   echo 'source_shell_abstract_trace_simulation=LEAN_KERNEL_VERIFIED_RESTRICTED_MACHINE'
-  echo 'source_shell_original_lean_c_refinement=NOT_ESTABLISHED'
-  sha256sum proofs/ReaderShellSimulation.lean "$out/source-shell-simulation-lean.txt"
+  echo 'source_shell_original_lean_c_refinement=BOUNDED_OBSERVED_CHECKPOINTS_NOT_FORMAL_C_SEMANTICS'
+  echo 'physical_c_operations=real_pinned_lean_inc_dec_ctor_get_ctor_set_is_exclusive_del_object'
+  echo 'physical_trace=28_observations_in_4_allocation_episodes'
+  echo 'source_shell_c_semantics_proof=NOT_ESTABLISHED'
+  sha256sum proofs/ReaderShellSimulation.lean "$out/source-shell-simulation-lean.txt" \
+    proofs/ReaderShellTraceAudit.lean runtime/lean-c/source_shell_step_oracle.c \
+    "$out/source-shell-physical.tsv" "$out/source-shell-trace-audit.txt"
   echo "revision=$(git rev-parse HEAD)"
   echo "lean=$(lean --version)"
   echo "rust=$(rustc --version)"

@@ -62,7 +62,7 @@ cleanup_shared:
     // This consumes one owned reference of the emitted root. The source
     // RC transitions inside the exact generated projection remain observable.
     lean_object* projected = lr_heap_generated_first(generated);
-    generated = NULL;
+    // first borrows its parent; the C caller still owns generated.
     if (!lean_is_scalar(projected) || lean_unbox(projected) != x) result = 7;
     lean_dec(projected);
 cleanup:
@@ -106,9 +106,10 @@ lean_obj_res lr_heap_compare_nested(lean_obj_arg a, lean_obj_arg b, lean_obj_arg
     lean_object *old_child = lean_ctor_get(original, 0);
     lean_object *new_child = lean_ctor_get(emitted, 0);
 
-    /* The projection consumes one reference of a shared parent. Its
-     * independent owned child reference must therefore be retained.
-     * Observe the physical child RC before and after parent release. */
+    /* Original Lean C's unboxed payload BORROWS its parent and calls
+     * lean_inc on the child. The boxed adapter handles parent disposal,
+     * but these direct calls do not. The Rust host must use the identical
+     * borrowed-parameter ABI without inventing a parent lean_dec. */
     lean_inc(original);
     lean_inc(emitted);
     if (source_rc(original) != 2 || source_rc(emitted) != 2) {
@@ -116,17 +117,24 @@ lean_obj_res lr_heap_compare_nested(lean_obj_arg a, lean_obj_arg b, lean_obj_arg
     }
     lean_object *old_projected = l_RuntimeHeap_payload(original);
     lean_object *new_projected = lr_heap_generated_payload(emitted);
-    /* Both calls consume exactly one of the two original parent credits. */
     if (old_projected != old_child || new_projected != new_child ||
-        source_rc(original) != 1 || source_rc(emitted) != 1 ||
+        source_rc(original) != 2 || source_rc(emitted) != 2 ||
         source_rc(old_projected) != 2 || source_rc(new_projected) != 2) {
         if (old_projected != old_child) status = 51;
         else if (new_projected != new_child) status = 52;
-        else if (source_rc(original) != 1) status = 60 + source_rc(original);
-        else if (source_rc(emitted) != 1) status = 70 + source_rc(emitted);
+        else if (source_rc(original) != 2) status = 60 + source_rc(original);
+        else if (source_rc(emitted) != 2) status = 70 + source_rc(emitted);
         else if (source_rc(old_projected) != 2) status = 80 + source_rc(old_projected);
         else status = 90 + source_rc(new_projected);
     }
+    /* First release preserves the parent and the child; second release
+     * destroys the parent and transfers survival to the retained child. */
+    lean_dec(original);
+    lean_dec(emitted);
+    if (status == 0 && (source_rc(original) != 1 ||
+        source_rc(emitted) != 1 ||
+        source_rc(old_projected) != 2 ||
+        source_rc(new_projected) != 2)) status = 6;
     lean_dec(original);
     lean_dec(emitted);
     original = NULL;
@@ -134,25 +142,32 @@ lean_obj_res lr_heap_compare_nested(lean_obj_arg a, lean_obj_arg b, lean_obj_arg
     if (status == 0 && (source_rc(old_projected) != 1 ||
         source_rc(new_projected) != 1 ||
         !valid_pair(old_projected, x, y) ||
-        !valid_pair(new_projected, x, y))) status = 6;
+        !valid_pair(new_projected, x, y))) status = 7;
     lean_dec(old_projected);
     lean_dec(new_projected);
     if (status != 0) return lean_box(status);
 
-    /* Unique parent now exercises the source's shell-reuse/destruction
-     * branch. No borrowed child may dangle or acquire an invented retain. */
+    /* Unique parents are also borrowed; the C and Rust payload functions
+     * retain the child without releasing the parent. Caller release then
+     * destroys the shell and decrements the parent's owned child credit. */
     original = l_RuntimeHeap_nest(lean_box(x), lean_box(y), lean_box(n));
     emitted = lr_heap_generated_nest(lean_box(x), lean_box(y), lean_box(n));
     old_child = lean_ctor_get(original, 0);
     new_child = lean_ctor_get(emitted, 0);
     old_projected = l_RuntimeHeap_payload(original);
     new_projected = lr_heap_generated_payload(emitted);
+    if (old_projected != old_child || new_projected != new_child ||
+        source_rc(original) != 1 || source_rc(emitted) != 1 ||
+        source_rc(old_projected) != 2 || source_rc(new_projected) != 2)
+        status = 8;
+    lean_dec(original);
+    lean_dec(emitted);
     original = NULL;
     emitted = NULL;
-    if (old_projected != old_child || new_projected != new_child ||
-        source_rc(old_projected) != 1 || source_rc(new_projected) != 1 ||
+    if (status == 0 && (source_rc(old_projected) != 1 ||
+        source_rc(new_projected) != 1 ||
         !valid_pair(old_projected, x, y) ||
-        !valid_pair(new_projected, x, y)) status = 7;
+        !valid_pair(new_projected, x, y))) status = 9;
     lean_dec(old_projected);
     lean_dec(new_projected);
     if (status != 0) return lean_box(status);
@@ -162,7 +177,7 @@ lean_obj_res lr_heap_compare_nested(lean_obj_arg a, lean_obj_arg b, lean_obj_arg
     lean_object *rust_value =
         lr_heap_generated_nested_first(lean_box(x), lean_box(y), lean_box(n));
     if (!lean_is_scalar(source_value) || !lean_is_scalar(rust_value) ||
-        lean_unbox(source_value) != x || lean_unbox(rust_value) != x) status = 8;
+        lean_unbox(source_value) != x || lean_unbox(rust_value) != x) status = 10;
     lean_dec(source_value);
     lean_dec(rust_value);
     return lean_box(status);

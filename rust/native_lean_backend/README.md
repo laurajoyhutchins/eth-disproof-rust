@@ -1,6 +1,8 @@
 # Native Lean-to-Rust compiler: executable IR subset
 
-The [backend-first architecture decision](docs/backend-first-architecture.md) sets the next target: keep Lean's compiler authoritative; establish generated-Rust correspondence against Lean's C runtime first; replace the execution runtime only after that baseline. The current standalone value runtime below is a tested subset, not a proof of full Lean ownership fidelity. A Rust proof kernel remains a separate project.
+The [backend-first architecture](docs/backend-first-architecture.md) keeps Lean's compiler authoritative and the existing in-process IR reader as the one production emitter. The [current status](docs/compiler-status.md) distinguishes accepted behavior from proposed work. The [execution runtime contract](docs/execution-runtime-contract.md) defines the next seam: first execute emitted Rust against Lean C, then independently replace runtime operations. This implementation currently embeds a standalone GMP/`Rc` value runtime for a bounded tested subset; it has not established universal ownership fidelity. An independent Rust kernel remains a separate project.
+
+The sections below preserve dated implementation and experiment evidence; use [COVERAGE.md](COVERAGE.md), [SEMANTICS.md](SEMANTICS.md), and current exact-head tests to determine which constructs are supported rather than treating an early example's list as the complete current inventory.
 
 For a measured, original-source comparison with Lean's **native C backend**,
 including checksum parity, runtime timings, compiler phases, executable sizes,

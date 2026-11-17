@@ -32,6 +32,14 @@ The separate brute-force oracle is useful for checking an answer. It is **not** 
 
 Follow [execution evidence](rust/lean_eth_reference/docs/evidence.md), [the missing stages](rust/lean_eth_reference/docs/remaining-lean-port.md), and [the Lean-to-Rust acceptance conditions](research/lean-rust-acceptance.md).
 
+## Lean compiler IR to Rust
+
+The general compiler (G1) uses Lean's own frontend and ownership-explicit compiler IR. There is one production Rust emitter, currently limited to a documented executable subset. The current standalone Rust value runtime is **not** a demonstrated substitute for Lean's entire runtime.
+
+The implementation order is: prove the backend against Lean C execution, define and test the ownership/FFI contract, then replace runtime operations in Rust. Compiling the noncomputable original ETH machine (G2) remains a separate issue, and an independent proof kernel is not part of the compiler.
+
+[Architecture](rust/native_lean_backend/docs/backend-first-architecture.md) · [Current status](rust/native_lean_backend/docs/compiler-status.md) · [Execution runtime contract](rust/native_lean_backend/docs/execution-runtime-contract.md) · [Build and use](rust/lean_eth_reference/docs/compiler-ir-backend.md)
+
 ## Complexity and implementation costs
 
 At \(s=10^6\) edges, one stated schedule gives \(u_0=0\). The nominal leaf size is \(H=250{,}000\). The resulting direct sum requires \(2^H\) assignments. This is not practical at the stated scale.

@@ -15,6 +15,9 @@ class MkdocsHookTests(unittest.TestCase):
         self.assertIn("research/two-adic-recursion.md", paths)
         self.assertIn("rust/lean_eth_reference/docs/evidence.md", paths)
         self.assertIn("rust/native_lean_backend/SEMANTICS.md", paths)
+        self.assertIn("rust/native_lean_backend/docs/backend-first-architecture.md", paths)
+        self.assertIn("rust/native_lean_backend/docs/compiler-status.md", paths)
+        self.assertIn("rust/native_lean_backend/docs/execution-runtime-contract.md", paths)
         self.assertGreaterEqual(len(paths), 50)
         self.assertEqual(len(paths), len(set(paths)))
 

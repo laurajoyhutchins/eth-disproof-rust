@@ -88,17 +88,22 @@ nav:
       - Finite fallback: rust/lean_eth_reference/docs/m2-finite-fallback-decision.md
       - Two-path compiler contract: rust/lean_eth_reference/docs/two-path-acceptance-contract.md
   - Compiler:
-      - Rust executable: rust/lean_eth_reference/README.md
+      - Backend-first architecture: rust/native_lean_backend/docs/backend-first-architecture.md
+      - Current implementation status: rust/native_lean_backend/docs/compiler-status.md
+      - Using the native compiler: rust/lean_eth_reference/docs/compiler-ir-backend.md
+      - Execution runtime contract: rust/native_lean_backend/docs/execution-runtime-contract.md
+      - Native compiler README: rust/native_lean_backend/README.md
+      - IR coverage: rust/native_lean_backend/COVERAGE.md
+      - Value semantics: rust/native_lean_backend/SEMANTICS.md
+      - Source conformance: rust/native_lean_backend/CONFORMANCE.md
+      - Comparison with Lean C: rust/native_lean_backend/COMPARISON.md
+      - Execution evidence: rust/native_lean_backend/EVIDENCE.md
+      - Optional compiler bootstrap: lean-rust-replacement.md
+  - ETH source execution:
+      - Rust machine: rust/lean_eth_reference/README.md
       - Native frontend: rust/lean_eth_reference/docs/m2-runnable-frontend.md
-      - Lean compiler IR: rust/lean_eth_reference/docs/compiler-ir-backend.md
       - Core expression residualizer: rust/lean_eth_reference/docs/core-expr-residualizer.md
-      - Generalization plan: rust/lean_eth_reference/docs/lean-to-rust-generalization.md
-      - Native Rust backend:
-          - Introduction: rust/native_lean_backend/README.md
-          - Coverage: rust/native_lean_backend/COVERAGE.md
-          - Semantics: rust/native_lean_backend/SEMANTICS.md
-          - Conformance: rust/native_lean_backend/CONFORMANCE.md
-          - Evidence: rust/native_lean_backend/EVIDENCE.md
+      - Original program generalization: rust/lean_eth_reference/docs/lean-to-rust-generalization.md
   - Detailed notes:
       - Documentation inventory: rust/lean_eth_reference/docs/README.md
       - Worst-case parameter study: rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md

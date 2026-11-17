@@ -16,6 +16,7 @@ SOURCE_DIRS = (
     "research",
     "rust/lean_eth_reference/docs",
     "rust/native_lean_backend",
+    "rust/native_lean_backend/docs",
 )
 SINGLE_SOURCES = (
     "README.md",

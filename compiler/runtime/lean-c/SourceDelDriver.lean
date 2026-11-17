@@ -11,6 +11,10 @@ import RuntimeHeapDelKernels
 -- the borrowed dynamic heap Nat stays live across every checkpoint.
 @[extern "lr_heap_trace_source_credits"] opaque traceSourceCredits
   (oldStamp : @& Nat) : Nat
+-- Independently observe real final-reference destructor behavior and the
+-- acquisition, storage, and recursive release of a *heap-valued* Nat stamp.
+@[extern "lr_heap_trace_final_releases"] opaque traceFinalReleases
+  (oldStamp freshStamp : @& Nat) : Nat
 
 def main : IO Unit := do
   let values : Array Nat := #[0, 1, 2, 7, 17, 901, 2^16, 2^32, 2^40, 2^60]
@@ -49,3 +53,8 @@ def main : IO Unit := do
   if traceResult != 0 then
     throw <| IO.userError s!"Lean C physical step oracle refused: {traceResult}"
   IO.println "reader-source-shell-physical-checkpoints=RECORDED"
+  let freshStamp := (2^140 + 29 : Nat) + runtimeSalt
+  let releaseResult := traceFinalReleases traceStamp freshStamp
+  if releaseResult != 0 then
+    throw <| IO.userError s!"Lean C final-reference release oracle refused: {releaseResult}"
+  IO.println "reader-c-release-heap-stamp-checkpoints=RECORDED"

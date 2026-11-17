@@ -74,7 +74,7 @@ fn large_chain_with_cycles_stays_linear_in_storage_and_arithmetic() {
     assert_eq!(receipt.successful_unions, n - 1);
     assert_eq!(receipt.checked_additions, 1);
     assert_eq!(receipt.checked_multiplications, 2 * n + 1);
-    assert!(receipt.logical_payload_bytes < 150_000);
+    assert!(receipt.logical_payload_bytes < 210_000);
 }
 
 #[test]

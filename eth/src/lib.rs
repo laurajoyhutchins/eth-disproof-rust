@@ -411,6 +411,7 @@ pub fn parse_dimacs(text: &str) -> Result<Cnf, Error> {
     Cnf::new(n, rows)
 }
 
+pub mod representation_matching;
 pub mod bit_program;
 pub mod lean_codegen;
 #[path = "counting/native_high.rs"]

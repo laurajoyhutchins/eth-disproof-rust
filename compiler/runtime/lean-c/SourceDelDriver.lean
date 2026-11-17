@@ -7,6 +7,11 @@ import RuntimeHeapDelKernels
 @[extern "lr_heap_compare_source_del"] opaque compareSourceDel
   (a b oldStamp newStamp threshold shared : Nat) : Nat
 
+// The physical-operation oracle uses real Lean 4.34.1 C functions;
+// the borrowed dynamic heap Nat stays live across every checkpoint.
+@[extern "lr_heap_trace_source_credits"] opaque traceSourceCredits
+  (oldStamp : @& Nat) : Nat
+
 def main : IO Unit := do
   let values : Array Nat := #[0, 1, 2, 7, 17, 901, 2^16, 2^32, 2^40, 2^60]
   let mut cases := 0
@@ -36,3 +41,8 @@ def main : IO Unit := do
                 s!"heap-stamp source-del mismatch a={a} b={b} threshold={threshold} shared={shared}: code {result}"
             cases := cases + 1
   IO.println s!"reader-generated-source-del-lean-c=PASS cases={cases}"
+  let traceStamp := (2^128 + 7 : Nat) + values[1]!
+  let traceResult := traceSourceCredits traceStamp
+  if traceResult != 0 then
+    throw <| IO.userError s!"Lean C physical step oracle refused: {traceResult}"
+  IO.println "reader-source-shell-physical-checkpoints=RECORDED"

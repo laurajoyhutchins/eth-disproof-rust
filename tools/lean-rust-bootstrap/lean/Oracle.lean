@@ -1,13 +1,10 @@
-import Bootstrap
+import CompilerConfig
 
-/-!
-Run by official pinned Lean, not by the new Rust code generator. Its output
-is a tab-separated independent oracle over every UInt8 tag.
--/
+/-! Independent oracle from official, pinned Lean. -/
 
 private def flag (b : Bool) : String := if b then "1" else "0"
 
 def main : IO Unit := do
   for idx in [:256] do
     let tag := UInt8.ofNat idx
-    IO.println s!"{idx}\t{flag (Bootstrap.probe_scalar tag)}\t{flag (Bootstrap.probe_object tag)}\t{flag (Bootstrap.probe_possible_ref tag)}\t{flag (Bootstrap.probe_definite_ref tag)}\t{flag (Bootstrap.probe_erased tag)}\t{flag (Bootstrap.probe_boxed_tagged tag)}"
+    IO.println s!"{idx}\t{flag (CompilerConfig.probe_eta tag)}\t{flag (CompilerConfig.probe_inline_partial tag)}\t{flag (CompilerConfig.probe_implemented_by tag)}\t{flag (CompilerConfig.probe_inline_defs tag)}"

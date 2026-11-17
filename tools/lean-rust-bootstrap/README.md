@@ -3,13 +3,19 @@
 A standalone acceptance project for replacing the custom native Lean-to-Rust
 Reader. This is an experiment, not a second production backend for ETH.
 
-The input comes from **unmodified upstream Lean 4.34.1**
-`Lean.Compiler.IR.Basic`. A thin `Bootstrap` module calls six of its
-compiler type predicates over all 256 `UInt8` inputs. The original Lean
-toolchain generates 256 independently evaluated rows. A Rust crate built by
-pinned `machinefabric/lungo-rs` compares 1,536 results against them.
+The first **admitted** input is the unmodified upstream Lean 4.34.1 module
+`Lean.Compiler.LCNF.Simp.Config`. A narrow `CompilerConfig` facade constructs
+the original configuration type and selects four fields over all 256 UInt8
+inputs. Official Lean independently generates the expected results. The
+generated Rust crate must agree on all 1,024 comparisons.
 
-The machine-checked theorem `Bootstrap.scalar_not_reference` is registered
+The more ambitious `Lean.Compiler.IR.Basic` trial is preserved as
+`lean/Bootstrap.lean`, but is not currently admitted by lungo: its imported
+closure requires four unsupported runtime externs (Lean.Expr.dbgToString,
+Lean.Expr.mkData, Lean.profileit, and the manual-root operation). This is
+a source-derived **UNSUPPORTED** result, not a successful compiler port.
+
+The machine-checked theorem `CompilerConfig.update_preserves_eta` is registered
 as an assurance claim. This checks a property of the original Lean
 computation, **not** general Rust semantic or ownership refinement.
 

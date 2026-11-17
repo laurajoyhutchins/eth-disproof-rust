@@ -41,3 +41,19 @@ algorithm and complexity) are independent obligations. A compiler can only
 lower declarations with executable IR. Noncomputable mathematical definitions
 cannot acquire an executable implementation through backend replacement
 alone.
+
+## Source-derived blocker: IR.Basic
+
+The attempted original `Lean.Compiler.IR.Basic` bootstrap **refuses** with
+`LNG0401` on four real imported runtime symbols:
+
+- `lean_expr_dbg_to_string` (`Lean.Expr.dbgToString`)
+- `lean_expr_mk_data` (`Lean.Expr.mkData`)
+- `lean_profileit` (`Lean.profileit`)
+- `lean_manual_get_root` (private manual-root declaration)
+
+The corresponding original-source fixture remains at
+`tools/lean-rust-bootstrap/lean/Bootstrap.lean` but is excluded from the
+stage-zero compilation target. No fake primitive implementations or silent
+fallbacks are permitted. This is a concrete gap between compiling pure Lean
+code and compiling Lean's compiler and elaborator as a complete runtime.

@@ -55,7 +55,7 @@ if [[ ! -d "$overlay" ]]; then
   cp -a "$vendor/lean/." "$overlay/"
   printf 'leanprover/lean4:v4.34.1\n' > "$overlay/lean-toolchain"
 fi
-diff -rq --exclude=lean-toolchain "$vendor/lean" "$overlay" || {
+diff -rq --exclude=lean-toolchain --exclude=.lake --exclude=lake-manifest.json "$vendor/lean" "$overlay" || {
   echo "Lungo Lean source overlay diverged from the pinned commit" >&2
   exit 2
 }
@@ -65,7 +65,7 @@ test "$(cat "$overlay/lean-toolchain")" = 'leanprover/lean4:v4.34.1'
 (
   cd "$here/lean"
   test "$(lean --version)" = "$BOOTSTRAP_LEAN_VERSION"
-  lake build Bootstrap
+  lake build CompilerConfig
   test "$(lake env lean --version)" = "$BOOTSTRAP_LEAN_VERSION"
   lake env lean --run Oracle.lean > "$here/oracle.tsv"
 )
@@ -88,10 +88,10 @@ mkdir -p "$here/artifacts"
   echo "lungo_revision=$(git -C "$vendor" rev-parse HEAD)"
   echo "source_revision=$(git -C "$here" rev-parse HEAD)"
   echo "oracle_sha256=$(sha256sum "$here/oracle.tsv" | cut -d' ' -f1)"
-  echo "fixture_sha256=$(sha256sum "$here/lean/Bootstrap.lean" | cut -d' ' -f1)"
-  echo 'upstream_lean_module=Lean.Compiler.IR.Basic'
-  echo 'predicates=6'
+  echo "fixture_sha256=$(sha256sum "$here/lean/CompilerConfig.lean" | cut -d' ' -f1)"
+  echo 'upstream_lean_module=Lean.Compiler.LCNF.Simp.Config'
+  echo 'predicates=4'
   echo 'inputs=256'
-  echo 'comparisons=1536'
+  echo 'comparisons=1024'
 } > "$here/artifacts/receipt.txt"
 cat "$here/artifacts/receipt.txt"

@@ -1,13 +1,10 @@
 fn main() -> lungo_build::Result<()> {
-    // Only facade probes are exported. The imported compiler definitions
-    // and executable dependency closure come from original Lean.
+    // A narrow facade around the original Lean compiler configuration type.
     lungo_build::configure()
-        .export("Bootstrap.probe_scalar")
-        .export("Bootstrap.probe_object")
-        .export("Bootstrap.probe_possible_ref")
-        .export("Bootstrap.probe_definite_ref")
-        .export("Bootstrap.probe_erased")
-        .export("Bootstrap.probe_boxed_tagged")
-        .require_claims("Bootstrap.probe_scalar")
+        .export("CompilerConfig.probe_eta")
+        .export("CompilerConfig.probe_inline_partial")
+        .export("CompilerConfig.probe_implemented_by")
+        .export("CompilerConfig.probe_inline_defs")
+        .require_claims("CompilerConfig.probe_eta")
         .compile_lean("lean")
 }

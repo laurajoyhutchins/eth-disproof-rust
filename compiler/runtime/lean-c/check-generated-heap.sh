@@ -40,7 +40,7 @@ import sys
 s = Path(sys.argv[1]).read_text()
 def function_body(name):
     # Match an actual generated C definition, not a forward declaration.
-    pattern = rf"LEAN_EXPORT\\s+lean_object\\*\\s+{re.escape(name)}\\([^;{{}}]*\\)\\s*\\{{"
+    pattern = rf"LEAN_EXPORT\s+lean_object\*\s+{re.escape(name)}\([^;{{}}]*\)\s*\{{"
     match = re.search(pattern, s)
     if match is None:
         raise SystemExit(f"original Lean C definition missing: {name}")

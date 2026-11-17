@@ -170,7 +170,7 @@ theorem last_parent_release_drops_unretained_child (p : Physical)
     (hr : p.childRC = 1) (hs : p.stampSlot = .old)
     (hp : p.freshPending = false) (ho : p.oldRC > 0) :
     (cStep p .decParent).map Physical.childRC = some 0 := by
-  have hn : p.oldRC != 0 := Nat.ne_of_gt ho
+  have hn : p.oldRC ≠ 0 := Nat.ne_of_gt ho
   simp [cStep, h, hc, hr, hs, hp, hn]
 
 theorem last_parent_release_preserves_retained_child (p : Physical)
@@ -178,7 +178,7 @@ theorem last_parent_release_preserves_retained_child (p : Physical)
     (hr : p.childRC = 2) (hs : p.stampSlot = .fresh)
     (hp : p.freshPending = false) (hf : p.freshRC > 0) :
     (cStep p .decParent).map Physical.childRC = some 1 := by
-  have hn : p.freshRC != 0 := Nat.ne_of_gt hf
+  have hn : p.freshRC ≠ 0 := Nat.ne_of_gt hf
   simp [cStep, h, hc, hr, hs, hp, hn]
 
 theorem last_parent_release_fresh_stamp (p : Physical)
@@ -187,8 +187,8 @@ theorem last_parent_release_fresh_stamp (p : Physical)
     (hp : p.freshPending = false) (hf : p.freshRC > 0) :
     (cStep p .decParent).map Physical.freshRC =
       some (p.freshRC - 1) := by
-  have hn : p.freshRC != 0 := Nat.ne_of_gt hf
-  have hchild : p.childRC != 0 := Nat.ne_of_gt hr
+  have hn : p.freshRC ≠ 0 := Nat.ne_of_gt hf
+  have hchild : p.childRC ≠ 0 := Nat.ne_of_gt hr
   simp [cStep, h, hc, hs, hp, hn, hchild]
 
 def initial (oldExternal freshExternal : Nat) : Source :=

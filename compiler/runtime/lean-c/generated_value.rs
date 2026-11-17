@@ -33,6 +33,9 @@ struct __LeanCSlot {
     // A projection borrows the original C field: a weak parent tracking
     // source liveness, never an extra Lean C reference.
     parent: Option<std::rc::Weak<__LeanCSlot>>,
+    // The source's borrowed C argument is live only for this FFI call.
+    // It does NOT contribute an owned refcount credit or a Lean dec.
+    external_borrow: bool,
 }
 
 #[allow(unexpected_cfgs)]
@@ -61,6 +64,19 @@ impl __LeanValue {
         let ptr = std::ptr::NonNull::new(ptr).expect("null Lean source value");
         Self(std::rc::Rc::new(__LeanCSlot {
             ptr, credits: std::cell::Cell::new(1), parent: None,
+            external_borrow: false,
+        }))
+    }
+
+    /// Unboxed original Lean C functions can take a borrowed object argument.
+    /// This wrapper is valid only while the C caller holds the source object
+    /// live. In particular, Rust Drop must NOT invent a source decrement.
+    /// A returned owned object still requires an explicit source IR inc.
+    pub unsafe fn from_borrowed_raw(ptr: *mut __LeanCObject) -> Self {
+        let ptr = std::ptr::NonNull::new(ptr).expect("null borrowed Lean source value");
+        Self(std::rc::Rc::new(__LeanCSlot {
+            ptr, credits: std::cell::Cell::new(0), parent: None,
+            external_borrow: true,
         }))
     }
 
@@ -78,7 +94,7 @@ impl __LeanValue {
     fn scalar(&self) -> bool { unsafe { lr_exec_is_scalar(self.raw()) != 0 } }
 
     fn slot_live(slot: &__LeanCSlot) -> bool {
-        slot.credits.get() > 0 ||
+        slot.credits.get() > 0 || slot.external_borrow ||
             slot.parent.as_ref()
                 .and_then(std::rc::Weak::upgrade)
                 .is_some_and(|owner| Self::slot_live(&owner))
@@ -146,6 +162,7 @@ impl __LeanValue {
             ptr: std::ptr::NonNull::new(field).expect("null Lean C field"),
             credits: std::cell::Cell::new(0),
             parent: Some(std::rc::Rc::downgrade(&self.0)),
+            external_borrow: false,
         }))
     }
 

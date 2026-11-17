@@ -35,6 +35,16 @@ struct ProjectedLifetime {
     // that exact value through join parameters so repeated tests do not
     // invent infeasible combinations of unique and shared ownership.
     scalar_cases: BTreeMap<usize, u8>,
+    // Final source IR records which object an isShared result inspected.
+    // A false result witnesses exclusivity only in that path, never globally.
+    sharedness_sources: BTreeMap<usize, usize>,
+    // Constructor-case refinements: only the source-proved Box.mk layout
+    // below admits an otherwise borrowed stamp-field dec.
+    source_box_mk: BTreeSet<usize>,
+    // A unique parent field's owned reference was explicitly released
+    // without decrementing the parent shell. That field is now stale until
+    // rewritten; del must not grant it another credit.
+    spent_fields: BTreeSet<(usize, usize)>,
     // Credits created by a real owned input, source-producing declaration,
     // or explicitly emitted IR.inc; Rust Rc aliases do not count.
     owners: BTreeMap<usize, usize>,
@@ -136,6 +146,59 @@ impl ProjectedLifetime {
         Ok(())
     }
 
+    fn consume_exclusive_box_stamp(&mut self, id: usize) -> CompilerResult<bool> {
+        if self.owners.get(&id) != Some(&0) {
+            return Ok(false);
+        }
+        let Some(parent) = self.parents.get(&id).copied() else {
+            return Ok(false);
+        };
+        if self.field_indices.get(&id) != Some(&1)
+            || !self.source_box_mk.contains(&parent)
+            || self.owners.get(&parent) != Some(&1)
+            || self.external.contains(&parent)
+            || self.spent_fields.contains(&(parent, 1))
+        {
+            return Ok(false);
+        }
+        // A source isShared(parent) == false path is a required witness.
+        if !self
+            .sharedness_sources
+            .iter()
+            .any(|(test, checked_parent)| {
+                *checked_parent == parent && self.scalar_cases.get(test) == Some(&0)
+            })
+        {
+            return Ok(false);
+        }
+        // Refuse ambiguous aliases: one constructor field has one credit.
+        let projections = self
+            .parents
+            .iter()
+            .filter(|(child, source)| {
+                **source == parent && self.field_indices.get(child) == Some(&1)
+            })
+            .count();
+        if projections != 1 {
+            return Ok(false);
+        }
+        // Transfer the field's *existing* credit to the projection. No
+        // source inc occurs; the following source dec consumes that credit.
+        self.owners.insert(id, 1);
+        self.spent_fields.insert((parent, 1));
+        Ok(true)
+    }
+
+    fn check_no_spent_fields(&self, parent: usize, context: &str) -> CompilerResult<()> {
+        if self.spent_fields.iter().any(|(owner, _)| *owner == parent) {
+            return Err(CompilerError::new(
+                RefusalKind::Decl,
+                format!("source constructor x_{parent}: spent field is still stored in {context}"),
+            ));
+        }
+        Ok(())
+    }
+
     fn take(&mut self, id: usize, context: &str) -> CompilerResult<()> {
         self.take_n(id, 1, context)
     }
@@ -162,6 +225,11 @@ impl ProjectedLifetime {
             })
             .map(|(child, _)| *child)
             .collect();
+        if self.spent_fields.contains(&(parent, index)) {
+            // The old field credit was already consumed under an exclusive
+            // parent check. Never grant a second credit on set or del.
+            return Ok(());
+        }
         if still_stored {
             // Writing the same pointer back leaves the constructor's
             // ownership in place; a projection remains borrowed.
@@ -247,6 +315,7 @@ impl Reader {
     ) -> CompilerResult<()> {
         if let Some(id) = Self::lifetime_arg_id(arg)? {
             state.check(id, context)?;
+            state.check_no_spent_fields(id, context)?;
         }
         Ok(())
     }
@@ -257,6 +326,7 @@ impl Reader {
         context: &str,
     ) -> CompilerResult<()> {
         if let Some(id) = Self::lifetime_arg_id(arg)? {
+            state.check_no_spent_fields(id, context)?;
             state.take(id, context)?;
         }
         Ok(())
@@ -281,6 +351,7 @@ impl Reader {
             3 | 9 => {
                 let id = Self::var(Self::field(expr, 1)?)?;
                 state.check(id, "projection or box")?;
+                state.check_no_spent_fields(id, "projection or box")?;
             }
             5 => {
                 let id = Self::var(Self::field(expr, 2)?)?;
@@ -421,6 +492,10 @@ impl Reader {
                         None
                     };
                     Self::lifetime_expr(expr, state, functions)?;
+                    if Self::checked_tag(expr, "Expr")? == 12 {
+                        let checked_parent = Self::var(Self::field(expr, 0)?)?;
+                        state.sharedness_sources.insert(target, checked_parent);
+                    }
                     if value_type {
                         if state
                             .owners
@@ -463,7 +538,22 @@ impl Reader {
                 } => {
                     if !persistent {
                         let n = Self::nat(Self::field(body, 1)?)?;
-                        state.take_n(Self::var(target)?, n, "source dec")?;
+                        let id = Self::var(target)?;
+                        let transferred = if n == 1 && state.owners.get(&id) == Some(&0) {
+                            // This exceptional transfer is allowed only for
+                            // a uniquely matched Box.mk stamp projection in
+                            // its source-proved exclusive path.
+                            state.consume_exclusive_box_stamp(id)?
+                        } else {
+                            false
+                        };
+                        state.check_no_spent_fields(id, "source dec")?;
+                        state.take_n(id, n, "source dec")?;
+                        if transferred {
+                            // A borrowed view of a released field must not be
+                            // read again while its parent shell remains live.
+                            state.invalidated.insert(id);
+                        }
                     }
                     body = next;
                 }
@@ -484,6 +574,7 @@ impl Reader {
                         state.transfer_old_field(id, index, false)?;
                     }
                     state.invalidated.insert(id);
+                    state.spent_fields.retain(|(parent, _)| *parent != id);
                     body = next;
                 }
                 FnBodyView::Set {
@@ -502,6 +593,12 @@ impl Reader {
                             .flatten()
                     });
                     if let Some(origin) = source_slot {
+                        if state.spent_fields.contains(&(id, origin)) {
+                            return Err(CompilerError::new(
+                                RefusalKind::Decl,
+                                "constructor set reuses an already released source field",
+                            ));
+                        }
                         if state.owners.get(&id).copied() != Some(1) || state.external.contains(&id)
                         {
                             return Err(CompilerError::new(
@@ -522,6 +619,9 @@ impl Reader {
                         state.settle_permutations()?;
                         Self::lifetime_transfer_arg(value, state, "constructor field set")?;
                         state.transfer_old_field(id, slot, false)?;
+                        // A set transfers a new owned field into the slot.
+                        // The previously spent old field is no longer stored.
+                        state.spent_fields.remove(&(id, slot));
                     }
                     body = next;
                 }
@@ -561,6 +661,7 @@ impl Reader {
                 } => {
                     let tested = Self::var(scrutinee)?;
                     state.check(tested, "case scrutinee")?;
+                    state.check_no_spent_fields(tested, "case scrutinee")?;
                     let alts = Self::array(alternatives)?;
                     // The pinned source stores Bool in UInt8 IR
                     // representation. Discriminate using the ORIGINAL
@@ -610,6 +711,20 @@ impl Reader {
                             AltView::Constructor { body } | AltView::Default { body } => body,
                         };
                         let mut path = state.clone();
+                        // Validate the exact source constructor identity and
+                        // pointer-only layout before allowing field-credit
+                        // spending on a later exclusive isShared branch.
+                        if Self::checked_tag(alt, "Alt")? == 0 {
+                            let info = Self::field(alt, 0)?;
+                            if Self::name(Self::field(info, 0)?, 0)? == "RuntimeHeap.Box.mk"
+                                && Self::nat(Self::field(info, 1)?)? == 1
+                                && Self::nat(Self::field(info, 2)?)? == 2
+                                && Self::nat(Self::field(info, 3)?)? == 0
+                                && Self::nat(Self::field(info, 4)?)? == 0
+                            {
+                                path.source_box_mk.insert(tested);
+                            }
+                        }
                         if let Some(value) = constructor_value {
                             path.scalar_cases.insert(tested, value);
                         }
@@ -644,6 +759,19 @@ impl Reader {
                                 destination.owners.insert(*formal, 1);
                                 destination.parents.remove(formal);
                                 destination.bind_identity(*formal, actual);
+                                if destination.source_box_mk.remove(&actual) {
+                                    destination.source_box_mk.insert(*formal);
+                                }
+                                let spent: Vec<usize> = destination
+                                    .spent_fields
+                                    .iter()
+                                    .filter(|(parent, _)| *parent == actual)
+                                    .map(|(_, index)| *index)
+                                    .collect();
+                                for index in spent {
+                                    destination.spent_fields.remove(&(actual, index));
+                                    destination.spent_fields.insert((*formal, index));
+                                }
                                 // A source owned join parameter is another
                                 // name for the SAME heap object, not a new
                                 // allocation. Redirect already projected
@@ -670,6 +798,14 @@ impl Reader {
                     );
                 }
                 FnBodyView::Return { value } => {
+                    // A shell cannot escape with a field whose owned credit
+                    // was previously released by a projected source dec.
+                    if !state.spent_fields.is_empty() {
+                        return Err(CompilerError::new(
+                            RefusalKind::Decl,
+                            "return with an unrewritten spent constructor field",
+                        ));
+                    }
                     Self::lifetime_transfer_arg(value, state, "return value")?;
                     return Ok(());
                 }

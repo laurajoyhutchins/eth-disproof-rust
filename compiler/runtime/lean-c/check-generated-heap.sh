@@ -14,6 +14,54 @@ out="$(pwd)/artifacts/lean-c-generated-heap"
 mkdir -p "$out"
 rm -rf examples/lean-c-heap-package
 lean -o examples/RuntimeHeapKernels.olean examples/RuntimeHeapKernels.lean
+# Examine the compiler's actual final IR for source-derived reset/reuse
+# candidates. The probe records negative findings instead of inventing
+# a final IR del or asserting runtime execution.
+lean -o examples/RuntimeHeapDelKernels.olean examples/RuntimeHeapDelKernels.lean
+lean examples/RuntimeHeapDelIRProbe.lean
+test -s artifacts/source-del-final-ir.tsv
+test -s artifacts/source-del-final-ir.txt
+test -s artifacts/source-del-final-ir-status.txt
+grep -Fx 'stage=FINAL_IR_DISCOVERY_ONLY' artifacts/source-del-final-ir-status.txt
+cat artifacts/source-del-final-ir.tsv
+cat artifacts/source-del-final-ir-status.txt
+# Probe the canonical Reader closure of the positive source. A refusal is
+# evidence of the next missing feature, not a successful source-del execution.
+# Atomic publication must leave no package after a failed compilation.
+rm -rf examples/lean-c-del-package
+if lean --load-dynlib="$NATIVE_LIB" examples/RuntimeHeapDelEmitFixture.lean \
+    > "$out/source-del-emit.log" 2>&1; then
+  del_rs=examples/lean-c-del-package/src/lib.rs
+  test -s "$del_rs"
+  grep -Fq 'Generated directly from Lean IR declaration: RuntimeHeapDel.rebuildOrExtractByPayload' "$del_rs"
+  grep -Fq '.source_del();' "$del_rs" || {
+    echo 'Final source del missing from canonical Reader output' >&2
+    exit 2
+  }
+  cp "$del_rs" "$out/source-del-exact-reader.rs"
+  # Type-check the exact, unedited emitted function against the real
+  # Lean C-backed adapter. This is NOT an execution or physical parity gate.
+  rustc --edition=2021 --cfg 'feature="lean-c-runtime"' \
+    -C panic=abort --crate-type lib --emit=metadata \
+    "$out/source-del-exact-reader.rs" -o "$out/source-del-exact-reader.rmeta"
+  echo 'source_del_reader=TYPED_LEAN_C_NOT_EXECUTED' > "$out/source-del-reader-status.txt"
+else
+  grep -Fq 'Rust native backend refused' "$out/source-del-emit.log" || {
+    echo 'Source del Reader probe failed before a recorded backend refusal' >&2
+    cat "$out/source-del-emit.log" >&2
+    exit 2
+  }
+  test ! -e examples/lean-c-del-package || {
+    echo 'Reader published a partial package after refusal' >&2
+    exit 2
+  }
+  echo 'source_del_reader=REFUSED' > "$out/source-del-reader-status.txt"
+  cat "$out/source-del-emit.log" >&2
+  echo 'Canonical Reader failed to emit the verified original source del' >&2
+  exit 2
+fi
+cat "$out/source-del-reader-status.txt"
+cat "$out/source-del-emit.log"
 lean --load-dynlib="$NATIVE_LIB" examples/RuntimeHeapFixture.lean
 file=examples/lean-c-heap-package/src/lib.rs
 test -s "$file"
@@ -63,6 +111,30 @@ leanc -O2 -o "$out/lean-c-generated-heap" \
 grep -Fx 'reader-generated-lean-c-heap=PASS' "$out/trace.txt"
 grep -Fx 'reader-generated-lean-c-nested-retain=PASS' "$out/trace.txt"
 grep -Fx 'lean-c-shell-only-del-transfer=PASS' "$out/trace.txt"
+# A distinct executable links the original C-compiled source function and
+# the exact Reader-generated Rust function through the same Lean C runtime.
+# Do not modify either function, or replace a source-del with host code.
+test -s "$out/source-del-exact-reader.rs"
+cat "$out/source-del-exact-reader.rs" runtime/lean-c/source_del_host.rs \
+  > "$out/source-del-combined.rs"
+rustc --edition=2021 --cfg 'feature="lean-c-runtime"' \
+  -C panic=abort --crate-type staticlib -O \
+  "$out/source-del-combined.rs" -o "$out/libsource_del_generated.a"
+(cd examples && lean -c "$out/RuntimeHeapDelKernels.c" RuntimeHeapDelKernels.lean)
+grep -Fq 'lean_del_object(' "$out/RuntimeHeapDelKernels.c" || {
+  echo 'Original Lean C source lacks shell-only del' >&2
+  exit 2
+}
+lean -c "$out/SourceDelDriver.c" runtime/lean-c/SourceDelDriver.lean
+leanc -O2 -o "$out/source-del-execute" \
+  "$out/RuntimeHeapKernels.c" "$out/RuntimeHeapDelKernels.c" \
+  "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \
+  runtime/lean-c/abi.c "$out/libsource_del_generated.a"
+"$out/source-del-execute" | tee "$out/source-del-trace.txt"
+grep -Fx 'reader-generated-source-del-lean-c=PASS cases=720' "$out/source-del-trace.txt"
+echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_720' \
+  > "$out/source-del-execution-status.txt"
+echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.txt"
 {
   echo 'status=PASS_ORIGINAL_LEAN_C_AND_READER_GENERATED_HEAP'
   echo "revision=$(git rev-parse HEAD)"
@@ -80,7 +152,20 @@ grep -Fx 'lean-c-shell-only-del-transfer=PASS' "$out/trace.txt"
   echo 'shell_only_child_transfer=ONE_CREDIT_NO_INC'
   echo 'shell_del_no_projection=REFUSED'
   echo 'shell_del_shared_parent=REFUSED'
-  echo 'emitted_ir_source_del=NOT_YET_ESTABLISHED'
+  echo 'emitted_ir_source_del=PASS_BOUNDED_720_PHYSICAL_FINAL_STATES'
+  echo 'source_del_full_traces_and_general_equivalence=NOT_ESTABLISHED'
+  cat "$out/source-del-execution-status.txt"
+  sha256sum runtime/lean-c/source_del_host.rs runtime/lean-c/source_del_oracle.c \
+    runtime/lean-c/SourceDelDriver.lean "$out/source-del-combined.rs" \
+    "$out/RuntimeHeapDelKernels.c" "$out/SourceDelDriver.c" \
+    "$out/source-del-trace.txt"
+  cat "$out/source-del-reader-status.txt"
+  sha256sum examples/RuntimeHeapDelEmitFixture.lean "$out/source-del-emit.log" \
+    "$out/source-del-reader-status.txt"
+  cat artifacts/source-del-final-ir-status.txt
+  sha256sum examples/RuntimeHeapDelKernels.lean examples/RuntimeHeapDelIRProbe.lean \
+    artifacts/source-del-final-ir.tsv artifacts/source-del-final-ir.txt \
+    artifacts/source-del-final-ir-status.txt
   echo 'join_transfer=NOT_YET_ESTABLISHED'
   echo 'unboxed_payload_argument=BORROWED'
   echo 'boxed_payload_wrapper=RELEASES_PARENT'

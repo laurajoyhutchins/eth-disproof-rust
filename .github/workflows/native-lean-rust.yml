@@ -171,7 +171,18 @@ jobs:
             compiler/artifacts/lean-c-runtime/trace.txt
             compiler/artifacts/lean-c-generated-heap/receipt.txt
             compiler/artifacts/lean-c-generated-heap/trace.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-reader-status.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-emit.log
+            compiler/artifacts/lean-c-generated-heap/source-del-exact-reader.rs
+            compiler/artifacts/lean-c-generated-heap/source-del-combined.rs
+            compiler/artifacts/lean-c-generated-heap/source-del-execution-status.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-trace.txt
+            compiler/artifacts/lean-c-generated-heap/RuntimeHeapDelKernels.c
+            compiler/artifacts/lean-c-generated-heap/SourceDelDriver.c
             compiler/artifacts/lean-c-generated-heap/exact-emitter.rs
+            compiler/artifacts/source-del-final-ir.tsv
+            compiler/artifacts/source-del-final-ir.txt
+            compiler/artifacts/source-del-final-ir-status.txt
             compiler/artifacts/lcnf-capture.json
             compiler/artifacts/lcnf-capture-receipt.txt
             compiler/artifacts/lcnf-baseline.rs

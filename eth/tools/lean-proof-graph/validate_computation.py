@@ -62,6 +62,8 @@ def read_computation(path: Path) -> tuple[dict, dict[str, dict], int]:
                     and item.get("complete") is False
                     and item.get("source") in PINS
                     and isinstance(item.get("module"), str)
+                    and type(item.get("original_modules")) is int
+                    and item["original_modules"] > 0
                     and isinstance(item.get("roots"), list)
                     and item["roots"]
                     and all(isinstance(x, str) and x for x in item["roots"])
@@ -166,6 +168,7 @@ def make_view(path: Path, source_sha: str, mathlib_sha: str,
         "mathlib_sha": mathlib_sha,
         "lean_version": lean_version,
         "module": manifest["module"],
+        "original_modules": manifest["original_modules"],
         "roots": manifest["roots"],
         "raw_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         "raw_complete": True,
@@ -214,7 +217,7 @@ def main() -> None:
                      args.lean_version)
     summary = {k: view[k] for k in
                ("schema", "source", "source_sha", "mathlib_sha",
-                "lean_version", "roots", "counts", "raw_sha256", "scope",
+                "lean_version", "roots", "original_modules", "counts", "raw_sha256", "scope",
                 "limitations")}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.summary.parent.mkdir(parents=True, exist_ok=True)

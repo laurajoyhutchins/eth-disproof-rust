@@ -392,4 +392,80 @@ theorem identity_kernel_forces_injective_labels
 #print axioms ACC.BoundaryQuotient.quotient_merge_value_commutes
 #print axioms ACC.BoundaryQuotient.identity_kernel_forces_injective_labels
 
+
+/-- The *allowed* merged states agree under the two orders. This is an
+    exact image-of-tuples theorem; arbitrary invalid function-valued
+    states are not part of the network semantics. -/
+theorem quotient_merge_states_commute
+    {J J' σ τ K : Type*}
+    [Fintype J] [LinearOrder J] [Fintype J'] [LinearOrder J']
+    (N : Groundwork.Network J σ τ)
+    (color : J → J') (defaultState : σ) (defaultLabel : τ)
+    (label : σ → K) (representative : K → σ)
+    (G : J') :
+    ((quotientNetwork N label representative).merge color
+      (label defaultState) defaultLabel).S G =
+    (quotientNetwork
+      (N.merge color defaultState defaultLabel)
+      (fun x : J → σ => fun a => label (x a))
+      (fun k : J → K => fun a => representative (k a))).S G := by
+  classical
+  apply Finset.ext
+  intro z
+  change
+    (z ∈ Groundwork.tuples (fun a : J => color a = G)
+       (fun a => (N.S a).image label) (label defaultState)) ↔
+    (z ∈ (Groundwork.tuples (fun a : J => color a = G)
+       N.S defaultState).image
+         (fun w : J → σ => fun a => label (w a)))
+  constructor
+  · intro hz
+    have hz' := (Groundwork.mem_tuples
+      (fun a : J => color a = G) (fun a => (N.S a).image label)
+      (label defaultState) z).mp hz
+    let w : J → σ := fun a =>
+      if ha : color a = G then
+        Classical.choose (Finset.mem_image.mp ((hz' a).1 ha))
+      else defaultState
+    have hw : w ∈ Groundwork.tuples (fun a : J => color a = G)
+        N.S defaultState := by
+      apply (Groundwork.mem_tuples
+        (fun a : J => color a = G) N.S defaultState w).mpr
+      intro a
+      constructor
+      · intro ha
+        change (if ha' : color a = G then
+          Classical.choose (Finset.mem_image.mp ((hz' a).1 ha')) else
+          defaultState) ∈ N.S a
+        rw [dif_pos ha]
+        exact (Classical.choose_spec
+          (Finset.mem_image.mp ((hz' a).1 ha))).1
+      · intro ha
+        simp [w, ha]
+    refine Finset.mem_image.mpr ⟨w, hw, ?_⟩
+    funext a
+    by_cases ha : color a = G
+    · have hh := (Classical.choose_spec
+        (Finset.mem_image.mp ((hz' a).1 ha))).2
+      simpa [w, ha] using hh
+    · have hh := (hz' a).2 ha
+      simp [w, ha, hh]
+  · intro hz
+    obtain ⟨w, hw, hzw⟩ := Finset.mem_image.mp hz
+    subst z
+    have hw' := (Groundwork.mem_tuples
+      (fun a : J => color a = G) N.S defaultState w).mp hw
+    apply (Groundwork.mem_tuples
+      (fun a : J => color a = G)
+      (fun a => (N.S a).image label)
+      (label defaultState) (fun a => label (w a))).mpr
+    intro a
+    constructor
+    · intro ha
+      exact Finset.mem_image.mpr ⟨w a, (hw' a).1 ha, rfl⟩
+    · intro ha
+      simp [(hw' a).2 ha]
+
+#print axioms ACC.BoundaryQuotient.quotient_merge_states_commute
+
 end ACC.BoundaryQuotient

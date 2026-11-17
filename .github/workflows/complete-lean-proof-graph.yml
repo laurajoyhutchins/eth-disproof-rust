@@ -14,7 +14,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate graph formats before any upstream build
+        run: |
+          python3 -m unittest discover -s eth/tools/lean-proof-graph \
+            -p 'test_validate*.py' -v
+
   extract:
+    needs: validate
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
@@ -41,11 +53,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-
-      - name: Validate graph formats before restoring Mathlib
-        run: |
-          python3 -m unittest discover -s eth/tools/lean-proof-graph \
-            -p 'test_validate*.py' -v
 
       - name: Fetch original pinned source
         shell: bash

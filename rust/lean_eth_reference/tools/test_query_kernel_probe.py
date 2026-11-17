@@ -340,7 +340,7 @@ class KernelRootReceiptTests(unittest.TestCase):
 
         fixture = root_receipt()
         fixture["external_definition_bodies"].pop()
-        with self.assertRaisesRegex(ValueError, "coverage"):
+        with self.assertRaisesRegex(ValueError, "coverage|definition body is not observed"):
             validate_kernel_root(json.dumps(fixture))
 
         fixture = root_receipt()

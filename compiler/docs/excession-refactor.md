@@ -12,7 +12,7 @@ The pull request runs the pinned Excession CLI (commit `21d2e0fd52b6099bb88eae14
 
 ```sh
 excession agent locate --repo . --rev BASE --task 'Lean compiler primitive registry and source name encoding' --index-segments 256 --json
-excession agent context --repo . --rev BASE --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/primitive-registry.tsv,rust/native_lean_backend/runtime-primitive-registry.tsv
+excession agent context --repo . --rev BASE --focus compiler/src/lib.rs,compiler/primitive-registry.tsv,compiler/runtime-primitive-registry.tsv
 excession agent verify --repo . --base BASE --candidate HEAD
 ```
 

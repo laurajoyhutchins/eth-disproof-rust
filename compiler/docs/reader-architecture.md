@@ -41,7 +41,7 @@ The source definition of a supported constructor, primitive or Lean IR tag remai
 
 The first extraction was verified at commit `52fa5e8a544e278eb9fc9beff3dfb0e1da22dd93` through the native Lean compiler, generated Rust execution and Excession Git-source review. This second extraction must independently repeat the original Lean and generated Rust differential suite on **its own exact head**.
 
-Run the native commands from `rust/native_lean_backend` after building the pinned Lean and GMP toolchain:
+Run the native commands from `compiler` after building the pinned Lean and GMP toolchain:
 
 ```sh
 cargo fmt --all -- --check

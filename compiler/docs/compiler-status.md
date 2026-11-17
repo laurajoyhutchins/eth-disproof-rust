@@ -9,14 +9,14 @@ result as accepted.
 | --- | --- | --- |
 | Lean source frontend and compiler | Existing Lean 4.34.1 is authoritative | No new Rust parser, elaborator or optimizer |
 | In-process compiler IR reader | Implemented for a pinned subset | Borrowed `Lean.IR.Decl` through native ABI; [coverage](../COVERAGE.md) |
-| Canonical Rust emitter | Implemented for an explicit subset | [Reader structure](reader-architecture.md); [compiler CLI](../../lean_eth_reference/docs/compiler-ir-backend.md) |
+| Canonical Rust emitter | Implemented for an explicit subset | [Reader structure](reader-architecture.md); [compiler CLI](../../eth/docs/compiler-ir-backend.md) |
 | Rust-emitted object/value runtime | Implemented for bounded subsets | GMP/`Rc` value runtime, [semantic limitations](../SEMANTICS.md) |
 | Physical source RC fidelity | Incomplete | Source RC ledger proposed in [PR #283](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/283); no general heap simulation |
 | Generated Rust using Lean C runtime | **Not yet implemented as a general execution target** | Next baseline: pinned Lean C adapter and output/physical-trace oracle |
 | Rust-native runtime replacement | **Not established** | Migrate only after C-backed comparison under the [runtime contract](execution-runtime-contract.md) |
 | General G1 compiler release | **Open** | [Issue #193](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/193): original project coverage, ownership, ABI, integration |
 | Original noncomputable QueryStream (G2) | **Open** | Source-derived residualization, complete execution and resource correspondence |
-| Lungo Rust-hosted compiler | Separate optional experiment | [PR #331](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/331) and [bootstrap note](../../../docs/lean-rust-replacement.md) |
+| Lungo Rust-hosted compiler | Separate optional experiment | [PR #331](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/331) and [bootstrap note](../../docs/lean-rust-replacement.md) |
 | Independent Rust proof kernel | Separate project | Does not block any backend or runtime milestone |
 
 ## Existing behavior versus intended behavior
@@ -54,4 +54,4 @@ allocation counts, but it must preserve all supported observables under
 an independently justified correspondence argument.
 
 See [architecture](backend-first-architecture.md), [runtime contract](execution-runtime-contract.md)
-and [G1/G2 acceptance](../../../research/lean-rust-acceptance.md).
+and [G1/G2 acceptance](../../research/lean-rust-acceptance.md).

@@ -40,11 +40,11 @@ excuse to assume Rust `Rc` aliases equal Lean-owned references.
 
 | Existing work | Role under this decision |
 | --- | --- |
-| `rust/native_lean_backend/src/reader/` and `src/lib.rs` | **Canonical backend** and current regression baseline. Retain one IR reader and one emitter. |
-| `rust/native_lean_backend/src/runtime/immutable_value.rs` | Current standalone Rust value runtime for an admitted subset; preserve its tests, but do **not** treat output equality or `Rc::strong_count` as proof of Lean ownership fidelity. |
-| `rust/native_lean_backend/native/abi.c` | Version-pinned, borrowed IR access during compilation; distinguish this from the *new* execution-time Lean C runtime adapter. |
+| `compiler/src/reader/` and `src/lib.rs` | **Canonical backend** and current regression baseline. Retain one IR reader and one emitter. |
+| `compiler/src/runtime/immutable_value.rs` | Current standalone Rust value runtime for an admitted subset; preserve its tests, but do **not** treat output equality or `Rc::strong_count` as proof of Lean ownership fidelity. |
+| `compiler/native/abi.c` | Version-pinned, borrowed IR access during compilation; distinguish this from the *new* execution-time Lean C runtime adapter. |
 | PR #283 | Integrate source RC ledger and emitter work only after reconciling with main; single-threaded scope does not imply full physical RC fidelity. |
-| PR #331, `tools/lean-rust-bootstrap` | Optional, isolated experiment in compiling original Lean compiler modules. Not a replacement frontend, not a required bootstrap, not a second production backend. |
+| PR #331, `experiments/lean-compiler-bootstrap` | Optional, isolated experiment in compiling original Lean compiler modules. Not a replacement frontend, not a required bootstrap, not a second production backend. |
 | Original ETH QueryStream source graph | A distinct **G2 residualization** obligation; never represent its source graph as an ordinary executable `Lean.IR.Decl` when no such IR exists. |
 
 No existing implementation is retired solely because this document exists.

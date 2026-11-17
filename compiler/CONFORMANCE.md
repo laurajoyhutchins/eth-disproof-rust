@@ -10,7 +10,7 @@ intermediate compilation representation.
 From the repository root with the exact Lean 4.34.1 installation in
 LEAN_PREFIX and Rust 1.99.1, use:
 
-    cd rust/native_lean_backend
+    cd compiler
     bash scripts/check.sh
 
 The script builds the backend and original Lean example library, then runs

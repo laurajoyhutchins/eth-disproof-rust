@@ -95,7 +95,7 @@ libraries, Rust 1.99.1, GMP development libraries, a C toolchain and
 `/usr/bin/time`. Run from the repository root:
 
 ```sh
-cd rust/native_lean_backend
+cd compiler
 export LEAN_PREFIX=/absolute/path/to/lean-4.34.1
 lake build
 ./scripts/check.sh

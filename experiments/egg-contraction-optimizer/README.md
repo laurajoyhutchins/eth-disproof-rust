@@ -101,3 +101,18 @@ Optimization equality is independently checked as an integer polynomial
 identity, which is stronger than equality only on Boolean boundaries.
 There is no Lean kernel certificate, no formalized compilation theorem,
 and no integration with the original ETH recursion.
+
+
+## Compact affine boundary elimination
+
+The separate Rust module [affine.rs](src/affine.rs) now handles explicitly represented parity-equation regions, a genuine restricted class of #SAT instances. Unlike the earlier enumerating compiler, the affine constructor performs binary Gaussian elimination on a packed matrix over GF(2). For k internal bits and internal-column rank r, the retained interface consists of only residual boundary consistency equations and the exact multiplicity 2^(k-r). It evaluates to zero when any residual equation fails.
+
+The constructor performs **no internal assignment enumeration**. Its matrix construction and row operations use polynomial work and memory in the explicit equation matrix dimensions, with an explicit storage refusal. The multiplicity is arbitrary precision. Its independent small-instance oracle enumerates Boolean solutions directly.
+
+A two-row example with equations u XOR v = b and u XOR v = c produces one residual boundary condition b=c and multiplicity two. Independent composition of two such regions with shared boundary is tested on every boundary assignment. A separate 128-internal-variable fixture returns 2^127 solutions without enumerating any internal states. An attempted direct oracle at that size explicitly refuses.
+
+**Formal scope:** [IndependentAffineBoundary.lean](../../eth/proofs/IndependentAffineBoundary.lean) defines the actual two-bit finite sum and proves the compact two-or-zero formula for all Boolean b,c. It also proves preservation under weighted contexts and composition with a second interface. That is a particular universal mathematical theorem, **not** formal verification of the arbitrary-size Rust Gaussian-elimination algorithm.
+
+For small interfaces, the optional polynomial lowering translates boundary parity equations into exact integer-polynomial indicators. These can enter the existing egg search and independent polynomial checker. The textual tree lowering may grow exponentially with the length of residual equations; the compact affine representation and evaluator avoid that expansion. This experiment therefore does **not** show a full-pipeline speedup from egg on the general affine input.
+
+Limitations: input is an explicit parity-equation system, not an automatically recognized general CNF. The implementation has no independently verified global bit-operation or peak-memory bound and no source-to-Rust correspondence to the pinned ETH QueryStream algorithm. Compact affine elimination does not refute ETH.

@@ -10,6 +10,7 @@ on:
       - feat/query-aot-source-20261113
     paths:
       - 'rust/lean_eth_reference/src/bin/original-query-build.rs'
+      - 'rust/lean_eth_reference/src/bit_program/source_json.rs'
       - 'rust/lean_eth_reference/tools/query_stream_aot.py'
       - 'rust/lean_eth_reference/tools/query_source_kernel.lean'
       - 'rust/lean_eth_reference/tools/query_kernel_probe.py'

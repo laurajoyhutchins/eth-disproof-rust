@@ -46,6 +46,16 @@ multithreading, effects and unknown externs remain distinct obligations.
 If a contract cannot be implemented safely for an encountered shape,
 refuse the whole compilation without publishing output.
 
+## Initial physical Lean C bridge
+
+The [execution-time FFI bridge](../runtime/lean-c/README.md) uses
+actual Lean C `lean_object *` ownership, `lean_inc`/`lean_dec`,
+constructor fields and physical source count observation. Its
+independent compiled-source witness compares the original Lean C
+`OwnershipObjectTrace.create` with the bounded Rust/C handle API.
+This is **one runtime-boundary test**, not yet the canonical generated
+Rust emitter selecting the Lean C runtime.
+
 ## Lean C-backed baseline
 
 1. Pin the exact Lean compiler/runtime version and C headers; test

@@ -8,6 +8,9 @@ fi
 export PATH="${LEAN_PREFIX}/bin:${PATH}"
 export LEAN_PATH="${LEAN_PREFIX}/lib/lean${LEAN_PATH:+:${LEAN_PATH}}"
 export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+# First independently check execution-time FFI against the original Lean C runtime.
+# The compiler's borrowed IR-reader FFI remains a separate library.
+bash runtime/lean-c/check.sh
 # Derive the complete IR constructor inventory from the actual pinned Lean environment.
 # The ledger is fail-closed on tag/order drift and documents conditional semantics.
 mkdir -p artifacts

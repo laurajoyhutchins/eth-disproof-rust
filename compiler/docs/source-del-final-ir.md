@@ -1,85 +1,106 @@
-# Source-derived `FnBody.del`: final-IR discovery
+# Source-derived `FnBody.del`: bounded physical execution
 
 Issue [#344](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/344).
-The runtime milestone in #351 proved a bounded **physical primitive** for
-`lean_del_object`, not execution of source-derived compiler IR.
+This study extends the physical `lean_del_object` primitive established in
+[PR #351](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/351)
+to **actual Reader-generated Rust** from unchanged Lean source. It does
+not claim general Lean IR-to-Rust correctness or ETH algorithm execution.
 
-## Why begin with the compiler's final IR?
+## 1. Original source to final compiler IR
 
-Lean 4.34.1 expands LCNF `reset`/`reuse` before producing the final
-`Lean.IR.Decl`. In `LCNF/ExpandResetReuse.lean`, `processResetCont`
-replaces the matching decrement of a reset token with `.del`. The Rust
-Reader already handles `FnBody.del` by emitting `source_del()`. Adding
-lowering for *unexpanded* `IR.Expr.reset` and `IR.Expr.reuse` would be
-premature without a genuine final-IR example demonstrating either one.
+Lean 4.34.1 runs `reset`/`reuse` insertion and expansion before final
+`Lean.IR.Decl`. The Reader therefore need not duplicate those passes.
 
-## Source and evidence
+`examples/RuntimeHeapDelKernels.lean` contains six ordinary source
+functions. Four simpler reconstructions yield **zero** final-IR `del`
+instructions. Both `rebuildOrDiscardByPayload` and
+`rebuildOrExtractByPayload` yield **one real `FnBody.del` and two joins**
+each. This is verified by `RuntimeHeapDelIRProbe.lean` using the pinned
+`Lean.Compiler.compile`, `Lean.IR.findDecl`, and Lean's own
+`Lean.IR.declToString`. CI requires those exact instruction counts.
+Complete final IR and its hashes are retained as native artifacts.
 
-- `examples/RuntimeHeapDelKernels.lean`: six ordinary Lean expressions
-  using `RuntimeHeap.Box` and `Pair`. The first four are negative candidates. The two **ByPayload** definitions
-  produce real final-IR deletion instructions, not yet executed Rust.
-- `examples/RuntimeHeapDelIRProbe.lean`: calls the same pinned
-  `Lean.Compiler.compile` entrypoint used by the Reader, obtains each
-  final `Lean.IR.Decl` using `Lean.IR.findDecl`, and traverses each
-  `FnBody` (including branch alternatives and join bodies) to count
-  actual `del` and `jdecl` instructions.
-- `runtime/lean-c/check-generated-heap.sh`: runs this exact-compiler
-  probe before the unchanged generated-heap differential execution.
-- `artifacts/source-del-final-ir.txt`: full, source-derived final compiler declarations as formatted by pinned `Lean.IR.declToString`, including the actual join and branch structure.
-- `artifacts/source-del-final-ir.tsv`: row per declaration, with
-  `final_ir_del` and `final_ir_jdecl` counts.
-- `artifacts/source-del-final-ir-status.txt`: explicitly distinguishes
-  `NO_SOURCE_DEL_CANDIDATE` from `SOURCE_DEL_FOUND_NOT_EXECUTED`.
-  Both retain `emitted_ir_source_del=NOT_YET_ESTABLISHED`.
+The child-dependent predicate keeps the child projection live before
+deciding whether to rebuild; without that dependency, Lean's optimizer
+can avoid the shell-deletion path entirely.
 
-The native CI evidence bundle retains both generated files and their
-checksums are included in the runtime receipt.
+## 2. Ownership refinement required by the source
 
-## Acceptance still required
+In the source-unique `RuntimeHeap.Box.mk` branch the compiler projects
+field 1 (the old stamp) and emits `dec` on that projection while the
+parent shell remains live. This is a transfer of the **parent slot's
+existing owned credit**. It is not an `inc` and cannot be justified by
+Rust `Rc` aliases.
 
-The probe cannot establish source-to-Rust execution. After a final-IR
-candidate has at least one actual `del`, freeze its exact source and
-final compiler declaration, generate its complete unchanged Reader
-closure, and verify that the generated `source_del()` call executes in
-the original pinned Lean C runtime process. Preserve its ownership
-flags and join-point parameter transfers, compare pointer identities,
-physical RC and destructor events against independently compiled Lean
-C on unique/shared cases, and reject any unsupported shape.
-
-In particular, the #351 `source_del` implementation admits only one
-live projected `RuntimeHeap.Box.mk` child with a tagged second field.
-A generated `del` on an arbitrary reset token is **not automatically
-covered**. Inspect the exact object's tag, fields, projection and
-ownership state before broadening the runtime. A shared parent,
-unprojected child, or unmatched transfer must fail closed.
-
-Only after those checks can a separate exact-head receipt say
-`emitted_ir_source_del=PASS`. General G1 and the original ETH G2
-counting/resource obligations are independent and still open.
-
-## Pinned positive witness and Reader boundary
-
-On pinned Lean 4.34.1, each of `rebuildOrDiscardByPayload` and
-`rebuildOrExtractByPayload` has exactly one real final-IR `FnBody.del`
-and two join points. The probe now checks these counts fail-closed.
-
-The canonical Reader emission probe in `RuntimeHeapDelEmitFixture.lean`
-requests the unchanged dependency closure of `rebuildOrExtractByPayload`.
-The pinned exact-head runtime run at commit
-`fa63f6494e3ab31304058cd5e24303767f1e03c0` passed, but the
-Reader correctly refused with:
+The Reader initially refused this exact path:
 
 ```text
 source object x_16: release of 1 source references exceeds 0 known owned credits in source dec
 ```
 
-The original final Lean IR decrements a `proj[1]` stamp from a uniquely
-owned `RuntimeHeap.Box.mk` before passing the parent through reset/reuse
-joins. The Reader currently treats that projection as only borrowed.
-The next implementation must recognize precisely the guarded physical
-slot-credit transition and corresponding join ownership. Simply
-relaxing the static credit underflow would be unsound.
+The refinement in `backend/src/reader/lifetime.rs` admits this
+transfer only with source evidence for the `Box.mk` identity and
+two-field layout, a matching `isShared(parent) == false` path, one
+parent credit, and one projected old-stamp view. A field-indexed
+`spent_fields` ledger follows owned join transfers. Attempts to reuse
+a spent projection, read its slot, or ordinarily release a still-spent
+parent are refused. `set` replaces the spent field; shell-only `del`
+does not release that same stamp twice.
 
-The emission gate distinguishes expected Reader refusal from incidental
-Lean failures and preserves the refusal text as CI evidence. The source
-to final IR witness is established; emitted Rust execution is not.
+In the C-backed execution adapter, additional physical guards require
+the exact parent tag/arity, exclusive RC, field pointer identity,
+and unique projected stamp view before calling the original
+`lean_dec` on that old stamp. `source_del` calls the real
+`lean_del_object` on a unique shell, transferring the existing field-0
+child credit without `lean_inc`. An erased reset token is represented
+as an unreadable scalar and cannot become a shell deletion of the shared
+parent.
+
+## 3. Evidence at exact head
+
+The unchanged Reader closure for
+`RuntimeHeapDel.rebuildOrExtractByPayload` emits a real
+`source_del()`. CI typechecks and links the exact generated code
+against the pinned Lean 4.34.1 C-backed runtime, with host code limited
+to argument and return ABI conversion.
+
+The independent oracle compiles the original Lean source to C,
+constructs distinct source-owned parent allocations, and compares
+returned child identity, Pair fields, physical reference counts, and
+exclusivity after execution on unique and shared paths.
+
+| Evidence | Result |
+| --- | --- |
+| Source-to-final-IR del witness | 1 `del` and 2 joins in each positive candidate |
+| Reader-generated `source_del()` | Emitted and linked into the physical C runtime |
+| Tagged old-stamp differential | 360/360 cases passed |
+| Heap-allocated old-stamp differential | 360/360 cases passed, including real RC decrements |
+| Total independently compared cases | **720/720 passed** |
+
+[Exact-head native workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44107560169)
+passed at commit
+[`8ace98a1`](https://github.com/laurajoyhutchins/eth-disproof-rust/commit/8ace98a12e2769061aa81409dcc7e35ea8d9b312).
+The same head's Rust CI and source-bound review passed. Generated
+sources, original compiled C, final IR, output traces and hashes are
+retained in the workflow artifact.
+
+## 4. Limits and unresolved obligations
+
+The result is a **finite physical final-state correspondence** for an
+explicitly admitted Box/Pair layout and the precise source declaration,
+not a universal operational simulation. The tests do not establish
+identity of every internal event trace or peak memory usage.
+
+- The physical adapter admits one heap Pair child in field 0; it is not
+  a general multi-child destructor or reference-graph implementation.
+- Physical Nat comparison in the executed root remains limited to
+  tagged Nat operands, although the *old stamp field* is tested with
+  genuine heap-allocated Nat values.
+- Arbitrary constructor layouts, shared child allocation graphs,
+  persistent objects, cyclic references, and general join/field
+  ownership are not proven by this witness.
+- The original OpenAI ETH counting program and any time/space/precision
+  bounds (G2) are completely independent.
+
+For the underlying credit argument, see the
+[technical notebook's shell-deletion study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/shell-deletion-and-credits.md).

@@ -99,3 +99,53 @@ Cauchy perturbation at nonzero \(t+2^{a+1}\zeta\), precision pruning, nor
 the source-derived OpenAI-to-Anthropic factor-network adapter is covered.
 The file is included in the independent Lean gate, and its typechecking
 status must be read from CI rather than presumed.
+
+
+## Constructed packing and shared Anthropic source value
+
+[`IndependentSourcePackingBridge.lean`](../eth/proofs/IndependentSourcePackingBridge.lean)
+proves two further finite-network results.
+
+1. `packingFromEnumeration` takes an **explicit bijective enumeration**
+   of the real edges and places rank `k` in packet `k / L`, slot `k % L`.
+   Its injectivity proof is the division/remainder identity; no
+   `ValidPacking` proof is handed to the theorem. The convenient
+   `enumeratePacking` witness uses a chosen finite enumeration, whereas
+   `packingFromEnumeration` is the executable constructor once that
+   enumeration is supplied.
+2. `twoSideNetwork` is a **concrete Anthropic `Groundwork.Network`**
+   on two nodes, with unit node-state sets and shared pair-label alphabet
+   `E → Bool`. Its two source factor tables are exactly `row` and
+   `column`, so `twoSideNetwork_value` proves the unmodified original
+   `Network.value` equals `∑ x, row x * column x`.
+3. `constructed_packet_eq_source_network` combines these statements:
+   the OpenAI cancelled-Cauchy deformation at zero equals the Anthropic
+   network's exact integer value after embedding into rationals.
+
+The independently pinned Lean 4.34.1 workflow passed these theorems
+at [run 44016858931](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44016858931).
+The subsequent explicit-enumeration constructor update must likewise
+pass its own CI before it is considered checked.
+
+### These are not the original encoding-to-encoding correspondence
+
+The constructed `twoSideNetwork` is *an exact, source-type-correct
+encoding of the OpenAI network's value*. It is **not** asserted to equal
+the specific network constructed by Anthropic's SAT algorithm.
+Its single pair label is a complete Boolean edge assignment, with an
+alphabet of size `2^|E|`. The canonical encoding can destroy sparsity
+and cannot transfer either algorithm's complexity theorem.
+
+Likewise, rank-based packet placement proves the edge alignment and
+injectivity needed at `T=0`, **not** the appendix's color-orientation
+properties, deterministic conditional-expectation labeling, upper
+packet count in the prescribed color classes, or its per-symbol load
+bound. Those must be established for the actual appendix procedure.
+
+Finally, this direct source-value square is an equality over the
+rationals after casting integer tensor entries. It does **not** by
+itself establish the appendix's coefficient-extension, mod-2^p
+nonzero-node deformations, or recursive mode bounds. The subsequent
+proof should connect both *algorithm-generated* network constructors
+to a topology-preserving common incidence factor graph, then
+independently prove the packet balance properties.

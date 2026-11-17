@@ -108,8 +108,8 @@ jobs:
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentCategoricalContraction.lean"
             cp "$GITHUB_WORKSPACE/eth/proofs/IndependentCnfBridge.lean" IndependentCnfBridge.lean
             cp "$GITHUB_WORKSPACE/eth/proofs/IndependentAnthropicNetworkAdapter.lean" IndependentAnthropicNetworkAdapter.lean
-            lake env lean -o IndependentCnfBridge.olean IndependentCnfBridge.lean
-            lake env lean -o IndependentAnthropicNetworkAdapter.olean IndependentAnthropicNetworkAdapter.lean
+            lake env lean -o .lake/build/lib/lean/IndependentCnfBridge.olean IndependentCnfBridge.lean
+            lake env lean -o .lake/build/lib/lean/IndependentAnthropicNetworkAdapter.olean IndependentAnthropicNetworkAdapter.lean
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentCategoricalSourceSquare.lean"
           )
           echo 'INDEPENDENT_CNF_COUNT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"

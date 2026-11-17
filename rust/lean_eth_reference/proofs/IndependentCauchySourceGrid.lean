@@ -189,7 +189,7 @@ theorem sourceDerivativeAtZero_ne_zero (a : ℕ) :
 
 /-- The actual integer derivative product at every source-grid point. -/
 def sourceDerivativeAt (a : ℕ) (t : ℤ) : ℤ :=
-  ∏ q ∈ (sourceGrid a).erase t, t - q
+  ((sourceGrid a).erase t).prod (fun q : ℤ => t - q)
 
 /-- The natural-number index of a source-grid point. -/
 def gridIndex (a : ℕ) (t : ℤ) : ℕ :=

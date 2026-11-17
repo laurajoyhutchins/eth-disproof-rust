@@ -8,7 +8,7 @@ from query_stream_aot import DECLARATION
 
 def root_receipt():
     receipt = {
-        "format": "original-query-kernel-root-v6",
+        "format": "original-query-kernel-root-v7",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -180,6 +180,21 @@ def root_receipt():
             ),
         ),
     )
+    lift = "OAI.Algorithms.SubexponentialSAT.TestFixture.liftCommand"
+    receipt["source_lift_application"] = {
+        "declaration": lift, "argument_count": 9,
+        "arguments": [
+            {"index": i, "head": "#literal", "nodes": 1, "symbols": []}
+            for i in range(9)
+        ],
+        "definition_body_nodes": 6,
+        "definition_body_symbols": [
+            "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call",
+            "OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram",
+            "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled",
+        ],
+        "lowered_to_executable_call": False,
+    }
     return receipt
 
 
@@ -422,6 +437,25 @@ class KernelRootReceiptTests(unittest.TestCase):
         fixture["source_command_ir"]["second"]["second"]["source_kind"] = "theorem"
         with self.assertRaisesRegex(ValueError, "constructor order"):
             validate_kernel_root(json.dumps(fixture))
+
+    def test_lift_source_application_is_bounded_not_executable(self):
+        fixture = root_receipt()
+        actual = validate_kernel_root(json.dumps(fixture))
+        self.assertFalse(actual["source_lift_application"]["lowered_to_executable_call"])
+        for key in ("argument_count", "source_kind", "lost_compiled", "promotion"):
+            with self.subTest(key=key):
+                r = root_receipt()
+                app = r["source_lift_application"]
+                if key == "argument_count":
+                    app["argument_count"] = 30
+                elif key == "source_kind":
+                    app["arguments"][0]["head"] = ""
+                elif key == "lost_compiled":
+                    app["definition_body_symbols"].pop()
+                else:
+                    app["lowered_to_executable_call"] = True
+                with self.assertRaises(ValueError):
+                    validate_kernel_root(json.dumps(r))
 
     def test_three_named_source_expansions_are_bound_to_original_refs(self):
         report = validate_kernel_root(json.dumps(root_receipt()))

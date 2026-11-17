@@ -273,6 +273,72 @@ private partial def sourceCommandPrefix (env : Environment) (value : Expr)
     | _ =>
       throw <| IO.userError "original command prefix is not a constructor or closed source definition"
 
+/-!
+Inspect the exact *applied* original liftCommand without Meta reduction. In
+particular, capture argument order, heads and bounded constant references.
+Nothing in this diagnostic invents Fin port maps or emits executable code.
+-/
+private def headIdentity (value : Expr) : String :=
+  match value.getAppFn with
+  | .const name _ => name.toString
+  | .lit _ => "#literal"
+  | .lam .. => "#lambda"
+  | .bvar _ => "#bound"
+  | .proj .. => "#projection"
+  | _ => "#other"
+
+private def inspectSourceLift (env : Environment) : IO Json := do
+  let commandName := qualified
+    "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command"
+  let some (.defnInfo command) := env.find? commandName
+    | throw <| IO.userError "original reconstruction command source absent"
+  unless headIdentity command.value ==
+      "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq" do
+    throw <| IO.userError "original reconstruction command is not a sequence"
+  let commandArgs := command.value.getAppArgs
+  unless commandArgs.size == 4 do
+    throw <| IO.userError "original reconstruction sequence arity changed"
+  let lift := commandArgs[3]!
+  let name := qualified "OAI.Algorithms.SubexponentialSAT.StructuredCalls.liftCommand"
+  unless headIdentity lift == name.toString do
+    throw <| IO.userError "original reconstruction lift identity changed"
+  let args := lift.getAppArgs
+  if args.size < 5 || args.size > 16 then
+    throw <| IO.userError "original reconstruction lift argument bound changed"
+  let mut items : Array Json := #[]
+  for i in [:args.size] do
+    let (symbols, nodes) ←
+      match immediateSymbols args[i]! 256 with
+      | .ok result => pure result
+      | .error reason =>
+        throw <| IO.userError s!"original lift argument {i}: {reason}"
+    items := items.push <| Json.mkObj [
+      ("index", toJson i),
+      ("head", toJson (headIdentity args[i]!)),
+      ("nodes", toJson nodes),
+      ("symbols", toJson symbols)
+    ]
+  let some (.defnInfo liftDef) := env.find? name
+    | throw <| IO.userError "original liftCommand is not a definition"
+  let (bodySymbols, bodyNodes) ←
+    match immediateSymbols liftDef.value 512 with
+    | .ok result => pure result
+    | .error reason => throw <| IO.userError s!"original liftCommand: {reason}"
+  for required in #[
+      "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call",
+      "OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram",
+      "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled"] do
+    unless bodySymbols.contains required do
+      throw <| IO.userError s!"original liftCommand no longer references {required}"
+  return Json.mkObj [
+    ("declaration", toJson name.toString),
+    ("argument_count", toJson args.size),
+    ("arguments", toJson items),
+    ("definition_body_nodes", toJson bodyNodes),
+    ("definition_body_symbols", toJson bodySymbols),
+    ("lowered_to_executable_call", toJson false)
+  ]
+
 private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let some (.defnInfo info) := env.find? root
     | throw <| IO.userError s!"original root is not a compiled definition: {root}"
@@ -317,13 +383,14 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     unless commandSymbols.contains name do
       throw <| IO.userError s!"original command no longer references expected source definition: {name}"
   let expandedIR ← sourceCommandPrefix env commandInfo.value 64 inlinedNames
+  let liftApplication ← inspectSourceLift env
   let (localGraph, externalEdges, externalTargets) ← localDeclarations env root
   let (externalBodies, secondTargets) ←
     inspectExternalDefinitions env externalTargets 32768 32768 true
   let (secondBodies, _) ←
     inspectExternalDefinitions env secondTargets 65536 65536 false
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v6"),
+    ("format", toJson "original-query-kernel-root-v7"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -338,6 +405,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("command_symbol_kinds", toJson commandKinds),
     ("source_command_ir", commandIR),
     ("source_command_expanded_ir", expandedIR),
+    ("source_lift_application", liftApplication),
     ("source_command_ir_resolved", toJson false),
     ("same_module_local_declarations", toJson localGraph),
     ("external_module_edges", toJson externalEdges),

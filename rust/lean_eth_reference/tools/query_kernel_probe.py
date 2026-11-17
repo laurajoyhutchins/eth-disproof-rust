@@ -26,6 +26,7 @@ EXPECTED_FIELDS = {
     "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
     "command_name", "command_expression_nodes", "command_immediate_symbols",
     "command_symbol_kinds", "source_command_ir", "source_command_expanded_ir",
+    "source_lift_application",
     "source_command_ir_resolved",
     "same_module_local_declarations",
     "external_module_edges", "external_definition_bodies",
@@ -52,7 +53,7 @@ def validate_kernel_root(raw: str) -> dict:
     if not isinstance(receipt, dict) or set(receipt) != EXPECTED_FIELDS:
         raise ValueError("kernel root evidence has a missing or extra field")
     fixed = {
-        "format": "original-query-kernel-root-v6",
+        "format": "original-query-kernel-root-v7",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -201,6 +202,48 @@ def validate_kernel_root(raw: str) -> dict:
     )
     if observed_references.get(lift["declaration"]) != "definition":
         raise ValueError("source lift refusal head is absent from original definition")
+    # Source-only diagnostic of the exact applied lift: no finite
+    # map inference, ABI projection, or executable promotion.
+    lift_application = receipt["source_lift_application"]
+    required_lift_body = {
+        "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call",
+        "OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram",
+        "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled",
+    }
+    if (not isinstance(lift_application, dict) or
+            set(lift_application) != {
+                "declaration", "argument_count", "arguments",
+                "definition_body_nodes", "definition_body_symbols",
+                "lowered_to_executable_call"
+            } or
+            lift_application["declaration"] != lift["declaration"] or
+            lift_application["lowered_to_executable_call"] is not False):
+        raise ValueError("original applied lift source witness invalid or prematurely executable")
+    args = lift_application["arguments"]
+    arg_count = lift_application["argument_count"]
+    if (type(arg_count) is not int or not 5 <= arg_count <= 16 or
+            not isinstance(args, list) or len(args) != arg_count):
+        raise ValueError("original applied lift argument count invalid")
+    for index, item in enumerate(args):
+        if (not isinstance(item, dict) or
+                set(item) != {"index", "head", "nodes", "symbols"} or
+                item["index"] != index or
+                type(item["head"]) is not str or not item["head"] or
+                len(item["head"]) > 512 or
+                type(item["nodes"]) is not int or
+                not 1 <= item["nodes"] <= 256 or
+                not isinstance(item["symbols"], list) or
+                len(item["symbols"]) > 256 or
+                any(type(s) is not str or not s or len(s) > 512 for s in item["symbols"]) or
+                len(set(item["symbols"])) != len(item["symbols"])):
+            raise ValueError("original applied lift source argument invalid")
+    body = lift_application["definition_body_symbols"]
+    if (type(lift_application["definition_body_nodes"]) is not int or
+            not 1 <= lift_application["definition_body_nodes"] <= 512 or
+            not isinstance(body, list) or len(body) > 512 or
+            not required_lift_body.issubset(set(body)) or
+            len(body) != len(set(body))):
+        raise ValueError("original lift source definition body no longer has call/lift/compiled")
     local = receipt["same_module_local_declarations"]
     prefix = MODULE + "."
     expected_keys = {
@@ -432,6 +475,7 @@ def probe(args):
         "rust_executable": False,
         "command": report["source_command_ir"],
         "expanded_command": report["source_command_expanded_ir"],
+        "source_lift_application": report["source_lift_application"],
     }
     atomic_write(out / "original-command-prefix.json",
                  json.dumps(prefix_receipt, sort_keys=True, indent=2) + "\n")

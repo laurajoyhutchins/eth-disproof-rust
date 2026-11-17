@@ -109,9 +109,9 @@ private theorem clause_product_is_indicator {n : ℕ}
   | empty =>
       simp [satAtomValue]
   | @insert C F hn ih =>
-      rw [Finset.prod_insert hn, SAT.CNF.eval_insert]
+      rw [Finset.prod_insert hn, SAT.CNF.eval_insert, ih]
       cases hc : SAT.Clause.eval a C <;> cases hf : SAT.CNF.eval a F <;>
-        simp [satAtomValue, hc, hf, ih]
+        simp [satAtomValue, hc, hf]
 
 private theorem indicator_sum_eq_card {α : Type*} [DecidableEq α]
     (s : Finset α) (P : α → Prop) [DecidablePred P] :

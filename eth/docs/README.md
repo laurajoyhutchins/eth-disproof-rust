@@ -8,7 +8,7 @@ For executable coverage, see [execution evidence](evidence.md) and [remaining st
 
 **Lean compilation:** [compiler IR](compiler-ir-backend.md), [core expression residualization](core-expr-residualizer.md), [codegen agreement](two-path-acceptance-contract.md), [generalization](lean-to-rust-generalization.md).
 
-**Mathematical cost:** [worst-case parameters and polynomial overhead](worst-case-and-polynomial-overhead.md), [finite fallback](m2-finite-fallback-decision.md), [research notebook](../../../research/README.md).
+**Mathematical cost:** [worst-case parameters and polynomial overhead](worst-case-and-polynomial-overhead.md), [finite fallback](m2-finite-fallback-decision.md), [research notebook](../../research/README.md).
 
 **History:** [the reconstructed Git reading guide](reading-the-history.md) and [test-accuracy audit](tdd-accuracy-audit.md).
 

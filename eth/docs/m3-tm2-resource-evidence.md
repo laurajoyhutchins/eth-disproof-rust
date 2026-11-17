@@ -12,7 +12,7 @@ Compiler definitions and their exact Git blob hashes are now included in
 
 ## Run it
 
-From `rust/lean_eth_reference`, with the pinned Rust 1.99.1 toolchain:
+From `eth`, with the pinned Rust 1.99.1 toolchain:
 
 ```sh
 cargo test --offline --test tm2_resources

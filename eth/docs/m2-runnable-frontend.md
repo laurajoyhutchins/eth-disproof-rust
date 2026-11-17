@@ -5,7 +5,7 @@
 ## Run from a checkout
 
 ```sh
-cd rust/lean_eth_reference
+cd eth
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' |
   cargo run --offline --locked --bin eth-frontend
 ```

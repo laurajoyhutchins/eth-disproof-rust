@@ -1,39 +1,53 @@
 # Lean C execution-time runtime adapter
 
-This is the first **real Lean C reference-count FFI slice**, built
-against the pinned Lean 4.34.1 runtime using its public header. It is
-not the compiler's borrowed IR-reader `frontend/ffi/abi.c`.
+This is a **real Lean C/Rust execution boundary**, built against
+pinned Lean 4.34.1. It is distinct from the compile-time borrowed IR
+accessors in `compiler/frontend/ffi/abi.c`.
 
-The Rust `Owned` and `Borrowed` wrappers in `src/lib.rs` carry a
-real `lean_object *` and have distinct lifetimes. Construction consumes
-owned fields. Retention invokes `lean_inc`. Rust `Drop` invokes
-`lean_dec`. Borrowed fields do not acquire references, and a
-`Borrowed<'_>` cannot outlive the owning handle via its safe API.
-Physical reference counts and exclusivity are queried from the C
-runtime itself, not from a Rust `Rc` approximation.
+The Rust `Owned` and `Borrowed` handles in `src/lib.rs` contain real
+Lean `lean_object *` references. Constructor fields transfer owned
+references. Retention invokes `lean_inc`, Rust `Drop` invokes
+`lean_dec`, and borrowing is limited by the lifetime of its owner.
+Physical count and exclusivity observations come from Lean C rather
+than `Rc::strong_count`.
 
-## Witness
+## Two independent execution checks
 
-`check.sh` compiles unchanged
-`examples/OwnershipObjectTraceKernels.lean` with the **original Lean
-C compiler**. A C observer calls the actual `create` definition,
-while a Rust observer constructs an equivalent bounded constructor
-through the C adapter. Both compare constructor tag/fields and
-physical counts before and after an increment and decrement for
-three inputs. A pinned Lean IO driver initializes the runtime.
+The integrated compiler conformance script
+`compiler/scripts/check.sh` tests both:
 
-```sh
-LEAN_PREFIX=/path/to/lean4-v4.34.1 bash compiler/runtime/lean-c/check.sh
-```
+1. **Heap ownership boundary:** the original
+   `OwnershipObjectTrace.create` program is compiled to C. A Rust
+   observer calls the pinned C runtime to construct the equivalent
+   bounded constructor, then compares field representation,
+   exclusivity and physical refcounts before and after a retain and
+   release over three inputs.
+2. **Actual emitted Rust in the Lean C process:** after
+   `ReaderRustStatement.lean` captures and checks the real IR
+   emitter's exact `ScalarFixture.plus` source, the script links those
+   **unchanged generated Rust bytes** into the original Lean C
+   executable. Its Lean IO driver calls the Rust entrypoint for 100
+   pairs of UInt64 boundary values and compares against the original
+   `ScalarFixture.plus` Lean function executed in that same process.
 
-This witness establishes a working FFI execution boundary for
-constructor allocation, owned transfer, borrowing, retain, release
-and physical source count observation. It **does not** establish that
-the compiler-emitted functions use this adapter. The next task is
-making one emitted Rust function select the execution-runtime
-interface, while preserving the canonical emitter and proving it
-matches original Lean C. Persistent/multithreaded objects, closure
-ownership and full G1/G2 coverage remain unsupported.
+The generated code is not a separately typed or handwritten Rust
+replacement. The wrapper only adapts the exported scalar C ABI.
+Keep the exact emitted-file digest in the CI receipt.
+
+## Still open
+
+**Generated heap-backed Rust does not yet use the C adapter.** The
+scalar proof validates the ABI and basic execution against Lean C,
+while a different bounded handle test validates actual physical
+ownership. Combining both as if they proved all constructor,
+borrowed-projection, call/join and destructor semantics would be
+incorrect.
+
+The next acceptance target is one *compiler-emitted* heap constructor
+and projection executed with these Lean C handles, followed by
+ownership-sensitive call/join and nested release. Persistent and
+multithreaded reference counts, arbitrary externs and all original
+ETH G2 obligations remain unproved.
 
 See [runtime contract](../../docs/execution-runtime-contract.md)
-and [compiler status](../../docs/compiler-status.md).
+and [status](../../docs/compiler-status.md).

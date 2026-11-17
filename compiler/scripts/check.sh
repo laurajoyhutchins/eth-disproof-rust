@@ -8,9 +8,6 @@ fi
 export PATH="${LEAN_PREFIX}/bin:${PATH}"
 export LEAN_PATH="${LEAN_PREFIX}/lib/lean${LEAN_PATH:+:${LEAN_PATH}}"
 export LD_LIBRARY_PATH="${LEAN_PREFIX}/lib/lean${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-# First independently check execution-time FFI against the original Lean C runtime.
-# The compiler's borrowed IR-reader FFI remains a separate library.
-bash runtime/lean-c/check.sh
 # Derive the complete IR constructor inventory from the actual pinned Lean environment.
 # The ledger is fail-closed on tag/order drift and documents conditional semantics.
 mkdir -p artifacts
@@ -84,6 +81,9 @@ lean -o proofs/ReaderIRABIObservation.olean --load-dynlib="$NATIVE_LIB" proofs/R
 # prove its value semantics for all inputs, compare full canonical text against
 # the actual Reader output, then execute those exact bytes under rustc.
 lean -o proofs/ReaderRustStatement.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderRustStatement.lean | tee artifacts/reader-rust-statement-axioms.txt
+# Exercise exact Reader-emitted Rust in the pinned Lean C runtime process.
+# A distinct bounded heap control uses real lean_object physical refcounts.
+bash runtime/lean-c/check.sh
 # The actual MIR CFG has a separate register/edge semantics, including
 # comparison -> bool -> u8 materialization and 0/1 successor selection.
 lean -o proofs/ReaderMIRSoundness.olean proofs/ReaderMIRSoundness.lean | tee artifacts/reader-mir-soundness-axioms.txt

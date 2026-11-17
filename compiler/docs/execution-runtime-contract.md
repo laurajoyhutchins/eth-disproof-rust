@@ -53,8 +53,12 @@ actual Lean C `lean_object *` ownership, `lean_inc`/`lean_dec`,
 constructor fields and physical source count observation. Its
 independent compiled-source witness compares the original Lean C
 `OwnershipObjectTrace.create` with the bounded Rust/C handle API.
-This is **one runtime-boundary test**, not yet the canonical generated
-Rust emitter selecting the Lean C runtime.
+The runtime gate now additionally links the **exact Reader-generated**
+`ScalarFixture.plus` Rust function into a Lean C-hosted executable and
+compares 100 scalar input pairs against the original Lean source. This
+validates the initial emitted-function C ABI, but only for an unboxed
+scalar function. The generated heap-backed Rust still does not select
+the Lean C runtime.
 
 ## Lean C-backed baseline
 

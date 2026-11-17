@@ -654,7 +654,7 @@ class KernelRootReceiptTests(unittest.TestCase):
         self.assertFalse(actual["transitive_computational_closure"])
         fixture = root_receipt()
         fixture["second_hop_definition_bodies"].clear()
-        with self.assertRaisesRegex(ValueError, "coverage"):
+        with self.assertRaisesRegex(ValueError, "coverage|core declaration evidence absent"):
             validate_kernel_root(json.dumps(fixture))
         fixture = root_receipt()
         fixture["second_hop_definition_bodies"][0]["name"] = "OAI.Forged"

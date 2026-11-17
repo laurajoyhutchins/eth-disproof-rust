@@ -1060,6 +1060,43 @@ mod native_interning_tests {
         assert!(serde_json::from_str::<Command>(executable).is_ok());
     }
 
+    /// The original reconstruction lift has this *partial* typed shape.
+    /// Its maps and ABI are checked separately against pinned Lean evidence.
+    /// A missing coreCommand never becomes an executable callee or a default
+    /// operation in the shared Rust interpreter / native backend.
+    #[test]
+    fn reconstruction_lift_partial_call_uses_canonical_ir_and_refuses_core() {
+        let graph = serde_json::json!({
+            "kind": "call",
+            "program": {
+                "kind": "lift",
+                "r": 40,
+                "s": 896,
+                "registers": (0usize..40).collect::<Vec<_>>(),
+                "stacks": (0usize..768).collect::<Vec<_>>(),
+                "source": {
+                    "kind": "composed",
+                    "r": 40,
+                    "s": 768,
+                    "input": 256,
+                    "output": 323,
+                    "command": {
+                        "kind": "unresolved",
+                        "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.coreCommand",
+                        "source_kind": "definition"
+                    }
+                }
+            }
+        });
+        let command: Command = serde_json::from_value(graph).unwrap();
+        let mut remaining = MAX_NODES;
+        let mut callees = HashMap::new();
+        let err = lower::<40, 896>(command, &mut remaining, &mut callees)
+            .expect_err("unresolved original reconstruction core must not run");
+        assert!(err.to_string().contains("QueryReconstruction.coreCommand"), "{err}");
+        assert!(callees.is_empty(), "refused call must not create callee cache entries");
+    }
+
     #[test]
     fn identical_callee_table_is_shared_and_distinct_abi_is_not() {
         let repeated = Command::Seq {

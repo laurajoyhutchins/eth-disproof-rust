@@ -97,3 +97,50 @@ contains a particular `jdecl/jmp` lowering. The separate
 A physical-C-versus-Rust complete join-stack/heap
 bisimulation, finalizers, optimizations and arbitrary alias cycles
 remain unproved.
+
+
+## Bounded heap-event replay, with explicit release cascades
+
+`proofs/ReaderHeapEvents.lean` defines a finite-fuel operational semantics
+for a graph of source-owned heap objects. An object has an allocation ID,
+a positive source-reference count, and an ordered sequence of owned child
+references. The machine supports a topologically ordered seed of a live
+graph, explicit source `retain`, recursive source `release` (with a
+fuel limit and underflow refusal), and source-reference observations. It
+proves that source-freed objects cannot be resurrected by a retain,
+that a final leaf release clears its allocation, and that a five-object
+tree's root release destroys its intermediate fork and unretained
+cousin while retaining precisely the grandchild and sibling with
+explicit extra source references.
+
+This is a semantics for an **observed** graph. Its `seed` event describes
+the allocation and owned-child edges visible at first observation.
+It does **not** timestamp each underlying `lean_alloc_ctor` call.
+
+The independent C and Reader-generated Rust drivers now record a
+separate `HEAP` event stream next to the existing `TRACE` checkpoints.
+The C driver samples real pinned Lean C source RC immediately before/after
+each explicitly instrumented `lean_inc`/`lean_dec`; the Rust driver
+samples the production `__LeanValue` source count before/after the
+corresponding operations. The event stream includes the intermediate
+fork's previously unobserved second leaf, so the replay covers *all*
+owned child edges of the bounded tree. Neither driver dereferences
+root or child objects after their last physical release.
+
+`scripts/check-heap-events.py` is a separately implemented, strict
+reference-machine replay: it refuses unknown event forms, duplicated
+IDs, absent child edges, fabricated retains, mismatched pre/post source
+counts, releasing an absent allocation, broken destructor cascades,
+and unexpected survivor references. It requires the 17 event records
+from each backend to agree exactly, on all three input pairs; seven
+adversarially altered event streams must be rejected.
+
+**Trust boundary:** This is a checked event semantics and bounded
+instrumented source-heap observation, not yet a machine-checked refinement
+from *all* physical Lean C allocator/destructor events to the abstract
+machine. Observations sample an already constructed tree and explicit
+driver operations; internal allocation chronology, every implicit C
+destructor, arbitrary aliasing and finalizer execution remain unproved.
+The production Rust runtime still uses its own logical source ledger
+and an implementation `Rc`. An observed match to physical Lean C
+is evidence, not a general bisimulation theorem.

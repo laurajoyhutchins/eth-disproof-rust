@@ -98,5 +98,4 @@ def main (args : List String) : IO Unit := do
   match args with
   | moduleName :: destination :: roots =>
     ProofGraph.run moduleName destination roots.toArray
-  | _ => throw <| IO.userError
-      "Usage: lean --run Extract.lean <module> <output.jsonl> <root> [root...]"
+  | _ => throw (IO.userError "Usage: lean --run Extract.lean <module> <output.jsonl> <root> [root...]")

@@ -111,7 +111,9 @@ partial def scanOps (e : Expr) (path : String) (initial : Array Json) : Array Js
           ("arity", toJson args.size),
           ("argument_heads", toJson (args.map appHead)),
           ("operand_effects", operandEffects n)])
-    | _ => pure ()
+    | head =>
+      -- Applied lambdas and higher-order heads can contain real operators too.
+      out := scanOps head s!"{path}.fn" out
     for h in [:args.size] do
       out := scanOps args[h]! s!"{path}.{h}" out
   else

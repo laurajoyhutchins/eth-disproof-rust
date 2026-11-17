@@ -198,4 +198,98 @@ theorem strict_two_state_compression :
 #print axioms ACC.BoundaryQuotient.merged_toInst_eq_quotient
 #print axioms ACC.BoundaryQuotient.strict_two_state_compression
 
+
+/-! ## A real, source-compatible quotient network -/
+
+/-- Construct a new Anthropic network whose node states are quotient labels.
+    Node weights are summed over ALL original states in the label fiber.
+    Edges still carry the original labels and capacities. -/
+noncomputable def quotientNetwork
+    {J σ τ K : Type*}
+    [Fintype J] [LinearOrder J]
+    (N : Groundwork.Network J σ τ)
+    (label : σ → K) (representative : K → σ) :
+    Groundwork.Network J K τ := by
+  classical
+  exact {
+    S := fun a => (N.S a).image label
+    W := fun a k =>
+      ∑ s ∈ (N.S a).filter (fun s => label s = k), N.W a s
+    Θ := N.Θ
+    f := fun a b k t => N.f a b (representative k) t
+    c := N.c
+  }
+
+/-- Strong source correctness: the constructed quotient network has the
+    SAME complete outgoing instance table for every legal or illegal
+    external label assignment. No final-count oracle appears. -/
+theorem quotientNetwork_toInst
+    {J σ τ K A : Type*}
+    [Fintype J] [LinearOrder J] [DecidableEq A]
+    (N : Groundwork.Network J σ τ)
+    (label : σ → K) (representative : K → σ)
+    (hf : ∀ a b s t,
+      N.f a b s t = N.f a b (representative (label s)) t)
+    (D : J → J → Finset A) (decode : J → J → A → τ)
+    (a : J) (boundary : J → A) :
+    (quotientNetwork N label representative).toInst D decode a boundary =
+      N.toInst D decode a boundary := by
+  rw [toInst_eq_quotient N label representative hf D decode a boundary]
+  rfl
+
+/-- The actual, source-derived merge factors commute *definitionally*
+    with the lifted quotient: both routes yield the same outgoing local
+    factor function. This is a component of the full network square. -/
+theorem quotient_merge_factor_commutes
+    {J J' σ τ K : Type*}
+    [Fintype J] [LinearOrder J] [LinearOrder J']
+    (N : Groundwork.Network J σ τ)
+    (color : J → J') (defaultState : σ) (defaultLabel : τ)
+    (label : σ → K) (representative : K → σ)
+    (G H : J') (z : J → K) (t : J × J → τ) :
+    ((quotientNetwork N label representative).merge color
+        (label defaultState) defaultLabel).f G H z t =
+      (quotientNetwork
+        (N.merge color defaultState defaultLabel)
+        (fun x : J → σ => fun a => label (x a))
+        (fun k : J → K => fun a => representative (k a))).f G H z t := by
+  rfl
+
+/-- The two constructions have identical label universes. -/
+theorem quotient_merge_labels_commute
+    {J J' σ τ K : Type*}
+    [Fintype J] [LinearOrder J] [LinearOrder J']
+    (N : Groundwork.Network J σ τ)
+    (color : J → J') (defaultState : σ) (defaultLabel : τ)
+    (label : σ → K) (representative : K → σ)
+    (G H : J') :
+    ((quotientNetwork N label representative).merge color
+        (label defaultState) defaultLabel).Θ G H =
+      (quotientNetwork
+        (N.merge color defaultState defaultLabel)
+        (fun x : J → σ => fun a => label (x a))
+        (fun k : J → K => fun a => representative (k a))).Θ G H := by
+  rfl
+
+/-- Their capacity fields also agree, independently of the quotient. -/
+theorem quotient_merge_capacity_commutes
+    {J J' σ τ K : Type*}
+    [Fintype J] [LinearOrder J] [LinearOrder J']
+    (N : Groundwork.Network J σ τ)
+    (color : J → J') (defaultState : σ) (defaultLabel : τ)
+    (label : σ → K) (representative : K → σ)
+    (G H : J') :
+    ((quotientNetwork N label representative).merge color
+        (label defaultState) defaultLabel).c G H =
+      (quotientNetwork
+        (N.merge color defaultState defaultLabel)
+        (fun x : J → σ => fun a => label (x a))
+        (fun k : J → K => fun a => representative (k a))).c G H := by
+  rfl
+
+#print axioms ACC.BoundaryQuotient.quotientNetwork_toInst
+#print axioms ACC.BoundaryQuotient.quotient_merge_factor_commutes
+#print axioms ACC.BoundaryQuotient.quotient_merge_labels_commute
+#print axioms ACC.BoundaryQuotient.quotient_merge_capacity_commutes
+
 end ACC.BoundaryQuotient

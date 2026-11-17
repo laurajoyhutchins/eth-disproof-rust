@@ -43,6 +43,8 @@ jobs:
         run: |
           mkdir -p .graph-smoke
           printf 'leanprover/lean4:v%s\n' "$LEAN_VERSION" > .graph-smoke/lean-toolchain
+          printf '[package]\nname = "graph-smoke"\nversion = "0.1.0"\n' > .graph-smoke/lakefile.toml
+          printf '{"version": "1.1.0", "packages": []}\n' > .graph-smoke/lake-manifest.json
       - name: Install exact original Lean
         uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
         with:

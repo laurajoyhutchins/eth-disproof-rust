@@ -17,6 +17,7 @@ on:
       - 'eth/proofs/IndependentSourcePackingBridge.lean'
       - 'eth/proofs/IndependentSourceIncidence.lean'
       - 'eth/proofs/IndependentOriginalSatIncidence.lean'
+      - 'eth/proofs/IndependentOriginalSatBits.lean'
       - '.github/workflows/lean-independent-formulations.yml'
   workflow_dispatch:
 
@@ -98,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentCnfBridge.lean eth/proofs/IndependentSwapIdentity.lean eth/proofs/IndependentRoutingBoundary.lean eth/proofs/IndependentTwoAdicJointPotential.lean eth/proofs/IndependentTwoAdicMoments.lean eth/proofs/IndependentTwoAdicConditionalMoments.lean eth/proofs/IndependentTwoAdicMatchingGraph.lean eth/proofs/IndependentAnthropicNetworkAdapter.lean eth/proofs/IndependentCategoricalContraction.lean eth/proofs/IndependentCategoricalSourceSquare.lean eth/proofs/IndependentOpenAIPacketPreservation.lean eth/proofs/IndependentSourcePackingBridge.lean eth/proofs/IndependentSourceIncidence.lean eth/proofs/IndependentOriginalSatIncidence.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentCnfBridge.lean eth/proofs/IndependentSwapIdentity.lean eth/proofs/IndependentRoutingBoundary.lean eth/proofs/IndependentTwoAdicJointPotential.lean eth/proofs/IndependentTwoAdicMoments.lean eth/proofs/IndependentTwoAdicConditionalMoments.lean eth/proofs/IndependentTwoAdicMatchingGraph.lean eth/proofs/IndependentAnthropicNetworkAdapter.lean eth/proofs/IndependentCategoricalContraction.lean eth/proofs/IndependentCategoricalSourceSquare.lean eth/proofs/IndependentOpenAIPacketPreservation.lean eth/proofs/IndependentSourcePackingBridge.lean eth/proofs/IndependentSourceIncidence.lean eth/proofs/IndependentOriginalSatIncidence.lean eth/proofs/IndependentOriginalSatBits.lean; then
             echo 'Independent proof contains unresolved admission' >&2
             exit 1
           fi
@@ -120,7 +121,9 @@ jobs:
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentSourcePackingBridge.lean"
             cp "$GITHUB_WORKSPACE/eth/proofs/IndependentSourceIncidence.lean" IndependentSourceIncidence.lean
             lake env lean -o .lake/build/lib/lean/IndependentSourceIncidence.olean IndependentSourceIncidence.lean
-            lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentOriginalSatIncidence.lean"
+            cp "$GITHUB_WORKSPACE/eth/proofs/IndependentOriginalSatIncidence.lean" IndependentOriginalSatIncidence.lean
+            lake env lean -o .lake/build/lib/lean/IndependentOriginalSatIncidence.olean IndependentOriginalSatIncidence.lean
+            lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentOriginalSatBits.lean"
             cp "$GITHUB_WORKSPACE/eth/proofs/IndependentCnfBridge.lean" IndependentCnfBridge.lean
             cp "$GITHUB_WORKSPACE/eth/proofs/IndependentAnthropicNetworkAdapter.lean" IndependentAnthropicNetworkAdapter.lean
             lake env lean -o .lake/build/lib/lean/IndependentCnfBridge.olean IndependentCnfBridge.lean
@@ -142,5 +145,6 @@ jobs:
           echo 'OPENAI_CONSTRUCTED_PACKING_AND_ANTHROPIC_NETWORK_ENCODING=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ANTHROPIC_ORIGINAL_INCIDENCE_FACTORS=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ORIGINAL_SATNET_CONSTRUCTOR_INCIDENCE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'ORIGINAL_SATNET_BOOLEAN_WIRE_REINDEX=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'OpenAI source: 4eaee87548250b2682affda7d05d947c05554bae' >> "$GITHUB_STEP_SUMMARY"
           echo 'Anthropic source: 16a5ce41304fcdaea4e0be7c132e1c361dc26da5' >> "$GITHUB_STEP_SUMMARY"

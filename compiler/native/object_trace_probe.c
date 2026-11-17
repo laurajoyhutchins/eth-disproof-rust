@@ -50,6 +50,15 @@ lean_obj_res lr_object_trace_run(lean_obj_arg first, lean_obj_arg second) {
     lean_object *b = l_OwnershipObjectTrace_create(second);
     printf("TRACE second %llu %llu\n", (unsigned long long)lr_object_trace_id(b),
            (unsigned long long)lr_object_trace_rc(b));
+    // A second, distinct allocation crosses the SAME original compiled
+    // direct-call identity function. No reference of object a is available
+    // to pay for a move of object b, or conversely.
+    lean_inc(b);
+    lean_object *same_b = l_OwnershipObjectTrace_identity(b);
+    printf("TRACE second-direct %llu %llu %llu %llu %llu %llu\n",
+           (unsigned long long)lr_object_trace_id(a), (unsigned long long)lr_object_trace_rc(a),
+           (unsigned long long)lr_object_trace_id(b), (unsigned long long)lr_object_trace_rc(b),
+           (unsigned long long)lr_object_trace_id(same_b), (unsigned long long)lr_object_trace_rc(same_b));
     lean_inc(same);
     lean_inc(b);
     lean_object *left = l_OwnershipObjectTrace_select(1, same, b);
@@ -64,6 +73,13 @@ lean_obj_res lr_object_trace_run(lean_obj_arg first, lean_obj_arg second) {
            (unsigned long long)lr_object_trace_id(same), (unsigned long long)lr_object_trace_rc(same),
            (unsigned long long)lr_object_trace_id(right), (unsigned long long)lr_object_trace_rc(right),
            (unsigned long long)lr_object_trace_id(b), (unsigned long long)lr_object_trace_rc(b));
+    // The two source-defined branch outcomes must preserve two DISTINCT
+    // heap identities. Check counts *by identity*, not by argument slot.
+    printf("TRACE branch-owners %llu %llu %llu %llu %llu %llu %llu %llu\n",
+           (unsigned long long)lr_object_trace_id(same), (unsigned long long)lr_object_trace_rc(same),
+           (unsigned long long)lr_object_trace_id(left), (unsigned long long)lr_object_trace_rc(left),
+           (unsigned long long)lr_object_trace_id(b), (unsigned long long)lr_object_trace_rc(b),
+           (unsigned long long)lr_object_trace_id(right), (unsigned long long)lr_object_trace_rc(right));
     lean_inc(left);
     lean_object *captured = l_OwnershipObjectTrace_throughClosure(left);
     printf("TRACE closure %llu %llu %llu %llu\n",
@@ -99,6 +115,7 @@ lean_obj_res lr_object_trace_run(lean_obj_arg first, lean_obj_arg second) {
     lean_dec(a);
     lean_dec(same);
     lean_dec(b);
+    lean_dec(same_b);
     lean_dec(left);
     lean_dec(right);
     lean_dec(captured);

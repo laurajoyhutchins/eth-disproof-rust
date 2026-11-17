@@ -32,6 +32,11 @@ for inputs in "0 1" "17 23" "901 702"; do
     cargo test --offline --manifest-path examples/ownership-object-trace-package/Cargo.toml --lib source_object_trace_tests::trace -- --exact
   test -s "$out/c-$first-$second.txt"
   test -s "$out/rust-$first-$second.txt"
+  # The two-identity audit is stricter than whole-file byte agreement:
+  # it requires the physical direct-call and branch-selection object IDs,
+  # counts, and allocation separation to be correct on EACH backend.
+  python3 scripts/check-object-identity-transfers.py \
+    "$out/c-$first-$second.txt" "$out/rust-$first-$second.txt"
   if ! cmp -s "$out/c-$first-$second.txt" "$out/rust-$first-$second.txt"; then
     echo '--- source function C entry points ---' >&2
     grep -n -A 10 -E 'l_OwnershipObjectTrace_(create|identity|select|throughClosure)\\(' "$out/OwnershipObjectTraceKernels.c" | head -110 >&2 || true
@@ -47,11 +52,14 @@ done
   echo "revision=$(git rev-parse HEAD)"
   echo "lean=$(lean --version)"
   echo "rust=$(rustc --version)"
-  echo 'checkpoint_count=8'
+  echo 'checkpoint_count=10'
+  echo 'direct_second_object_identity=CHECKED'
+  echo 'branch_selected_object_identity=CHECKED'
+  echo 'cross_object_credit_conservation=MODEL_ONLY'
   echo 'nested_destructor_cascade=grandchild_and_direct_sibling'
   echo 'retained_descendant_counts=CHECKED_AFTER_ROOT_RELEASE'
   echo 'runtime_input_pairs=3'
   echo 'source_heap_simulation=UNPROVED_BEYOND_OBSERVED_BOUNDARIES'
-  sha256sum examples/OwnershipObjectTraceKernels.lean examples/OwnershipObjectTraceFixture.lean examples/OwnershipObjectTraceCDriver.lean examples/ownership_object_trace_test.rs native/object_trace_probe.c "$out/OwnershipObjectTraceKernels.c" examples/ownership-object-trace-package/src/lib.rs "$out"/c-*.txt "$out"/rust-*.txt
+  sha256sum examples/OwnershipObjectTraceKernels.lean examples/OwnershipObjectTraceFixture.lean examples/OwnershipObjectTraceCDriver.lean examples/ownership_object_trace_test.rs native/object_trace_probe.c scripts/check-object-identity-transfers.py "$out/OwnershipObjectTraceKernels.c" examples/ownership-object-trace-package/src/lib.rs "$out"/c-*.txt "$out"/rust-*.txt
 } > "$out/receipt.txt"
 cat "$out/receipt.txt"

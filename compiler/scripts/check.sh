@@ -60,7 +60,7 @@ for theorem in projection_does_not_retain_source rc_alias_does_not_authorize_sou
 done
 # Owned call/jump transfers preserve each source allocation's credit count.
 # Borrowed formals, including repeated aliases, acquire no source credits.
-lean proofs/ReaderTransferCredits.lean | tee artifacts/reader-transfer-credits-axioms.txt
+lean -o proofs/ReaderTransferCredits.olean proofs/ReaderTransferCredits.lean | tee artifacts/reader-transfer-credits-axioms.txt
 if grep -Fq 'sorryAx' artifacts/reader-transfer-credits-axioms.txt; then
   echo 'Call/join source-credit proof contains sorryAx' >&2
   exit 2
@@ -68,6 +68,19 @@ fi
 for theorem in callOwned_conserves callBorrowed_conserves jumpOwned_conserves jumpBorrowed_conserves every_successful_transfer_trace_conserves source_inc_increases_count borrowed_without_inc_cannot_be_moved one_inc_authorizes_one_owned_transfer; do
   if ! grep -Fq "'ReaderTransferCredits.${theorem}' " artifacts/reader-transfer-credits-axioms.txt; then
     echo "Missing source-credit theorem axiom receipt: ${theorem}" >&2
+    exit 2
+  fi
+done
+# Prove per-allocation source-count conservation, including arbitrarily
+# interleaved calls and jumps on distinct identities (not just sum totals).
+lean proofs/ReaderObjectCredits.lean | tee artifacts/reader-object-credits-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-object-credits-axioms.txt; then
+  echo 'Multi-allocation ownership theorem contains sorryAx' >&2
+  exit 2
+fi
+for theorem in stepAt_conserves_each every_successful_trace_conserves_each transfer_does_not_touch_other_object incAt_target incAt_other crossing_object_identities_is_not_an_admitted_transfer interleaved_distinct_objects; do
+  if ! grep -Fq "'ReaderObjectCredits.${theorem}' " artifacts/reader-object-credits-axioms.txt; then
+    echo "No axiom receipt for object-indexed theorem ${theorem}" >&2
     exit 2
   fi
 done

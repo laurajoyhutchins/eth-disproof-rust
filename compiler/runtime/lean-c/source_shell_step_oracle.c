@@ -14,12 +14,18 @@
  * These are bounded measurements, not a formal C semantics theorem.
  */
 #include <lean/lean.h>
-#include <assert.h>
-#include <inttypes.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+
+/* Pinned `leanc` ships a deliberately small C header set. Declare only
+ * the standard C ABI calls this test oracle uses; FILE remains opaque.
+ * No replacement implementation of any Lean ownership primitive. */
+typedef struct _IO_FILE FILE;
+extern FILE *fopen(const char *, const char *);
+extern int fclose(FILE *);
+extern int fprintf(FILE *, const char *, ...);
+extern char *getenv(const char *);
+extern int strcmp(const char *, const char *);
+#define REQUIRE(test) do { if (!(test)) __builtin_trap(); } while (0)
 
 typedef struct {
     const char *name;
@@ -35,34 +41,36 @@ typedef struct {
 } episode;
 
 static int checked_rc(lean_object *o) {
-    assert(o && !lean_is_scalar(o) && lean_is_st(o));
+    REQUIRE(o && !lean_is_scalar(o) && lean_is_st(o));
     int n = lean_internal_get_rc(o);
-    assert(n >= 1);
+    REQUIRE(n >= 1);
     return n;
 }
 
 /* Do not infer liveness from an address after free. */
 static void checkpoint(episode *e, const char *event, const char *outcome) {
-    assert(e->parent != e->child && e->child != e->old_stamp &&
+    REQUIRE(e->parent != e->child && e->child != e->old_stamp &&
            e->parent != e->old_stamp);
-    assert(e->child_field == e->parent_live);
+    REQUIRE(e->child_field == e->parent_live);
     if (e->parent_live) {
-        assert(lean_is_ctor(e->parent));
-        assert(lean_obj_tag(e->parent) == 1 &&
+        REQUIRE(lean_is_ctor(e->parent));
+        REQUIRE(lean_obj_tag(e->parent) == 1 &&
                lean_ctor_num_objs(e->parent) == 2);
-        assert(lean_ctor_get(e->parent, 0) == e->child);
+        REQUIRE(lean_ctor_get(e->parent, 0) == e->child);
     }
-    fprintf(e->f, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%" PRIuPTR "\t%" PRIuPTR "\t%" PRIuPTR "\n",
+    fprintf(e->f, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%d\t%llu\t%llu\t%llu\n",
         e->name, event, outcome,
         e->parent_live ? checked_rc(e->parent) : 0,
         checked_rc(e->child), checked_rc(e->old_stamp),
         e->child_field, e->borrowed, e->stamp_slot, e->unique,
-        (uintptr_t)e->parent, (uintptr_t)e->child, (uintptr_t)e->old_stamp);
+        (unsigned long long)(uintptr_t)e->parent,
+        (unsigned long long)(uintptr_t)e->child,
+        (unsigned long long)(uintptr_t)e->old_stamp);
 }
 
 static episode new_episode(FILE *f, const char *name, lean_object *external_stamp) {
-    assert(external_stamp && !lean_is_scalar(external_stamp));
-    assert(checked_rc(external_stamp) >= 1);
+    REQUIRE(external_stamp && !lean_is_scalar(external_stamp));
+    REQUIRE(checked_rc(external_stamp) >= 1);
     lean_object *child = lean_alloc_ctor(1, 2, 0);
     lean_ctor_set(child, 0, lean_box(5));
     lean_ctor_set(child, 1, lean_box(6));
@@ -71,31 +79,31 @@ static episode new_episode(FILE *f, const char *name, lean_object *external_stam
     lean_ctor_set(parent, 0, child);
     lean_ctor_set(parent, 1, external_stamp);
     episode e = {name, f, parent, child, external_stamp, 1, 1, 0, 0, "old"};
-    assert(checked_rc(parent) == 1 && checked_rc(child) == 1);
+    REQUIRE(checked_rc(parent) == 1 && checked_rc(child) == 1);
     checkpoint(&e, "initial", "start");
     return e;
 }
 static void borrow_child(episode *e) {
-    assert(e->parent_live && lean_ctor_get(e->parent, 0) == e->child);
+    REQUIRE(e->parent_live && lean_ctor_get(e->parent, 0) == e->child);
     e->borrowed = 1; /* lean_ctor_get is a borrowed pointer, no inc. */
     checkpoint(e, "borrowChild", "ok");
 }
 static void observe_sharing(episode *e) {
-    assert(e->parent_live);
+    REQUIRE(e->parent_live);
     e->unique = lean_is_exclusive(e->parent) ? 1 : 0;
     checkpoint(e, "inspectSharing", "ok");
 }
 static void stamp_dec(episode *e) {
-    assert(e->parent_live && e->unique && checked_rc(e->parent) == 1);
-    assert(strcmp(e->stamp_slot, "old") == 0);
-    assert(lean_ctor_get(e->parent, 1) == e->old_stamp);
-    assert(checked_rc(e->old_stamp) >= 2); /* External root must protect it. */
+    REQUIRE(e->parent_live && e->unique && checked_rc(e->parent) == 1);
+    REQUIRE(strcmp(e->stamp_slot, "old") == 0);
+    REQUIRE(lean_ctor_get(e->parent, 1) == e->old_stamp);
+    REQUIRE(checked_rc(e->old_stamp) >= 2); /* External root must protect it. */
     lean_dec(e->old_stamp); /* Consume the existing parent field credit. */
     e->stamp_slot = "spent";
     checkpoint(e, "stampDec", "ok");
 }
 static void jump_owner(episode *e) {
-    assert(e->parent_live);
+    REQUIRE(e->parent_live);
     /* Source jmp/rename is zero physical instructions, not a C operation. */
     checkpoint(e, "jumpOwned", "ok");
 }
@@ -106,7 +114,7 @@ static int can_shell_del(episode *e) {
         lean_ctor_get(e->parent, 0) == e->child;
 }
 static void do_shell_del(episode *e) {
-    assert(can_shell_del(e));
+    REQUIRE(can_shell_del(e));
     lean_del_object(e->parent);
     e->parent_live = 0;
     e->child_field = 0;
@@ -114,29 +122,29 @@ static void do_shell_del(episode *e) {
     checkpoint(e, "shellDel", "ok");
 }
 static void refuse_shell_del(episode *e) {
-    assert(!can_shell_del(e));
+    REQUIRE(!can_shell_del(e));
     /* No lean_del_object call is attempted on a rejected state. */
     checkpoint(e, "shellDel", "refused");
 }
 static void retain_parent(episode *e) {
-    assert(e->parent_live);
+    REQUIRE(e->parent_live);
     lean_inc(e->parent);
     e->unique = 0; /* Observed exclusivity is invalidated by ownership change. */
     checkpoint(e, "retainParent", "ok");
 }
 static void release_shared_parent(episode *e) {
-    assert(checked_rc(e->parent) > 1);
+    REQUIRE(checked_rc(e->parent) > 1);
     lean_dec(e->parent);
     e->unique = 0;
     checkpoint(e, "releaseSharedParent", "ok");
 }
 static void retain_child(episode *e) {
-    assert(e->parent_live && e->borrowed);
+    REQUIRE(e->parent_live && e->borrowed);
     lean_inc(e->child);
     checkpoint(e, "retainChild", "ok");
 }
 static void fresh_tagged_stamp(episode *e) {
-    assert(e->parent_live && e->unique &&
+    REQUIRE(e->parent_live && e->unique &&
            strcmp(e->stamp_slot, "spent") == 0);
     /* Only a scalar replacement is used: there is no untracked new
      * heap credit. General heap-stamp replacement remains unmodeled. */
@@ -152,14 +160,14 @@ static void run_delete(FILE *f, lean_object *stamp) {
     stamp_dec(&e);
     jump_owner(&e);
     do_shell_del(&e);
-    assert(checked_rc(e.child) == 1);
+    REQUIRE(checked_rc(e.child) == 1);
     lean_dec(e.child); /* Cleanup after the final observed checkpoint. */
 }
 static void run_shared(FILE *f, lean_object *stamp) {
     episode e = new_episode(f, "shared", stamp);
     retain_parent(&e);
     observe_sharing(&e);
-    assert(!e.unique);
+    REQUIRE(!e.unique);
     release_shared_parent(&e);
     borrow_child(&e);
     observe_sharing(&e);
@@ -178,7 +186,7 @@ static void run_retained(FILE *f, lean_object *stamp) {
     /* Both credits are still live. Drop the independent retain, then
      * shell-delete the parent WITHOUT dec'ing its already-spent stamp. */
     lean_dec(e.child);
-    assert(can_shell_del(&e));
+    REQUIRE(can_shell_del(&e));
     lean_del_object(e.parent);
     lean_dec(e.child);
 }
@@ -209,7 +217,7 @@ lean_obj_res lr_heap_trace_source_credits(b_lean_obj_arg stamp) {
     run_shared(f, (lean_object *)stamp);
     run_retained(f, (lean_object *)stamp);
     run_fresh(f, (lean_object *)stamp);
-    assert(checked_rc((lean_object *)stamp) == initial);
+    REQUIRE(checked_rc((lean_object *)stamp) == initial);
     if (fclose(f) != 0) return lean_box(4);
     return lean_box(0);
 }

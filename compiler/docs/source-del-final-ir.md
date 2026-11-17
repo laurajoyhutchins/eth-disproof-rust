@@ -25,6 +25,7 @@ premature without a genuine final-IR example demonstrating either one.
   actual `del` and `jdecl` instructions.
 - `runtime/lean-c/check-generated-heap.sh`: runs this exact-compiler
   probe before the unchanged generated-heap differential execution.
+- `artifacts/source-del-final-ir.txt`: full, source-derived final compiler declarations as formatted by pinned `Lean.IR.declToString`, including the actual join and branch structure.
 - `artifacts/source-del-final-ir.tsv`: row per declaration, with
   `final_ir_del` and `final_ir_jdecl` counts.
 - `artifacts/source-del-final-ir-status.txt`: explicitly distinguishes

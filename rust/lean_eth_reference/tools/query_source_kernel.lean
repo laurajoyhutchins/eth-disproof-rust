@@ -339,6 +339,176 @@ private def inspectSourceLift (env : Environment) : IO Json := do
     ("lowered_to_executable_call", toJson false)
   ]
 
+/-!
+Lower only the pinned source's syntactically recognized Fin literals and
+identity/castAdd maps. This produces an honest *partial* canonical Rust call
+tree: the inner original coreCommand remains unresolved, and no executable
+or Lean↔Rust proof is inferred. The bounds and names come from the imported
+Lean Expr, not a source-text rewrite or a surrogate implementation.
+-/
+private def sourceNat (e : Expr) : Except String Nat :=
+  match e with
+  | .lit (.natVal n) => .ok n
+  | _ =>
+    if headIdentity e != "OfNat.ofNat" then
+      .error "source Nat is not an original numeral"
+    else
+      let args := e.getAppArgs
+      match args[1]? with
+      | some (.lit (.natVal n)) => .ok n
+      | _ => .error "source numeral has no literal numeric argument"
+
+private def requiredNat (e : Expr) (label : String) : IO Nat :=
+  match sourceNat e with
+  | .ok n => pure n
+  | .error reason => throw <| IO.userError s!"{label}: {reason}"
+
+private def requiredFin (e : Expr) (bound : Nat) (label : String) : IO Nat := do
+  unless headIdentity e == "OfNat.ofNat" do
+    throw <| IO.userError s!"{label}: not an elaborated Fin numeral"
+  let args := e.getAppArgs
+  if args.size < 2 || headIdentity args[0]! != "Fin" then
+    throw <| IO.userError s!"{label}: not a Fin type"
+  let typeArgs := args[0]!.getAppArgs
+  if typeArgs.isEmpty then
+    throw <| IO.userError s!"{label}: missing Fin bound"
+  let observedBound ← requiredNat typeArgs[0]! s!"{label} bound"
+  unless observedBound == bound do
+    throw <| IO.userError s!"{label}: Fin bound mismatches source machine"
+  let n ← requiredNat e label
+  unless n < bound do
+    throw <| IO.userError s!"{label}: Fin port out of range"
+  return n
+
+private partial def stripSourceLambdas (value : Expr) (fuel : Nat) : IO Expr := do
+  if fuel == 0 then
+    throw <| IO.userError "source lift definition lambda budget exceeded"
+  match value with
+  | .lam _ _ body _ => stripSourceLambdas body (fuel - 1)
+  | .mdata _ body => stripSourceLambdas body (fuel - 1)
+  | _ => pure value
+
+private def originalLiftCall (env : Environment) : IO Json := do
+  let commandName := qualified
+    "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command"
+  let some (.defnInfo source) := env.find? commandName
+    | throw <| IO.userError "original reconstruction command missing"
+  unless headIdentity source.value ==
+      "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq" do
+    throw <| IO.userError "source reconstruction stopped sequencing"
+  let rootArgs := source.value.getAppArgs
+  unless rootArgs.size == 4 do
+    throw <| IO.userError "source reconstruction sequencing arity changed"
+  let lift := rootArgs[3]!
+  let liftName := qualified "OAI.Algorithms.SubexponentialSAT.StructuredCalls.liftCommand"
+  unless headIdentity lift == liftName.toString do
+    throw <| IO.userError "source reconstruction lift head changed"
+  let a := lift.getAppArgs
+  unless a.size == 9 do
+    throw <| IO.userError "source lift no longer has four implicit and five explicit arguments"
+  let r ← requiredNat a[0]! "source inner register dimension"
+  let s ← requiredNat a[1]! "source inner stack dimension"
+  let R ← requiredNat a[2]! "source outer register dimension"
+  let S ← requiredNat a[3]! "source outer stack dimension"
+  if r == 0 || r > 256 || s == 0 || s > 4096 || R != r ||
+      S > 4096 || S < s then
+    throw <| IO.userError "source lift dimensions out of supported exact map bounds"
+  let coreName := qualified
+    "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.coreCommand"
+  if headIdentity a[4]! != coreName.toString ||
+      !a[4]!.getAppArgs.isEmpty then
+    throw <| IO.userError "source lift inner command is not original closed coreCommand"
+  let some (.defnInfo _) := env.find? coreName
+    | throw <| IO.userError "original reconstruction core is not a source definition"
+  let input ← requiredFin a[5]! s "source compiled input"
+  let output ← requiredFin a[6]! s "source compiled output"
+  unless headIdentity a[7]! == "id" do
+    throw <| IO.userError "original source register lift is not identity"
+  unless headIdentity a[8]! == "Fin.castAdd" do
+    throw <| IO.userError "original source stack lift is not Fin.castAdd"
+  let castArgs := a[8]!.getAppArgs
+  unless castArgs.size == 2 do
+    throw <| IO.userError "source Fin.castAdd argument arity changed"
+  let castFrom ← requiredNat castArgs[0]! "source Fin.castAdd domain"
+  let castExtra ← requiredNat castArgs[1]! "source Fin.castAdd added dimension"
+  unless castFrom == s && s + castExtra == S do
+    throw <| IO.userError "source Fin.castAdd does not match source/target stacks"
+  let some (.defnInfo liftDef) := env.find? liftName
+    | throw <| IO.userError "liftCommand definition missing"
+  let liftBody ← stripSourceLambdas liftDef.value 16
+  unless headIdentity liftBody ==
+      "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call" do
+    throw <| IO.userError "source liftCommand is no longer a call"
+  let callArgs := liftBody.getAppArgs
+  if callArgs.isEmpty then
+    throw <| IO.userError "source call has no program argument"
+  let p := callArgs.back!
+  unless headIdentity p ==
+      "OAI.Algorithms.SubexponentialSAT.ProgramLinking.liftProgram" do
+    throw <| IO.userError "source call no longer uses ProgramLinking.liftProgram"
+  let pArgs := p.getAppArgs
+  if pArgs.size < 3 then
+    throw <| IO.userError "source liftProgram lacks its program and maps"
+  let inner := pArgs[pArgs.size-3]!
+  unless headIdentity inner ==
+      "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled" do
+    throw <| IO.userError "source liftProgram no longer wraps compiled"
+  let core := Json.mkObj [
+    ("kind", toJson "unresolved"),
+    ("declaration", toJson coreName.toString),
+    ("source_kind", toJson "definition")
+  ]
+  return Json.mkObj [
+    ("kind", toJson "call"),
+    ("program", Json.mkObj [
+      ("kind", toJson "lift"),
+      ("r", toJson R), ("s", toJson S),
+      ("registers", toJson (List.range r)),
+      ("stacks", toJson (List.range s)),
+      ("source", Json.mkObj [
+        ("kind", toJson "composed"),
+        ("r", toJson r), ("s", toJson s),
+        ("input", toJson input), ("output", toJson output),
+        ("command", core)
+      ])
+    ])
+  ]
+
+private def fieldRequired (node : Json) (name : String) : IO Json :=
+  match node.getObjVal? name with
+  | .ok value => pure value
+  | .error _ => throw <| IO.userError s!"missing original command IR field {name}"
+
+private partial def replaceOriginalLift (node replacement : Json)
+    (fuel : Nat) : IO (Json × Nat) := do
+  if fuel == 0 then
+    throw <| IO.userError "original command replacement exceeded finite depth"
+  let kind := match node.getObjValAs? String "kind" with
+    | .ok s => s
+    | .error _ => "#invalid"
+  if kind == "seq" then
+    let (first, countFirst) ←
+      replaceOriginalLift (← fieldRequired node "first") replacement (fuel - 1)
+    let (second, countSecond) ←
+      replaceOriginalLift (← fieldRequired node "second") replacement (fuel - 1)
+    return (Json.mkObj [
+      ("kind", toJson "seq"), ("first", first), ("second", second)
+    ], countFirst + countSecond)
+  if kind == "unresolved" then
+    let decl := match node.getObjValAs? String "declaration" with
+      | .ok s => s
+      | .error _ => "#invalid"
+    if decl ==
+        "OAI.Algorithms.SubexponentialSAT.StructuredCalls.liftCommand" then
+      let sourceKind := match node.getObjValAs? String "source_kind" with
+        | .ok s => s
+        | .error _ => "#invalid"
+      unless sourceKind == "application" do
+        throw <| IO.userError "original lift replacement is not an applied definition"
+      return (replacement, 1)
+    return (node, 0)
+  throw <| IO.userError "unsupported original command node during bounded lift substitution"
+
 private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let some (.defnInfo info) := env.find? root
     | throw <| IO.userError s!"original root is not a compiled definition: {root}"
@@ -384,13 +554,17 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
       throw <| IO.userError s!"original command no longer references expected source definition: {name}"
   let expandedIR ← sourceCommandPrefix env commandInfo.value 64 inlinedNames
   let liftApplication ← inspectSourceLift env
+  let liftCall ← originalLiftCall env
+  let (callIR, liftUses) ← replaceOriginalLift expandedIR liftCall 64
+  unless liftUses == 1 do
+    throw <| IO.userError "original source command must contain one lift application"
   let (localGraph, externalEdges, externalTargets) ← localDeclarations env root
   let (externalBodies, secondTargets) ←
     inspectExternalDefinitions env externalTargets 32768 32768 true
   let (secondBodies, _) ←
     inspectExternalDefinitions env secondTargets 65536 65536 false
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v7"),
+    ("format", toJson "original-query-kernel-root-v8"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -406,6 +580,8 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("source_command_ir", commandIR),
     ("source_command_expanded_ir", expandedIR),
     ("source_lift_application", liftApplication),
+    ("source_lift_call_ir", liftCall),
+    ("source_command_call_ir", callIR),
     ("source_command_ir_resolved", toJson false),
     ("same_module_local_declarations", toJson localGraph),
     ("external_module_edges", toJson externalEdges),

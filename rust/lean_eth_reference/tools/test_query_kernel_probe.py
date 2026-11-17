@@ -8,7 +8,7 @@ from query_stream_aot import DECLARATION
 
 def root_receipt():
     receipt = {
-        "format": "original-query-kernel-root-v7",
+        "format": "original-query-kernel-root-v8",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -184,8 +184,11 @@ def root_receipt():
     receipt["source_lift_application"] = {
         "declaration": lift, "argument_count": 9,
         "arguments": [
-            {"index": i, "head": "#literal", "nodes": 1, "symbols": []}
-            for i in range(9)
+            {"index": i, "head": head, "nodes": 1, "symbols": []}
+            for i, head in enumerate(
+                ["OfNat.ofNat"] * 4 +
+                ["OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.coreCommand",
+                 "OfNat.ofNat", "OfNat.ofNat", "id", "Fin.castAdd"])
         ],
         "definition_body_nodes": 6,
         "definition_body_symbols": [
@@ -195,6 +198,30 @@ def root_receipt():
         ],
         "lowered_to_executable_call": False,
     }
+    core = ("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace."
+            "QueryReconstruction.coreCommand")
+    call = {
+        "kind": "call",
+        "program": {
+            "kind": "lift", "r": 40, "s": 896,
+            "registers": list(range(40)),
+            "stacks": list(range(768)),
+            "source": {
+                "kind": "composed", "r": 40, "s": 768,
+                "input": 256, "output": 323,
+                "command": {
+                    "kind": "unresolved",
+                    "declaration": core,
+                    "source_kind": "definition",
+                },
+            },
+        },
+    }
+    receipt["source_lift_call_ir"] = call
+    receipt["source_command_call_ir"] = json.loads(
+        json.dumps(receipt["source_command_expanded_ir"])
+    )
+    receipt["source_command_call_ir"]["second"]["second"]["second"] = call
     return receipt
 
 
@@ -454,6 +481,35 @@ class KernelRootReceiptTests(unittest.TestCase):
                     app["definition_body_symbols"].pop()
                 else:
                     app["lowered_to_executable_call"] = True
+                with self.assertRaises(ValueError):
+                    validate_kernel_root(json.dumps(r))
+
+    def test_source_derived_partial_call_has_exact_finite_maps_and_refusal(self):
+        report = validate_kernel_root(json.dumps(root_receipt()))
+        call = report["source_lift_call_ir"]
+        self.assertEqual(call["program"]["registers"], list(range(40)))
+        self.assertEqual(call["program"]["stacks"], list(range(768)))
+        self.assertFalse(report["rust_executable"])
+        self.assertFalse(report["source_command_ir_resolved"])
+        for change in ("registers", "stacks", "inner_port", "core", "call_kind",
+                       "false_resolution", "applied_arg"):
+            with self.subTest(change=change):
+                r = root_receipt()
+                p = r["source_lift_call_ir"]["program"]
+                if change == "registers":
+                    p["registers"][7] = 8
+                elif change == "stacks":
+                    p["stacks"][200] = 201
+                elif change == "inner_port":
+                    p["source"]["output"] = 324
+                elif change == "core":
+                    p["source"]["command"]["declaration"] = "OAI.Forged.coreCommand"
+                elif change == "call_kind":
+                    r["source_lift_call_ir"]["kind"] = "skip"
+                elif change == "false_resolution":
+                    r["source_command_ir_resolved"] = True
+                else:
+                    r["source_lift_application"]["arguments"][8]["head"] = "Function.const"
                 with self.assertRaises(ValueError):
                     validate_kernel_root(json.dumps(r))
 

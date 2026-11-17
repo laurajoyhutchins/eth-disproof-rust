@@ -26,7 +26,8 @@ EXPECTED_FIELDS = {
     "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
     "command_name", "command_expression_nodes", "command_immediate_symbols",
     "command_symbol_kinds", "source_command_ir", "source_command_expanded_ir",
-    "source_lift_application",
+    "source_lift_application", "source_lift_call_ir",
+    "source_command_call_ir",
     "source_command_ir_resolved",
     "same_module_local_declarations",
     "external_module_edges", "external_definition_bodies",
@@ -53,7 +54,7 @@ def validate_kernel_root(raw: str) -> dict:
     if not isinstance(receipt, dict) or set(receipt) != EXPECTED_FIELDS:
         raise ValueError("kernel root evidence has a missing or extra field")
     fixed = {
-        "format": "original-query-kernel-root-v7",
+        "format": "original-query-kernel-root-v8",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -244,6 +245,37 @@ def validate_kernel_root(raw: str) -> dict:
             not required_lift_body.issubset(set(body)) or
             len(body) != len(set(body))):
         raise ValueError("original lift source definition body no longer has call/lift/compiled")
+    # Strict original-input contract for the partial canonical Rust call.
+    # The kernel inspector must have decoded *all* numerals/port bounds and
+    # checked id/Fin.castAdd and call/lift/compiled source nesting.
+    core = "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.coreCommand"
+    expected_heads = (["OfNat.ofNat"] * 4 +
+                      [core, "OfNat.ofNat", "OfNat.ofNat", "id", "Fin.castAdd"])
+    if arg_count != 9 or [item["head"] for item in args] != expected_heads:
+        raise ValueError("original lift source argument kinds or ordering changed")
+    expected_call = {
+        "kind": "call",
+        "program": {
+            "kind": "lift", "r": 40, "s": 896,
+            "registers": list(range(40)),
+            "stacks": list(range(768)),
+            "source": {
+                "kind": "composed", "r": 40, "s": 768,
+                "input": 256, "output": 323,
+                "command": unresolved(core),
+            },
+        },
+    }
+    if receipt["source_lift_call_ir"] != expected_call:
+        raise ValueError("original source lift call/ABI/mappings differ from pinned expected")
+    # The source-observed extended prefix is exactly the canonical expansion
+    # with one applied definition replaced by the *partial* typed call.
+    expected_call_ir = json.loads(json.dumps(expanded))
+    expected_call_ir["second"]["second"]["second"] = expected_call
+    if receipt["source_command_call_ir"] != expected_call_ir:
+        raise ValueError("source command partial call changed original sequencing")
+    if receipt["source_command_ir_resolved"] is not False:
+        raise ValueError("partial source call cannot promote source IR resolution")
     local = receipt["same_module_local_declarations"]
     prefix = MODULE + "."
     expected_keys = {
@@ -476,6 +508,8 @@ def probe(args):
         "command": report["source_command_ir"],
         "expanded_command": report["source_command_expanded_ir"],
         "source_lift_application": report["source_lift_application"],
+        "source_lift_call_ir": report["source_lift_call_ir"],
+        "source_command_call_ir": report["source_command_call_ir"],
     }
     atomic_write(out / "original-command-prefix.json",
                  json.dumps(prefix_receipt, sort_keys=True, indent=2) + "\n")

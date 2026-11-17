@@ -33,6 +33,13 @@ structure Interface (State Mode Context : Type*)
     row s context =
       ∑ mode ∈ modes, coeff s mode * basis mode context
 
+/-- Every quantity read by the generated arithmetic circuit is explicit.
+    In particular, no atom stands for an entire contraction or its count. -/
+inductive FactorAtom (State Mode : Type*) where
+  | stateWeight : State → FactorAtom State Mode
+  | coordinate : State → Mode → FactorAtom State Mode
+  | modeValue : Mode → FactorAtom State Mode
+
 namespace Interface
 
 variable {S M C : Type*} [DecidableEq S] [DecidableEq M]
@@ -198,6 +205,41 @@ def fromChecked {C' : Type*} [Fintype C'] [DecidableEq C']
     exact checkFinite_sound states modes Finset.univ row coeff basis h
       s hs c (Finset.mem_univ c)
 
+
+/-- Read the original state weights, decomposition coefficients, and
+    basis values through distinct source-factor atoms. -/
+def factorEnv (I : Interface S M C) (weight : S → ℤ)
+    (context : C) : FactorAtom S M → ℤ
+  | .stateWeight s => weight s
+  | .coordinate s mode => I.coeff s mode
+  | .modeValue mode => I.basis mode context
+
+/-- Lower exact linear compression to the EXISTING arithmetic circuit IR.
+    There is no opaque whole-count scalar. Every coefficient aggregation is
+    an explicit finite sum of products in the circuit. -/
+noncomputable def compile (I : Interface S M C) :
+    ACC.Circuit (FactorAtom S M) :=
+  ACC.Circuit.sumFinset I.modes (fun mode =>
+    .mul
+      (ACC.Circuit.sumFinset I.states (fun s =>
+        .mul (.atom (.stateWeight s)) (.atom (.coordinate s mode))))
+      (.atom (.modeValue mode)))
+
+/-- Exact all-context semantics of the generated addition/multiplication
+    circuit, under the full factor valuation. -/
+theorem compile_correct (I : Interface S M C)
+    (weight : S → ℤ) (context : C) :
+    (I.compile).eval (I.factorEnv weight context) =
+      I.weightedValue weight context := by
+  classical
+  calc
+    (I.compile).eval (I.factorEnv weight context) =
+      I.compressedValue weight context := by
+        simp [compile, factorEnv, compressedValue, compressedCoeff,
+          ACC.Circuit.eval_sumFinset, ACC.Circuit.eval]
+    _ = I.weightedValue weight context :=
+      (I.weighted_correct weight context).symm
+
 end Interface
 
 /-! ## A concrete strict 3-state to 2-mode example -/
@@ -249,6 +291,7 @@ theorem threeIntoTwo_correct (weight : Fin 3 → ℤ) (context : Bool) :
       threeIntoTwo.compressedValue weight context :=
   threeIntoTwo.weighted_correct weight context
 
+#print axioms ACC.LinearInterface.Interface.compile_correct
 #print axioms ACC.LinearInterface.Interface.weighted_correct
 #print axioms ACC.LinearInterface.Interface.transfer_modes
 #print axioms ACC.LinearInterface.Interface.tensor_modes

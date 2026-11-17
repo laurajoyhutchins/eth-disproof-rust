@@ -2,7 +2,7 @@
 
 **Status:** an executable-IR compiler route and a non-executable symbolic route, both fail closed. Neither certifies the original ETH counting program.
 
-The user-facing `eth-compiler` has two explicit choices. `compile --backend compiler-ir` uses the **single native Lean 4.34.1 in-process compiler** in `rust/native_lean_backend`, producing a complete standalone multi-root Cargo package. `compile --backend residual-expr` uses Lean to retain the shared expression DAG for a noncomputable source declaration that has no suitable compiler IR; that DAG is **not executable Rust**.
+The user-facing `eth-compiler` has two explicit choices. `compile --backend compiler-ir` uses the **single native Lean 4.34.1 in-process compiler** in `compiler`, producing a complete standalone multi-root Cargo package. `compile --backend residual-expr` uses Lean to retain the shared expression DAG for a noncomputable source declaration that has no suitable compiler IR; that DAG is **not executable Rust**.
 
 No automatic fallback from executable IR to symbolic, no leanfran production codegen, and no alternate GMP/`Rc` runtime are allowed. Both routes bind source Git file/toolchain identity, artifact hashes, typed receipt checks and refusal behavior. Source-specific `StructuredCalls`/`BitProgram` lowering remains specialized until independently verified.
 
@@ -24,7 +24,7 @@ cargo run --locked --offline --bin eth-compiler -- compile \
   --source-path LeanIRSmoke.lean \
   --lake-root /work/lean-project \
   --module LeanIRSmoke --root LeanIRSmoke.double \
-  --producer rust/lean_eth_reference/tools/lean-ir-smoke/ResidualGraph.lean \
+  --producer eth/tools/lean-ir-smoke/ResidualGraph.lean \
   --output /tmp/lean-residual.json \
   --receipt /tmp/lean-residual.receipt.json
 ```
@@ -37,4 +37,4 @@ The public receipt always has `executable_approved: false` and leaves `lean_rust
 
 Outstanding: transitive computational dependency closure, a typed demand-driven residual consumer, source-identical physical instructions and state traces, complete original ETH counting composition, and primitive TM2 resource transfer.
 
-See [core-expression residualization](core-expr-residualizer.md) and [Lean/Rust acceptance](../../../research/lean-rust-acceptance.md).
+See [core-expression residualization](core-expr-residualizer.md) and [Lean/Rust acceptance](../../research/lean-rust-acceptance.md).

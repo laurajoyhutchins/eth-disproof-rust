@@ -7,7 +7,7 @@ It contains **three CLI programs** with different correctness claims.
 ## Source-defined physical frontend
 
 ```sh
-cd rust/lean_eth_reference
+cd eth
 printf 'p cnf 3 3\n1 0\n1 2 0\n-2 3 0\n' | \
   cargo run --locked --offline --bin eth-frontend
 ```
@@ -74,7 +74,7 @@ cargo test --locked --offline --all-targets
 cargo clippy --locked --offline --all-targets -- -D warnings
 ```
 
-The [public Rust workflow](../../.github/workflows/rust.yml) executes on
+The [public Rust workflow](../.github/workflows/rust.yml) executes on
 PRs, pushes to `main`, and manual dispatch. Check its result for the exact
 commit you are evaluating. Imported-Lean differential execution and primitive
 TM2 resource verification have distinct acceptance requirements.

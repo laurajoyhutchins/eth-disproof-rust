@@ -81,14 +81,14 @@ flowchart TD
 ## Context-uniform quotient through Anthropic merge
 
 [Boundary quotient source proof](../eth/proofs/IndependentBoundaryQuotient.lean)
-defines an explicit state map (q : \sigma\to K) and a representative
-(r : K\to\sigma). Its source-side hypothesis is
+defines an explicit state map \(q : \sigma\to K\) and a representative
+\(r : K\to\sigma\). Its source-side hypothesis is
 
 \[
 \forall a,b,s,t,\quad f_{ab}(s,t)=f_{ab}(r(q(s)),t).
 \]
 
-For an Anthropic node (a), the ACTUAL `Network.toInst` table entry is
+For an Anthropic node \(a\), the ACTUAL `Network.toInst` table entry is
 
 \[
 T_a(\theta)=
@@ -103,7 +103,7 @@ label, rather than replacing their weights with a representative:
 \bar W_a(k)=\sum_{s\in S_a:q(s)=k}W_a(s).
 \]
 
-The local exact identity, for **every** outside assignment (\theta), is
+The local exact identity, for **every** outside assignment \(\theta\), is
 
 \[
 \boxed{
@@ -121,13 +121,13 @@ of the completed network's scalar contraction.
 
 ### Full quotient/merge commuting square (verified)
 
-The **native** \`quotientNetwork N q r\` uses state sets \(q(S_a)\),
+The **native** `quotientNetwork N q r` uses state sets \(q(S_a)\),
 fiber-summed weights \(\bar W_a\), original labels and capacities, and
 the outgoing factor \(f_{ab}(r(k),t)\). The source-facing theorem
-\`quotientNetwork_toInst\` proves equality of every outgoing
-\`Network.toInst\` table entry between \(N\) and its quotient.
+`quotientNetwork_toInst` proves equality of every outgoing
+`Network.toInst` table entry between \(N\) and its quotient.
 
-Anthropic's original \`Network.merge color defaultState defaultLabel\`
+Anthropic's original `Network.merge color defaultState defaultLabel`
 builds merged states as function-valued tuples. The lifted quotient is
 
 \[
@@ -147,28 +147,28 @@ q^G(z)(a)=q(z(a)),\qquad r^G(k)(a)=r(k(a)).
 This equality is uniform over all external instance label sets and
 decoders. The proof goes beyond the earlier scalar equality:
 
-1. \`quotient_merge_states_commute\`: the *admissible* merged state
+1. `quotient_merge_states_commute`: the *admissible* merged state
    sets are equal; this is an exact image-of-tuples theorem.
-2. \`tuple_fiber_product\`: a weighted sum over the fiber of a
+2. `tuple_fiber_product`: a weighted sum over the fiber of a
    merged state is the product of the individual state-fiber sums.
-3. \`quotient_pair_interaction\`: the actual source \`Network.Ψ\`
+3. `quotient_pair_interaction`: the actual source `Network.Ψ`
    is invariant under representative replacement at both ends.
-4. \`quotient_merge_weight_on_states\`: merged node weights agree
+4. `quotient_merge_weight_on_states`: merged node weights agree
    on **admissible** states, using the previous two lemmas.
-5. Factors, \`Θ\` labels and capacities agree componentwise,
-   giving \`quotient_merge_network_agreement\`.
-6. \`NetworkAgreement.toInst\` derives the final context-uniform
-   \`quotient_merge_toInst_commutes\` for the actual pinned source.
+5. Factors, `Θ` labels and capacities agree componentwise,
+   giving `quotient_merge_network_agreement`.
+6. `NetworkAgreement.toInst` derives the final context-uniform
+   `quotient_merge_toInst_commutes` for the actual pinned source.
 
-It would be incorrect to require the arbitrary \`W\` functions to be
-identical on states forbidden by \`S\`; those entries are not read
+It would be incorrect to require the arbitrary `W` functions to be
+identical on states forbidden by `S`; those entries are not read
 during contraction. The proved equivalence is exact observational
 network equivalence, not literal structure equality at invalid inputs.
 
 **Evidence:** [pinned Lean 4.34.1 run #44109954836](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44109954836)
-on commit \`d9304a4fd760b1709b41f868a4adb8ca24892a49\`.
-All three workflows passed. The new \`#print axioms\` declarations show
-only \`propext\`, \`Classical.choice\` and \`Quot.sound\`, no \`sorryAx\`.
+on commit `d9304a4fd760b1709b41f868a4adb8ca24892a49`.
+All three workflows passed. The new `#print axioms` declarations show
+only `propext`, `Classical.choice` and `Quot.sound`, no `sorryAx`.
 
 ### An obstruction at OpenAI's zero deformation
 
@@ -176,7 +176,7 @@ The October 25 appendix specifies a Cauchy packet deformation satisfying
 \(W(0)=I\). The induced binary port glue at \(T=0\) is the exact identity
 kernel \(K(Y,X)=\mathbf1[Y=X]\).
 
-The generic Lean theorem \`identity_kernel_forces_injective_labels\`
+The generic Lean theorem `identity_kernel_forces_injective_labels`
 proves that any **state-identification** quotient whose representative
 preserves every identity-kernel entry has injective labels. Therefore
 there is no nontrivial state merging of that full identity interface.
@@ -189,7 +189,7 @@ compression to the OpenAI packet glue.
 ### Constructive/computational limitations
 
 The proof uses finite images and fiber sums. It establishes no bound
-on the time to discover (q), the class count \(|q(S_a)|\), the work
+on the time to discover \(q\), the class count \(|q(S_a)|\), the work
 to enumerate the fibers, the size of a merged state, or the final circuit.
 The best-case strict compression (two distinct Boolean states to one class)
 is elementary; it does not imply a uniform reduction on arbitrary SAT

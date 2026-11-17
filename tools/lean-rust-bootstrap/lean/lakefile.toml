@@ -1,0 +1,10 @@
+name = "lean_rust_bootstrap"
+version = "0.1.0"
+defaultTargets = ["CompilerConfig"]
+
+[[require]]
+name = "lungo"
+path = "../.vendor/lungo-lean"
+
+[[lean_lib]]
+name = "CompilerConfig"

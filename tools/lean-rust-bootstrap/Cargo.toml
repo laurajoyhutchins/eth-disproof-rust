@@ -1,0 +1,15 @@
+[package]
+name = "lean-rust-bootstrap"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+description = "Pinned upstream Lean compiler-module execution on Rust"
+
+[workspace]
+
+[dependencies]
+lungo = { git = "https://github.com/machinefabric/lungo-rs", rev = "e99b5407e388ea7d335d2e01119c2c8fe21ba1e2" }
+
+[build-dependencies]
+lungo-build = { git = "https://github.com/machinefabric/lungo-rs", rev = "e99b5407e388ea7d335d2e01119c2c8fe21ba1e2" }

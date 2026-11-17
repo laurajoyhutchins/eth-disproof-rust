@@ -15,6 +15,10 @@ concurrency:
 
 jobs:
   validate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.label.name == 'run-complete-lean-graph')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

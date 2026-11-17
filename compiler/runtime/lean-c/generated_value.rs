@@ -13,6 +13,7 @@ unsafe extern "C" {
     fn lr_exec_ctor2(tag: u8, a: *mut __LeanCObject, b: *mut __LeanCObject) -> *mut __LeanCObject;
     fn lr_exec_inc(p: *mut __LeanCObject);
     fn lr_exec_dec(p: *mut __LeanCObject);
+    fn lr_exec_del(p: *mut __LeanCObject);
     fn lr_exec_is_scalar(p: *const __LeanCObject) -> i32;
     fn lr_exec_unbox(p: *const __LeanCObject) -> usize;
     fn lr_exec_tag(p: *const __LeanCObject) -> i32;
@@ -36,6 +37,8 @@ struct __LeanCSlot {
     // The source's borrowed C argument is live only for this FFI call.
     // It does NOT contribute an owned refcount credit or a Lean dec.
     external_borrow: bool,
+    // Borrowed projections are weak handles, not physical Lean RC credits.
+    borrowed_fields: std::cell::RefCell<Vec<(usize, std::rc::Weak<__LeanCSlot>)>>,
 }
 
 #[allow(unexpected_cfgs)]
@@ -65,6 +68,7 @@ impl __LeanValue {
         Self(std::rc::Rc::new(__LeanCSlot {
             ptr, credits: std::cell::Cell::new(1), parent: None,
             external_borrow: false,
+            borrowed_fields: std::cell::RefCell::new(Vec::new()),
         }))
     }
 
@@ -77,6 +81,7 @@ impl __LeanValue {
         Self(std::rc::Rc::new(__LeanCSlot {
             ptr, credits: std::cell::Cell::new(0), parent: None,
             external_borrow: true,
+            borrowed_fields: std::cell::RefCell::new(Vec::new()),
         }))
     }
 
@@ -158,12 +163,16 @@ impl __LeanValue {
         // The C pointer is borrowed. No increment is performed here.
         // Generated Lean IR must issue source_inc before this field can be
         // returned as an owned object across parent release.
-        Self(std::rc::Rc::new(__LeanCSlot {
+        let borrowed = Self(std::rc::Rc::new(__LeanCSlot {
             ptr: std::ptr::NonNull::new(field).expect("null Lean C field"),
             credits: std::cell::Cell::new(0),
             parent: Some(std::rc::Rc::downgrade(&self.0)),
             external_borrow: false,
-        }))
+            borrowed_fields: std::cell::RefCell::new(Vec::new()),
+        }));
+        self.0.borrowed_fields.borrow_mut()
+            .push((n, std::rc::Rc::downgrade(&borrowed.0)));
+        borrowed
     }
 
     fn ctor(tag: usize, name: &'static str, fields: Vec<Self>) -> Self {
@@ -204,6 +213,49 @@ impl __LeanValue {
         let current = self.0.credits.get();
         self.0.credits.set(current.checked_sub(1).expect("source ownership underflow"));
         unsafe { lr_exec_dec(self.raw()) };
+    }
+
+    // Bounded FnBody.del primitive: Box.mk has one heap Pair in field 0
+    // and one tagged immediate field. The shell must be unique, and an
+    // existing projection receives the parent's child-owned credit.
+    // No source increment or recursive child destructor is performed.
+    fn shell_del_child(&self) -> Option<std::rc::Rc<__LeanCSlot>> {
+        if self.scalar() || self.0.external_borrow || self.0.credits.get() != 1 {
+            return None;
+        }
+        if unsafe { lr_exec_rc(self.raw()) } != 1 ||
+           unsafe { lr_exec_tag(self.raw()) } != 1 ||
+           unsafe { lr_exec_arity(self.raw()) } != 2 {
+            return None;
+        }
+        let first = unsafe { lr_exec_field(self.raw(), 0) };
+        let second = unsafe { lr_exec_field(self.raw(), 1) };
+        if first.is_null() || second.is_null() ||
+           unsafe { lr_exec_is_scalar(first) } != 0 ||
+           unsafe { lr_exec_is_scalar(second) } == 0 {
+            return None;
+        }
+        let projections: Vec<_> = self.0.borrowed_fields.borrow().iter()
+            .filter(|(index, _)| *index == 0)
+            .filter_map(|(_, child)| child.upgrade()).collect();
+        if projections.len() != 1 { return None; }
+        let child = std::rc::Rc::clone(&projections[0]);
+        if child.ptr.as_ptr() != first || child.credits.get() != 0 ||
+           child.external_borrow || unsafe { lr_exec_rc(first) } != 1 {
+            return None;
+        }
+        Some(child)
+    }
+
+    fn source_del(&self) {
+        self.readable();
+        let child = self.shell_del_child().expect(
+            "source del refused: unique owned Box shell and one live unretained child required"
+        );
+        // Transfer the source credit held by the parent field. No lean_inc.
+        child.credits.set(1);
+        self.0.credits.set(0);
+        unsafe { lr_exec_del(self.raw()) };
     }
 
     fn is_shared(&self) -> u8 {

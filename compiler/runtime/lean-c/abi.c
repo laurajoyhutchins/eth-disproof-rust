@@ -15,6 +15,8 @@ lean_obj_res lr_exec_ctor2(uint8_t tag, lean_obj_arg a, lean_obj_arg b) {
 }
 void lr_exec_inc(lean_obj_arg p) { lean_inc(p); }
 void lr_exec_dec(lean_obj_arg p) { lean_dec(p); }
+/* FnBody.del is shell-only. The source must have transferred all children. */
+void lr_exec_del(lean_obj_arg p) { lean_del_object(p); }
 int lr_exec_is_scalar(b_lean_obj_arg p) {
     return p && lean_is_scalar((lean_object*)p) ? 1 : 0;
 }

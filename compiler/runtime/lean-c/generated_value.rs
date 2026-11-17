@@ -30,6 +30,9 @@ struct __LeanCSlot {
     // These are *owned credits held by this wrapper*, not a simulated Lean
     // RC. Every transition is sent to the original Lean C implementation.
     credits: std::cell::Cell<usize>,
+    // A projection borrows the original C field: a weak parent tracking
+    // source liveness, never an extra Lean C reference.
+    parent: Option<std::rc::Weak<__LeanCSlot>>,
 }
 
 #[allow(unexpected_cfgs)]
@@ -57,7 +60,7 @@ impl __LeanValue {
     pub unsafe fn from_owned_raw(ptr: *mut __LeanCObject) -> Self {
         let ptr = std::ptr::NonNull::new(ptr).expect("null Lean source value");
         Self(std::rc::Rc::new(__LeanCSlot {
-            ptr, credits: std::cell::Cell::new(1),
+            ptr, credits: std::cell::Cell::new(1), parent: None,
         }))
     }
 
@@ -74,8 +77,30 @@ impl __LeanValue {
     fn raw(&self) -> *mut __LeanCObject { self.0.ptr.as_ptr() }
     fn scalar(&self) -> bool { unsafe { lr_exec_is_scalar(self.raw()) != 0 } }
 
+    fn slot_live(slot: &__LeanCSlot) -> bool {
+        slot.credits.get() > 0 ||
+            slot.parent.as_ref()
+                .and_then(std::rc::Weak::upgrade)
+                .is_some_and(|owner| Self::slot_live(&owner))
+    }
+
     fn readable(&self) {
-        assert!(self.0.credits.get() != 0, "Lean C value used after source release");
+        // Check the source-credit chain BEFORE dereferencing a borrowed C
+        // pointer. A compiler_alias or Rust Rc strong reference is not a
+        // source-owned credit, and cannot revive a freed child.
+        assert!(Self::slot_live(&self.0), "Lean C value used after source release");
+    }
+
+    fn into_transferred_field(self) -> *mut __LeanCObject {
+        self.readable();
+        let old = self.0.credits.get();
+        let new = old.checked_sub(1)
+            .expect("source constructor field missing owned transfer credit");
+        let ptr = self.raw();
+        // The parent now owns this exact source credit. Neither a Rust Drop
+        // nor an invented lean_inc/lean_dec may accompany the transfer.
+        self.0.credits.set(new);
+        ptr
     }
 
     // The emitter's compiler_alias does not correspond to a source IR.inc.
@@ -99,7 +124,8 @@ impl __LeanValue {
 
     fn has_ctor(&self, tag: usize, name: &str, arity: usize) -> bool {
         self.readable();
-        if name != "RuntimeHeap.Pair.mk" || self.scalar() { return false; }
+        if !matches!(name, "RuntimeHeap.Pair.mk" | "RuntimeHeap.Box.mk")
+            || self.scalar() { return false; }
         usize::try_from(unsafe { lr_exec_tag(self.raw()) }).ok() == Some(tag)
             && unsafe { lr_exec_arity(self.raw()) } == arity
     }
@@ -109,23 +135,32 @@ impl __LeanValue {
         assert!(!self.scalar(), "field projection from scalar");
         let field = unsafe { lr_exec_field(self.raw(), n) };
         assert!(!field.is_null(), "missing Lean C constructor field");
-        assert!(unsafe { lr_exec_is_scalar(field) } != 0,
-                "heap field projection requires source-bound retain proof");
-        // Scalar projection does not add an owned heap reference in Lean.
-        Self::tagged(unsafe { lr_exec_unbox(field) })
+        if unsafe { lr_exec_is_scalar(field) } != 0 {
+            // Tagged immediate fields have no physical refcount.
+            return Self::tagged(unsafe { lr_exec_unbox(field) });
+        }
+        // The C pointer is borrowed. No increment is performed here.
+        // Generated Lean IR must issue source_inc before this field can be
+        // returned as an owned object across parent release.
+        Self(std::rc::Rc::new(__LeanCSlot {
+            ptr: std::ptr::NonNull::new(field).expect("null Lean C field"),
+            credits: std::cell::Cell::new(0),
+            parent: Some(std::rc::Rc::downgrade(&self.0)),
+        }))
     }
 
     fn ctor(tag: usize, name: &'static str, fields: Vec<Self>) -> Self {
-        assert_eq!((tag, name, fields.len()), (1, "RuntimeHeap.Pair.mk", 2),
-                   "unsupported Lean C constructor family or layout");
-        for field in &fields {
-            field.readable();
-            assert!(field.scalar(),
-                "heap-child ownership transfer requires source IR proof");
-        }
-        let ptr = unsafe {
-            lr_exec_ctor2(tag as u8, fields[0].raw(), fields[1].raw())
-        };
+        assert!(
+            matches!((tag, name, fields.len()),
+                (1, "RuntimeHeap.Pair.mk", 2) | (1, "RuntimeHeap.Box.mk", 2)),
+            "unsupported Lean C constructor family or layout"
+        );
+        // Each source field contributes one owned reference to the new C
+        // constructor. Heap children are not cloned or incremented here.
+        let mut owned = fields.into_iter();
+        let a = owned.next().expect("first field").into_transferred_field();
+        let b = owned.next().expect("second field").into_transferred_field();
+        let ptr = unsafe { lr_exec_ctor2(tag as u8, a, b) };
         unsafe { Self::from_owned_raw(ptr) }
     }
 

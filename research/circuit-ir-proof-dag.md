@@ -300,6 +300,78 @@ However:
 No global \(2^{o(n)}\) bound, optimal-circuit claim, or #SAT
 speedup follows from these new exact identities.
 
+## Compact full-rank operator portfolio (verified)
+
+The [factored-operator module](../instrumentation/lean-env/ACC/FactoredOperator.lean)
+complements low-rank boundary interfaces. A tensor identity on \(n\)
+Boolean ports is a \(2^n\times 2^n\) matrix of rank exactly \(2^n\)
+over \(\mathbb Q\), but needs only \(n\) explicit \(2\times 2\)
+integer wire matrices, or \(4n\) scalar entries without sharing.
+
+The **verified** theorem `identity_rank` proves full rank. The
+`identity_forces_injective` theorem proves that a representative-based,
+all-context state quotient cannot merge any of these rows.
+
+If both a kernel and input are factored, we have
+
+\[
+\sum_{X\in\{0,1\}^n}
+ \left(\prod_i K_i(Y_i,X_i)\right)
+ \left(\prod_i v_i(X_i)\right)
+=
+\prod_i\left(\sum_{b\in\{0,1\}}
+ K_i(Y_i,b)v_i(b)\right).
+\]
+
+`applyProduct_correct` proves this equality for every output assignment,
+without enumerating all \(2^n\) assignments in the symbolic
+right-hand expression. The theorem is about mathematical semantics;
+an executable library implementation and bit-operation/peak-space receipts
+are still needed.
+
+### Source-specific zero-deformation boundary
+
+The pinned OpenAI October 25 quantitative-contraction appendix specifies
+\[
+F(T)=\sum_{X,Y} A(Y)B(X)
+ \prod_i \ell_{Y_i}((W(T)X)_i)
+\]
+and states \(W(0)=I\) under the packet's original edge identification.
+
+The [independent zero-glue adapter](../eth/proofs/IndependentOpenAIZeroGlue.lean)
+proves that **if** the supplied \(W_0\) satisfies
+\(W_0 X\,i=\mathbf1[X_i=\mathrm{true}]\), then
+
+\[
+\prod_i\ell_{Y_i}((W_0X)_i)=\mathbf1[Y=X],
+\qquad
+F(0)=\sum_X A(X)B(X).
+\]
+
+This is a checked consequence of an explicit **hypothesis**, not a
+source-derived proof that the entire original Lean packet construction
+implements \(W(0)=I\). Nonzero deformations, ring precision, correlated
+modes, reconstruction, and recursion remain unproved by this adapter.
+
+### Certified semantics, estimated costs
+
+The `EstimatedCandidate` selector and
+`choose_direct_or_factored_correct` compare two implementations of
+the **same** product-input contraction. Selection by a declared score
+preserves semantics regardless of estimate accuracy. The selector does
+**not** prove that the score equals actual bit cost or peak memory.
+
+A correlated vector need not factor at all. For example the two-port
+table \(v(00)=v(11)=1\), \(v(01)=v(10)=0\) has nonzero
+\(2\times 2\) determinant and cannot be a single product \(v_1\otimes v_2\).
+Therefore the factorized execution theorem cannot be applied to
+unstructured input amplitudes without a separate decomposition.
+
+**Exact-head proof evidence:** [pinned Lean 4.34.1 run #44128037240](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44128037240)
+at commit `70b1b14a1404e28fefd6be5a5f70a5715ced49c0`.
+The new axiom reports contain only Lean's standard axioms,
+without `sorryAx`.
+
 ## Specific next proofs
 
 | Milestone | Lean-level requirement | Acceptance condition |
@@ -312,10 +384,13 @@ speedup follows from these new exact identities.
 | C5b | Native quotient/merge observational network square | Verified in pinned Lean for all admissible states and external toInst tables |
 | C5c | Linear boundary basis, transfer/tensor, circuit IR, pinned source adapter | Verified in pinned Lean with a full-table fixture |
 | C5d | Efficient basis discovery and bounded mode growth through original merge | Open: construction and whole-program resource certificate |
+| C5e | Full-rank factored identity kernel and product-state execution | Verified: matrix rank \(2^n\), \(4n\) explicit table entries, factorized action |
+| C5f | Conditional OpenAI zero-deformation selector identity | Verified assuming supplied \(W_0=I\); original packet source proof still open |
+| C5g | Safe choice of exact direct and factored candidates | Verified semantics for any declared estimated score; certified bit cost open |
 | C6 | OpenAI source-defined packet transform | Original packet constructor, factor/port identities, precision and routing |
 | C7 | Combined recursion, complexity | Full constructive bit and peak-space recurrence |
 
-`C1-C3` and `C5a-C5c` are verified under their exposed assumptions.
+`C1-C3`, `C5a-C5c` and `C5e-C5g` are verified under their exposed assumptions.
 Neither a shared executable DAG, a source-derived OpenAI packet adapter,
 nor a new bit-complexity bound follows from these semantic theorems.
 
@@ -325,7 +400,7 @@ The existing `lean-independent-formulations.yml` workflow pins Lean 4.34.1
 and Mathlib at `d13f23b723b8a846827a245b89c10fc7d3f11612`, fetches the
 unaltered OpenAI and Anthropic source snapshots, and checks the new modules.
 The workflow rejects unresolved admissions in the circuit IR, the linear-interface
-modules and the original-source adapters.
+modules, the factored-operator module and the original-source adapters.
 
 Keep the distinctions between source identity, mathematical equivalence,
 proof of executable correspondence, and total complexity explicit.

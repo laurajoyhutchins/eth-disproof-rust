@@ -12,6 +12,13 @@ test "$(lean --version)" = 'Lean (version 4.34.1, x86_64-unknown-linux-gnu, comm
 test "$(rustc --version)" = 'rustc 1.99.1 (58cf8f9c3 2026-10-13)'
 out="$(pwd)/artifacts/lean-c-generated-heap"
 mkdir -p "$out"
+# Kernel-check the abstract source-credit / physical-count simulation
+# before compiling expensive generated Rust and Lean C integrations.
+lean proofs/ReaderShellSimulation.lean | tee "$out/source-shell-simulation-lean.txt"
+grep -Fq "'ReaderShellSimulation.trace_simulation' does not depend on any axioms" \
+  "$out/source-shell-simulation-lean.txt"
+grep -Fq "'ReaderShellSimulation.recursive_delete_is_not_shell_delete' does not depend on any axioms" \
+  "$out/source-shell-simulation-lean.txt"
 rm -rf examples/lean-c-heap-package
 lean -o examples/RuntimeHeapKernels.olean examples/RuntimeHeapKernels.lean
 # Examine the compiler's actual final IR for source-derived reset/reuse
@@ -137,6 +144,9 @@ echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_720' \
 echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.txt"
 {
   echo 'status=PASS_ORIGINAL_LEAN_C_AND_READER_GENERATED_HEAP'
+  echo 'source_shell_abstract_trace_simulation=LEAN_KERNEL_VERIFIED_RESTRICTED_MACHINE'
+  echo 'source_shell_original_lean_c_refinement=NOT_ESTABLISHED'
+  sha256sum proofs/ReaderShellSimulation.lean "$out/source-shell-simulation-lean.txt"
   echo "revision=$(git rev-parse HEAD)"
   echo "lean=$(lean --version)"
   echo "rust=$(rustc --version)"

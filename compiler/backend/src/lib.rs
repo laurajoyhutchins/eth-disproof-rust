@@ -453,6 +453,92 @@ mod source_reference_count_tests {
     }
 
     #[test]
+    #[should_panic(expected = "source object read after final release")]
+    fn projection_rc_alias_cannot_read_field_after_parent_release() {
+        let child = __LeanValue::boxed_u64(37);
+        let parent = __LeanValue::ctor(1, "Parent", vec![child.compiler_alias()]);
+        let projected = parent.field(0); // compiler_alias, NO source inc
+        assert_eq!(child.1.get(), 1);
+        parent.source_dec(1, true, false);
+        assert_eq!(child.1.get(), 0);
+        // The allocation is still held by projected. That must not make
+        // this source-invalid scalar read legal.
+        assert_eq!(projected.unbox_u64(), 37);
+    }
+
+    #[test]
+    #[should_panic(expected = "source object read after final release")]
+    fn projection_rc_alias_cannot_read_released_parent() {
+        let parent = __LeanValue::ctor(1, "Parent", vec![__LeanValue::boxed_u64(9)]);
+        let handle = parent.compiler_alias(); // no source inc
+        parent.source_dec(1, true, false);
+        let _ = handle.field(0);
+    }
+
+    #[test]
+    fn source_retained_projection_survives_parent_release() {
+        let child = __LeanValue::boxed_u64(37);
+        let parent = __LeanValue::ctor(1, "Parent", vec![child.compiler_alias()]);
+        let projected = parent.field(0);
+        projected.source_inc(1, true, false);
+        assert_eq!(child.1.get(), 2);
+        parent.source_dec(1, true, false);
+        assert_eq!(child.1.get(), 1);
+        assert_eq!(projected.unbox_u64(), 37);
+        projected.source_dec(1, true, false);
+        assert_eq!(child.1.get(), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "source object read after final release")]
+    fn grandchild_rc_alias_cannot_hide_two_level_destructor_cascade() {
+        let leaf = __LeanValue::boxed_u64(99);
+        let fork = __LeanValue::ctor(1, "Fork", vec![leaf.compiler_alias()]);
+        let root = __LeanValue::ctor(1, "Root", vec![fork.compiler_alias()]);
+        let projected = root.field(0).field(0);
+        root.source_dec(1, true, false);
+        assert_eq!(fork.1.get(), 0);
+        assert_eq!(leaf.1.get(), 0);
+        let _ = projected.unbox_u64();
+    }
+
+    #[test]
+    fn explicitly_retained_grandchild_survives_two_level_cascade() {
+        let leaf = __LeanValue::boxed_u64(99);
+        let fork = __LeanValue::ctor(1, "Fork", vec![leaf.compiler_alias()]);
+        let root = __LeanValue::ctor(1, "Root", vec![fork.compiler_alias()]);
+        let projected = root.field(0).field(0);
+        projected.source_inc(1, true, false);
+        root.source_dec(1, true, false);
+        assert_eq!(fork.1.get(), 0);
+        assert_eq!(leaf.1.get(), 1);
+        assert_eq!(projected.unbox_u64(), 99);
+        projected.source_dec(1, true, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "source object read after final release")]
+    fn borrowed_array_projection_rc_handle_is_not_owned() {
+        let child = __LeanValue::boxed_u64(81);
+        let array = __LeanValue::array(vec![child.compiler_alias()]);
+        let borrowed = array.array_get_tagged_borrowed(0);
+        assert_eq!(child.1.get(), 1);
+        array.source_dec(1, true, false);
+        let _ = borrowed.unbox_u64();
+    }
+
+    #[test]
+    fn source_owned_array_element_survives_array_release() {
+        let child = __LeanValue::boxed_u64(81);
+        let array = __LeanValue::array(vec![child.compiler_alias()]);
+        let owned = array.array_get_tagged(0); // exact source inc
+        array.source_dec(1, true, false);
+        assert_eq!(child.1.get(), 1);
+        assert_eq!(owned.unbox_u64(), 81);
+        owned.source_dec(1, true, false);
+    }
+
+    #[test]
     #[should_panic(expected = "source reference-count overflow")]
     fn source_increment_overflow_refuses() {
         let x = __LeanValue::array(Vec::new());

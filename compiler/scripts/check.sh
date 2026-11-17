@@ -43,6 +43,21 @@ bash scripts/check-lcnf-capture.sh
 # reifier and the all-inputs target semantic theorem. This is intentionally
 # narrower than the general backend's accepted IR.
 export LEAN_PATH="$(pwd)/proofs:${LEAN_PATH}"
+# Source constructor projection does NOT increment Lean ownership even
+# when Rust Rc creates an internal alias. Kernel-check one-/two-level
+# release cascades and explicit inc before source parent destruction.
+lean proofs/ReaderProjectedRC.lean | tee artifacts/reader-projected-rc-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-projected-rc-axioms.txt; then
+  echo 'Projected source ownership theorem contains sorryAx' >&2
+  exit 2
+fi
+for theorem in projection_does_not_retain_source rc_alias_does_not_authorize_source_read retained_field_survives_parent_release cannot_retain_after_last_owner_released unretained_nested_projection_is_released explicitly_retained_grandchild_survives; do
+  if ! grep -Eq "'ReaderProjectedRC.${theorem}' (does not depend on any axioms|depends on axioms: \[propext\])" \
+      artifacts/reader-projected-rc-axioms.txt; then
+    echo "Unexpected projected source ownership axiom: ${theorem}" >&2
+    exit 2
+  fi
+done
 lean -o proofs/ScalarFixture.olean proofs/ScalarFixture.lean
 lean -o proofs/ReaderScalarCertificate.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderScalarCertificate.lean
 # Kernel-check actual Lean IR operational semantics linked to Reader emission.

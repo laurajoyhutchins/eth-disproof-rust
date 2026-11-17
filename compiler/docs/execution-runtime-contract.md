@@ -121,3 +121,18 @@ makes the original noncomputable ETH QueryStream program executable.
 See the [architecture](backend-first-architecture.md),
 [status](compiler-status.md), [current semantics](../SEMANTICS.md)
 and [compiler acceptance issue](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/193).
+
+
+### Source `del` boundary
+
+The Lean C runtime now has a fail-closed shell-only `source_del`
+operation that invokes `lean_del_object`. It transfers an existing
+child-field credit instead of increasing the physical C refcount,
+and explicitly rejects shared parent shells or an unprojected child.
+An independent Lean C / Rust C execution witness passes on a
+source-created `Pair` inside `Box` fixture.
+
+The witness uses hand-authored C/Rust test-host calls for the
+shell-only primitive. Consequently it does **not** establish that a
+real pinned source `FnBody.del` has been emitted and executed.
+That is a distinct, still-open proof obligation.

@@ -57,3 +57,8 @@ an independently justified correspondence argument.
 
 See [architecture](backend-first-architecture.md), [runtime contract](execution-runtime-contract.md)
 and [G1/G2 acceptance](../../research/lean-rust-acceptance.md).
+
+
+- Source `del`: physical Lean C shell-only primitive and guarded
+  child-credit transfer witness, *not* source-derived IR.del
+  execution or general heap semantics.

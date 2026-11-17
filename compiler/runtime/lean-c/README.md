@@ -74,3 +74,26 @@ ETH G2 obligations remain unproved.
 
 See [runtime contract](../../docs/execution-runtime-contract.md)
 and [status](../../docs/compiler-status.md).
+
+
+## Source `del`: verified runtime primitive, not yet emitted IR
+
+The bounded Lean C adapter now calls the pinned `lean_del_object`
+through `lr_exec_del` instead of substituting `lean_dec`.
+`source_del` requires a unique owned `RuntimeHeap.Box.mk` shell
+(physical RC 1), one live zero-credit borrowed `Pair` projection,
+and the supported second tagged immediate. It transfers the Box
+field's existing physical child credit into that projection without
+`lean_inc` or `lean_dec`, then frees the shell only.
+
+The differential probe executes explicit C and Rust **test-host**
+shell deletion on source-generated `Box` objects. Both preserve the
+same child identity, data, exclusivity and physical RC after releasing
+the parent shell. Negative admission probes reject an unprojected
+child and shared parent, without mutating source count.
+
+This checks the execution-time primitive, **not** the complete
+source-to-runtime `FnBody.del` theorem: the shell-deletion call in
+this probe is test-host code, not actual Reader-emitted `del`.
+A source IR declaration containing `FnBody.del`, joins, broader
+constructor layouts and nested release cascades remain open.

@@ -99,8 +99,36 @@ if [[ "$SOURCE" == openai ]]; then
 else
   COMPUTE_ROOTS=(ExplicitCost.recursion ExplicitCost.levelSolver ExplicitCost.solver ExplicitCost.patternValue)
 fi
+# Derive the exact module membership from the pinned upstream Git tree.
+# No namespace guesses: a declaration belongs to the original when Lean says
+# it was defined by one of these original source modules.
+MODULE_LIST="$OUT/$SOURCE-original-modules.txt"
+if [[ "$SOURCE" == openai ]]; then
+  find "$REPO/lean/OAI/Algorithms/SubexponentialSAT" -type f -name '*.lean' -print |
+    while IFS= read -r path; do
+      relative=${path#"$REPO/lean/"}
+      relative=${relative%.lean}
+      printf '%s\n' "${relative//\//.}"
+    done | LC_ALL=C sort -u > "$MODULE_LIST"
+else
+  {
+    find "$REPO/eth" -maxdepth 1 -type f -name '*.lean' -print |
+      while IFS= read -r path; do
+        name=${path##*/}
+        printf '%s\n' "${name%.lean}"
+      done
+    find "$REPO/eth/proof" -type f -name '*.lean' -print |
+      while IFS= read -r path; do
+        relative=${path#"$REPO/eth/proof/"}
+        if [[ "$relative" == */* ]]; then relative=${relative#*/}; fi
+        relative=${relative%.lean}
+        printf '%s\n' "${relative//\//.}"
+      done
+  } | LC_ALL=C sort -u > "$MODULE_LIST"
+fi
+[[ -s "$MODULE_LIST" ]] || { echo "Empty pinned source-module manifest" >&2; exit 1; }
 lake env lean --run "$HERE/ComputeExtract.lean" "$SOURCE" "$MODULE" \
-  "$OUT/$SOURCE-computation.jsonl" "${COMPUTE_ROOTS[@]}"
+  "$OUT/$SOURCE-computation.jsonl" "$MODULE_LIST" "${COMPUTE_ROOTS[@]}"
 python3 "$HERE/validate_computation.py" "$OUT/$SOURCE-computation.jsonl" \
   --output "$OUT/$SOURCE-computation-view.json" \
   --summary "$OUT/$SOURCE-computation-summary.json" \

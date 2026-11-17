@@ -19,6 +19,8 @@ on:
       - 'rust/lean_eth_reference/tools/test_prepare_ports_probe.py'
       - 'rust/lean_eth_reference/tools/prepare_ports_compositional.py'
       - 'rust/lean_eth_reference/tools/test_prepare_ports_compositional.py'
+      - 'rust/lean_eth_reference/tools/prepare_clear_expansion.py'
+      - 'rust/lean_eth_reference/tools/test_prepare_clear_expansion.py'
       - 'rust/lean_eth_reference/tools/export_source_graph.lean'
       - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
       - 'rust/lean_eth_reference/tools/verify_source_graph.py'
@@ -75,6 +77,7 @@ jobs:
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_kernel_probe.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_prepare_ports_probe.py' -v
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_prepare_ports_compositional.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_prepare_clear_expansion.py' -v
 
       - name: Test native Rust stage builder and strict refusal
         run: |
@@ -273,6 +276,21 @@ jobs:
             --source-receipt "$RUNNER_TEMP/original-query-kernel/query-kernel-root.report.json" \
             --output "$RUNNER_TEMP/original-query-kernel/prepare-ports-compositional.json"
 
+      # Derive the *exact* three-label clearProgram source table and the
+      # 121-port clearCmd finite recursive sequence from pinned original Lean.
+      # This is an independently testable canonical Rust IR slice, not yet a
+      # patch to the kernel-produced full QueryStream command or certificate.
+      - name: Expand source-bound finite preparation clearing commands
+        if: env.IMPORT_STAGE == 'query' && steps.kernel-root.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/prepare_clear_expansion.py \
+            --upstream "$ORIGINAL_SOURCE" \
+            --source-receipt "$RUNNER_TEMP/original-query-kernel/query-kernel-root.report.json" \
+            --ports-receipt "$RUNNER_TEMP/original-query-kernel/prepare-ports-compositional.json" \
+            --output "$RUNNER_TEMP/original-query-kernel/prepare-clear-expansion.json"
+
       # Independent Lean *runtime* observation of the actual finite port list.
       # Not a Lean-kernel theorem, an executable Rust command, or a replacement
       # for source closure. The bounded, original-toolchain computation can
@@ -324,6 +342,10 @@ jobs:
           ORIGINAL_QUERY_PREPARE_PORTS_RECEIPT="$RUNNER_TEMP/original-query-kernel/prepare-ports-compositional.json" \
             cargo test --locked --offline -p lean-eth-reference --lib \
               pinned_original_prepare_ports_source_composition_is_nonexecutable -- --ignored --nocapture
+          test -s "$RUNNER_TEMP/original-query-kernel/prepare-clear-expansion.json"
+          ORIGINAL_QUERY_PREPARE_CLEAR_RECEIPT="$RUNNER_TEMP/original-query-kernel/prepare-clear-expansion.json" \
+            cargo test --locked --offline -p lean-eth-reference --lib \
+              pinned_original_clear_prefix_physical_trace_matches_source_budget -- --ignored --nocapture
 
       # The Meta-heavy AOT is a deliberate manual diagnostic, never a repeated
       # branch-push prerequisite for kernel-only source discovery.

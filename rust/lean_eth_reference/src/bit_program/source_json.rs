@@ -1303,6 +1303,107 @@ mod native_interning_tests {
         );
     }
 
+    /// Execute the source-checked finite prefix using the shared Rust
+    /// BitProgram physical interpreter. The source-derived theorem predicts
+    /// the instruction count and frame effects; this test is differential
+    /// evidence, NOT an independent Lean kernel or TM2 parity certificate.
+    #[test]
+    #[ignore = "requires original pinned Lean and finite clear-command receipts"]
+    fn pinned_original_clear_prefix_physical_trace_matches_source_budget() {
+        let receipt_path = std::env::var("ORIGINAL_QUERY_PREPARE_CLEAR_RECEIPT")
+            .expect("pinned original finite clear command evidence is required");
+        let receipt: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(receipt_path).expect("clear command evidence must be readable"),
+        )
+        .expect("clear command evidence must be JSON");
+        assert_eq!(receipt["format"], "original-query-prepare-clear-expansion-v1");
+        assert_eq!(receipt["status"], "SOURCE_BOUND_FINITE_CLEAR_SLICE_UNCERTIFIED");
+        assert_eq!(receipt["bank_clear_calls"], 122);
+        assert_eq!(receipt["bank_labels"], 366);
+        assert_eq!(receipt["prepare_clear_calls"], 123);
+        assert_eq!(receipt["prepare_labels"], 369);
+        assert_eq!(receipt["kernel_source_graph_patched"].as_bool(), Some(false));
+        assert_eq!(receipt["complete_query_executable"].as_bool(), Some(false));
+        assert_eq!(receipt["lean_rust_semantic_certificate"].as_bool(), Some(false));
+        assert_eq!(receipt["independent_lean_trace_parity"].as_bool(), Some(false));
+        let ports = receipt["ordered_ports"]
+            .as_array()
+            .expect("original source-composed ports must be a finite array")
+            .iter()
+            .map(|p| p.as_u64().expect("original port index must be integral") as usize)
+            .collect::<Vec<_>>();
+        assert_eq!(ports.len(), 121);
+        let mut uniq = std::collections::HashSet::new();
+        for &port in &ports {
+            assert!(port < 330 && uniq.insert(port));
+            assert_ne!(port, 699);
+        }
+        assert_eq!(&ports[ports.len()-7..], &[323,324,325,326,327,328,329]);
+        let cmd: Command = serde_json::from_value(receipt["prepare_ir"].clone())
+            .expect("finite source expansion must be canonical Rust Command");
+        let mut remaining = MAX_NODES;
+        let mut callees = HashMap::new();
+        let root = lower::<40, 768>(cmd, &mut remaining, &mut callees)
+            .expect("every finite clear table must be native-decodable");
+        assert_eq!(root.size(), 369);
+        assert_eq!(callees.len(), 122, "source scratch table is shared");
+        let deferred = DeferredProgram::<40, 768>::composed(699, 699, root)
+            .expect("source slice must compose with exact physical ABI");
+        assert_eq!(deferred.labels(), 370, "one final compiled halt");
+        let materialized = deferred.materialize(370)
+            .expect("bounded table must materialize for independent differential check");
+        for scenario in 0..4 {
+            let mut initial = deferred.initial(std::iter::empty::<bool>());
+            initial.regs[0] = true;
+            initial.regs[1] = true;
+            initial.regs[7] = true;
+            let scratch_len = scenario + 1;
+            initial.stacks[699].extend((0..scratch_len).map(|v| v % 2 == 0));
+            let mut port_bits = 0usize;
+            for (i, &port) in ports.iter().enumerate() {
+                let len = (i + scenario) % 4;
+                initial.stacks[port].extend((0..len).map(|v| (i + v) % 2 == 0));
+                port_bits += len;
+            }
+            // Explicit unchanged frame outside the finite original port set.
+            initial.stacks[600].extend([true, false, true]);
+            initial.stacks[330].extend([false, true]);
+            let before = initial.clone();
+            let mut dynamic = initial.clone();
+            let mut flat = initial;
+            let budget = RunLimits { max_steps: 10000, max_stack_bits: 10000 };
+            let a = deferred.run(&mut dynamic, budget)
+                .expect("source finite clear prefix must halt on bounded input");
+            let b = materialized.run(&mut flat, budget)
+                .expect("the independent flat physical instruction table must halt");
+            assert_eq!(dynamic, flat, "deferred and materialized physical traces diverged");
+            assert_eq!(a, b, "different physical machine resource receipts");
+            let source_steps = 2 * (scratch_len + port_bits) + 6 + 3 * ports.len();
+            assert_eq!(
+                a.instructions as usize,
+                source_steps + 1,
+                "original Count.Prepare.budget plus compiled final halt"
+            );
+            assert_eq!(dynamic.pc, None);
+            assert!(!dynamic.regs[0] && !dynamic.regs[1]);
+            assert!(dynamic.regs[7]);
+            for &port in &ports {
+                assert!(dynamic.stacks[port].is_empty(), "source cleanup missed {port}");
+            }
+            assert!(dynamic.stacks[699].is_empty());
+            assert_eq!(dynamic.stacks[600], before.stacks[600]);
+            assert_eq!(dynamic.stacks[330], before.stacks[330]);
+        }
+        let mut limited = deferred.initial(std::iter::empty::<bool>());
+        limited.stacks[699].extend([true, false]);
+        let refusal = deferred.run(
+            &mut limited,
+            RunLimits { max_steps: 1, max_stack_bits: 10000 },
+        ).expect_err("bounded execution must refuse, not report an incomplete success");
+        assert!(matches!(refusal, Error::Capacity(_)));
+        assert!(limited.pc.is_some());
+    }
+
     #[test]
     fn identical_callee_table_is_shared_and_distinct_abi_is_not() {
         let repeated = Command::Seq {

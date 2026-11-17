@@ -204,7 +204,7 @@ q_t=h\max(0,u-v_2(t)).
 
 A sharper local interpolation kernel does not eliminate its \(K\) recursive evaluations. The mode count has a bound of the form \(\exp(O(\sqrt{Mp_t/D_t}))\); implicit packet-entry expansion may cost \(\exp(O(L\log s))\). These terms are not polynomial overhead.
 
-Derivations and qualifiers are in [the parameter study](../rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md).
+Derivations and qualifiers are in [the parameter study](../eth/docs/worst-case-and-polynomial-overhead.md).
 
 ## Lean proof obligations
 

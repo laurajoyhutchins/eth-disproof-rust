@@ -6,7 +6,7 @@
 
 The appendix is a recursive **2-adic tensor contraction**, not the body’s global rational-interpolation method with a faster matrix multiply. Packets, interpolated jets, weighted modes and independent *groups* must fit into one exact identity.
 
-[Recursion identity](two-adic-recursion.md) · [Parameter analysis](../rust/lean_eth_reference/docs/worst-case-and-polynomial-overhead.md)
+[Recursion identity](two-adic-recursion.md) · [Parameter analysis](../eth/docs/worst-case-and-polynomial-overhead.md)
 
 [Independent ETH formulations and comparison levels](independent-formulations.md) records the Anthropic reference encoding, bounded cross-model tests, and the mathematical/physical-machine boundary.
 
@@ -20,7 +20,7 @@ Pair swaps give a natural joint spectrum. Krawtchouk/Walsh methods compress symm
 
 A program that produces the same answer on five tiny examples is not necessarily the Lean program. We need the actual declarations, the physical instruction graph, independent state traces and a resource argument. The distinction matters most for noncomputable source definitions and the finite fallback.
 
-[Compiler acceptance](lean-rust-acceptance.md) · [What main actually executes](../rust/lean_eth_reference/docs/evidence.md)
+[Compiler acceptance](lean-rust-acceptance.md) · [What main actually executes](../eth/docs/evidence.md)
 
 ## Observations and counterexamples
 
@@ -41,4 +41,4 @@ The [dated ledger](2026-10-31-to-2026-11-14-ledger.md) gives the experiments and
 
 One result does not imply the others. In particular, lower rank does not imply lower total work, and a passing Rust test does not imply original Lean equivalence.
 
-Keep all source identities, exact toolchains, counterexamples, arithmetic bit costs and known refusals alongside the claim. The [implementation registry](../rust/lean_eth_reference/src/remaining/registry.rs) tracks runnable stages; these notes do not replace it.
+Keep all source identities, exact toolchains, counterexamples, arithmetic bit costs and known refusals alongside the claim. The [implementation registry](../eth/src/remaining/registry.rs) tracks runnable stages; these notes do not replace it.

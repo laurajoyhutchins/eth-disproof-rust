@@ -335,8 +335,8 @@ a source tensor contraction.
 
 The independent Lean formalization now contains two separate verified layers:
 
-1. [`IndependentTwoAdicJointPotential.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean), merged in [#306](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/306), proves the finite rational nonincreasing-choice principle, the concrete coordinatewise unordered signature partition summing to \(D=r^{2a}\), the exact packet waste equivalence, child incidence from row/column ports, and an abstract orbit packet budget.
-2. [`IndependentTwoAdicMoments.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/lean_eth_reference/proofs/IndependentTwoAdicMoments.lean), merged in [#309](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/309), proves **13 independent finite-label sum lemmas**. For a matching represented by independently labelled edge endpoint pairs, it establishes \(\sum 2^{X_\gamma}=(D+1)^m\) and the exact rational mean \(((D+1)/D)^m\). For vertex symbol ports, it establishes \(\sum z^{C_s}=\prod_v(r-1+z^{d_v})\) and the normalized source factor \(\prod_v(1+(z^{d_v}-1)/r)\). The Lean bridge explicitly proves that the source's powers of **actual hit counts** are equal to the local products, including indivisible vertex-degree contributions.
+1. [`IndependentTwoAdicJointPotential.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/proofs/IndependentTwoAdicJointPotential.lean), merged in [#306](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/306), proves the finite rational nonincreasing-choice principle, the concrete coordinatewise unordered signature partition summing to \(D=r^{2a}\), the exact packet waste equivalence, child incidence from row/column ports, and an abstract orbit packet budget.
+2. [`IndependentTwoAdicMoments.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/proofs/IndependentTwoAdicMoments.lean), merged in [#309](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/309), proves **13 independent finite-label sum lemmas**. For a matching represented by independently labelled edge endpoint pairs, it establishes \(\sum 2^{X_\gamma}=(D+1)^m\) and the exact rational mean \(((D+1)/D)^m\). For vertex symbol ports, it establishes \(\sum z^{C_s}=\prod_v(r-1+z^{d_v})\) and the normalized source factor \(\prod_v(1+(z^{d_v}-1)/r)\). The Lean bridge explicitly proves that the source's powers of **actual hit counts** are equal to the local products, including indivisible vertex-degree contributions.
 
 Both checks passed at exact heads using pinned Lean 4.34.1 and Mathlib, with only standard Lean axioms and no proof placeholders. See [#306 verification](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43771961460) and [#309 verification](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43774480582).
 
@@ -350,7 +350,7 @@ modules, without introducing assumptions about the independence of
 edges that share vertices.
 
 **Partial graph-vertex port moments.**
-[`IndependentTwoAdicConditionalMoments.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/lean_eth_reference/proofs/IndependentTwoAdicConditionalMoments.lean)
+[`IndependentTwoAdicConditionalMoments.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/proofs/IndependentTwoAdicConditionalMoments.lean)
 represents a partial assignment by `fixed : V → Option A`.
 Each fixed vertex has one legal symbol, while each uncommitted
 vertex has the entire finite alphabet. If `C_s` is the sum of
@@ -372,7 +372,7 @@ An edge-local partial pair-label factorization is separate and
 does not by itself imply a source graph conditional matching identity.
 
 **Real matching-endpoint distribution.**
-[`IndependentTwoAdicMatchingGraph.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/lean_eth_reference/proofs/IndependentTwoAdicMatchingGraph.lean)
+[`IndependentTwoAdicMatchingGraph.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/proofs/IndependentTwoAdicMatchingGraph.lean)
 works with finite left and right graph vertices, an index type
 `E` of selected matching edges, and injective endpoint maps
 `left : E → L` and `right : E → R`.

@@ -21,4 +21,18 @@ def main : IO Unit := do
               throw <| IO.userError
                 s!"source-del original Lean C/Rust C mismatch a={a} b={b} old={oldStamp} new={newStamp} threshold={threshold} shared={shared}: code {result}"
             cases := cases + 1
+  -- Force runtime heap Nat allocations: these stamps are not immediates,
+  -- so the exclusive branch must physically decrement the old field.
+  -- A dynamic, positive addition prevents reusing an immutable literal.
+  for a in values do
+    for b in #[0, 17, 901] do
+      for base in #[(2^63 + 9 : Nat), 2^80 + 17, 2^128 + 5] do
+        let heapStamp := base + a + 1
+        for threshold in #[a, a + 1] do
+          for shared in #[0, 1] do
+            let result := compareSourceDel a b heapStamp 23 threshold shared
+            if result != 0 then
+              throw <| IO.userError
+                s!"heap-stamp source-del mismatch a={a} b={b} threshold={threshold} shared={shared}: code {result}"
+            cases := cases + 1
   IO.println s!"reader-generated-source-del-lean-c=PASS cases={cases}"

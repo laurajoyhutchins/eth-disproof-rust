@@ -89,4 +89,75 @@ theorem network_toInst_linear
 
 #print axioms ACC.SourceLinear.network_toInst_linear
 
+
+/-! ## Executable, original-source three-state/two-mode fixture -/
+
+/-- A genuine pinned-Anthropic Network with three distinct outgoing
+    signatures, and integer weights 1,2,3 at every node. -/
+def exampleNetwork : Groundwork.Network (Fin 2) (Fin 3) Bool where
+  S := fun _ => Finset.univ
+  W := fun _ state =>
+    if state = 0 then 1 else if state = 1 then 2 else 3
+  Θ := fun _ _ => Finset.univ
+  f := fun _ _ state label => ACC.LinearInterface.threeRow state label
+  c := fun _ _ => 1
+
+def exampleD (_ _ : Fin 2) : Finset Bool := Finset.univ
+
+def exampleDecode (_ _ : Fin 2) (label : Bool) : Bool := label
+
+/-- Two standard coordinate functions, evaluated at the other node's port. -/
+def exampleBasis (mode : Bool) (boundary : Fin 2 → Bool) : ℤ :=
+  ACC.LinearInterface.twoBasis mode (boundary 1)
+
+/-- Fully executable exact certificate check across all THREE states and
+    all FOUR outside Boolean function assignments. No unsampled context. -/
+theorem example_source_table_checked :
+    ACC.LinearInterface.Interface.checkFinite
+      (exampleNetwork.S 0) (Finset.univ : Finset Bool)
+      (Finset.univ : Finset (Fin 2 → Bool))
+      (outgoingRow exampleNetwork exampleD exampleDecode 0)
+      ACC.LinearInterface.threeCoeff exampleBasis = true := by
+  decide
+
+/-- The real pinned Network.toInst for this witness has a two-mode
+    circuit-compatible exact decomposition for ALL boundary contexts. -/
+theorem example_source_toInst (boundary : Fin 2 → Bool) :
+    exampleNetwork.toInst exampleD exampleDecode 0 boundary =
+      ∑ mode ∈ (Finset.univ : Finset Bool),
+        (∑ state ∈ exampleNetwork.S 0,
+          exampleNetwork.W 0 state *
+            ACC.LinearInterface.threeCoeff state mode) *
+          exampleBasis mode boundary := by
+  have hsound : ∀ state ∈ exampleNetwork.S 0, ∀ context,
+      outgoingRow exampleNetwork exampleD exampleDecode 0 state context =
+        ∑ mode ∈ (Finset.univ : Finset Bool),
+          ACC.LinearInterface.threeCoeff state mode *
+            exampleBasis mode context := by
+    intro state hs context
+    exact ACC.LinearInterface.Interface.checkFinite_sound
+      (exampleNetwork.S 0) (Finset.univ : Finset Bool)
+      (Finset.univ : Finset (Fin 2 → Bool))
+      (outgoingRow exampleNetwork exampleD exampleDecode 0)
+      ACC.LinearInterface.threeCoeff exampleBasis
+      example_source_table_checked state hs context (Finset.mem_univ context)
+  exact network_toInst_linear exampleNetwork exampleD exampleDecode 0
+    (Finset.univ : Finset Bool)
+    ACC.LinearInterface.threeCoeff exampleBasis hsound boundary
+
+/-- Distinct weighted outputs of the original source's explicit network.
+    The compressed mode weights here are 1+3=4 and 2+3=5. -/
+theorem example_source_false :
+    exampleNetwork.toInst exampleD exampleDecode 0 (fun _ => false) = 4 := by
+  decide
+
+theorem example_source_true :
+    exampleNetwork.toInst exampleD exampleDecode 0 (fun _ => true) = 5 := by
+  decide
+
+#print axioms ACC.SourceLinear.example_source_table_checked
+#print axioms ACC.SourceLinear.example_source_toInst
+#print axioms ACC.SourceLinear.example_source_false
+#print axioms ACC.SourceLinear.example_source_true
+
 end ACC.SourceLinear

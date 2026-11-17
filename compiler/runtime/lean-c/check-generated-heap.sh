@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../.."
 : "${LEAN_PREFIX:?Set LEAN_PREFIX to pinned Lean 4.34.1}"
 test -s "${NATIVE_LIB:?Build the canonical backend first}"
 export PATH="$LEAN_PREFIX/bin:$PATH"
-export LEAN_PATH="$(pwd)/examples:$(pwd):$LEAN_PREFIX/lib/lean"
+export LEAN_PATH="$(pwd)/proofs:$(pwd)/examples:$(pwd):$LEAN_PREFIX/lib/lean"
 export LD_LIBRARY_PATH="$LEAN_PREFIX/lib/lean${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 test "$(lean --version)" = 'Lean (version 4.34.1, x86_64-unknown-linux-gnu, commit 5045d0056413266e57c625dcd7c365b10e377c52, Release)'
 test "$(rustc --version)" = 'rustc 1.99.1 (58cf8f9c3 2026-10-13)'
@@ -14,7 +14,7 @@ out="$(pwd)/artifacts/lean-c-generated-heap"
 mkdir -p "$out"
 # Kernel-check the abstract source-credit / physical-count simulation
 # before compiling expensive generated Rust and Lean C integrations.
-lean proofs/ReaderShellSimulation.lean | tee "$out/source-shell-simulation-lean.txt"
+lean -o proofs/ReaderShellSimulation.olean proofs/ReaderShellSimulation.lean | tee "$out/source-shell-simulation-lean.txt"
 # The proof may use only Lean's built-in logical axioms. The kernel
 # already rejects unsolved goals; a separate provenance gate rejects
 # sorryAx, custom axioms, and missing theorem audit lines.
@@ -165,8 +165,71 @@ lean -c "$out/SourceDelDriver.c" runtime/lean-c/SourceDelDriver.lean
 leanc -O2 -o "$out/source-del-execute" \
   "$out/RuntimeHeapKernels.c" "$out/RuntimeHeapDelKernels.c" \
   "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \
+  runtime/lean-c/source_shell_step_oracle.c \
   runtime/lean-c/abi.c "$out/libsource_del_generated.a"
-"$out/source-del-execute" | tee "$out/source-del-trace.txt"
+# The physically observed trace comes from actual pinned Lean C calls,
+# not a Rust or Lean reimplementation of those primitive operations.
+LR_SOURCE_TRACE="$out/source-shell-physical.tsv" \
+  "$out/source-del-execute" | tee "$out/source-del-trace.txt"
+grep -Fx 'reader-source-shell-physical-checkpoints=RECORDED' "$out/source-del-trace.txt"
+test -s "$out/source-shell-physical.tsv"
+# Kernel's already-proved physicalStep checks the *independently measured*
+# C rows and refuses omissions, reordering, illegal transitions and ID drift.
+lean proofs/ReaderShellTraceAudit.lean | tee "$out/source-shell-trace-audit.txt"
+grep -Fq 'source-shell-physical-trace=PASS rows=28 cases=4 complete-order-and-identity' \
+  "$out/source-shell-trace-audit.txt"
+# Accept only kernel-sanctioned logical axioms, never sorryAx,
+# arbitrary FFI axioms, or an omitted theorem audit.
+python3 - "$out/source-shell-trace-audit.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+report = Path(sys.argv[1]).read_text()
+allowed = {"propext", "Quot.sound", "Classical.choice"}
+for name in ("accepted_physical_step_has_source_step",
+             "rejected_physical_step_rejects_source"):
+    token = re.escape(f"'ReaderShellTraceAudit.{name}'")
+    match = re.search(
+        token + r" (does not depend on any axioms|depends on axioms: \[([^\]]*)\])",
+        report,
+    )
+    if not match:
+        raise SystemExit(f"missing trace-audit proof or axiom report: {name}")
+    used = set((match.group(2) or "").split(", ")) - {""}
+    if not used <= allowed:
+        raise SystemExit(f"trace-audit proof {name} has unapproved axioms: {sorted(used - allowed)}")
+print("source_shell_observed_refinement=KERNEL_STANDARD_AXIOMS_ONLY")
+PY
+# Prove that the observer rejects adversarial measurements rather than
+# accepting a missing event or a rewritten allocation identity.
+python3 - "$out/source-shell-physical.tsv" "$out" <<'PY'
+from pathlib import Path
+import sys
+src = Path(sys.argv[1]).read_text().splitlines()
+out = Path(sys.argv[2])
+assert len(src) == 29, "expected 28 rows plus one header"
+identity = src.copy()
+fields = identity[2].split("\t")
+fields[11] = str(int(fields[11]) + 1)  # childId of a live allocation
+identity[2] = "\t".join(fields)
+(out / "source-shell-mutated-identity.tsv").write_text("\n".join(identity) + "\n")
+missing = src[:2] + src[3:]
+(out / "source-shell-mutated-missing.tsv").write_text("\n".join(missing) + "\n")
+PY
+for variant in identity missing; do
+  file="$out/source-shell-mutated-$variant.tsv"
+  log="$out/source-shell-rejected-$variant.txt"
+  if LR_SOURCE_TRACE_AUDIT="$file" lean proofs/ReaderShellTraceAudit.lean > "$log" 2>&1; then
+    echo "C step audit falsely accepted mutated $variant trace" >&2
+    exit 2
+  fi
+  grep -Fq 'Source C physical trace refinement refused:' "$log" || {
+    echo "Mutation rejection had an incidental failure, not model refusal: $variant" >&2
+    cat "$log" >&2
+    exit 2
+  }
+done
+echo 'source_shell_trace_mutations=IDENTITY_AND_OMISSION_REFUSED'
 grep -Fx 'reader-generated-source-del-lean-c=PASS cases=720' "$out/source-del-trace.txt"
 echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_720' \
   > "$out/source-del-execution-status.txt"
@@ -174,8 +237,16 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
 {
   echo 'status=PASS_ORIGINAL_LEAN_C_AND_READER_GENERATED_HEAP'
   echo 'source_shell_abstract_trace_simulation=LEAN_KERNEL_VERIFIED_RESTRICTED_MACHINE'
-  echo 'source_shell_original_lean_c_refinement=NOT_ESTABLISHED'
-  sha256sum proofs/ReaderShellSimulation.lean "$out/source-shell-simulation-lean.txt"
+  echo 'source_shell_original_lean_c_refinement=BOUNDED_OBSERVED_CHECKPOINTS_NOT_FORMAL_C_SEMANTICS'
+  echo 'physical_c_operations=real_pinned_lean_inc_dec_ctor_get_ctor_set_is_exclusive_del_object'
+  echo 'physical_trace=28_observations_in_4_allocation_episodes'
+  echo 'source_shell_c_semantics_proof=NOT_ESTABLISHED'
+  echo 'source_shell_observed_refinement=LEAN_KERNEL_CHECKED_CONDITIONAL_THEOREMS'
+  echo 'source_shell_trace_tampering=IDENTITY_AND_OMISSION_REFUSED'
+  sha256sum "$out"/source-shell-mutated-*.tsv "$out"/source-shell-rejected-*.txt
+  sha256sum proofs/ReaderShellSimulation.lean "$out/source-shell-simulation-lean.txt" \
+    proofs/ReaderShellTraceAudit.lean runtime/lean-c/source_shell_step_oracle.c \
+    "$out/source-shell-physical.tsv" "$out/source-shell-trace-audit.txt"
   echo "revision=$(git rev-parse HEAD)"
   echo "lean=$(lean --version)"
   echo "rust=$(rustc --version)"

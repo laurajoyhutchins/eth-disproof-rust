@@ -56,10 +56,14 @@ impl MatchingRegion {
     /// factor graph or a separate certified rewrite is required instead.
     pub fn apply_equality(&mut self, left: usize, right: usize) -> Result<(), Error> {
         if left >= self.len() || right >= self.len() {
-            return Err(Error::Invalid("equality port outside declared region".into()));
+            return Err(Error::Invalid(
+                "equality port outside declared region".into(),
+            ));
         }
         if left == right {
-            return Err(Error::Invalid("self-equality is not a matching edge".into()));
+            return Err(Error::Invalid(
+                "self-equality is not a matching edge".into(),
+            ));
         }
         if self.partner[left].is_some() || self.partner[right].is_some() {
             return Err(Error::Capacity(

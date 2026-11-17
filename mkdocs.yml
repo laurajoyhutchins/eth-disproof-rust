@@ -88,6 +88,8 @@ nav:
       - Finite fallback: rust/lean_eth_reference/docs/m2-finite-fallback-decision.md
       - Two-path compiler contract: rust/lean_eth_reference/docs/two-path-acceptance-contract.md
   - Compiler:
+      - Architecture: lean-rust-replacement.md
+      - Runtime boundary: rust/native_lean_backend/docs/backend-runtime-boundary.md
       - Rust executable: rust/lean_eth_reference/README.md
       - Native frontend: rust/lean_eth_reference/docs/m2-runnable-frontend.md
       - Lean compiler IR: rust/lean_eth_reference/docs/compiler-ir-backend.md

@@ -234,7 +234,8 @@ jobs:
           set -euo pipefail
           (
             cd "$LEAN_ROOT"
-            lake env lean -j 1 -M 2048 \
+            timeout --signal=TERM --kill-after=5s 180s \
+              lake env lean -j 1 -M 12288 \
               "$GITHUB_WORKSPACE/rust/lean_eth_reference/tools/query_sequence_reassociation.lean"
           )
 

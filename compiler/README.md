@@ -44,7 +44,7 @@ Linux x86_64, pinned Lean 4.34.1 (including headers and shared runtime), Rust
 third-party Rust dependencies.
 
 ```sh
-cd rust/native_lean_backend
+cd compiler
 export LEAN_PREFIX=/absolute/path/to/lean-4.34.1-linux
 ./scripts/check.sh
 ```

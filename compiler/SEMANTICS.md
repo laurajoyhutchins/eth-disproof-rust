@@ -23,7 +23,7 @@ Original Lean definitions are inspected in `examples/Item30IRProbe.lean` and com
 
 With pinned Lean 4.34.1 commit `5045d0056413266e57c625dcd7c365b10e377c52`, Linux x86-64, Rust 1.99.1, C compiler and system GMP development files:
 
-    cd rust/native_lean_backend
+    cd compiler
     export LEAN_PREFIX=/path/to/Lean-4.34.1
     lake build
     bash scripts/check.sh

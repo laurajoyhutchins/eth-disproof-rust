@@ -7,7 +7,7 @@ This document tracks checklist [#193, items 31–40](https://github.com/laurajoy
 Prerequisites: Linux x86-64; the exact Lean 4.34.1 compiler/headers at commit `5045d0056413266e57c625dcd7c365b10e377c52`; Rust/Cargo 1.99.1; a C compiler; `ar`; and the existing pinned dependency/ABI checks in `build.rs`.
 
 ```sh
-cd rust/native_lean_backend
+cd compiler
 export LEAN_PREFIX=/absolute/path/to/pinned/lean-4.34.1
 lake build
 bash scripts/check.sh
@@ -81,7 +81,7 @@ This fixes **only identity fidelity**, not support for the data type or executio
 `scripts/compile-bundle.sh` is a reproducible build wrapper around the existing in-process Lean compiler. It does not replace its backend or introduce serialized JSON IR. A successful invocation accepts an imported module, actual root, source file, new destination directory, and optional Rust export name:
 
 ```sh
-cd rust/native_lean_backend
+cd compiler
 # First build the backend using the pinned toolchain and scripts/check.sh.
 mkdir -p artifacts/bundles
 bash scripts/compile-bundle.sh PropertyDef Property.hop \

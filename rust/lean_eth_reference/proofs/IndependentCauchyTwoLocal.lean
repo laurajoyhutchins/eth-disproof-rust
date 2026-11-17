@@ -70,9 +70,10 @@ theorem source_difference_two_factor (a : ℕ) (t q : ℤ)
     simpa only [Int.abs_eq_natAbs] using
       source_difference_abs_lt_alpha a t q ht hq
   have hbound : (t - q).natAbs < 2 ^ (a + 1) := by
-    have halpha : (((2 : ℕ) ^ (a + 1)) : ℤ) = sourceAlpha a := by
-      simp [sourceAlpha]
-    exact_mod_cast (halpha ▸ hboundZ)
+    have hbound' : ((t - q).natAbs : ℤ) <
+        (((2 : ℕ) ^ (a + 1)) : ℤ) := by
+      simpa [sourceAlpha] using hboundZ
+    exact_mod_cast hbound'
   obtain ⟨v, m, hv, hm, hfactor⟩ :=
     bounded_natural_two_factor a (t - q).natAbs hn hbound
   have hfactorZ :

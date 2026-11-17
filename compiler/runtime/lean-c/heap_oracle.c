@@ -196,6 +196,7 @@ finish:
  * source; the shell-del instruction is explicit host code at this stage.
  */
 extern lean_obj_res lr_heap_runtime_shell_take(lean_obj_arg);
+extern uint8_t lr_heap_runtime_shell_eligible(lean_obj_arg, uint8_t);
 
 static lean_object* original_runtime_shell_take(lean_object* parent) {
     lean_object* child = lean_ctor_get(parent, 0);
@@ -215,6 +216,18 @@ lean_obj_res lr_heap_compare_shell_del(lean_obj_arg a, lean_obj_arg b, lean_obj_
         lean_dec(generated);
         return lean_box(3);
     }
+    /* Refusal conditions before freeing: no projected child, or a shared
+     * parent, must never be treated as shell-delete eligible. */
+    if (lr_heap_runtime_shell_eligible(generated, 0) != 0 ||
+        lr_heap_runtime_shell_eligible(generated, 1) != 1) {
+        lean_dec(original); lean_dec(generated); return lean_box(7);
+    }
+    lean_inc(generated);
+    if (lr_heap_runtime_shell_eligible(generated, 1) != 0) {
+        lean_dec(generated); lean_dec(original); lean_dec(generated);
+        return lean_box(8);
+    }
+    lean_dec(generated);
     lean_object* original_child = lean_ctor_get(original, 0);
     lean_object* emitted_child = lean_ctor_get(generated, 0);
     lean_object* reference = original_runtime_shell_take(original);

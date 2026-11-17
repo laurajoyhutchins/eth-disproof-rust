@@ -41,7 +41,11 @@ lean_obj_res lr_heap_compare_source_del(
         return lean_box(2);
 
     const int heap_stamp = !lean_is_scalar(old_stamp);
-    if (heap_stamp && physical_rc(old_stamp) != 1) return lean_box(2);
+    // The Lean driver may retain additional references while iterating.
+    // Observe the actual entry count, then require each parent credit to
+    // change it by precisely one. Do not assume the caller holds only one.
+    const int stamp_entry_rc = heap_stamp ? physical_rc(old_stamp) : -1;
+    if (heap_stamp && stamp_entry_rc < 1) return lean_box(2);
     const size_t left = lean_unbox(a), right = lean_unbox(b);
     const size_t replacement = lean_unbox(new_stamp);
     const size_t test = lean_unbox(threshold), is_shared = lean_unbox(shared);
@@ -77,7 +81,7 @@ lean_obj_res lr_heap_compare_source_del(
         physical_rc(original_child) != 1 ||
         physical_rc(generated_child) != 1 ||
         !lean_is_exclusive(original) || !lean_is_exclusive(generated) ||
-        (heap_stamp && initial_stamp_rc != 3)) {
+        (heap_stamp && initial_stamp_rc != stamp_entry_rc + 2)) {
         lean_dec(original);
         lean_dec(generated);
         lean_dec(old_stamp);
@@ -99,11 +103,13 @@ lean_obj_res lr_heap_compare_source_del(
     lean_object *expected = l_RuntimeHeapDel_rebuildOrExtractByPayload(
         original, lean_box(replacement), lean_box(test));
     int status = 0;
-    if (heap_stamp && physical_rc(old_stamp) != (is_shared ? 3 : 2))
+    if (heap_stamp && physical_rc(old_stamp) !=
+        (stamp_entry_rc + (is_shared ? 2 : 1)))
         status = 10;
     lean_object *actual = lr_heap_generated_source_del_extract(
         generated, lean_box(replacement), lean_box(test));
-    if (heap_stamp && physical_rc(old_stamp) != (is_shared ? 3 : 1))
+    if (heap_stamp && physical_rc(old_stamp) !=
+        (stamp_entry_rc + (is_shared ? 2 : 0)))
         status = 11;
     if (expected != original_child || actual != generated_child ||
         expected == actual || !pair_matches(expected, left, right) ||
@@ -128,7 +134,7 @@ lean_obj_res lr_heap_compare_source_del(
                         !lean_is_exclusive(expected) ||
                         !lean_is_exclusive(actual))) status = 9;
     }
-    if (heap_stamp && physical_rc(old_stamp) != 1 && !status)
+    if (heap_stamp && physical_rc(old_stamp) != stamp_entry_rc && !status)
         status = 12;
     lean_dec(expected);
     lean_dec(actual);

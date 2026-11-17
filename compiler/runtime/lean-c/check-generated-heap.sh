@@ -93,7 +93,8 @@ grep -Fx 'lean-c-shell-only-del-transfer=PASS' "$out/trace.txt"
   sha256sum examples/RuntimeHeapKernels.lean \
     examples/RuntimeHeapFixture.lean runtime/lean-c/HeapDriver.lean \
     runtime/lean-c/generated_value.rs runtime/lean-c/heap_host.rs \
-    runtime/lean-c/heap_oracle.c runtime/rust/immutable_value.rs \
+    runtime/lean-c/heap_oracle.c runtime/lean-c/abi.c \
+    runtime/rust/immutable_value.rs \
     "$out/exact-emitter.rs" "$out/combined.rs" "$out/RuntimeHeapKernels.c" \
     "$out/HeapDriver.c" "$out/trace.txt"
 } > "$out/receipt.txt"

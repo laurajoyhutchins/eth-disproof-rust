@@ -187,6 +187,94 @@ theorem sourceDerivativeAtZero_ne_zero (a : ℕ) :
   have hne : q ≠ 0 := (Finset.mem_erase.mp hq).1
   simpa using hne
 
+/-- The actual integer derivative product at every source-grid point. -/
+def sourceDerivativeAt (a : ℕ) (t : ℤ) : ℤ :=
+  ∏ q ∈ (sourceGrid a).erase t, t - q
+
+/-- The natural-number index of a source-grid point. -/
+def gridIndex (a : ℕ) (t : ℤ) : ℕ :=
+  (t + (2 : ℤ) ^ a).toNat
+
+theorem gridIndex_cast (a : ℕ) (t : ℤ)
+    (ht : t ∈ sourceGrid a) :
+    (gridIndex a t : ℤ) = t + (2 : ℤ) ^ a := by
+  unfold gridIndex
+  apply Int.toNat_of_nonneg
+  have h := (sourceGrid_mem_iff a t).mp ht
+  omega
+
+theorem gridIndex_lt (a : ℕ) (t : ℤ)
+    (ht : t ∈ sourceGrid a) :
+    gridIndex a t < 2 ^ (a + 1) := by
+  have h := (sourceGrid_mem_iff a t).mp ht
+  have hc := gridIndex_cast a t ht
+  have hpow : (2 : ℤ) ^ (a + 1) = 2 * (2 : ℤ) ^ a := by
+    rw [pow_succ]
+    ring
+  have hcast : (((2 : ℕ) ^ (a + 1) : ℕ) : ℤ) = (2 : ℤ) ^ (a + 1) := by
+    norm_cast
+  omega
+
+theorem gridIndex_injective_on (a : ℕ)
+    (t q : ℤ) (ht : t ∈ sourceGrid a)
+    (hq : q ∈ sourceGrid a)
+    (heq : gridIndex a t = gridIndex a q) :
+    t = q := by
+  have htcast := gridIndex_cast a t ht
+  have hqcast := gridIndex_cast a q hq
+  omega
+
+theorem gridIndex_shifted (a : ℕ) (j : Fin (2 ^ (a + 1))) :
+    gridIndex a (shiftedGridPoint a j) = j.val := by
+  simp [gridIndex, shiftedGridPoint]
+
+theorem gridIndex_sub (a : ℕ) (t q : ℤ)
+    (ht : t ∈ sourceGrid a) (hq : q ∈ sourceGrid a) :
+    (gridIndex a t : ℤ) - (gridIndex a q : ℤ) = t - q := by
+  rw [gridIndex_cast a t ht, gridIndex_cast a q hq]
+  ring
+
+/--
+The literal derivative product is identified with the indexed
+consecutive-grid derivative, by a proven bijection of the actual
+grid points, excluding exactly the same root on both sides.
+-/
+theorem source_derivative_reindexed
+    (a : ℕ) (t : ℤ) (ht : t ∈ sourceGrid a) :
+    sourceDerivativeAt a t =
+      ∏ j ∈ (Finset.range (2 ^ (a + 1))).erase (gridIndex a t),
+        ((gridIndex a t : ℤ) - (j : ℤ)) := by
+  classical
+  unfold sourceDerivativeAt
+  apply Finset.prod_bij (fun q _ => gridIndex a q)
+  · intro q hq
+    have hqS : q ∈ sourceGrid a := (Finset.mem_erase.mp hq).2
+    have hqne : q ≠ t := (Finset.mem_erase.mp hq).1
+    apply Finset.mem_erase.mpr
+    constructor
+    · intro heq
+      exact hqne (gridIndex_injective_on a q t hqS ht heq)
+    · exact Finset.mem_range.mpr (gridIndex_lt a q hqS)
+  · intro q hq r hr heq
+    exact gridIndex_injective_on a q r
+      (Finset.mem_erase.mp hq).2 (Finset.mem_erase.mp hr).2 heq
+  · intro j hj
+    have hjne : j ≠ gridIndex a t := (Finset.mem_erase.mp hj).1
+    have hjlt : j < 2 ^ (a + 1) :=
+      Finset.mem_range.mp (Finset.mem_erase.mp hj).2
+    let jf : Fin (2 ^ (a + 1)) := ⟨j, hjlt⟩
+    let q := shiftedGridPoint a jf
+    have hqS : q ∈ sourceGrid a := shiftedGridPoint_mem a jf
+    have hidx : gridIndex a q = j := gridIndex_shifted a jf
+    have hqne : q ≠ t := by
+      intro heq
+      apply hjne
+      rw [heq] at hidx
+      exact hidx.symm
+    refine ⟨q, Finset.mem_erase.mpr ⟨hqne, hqS⟩, hidx⟩
+  · intro q hq
+    exact (gridIndex_sub a t q ht (Finset.mem_erase.mp hq).2).symm
+
 /--
 The residue-grid difference map at each center is an involution.
 Consequently no class, valuation class, or weighted residue profile
@@ -240,6 +328,8 @@ theorem residue_difference_divisibility_count
 #print axioms IndependentETH.CauchySourceGrid.source_difference_abs_lt_alpha
 #print axioms IndependentETH.CauchySourceGrid.cauchy_product_at_grid_point
 #print axioms IndependentETH.CauchySourceGrid.sourceDerivativeAtZero_ne_zero
+#print axioms IndependentETH.CauchySourceGrid.gridIndex_lt
+#print axioms IndependentETH.CauchySourceGrid.source_derivative_reindexed
 #print axioms IndependentETH.CauchySourceGrid.residue_difference_profile_uniform
 #print axioms IndependentETH.CauchySourceGrid.residue_difference_divisibility_count
 

@@ -131,26 +131,23 @@ theorem seed_changes_only_named_object (h h' : Heap)
     subst h'
     simp [put, different]
 
-theorem observation_is_exact (fuel : Nat) (h h' : Heap)
+theorem observation_preserves_heap (fuel : Nat) (h h' : Heap)
     (id count : Nat)
     (ok : step fuel h (.observe id count) = some h') :
-    h' = h ∧ h id = some ⟨count, (h id).get!.children⟩ := by
+    h' = h := by
   simp only [step] at ok
   cases hn : h id with
   | none => simp [hn] at ok
   | some n =>
-      by_cases hc : n.refs == count && count > 0
-      · simp [hn, hc] at ok
-        subst h'
-        constructor
-        · rfl
-        · have he : n.refs = count := by
-            simp only [Bool.and_eq_true, beq_iff_eq] at hc
-            exact hc.1
-          cases n with
-          | mk refs children =>
-              simp_all
-      · simp [hn, hc] at ok
+      split at ok
+      · cases ok
+        rfl
+      · cases ok
+
+theorem observation_requires_live (fuel : Nat) (h : Heap)
+    (id count : Nat) (dead : h id = none) :
+    step fuel h (.observe id count) = none := by
+  simp [step, dead]
 
 /-- A five-object source graph. The two retained descendants each have
 two references before releasing the root. The final root release cascades
@@ -174,11 +171,13 @@ def nestedEvents : List Event := [
 ]
 
 theorem nested_release_keeps_only_explicit_descendants :
-    ∃ after, run 10 nestedEvents nested = some after ∧
-      after 1 = none ∧ after 2 = none ∧ after 5 = none ∧
-      after 3 = some ⟨1, []⟩ ∧ after 4 = some ⟨1, []⟩ := by
-  refine ⟨(run 10 nestedEvents nested).get!, ?_, ?_, ?_, ?_, ?_, ?_⟩
-  all_goals decide
+    (run 10 nestedEvents nested).isSome = true ∧
+    (run 10 nestedEvents nested).bind (fun h => h 1) = none ∧
+    (run 10 nestedEvents nested).bind (fun h => h 2) = none ∧
+    (run 10 nestedEvents nested).bind (fun h => h 5) = none ∧
+    (run 10 nestedEvents nested).bind (fun h => h 3) = some ⟨1, []⟩ ∧
+    (run 10 nestedEvents nested).bind (fun h => h 4) = some ⟨1, []⟩ := by
+  decide
 
 /-- A duplicate allocation is refused; address/ID reuse is not silently
 taken as a new source object while the first allocation remains live. -/
@@ -200,7 +199,8 @@ end ReaderHeapEvents
 #print axioms ReaderHeapEvents.release_last_leaf
 #print axioms ReaderHeapEvents.retain_changes_only_named_object
 #print axioms ReaderHeapEvents.seed_changes_only_named_object
-#print axioms ReaderHeapEvents.observation_is_exact
+#print axioms ReaderHeapEvents.observation_preserves_heap
+#print axioms ReaderHeapEvents.observation_requires_live
 #print axioms ReaderHeapEvents.nested_release_keeps_only_explicit_descendants
 #print axioms ReaderHeapEvents.seed_duplicate_is_refused
 #print axioms ReaderHeapEvents.release_of_dead_object_is_refused

@@ -143,10 +143,9 @@ def tensor {S' M' C' : Type*}
     rintro ⟨s,t⟩ hst ⟨c,d⟩
     obtain ⟨hs,ht⟩ := Finset.mem_product.mp hst
     change I.row s c * J.row t d =
-      ∑ mode ∈ I.modes.product J.modes,
-        (I.coeff s mode.1 * J.coeff t mode.2) *
-          (I.basis mode.1 c * J.basis mode.2 d)
-    simp only [Finset.sum_product]
+      ∑ pair ∈ I.modes.product J.modes,
+        (I.coeff s pair.1 * J.coeff t pair.2) *
+          (I.basis pair.1 c * J.basis pair.2 d)
     calc
       I.row s c * J.row t d =
         (∑ mode ∈ I.modes, I.coeff s mode * I.basis mode c) *
@@ -162,6 +161,13 @@ def tensor {S' M' C' : Type*}
           apply Finset.sum_congr rfl
           intro mode' hm'
           ring
+      _ = ∑ pair ∈ I.modes.product J.modes,
+        (I.coeff s pair.1 * J.coeff t pair.2) *
+          (I.basis pair.1 c * J.basis pair.2 d) := by
+          exact (Finset.sum_product' I.modes J.modes
+            (fun mode mode' =>
+              (I.coeff s mode * J.coeff t mode') *
+                (I.basis mode c * J.basis mode' d))).symm
 
 @[simp] theorem tensor_modes {S' M' C' : Type*}
     [DecidableEq S'] [DecidableEq M']

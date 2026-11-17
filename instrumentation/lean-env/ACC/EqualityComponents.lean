@@ -23,6 +23,15 @@ open scoped BigOperators
 def Compatible {I C : Type*} (classOf : I → C) (x : I → Bool) : Prop :=
   ∀ i j, classOf i = classOf j → x i = x j
 
+/-- A finite set of compatible assignments inherits finiteness from
+    the full finite Boolean cube. No enumeration algorithm is asserted. -/
+noncomputable instance compatibleFintype
+    {I C : Type*} [Fintype I] [DecidableEq I]
+    (classOf : I → C) :
+    Fintype {x : I → Bool // Compatible classOf x} := by
+  classical
+  exact Fintype.ofFinite _
+
 /-- Every nonempty component contributes exactly one Boolean decision.
     Surjectivity is necessary: empty labels otherwise overcount by two. -/
 noncomputable def compatibleEquiv {I C : Type*}

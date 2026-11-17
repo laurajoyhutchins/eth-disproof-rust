@@ -23,6 +23,9 @@ done
 (cd examples && lean -c "$out/OwnershipObjectTraceCDriver.c" OwnershipObjectTraceCDriver.lean)
 leanc -O2 -o "$out/lean-c" "$out/OwnershipObjectTraceKernels.c" "$out/OwnershipObjectTraceCDriver.c" native/object_trace_probe.c
 cat examples/ownership_object_trace_test.rs >> examples/ownership-object-trace-package/src/lib.rs
+# Mutation controls must demonstrate that a pooled-count checker cannot
+# confuse the first and second allocation or a retained descendant.
+python3 scripts/check-object-identity-transfers.py --self-test
 for inputs in "0 1" "17 23" "901 702"; do
   read -r first second <<< "$inputs"
   "$out/lean-c" "$first" "$second" | grep '^TRACE ' > "$out/c-$first-$second.txt"

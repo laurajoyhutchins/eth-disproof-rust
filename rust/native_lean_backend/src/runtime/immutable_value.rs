@@ -326,7 +326,9 @@ impl __LeanValue {
     // Other heap representations need their own source-checked contract.
     // This guard is also the backstop against reading an erased join arg.
     fn require_constructor_object(self) -> Self {
-        self.assert_source_readable();
+        // Preserve the established join ABI rejection for erased/tagged or
+        // non-constructor representations. Only a structurally valid heap
+        // constructor proceeds to the independent source-lifetime check.
         assert!(
             matches!(
                 self.0.as_ref(),
@@ -334,6 +336,7 @@ impl __LeanValue {
             ),
             "tobject join requires a heap constructor"
         );
+        self.assert_source_readable();
         self
     }
     fn erased() -> Self { Self::from_repr(__LeanValueRepr::Erased) }

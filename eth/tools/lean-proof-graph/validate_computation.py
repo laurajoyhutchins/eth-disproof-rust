@@ -37,7 +37,7 @@ DECL_KINDS = {
     "inductive-boundary", "constructor-boundary", "recursor-boundary",
     "quotient-boundary",
 }
-AST_PATH = re.compile(r"0(?:\.(?:[0-9]+|body|type|value|project|metadata))*\Z")
+AST_PATH = re.compile(r"0(?:\.(?:[0-9]+|body|type|value|project|metadata|fn))*\Z")
 
 
 def check(condition: bool, message: str) -> None:

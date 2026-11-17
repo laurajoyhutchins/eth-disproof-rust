@@ -261,7 +261,10 @@ jobs:
       # for source closure. The bounded, original-toolchain computation can
       # fail with a retained typed REFUSED receipt instead of inventing ports.
       - name: Evaluate original Count.Prepare port list under pinned Lean
-        if: env.IMPORT_STAGE == 'query' && steps.kernel-root.outcome == 'success'
+        # This diagnostic has twice refused at its bounded Lean interpreter
+        # memory cap. Do not spend hosted CI minutes repeating it on each push.
+        # Manual failures remain failures and retain their typed REFUSED output.
+        if: env.IMPORT_STAGE == 'query' && github.event_name == 'workflow_dispatch' && steps.kernel-root.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail

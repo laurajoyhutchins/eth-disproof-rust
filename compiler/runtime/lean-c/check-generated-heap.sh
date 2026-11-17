@@ -35,12 +35,19 @@ rustc --edition=2021 --cfg 'feature="lean-c-runtime"' \
 # entry point applies the caller's source-defined parent decrement.
 python3 - "$out/RuntimeHeapKernels.c" <<'PY'
 from pathlib import Path
+import re
 import sys
 s = Path(sys.argv[1]).read_text()
-start = s.index("LEAN_EXPORT lean_object* l_RuntimeHeap_payload(")
-boxed = s.index("LEAN_EXPORT lean_object* l_RuntimeHeap_payload___boxed(", start)
-end = s.index("LEAN_EXPORT lean_object* l_RuntimeHeap_nestedFirst(", boxed)
-body, boxed_body = s[start:boxed], s[boxed:end]
+def function_body(name):
+    # Match an actual generated C definition, not a forward declaration.
+    pattern = rf"LEAN_EXPORT\\s+lean_object\\*\\s+{re.escape(name)}\\([^;{{}}]*\\)\\s*\\{{"
+    match = re.search(pattern, s)
+    if match is None:
+        raise SystemExit(f"original Lean C definition missing: {name}")
+    following = s.find("LEAN_EXPORT", match.end())
+    return s[match.start():following if following >= 0 else len(s)]
+body = function_body("l_RuntimeHeap_payload")
+boxed_body = function_body("l_RuntimeHeap_payload___boxed")
 if "lean_ctor_get(" not in body or "lean_inc(" not in body:
     raise SystemExit("original Lean C payload does not borrow/retain child")
 if "lean_dec(" in body or "lean_dec(" not in boxed_body:

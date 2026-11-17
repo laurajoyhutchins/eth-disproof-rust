@@ -56,6 +56,9 @@ else
     exit 2
   }
   echo 'source_del_reader=REFUSED' > "$out/source-del-reader-status.txt"
+  cat "$out/source-del-emit.log" >&2
+  echo 'Canonical Reader failed to emit the verified original source del' >&2
+  exit 2
 fi
 cat "$out/source-del-reader-status.txt"
 cat "$out/source-del-emit.log"
@@ -108,6 +111,29 @@ leanc -O2 -o "$out/lean-c-generated-heap" \
 grep -Fx 'reader-generated-lean-c-heap=PASS' "$out/trace.txt"
 grep -Fx 'reader-generated-lean-c-nested-retain=PASS' "$out/trace.txt"
 grep -Fx 'lean-c-shell-only-del-transfer=PASS' "$out/trace.txt"
+# A distinct executable links the original C-compiled source function and
+# the exact Reader-generated Rust function through the same Lean C runtime.
+# Do not modify either function, or replace a source-del with host code.
+test -s "$out/source-del-exact-reader.rs"
+cat "$out/source-del-exact-reader.rs" runtime/lean-c/source_del_host.rs \
+  > "$out/source-del-combined.rs"
+rustc --edition=2021 --cfg 'feature="lean-c-runtime"' \
+  -C panic=abort --crate-type staticlib -O \
+  "$out/source-del-combined.rs" -o "$out/libsource_del_generated.a"
+(cd examples && lean -c "$out/RuntimeHeapDelKernels.c" RuntimeHeapDelKernels.lean)
+grep -Fq 'lean_del_object(' "$out/RuntimeHeapDelKernels.c" || {
+  echo 'Original Lean C source lacks shell-only del' >&2
+  exit 2
+}
+lean -c "$out/SourceDelDriver.c" runtime/lean-c/SourceDelDriver.lean
+leanc -O2 -o "$out/source-del-execute" \
+  "$out/RuntimeHeapKernels.c" "$out/RuntimeHeapDelKernels.c" \
+  "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \
+  runtime/lean-c/abi.c "$out/libsource_del_generated.a"
+"$out/source-del-execute" | tee "$out/source-del-trace.txt"
+grep -Fx 'reader-generated-source-del-lean-c=PASS cases=360' "$out/source-del-trace.txt"
+echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_360' \
+  > "$out/source-del-execution-status.txt"
 {
   echo 'status=PASS_ORIGINAL_LEAN_C_AND_READER_GENERATED_HEAP'
   echo "revision=$(git rev-parse HEAD)"
@@ -125,7 +151,13 @@ grep -Fx 'lean-c-shell-only-del-transfer=PASS' "$out/trace.txt"
   echo 'shell_only_child_transfer=ONE_CREDIT_NO_INC'
   echo 'shell_del_no_projection=REFUSED'
   echo 'shell_del_shared_parent=REFUSED'
-  echo 'emitted_ir_source_del=NOT_YET_ESTABLISHED'
+  echo 'emitted_ir_source_del=PASS_BOUNDED_360_PHYSICAL_FINAL_STATES'
+  echo 'source_del_full_traces_and_general_equivalence=NOT_ESTABLISHED'
+  cat "$out/source-del-execution-status.txt"
+  sha256sum runtime/lean-c/source_del_host.rs runtime/lean-c/source_del_oracle.c \
+    runtime/lean-c/SourceDelDriver.lean "$out/source-del-combined.rs" \
+    "$out/RuntimeHeapDelKernels.c" "$out/SourceDelDriver.c" \
+    "$out/source-del-trace.txt"
   cat "$out/source-del-reader-status.txt"
   sha256sum examples/RuntimeHeapDelEmitFixture.lean "$out/source-del-emit.log" \
     "$out/source-del-reader-status.txt"

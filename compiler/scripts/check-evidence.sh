@@ -36,6 +36,10 @@ name = "native_lean_compiler_generated_evidence"
 version = "0.0.0"
 edition = "2021"
 
+# Source code contains an opt-in, source-faithful Lean C runtime.
+[features]
+lean-c-runtime = []
+
 [workspace]
 CARGO
 cargo test --offline --manifest-path artifacts/standalone-evidence/Cargo.toml

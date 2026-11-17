@@ -174,6 +174,10 @@ edition = "2024"
 [lib]
 path = "src/lib.rs"
 
+# The default is standalone Rust; the pinned C runtime is opt-in.
+[features]
+lean-c-runtime = []
+
 [workspace]
 TOML
           cat > "$case_dir/armada-oracles.lean" <<'LEAN'
@@ -247,6 +251,10 @@ edition = "2024"
 
 [lib]
 path = "src/lib.rs"
+
+# The default is standalone Rust; the pinned C runtime is opt-in.
+[features]
+lean-c-runtime = []
 
 [workspace]
 TOML
@@ -324,6 +332,10 @@ edition = "2024"
 
 [lib]
 path = "src/lib.rs"
+
+# The default is standalone Rust; the pinned C runtime is opt-in.
+[features]
+lean-c-runtime = []
 
 [workspace]
 TOML

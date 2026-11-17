@@ -13,13 +13,19 @@ compiler-generated constant references.
 | OpenAI math | 7ef5c0cc5ca4b0e072b7a050fca09ab24bc6fa3a | 4.34.1 | d13f23b723b8a846827a245b89c10fc7d3f11612 |
 | Anthropic formal-math | 16a5ce41304fcdaea4e0be7c132e1c361dc26da5 | 4.33.1 | 0df444a360eaa60ab8c11dca51a86af692955474 |
 
-OpenAI roots: exact_count_and_sat, original_sat_main, and
-QueryStreamProgram.command (under OAI.Algorithms.SubexponentialSAT).
+OpenAI roots: exact_count_and_sat, original_sat_main, QueryStreamProgram.command,
+and all three SqrtLog.Execution.Final endpoints (mainTheorem,
+binaryIdentifierMainTheorem, fullMainTheorem), under
+OAI.Algorithms.SubexponentialSAT.
 Anthropic roots: MainResults.mainTheorem and MainResults.ethIsFalse.
 
 ## Run on a network-enabled GCP VM or build worker
 
 Clone both upstream repositories at their exact commit pins first.
+The OpenAI run deliberately uses the existing narrow
+instrumentation/lean-env package from this repo, linking the exact upstream
+lean/OAI source tree, rather than the upstream OAI Lake project with dozens
+of unrelated mathematical dependencies.
 Use elan for the original Lean versions and let Lake restore each pinned
 Mathlib package. From this directory execute:
 
@@ -60,3 +66,13 @@ must not be claimed ready until both exports and validators finish.
 
 The repository's existing source-graph/Rust parity work is a separate
 acceptance tier; this extractor studies formal proof dependencies.
+
+## Manual GitHub Actions runner
+
+The workflow `.github/workflows/complete-lean-proof-graph.yml` is
+`workflow_dispatch` only to avoid an expensive Mathlib build on every commit.
+It fetches each original source pin, uses the corresponding Lean/Mathlib
+version, and uploads separate raw graph, summary, and iPad projection artifacts
+for OpenAI and Anthropic. It must run on a networked runner with adequate
+GitHub Actions minutes (or be adapted to a GCP worker). It has not yet run
+against the pinned originals in this PR.

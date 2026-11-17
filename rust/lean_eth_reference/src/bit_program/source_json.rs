@@ -124,6 +124,14 @@ enum LinkedProgram {
 #[derive(Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 enum Command {
+    /// A named original declaration reached by kernel-only source inspection.
+    /// This is an IR obligation, not a runtime instruction or fallback.
+    /// Only the same canonical lowering function can eventually admit it.
+    #[serde(rename = "unresolved")]
+    Unresolved {
+        declaration: String,
+        source_kind: String,
+    },
     #[serde(rename = "skip")]
     Skip,
     #[serde(rename = "atom")]
@@ -801,6 +809,21 @@ fn lower<const R: usize, const S: usize>(
     }
     *remaining -= 1;
     match command {
+        Command::Unresolved {
+            declaration,
+            source_kind,
+        } => {
+            if declaration.is_empty()
+                || declaration.len() > 512
+                || source_kind.is_empty()
+                || source_kind.len() > 64
+            {
+                return Err(invalid("malformed unresolved source declaration"));
+            }
+            Err(invalid(&format!(
+                "unresolved source declaration cannot be executed: {declaration} ({source_kind})"
+            )))
+        }
         Command::Skip => Ok(Block::skip()),
         Command::Atom { opcode } => Block::atom(parse_atom::<R, S>(&opcode)?),
         Command::Call {
@@ -1000,12 +1023,23 @@ mod native_interning_tests {
         }
     }
 
-    /// The kernel-only source prefix uses the exact canonical 'seq' shape,
-    /// but unresolved declaration leaves are never executable commands.
+    /// Same typed native command IR as the eventual executable graph, but
+    /// every source reference must be resolved before calling the backend.
     #[test]
-    fn source_prefix_refs_are_rejected_without_real_source_lowering() {
+    fn source_prefix_ref_is_typed_but_lowering_refuses_execution() {
         let prefix = r#"{"kind":"seq","first":{"kind":"unresolved","declaration":"OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh","source_kind":"definition"},"second":{"kind":"seq","first":{"kind":"unresolved","declaration":"OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.nodes","source_kind":"definition"},"second":{"kind":"unresolved","declaration":"OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command","source_kind":"definition"}}}"#;
-        assert!(serde_json::from_str::<Command>(prefix).is_err());
+        let command: Command = serde_json::from_str(prefix).unwrap();
+        let mut remaining = MAX_NODES;
+        let mut callees = HashMap::new();
+        let err = lower::<40, 896>(command, &mut remaining, &mut callees)
+            .err()
+            .expect("unresolved source references must refuse lowering");
+        assert!(
+            err.to_string().contains("HighQueryAdapter.prepareHigh"),
+            "{err}"
+        );
+        let forged = r#"{"kind":"unresolved","declaration":"OAI.Ref","source_kind":"definition","resolved":true}"#;
+        assert!(serde_json::from_str::<Command>(forged).is_err());
         let executable = r#"{"kind":"seq","first":{"kind":"skip"},"second":{"kind":"skip"}}"#;
         assert!(serde_json::from_str::<Command>(executable).is_ok());
     }

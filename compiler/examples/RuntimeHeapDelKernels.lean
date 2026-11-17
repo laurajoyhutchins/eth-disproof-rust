@@ -30,6 +30,27 @@ open RuntimeHeap
   let changed := if rebuild then rebuildOrDiscard x newStamp true else x
   payload changed
 
+-- Unlike the preceding tests, the branch predicate needs the projected
+-- heap child. This forces an observable source dependency before the choice
+-- to rebuild or discard the enclosing constructor.
+@[noinline] def rebuildOrDiscardByPayload
+    (x : Box) (newStamp threshold : Nat) : Box :=
+  match x with
+  | .missing => .missing
+  | .mk child _ =>
+    if first child == threshold then .mk child newStamp else .missing
+
+@[noinline] def rebuildOrExtractByPayload
+    (x : Box) (newStamp threshold : Nat) : Pair :=
+  match x with
+  | .missing => .vacant
+  | .mk child _ =>
+    if first child == threshold then payload (.mk child newStamp) else child
+
+#guard first (payload (rebuildOrDiscardByPayload (.mk (.mk 5 6) 7) 8 5)) == 5
+#guard first (payload (rebuildOrDiscardByPayload (.mk (.mk 5 6) 7) 8 0)) == 0
+#guard first (rebuildOrExtractByPayload (.mk (.mk 5 6) 7) 8 0) == 5
+
 #guard RuntimeHeap.first (rebuildOrExtract (.mk (.mk 5 6) 7) 8 false) == 5
 #guard RuntimeHeap.first (rebuildOrExtract (.mk (.mk 5 6) 7) 8 true) == 5
 #guard RuntimeHeap.first (payload (rebuildOrDiscard (.mk (.mk 5 6) 7) 8 false)) == 0

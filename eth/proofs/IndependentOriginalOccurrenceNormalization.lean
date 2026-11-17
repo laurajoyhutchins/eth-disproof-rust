@@ -69,20 +69,23 @@ theorem source_good_iff_normal (z : Fin g → Sl μ k → Bool) :
   exact and_congr Iff.rfl
     (and_congr Iff.rfl (source_chain_iff_global φ g μ k z))
 
-/-- Exact factor-level identity: the product of the original
-Anthropic node weights and pair interactions equals the indicator
-of the canonical occurrence normal form, term by term. -/
-theorem original_factor_term_eq_normal (z : Fin g → Sl μ k → Bool) :
-    (∏ a, (net φ g μ k).W a (z a)) *
-      (∏ p ∈ Groundwork.pairs (Fin g),
-        (net φ g μ k).Ψ p.1 p.2 (z p.1) (z p.2)) =
-      (if OccurrenceNormalForm φ g μ k z then (1 : ℤ) else 0) := by
-  rw [Groundwork.SatNet.term_eq]
-  exact congrArg (fun p : Prop => if p then (1 : ℤ) else 0)
-    (propext (source_good_iff_normal φ g μ k z))
+/-- The original SAT network's source value is the cardinality of the
+exact occurrence normal form. The source's public value_eq_card_good
+proves the pointwise factor-selection calculation internally; our
+source_good_iff_normal translates its indexed equality constraints
+without modifying the original factors or pair incidence. -/
+theorem original_value_eq_occurrence_normal :
+    (net φ g μ k).value =
+      (Finset.univ.filter
+        (OccurrenceNormalForm φ g μ k)).card := by
+  rw [Groundwork.SatNet.value_eq_card_good]
+  congr 1
+  ext z
+  simp only [Finset.mem_filter, Finset.mem_univ, true_and]
+  exact source_good_iff_normal φ g μ k z
 
 #print axioms IndependentETH.OriginalOccurrence.source_chain_iff_global
 #print axioms IndependentETH.OriginalOccurrence.source_good_iff_normal
-#print axioms IndependentETH.OriginalOccurrence.original_factor_term_eq_normal
+#print axioms IndependentETH.OriginalOccurrence.original_value_eq_occurrence_normal
 
 end IndependentETH.OriginalOccurrence

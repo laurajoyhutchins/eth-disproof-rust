@@ -14,9 +14,9 @@ class RepositoryLayoutTests(unittest.TestCase):
         for path in (
             "compiler/Cargo.toml",
             "compiler/NativeRust.lean",
-            "compiler/native/abi.c",
-            "compiler/src/reader/mod.rs",
-            "compiler/src/runtime/immutable_value.rs",
+            "compiler/frontend/ffi/abi.c",
+            "compiler/backend/src/reader/mod.rs",
+            "compiler/runtime/rust/immutable_value.rs",
             "eth/Cargo.toml",
             "eth/src/bin/eth-compiler.rs",
             "experiments/lean-compiler-bootstrap/README.md",

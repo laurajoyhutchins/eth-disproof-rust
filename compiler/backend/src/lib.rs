@@ -102,7 +102,7 @@ struct ImmutableCaseContext<'a> {
 // Standalone immutable object model for the supported Lean IR subset.
 // Rc retains aliases for the bounded accepted value subset. Ownership-
 // observable programs still require Lean/Rust cross-call conformance.
-const RUNTIME_SOURCE: &str = include_str!("runtime/immutable_value.rs");
+const RUNTIME_SOURCE: &str = include_str!("../../runtime/rust/immutable_value.rs");
 
 const CONSTRUCTOR_SET_TEST_SOURCE: &str = r#"
 #[cfg(test)]

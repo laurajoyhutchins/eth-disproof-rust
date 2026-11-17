@@ -66,7 +66,7 @@ artifacts/standalone-evidence/target/release/native_lean_compiler_generated_evid
   echo "memory_safety_check=forbid_unsafe_code_in_emitted_crate"
   echo "build_modes=debug_and_release_verified"
   sha256sum NativeRust.lean examples/PropertyDef.lean examples/Property.lean \
-    examples/property_driver.rs src/lib.rs native/abi.c \
+    examples/property_driver.rs backend/src/lib.rs frontend/ffi/abi.c \
     examples/generated_property.rs examples/generated_property_cases.rs \
     artifacts/standalone-evidence/Cargo.toml examples/property-test
 } > artifacts/native-g1-evidence-receipt.txt

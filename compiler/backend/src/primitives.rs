@@ -1,7 +1,7 @@
 //! One semantic whitelist for both IR dependency discovery and primitive lowering.
 //! Registry-backed lowerings and source-specific runtime externs fail closed.
 
-pub(super) const PRIMITIVE_REGISTRY: &str = include_str!("../primitive-registry.tsv");
+pub(super) const PRIMITIVE_REGISTRY: &str = include_str!("../../primitive-registry.tsv");
 
 pub(super) struct PrimitiveSpec<'a> {
     pub(super) operand_type: &'a str,
@@ -57,7 +57,7 @@ pub(super) fn is_primitive(name: &str) -> bool {
 }
 
 pub(super) const RUNTIME_PRIMITIVE_REGISTRY: &str =
-    include_str!("../runtime-primitive-registry.tsv");
+    include_str!("../../runtime-primitive-registry.tsv");
 pub(super) struct RuntimePrimitiveSpec<'a> {
     pub(super) rust_function: &'a str,
     pub(super) shape: &'a str,

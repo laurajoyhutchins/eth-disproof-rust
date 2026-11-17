@@ -29,7 +29,7 @@ awk -F '\t' '
 diff -u \
   <(awk -F '\t' '$1=="primitive" && $3=="conditional" {print $2}' artifacts/ir-constructor-summary.tsv | LC_ALL=C sort) \
   <(awk -F '\t' '!/^#/ && NF==4 {print $1}' primitive-registry.tsv | LC_ALL=C sort)
-if grep -Eq 'rs_emit_ir_bundle|#native_rust_bundle' NativeRust.lean src/lib.rs; then
+if grep -Eq 'rs_emit_ir_bundle|#native_rust_bundle' NativeRust.lean backend/src/lib.rs; then
   echo 'multiple competing multi-root compiler interfaces detected' >&2
   exit 2
 fi
@@ -658,9 +658,9 @@ fi
 rm -f examples/RefusalNatPow.log
 # All four independently generated Cargo packages must use the exact same
 # Nat/object/closure value ABI bytes, not copied or divergent runtime models.
-runtime_bytes="$(wc -c < src/runtime/immutable_value.rs)"
+runtime_bytes="$(wc -c < runtime/rust/immutable_value.rs)"
 for output in examples/object-package/src/lib.rs examples/function-package/src/lib.rs examples/nat-package/src/lib.rs examples/large-nat-package/src/lib.rs; do
-  cmp -n "$runtime_bytes" src/runtime/immutable_value.rs "$output"
+  cmp -n "$runtime_bytes" runtime/rust/immutable_value.rs "$output"
   if [[ "$(grep -c '^pub struct __LeanValue(' "$output")" != 1 ]] ||
      [[ "$(grep -c '^enum __LeanValueRepr ' "$output")" != 1 ]]; then
     echo "duplicate or missing generated Value ABI in $output" >&2
@@ -758,7 +758,7 @@ mkdir -p artifacts
   echo "pap_ap_differential=2048"
   echo "safety_and_primitive_matrix=PASS"
   echo "canonical_value_runtime=ONE_IDENTICAL_SOURCE_NAT_OBJECT_CLOSURE"
-  sha256sum src/runtime/immutable_value.rs
+  sha256sum runtime/rust/immutable_value.rs
   echo "ir_constructor_inventory=PASS"
   echo "runtime_tag_whitelist=35_scoped_IR_constructors"
   echo "primitive_conformance=30_baseline_x_64_plus_38_extended_oracles"

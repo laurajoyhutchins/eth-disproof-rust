@@ -1,6 +1,6 @@
 use std::{env, fmt::Write as _, fs, path::PathBuf, process::Command};
 fn main() {
-    println!("cargo:rerun-if-changed=native/abi.c");
+    println!("cargo:rerun-if-changed=frontend/ffi/abi.c");
     println!("cargo:rerun-if-changed=ir-coverage-classification.tsv");
     println!("cargo:rerun-if-changed=runtime-primitive-registry.tsv");
     println!("cargo:rerun-if-env-changed=LEAN_PREFIX");
@@ -33,7 +33,7 @@ fn main() {
         .arg("-I")
         .arg(PathBuf::from(prefix).join("include"))
         .arg("-c")
-        .arg("native/abi.c")
+        .arg("frontend/ffi/abi.c")
         .arg("-o")
         .arg(&obj)
         .status()

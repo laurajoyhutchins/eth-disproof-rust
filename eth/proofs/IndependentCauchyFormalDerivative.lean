@@ -18,7 +18,7 @@ namespace IndependentETH.CauchyFormalDerivative
 open IndependentETH.CauchySourceGrid
 
 /-- The original Cauchy polynomial, not just its evaluation formula. -/
-def sourceCauchyPolynomial (a : ℕ) : Polynomial ℤ :=
+noncomputable def sourceCauchyPolynomial (a : ℕ) : Polynomial ℤ :=
   Lagrange.nodal (sourceGrid a) (fun q : ℤ => q)
 
 /-- The nodal definition agrees with the original source product. -/

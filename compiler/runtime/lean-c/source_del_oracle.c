@@ -13,6 +13,7 @@ extern lean_obj_res l_RuntimeHeapDel_rebuildOrExtractByPayload(
     lean_obj_arg, lean_obj_arg, b_lean_obj_arg);
 extern lean_obj_res lr_heap_generated_source_del_extract(
     lean_obj_arg, lean_obj_arg, b_lean_obj_arg);
+extern uint8_t lr_heap_source_del_shell_eligible(lean_obj_arg);
 
 static int physical_rc(lean_object *p) {
     return p && !lean_is_scalar(p) && lean_is_st(p)
@@ -87,6 +88,25 @@ lean_obj_res lr_heap_compare_source_del(
         lean_dec(old_stamp);
         return lean_box(4);
     }
+    // A unique parent alone is not enough: an unspent *heap* stamp must
+    // refuse shell deletion, as must a child with an independent owner.
+    const uint8_t shell_admitted = lr_heap_source_del_shell_eligible(generated);
+    if (shell_admitted != (heap_stamp ? 0 : 1)) {
+        lean_dec(original);
+        lean_dec(generated);
+        lean_dec(old_stamp);
+        return lean_box(13);
+    }
+    lean_inc(generated_child);
+    if (lr_heap_source_del_shell_eligible(generated) != 0) {
+        lean_dec(generated_child);
+        lean_dec(original);
+        lean_dec(generated);
+        lean_dec(old_stamp);
+        return lean_box(14);
+    }
+    lean_dec(generated_child);
+
     if (is_shared) {
         lean_inc(original);
         lean_inc(generated);

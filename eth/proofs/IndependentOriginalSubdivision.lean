@@ -57,7 +57,7 @@ theorem copyTensor_eq {W R : Type*} [Fintype W] [CommSemiring R]
 /-- Inserting a two-port equality tensor on every wire is an exact
 contraction identity over any commutative semiring. -/
 theorem split_shared_assignment {W R : Type*}
-    [Fintype W] [CommSemiring R]
+    [Fintype W] [DecidableEq W] [CommSemiring R]
     (first second : (W → Bool) → R) :
     (∑ bits : W → Bool, first bits * second bits) =
       ∑ left : W → Bool, ∑ right : W → Bool,
@@ -112,6 +112,7 @@ def subdividedValue : ℤ :=
 /-- The original source network has the same exact contraction as
 the explicitly subdivided Boolean-wire graph. No sign, factor, or
 edge multiplicity changes, even for empty graphs. -/
+set_option maxHeartbeats 2000000 in
 theorem original_value_eq_subdivided :
     (original φ g μ k).value = subdividedValue φ g μ k := by
   classical

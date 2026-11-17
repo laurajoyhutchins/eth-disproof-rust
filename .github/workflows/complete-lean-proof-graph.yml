@@ -42,6 +42,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate graph formats before restoring Mathlib
+        run: |
+          python3 -m unittest discover -s eth/tools/lean-proof-graph \
+            -p 'test_validate*.py' -v
+
       - name: Fetch original pinned source
         shell: bash
         env:
@@ -86,8 +91,6 @@ jobs:
           mkdir -p "$RUNNER_TEMP/kernel-graph"
           bash eth/tools/lean-proof-graph/run_pinned.sh \
             "$SOURCE" "$GITHUB_WORKSPACE/original" "$RUNNER_TEMP/kernel-graph"
-          python3 -m unittest discover -s eth/tools/lean-proof-graph \
-            -p test_validate.py -v
           ls -lh "$RUNNER_TEMP/kernel-graph"
 
       - name: Preserve raw transitive closure, checksums and browser projection

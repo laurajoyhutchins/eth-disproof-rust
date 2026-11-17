@@ -1088,9 +1088,25 @@ mod native_interning_tests {
                             "source_kind": "definition"
                         },
                         "second": {
-                            "kind": "unresolved",
-                            "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.command",
-                            "source_kind": "definition"
+                            "kind": "seq",
+                            "first": {
+                                "kind": "unresolved",
+                                "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.reconstruct",
+                                "source_kind": "definition"
+                            },
+                            "second": {
+                                "kind": "seq",
+                                "first": {
+                                    "kind": "unresolved",
+                                    "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.canonicalWideRead",
+                                    "source_kind": "definition"
+                                },
+                                "second": {
+                                    "kind": "unresolved",
+                                    "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.clearCaches",
+                                    "source_kind": "definition"
+                                }
+                            }
                         }
                     }
                 }
@@ -1109,14 +1125,14 @@ mod native_interning_tests {
     /// pinned Lean receipt. This never accepts the incomplete program as
     /// executable, even though its nested call is valid canonical Rust IR.
     #[test]
-    #[ignore = "requires the original pinned Lean v9 kernel receipt"]
+    #[ignore = "requires the original pinned Lean v10 kernel receipt"]
     fn pinned_original_partial_lift_is_typed_and_refused() {
         let path = std::env::var("ORIGINAL_QUERY_KERNEL_RECEIPT")
             .expect("original source workflow must supply the retained receipt");
         let bytes = std::fs::read(path).expect("original Lean receipt must be readable");
         let report: serde_json::Value =
             serde_json::from_slice(&bytes).expect("original Lean receipt must be JSON");
-        assert_eq!(report["format"], "original-query-kernel-root-v9");
+        assert_eq!(report["format"], "original-query-kernel-root-v10");
         assert_eq!(
             report["root"],
             "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.program"
@@ -1134,10 +1150,32 @@ mod native_interning_tests {
             core["second"]["declaration"],
             "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.command"
         );
+        let expanded = &report["source_core_expanded_ir"];
+        let native = &report["source_native_command_ir"];
+        assert_eq!(expanded["kind"], "seq");
+        assert_eq!(expanded["first"], core["first"]);
+        assert_eq!(expanded["second"], *native);
+        assert_eq!(native["kind"], "seq");
+        assert_eq!(
+            native["first"]["declaration"],
+            "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.reconstruct"
+        );
+        assert_eq!(
+            native["second"]["first"]["declaration"],
+            "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.canonicalWideRead"
+        );
+        assert_eq!(
+            native["second"]["second"]["declaration"],
+            "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.clearCaches"
+        );
+        assert_eq!(
+            report["source_prepare_obligation"]["embedded_in_rust_ir"].as_bool(),
+            Some(false)
+        );
         assert_eq!(
             report["source_lift_call_ir"]["program"]["source"]["command"],
-            *core,
-            "the Rust call must preserve the exact original Lean core sequence"
+            *expanded,
+            "Rust call must preserve the source-derived expanded native sequence"
         );
         let call: Command = serde_json::from_value(report["source_lift_call_ir"].clone())
             .expect("original Lean partial call must match the canonical Rust IR");

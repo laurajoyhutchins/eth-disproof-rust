@@ -27,7 +27,8 @@ EXPECTED_FIELDS = {
     "command_name", "command_expression_nodes", "command_immediate_symbols",
     "command_symbol_kinds", "source_command_ir", "source_command_expanded_ir",
     "source_lift_application", "source_core_command_ir",
-    "source_lift_call_ir", "source_command_call_ir",
+    "source_native_command_ir", "source_prepare_obligation",
+    "source_core_expanded_ir", "source_lift_call_ir", "source_command_call_ir",
     "source_command_ir_resolved",
     "same_module_local_declarations",
     "external_module_edges", "external_definition_bodies",
@@ -54,7 +55,7 @@ def validate_kernel_root(raw: str) -> dict:
     if not isinstance(receipt, dict) or set(receipt) != EXPECTED_FIELDS:
         raise ValueError("kernel root evidence has a missing or extra field")
     fixed = {
-        "format": "original-query-kernel-root-v9",
+        "format": "original-query-kernel-root-v10",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -282,6 +283,52 @@ def validate_kernel_root(raw: str) -> dict:
                 for name, kind in expected_core_symbols.items())):
         raise ValueError("source reconstruction core declaration evidence absent")
 
+    expected_native = {
+        "kind": "seq",
+        "first": unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.reconstruct"),
+        "second": {
+            "kind": "seq",
+            "first": unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.canonicalWideRead"),
+            "second": unresolved("OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.clearCaches"),
+        },
+    }
+    if receipt["source_native_command_ir"] != expected_native:
+        raise ValueError("original reconstruction native sequence or child identities changed")
+    expected_expanded_core = {
+        "kind": "seq",
+        "first": unresolved(prepare),
+        "second": expected_native,
+    }
+    if receipt["source_core_expanded_ir"] != expected_expanded_core:
+        raise ValueError("source-expanded reconstruction core differs from original")
+    prep = receipt["source_prepare_obligation"]
+    if (not isinstance(prep, dict) or set(prep) != {
+            "kind", "declaration", "first_constructor", "call_program",
+            "bank_command", "program_argument_count", "bank_argument_count",
+            "program_expression_nodes", "bank_expression_nodes",
+            "program_immediate_symbols", "bank_immediate_symbols",
+            "embedded_in_rust_ir",
+    } or prep["kind"] != "source-only-unresolved-sequence" or
+            prep["declaration"] != prepare or
+            prep["first_constructor"] != "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call" or
+            prep["call_program"] != "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram" or
+            prep["bank_command"] != "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd" or
+            prep["embedded_in_rust_ir"] is not False):
+        raise ValueError("original preparation source obligation forged or prematurely lowered")
+    for prefix in ("program", "bank"):
+        count = prep[prefix + "_argument_count"]
+        nodes = prep[prefix + "_expression_nodes"]
+        children = prep[prefix + "_immediate_symbols"]
+        if (type(count) is not int or not 1 <= count <= 24 or
+                type(nodes) is not int or not 1 <= nodes <= 512 or
+                not isinstance(children, list) or len(children) > 512 or
+                len(children) != len(set(children)) or
+                any(type(s) is not str or not s or len(s) > 512 for s in children)):
+            raise ValueError("original preparation finite source evidence invalid")
+    if (prep["call_program"] not in prep["program_immediate_symbols"] or
+            prep["bank_command"] not in prep["bank_immediate_symbols"]):
+        raise ValueError("original preparation source target missing from captured expression")
+
     expected_call = {
         "kind": "call",
         "program": {
@@ -291,7 +338,7 @@ def validate_kernel_root(raw: str) -> dict:
             "source": {
                 "kind": "composed", "r": 40, "s": 768,
                 "input": 256, "output": 323,
-                "command": expected_core,
+                "command": expected_expanded_core,
             },
         },
     }
@@ -538,6 +585,9 @@ def probe(args):
         "expanded_command": report["source_command_expanded_ir"],
         "source_lift_application": report["source_lift_application"],
         "source_core_command_ir": report["source_core_command_ir"],
+        "source_native_command_ir": report["source_native_command_ir"],
+        "source_prepare_obligation": report["source_prepare_obligation"],
+        "source_core_expanded_ir": report["source_core_expanded_ir"],
         "source_lift_call_ir": report["source_lift_call_ir"],
         "source_command_call_ir": report["source_command_call_ir"],
     }

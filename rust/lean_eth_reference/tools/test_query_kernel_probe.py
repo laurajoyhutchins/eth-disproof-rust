@@ -8,7 +8,7 @@ from query_stream_aot import DECLARATION
 
 def root_receipt():
     receipt = {
-        "format": "original-query-kernel-root-v9",
+        "format": "original-query-kernel-root-v10",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -247,6 +247,36 @@ def root_receipt():
         {"name": prepare, "kind": "definition"},
         {"name": native, "kind": "definition"},
     ])
+    def src_ref(name):
+        return {"kind": "unresolved", "declaration": name, "source_kind": "definition"}
+    native_seq = {
+        "kind": "seq",
+        "first": src_ref("OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.reconstruct"),
+        "second": {
+            "kind": "seq",
+            "first": src_ref("OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.canonicalWideRead"),
+            "second": src_ref("OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.clearCaches"),
+        },
+    }
+    receipt["source_native_command_ir"] = native_seq
+    receipt["source_core_expanded_ir"] = {
+        "kind": "seq", "first": src_ref(prepare), "second": native_seq,
+    }
+    receipt["source_prepare_obligation"] = {
+        "kind": "source-only-unresolved-sequence",
+        "declaration": prepare,
+        "first_constructor": "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call",
+        "call_program": "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram",
+        "bank_command": "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd",
+        "program_argument_count": 5,
+        "bank_argument_count": 7,
+        "program_expression_nodes": 20,
+        "bank_expression_nodes": 25,
+        "program_immediate_symbols": ["OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram", "OfNat.ofNat"],
+        "bank_immediate_symbols": ["OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd", "OfNat.ofNat"],
+        "embedded_in_rust_ir": False,
+    }
+    call["program"]["source"]["command"] = receipt["source_core_expanded_ir"]
     receipt["source_lift_call_ir"] = call
     receipt["source_command_call_ir"] = json.loads(
         json.dumps(receipt["source_command_expanded_ir"])
@@ -540,6 +570,34 @@ class KernelRootReceiptTests(unittest.TestCase):
                     observed["immediate_symbol_kinds"][-1]["kind"] = "theorem"
                 with self.assertRaises(ValueError):
                     validate_kernel_root(json.dumps(report))
+
+    def test_native_sequence_and_preparation_source_obligation_fail_closed(self):
+        validate_kernel_root(json.dumps(root_receipt()))
+        for mutation in ("swap_native", "forge_wide", "drop_cleanup",
+                         "alter_core", "promote_prepare", "alter_bank",
+                         "negative_node", "forge_program"):
+            with self.subTest(mutation=mutation):
+                r = root_receipt()
+                native = r["source_native_command_ir"]
+                prep = r["source_prepare_obligation"]
+                if mutation == "swap_native":
+                    native["first"], native["second"] = native["second"], native["first"]
+                elif mutation == "forge_wide":
+                    native["second"]["first"]["declaration"] = "OAI.Forged.read"
+                elif mutation == "drop_cleanup":
+                    native["second"]["second"] = {"kind": "skip"}
+                elif mutation == "alter_core":
+                    r["source_core_expanded_ir"]["first"]["source_kind"] = "theorem"
+                elif mutation == "promote_prepare":
+                    prep["embedded_in_rust_ir"] = True
+                elif mutation == "alter_bank":
+                    prep["bank_command"] = "OAI.Forged.bank"
+                elif mutation == "negative_node":
+                    prep["program_expression_nodes"] = -2
+                else:
+                    prep["program_immediate_symbols"] = ["OAI.Forged.program"]
+                with self.assertRaises(ValueError):
+                    validate_kernel_root(json.dumps(r))
 
     def test_source_derived_partial_call_has_exact_finite_maps_and_refusal(self):
         report = validate_kernel_root(json.dumps(root_receipt()))

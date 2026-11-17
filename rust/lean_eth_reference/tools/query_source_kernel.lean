@@ -420,7 +420,92 @@ private def originalCoreCommand (env : Environment) : IO Json := do
     | _ => throw <| IO.userError "original reconstruction child is not a source definition"
   return (← sourceCommandPrefix env info.value 32 #[])
 
-private def originalLiftCall (env : Environment) : IO Json := do
+/-! Expand original reconstruction native structure without executing any of
+the three referenced children. Every constructor and named child is read from
+the pinned Lean environment and checked before being represented in Rust IR. -/
+private def originalReconstructionNative (env : Environment) : IO Json := do
+  let name := qualified "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.command"
+  let some (.defnInfo info) := env.find? name
+    | throw <| IO.userError "original reconstruction native definition missing"
+  unless headIdentity info.value == "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq" do
+    throw <| IO.userError "original native reconstruction no longer sequences"
+  let outer := info.value.getAppArgs
+  unless outer.size == 4 do
+    throw <| IO.userError "original native reconstruction outer arity changed"
+  unless headIdentity outer[2]! == "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.reconstruct" &&
+      outer[2]!.getAppArgs.isEmpty do
+    throw <| IO.userError "original native reconstruction first child changed"
+  let tail := outer[3]!
+  unless headIdentity tail == "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq" do
+    throw <| IO.userError "original native reconstruction inner sequence missing"
+  let inner := tail.getAppArgs
+  unless inner.size == 4 do
+    throw <| IO.userError "original native reconstruction inner arity changed"
+  unless headIdentity inner[2]! == "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.canonicalWideRead" &&
+      inner[2]!.getAppArgs.isEmpty do
+    throw <| IO.userError "original native wide-readback child changed"
+  unless headIdentity inner[3]! == "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.clearCaches" &&
+      inner[3]!.getAppArgs.isEmpty do
+    throw <| IO.userError "original native cache cleanup child changed"
+  for child in #[outer[2]!, inner[2]!, inner[3]!] do
+    match env.find? (qualified (headIdentity child)) with
+    | some (.defnInfo _) => pure ()
+    | _ => throw <| IO.userError "original native child is not a definition"
+  return (← sourceCommandPrefix env info.value 32 #[])
+
+/-! Inspect the two terms in the original Count.Prepare command. They remain
+source-only obligations: the clearProgram's complete instruction table and
+clearCmd's bank/port loop have NOT been reified to executable native IR. -/
+private def originalPrepareEvidence (env : Environment) : IO Json := do
+  let name := qualified "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.command"
+  let some (.defnInfo info) := env.find? name
+    | throw <| IO.userError "original preparation command definition missing"
+  unless headIdentity info.value == "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq" do
+    throw <| IO.userError "original preparation command is not a sequence"
+  let args := info.value.getAppArgs
+  unless args.size == 4 do
+    throw <| IO.userError "original preparation sequence arity changed"
+  let call := args[2]!
+  unless headIdentity call == "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call" do
+    throw <| IO.userError "original preparation first child is not Cmd.call"
+  let callArgs := call.getAppArgs
+  if callArgs.isEmpty then
+    throw <| IO.userError "original preparation call has no program"
+  let program := callArgs.back!
+  unless headIdentity program == "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram" do
+    throw <| IO.userError "original preparation call target changed"
+  let bank := args[3]!
+  unless headIdentity bank == "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd" do
+    throw <| IO.userError "original preparation bank-clear definition changed"
+  let programArgs := program.getAppArgs
+  let bankArgs := bank.getAppArgs
+  if programArgs.size == 0 || programArgs.size > 24 ||
+      bankArgs.size == 0 || bankArgs.size > 24 then
+    throw <| IO.userError "original preparation applied source argument budget"
+  let (programSymbols, programNodes) ←
+    match immediateSymbols program 512 with
+    | .ok pair => pure pair
+    | .error reason => throw <| IO.userError s!"prepare clearProgram: {reason}"
+  let (bankSymbols, bankNodes) ←
+    match immediateSymbols bank 512 with
+    | .ok pair => pure pair
+    | .error reason => throw <| IO.userError s!"prepare clearCmd: {reason}"
+  return Json.mkObj [
+    ("kind", toJson "source-only-unresolved-sequence"),
+    ("declaration", toJson name.toString),
+    ("first_constructor", toJson "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.call"),
+    ("call_program", toJson "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram"),
+    ("bank_command", toJson "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd"),
+    ("program_argument_count", toJson programArgs.size),
+    ("bank_argument_count", toJson bankArgs.size),
+    ("program_expression_nodes", toJson programNodes),
+    ("bank_expression_nodes", toJson bankNodes),
+    ("program_immediate_symbols", toJson programSymbols),
+    ("bank_immediate_symbols", toJson bankSymbols),
+    ("embedded_in_rust_ir", toJson false)
+  ]
+
+private def originalLiftCall (env : Environment) (expandedCore : Json) : IO Json := do
   let commandName := qualified
     "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command"
   let some (.defnInfo source) := env.find? commandName
@@ -485,7 +570,7 @@ private def originalLiftCall (env : Environment) : IO Json := do
   unless headIdentity inner ==
       "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled" do
     throw <| IO.userError "source liftProgram no longer wraps compiled"
-  let core ← originalCoreCommand env
+  let core := expandedCore
   return Json.mkObj [
     ("kind", toJson "call"),
     ("program", Json.mkObj [
@@ -583,7 +668,15 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let expandedIR ← sourceCommandPrefix env commandInfo.value 64 inlinedNames
   let liftApplication ← inspectSourceLift env
   let coreIR ← originalCoreCommand env
-  let liftCall ← originalLiftCall env
+  let nativeIR ← originalReconstructionNative env
+  let prepareEvidence ← originalPrepareEvidence env
+  let coreFirst ← fieldRequired coreIR "first"
+  let expandedCore := Json.mkObj [
+    ("kind", toJson "seq"),
+    ("first", coreFirst),
+    ("second", nativeIR)
+  ]
+  let liftCall ← originalLiftCall env expandedCore
   let (callIR, liftUses) ← replaceOriginalLift expandedIR liftCall 64
   unless liftUses == 1 do
     throw <| IO.userError "original source command must contain one lift application"
@@ -593,7 +686,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let (secondBodies, _) ←
     inspectExternalDefinitions env secondTargets 65536 65536 false
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v9"),
+    ("format", toJson "original-query-kernel-root-v10"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -610,6 +703,9 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("source_command_expanded_ir", expandedIR),
     ("source_lift_application", liftApplication),
     ("source_core_command_ir", coreIR),
+    ("source_native_command_ir", nativeIR),
+    ("source_prepare_obligation", prepareEvidence),
+    ("source_core_expanded_ir", expandedCore),
     ("source_lift_call_ir", liftCall),
     ("source_command_call_ir", callIR),
     ("source_command_ir_resolved", toJson false),

@@ -345,6 +345,16 @@ def validate_kernel_root(raw: str) -> dict:
         raise ValueError("original preparation port-list definition evidence invalid")
     # A source port-list body may reference imported declarations through
     # their actual qualified names. Do not infer contents from the reference.
+    port_set = set(port_symbols)
+    source_dependencies = {
+        "List.dedup",
+        "List.map",
+        "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.crtStacks",
+        "OAI.Algorithms.SubexponentialSAT.SqrtLog.ReconstructionProgram.NativeState.cleanPorts",
+        "OAI.Algorithms.SubexponentialSAT.SqrtLog.ReconstructionProgram.InputReady.emptyPorts",
+    }
+    if not source_dependencies.issubset(port_set):
+        raise ValueError("original preparation port list lost source-native dependencies")
     if prep["bank_port_declaration"] not in prep["bank_immediate_symbols"]:
         raise ValueError("original bank clear no longer references its source port list")
     for prefix in ("program", "bank"):

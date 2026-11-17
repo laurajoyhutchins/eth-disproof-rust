@@ -284,7 +284,13 @@ def root_receipt():
         "bank_indices": [699, 0, 1],
         "bank_port_declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.ports",
         "bank_port_definition_nodes": 12,
-        "bank_port_definition_symbols": ["List.dedup", "List.append"],
+        "bank_port_definition_symbols": [
+            "List.dedup",
+            "List.map",
+            "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.crtStacks",
+            "OAI.Algorithms.SubexponentialSAT.SqrtLog.ReconstructionProgram.NativeState.cleanPorts",
+            "OAI.Algorithms.SubexponentialSAT.SqrtLog.ReconstructionProgram.InputReady.emptyPorts",
+        ],
         "bank_port_values_resolved": False,
         "program_expression_nodes": 20,
         "bank_expression_nodes": 25,
@@ -619,7 +625,8 @@ class KernelRootReceiptTests(unittest.TestCase):
         report = validate_kernel_root(json.dumps(root_receipt()))
         assert report["source_prepare_obligation"]["bank_port_values_resolved"] is False
         for change in ("program_scratch", "bank_value", "stack_count", "port_name",
-                       "port_promotion", "port_body_ref", "reorder", "forge_call"):
+                       "port_promotion", "port_body_ref", "port_dependency",
+                       "reorder", "forge_call"):
             with self.subTest(change=change):
                 r = root_receipt()
                 evidence = r["source_prepare_obligation"]
@@ -636,6 +643,8 @@ class KernelRootReceiptTests(unittest.TestCase):
                     evidence["bank_port_values_resolved"] = True
                 elif change == "port_body_ref":
                     evidence["bank_port_definition_nodes"] = -1
+                elif change == "port_dependency":
+                    evidence["bank_port_definition_symbols"].pop()
                 elif change == "reorder":
                     ir["first"], ir["second"] = ir["second"], ir["first"]
                 else:

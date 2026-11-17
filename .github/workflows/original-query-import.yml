@@ -14,6 +14,9 @@ on:
       - 'rust/lean_eth_reference/tools/query_source_kernel.lean'
       - 'rust/lean_eth_reference/tools/query_kernel_probe.py'
       - 'rust/lean_eth_reference/tools/test_query_kernel_probe.py'
+      - 'rust/lean_eth_reference/tools/prepare_ports_dump.lean'
+      - 'rust/lean_eth_reference/tools/prepare_ports_probe.py'
+      - 'rust/lean_eth_reference/tools/test_prepare_ports_probe.py'
       - 'rust/lean_eth_reference/tools/export_source_graph.lean'
       - 'rust/lean_eth_reference/tools/run_source_graph_batch.py'
       - 'rust/lean_eth_reference/tools/verify_source_graph.py'
@@ -68,6 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_kernel_probe.py' -v
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_prepare_ports_probe.py' -v
 
       - name: Test native Rust stage builder and strict refusal
         run: |
@@ -251,6 +255,27 @@ jobs:
                 "transitive_closure=false rust_executable=false")
           PY
           echo 'Original QueryStream same-module kernel graph observed; external computational closure and executable parity remain unverified.' >> "$GITHUB_STEP_SUMMARY"
+
+      # Independent Lean *runtime* observation of the actual finite port list.
+      # Not a Lean-kernel theorem, an executable Rust command, or a replacement
+      # for source closure. The bounded, original-toolchain computation can
+      # fail with a retained typed REFUSED receipt instead of inventing ports.
+      - name: Evaluate original Count.Prepare port list under pinned Lean
+        if: env.IMPORT_STAGE == 'query' && steps.kernel-root.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/original-query-kernel"
+          printf '%s\n' '{"status":"REFUSED","stage":"prepare-ports-evaluation","reason":"original Lean evaluation not validated"}' > "$out/prepare-ports.report.json"
+          (
+            cd "$LEAN_ROOT"
+            timeout --signal=TERM --kill-after=5s 120s lake env lean -j 1 -M 2048 --run \
+              "$GITHUB_WORKSPACE/rust/lean_eth_reference/tools/prepare_ports_dump.lean"
+          ) > "$out/prepare-ports.stdout.log" 2> "$out/prepare-ports.stderr.log"
+          python3 rust/lean_eth_reference/tools/prepare_ports_probe.py \
+            --lean-stdout "$out/prepare-ports.stdout.log" \
+            --source-receipt "$out/query-kernel-root.report.json" \
+            --output "$out/prepare-ports.report.json"
 
       - name: Retain original kernel-only graph or typed refusal independently
         if: always() && env.IMPORT_STAGE == 'query'

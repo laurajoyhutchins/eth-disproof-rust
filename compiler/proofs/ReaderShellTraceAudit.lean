@@ -201,7 +201,9 @@ end ReaderShellTraceAudit
 open Lean Elab Command
 
 run_cmd do
-  let raw ← liftIO <| IO.FS.readFile "artifacts/lean-c-generated-heap/source-shell-physical.tsv"
+  let override ← liftIO <| IO.getEnv "LR_SOURCE_TRACE_AUDIT"
+  let tracePath := override.getD "artifacts/lean-c-generated-heap/source-shell-physical.tsv"
+  let raw ← liftIO <| IO.FS.readFile tracePath
   let lines := raw.splitOn "\n" |>.filter (· != "")
   let expectedHeader :=
     "case\tevent\toutcome\tparentRC\tchildRC\toldStampRC\tchildField\tborrowedChild\tstampSlot\tobservedUnique\tparentId\tchildId\toldStampId"

@@ -113,7 +113,8 @@ jobs:
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean"
             cp "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean" "./IndependentCauchySourceGrid.lean"
             lake env lean -o ".lake/build/lib/lean/IndependentCauchySourceGrid.olean" "./IndependentCauchySourceGrid.lean"
-            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean"
+            cp "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean" "./IndependentCauchyBinomialParity.lean"
+            lake env lean -o ".lake/build/lib/lean/IndependentCauchyBinomialParity.olean" "./IndependentCauchyBinomialParity.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyFactorial.lean"
           )
           echo 'INDEPENDENT_CNF_COUNT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"

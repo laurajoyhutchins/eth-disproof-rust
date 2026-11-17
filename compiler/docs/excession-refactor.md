@@ -2,7 +2,7 @@
 
 ## Revisions and scope
 
-This is a structure-only extraction from `src/lib.rs`. `src/names.rs` owns canonical Lean.Name text encoding and injective generated Rust symbol names. `src/primitives.rs` owns the shared primitive whitelist and both tab-separated registry lookups. Original functions and lookup tables are moved, not rewritten. IR decoding, construction, the canonical GMP/Rc runtime, Lean ABI entrypoints and G2 residualization are unchanged.
+This is a structure-only extraction from `backend/src/lib.rs`. `backend/src/names.rs` owns canonical Lean.Name text encoding and injective generated Rust symbol names. `backend/src/primitives.rs` owns the shared primitive whitelist and both tab-separated registry lookups. Original functions and lookup tables are moved, not rewritten. IR decoding, construction, the canonical GMP/Rc runtime, Lean ABI entrypoints and G2 residualization are unchanged.
 
 The critical invariant is that *dependency discovery and expression lowering consult the same primitive classifications*. An unsupported primitive must be refused, never approximated or delegated to a substitute host implementation.
 
@@ -12,7 +12,7 @@ The pull request runs the pinned Excession CLI (commit `21d2e0fd52b6099bb88eae14
 
 ```sh
 excession agent locate --repo . --rev BASE --task 'Lean compiler primitive registry and source name encoding' --index-segments 256 --json
-excession agent context --repo . --rev BASE --focus compiler/src/lib.rs,compiler/primitive-registry.tsv,compiler/runtime-primitive-registry.tsv
+excession agent context --repo . --rev BASE --focus compiler/backend/src/lib.rs,compiler/primitive-registry.tsv,compiler/runtime-primitive-registry.tsv
 excession agent verify --repo . --base BASE --candidate HEAD
 ```
 

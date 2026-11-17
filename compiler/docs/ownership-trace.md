@@ -14,7 +14,7 @@ The exact Lean **4.34.1** C header and runtime are the reference:
 - [Actual ownership-dependent `lean_apply_1` implementation](https://github.com/leanprover/lean4/blob/v4.34.1/src/runtime/apply.cpp)
 - [Lean C code emitter](https://github.com/leanprover/lean4/blob/v4.34.1/src/Lean/Compiler/LCNF/EmitC.lean)
 
-`native/abi.c::lr_source_rc_control_mask` executes real Lean runtime
+`frontend/ffi/abi.c::lr_source_rc_control_mask` executes real Lean runtime
 objects, calls, conditional releases and a real partially applied closure,
 once uniquely owned and once shared. The result must be exactly **214**.
 It is checked by the native ABI probe at compiler startup.
@@ -31,7 +31,7 @@ It is checked by the native ABI probe at compiler startup.
 | 7 | Applying one shared PAP reference leaves the other alive | Shared |
 | 8 | Releasing the final PAP reference releases its captured root | Exclusive |
 
-The Rust source-ledger test in `src/lib.rs::SOURCE_RC_TEST_SOURCE` uses
+The Rust source-ledger test in `backend/src/lib.rs::SOURCE_RC_TEST_SOURCE` uses
 the actual canonical generated `__LeanValue` runtime, with the same
 checkpoints. Both independent controls must produce bitmask **214**. A
 shared closure's source reference must be consumed on application even if

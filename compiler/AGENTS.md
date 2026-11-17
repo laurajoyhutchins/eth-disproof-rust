@@ -7,11 +7,11 @@ Current concrete layout:
 
 - `NativeRust.lean`, `lakefile.lean`, `lean-toolchain`: Lean-side
   compilation and public source commands.
-- `native/abi.c`: **compile-time** borrowed compiler-IR accessors.
+- `frontend/ffi/abi.c`: **compile-time** borrowed compiler-IR accessors.
   This is not the planned execution-time Lean C adapter.
-- `src/lib.rs`, `src/reader/`, `src/names.rs`, `src/primitives.rs`:
+- `backend/src/lib.rs`, `backend/src/reader/`, `backend/src/names.rs`, `backend/src/primitives.rs`:
   one Rust emitter and its admission/refusal rules.
-- `src/runtime/immutable_value.rs`: currently embedded bounded GMP/`Rc`
+- `runtime/rust/immutable_value.rs`: currently embedded bounded GMP/`Rc`
   runtime. It is not a general source RC fidelity theorem.
 - `fixtures/` and `examples/`: original Lean source and differential
   witness inputs. `scripts/`: pinned checks and project compiler.

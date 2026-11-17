@@ -2,7 +2,7 @@
 
 **Design contract, not a shipped API.** The canonical compiler IR to Rust
 backend currently embeds a standalone value representation from
-`src/runtime/immutable_value.rs`. The next change separates emitted
+`runtime/rust/immutable_value.rs`. The next change separates emitted
 operations from their execution substrate, without duplicating Lean's
 ownership optimizer.
 
@@ -16,7 +16,7 @@ Lean compiler IR
           -> source-faithful Rust-native runtime  [after comparison]
 ~~~
 
-The compiler's `native/abi.c` exists to **read borrowed Lean compiler IR
+The compiler's `frontend/ffi/abi.c` exists to **read borrowed Lean compiler IR
 during code generation**. It is not an execution-time Lean C runtime
 adapter. The two FFI contracts require separate conformance tests.
 

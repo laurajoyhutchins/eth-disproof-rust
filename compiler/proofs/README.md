@@ -32,7 +32,7 @@ emitter.**
 
 The correspondence being audited is specifically:
 
-| Source operation | `primitive-registry.tsv` | Rust emission in `src/reader/expr_call.rs` |
+| Source operation | `primitive-registry.tsv` | Rust emission in `backend/src/reader/expr_call.rs` |
 | --- | --- | --- |
 | `UInt64.add` | `u64\twrapping_add` | `{lhs}.wrapping_add({rhs})` |
 | `UInt64.mul` | `u64\twrapping_mul` | `{lhs}.wrapping_mul({rhs})` |
@@ -142,7 +142,7 @@ and nested Bool fragment. The new native entry point
 `NativeRust.scalarABIObserve` traverses that **same live borrowed original
 object** using production Reader's `checked_tag`, `field`, `var`,
 `array`, `ty`, `name` and `FnBodyView` accessors, backed by the pinned
-`native/abi.c` shim. CI compares the complete structural readbacks.
+`frontend/ffi/abi.c` shim. CI compares the complete structural readbacks.
 
 The verified runtime observations include declaration and parameter layouts,
 original source variable IDs, literal values, primitive names and operands,
@@ -161,7 +161,7 @@ without axioms. These theorems do not depend on a physical pointer model.
 **Important trust boundary:** this is live differential evidence for the
 actual borrowed C/Rust decoder plus a kernel proof of the abstract tag
 semantics. It is **not** a formal refinement proof of arbitrary Lean heap
-objects through `lean.h`, `native/abi.c`, Rust unsafe reads or the Lean
+objects through `lean.h`, `frontend/ffi/abi.c`, Rust unsafe reads or the Lean
 runtime's physical tagged-value layout. Those remain explicitly open, as
 does a `rustc` execution theorem.
 

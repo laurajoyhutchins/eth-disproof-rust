@@ -1,5 +1,7 @@
 # Native Lean-to-Rust compiler: executable IR subset
 
+The [backend-first architecture decision](docs/backend-first-architecture.md) sets the next target: keep Lean's compiler authoritative; establish generated-Rust correspondence against Lean's C runtime first; replace the execution runtime only after that baseline. The current standalone value runtime below is a tested subset, not a proof of full Lean ownership fidelity. A Rust proof kernel remains a separate project.
+
 For a measured, original-source comparison with Lean's **native C backend**,
 including checksum parity, runtime timings, compiler phases, executable sizes,
 and dynamic-linkage caveats, see [COMPARISON.md](COMPARISON.md).

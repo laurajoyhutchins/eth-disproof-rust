@@ -411,13 +411,13 @@ pub fn parse_dimacs(text: &str) -> Result<Cnf, Error> {
     Cnf::new(n, rows)
 }
 
-pub mod representation_matching;
 pub mod bit_program;
 pub mod lean_codegen;
 #[path = "counting/native_high.rs"]
 pub mod native_high;
 #[path = "query/native_tuple.rs"]
 pub mod native_tuple;
+pub mod representation_matching;
 
 #[path = "counting/finite_fallback.rs"]
 pub mod finite_fallback;

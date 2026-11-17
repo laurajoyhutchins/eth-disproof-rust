@@ -22,6 +22,7 @@ jobs:
       - name: Verify closed-output format and refusal behavior
         run: |
           python3 -m unittest discover -s eth/tools/lean-proof-graph -p 'test_validate*.py' -v
+          bash eth/tools/lean-proof-graph/test_run_pinned.sh
 
   lean-extractors:
     if: >-

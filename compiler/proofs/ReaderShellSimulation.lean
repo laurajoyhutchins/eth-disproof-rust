@@ -181,7 +181,9 @@ theorem step_simulation (s : Source) (instr : Instruction) :
   | retainParent =>
       simp [sourceStep, physicalStep, represent]
   | releaseSharedParent =>
-      simp [sourceStep, physicalStep, represent]
+      by_cases h : s.parentCredits ≤ 1
+      · simp [sourceStep, physicalStep, represent, h]
+      · simp [sourceStep, physicalStep, represent, h]
   | stampDec =>
       cases hs : s.stampSlot <;>
         simp [sourceStep, physicalStep, represent, credit, hs]
@@ -297,13 +299,15 @@ theorem physical_reuse_trace (external : Nat) :
 /-- An unspent old stamp is a hard refusal: a shell-only deletion cannot
 erase its existing field credit. -/
 def uniqueBeforeStampDec (external : Nat) : Source :=
-  { (initial external) with borrowedChild := true, observedUnique := true }
+  let s := initial external
+  { s with borrowedChild := true, observedUnique := true }
 
 theorem no_del_before_stamp_release (external : Nat) :
     sourceStep (uniqueBeforeStampDec external) .shellDel = none := rfl
 
 def sharedBeforeStampDec (external : Nat) : Source :=
-  { (initial external) with parentCredits := 2, observedUnique := false }
+  let s := initial external
+  { s with parentCredits := 2, observedUnique := false }
 
 theorem no_stamp_release_on_shared_parent (external : Nat) :
     sourceStep (sharedBeforeStampDec external) .stampDec = none := rfl
@@ -316,11 +320,13 @@ def incorrectRecursiveDel (p : Physical) : Physical :=
     childRC := p.childRC - 1 }
 
 def beforeDel (external : Nat) : Source :=
-  { (initial external) with stampSlot := .spent,
+  let s := initial external
+  { s with stampSlot := .spent,
     borrowedChild := true, observedUnique := true }
 
 def afterDel (external : Nat) : Source :=
-  { (initial external) with parentCredits := 0,
+  let s := initial external
+  { s with parentCredits := 0,
     stampSlot := .spent, childField := false,
     childProjectionCredits := 1, borrowedChild := true,
     observedUnique := true }

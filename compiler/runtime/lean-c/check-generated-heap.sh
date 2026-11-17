@@ -33,6 +33,8 @@ rustc --edition=2021 --cfg 'feature="lean-c-runtime"' \
 # Report original Lean C ABI and ownership branch before the differential
 # comparison. These are diagnostic source facts, not assumptions about IR.
 grep -nE 'l_RuntimeHeap_(first|make|observe|nest|payload|nestedFirst)[(]' "$out/RuntimeHeapKernels.c" | head -32
+# Source-level ownership actions at the exact C ABI boundary.
+sed -n '290,325p' "$out/RuntimeHeapKernels.c"
 lean -c "$out/HeapDriver.c" runtime/lean-c/HeapDriver.lean
 leanc -O2 -o "$out/lean-c-generated-heap" \
   "$out/RuntimeHeapKernels.c" "$out/HeapDriver.c" \

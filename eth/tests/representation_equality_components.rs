@@ -5,9 +5,7 @@ fn brute_force(region: &EqualityComponentRegion) -> i128 {
     assert!(region.len() <= 6);
     (0..(1usize << region.len()))
         .map(|mask| {
-            let bits: Vec<_> = (0..region.len())
-                .map(|i| ((mask >> i) & 1) == 1)
-                .collect();
+            let bits: Vec<_> = (0..region.len()).map(|i| ((mask >> i) & 1) == 1).collect();
             region.value_at(&bits).expect("small independent oracle")
         })
         .sum()
@@ -30,11 +28,7 @@ fn all_simple_equality_graphs_to_five_vertices_match_full_truth_tables() {
                 }
             }
             let receipt = region.contract().unwrap();
-            assert_eq!(
-                receipt.value,
-                brute_force(&region),
-                "n={n}, graph={mask}"
-            );
+            assert_eq!(receipt.value, brute_force(&region), "n={n}, graph={mask}");
             assert_eq!(receipt.variable_count, n);
             assert_eq!(receipt.edge_count, mask.count_ones() as usize);
             assert_eq!(receipt.component_count, n - receipt.successful_unions);
@@ -55,7 +49,10 @@ fn overlapping_edges_and_cycles_are_supported_exactly() {
     }
     assert_eq!(region.component_count(), 2);
     assert_eq!(region.edge_count(), 4);
-    assert_eq!(region.contract().unwrap().value, (1 * 3 * 5 + 2 * 4 * 6) * (7 + 8));
+    assert_eq!(
+        region.contract().unwrap().value,
+        (1 * 3 * 5 + 2 * 4 * 6) * (7 + 8)
+    );
     assert_eq!(region.contract().unwrap().value, brute_force(&region));
     assert!(region.as_unary_product_if_unconstrained().is_err());
 }
@@ -95,7 +92,10 @@ fn overflow_refuses_without_a_modular_or_saturated_count() {
     region.apply_equality(0, 1).unwrap();
     assert!(matches!(region.contract(), Err(Error::Overflow)));
     assert_eq!(region.value_at(&[true, false]).unwrap(), 0);
-    assert!(matches!(region.value_at(&[false, false]), Err(Error::Overflow)));
+    assert!(matches!(
+        region.value_at(&[false, false]),
+        Err(Error::Overflow)
+    ));
 }
 
 #[test]
@@ -106,6 +106,9 @@ fn empty_and_unconstrained_components_have_correct_identity() {
     assert_eq!(empty.contract().unwrap().component_count, 0);
 
     let unconstrained = EqualityComponentRegion::new(vec![[2, 3], [4, 5]]);
-    assert_eq!(unconstrained.as_unary_product_if_unconstrained().unwrap(), &[[2, 3], [4, 5]]);
+    assert_eq!(
+        unconstrained.as_unary_product_if_unconstrained().unwrap(),
+        &[[2, 3], [4, 5]]
+    );
     assert_eq!(unconstrained.contract().unwrap().value, (2 + 3) * (4 + 5));
 }

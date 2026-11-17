@@ -316,19 +316,26 @@ theorem no_stamp_release_on_shared_parent (external : Nat) :
 shell deletion violates the representation relation even when its
 returned data values happen to match. -/
 def incorrectRecursiveDel (p : Physical) : Physical :=
-  { p with parentRC := 0, childField := false,
+  { p with
+    parentRC := 0
+    childField := false
     childRC := p.childRC - 1 }
 
 def beforeDel (external : Nat) : Source :=
   let s := initial external
-  { s with stampSlot := .spent,
-    borrowedChild := true, observedUnique := true }
+  { s with
+    stampSlot := .spent
+    borrowedChild := true
+    observedUnique := true }
 
 def afterDel (external : Nat) : Source :=
   let s := initial external
-  { s with parentCredits := 0,
-    stampSlot := .spent, childField := false,
-    childProjectionCredits := 1, borrowedChild := true,
+  { s with
+    parentCredits := 0
+    stampSlot := .spent
+    childField := false
+    childProjectionCredits := 1
+    borrowedChild := true
     observedUnique := true }
 
 theorem incorrect_child_rc_zero (external : Nat) :

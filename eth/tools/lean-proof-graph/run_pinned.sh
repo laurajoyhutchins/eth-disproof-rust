@@ -51,9 +51,9 @@ lake update
   echo "Wrong Mathlib source pin" >&2; exit 1;
 }
 lake build "$MODULE"
-lake env lean --run "$HERE/Extract.lean" "$MODULE" "$OUT/$SOURCE.jsonl" "${ROOTS[@]}
+lake env lean --run "$HERE/Extract.lean" "$MODULE" "$OUT/$SOURCE.jsonl" "${ROOTS[@]}"
 python3 "$HERE/validate.py" "$OUT/$SOURCE.jsonl" \
   --summary "$OUT/$SOURCE-summary.json" \
   --project-view "$OUT/$SOURCE-project-graph.json" \
   --source-sha "$SHA" --mathlib-sha "$MATHLIB" --lean-version "$VERSION" \
-  "${PREFIXES[@]}
+  "${PREFIXES[@]}"

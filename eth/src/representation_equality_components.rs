@@ -180,21 +180,17 @@ impl EqualityComponentRegion {
         let mut hops = 0u64;
         let mut multiplications = 0usize;
         let mut additions = 0usize;
-        for i in 0..n {
+        for (i, weights) in self.unary.iter().enumerate() {
             let root = self.find_readonly(i, &mut hops)?;
-            for bit in 0..2 {
-                factors[root][bit] = factors[root][bit]
-                    .checked_mul(self.unary[i][bit])
-                    .ok_or(Error::Overflow)?;
+            for (product, weight) in factors[root].iter_mut().zip(weights.iter()) {
+                *product = product.checked_mul(*weight).ok_or(Error::Overflow)?;
                 multiplications += 1;
             }
         }
         let mut result = 1i128;
-        for i in 0..n {
+        for (i, pair) in factors.iter().enumerate() {
             if self.parent[i] == i {
-                let component_sum = factors[i][0]
-                    .checked_add(factors[i][1])
-                    .ok_or(Error::Overflow)?;
+                let component_sum = pair[0].checked_add(pair[1]).ok_or(Error::Overflow)?;
                 additions += 1;
                 result = result.checked_mul(component_sum).ok_or(Error::Overflow)?;
                 multiplications += 1;

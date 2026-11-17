@@ -80,7 +80,7 @@ run_cmd do
   unless totalDel >= 2 do
     throwError "Pinned final IR lost the source-derived deletion witnesses"
   liftIO <| IO.FS.writeFile "artifacts/source-del-final-ir-status.txt"
-    s!"status={status}\nsource=RuntimeHeapDelKernels.lean\ncompiler=Lean.Compiler.compile\nfinal_ir=Lean.IR.findDecl\nfinal_del_count={totalDel}\nemitted_ir_source_del=NOT_YET_ESTABLISHED\n"
+    s!"status={status}\nsource=RuntimeHeapDelKernels.lean\ncompiler=Lean.Compiler.compile\nfinal_ir=Lean.IR.findDecl\nfinal_del_count={totalDel}\nstage=FINAL_IR_DISCOVERY_ONLY\n"
   logInfo m!"Source del candidate result: {status}"
 
 end RuntimeHeapDel.IRProbe

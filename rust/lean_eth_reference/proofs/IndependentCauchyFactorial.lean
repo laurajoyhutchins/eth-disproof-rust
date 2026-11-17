@@ -26,7 +26,7 @@ private theorem lower_difference_product (k : ℕ) :
       apply Finset.prod_congr rfl
       intro j hj
       exact (Nat.cast_sub (Nat.le_of_lt (Finset.mem_range.mp hj))).symm
-    _ = ((∏ j ∈ Finset.range k, k - j : ℕ) : ℤ) := by
+    _ = (((Finset.range k).prod (fun j : ℕ => k - j) : ℕ) : ℤ) := by
       simp
     _ = (k.factorial : ℤ) := by
       rw [← Nat.descFactorial_eq_prod_range, Nat.descFactorial_self]

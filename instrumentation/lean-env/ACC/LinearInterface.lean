@@ -139,13 +139,14 @@ def tensor {S' M' C' : Type*}
   coeff := fun st mode => I.coeff st.1 mode.1 * J.coeff st.2 mode.2
   basis := fun mode ctx => I.basis mode.1 ctx.1 * J.basis mode.2 ctx.2
   reconstruct := by
+    classical
     rintro ⟨s,t⟩ hst ⟨c,d⟩
     obtain ⟨hs,ht⟩ := Finset.mem_product.mp hst
     change I.row s c * J.row t d =
       ∑ mode ∈ I.modes.product J.modes,
         (I.coeff s mode.1 * J.coeff t mode.2) *
           (I.basis mode.1 c * J.basis mode.2 d)
-    rw [Finset.sum_product]
+    simp only [Finset.sum_product]
     calc
       I.row s c * J.row t d =
         (∑ mode ∈ I.modes, I.coeff s mode * I.basis mode c) *

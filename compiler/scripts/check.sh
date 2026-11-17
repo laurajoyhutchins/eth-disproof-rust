@@ -58,6 +58,19 @@ for theorem in projection_does_not_retain_source rc_alias_does_not_authorize_sou
     exit 2
   fi
 done
+# Owned call/jump transfers preserve each source allocation's credit count.
+# Borrowed formals, including repeated aliases, acquire no source credits.
+lean proofs/ReaderTransferCredits.lean | tee artifacts/reader-transfer-credits-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-transfer-credits-axioms.txt; then
+  echo 'Call/join source-credit proof contains sorryAx' >&2
+  exit 2
+fi
+for theorem in callOwned_conserves callBorrowed_conserves jumpOwned_conserves jumpBorrowed_conserves every_successful_transfer_trace_conserves source_inc_increases_count borrowed_without_inc_cannot_be_moved one_inc_authorizes_one_owned_transfer; do
+  if ! grep -Fq "'ReaderTransferCredits.${theorem}' " artifacts/reader-transfer-credits-axioms.txt; then
+    echo "Missing source-credit theorem axiom receipt: ${theorem}" >&2
+    exit 2
+  fi
+done
 lean -o proofs/ScalarFixture.olean proofs/ScalarFixture.lean
 lean -o proofs/ReaderScalarCertificate.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderScalarCertificate.lean
 # Kernel-check actual Lean IR operational semantics linked to Reader emission.
@@ -193,6 +206,12 @@ fi
 lean --load-dynlib="$NATIVE_LIB" examples/Example.lean
 # Physical reference-count observations must be source checked.
 lean --load-dynlib="$NATIVE_LIB" examples/BorrowFlagFixture.lean
+lean --load-dynlib="$NATIVE_LIB" examples/TransferContractFixture.lean \
+  | tee artifacts/transfer-contract-lean-ir.log
+if ! grep -Fq 'Pinned Lean.IR ownership transfer: double-arg direct call and join require two real source inc credits' artifacts/transfer-contract-lean-ir.log; then
+  echo 'Missing canonical Reader call/join transfer receipt' >&2
+  exit 2
+fi
 lean --load-dynlib="$NATIVE_LIB" examples/ReferenceBookkeepingFixture.lean
 # Run the small same-source ownership trace before the long performance matrix.
 bash scripts/check-ownership-object-trace.sh

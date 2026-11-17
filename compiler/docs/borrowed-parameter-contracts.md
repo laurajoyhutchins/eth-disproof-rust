@@ -154,3 +154,32 @@ read merely because `Rc` happened to preserve the underlying allocation.
 Complete source lifetime correctness, arbitrary alias/call interactions,
 finalization order, mutable heap identity, optimized MIR and the
 noncomputable ETH G2 program remain unproved.
+
+## Direct-call and join source-credit conservation
+
+The production Reader receives real pinned `Lean.IR.Param.borrow`,
+`Expr.fap`, `FnBody.jdecl` and `FnBody.jmp` objects. For each heap
+allocation, a source-owned reference moves independently of the number of
+Rust `Rc` implementation handles.
+
+`proofs/ReaderTransferCredits.lean` defines a deliberately narrow,
+single-allocation ledger of caller, callee, join and external ownership
+credits. An owned call/jump transfers one reference to the destination;
+a borrowed call/jump transfers none. An owned result return transfers one
+back. A real source `inc` creates exactly one additional credit. Every
+successfully admitted finite sequence of ownership *transfers* preserves
+the total source count, independent of Rust aliases.
+
+`examples/TransferContractFixture.lean` passes actual pinned
+`Lean.IR.Decl` and `Param` objects to the **production in-process Reader**.
+Direct calls and joins receive the same actual source object in two owned
+formal slots. One preceding `inc` must be refused at the second argument;
+two explicit source credits authorize both transfers; and two borrowed
+formals need no `inc` at all. The fixture complements the existing
+BorrowFlagFixture ownership checks.
+
+This is a kernel-verified *single-allocation credit accounting* theorem,
+not a mechanized physical C↔Rust heap simulation or full compiler
+correctness theorem. Recursive stacks, closure capture, destructor
+effects, arbitrary alias discovery, physical C ABI layout, G1 and G2
+remain open.

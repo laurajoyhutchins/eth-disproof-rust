@@ -26,7 +26,7 @@ open IndependentETH.OpenAIPackets
 
 /-- Enumerate the real edges once and place index k in packet k/L,
 slot k mod L. Both endpoints use this same packet-slot location. -/
-def enumeratePacking (E : Type*) [Fintype E] (L : ℕ)
+noncomputable def enumeratePacking (E : Type*) [Fintype E] (L : ℕ)
     (hL : 0 < L) : ValidPacking E ℕ L where
   packet e := ((Fintype.equivFin E e).val) / L
   slot e := ⟨((Fintype.equivFin E e).val) % L, Nat.mod_lt _ hL⟩
@@ -67,7 +67,7 @@ the *actual* original Anthropic Groundwork.Network structure.
 The single pair-label is a full Boolean edge assignment, so
 parallel edges and isolated-vertex scalar factors are all retained
 inside the row/column tables; no duplicate-label multiplicity. -/
-def twoSideNetwork {E : Type*} [Fintype E]
+def twoSideNetwork {E : Type*} [Fintype E] [DecidableEq E]
     (row column : (E → Bool) → ℤ) :
     Groundwork.Network (Fin 2) Unit (E → Bool) where
   S _ := {()}
@@ -83,7 +83,7 @@ private theorem pairs_two :
 /-- On exactly two nodes with unit states, the original Anthropic
 source value is the shared-label two-sided contraction. -/
 theorem twoSideNetwork_value
-    {E : Type*} [Fintype E]
+    {E : Type*} [Fintype E] [DecidableEq E]
     (row column : (E → Bool) → ℤ) :
     (twoSideNetwork row column).value =
       originalContraction row column := by

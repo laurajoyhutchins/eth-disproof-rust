@@ -116,3 +116,33 @@ A two-row example with equations u XOR v = b and u XOR v = c produces one residu
 For small interfaces, the optional polynomial lowering translates boundary parity equations into exact integer-polynomial indicators. These can enter the existing egg search and independent polynomial checker. The textual tree lowering may grow exponentially with the length of residual equations; the compact affine representation and evaluator avoid that expansion. This experiment therefore does **not** show a full-pipeline speedup from egg on the general affine input.
 
 Limitations: input is an explicit parity-equation system, not an automatically recognized general CNF. The implementation has no independently verified global bit-operation or peak-memory bound and no source-to-Rust correspondence to the pinned ETH QueryStream algorithm. Compact affine elimination does not refute ETH.
+
+
+### Strict source-CNF-to-affine bridge
+
+The affine module now includes a **narrow, fail-closed CNF recognizer**. Each
+accepted three-variable XOR equation must appear as exactly the four
+canonical three-literal clauses encoding even or odd parity, in the
+expected order. Every four-clause block is checked against the generated
+canonical encoding. Unknown, reordered, modified, or incomplete blocks
+are refused rather than inferred to be XORs. Thus the original input
+can be an actual CNF without the constructor enumerating its internal
+assignments.
+
+For u XOR v = b and u XOR v = c, the recognizer accepts eight clauses,
+constructs the two-row affine matrix and reduces it to a boundary
+equality plus multiplicity two. The small case is independently
+checked against the direct Boolean-CNF enumerator on every boundary
+context.
+
+The [Lean source](../../eth/proofs/IndependentAffineBoundary.lean)
+additionally proves that the exact canonical four-clause encoding is
+equivalent to the corresponding XOR equation for every triple of
+Boolean values, and proves the two-block count formula. These
+theorems certify the **mathematical pattern**, while the Rust
+recognizer implementation and the general row-reduction backend
+still lack full formal refinement proofs.
+
+This is not a general XOR recognition algorithm and will refuse
+many logically equivalent CNF encodings. The strictness is intentional
+until an independently checked more flexible recognizer exists.

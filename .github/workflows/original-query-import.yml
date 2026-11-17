@@ -269,7 +269,7 @@ jobs:
           printf '%s\n' '{"status":"REFUSED","stage":"prepare-ports-evaluation","reason":"original Lean evaluation not validated"}' > "$out/prepare-ports.report.json"
           (
             cd "$LEAN_ROOT"
-            timeout --signal=TERM --kill-after=5s 120s lake env lean -j 1 -M 2048 --run \
+            timeout --signal=TERM --kill-after=5s 120s lake env lean -j 1 -M 4096 --run \
               "$GITHUB_WORKSPACE/rust/lean_eth_reference/tools/prepare_ports_dump.lean"
           ) > "$out/prepare-ports.stdout.log" 2> "$out/prepare-ports.stderr.log"
           python3 rust/lean_eth_reference/tools/prepare_ports_probe.py \

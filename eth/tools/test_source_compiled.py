@@ -34,7 +34,7 @@ class SourceDiscoveryTests(unittest.TestCase):
         self.assertEqual({x['fqn'] for x in candidates if x['fqn'] in targets},targets)
 
     def test_acceptance_workflow_selects_six_original_programs(self):
-        workflow=(pathlib.Path(__file__).resolve().parents[3] /
+        workflow=(pathlib.Path(__file__).resolve().parents[2] /
                   '.github/workflows/original-source-graph.yml').read_text()
         line=next(line for line in workflow.splitlines()
                   if line.strip().startswith('PROGRAM_REGEX: '))

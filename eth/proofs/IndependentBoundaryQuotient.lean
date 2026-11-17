@@ -561,4 +561,92 @@ theorem quotient_pair_interaction
 #print axioms ACC.BoundaryQuotient.tuple_fiber_product
 #print axioms ACC.BoundaryQuotient.quotient_pair_interaction
 
+
+/-- The merged node-weight tables commute under quotienting on all
+    admissible group states. This is the one component that requires
+    finite-fiber distributivity, rather than definitional reduction. -/
+theorem quotient_merge_weight_on_states
+    {J J' σ τ K : Type*}
+    [Fintype J] [LinearOrder J] [Fintype J'] [LinearOrder J']
+    (N : Groundwork.Network J σ τ)
+    (color : J → J') (defaultState : σ) (defaultLabel : τ)
+    (label : σ → K) (representative : K → σ)
+    (hf : ∀ a b s t,
+      N.f a b s t = N.f a b (representative (label s)) t)
+    (G : J') (z : J → K)
+    (hz : z ∈ ((quotientNetwork N label representative).merge color
+      (label defaultState) defaultLabel).S G) :
+    ((quotientNetwork N label representative).merge color
+      (label defaultState) defaultLabel).W G z =
+    (quotientNetwork
+      (N.merge color defaultState defaultLabel)
+      (fun x : J → σ => fun a => label (x a))
+      (fun k : J → K => fun a => representative (k a))).W G z := by
+  classical
+  let P : J → Prop := fun a => color a = G
+  let Q : Groundwork.Network J K τ :=
+    quotientNetwork N label representative
+  let fiber : Finset (J → σ) :=
+    (Groundwork.tuples P N.S defaultState).filter
+      (fun w => (fun a => label (w a)) = z)
+  let interaction : ℤ :=
+    ∏ p ∈ Groundwork.pairs J with P p.1 ∧ P p.2,
+      Q.Ψ p.1 p.2 (z p.1) (z p.2)
+  have hvalid : z ∈ Groundwork.tuples P
+      (fun a => (N.S a).image label) (label defaultState) := by
+    simpa only [P, Q, quotientNetwork, Groundwork.Network.merge] using hz
+  have houtside : ∀ a, ¬ P a → z a = label defaultState := by
+    intro a ha
+    exact ((Groundwork.mem_tuples P
+      (fun a => (N.S a).image label)
+      (label defaultState) z).mp hvalid a).2 ha
+  have hweights :
+      (∑ w ∈ fiber, ∏ a with P a, N.W a (w a)) =
+      ∏ a with P a,
+        ∑ s ∈ (N.S a).filter (fun s => label s = z a),
+          N.W a s := by
+    exact tuple_fiber_product P N.S defaultState label z houtside N.W
+  have hinteraction (w : J → σ) (hw : w ∈ fiber) :
+      (∏ p ∈ Groundwork.pairs J with P p.1 ∧ P p.2,
+        N.Ψ p.1 p.2 (w p.1) (w p.2)) = interaction := by
+    have hmap : (fun a => label (w a)) = z :=
+      (Finset.mem_filter.mp hw).2
+    dsimp [interaction]
+    apply Finset.prod_congr rfl
+    intro p hp
+    calc
+      N.Ψ p.1 p.2 (w p.1) (w p.2) =
+        Q.Ψ p.1 p.2 (label (w p.1)) (label (w p.2)) := by
+          exact quotient_pair_interaction N label representative hf
+            p.1 p.2 (w p.1) (w p.2)
+      _ = Q.Ψ p.1 p.2 (z p.1) (z p.2) := by
+        rw [congrFun hmap p.1, congrFun hmap p.2]
+  have hsum :
+      (∑ w ∈ fiber,
+        (∏ a with P a, N.W a (w a)) *
+          (∏ p ∈ Groundwork.pairs J with P p.1 ∧ P p.2,
+             N.Ψ p.1 p.2 (w p.1) (w p.2))) =
+      (∏ a with P a,
+        ∑ s ∈ (N.S a).filter (fun s => label s = z a),
+          N.W a s) * interaction := by
+    calc
+      (∑ w ∈ fiber,
+        (∏ a with P a, N.W a (w a)) *
+          (∏ p ∈ Groundwork.pairs J with P p.1 ∧ P p.2,
+             N.Ψ p.1 p.2 (w p.1) (w p.2))) =
+        ∑ w ∈ fiber, (∏ a with P a, N.W a (w a)) * interaction := by
+          apply Finset.sum_congr rfl
+          intro w hw
+          rw [hinteraction w hw]
+      _ = (∑ w ∈ fiber, ∏ a with P a, N.W a (w a)) *
+          interaction := by rw [Finset.sum_mul]
+      _ = (∏ a with P a,
+          ∑ s ∈ (N.S a).filter (fun s => label s = z a),
+            N.W a s) * interaction := by rw [hweights]
+  simp only [Q, P, fiber, interaction, quotientNetwork,
+    Groundwork.Network.merge] at hsum ⊢
+  exact hsum.symm
+
+#print axioms ACC.BoundaryQuotient.quotient_merge_weight_on_states
+
 end ACC.BoundaryQuotient

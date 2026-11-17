@@ -651,4 +651,118 @@ theorem quotient_merge_weight_on_states
 
 #print axioms ACC.BoundaryQuotient.quotient_merge_weight_on_states
 
+
+/-! ## Full observational (context-uniform) network commutation -/
+
+/-- Exact agreement of the network data that is observable on admissible
+    node states. A network may assign arbitrary weights to invalid states;
+    requiring those arbitrary functions to agree would be too strong. -/
+structure NetworkAgreement
+    {J σ τ : Type*}
+    (L R : Groundwork.Network J σ τ) : Prop where
+  states : ∀ a, L.S a = R.S a
+  weights : ∀ a s, s ∈ L.S a → L.W a s = R.W a s
+  labels : ∀ a b, L.Θ a b = R.Θ a b
+  factors : ∀ a b s t, L.f a b s t = R.f a b s t
+  capacity : ∀ a b, L.c a b = R.c a b
+
+/-- Agreement of admissible state sets, weights, and factors implies
+    equality of EVERY outgoing source instance table, for arbitrary
+    external label codes, including rejected codes. -/
+theorem NetworkAgreement.toInst
+    {J σ τ A : Type*}
+    [Fintype J] [LinearOrder J] [DecidableEq A]
+    {L R : Groundwork.Network J σ τ}
+    (h : NetworkAgreement L R)
+    (D : J → J → Finset A)
+    (decode : J → J → A → τ) :
+    L.toInst D decode = R.toInst D decode := by
+  classical
+  funext a boundary
+  change
+    (∑ s ∈ L.S a, L.W a s *
+      ∏ b ∈ Finset.univ.erase a,
+        if boundary b ∈ D (min a b) (max a b) then
+          L.f a b s (decode (min a b) (max a b) (boundary b))
+        else 0) =
+    (∑ s ∈ R.S a, R.W a s *
+      ∏ b ∈ Finset.univ.erase a,
+        if boundary b ∈ D (min a b) (max a b) then
+          R.f a b s (decode (min a b) (max a b) (boundary b))
+        else 0)
+  rw [h.states a]
+  apply Finset.sum_congr rfl
+  intro s hs
+  have hsL : s ∈ L.S a := by
+    rw [h.states a]
+    exact hs
+  rw [h.weights a s hsL]
+  congr 1
+  apply Finset.prod_congr rfl
+  intro b hb
+  split_ifs with hd
+  · exact h.factors a b s _
+  · rfl
+
+/-- The two concrete network operations commute up to all observable
+    network data, not merely their final scalar contractions. -/
+theorem quotient_merge_network_agreement
+    {J J' σ τ K : Type*}
+    [Fintype J] [LinearOrder J] [Fintype J'] [LinearOrder J']
+    (N : Groundwork.Network J σ τ)
+    (color : J → J') (defaultState : σ) (defaultLabel : τ)
+    (label : σ → K) (representative : K → σ)
+    (hf : ∀ a b s t,
+      N.f a b s t = N.f a b (representative (label s)) t) :
+    NetworkAgreement
+      ((quotientNetwork N label representative).merge color
+        (label defaultState) defaultLabel)
+      (quotientNetwork
+        (N.merge color defaultState defaultLabel)
+        (fun x : J → σ => fun a => label (x a))
+        (fun k : J → K => fun a => representative (k a))) := by
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
+  · intro G
+    exact quotient_merge_states_commute N color defaultState defaultLabel
+      label representative G
+  · intro G z hz
+    exact quotient_merge_weight_on_states N color defaultState defaultLabel
+      label representative hf G z hz
+  · intro G H
+    exact quotient_merge_labels_commute N color defaultState defaultLabel
+      label representative G H
+  · intro G H z t
+    exact quotient_merge_factor_commutes N color defaultState defaultLabel
+      label representative G H z t
+  · intro G H
+    exact quotient_merge_capacity_commutes N color defaultState defaultLabel
+      label representative G H
+
+/-- The sought context-uniform commuting square. BOTH transformation orders
+    yield exactly the same pinned Anthropic toInst table at all nodes and all
+    external assignments. No finite-label-alphabet assumption is needed. -/
+theorem quotient_merge_toInst_commutes
+    {J J' σ τ K A : Type*}
+    [Fintype J] [LinearOrder J] [Fintype J'] [LinearOrder J']
+    [DecidableEq A]
+    (N : Groundwork.Network J σ τ)
+    (color : J → J') (defaultState : σ) (defaultLabel : τ)
+    (label : σ → K) (representative : K → σ)
+    (hf : ∀ a b s t,
+      N.f a b s t = N.f a b (representative (label s)) t)
+    (D : J' → J' → Finset A)
+    (decode : J' → J' → A → (J × J → τ)) :
+    ((quotientNetwork N label representative).merge color
+        (label defaultState) defaultLabel).toInst D decode =
+      (quotientNetwork
+        (N.merge color defaultState defaultLabel)
+        (fun x : J → σ => fun a => label (x a))
+        (fun k : J → K => fun a => representative (k a))).toInst D decode := by
+  exact (quotient_merge_network_agreement N color defaultState defaultLabel
+    label representative hf).toInst D decode
+
+#print axioms ACC.BoundaryQuotient.NetworkAgreement.toInst
+#print axioms ACC.BoundaryQuotient.quotient_merge_network_agreement
+#print axioms ACC.BoundaryQuotient.quotient_merge_toInst_commutes
+
 end ACC.BoundaryQuotient

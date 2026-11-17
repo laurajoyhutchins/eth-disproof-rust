@@ -1041,8 +1041,7 @@ mod native_interning_tests {
         let mut remaining = MAX_NODES;
         let mut callees = HashMap::new();
         let err = lower::<40, 896>(command, &mut remaining, &mut callees)
-            .err()
-            .expect("unresolved source references must refuse lowering");
+            .expect_err("unresolved source references must refuse lowering");
         assert!(
             err.to_string().contains("HighQueryAdapter.prepareHigh"),
             "{err}"
@@ -1053,8 +1052,7 @@ mod native_interning_tests {
         .unwrap();
         let mut native_remaining = MAX_NODES;
         let err = lower_native_block(nested, 40, 896, &mut native_remaining, 0)
-            .err()
-            .expect("physical lowering must refuse unresolved source");
+            .expect_err("physical lowering must refuse unresolved source");
         assert!(err.to_string().contains("OAI.Unexpanded"), "{err}");
         let forged = r#"{"kind":"unresolved","declaration":"OAI.Ref","source_kind":"definition","resolved":true}"#;
         assert!(serde_json::from_str::<Command>(forged).is_err());

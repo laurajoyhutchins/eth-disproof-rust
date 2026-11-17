@@ -62,9 +62,9 @@ The actual grid is `S = {-L, …, L-1}` where `L = 2^a` and `α = 2^(a+1) = 2L`.
 
 | File | Kernel-checked result | Missing source attachment |
 | --- | --- | --- |
-| `IndependentCauchySourceGrid.lean` | Literal source interval; `|t-q|<α` for grid points; exact factorization `C(t+αz)=αz·∏_{q≠t}(t-q+αz)`; explicit nonzero `C'(0)` product; `S ≃ Fin α ≃ ZMod α`; center-independent divisibility counts for residues | Prove that casting the actual integer differences to `ZMod α` preserves each two-adic valuation and establish the derivative factorial formula |
-| `IndependentCauchyBinomialParity.lean` | For every `m` and `k<2^m`, `((2^m-1).choose k)%2=1`, by the imported Mathlib Lucas congruence | Connect this parity to the factorials of the actual derivative products |
-| `IndependentCauchyTileMode.lean` | Exact finite geometric inverse, reconstruction, uniqueness and `2^(b+1)` coefficient divisibility for a normalized unit denominator; odd denominators are constructively invertible in a ring with `2^p=0` | Identify the normalized numerator and denominator with the literal `W_xy(T)` inside `A_p` |
+| `IndependentCauchySourceGrid.lean` | Literal source interval; `|t-q|<α` for grid points; exact factorization `C(t+αz)=αz·∏_{q≠t}(t-q+αz)`; nonzero `D(0)` product; `S ≃ Fin α ≃ ZMod α`; center-independent residue divisibility counts; **exact reindexing of the original derivative product** | Identify the integer differences' two-local quotients `α/(t-q)` inside the actual coefficient ring |
+| `IndependentCauchyBinomialParity.lean` | For every `m` and `k<2^m`, `((2^m-1).choose k)%2=1`, by the imported Mathlib Lucas congruence | Joined to the actual grid in `IndependentCauchyFactorial.lean` |
+| `IndependentCauchyFactorial.lean` | Exact signed factorial identity for every consecutive grid; **source-specific** `D(t)=(-1)^(n-k) k! (n-k)!` and `D(t)·choose(n,k)=(-1)^(n-k)n!`; Lucas-derived `Odd (choose(n,k))` and `IsUnit (choose(n,k) : ZMod (2^p))` at every precision | Construct the complete two-local polynomial normalization, not only its binomial unit denominator |\n| `IndependentCauchyTileMode.lean` | Exact finite geometric inverse, reconstruction, uniqueness and `2^(b+1)` coefficient divisibility for a normalized unit denominator; odd denominators are constructively invertible in a ring with `2^p=0` | Identify the normalized numerator and denominator with the literal `W_xy(T)` inside `A_p` |
 | `IndependentPacketModeSelection.lean` | A fixed mode-exponent coefficient retains `2^(Σ_Z w_Z β_Z)`, and heavy coefficients vanish | Identify source row-polynomial coefficients with those selected-mode sums |
 
 There is a direct factorial reduction of the missing Cauchy normalization. Put `n=2L-1` and `k=t+L`, with `0≤k≤n`. The integer product at a source grid point has the mathematical identity
@@ -74,14 +74,14 @@ D(t) := ∏_{q∈S, q≠t} (t-q) = (-1)^(n-k) · k! · (n-k)!
 D(t)/D(0) = (-1)^|t| · choose(n,L)/choose(n,k).
 ```
 
-The parity theorem verifies the oddness of both binomial coefficients on the right (because `n=2^(a+1)-1`). Their ratio is therefore a unit in `ℤ_(2)`. For every distinct pair `t,q∈S`, the checked bound `0<|t-q|<α` implies that `α/(t-q)` is two-locally integral. Consequently, over the fraction field the normalized numerator has the exact factorization
+The **kernel-checked** parity theorem verifies the oddness of both binomial coefficients (because `n=2^(a+1)-1`). The imported source-specific theorem now proves that the relevant binomial coefficient is a unit in `ZMod (2^p)` for every `p`. The displayed rational ratio is consequently a unit in `ℤ_(2)`, but the latter fact has not yet been expressed as a Lean theorem in a concrete 2-local rational ring. For every distinct pair `t,q∈S`, the checked bound `0<|t-q|<α` implies that `α/(t-q)` is two-locally integral. Consequently, over the fraction field the normalized numerator has the exact factorization
 
 ```text
 C(t+αz) / (α C'(0))
   = z · [D(t)/D(0)] · ∏_{q∈S, q≠t} (1 + αz/(t-q)).
 ```
 
-Every displayed factor is then two-locally integral. This is a **mathematical derivation** of the source's scalar-integrality claim, not yet a single Lean theorem: the factorial identities, integer-to-residue valuation transfer, and construction of the `ℤ_(2)` and `A_p` embeddings remain to be formalized and joined. In particular, do not replace this with the weaker fact that a generic finite mode series can be truncated.
+Every displayed factor is then two-locally integral. This is a **mathematical derivation** of the source's scalar-integrality claim, not yet a single Lean theorem. The actual derivative product, its signed factorial form, its exact binomial identity, and odd binomial units modulo all powers of two are now **proved** in Lean. Still missing are a formal proof that every `α/(t-q)` lies in the two-local integers, construction of `ℤ_(2)` (or the appropriate localization) and the actual `O`/`A_p` coefficient embeddings, and a theorem assembling those verified factors into the original normalized polynomial. The raw product `D(t)` is the source's derivative-at-root formula; formal identification with `Polynomial.derivative` is not separately claimed. In particular, do not replace this with the weaker fact that a generic finite mode series can be truncated.
 
 Once that literal `W_xy` bridge exists, the original packet-to-child coefficient identity and per-node work bound are still separate obligations. Completing scalar integrality alone is not a proof of the source's subexponential algorithm.
 

@@ -165,6 +165,8 @@ jobs:
           retention-days: 14
           path: |
             compiler/artifacts/native-smoke-receipt.txt
+            compiler/artifacts/lean-c-runtime/receipt.txt
+            compiler/artifacts/lean-c-runtime/trace.txt
             compiler/artifacts/lcnf-capture.json
             compiler/artifacts/lcnf-capture-receipt.txt
             compiler/artifacts/lcnf-baseline.rs

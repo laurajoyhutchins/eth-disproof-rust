@@ -76,7 +76,7 @@ theorem project_free_weighted_exact {n : ℕ} (p : SplitPhase n)
         (2 : ℤ) ^ (k + 1) * sign (p.base.eval b) else 0) := by
   cases hf : feasible b <;> cases hl : p.mixed.eval b <;>
     cases hq : p.base.eval b <;>
-    simp [SplitPhase.eval, sign, hf, hl, hq, pow_succ, Fintype.sum_bool]
+    simp [SplitPhase.eval, sign, hl, hq, pow_succ] <;> ring
 
 /-- Shannon-style stitching of complementary supports in exact integers. -/
 theorem stitch_sign (selector a b : Bool) :
@@ -90,7 +90,7 @@ degree restriction cannot be inferred from an arbitrary phase expression. -/
 theorem quadratic_stitch_exact {n : ℕ} (selector : Affine n)
     (left right combined : Quadratic n)
     (hdegree : ∀ b : Fin n → Bool,
-      combined.eval b = left.eval b ^^ (selector.eval b &&
+      combined.eval b = (left.eval b ^^ (selector.eval b &&
         (left.eval b ^^ right.eval b)))
     (b : Fin n → Bool) :
     (if selector.eval b = true then (0 : ℤ) else sign (left.eval b)) +

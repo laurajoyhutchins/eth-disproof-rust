@@ -26,8 +26,8 @@ EXPECTED_FIELDS = {
     "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
     "command_name", "command_expression_nodes", "command_immediate_symbols",
     "command_symbol_kinds", "source_command_ir", "source_command_expanded_ir",
-    "source_lift_application", "source_lift_call_ir",
-    "source_command_call_ir",
+    "source_lift_application", "source_core_command_ir",
+    "source_lift_call_ir", "source_command_call_ir",
     "source_command_ir_resolved",
     "same_module_local_declarations",
     "external_module_edges", "external_definition_bodies",
@@ -54,7 +54,7 @@ def validate_kernel_root(raw: str) -> dict:
     if not isinstance(receipt, dict) or set(receipt) != EXPECTED_FIELDS:
         raise ValueError("kernel root evidence has a missing or extra field")
     fixed = {
-        "format": "original-query-kernel-root-v8",
+        "format": "original-query-kernel-root-v9",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -253,6 +253,35 @@ def validate_kernel_root(raw: str) -> dict:
                       [core, "OfNat.ofNat", "OfNat.ofNat", "id", "Fin.castAdd"])
     if arg_count != 9 or [item["head"] for item in args] != expected_heads:
         raise ValueError("original lift source argument kinds or ordering changed")
+    # The source core is exactly the observed two-command sequence, not a
+    # new compiler backend, a substituted clearing routine, or executable code.
+    prepare = "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.command"
+    native = "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.command"
+    expected_core = {
+        "kind": "seq",
+        "first": unresolved(prepare),
+        "second": unresolved(native),
+    }
+    if receipt["source_core_command_ir"] != expected_core:
+        raise ValueError("source reconstruction core changed exact command sequence")
+    core_observed = next(
+        (item for item in receipt["second_hop_definition_bodies"]
+         if item["name"] == core), None,
+    )
+    expected_core_symbols = {
+        "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq": "constructor",
+        prepare: "definition",
+        native: "definition",
+    }
+    observed_kinds = {
+        item["name"]: item["kind"]
+        for item in (core_observed or {}).get("immediate_symbol_kinds", [])
+    }
+    if (core_observed is None or core_observed["status"] != "scanned" or
+            any(observed_kinds.get(name) != kind
+                for name, kind in expected_core_symbols.items())):
+        raise ValueError("source reconstruction core declaration evidence absent")
+
     expected_call = {
         "kind": "call",
         "program": {
@@ -262,7 +291,7 @@ def validate_kernel_root(raw: str) -> dict:
             "source": {
                 "kind": "composed", "r": 40, "s": 768,
                 "input": 256, "output": 323,
-                "command": unresolved(core),
+                "command": expected_core,
             },
         },
     }
@@ -508,6 +537,7 @@ def probe(args):
         "command": report["source_command_ir"],
         "expanded_command": report["source_command_expanded_ir"],
         "source_lift_application": report["source_lift_application"],
+        "source_core_command_ir": report["source_core_command_ir"],
         "source_lift_call_ir": report["source_lift_call_ir"],
         "source_command_call_ir": report["source_command_call_ir"],
     }

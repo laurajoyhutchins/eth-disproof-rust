@@ -391,6 +391,35 @@ private partial def stripSourceLambdas (value : Expr) (fuel : Nat) : IO Expr := 
   | .mdata _ body => stripSourceLambdas body (fuel - 1)
   | _ => pure value
 
+/-!
+Expand one *observed* source definition within the already checked original
+lift. The kernel environment is the authority for the constructor order.
+Neither child is normalized or replaced by executable fallback code.
+-/
+private def originalCoreCommand (env : Environment) : IO Json := do
+  let name := qualified "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.coreCommand"
+  let some (.defnInfo info) := env.find? name
+    | throw <| IO.userError "original reconstruction core definition is absent"
+  unless headIdentity info.value ==
+      "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq" do
+    throw <| IO.userError "original reconstruction core is not Cmd.seq"
+  let args := info.value.getAppArgs
+  unless args.size == 4 do
+    throw <| IO.userError "original reconstruction core sequence arity changed"
+  let first := args[2]!
+  let second := args[3]!
+  unless headIdentity first == "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.command" &&
+      first.getAppArgs.isEmpty do
+    throw <| IO.userError "original reconstruction core prepare declaration changed"
+  unless headIdentity second == "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.command" &&
+      second.getAppArgs.isEmpty do
+    throw <| IO.userError "original reconstruction core native declaration changed"
+  for child in #[first, second] do
+    match env.find? (qualified (headIdentity child)) with
+    | some (.defnInfo _) => pure ()
+    | _ => throw <| IO.userError "original reconstruction child is not a source definition"
+  return (← sourceCommandPrefix env info.value 32 #[])
+
 private def originalLiftCall (env : Environment) : IO Json := do
   let commandName := qualified
     "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command"
@@ -456,11 +485,7 @@ private def originalLiftCall (env : Environment) : IO Json := do
   unless headIdentity inner ==
       "OAI.Algorithms.SubexponentialSAT.StructuredCalls.compiled" do
     throw <| IO.userError "source liftProgram no longer wraps compiled"
-  let core := Json.mkObj [
-    ("kind", toJson "unresolved"),
-    ("declaration", toJson coreName.toString),
-    ("source_kind", toJson "definition")
-  ]
+  let core ← originalCoreCommand env
   return Json.mkObj [
     ("kind", toJson "call"),
     ("program", Json.mkObj [
@@ -557,6 +582,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
       throw <| IO.userError s!"original command no longer references expected source definition: {name}"
   let expandedIR ← sourceCommandPrefix env commandInfo.value 64 inlinedNames
   let liftApplication ← inspectSourceLift env
+  let coreIR ← originalCoreCommand env
   let liftCall ← originalLiftCall env
   let (callIR, liftUses) ← replaceOriginalLift expandedIR liftCall 64
   unless liftUses == 1 do
@@ -567,7 +593,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let (secondBodies, _) ←
     inspectExternalDefinitions env secondTargets 65536 65536 false
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v8"),
+    ("format", toJson "original-query-kernel-root-v9"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -583,6 +609,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("source_command_ir", commandIR),
     ("source_command_expanded_ir", expandedIR),
     ("source_lift_application", liftApplication),
+    ("source_core_command_ir", coreIR),
     ("source_lift_call_ir", liftCall),
     ("source_command_call_ir", callIR),
     ("source_command_ir_resolved", toJson false),

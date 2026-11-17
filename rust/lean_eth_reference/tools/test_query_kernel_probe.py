@@ -8,7 +8,7 @@ from query_stream_aot import DECLARATION
 
 def root_receipt():
     receipt = {
-        "format": "original-query-kernel-root-v8",
+        "format": "original-query-kernel-root-v9",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -149,6 +149,17 @@ def root_receipt():
                     if b["name"] == reconstruction)
     observed["immediate_symbols"].append(lift)
     observed["immediate_symbol_kinds"].append({"name": lift, "kind": "definition"})
+    core = "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.coreCommand"
+    observed["immediate_symbols"].append(core)
+    observed["immediate_symbol_kinds"].append({"name": core, "kind": "definition"})
+    receipt["second_hop_definition_bodies"].append({
+        "name": core, "kind": "definition", "status": "scanned",
+        "expression_nodes": 5, "immediate_symbols": ["Nat.zero"],
+        "immediate_symbol_kinds": [{"name": "Nat.zero", "kind": "constructor"}],
+        "type_status": "scanned", "type_expression_nodes": 1,
+        "type_immediate_symbols": ["Nat"],
+        "type_symbol_kinds": [{"name": "Nat", "kind": "inductive"}],
+    })
     receipt["second_hop_definition_bodies"].append({
         "name": lift, "kind": "definition", "status": "scanned",
         "expression_nodes": 2, "immediate_symbols": ["Nat.zero"],
@@ -217,6 +228,25 @@ def root_receipt():
             },
         },
     }
+    prepare = "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.command"
+    native = "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.command"
+    core_seq = {
+        "kind": "seq",
+        "first": {"kind": "unresolved", "declaration": prepare, "source_kind": "definition"},
+        "second": {"kind": "unresolved", "declaration": native, "source_kind": "definition"},
+    }
+    receipt["source_core_command_ir"] = core_seq
+    call["program"]["source"]["command"] = core_seq
+    observed = next(b for b in receipt["second_hop_definition_bodies"]
+                    if b["name"] == core)
+    observed["immediate_symbols"].extend([
+        "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq", prepare, native
+    ])
+    observed["immediate_symbol_kinds"].extend([
+        {"name": "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq", "kind": "constructor"},
+        {"name": prepare, "kind": "definition"},
+        {"name": native, "kind": "definition"},
+    ])
     receipt["source_lift_call_ir"] = call
     receipt["source_command_call_ir"] = json.loads(
         json.dumps(receipt["source_command_expanded_ir"])
@@ -423,7 +453,7 @@ class KernelRootReceiptTests(unittest.TestCase):
                        immediate_symbols=[], immediate_symbol_kinds=[])
         fixture["second_hop_definition_bodies"] = [
             body for body in fixture["second_hop_definition_bodies"]
-            if body["name"].endswith(".liftCommand")
+            if body["name"].endswith((".liftCommand", ".coreCommand"))
         ]
         self.assertEqual(validate_kernel_root(json.dumps(fixture))[
             "external_definition_bodies"][0]["status"], "node_budget_refused")
@@ -434,7 +464,7 @@ class KernelRootReceiptTests(unittest.TestCase):
                        immediate_symbols=[], immediate_symbol_kinds=[])
         fixture["second_hop_definition_bodies"] = [
             body for body in fixture["second_hop_definition_bodies"]
-            if body["name"].endswith(".liftCommand")
+            if body["name"].endswith((".liftCommand", ".coreCommand"))
         ]
         self.assertEqual(validate_kernel_root(json.dumps(fixture))[
             "external_definition_bodies"][0]["status"], "aggregate_budget_refused")
@@ -484,6 +514,33 @@ class KernelRootReceiptTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     validate_kernel_root(json.dumps(r))
 
+    def test_source_core_is_exactly_two_ordered_unresolved_commands(self):
+        report = validate_kernel_root(json.dumps(root_receipt()))
+        original = report["source_core_command_ir"]
+        self.assertEqual(original["kind"], "seq")
+        self.assertEqual(original["first"]["source_kind"], "definition")
+        self.assertEqual(original["second"]["source_kind"], "definition")
+        for mutation in ("swap", "skip", "forge", "extra", "promote", "evidence"):
+            with self.subTest(mutation=mutation):
+                report = root_receipt()
+                core = report["source_core_command_ir"]
+                if mutation == "swap":
+                    core["first"], core["second"] = core["second"], core["first"]
+                elif mutation == "skip":
+                    core["first"] = {"kind": "skip"}
+                elif mutation == "forge":
+                    core["second"]["declaration"] = "OAI.Forged.reconstruction"
+                elif mutation == "extra":
+                    core["third"] = {"kind": "skip"}
+                elif mutation == "promote":
+                    report["source_command_ir_resolved"] = True
+                else:
+                    observed = next(b for b in report["second_hop_definition_bodies"]
+                                    if b["name"].endswith("QueryReconstruction.coreCommand"))
+                    observed["immediate_symbol_kinds"][-1]["kind"] = "theorem"
+                with self.assertRaises(ValueError):
+                    validate_kernel_root(json.dumps(report))
+
     def test_source_derived_partial_call_has_exact_finite_maps_and_refusal(self):
         report = validate_kernel_root(json.dumps(root_receipt()))
         call = report["source_lift_call_ir"]
@@ -503,7 +560,7 @@ class KernelRootReceiptTests(unittest.TestCase):
                 elif change == "inner_port":
                     p["source"]["output"] = 324
                 elif change == "core":
-                    p["source"]["command"]["declaration"] = "OAI.Forged.coreCommand"
+                    p["source"]["command"]["first"]["declaration"] = "OAI.Forged.prepare"
                 elif change == "call_kind":
                     r["source_lift_call_ir"]["kind"] = "skip"
                 elif change == "false_resolution":
@@ -535,7 +592,7 @@ class KernelRootReceiptTests(unittest.TestCase):
     def test_second_hop_is_exact_and_type_references_are_not_erasure(self):
         receipt = root_receipt()
         actual = validate_kernel_root(json.dumps(receipt))
-        self.assertEqual(len(actual["second_hop_definition_bodies"]), 2)
+        self.assertEqual(len(actual["second_hop_definition_bodies"]), 3)
         self.assertFalse(actual["transitive_computational_closure"])
         fixture = root_receipt()
         fixture["second_hop_definition_bodies"].clear()

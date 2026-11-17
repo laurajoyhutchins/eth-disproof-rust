@@ -1062,8 +1062,8 @@ mod native_interning_tests {
 
     /// The original reconstruction lift has this *partial* typed shape.
     /// Its maps and ABI are checked separately against pinned Lean evidence.
-    /// A missing coreCommand never becomes an executable callee or a default
-    /// operation in the shared Rust interpreter / native backend.
+    /// Its core is sequenced from actual source declarations; neither child
+    /// becomes an executable callee or default operation in the Rust backend.
     #[test]
     fn reconstruction_lift_partial_call_uses_canonical_ir_and_refuses_core() {
         let graph = serde_json::json!({
@@ -1081,9 +1081,17 @@ mod native_interning_tests {
                     "input": 256,
                     "output": 323,
                     "command": {
-                        "kind": "unresolved",
-                        "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.coreCommand",
-                        "source_kind": "definition"
+                        "kind": "seq",
+                        "first": {
+                            "kind": "unresolved",
+                            "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.command",
+                            "source_kind": "definition"
+                        },
+                        "second": {
+                            "kind": "unresolved",
+                            "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.command",
+                            "source_kind": "definition"
+                        }
                     }
                 }
             }
@@ -1092,8 +1100,8 @@ mod native_interning_tests {
         let mut remaining = MAX_NODES;
         let mut callees = HashMap::new();
         let err = lower::<40, 896>(command, &mut remaining, &mut callees)
-            .expect_err("unresolved original reconstruction core must not run");
-        assert!(err.to_string().contains("QueryReconstruction.coreCommand"), "{err}");
+            .expect_err("unresolved original source preparation must not run");
+        assert!(err.to_string().contains("LeafProgram.Count.Prepare.command"), "{err}");
         assert!(callees.is_empty(), "refused call must not create callee cache entries");
     }
 
@@ -1101,14 +1109,14 @@ mod native_interning_tests {
     /// pinned Lean receipt. This never accepts the incomplete program as
     /// executable, even though its nested call is valid canonical Rust IR.
     #[test]
-    #[ignore = "requires the original pinned Lean v8 kernel receipt"]
+    #[ignore = "requires the original pinned Lean v9 kernel receipt"]
     fn pinned_original_partial_lift_is_typed_and_refused() {
         let path = std::env::var("ORIGINAL_QUERY_KERNEL_RECEIPT")
             .expect("original source workflow must supply the retained receipt");
         let bytes = std::fs::read(path).expect("original Lean receipt must be readable");
         let report: serde_json::Value =
             serde_json::from_slice(&bytes).expect("original Lean receipt must be JSON");
-        assert_eq!(report["format"], "original-query-kernel-root-v8");
+        assert_eq!(report["format"], "original-query-kernel-root-v9");
         assert_eq!(
             report["root"],
             "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.program"
@@ -1116,13 +1124,28 @@ mod native_interning_tests {
         assert_eq!(report["source_command_ir_resolved"].as_bool(), Some(false));
         assert_eq!(report["rust_executable"].as_bool(), Some(false));
         assert_eq!(report["receipt_is_kernel_certificate"].as_bool(), Some(false));
+        let core = &report["source_core_command_ir"];
+        assert_eq!(core["kind"], "seq");
+        assert_eq!(
+            core["first"]["declaration"],
+            "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.command"
+        );
+        assert_eq!(
+            core["second"]["declaration"],
+            "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.ReconstructionNative.command"
+        );
+        assert_eq!(
+            report["source_lift_call_ir"]["program"]["source"]["command"],
+            *core,
+            "the Rust call must preserve the exact original Lean core sequence"
+        );
         let call: Command = serde_json::from_value(report["source_lift_call_ir"].clone())
             .expect("original Lean partial call must match the canonical Rust IR");
         let mut remaining = MAX_NODES;
         let mut callees = HashMap::new();
         let err = lower::<40, 896>(call, &mut remaining, &mut callees)
-            .expect_err("original source cannot execute with unresolved coreCommand");
-        assert!(err.to_string().contains("QueryReconstruction.coreCommand"), "{err}");
+            .expect_err("original source cannot execute with unresolved Count.Prepare");
+        assert!(err.to_string().contains("LeafProgram.Count.Prepare.command"), "{err}");
         assert!(callees.is_empty(), "refused Lean call must not populate callee cache");
     }
 

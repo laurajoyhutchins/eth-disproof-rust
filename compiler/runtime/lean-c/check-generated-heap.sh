@@ -25,6 +25,30 @@ test -s artifacts/source-del-final-ir-status.txt
 grep -Fx 'emitted_ir_source_del=NOT_YET_ESTABLISHED' artifacts/source-del-final-ir-status.txt
 cat artifacts/source-del-final-ir.tsv
 cat artifacts/source-del-final-ir-status.txt
+# Probe the canonical Reader closure of the positive source. A refusal is
+# evidence of the next missing feature, not a successful source-del execution.
+# Atomic publication must leave no package after a failed compilation.
+rm -rf examples/lean-c-del-package
+if lean --load-dynlib="$NATIVE_LIB" examples/RuntimeHeapDelEmitFixture.lean \
+    > "$out/source-del-emit.log" 2>&1; then
+  del_rs=examples/lean-c-del-package/src/lib.rs
+  test -s "$del_rs"
+  grep -Fq 'Generated directly from Lean IR declaration: RuntimeHeapDel.rebuildOrExtractByPayload' "$del_rs"
+  grep -Fq '.source_del();' "$del_rs" || {
+    echo 'Final source del missing from canonical Reader output' >&2
+    exit 2
+  }
+  echo 'source_del_reader=EMITTED_NOT_EXECUTED' > "$out/source-del-reader-status.txt"
+  cp "$del_rs" "$out/source-del-exact-reader.rs"
+else
+  test ! -e examples/lean-c-del-package || {
+    echo 'Reader published a partial package after refusal' >&2
+    exit 2
+  }
+  echo 'source_del_reader=REFUSED' > "$out/source-del-reader-status.txt"
+fi
+cat "$out/source-del-reader-status.txt"
+cat "$out/source-del-emit.log"
 lean --load-dynlib="$NATIVE_LIB" examples/RuntimeHeapFixture.lean
 file=examples/lean-c-heap-package/src/lib.rs
 test -s "$file"
@@ -92,6 +116,9 @@ grep -Fx 'lean-c-shell-only-del-transfer=PASS' "$out/trace.txt"
   echo 'shell_del_no_projection=REFUSED'
   echo 'shell_del_shared_parent=REFUSED'
   echo 'emitted_ir_source_del=NOT_YET_ESTABLISHED'
+  cat "$out/source-del-reader-status.txt"
+  sha256sum examples/RuntimeHeapDelEmitFixture.lean "$out/source-del-emit.log" \
+    "$out/source-del-reader-status.txt"
   cat artifacts/source-del-final-ir-status.txt
   sha256sum examples/RuntimeHeapDelKernels.lean examples/RuntimeHeapDelIRProbe.lean \
     artifacts/source-del-final-ir.tsv artifacts/source-del-final-ir.txt \

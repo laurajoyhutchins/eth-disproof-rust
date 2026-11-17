@@ -416,6 +416,7 @@ theorem quotient_merge_states_commute
   classical
   apply Finset.ext
   intro z
+  simp only [quotientNetwork, Groundwork.Network.merge]
   change
     (z ∈ Groundwork.tuples (fun a : J => color a = G)
        (fun a => (N.S a).image label) (label defaultState)) ↔

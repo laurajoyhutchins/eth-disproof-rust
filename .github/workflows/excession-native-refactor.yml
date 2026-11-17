@@ -3,11 +3,11 @@ name: Excession native compiler refactor review
 on:
   pull_request:
     paths:
-      - 'rust/native_lean_backend/src/**'
-      - 'rust/native_lean_backend/primitive-registry.tsv'
-      - 'rust/native_lean_backend/runtime-primitive-registry.tsv'
-      - 'rust/native_lean_backend/docs/excession-refactor.md'
-      - 'rust/native_lean_backend/docs/reader-architecture.md'
+      - 'compiler/src/**'
+      - 'compiler/primitive-registry.tsv'
+      - 'compiler/runtime-primitive-registry.tsv'
+      - 'compiler/docs/excession-refactor.md'
+      - 'compiler/docs/reader-architecture.md'
       - '.github/workflows/excession-native-refactor.yml'
 
 permissions:
@@ -63,12 +63,12 @@ jobs:
           TOOL="$RUNNER_TEMP/excession/core/target/debug/excession"
           test "$(git rev-parse HEAD)" = "$HEAD_SHA"
           git cat-file -e "${BASE_SHA}^{commit}"
-          git diff --check "$BASE_SHA" "$HEAD_SHA" -- rust/native_lean_backend
+          git diff --check "$BASE_SHA" "$HEAD_SHA" -- compiler
           # Native analysis uses rust-analyzer's original Rust symbol index,
           # not the Python/JavaScript static module resolver.
           RA="$(rustup which --toolchain 1.99.1 rust-analyzer)"
           SCIP="$RUNNER_TEMP/scip-cli/scip"
-          PREFIX=rust/native_lean_backend
+          PREFIX=compiler
           # Run both pinned revisions in the SAME detached worktree path.
           # SCIP project_root is a physical URI; a different checkout directory
           # cannot be rebound to another repository without losing provenance.
@@ -118,15 +118,15 @@ jobs:
             --report "$OUT/native-refactor-candidates.json" > "$OUT/native-refactor-audit.json"
           "$TOOL" agent locate --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
             --task 'Lean compiler IR Reader decoding, expression lowering, constructor cases and module dependency closure' \
-            --roots rust/native_lean_backend/src --index-segments 256 --limit 20 --json > "$OUT/locate.json"
+            --roots compiler/src --index-segments 256 --limit 20 --json > "$OUT/locate.json"
           "$TOOL" agent context --repo "$ANALYSIS_REPO" --rev "$BASE_SHA" \
-            --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/primitive-registry.tsv,rust/native_lean_backend/runtime-primitive-registry.tsv \
-            --roots rust/native_lean_backend/src --db "$DB" --limit 32 > "$OUT/context.json"
+            --focus compiler/src/lib.rs,compiler/primitive-registry.tsv,compiler/runtime-primitive-registry.tsv \
+            --roots compiler/src --db "$DB" --limit 32 > "$OUT/context.json"
           "$TOOL" agent context --repo "$ANALYSIS_REPO" --rev "$HEAD_SHA" \
-            --focus rust/native_lean_backend/src/lib.rs,rust/native_lean_backend/src/reader/mod.rs,rust/native_lean_backend/src/reader/decode.rs,rust/native_lean_backend/src/reader/expr.rs,rust/native_lean_backend/src/reader/cases.rs,rust/native_lean_backend/src/reader/body.rs,rust/native_lean_backend/src/reader/module.rs \
-            --roots rust/native_lean_backend/src --db "$DB" --limit 32 > "$OUT/context-candidate.json"
+            --focus compiler/src/lib.rs,compiler/src/reader/mod.rs,compiler/src/reader/decode.rs,compiler/src/reader/expr.rs,compiler/src/reader/cases.rs,compiler/src/reader/body.rs,compiler/src/reader/module.rs \
+            --roots compiler/src --db "$DB" --limit 32 > "$OUT/context-candidate.json"
           "$TOOL" agent verify --repo "$ANALYSIS_REPO" --base "$BASE_SHA" \
-            --candidate "$HEAD_SHA" --roots rust/native_lean_backend/src --db "$DB" --limit 32 > "$OUT/verify.json"
+            --candidate "$HEAD_SHA" --roots compiler/src --db "$DB" --limit 32 > "$OUT/verify.json"
           jq -e '.schema == "excession.agent-context.v1"' "$OUT/context.json" > /dev/null
           jq -e '.schema == "excession.agent-context.v1"' "$OUT/context-candidate.json" > /dev/null
           jq -e '.schema == "excession.agent-verification.v1"' "$OUT/verify.json" > /dev/null

@@ -399,13 +399,15 @@ mod tests {
                 }
             }
         }
-        let equations = (0..n)
-            .filter(|_| next(seed) & 3 == 0)
-            .map(|_| Equation {
-                coefficients: (0..n).map(|_| next(seed) & 1 != 0).collect(),
-                rhs: next(seed) & 1 != 0,
-            })
-            .collect();
+        let mut equations = Vec::new();
+        for _ in 0..n {
+            if next(seed) & 3 == 0 {
+                equations.push(Equation {
+                    coefficients: (0..n).map(|_| next(seed) & 1 != 0).collect(),
+                    rhs: next(seed) & 1 != 0,
+                });
+            }
+        }
         QuadraticMode::new(n, equations, phase, 0).unwrap()
     }
 

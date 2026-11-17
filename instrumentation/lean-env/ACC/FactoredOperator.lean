@@ -233,4 +233,41 @@ theorem EstimatedCandidate.choose_estimated_le_right
 #print axioms ACC.FactoredOperator.TensorKernel.identity_applyProduct
 #print axioms ACC.FactoredOperator.EstimatedCandidate.choose_exact
 
+
+/-- An explicitly enumerating candidate. It is a mathematical fallback
+    and is deliberately noncomputable at the generic Finset boundary. -/
+noncomputable def directCandidate {n : ℕ}
+    (K : TensorKernel n) (v : Fin n → Bool → ℤ)
+    (estimated : ℕ) :
+    EstimatedCandidate (Fin n → Bool)
+      (fun out => K.apply (productInput v) out) where
+  run := fun out => K.apply (productInput v) out
+  exact := fun _ => rfl
+  estimatedTotalCost := estimated
+
+/-- A certified compact alternative for a FACTORED input vector. The
+    soundness proof reuses the full finite-sum/product equivalence. -/
+noncomputable def factoredCandidate {n : ℕ}
+    (K : TensorKernel n) (v : Fin n → Bool → ℤ)
+    (estimated : ℕ) :
+    EstimatedCandidate (Fin n → Bool)
+      (fun out => K.apply (productInput v) out) where
+  run := fun out => K.applyProduct v out
+  exact := fun out => (K.applyProduct_correct v out).symm
+  estimatedTotalCost := estimated
+
+/-- The concrete portfolio may pick either representation by its
+    DECLARED score, but it cannot change a single output value. -/
+theorem choose_direct_or_factored_correct {n : ℕ}
+    (K : TensorKernel n) (v : Fin n → Bool → ℤ)
+    (directEstimate factoredEstimate : ℕ)
+    (out : Fin n → Bool) :
+    (EstimatedCandidate.choose
+      (directCandidate K v directEstimate)
+      (factoredCandidate K v factoredEstimate)).run out =
+        K.apply (productInput v) out :=
+  EstimatedCandidate.choose_exact _ _ out
+
+#print axioms ACC.FactoredOperator.choose_direct_or_factored_correct
+
 end ACC.FactoredOperator

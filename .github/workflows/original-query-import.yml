@@ -13,6 +13,7 @@ on:
       - 'rust/lean_eth_reference/src/bit_program/source_json.rs'
       - 'rust/lean_eth_reference/tools/query_stream_aot.py'
       - 'rust/lean_eth_reference/tools/query_source_kernel.lean'
+      - 'rust/lean_eth_reference/tools/query_sequence_reassociation.lean'
       - 'rust/lean_eth_reference/tools/query_kernel_probe.py'
       - 'rust/lean_eth_reference/tools/test_query_kernel_probe.py'
       - 'rust/lean_eth_reference/tools/prepare_ports_dump.lean'
@@ -223,6 +224,20 @@ jobs:
 
       # The bounded kernel-only graph is an independent prerequisite for AOT.
       # Its source/provenance receipt is retained even if AOT is unsupported.
+      # Formal source-language proof: arbitrary reassociation of the same
+      # ordered Cmd.seq leaves preserves all Eval transitions and step counts.
+      # Separate from byte-level Lean-to-Rust correspondence.
+      - name: Prove original Cmd.seq ordered reassociation with pinned Lean
+        if: env.IMPORT_STAGE == 'query'
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd "$LEAN_ROOT"
+            lake env lean -j 1 -M 2048 \
+              "$GITHUB_WORKSPACE/rust/lean_eth_reference/tools/query_sequence_reassociation.lean"
+          )
+
       - name: Inventory original QueryStream same-module graph without Meta
         id: kernel-root
         if: always() && env.IMPORT_STAGE == 'query'

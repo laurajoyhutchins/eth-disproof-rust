@@ -20,11 +20,26 @@ A generated Rust program must match the original Lean program, including relevan
 | Closures and effects | Erased values, first-class functions, sharing observations and side effects need source-accurate behavior |
 | Transitive closure | A supported entrypoint is useless if one called declaration silently disappears |
 
-The intended implementation has **one** in-process Lean 4.34.1 compiler and one GMP/`Rc` value runtime. Do not maintain a second hand-translated object model.
+The current bounded Reader uses one custom GMP/`Rc` value runtime, but
+its independent alias accounting is **not** a proof of Lean's physical
+reference-count semantics. The approved migration order is to make the
+**single existing Reader** emit Rust that executes through the pinned
+**official Lean C runtime first**, prove the generated backend's behavior
+against source Lean/C, then replace that runtime behind the same
+operation-level contract. LCNF remains diagnostic; there is no second
+production code generator. See
+[backend/runtime acceptance](../rust/native_lean_backend/docs/backend-runtime-boundary.md).
 
 Merged [#230](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/230) and [#234](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/234) are historical integration points. The November 14 follow-ups [#237](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/237), [#238](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/238) and [#239](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/239) record the scalar-projection and ownership issues. Their descriptions are not substitutes for checking the current head.
 
-G1 acceptance requires **three substantial, unchanged external Lean programs**: original Lean execution, source-IR capture, generated Rust execution, and independent output/state agreement. Compiler-generated fixtures alone do not count.
+G1 acceptance first requires a source-IR-to-Rust backend running on the
+**original Lean runtime**, including direct evidence for `inc`, `dec`,
+`del`, borrow, projection, `isShared`, reuse and ownership-sensitive
+control flow. Only after this backend gate may the independent Rust-native
+runtime enter the release path. An independent Rust kernel is out of scope
+for G1.
+
+G1 general release also requires **three substantial, unchanged external Lean programs**: original Lean execution, source-IR capture, generated Rust execution, and independent output/state agreement. Compiler-generated fixtures alone do not count.
 
 ## G2: noncomputable ETH declarations
 

@@ -1,7 +1,11 @@
 # Lean → Rust bootstrap experiment
 
-A standalone acceptance project for replacing the custom native Lean-to-Rust
-Reader. This is an experiment, not a second production backend for ETH.
+A standalone compatibility experiment for a typed Lean IR adapter and Rust
+code generator. **It is not the canonical production compiler**, and its
+Rust-native runtime is not the first target of the revised backend-first
+architecture. The production migration first links generated Rust from the
+existing Reader against the original Lean C runtime. See
+[backend-first architecture](../../docs/lean-rust-replacement.md).
 
 The first **admitted** input is the unmodified upstream Lean 4.34.1 module
 `Lean.Compiler.LCNF.Simp.Config`. A narrow `CompilerConfig` facade constructs
@@ -46,7 +50,9 @@ reference crate. It can be moved into its own repository unchanged.
 - Does not replace `rust/native_lean_backend` or its CI gates.
 - Does not compile the ETH manuscript's noncomputable algorithm.
 
-Next expand to a true compiler transformation from original Lean source,
-then borrowed/owned object traces, mutation, imported closure, a Rust-hosted
-compiler entrypoint and finally stage-two bootstrapping. Unsupported
+Use these results as secondary coverage evidence only. The next production
+gate is a real codegen target using the original Lean runtime first,
+followed by borrowed/owned object traces, mutation, calls and imported
+closures. A Rust-native runtime, Rust-hosted compiler executable and
+stage-two bootstrapping are separate later milestones. Unsupported
 behavior must refuse rather than silently substitute another algorithm.

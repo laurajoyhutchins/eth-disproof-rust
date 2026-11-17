@@ -92,3 +92,17 @@ actually succeeded. Its no-overwrite check is not a defense against a hostile
 process concurrently manipulating the destination parent.
 
 LCNF remains an optional read-only diagnostic of local Lean compiler state.
+
+## Backend-first migration boundary (November 16, 2026)
+
+The Reader is the sole existing production generator of original compiler IR.
+Its GMP/`Rc` runtime remains a bounded reference, not proof of physical
+Lean ownership. The next target is generated Rust linked to the exact Lean
+4.34.1 C runtime through a header-pinned execution shim, followed by a
+separately validated Rust-native runtime implementation. The Lean frontend,
+compiler, and LCNF passes stay authoritative. The existing borrowed-IR
+reader is not itself the execution-runtime FFI.
+
+See [backend/runtime contract](backend-runtime-boundary.md) and
+[architecture decision](../../../docs/lean-rust-replacement.md). Do not
+remove the old backend or reinterpret LCNF snapshots as production IR.

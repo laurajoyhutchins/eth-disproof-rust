@@ -356,6 +356,7 @@ fn encode_list(items: impl IntoIterator<Item = String>) -> String {
     out
 }
 
+#[path = "counting/semantic_count.rs"]
 mod semantic_count;
 pub use semantic_count::{
     CountState, CountStats, Entry, EnumeratingLeaf, LeafCounter, Limits, count_cnf, count_step,
@@ -412,98 +413,145 @@ pub fn parse_dimacs(text: &str) -> Result<Cnf, Error> {
 
 pub mod bit_program;
 pub mod lean_codegen;
+#[path = "counting/native_high.rs"]
 pub mod native_high;
+#[path = "query/native_tuple.rs"]
 pub mod native_tuple;
 
+#[path = "counting/finite_fallback.rs"]
 pub mod finite_fallback;
+#[path = "machine/native_ambient.rs"]
 pub mod native_ambient;
+#[path = "counting/native_answer.rs"]
 pub mod native_answer;
 /// Source-defined post-normalization body placement and ambient header suffix.
+#[path = "machine/native_frontend_tail.rs"]
 pub mod native_frontend_tail;
+#[path = "query/native_layout.rs"]
 pub mod native_layout;
+#[path = "query/native_node_append.rs"]
 pub mod native_node_append;
+#[path = "query/native_node_readout.rs"]
 pub mod native_node_readout;
+#[path = "query/native_nodes.rs"]
 pub mod native_nodes;
+#[path = "query/native_pair_setup.rs"]
 pub mod native_pair_setup;
+#[path = "query/native_query_first_node.rs"]
 pub mod native_query_first_node;
+#[path = "query/native_query_prefix.rs"]
 pub mod native_query_prefix;
 
 /// Literal cleanup across framed clauses on original 13x11 machine.
+#[path = "machine/native_literal_cleanup.rs"]
 pub mod native_literal_cleanup;
 /// Actual nested literal deduplication on source 10x8 machine.
+#[path = "machine/native_literal_dedup.rs"]
 pub mod native_literal_dedup;
 /// Source-defined preserving unary-polarity complement query.
+#[path = "query/native_negated_query.rs"]
 pub mod native_negated_query;
 /// Exact source prefix: physical clause-wise literal cleanup then tautology removal.
+#[path = "machine/native_normalization_prefix.rs"]
 pub mod native_normalization_prefix;
 /// Source-native finite unary polarity, frame writer and record reversal.
+#[path = "machine/native_normalization_primitives.rs"]
 pub mod native_normalization_primitives;
 /// Physical complementary-literal search inside one encoded clause.
+#[path = "machine/native_tautology_core.rs"]
 pub mod native_tautology_core;
 /// Original nested formula-wide tautology filter and record-order restoration.
+#[path = "machine/native_tautology_filter.rs"]
 pub mod native_tautology_filter;
 
 /// Preserving equivalence scans and last-occurrence clause deduplication.
+#[path = "machine/native_clause_dedup.rs"]
 pub mod native_clause_dedup;
 /// Source fixed-master strict-subset filtering of clause records.
+#[path = "machine/native_clause_filter.rs"]
 pub mod native_clause_filter;
 /// Three-mode encoded formula relation scanner.
+#[path = "machine/native_clause_relation_scan.rs"]
 pub mod native_clause_relation_scan;
 /// Source physical clause subset and dual-direction relation kernel.
+#[path = "machine/native_clause_relations.rs"]
 pub mod native_clause_relations;
 /// Complete original physical Native.frontendCommand on the 80x1220 machine.
+#[path = "machine/native_frontend.rs"]
 pub mod native_frontend;
 /// Source-fixed unary header reader and binary length initializer.
+#[path = "machine/native_frontend_header.rs"]
 pub mod native_frontend_header;
+#[path = "machine/native_membership.rs"]
 pub mod native_membership;
 /// Complete source-defined CNF normalization command on 15x16 machine.
+#[path = "machine/native_normalization_full.rs"]
 pub mod native_normalization_full;
 /// Original 80x1220 lift of the source-normalizing 15x16 machine.
+#[path = "machine/native_outer_normalization.rs"]
 pub mod native_outer_normalization;
+#[path = "counting/native_terminal.rs"]
 pub mod native_terminal;
 
 /// Exact framed-record iteration and fixed-control membership program.
+#[path = "machine/native_record_membership.rs"]
 pub mod native_record_membership;
 
 /// Source physical terminal classification and guarded 80x1220 output.
+#[path = "counting/native_terminal_classifier.rs"]
 pub mod native_terminal_classifier;
 /// Bounded source-physical terminal CNF counter; nonterminal cases refuse.
+#[path = "counting/native_terminal_count.rs"]
 pub mod native_terminal_count;
 
 /// Source-defined generic terminal/nonterminal branch dispatcher; no leaf oracle.
+#[path = "counting/native_leaf_dispatch.rs"]
 pub mod native_leaf_dispatch;
 
 /// Explicit, source-pinned remainder of the native ETH program.
 pub mod remaining;
 
+#[path = "query/native_bootstrap.rs"]
 pub mod native_bootstrap;
+#[path = "query/native_integer_cache.rs"]
 pub mod native_integer_cache;
 
+#[path = "query/native_cache_iteration.rs"]
 pub mod native_cache_iteration;
 
 /// Source-refined fixed-width flattening and executable integer cache.
+#[path = "query/native_flatten.rs"]
 pub mod native_flatten;
 
 /// Source-defined fixed-width H-cache normalization and signed flattening.
+#[path = "query/native_cache_normalize.rs"]
 pub mod native_cache_normalize;
 
 /// Physical source ABI import/export around the pending signature-head local matrix.
+#[path = "query/native_loader_frames.rs"]
 pub mod native_loader_frames;
 
 /// Source-defined pruned difference-pair streaming controller.
+#[path = "query/native_difference_pairs.rs"]
 pub mod native_difference_pairs;
 
+#[path = "query/native_head_scatter.rs"]
 pub mod native_head_scatter;
+#[path = "query/native_head_support.rs"]
 pub mod native_head_support;
 /// Strict source-pinned importer and interpreter bridge for genuine Lean query tables.
+#[path = "query/native_query_table.rs"]
 pub mod native_query_table;
 /// Physical source-defined attained-signature controller and level initializer.
+#[path = "query/native_signature_tuple.rs"]
 pub mod native_signature_tuple;
 
 /// Source-defined signed pair accumulator preparation; signed update pending.
+#[path = "query/native_pair_accumulator.rs"]
 pub mod native_pair_accumulator;
 
 /// Source-defined physical mask parity, not signed accumulation.
+#[path = "query/native_pair_sign.rs"]
 pub mod native_pair_sign;
 
 #[cfg(test)]
@@ -532,76 +580,98 @@ mod canonical_clause_tests {
 }
 
 /// Source-defined signature head-factor construction.
+#[path = "query/native_head_factors.rs"]
 pub mod native_head_factors;
 
 /// Source-defined signature head selection.
+#[path = "query/native_head_selection.rs"]
 pub mod native_head_selection;
 
 /// Source-linked signed integer arithmetic.
+#[path = "query/native_signed_arithmetic.rs"]
 pub mod native_signed_arithmetic;
 
 /// Source-linked signed matrix preprocessing.
+#[path = "query/native_matrix_preprocess.rs"]
 pub mod native_matrix_preprocess;
 
 /// Source-linked canonical signature synthesis.
+#[path = "query/native_signature.rs"]
 pub mod native_signature;
 
 /// Source-pinned attained-signature stage.
+#[path = "query/native_signature_frames.rs"]
 pub mod native_signature_frames;
 
 /// Source-pinned attained-signature stage.
+#[path = "query/native_signature_generator.rs"]
 pub mod native_signature_generator;
 
 /// Source-pinned attained-signature stage.
+#[path = "query/native_signature_rescan.rs"]
 pub mod native_signature_rescan;
 
 /// Source-pinned attained-signature stage.
+#[path = "query/native_signature_key.rs"]
 pub mod native_signature_key;
 
 /// Source-pinned attained-signature stage.
+#[path = "query/native_signature_arithmetic.rs"]
 pub mod native_signature_arithmetic;
 
 /// Source-defined full predecessor rescan and finite tuple probe.
+#[path = "query/native_signature_candidate.rs"]
 pub mod native_signature_candidate;
 
 /// Source-linked bounded primitive TM2 resource accounting (not an asymptotic proof).
+#[path = "counting/tm2_resources.rs"]
 pub mod tm2_resources;
 
 /// Necessary conditions for the appendix's fixed two-adic recursion schedule.
 /// This is an audit, not a counting program or sufficiency certificate.
+#[path = "counting/two_adic_admission.rs"]
 pub mod two_adic_admission;
 
 /// Exact necessary packing inequalities for hypothetical two-adic root schedules.
 /// Arithmetic feasibility is not source proof or active recursion.
+#[path = "counting/two_adic_packing.rs"]
 pub mod two_adic_packing;
 
 /// Exact upper-bound audit of hypothetical two-adic recursive depth.
 /// Not an active contraction or full parameter proof.
+#[path = "counting/two_adic_depth.rs"]
 pub mod two_adic_depth;
 
 /// Optimistic all-depth packet sufficiency versus hypothetical direct-leaf budgets.
 /// No precision, tensor execution or #SAT counting is admitted.
+#[path = "counting/two_adic_basecase_gap.rs"]
 pub mod two_adic_basecase_gap;
 
 /// Exact finite bipartite matching/label derandomization for improved packing.
 /// Does not run the source-defined tensor recursion.
+#[path = "counting/matching_packing.rs"]
 pub mod matching_packing;
 
 /// Bounded structural packet layout from concrete vertex labels (no tensors).
+#[path = "counting/two_adic_packet_layout.rs"]
 pub mod two_adic_packet_layout;
 
 /// Finite source-slot-preserving orbit-sparse packet layout, with explicit
 /// packet/port balance receipts. No source tensor or counting equivalence.
+#[path = "counting/two_adic_orbit_sparse.rs"]
 pub mod two_adic_orbit_sparse;
 
 /// Deterministic finite vertex-degree weighted port balancing with
 /// orbit-aware coordinate relabeling and strict structural receipts.
+#[path = "counting/two_adic_joint_balance.rs"]
 pub mod two_adic_joint_balance;
 
 /// Source packet-structural all-graph sufficient thresholds from a combined
 /// normalized matching-class and real-port potential; arithmetic only.
+#[path = "counting/two_adic_joint_potential.rs"]
 pub mod two_adic_joint_potential;
 
 /// Tiny exact-integer conditional-expectation witness for both potentials.
 /// Explicit u128/work limits; not a complete source recursion.
+#[path = "counting/two_adic_joint_derandomize.rs"]
 pub mod two_adic_joint_derandomize;

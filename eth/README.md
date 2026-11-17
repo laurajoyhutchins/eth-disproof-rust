@@ -48,7 +48,10 @@ execution of the proposed fast algorithm.
 | --- | --- |
 | `src/bit_program.rs` | Literal source-instruction machine state and interpreter |
 | `src/bit_program/structured.rs` | Structured `Atom`/`Cmd` combinators and finite-table compiler, re-exported under `bit_program` |
-| `src/native_frontend.rs`, `src/native_*.rs` | Source-defined executable frontend and other selected machine fragments |
+| `src/machine/` | Finite source-machine frontend, CNF normalization, clause and literal operations |
+| `src/query/` | Query, node, pair, signature and cache controllers |
+| `src/counting/` | Terminal/high/leaf stages and two-adic resource audits |
+| `src/lib.rs` | Preserves the original public `native_*` module names through `#[path]` |
 | `src/remaining.rs` | Dependency spine and explicit unsupported/refusal boundaries |
 | `src/lib.rs` | Canonical finite CNF representation, Lean encoding and DIMACS parsing |
 | `src/semantic_count.rs` | Explicitly exponential bounded oracle and disjoint semantic reference model, re-exported from the crate root |

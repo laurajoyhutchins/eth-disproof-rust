@@ -38,9 +38,11 @@ compiler IR during generation.
 
 The standalone `compiler/cli/` crate owns the public `lean-rust-compiler` entry point and artifact contract, with no dependency on `eth/`. The old `eth-compiler` executable is a delegating compatibility wrapper. The first compiler acceptance target is an unchanged external Lean project.
 
-The ETH crate currently holds many flat `native_*` modules. Grouping them
-into `machine/`, `query/`, `counting/` and `verification/` should follow
-independent tests, not be forced into the directory relocation. Likewise
+The ETH crate's original `native_*` source files now reside under
+`eth/src/machine/`, `eth/src/query/` and `eth/src/counting/`.
+The crate root retains the same public modules via explicit `#[path]`
+attributes, and integration tests remain at `eth/tests/`. The proof
+and original-Lean verification relocation is a distinct follow-up. Likewise
 `eth/src/bin/eth-compiler.rs` remains an ETH Cargo binary while delegating
 to the canonical compiler. Extracting a standalone CLI is a separate
 build-interface change.

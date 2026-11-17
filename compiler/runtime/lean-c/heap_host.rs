@@ -47,6 +47,18 @@ pub extern "C" fn lr_heap_generated_payload(
     payload(parent).into_raw_owned()
 }
 
+// Explicit test-host primitive using the original compiler-emitted nest.
+// The shell-only del here is not yet emitted by a source FnBody.del.
+#[no_mangle]
+pub extern "C" fn lr_heap_runtime_shell_take(
+    parent: *mut __LeanCObject,
+) -> *mut __LeanCObject {
+    let owned = unsafe { __LeanValue::from_owned_raw(parent) };
+    let child = owned.field(0);
+    owned.source_del();
+    child.into_raw_owned()
+}
+
 #[no_mangle]
 pub extern "C" fn lr_heap_generated_nested_first(
     a: *mut __LeanCObject, b: *mut __LeanCObject, stamp: *mut __LeanCObject,

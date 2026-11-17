@@ -110,3 +110,47 @@ The canonical Rust runtime's `Rc` remains a memory-safety mechanism and
 the logical source ledger remains separate. The existing same-source Lean C
 vs Rust reference-count and two-level destruction experiment is unchanged;
 that bounded test also does not prove arbitrary heap simulation.
+
+
+## Runtime read guard for projected source objects
+
+The production Rust `__LeanValue` representation stores two independent
+pieces of state: an `Rc` for Rust allocation residency and a logical Lean
+source reference count. A `.proj` creates a compiler-internal `Rc` handle
+without increasing the Lean count. Once the last parent reference is
+released, the Lean destructor can cascade a final decrement into its child
+even though Rust's `Rc` keeps that child's allocation resident.
+
+`runtime/immutable_value.rs` now makes field projection, constructor tag
+inspection, scalar unboxing, owned/borrowed array field reads, constructor
+refinement and field replacement reject a **source-released** object. The
+check is a source lifetime check, not `Rc::strong_count`. Tagged
+immediates are exempt. These extra runtime checks are a fail-closed
+backstop for the existing source-IR projected-lifetime admission, not a
+replacement for it.
+
+The canonical generated-runtime tests construct actual object graphs and
+exercise seven cases: an unretained field after parent release, a released
+parent observed through an `Rc` alias, explicit child retention before
+release, an unretained two-level descendant, explicitly retained
+grandchild, borrowed array element, and source-owned array element.
+The three unretained cases plus the borrowed array read must panic with
+the precise source-release diagnostic; retained children must still be
+readable. The existing same-source Lean C/Rust object-identity and
+reference-count checkpoint suite still runs separately.
+
+`proofs/ReaderProjectedRC.lean` models the source-owned reference credits
+and implementation Rust aliases **independently**, proving that arbitrary
+Rust handle counts cannot authorize an unretained projection after the
+parent's final release, while explicit source `inc` protects the field,
+including through a two-level destructor cascade. This is an algebraic
+reference-accounting theorem, *not* a physical heap simulation proof for
+arbitrary Rust or C allocations. Its exact axiom audit is retained in
+`artifacts/reader-projected-rc-axioms.txt`.
+
+A static check which misses a source-invalid read is therefore less
+likely to turn a Lean source use-after-release into a successful Rust value
+read merely because `Rc` happened to preserve the underlying allocation.
+Complete source lifetime correctness, arbitrary alias/call interactions,
+finalization order, mutable heap identity, optimized MIR and the
+noncomputable ETH G2 program remain unproved.

@@ -12,7 +12,8 @@ pub extern "C" fn lr_heap_generated_make(
 pub extern "C" fn lr_heap_generated_first(
     pair: *mut __LeanCObject,
 ) -> *mut __LeanCObject {
-    let p = unsafe { __LeanValue::from_owned_raw(pair) };
+    // Pinned C l_RuntimeHeap_first does not decrement its parent.
+    let p = unsafe { __LeanValue::from_borrowed_raw(pair) };
     first(p).into_raw_owned()
 }
 #[no_mangle]
@@ -22,4 +23,36 @@ pub extern "C" fn lr_heap_generated_observe(
     let left = unsafe { __LeanValue::from_owned_raw(a) };
     let right = unsafe { __LeanValue::from_owned_raw(b) };
     observe(left, right).into_raw_owned()
+}
+
+
+#[no_mangle]
+pub extern "C" fn lr_heap_generated_nest(
+    a: *mut __LeanCObject, b: *mut __LeanCObject, stamp: *mut __LeanCObject,
+) -> *mut __LeanCObject {
+    let left = unsafe { __LeanValue::from_owned_raw(a) };
+    let right = unsafe { __LeanValue::from_owned_raw(b) };
+    let label = unsafe { __LeanValue::from_owned_raw(stamp) };
+    nest(left, right, label).into_raw_owned()
+}
+
+#[no_mangle]
+pub extern "C" fn lr_heap_generated_payload(
+    parent: *mut __LeanCObject,
+) -> *mut __LeanCObject {
+    // Original unboxed l_RuntimeHeap_payload borrows its parent and
+    // calls lean_inc on the projected child. Its ___boxed wrapper, not
+    // this unboxed function, performs the caller's final lean_dec.
+    let parent = unsafe { __LeanValue::from_borrowed_raw(parent) };
+    payload(parent).into_raw_owned()
+}
+
+#[no_mangle]
+pub extern "C" fn lr_heap_generated_nested_first(
+    a: *mut __LeanCObject, b: *mut __LeanCObject, stamp: *mut __LeanCObject,
+) -> *mut __LeanCObject {
+    let left = unsafe { __LeanValue::from_owned_raw(a) };
+    let right = unsafe { __LeanValue::from_owned_raw(b) };
+    let label = unsafe { __LeanValue::from_owned_raw(stamp) };
+    nestedFirst(left, right, label).into_raw_owned()
 }

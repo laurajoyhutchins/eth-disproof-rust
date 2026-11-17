@@ -6,5 +6,8 @@ import RuntimeHeapKernels
 #native_rust_package [
   RuntimeHeap.make,
   RuntimeHeap.first,
-  RuntimeHeap.observe
+  RuntimeHeap.observe,
+  RuntimeHeap.nest,
+  RuntimeHeap.payload,
+  RuntimeHeap.nestedFirst
 ] to "examples/lean-c-heap-package"

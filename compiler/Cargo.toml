@@ -11,3 +11,5 @@ path = "backend/src/lib.rs"
 # Keep the native plugin's optional Lean dependency separate from ETH's fast
 # Rust workspace checks. `scripts/check.sh` exercises it explicitly.
 [workspace]
+members = ["cli"]
+resolver = "3"

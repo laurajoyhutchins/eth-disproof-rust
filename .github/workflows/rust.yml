@@ -33,6 +33,11 @@ jobs:
         run: python3 -m unittest discover -s tools -p 'test_repository_layout.py'
       - name: Formatting (workspace)
         run: cargo fmt --all -- --check
+      - name: Compiler CLI independence, formatting and tests
+        run: |
+          cargo fmt --manifest-path compiler/cli/Cargo.toml -- --check
+          cargo test --locked --offline --manifest-path compiler/cli/Cargo.toml -p lean-compiler-cli --all-targets
+          cargo run --quiet --locked --offline --manifest-path compiler/cli/Cargo.toml --bin lean-rust-compiler --             verify --backend bogus >/dev/null 2>&1 && exit 1 || test "$?" -eq 2
       - name: Exact Rust tests
         run: cargo test --locked --offline --all-targets
       - name: Nonterminal source-prefix accounting receipt (unsupported count)

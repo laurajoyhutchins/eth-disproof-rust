@@ -71,7 +71,7 @@ There is a direct factorial reduction of the missing Cauchy normalization. Put `
 
 ```text
 D(t) := ∏_{q∈S, q≠t} (t-q) = (-1)^(n-k) · k! · (n-k)!
-D(t)/D(0) = (-1)^t · choose(n,L)/choose(n,k).
+D(t)/D(0) = (-1)^|t| · choose(n,L)/choose(n,k).
 ```
 
 The parity theorem verifies the oddness of both binomial coefficients on the right (because `n=2^(a+1)-1`). Their ratio is therefore a unit in `ℤ_(2)`. For every distinct pair `t,q∈S`, the checked bound `0<|t-q|<α` implies that `α/(t-q)` is two-locally integral. Consequently, over the fraction field the normalized numerator has the exact factorization

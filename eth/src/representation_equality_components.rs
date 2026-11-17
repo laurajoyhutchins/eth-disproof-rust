@@ -9,7 +9,8 @@
 //! Inputs and intermediate values are checked i128. Capacity/overflow means
 //! refusal, not modular arithmetic or an inferred exact result. Complexity:
 //! union by size plus path compression has O((n + e) alpha(n)) amortized
-//! parent operations; the contraction visits n variables and their roots.
+//! build operations. Read-only root traversal during contraction has
+//! O(n log n) worst-case parent hops from union by size.
 //! Owned logical storage is O(n + e) machine words. This is an algorithmic
 //! argument, not a certified Rust bit-level or peak-allocator bound.
 
@@ -210,7 +211,9 @@ impl EqualityComponentRegion {
             .len()
             .checked_mul(size_of::<(usize, usize)>())
             .ok_or(Error::Overflow)?;
-        let temporary = n.checked_mul(size_of::<[i128; 2]>()).ok_or(Error::Overflow)?;
+        let temporary = n
+            .checked_mul(size_of::<[i128; 2]>())
+            .ok_or(Error::Overflow)?;
         let logical_payload_bytes = stored
             .checked_add(edges)
             .and_then(|x| x.checked_add(temporary))

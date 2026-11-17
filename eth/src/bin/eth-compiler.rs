@@ -1,4 +1,4 @@
-//! One compiler acceptance interface: native Lean IR or a non-executable residual Expr.\n//! The canonical in-process code generator lives in rust/native_lean_backend.
+//! One compiler acceptance interface: native Lean IR or a non-executable residual Expr.\n//! The canonical in-process code generator lives in compiler.
 use lean_eth_reference::lean_codegen as contract;
 
 use contract::{Backend, Result, ensure, refuse};
@@ -337,7 +337,7 @@ fn compiler_ir(
     let native_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .ok_or("missing native compiler workspace parent")?
-        .join("native_lean_backend")
+        .join("compiler")
         .canonicalize()
         .map_err(|e| format!("canonical native compiler unavailable: {e}"))?;
     ensure(

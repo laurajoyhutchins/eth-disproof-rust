@@ -10,7 +10,7 @@ set -euo pipefail
 : "${LEAN_PREFIX:?Pinned Lean 4.34.1 required}"
 
 native="$(realpath -e "$EXTERNAL_NATIVE_ROOT")"
-workspace="$(realpath -e "$native/../..")"
+workspace="$(realpath -e "$native/..")"
 scratch="$(realpath -e "$EXTERNAL_SOURCE_CHECKOUTS")"
 out="$(realpath -e "$EXTERNAL_EVIDENCE_DIR")"
 test -f "$workspace/Cargo.toml"

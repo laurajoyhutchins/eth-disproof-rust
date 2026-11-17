@@ -25,7 +25,7 @@ On Linux x86-64 with exact Lean 4.34.1 and Rust 1.99.1:
 
 ```sh
 export LEAN_PREFIX=/path/to/lean-4.34.1
-bash tools/lean-rust-bootstrap/scripts/check.sh
+bash experiments/lean-compiler-bootstrap/scripts/check.sh
 ```
 
 The script clones the reviewed upstream lungo commit into ignored
@@ -43,7 +43,7 @@ reference crate. It can be moved into its own repository unchanged.
 - Does not run Lean's compiler driver in Rust.
 - Does not establish self-hosting or a stage-two reproducible build.
 - Does not establish reference-count or resource-bound equivalence.
-- Does not replace `rust/native_lean_backend` or its CI gates.
+- Does not replace `compiler` or its CI gates.
 - Does not compile the ETH manuscript's noncomputable algorithm.
 
 Next expand to a true compiler transformation from original Lean source,

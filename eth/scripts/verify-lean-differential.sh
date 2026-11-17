@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CRATE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-REPOSITORY="$(cd -- "$CRATE/../.." && pwd)"
+REPOSITORY="$(cd -- "$CRATE/.." && pwd)"
 UPSTREAM=""
 OUT="$REPOSITORY/target/lean-differential"
 SUITE=full
@@ -60,7 +60,7 @@ lean_version="$(cd "$UPSTREAM/lean" && env -u LEAN_PATH -u LEAN_SRC_PATH lake en
   echo "BLOCKED: expected Lean 4.34.1, got $lean_version" >&2; exit 3;
 }
 rust_head="$(git -C "$REPOSITORY" rev-parse HEAD)"
-if [[ -n "$(git -C "$REPOSITORY" status --porcelain --untracked-files=all -- rust/lean_eth_reference/src rust/lean_eth_reference/reference rust/lean_eth_reference/scripts)" ]]; then
+if [[ -n "$(git -C "$REPOSITORY" status --porcelain --untracked-files=all -- eth/src eth/reference eth/scripts)" ]]; then
   echo "BLOCKED: Rust checkout contains uncommitted source or observer changes" >&2; exit 3
 fi
 rust_version="$(rustc --version)"

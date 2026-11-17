@@ -31,7 +31,9 @@ theorem weighted_fiber_sum
       ∑ k ∈ states.image label,
         (∑ s ∈ states.filter (fun s => label s = k), weight s) * feature k := by
   classical
-  rw [Finset.sum_fiberwise states label (fun s => weight s * feature (label s))]
+  rw [Finset.sum_fiberwise_of_maps_to
+    (s := states) (t := states.image label) (g := label)
+    (by intro s hs; exact Finset.mem_image_of_mem label hs)]
   apply Finset.sum_congr rfl
   intro k hk
   rw [Finset.sum_mul]

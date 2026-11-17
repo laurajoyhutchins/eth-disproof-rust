@@ -112,3 +112,89 @@ fn empty_and_unconstrained_components_have_correct_identity() {
     );
     assert_eq!(unconstrained.contract().unwrap().value, (2 + 3) * (4 + 5));
 }
+
+
+/// Completely independent reachability reference: repeated edge relaxation.
+/// Unlike union-find it never reads or updates the production parent array.
+fn reachable(n: usize, edges: &[(usize, usize)], start: usize, target: usize) -> bool {
+    let mut seen = vec![false; n];
+    seen[start] = true;
+    for _ in 0..n {
+        for &(a, b) in edges {
+            if seen[a] || seen[b] {
+                seen[a] = true;
+                seen[b] = true;
+            }
+        }
+    }
+    seen[target]
+}
+
+#[test]
+fn component_labels_are_surjective_and_match_independent_paths() {
+    for n in 1..=5 {
+        let possible_edges: Vec<_> = (0..n)
+            .flat_map(|a| (a + 1..n).map(move |b| (a, b)))
+            .collect();
+        for mask in 0..(1usize << possible_edges.len()) {
+            let edges: Vec<_> = possible_edges
+                .iter()
+                .enumerate()
+                .filter_map(|(k, &edge)| ((mask >> k) & 1 == 1).then_some(edge))
+                .collect();
+            for reverse in [false, true] {
+                let mut region = EqualityComponentRegion::new(vec![[1, 1]; n]);
+                if reverse {
+                    for &(a, b) in edges.iter().rev() {
+                        region.apply_equality(b, a).unwrap();
+                    }
+                } else {
+                    for &(a, b) in &edges {
+                        region.apply_equality(a, b).unwrap();
+                    }
+                }
+                let labels = region.component_labels().unwrap();
+                assert_eq!(labels.len(), n);
+                assert_eq!(
+                    labels.iter().copied().collect::<std::collections::BTreeSet<_>>(),
+                    (0..region.component_count()).collect(),
+                    "surjective labels: n={n} graph={mask}"
+                );
+                for a in 0..n {
+                    for b in 0..n {
+                        assert_eq!(
+                            labels[a] == labels[b],
+                            reachable(n, &edges, a, b),
+                            "n={n} graph={mask}, reversed={reverse}, ports=({a},{b})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn duplicates_self_edges_and_reordered_insertions_preserve_partition() {
+    let mut region = EqualityComponentRegion::new(vec![[2, 3]; 6]);
+    let edges = [(2, 3), (1, 2), (2, 3), (0, 0), (3, 4), (4, 1)];
+    for (a, b) in edges {
+        region.apply_equality(a, b).unwrap();
+    }
+    assert_eq!(region.component_labels().unwrap(), vec![0, 1, 1, 1, 1, 2]);
+    assert_eq!(region.component_count(), 3);
+    let expected = region.contract().unwrap().value;
+    let mut reversed = EqualityComponentRegion::new(vec![[2, 3]; 6]);
+    for &(a, b) in edges.iter().rev() {
+        reversed.apply_equality(b, a).unwrap();
+    }
+    assert_eq!(reversed.component_labels().unwrap(), region.component_labels().unwrap());
+    assert_eq!(reversed.contract().unwrap().value, expected);
+}
+
+#[test]
+fn empty_partition_has_no_fictitious_component_label() {
+    let empty = EqualityComponentRegion::new(vec![]);
+    assert!(empty.component_labels().unwrap().is_empty());
+    assert_eq!(empty.component_count(), 0);
+}

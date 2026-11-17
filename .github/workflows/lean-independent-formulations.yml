@@ -106,7 +106,7 @@ jobs:
           fi
           (
             cd instrumentation/lean-env
-            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults Groundwork.Net.Net Groundwork.SatNet
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults ThreeSatStatement Groundwork.Net.Net Groundwork.SatNet
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentCnfBridge.lean"
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentSwapIdentity.lean"
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentRoutingBoundary.lean"

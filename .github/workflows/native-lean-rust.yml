@@ -3,16 +3,16 @@ name: Native Lean 4.34.1 to Rust G0
 on:
   pull_request:
     paths:
-      - 'rust/native_lean_backend/**'
-      - 'rust/lean_eth_reference/src/bin/eth-compiler.rs'
-      - 'rust/lean_eth_reference/src/lean_codegen.rs'
+      - 'compiler/**'
+      - 'eth/src/bin/eth-compiler.rs'
+      - 'eth/src/lean_codegen.rs'
       - '.github/workflows/native-lean-rust.yml'
   push:
     branches: [main]
     paths:
-      - 'rust/native_lean_backend/**'
-      - 'rust/lean_eth_reference/src/bin/eth-compiler.rs'
-      - 'rust/lean_eth_reference/src/lean_codegen.rs'
+      - 'compiler/**'
+      - 'eth/src/bin/eth-compiler.rs'
+      - 'eth/src/lean_codegen.rs'
       - '.github/workflows/native-lean-rust.yml'
   workflow_dispatch:
 
@@ -67,13 +67,13 @@ jobs:
           LEAN_BINARY="$(cd instrumentation/lean-env && elan which lean)"
           export LEAN_PREFIX="$(dirname "$(dirname "$LEAN_BINARY")")"
           test -f "$LEAN_PREFIX/include/lean/lean.h"
-          test "$(cat rust/native_lean_backend/lean-toolchain)" = 'leanprover/lean4:v4.34.1'
+          test "$(cat compiler/lean-toolchain)" = 'leanprover/lean4:v4.34.1'
           echo "PR_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
           "$LEAN_PREFIX/bin/lean" --version
           cargo --version
           rustc --version
           (
-            cd rust/native_lean_backend
+            cd compiler
             lake build
             ./scripts/check.sh
             bash ./scripts/check-evidence.sh
@@ -87,15 +87,15 @@ jobs:
           )
           # The public eth-compiler interface must emit one actual multi-root
           # Cargo package, using only the existing in-process native emitter.
-          fixture="$GITHUB_WORKSPACE/rust/native_lean_backend/fixtures/CompilerCli"
-          package="$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-project"
-          certificate="$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-project.receipt.json"
+          fixture="$GITHUB_WORKSPACE/compiler/fixtures/CompilerCli"
+          package="$GITHUB_WORKSPACE/compiler/artifacts/eth-compiler-project"
+          certificate="$GITHUB_WORKSPACE/compiler/artifacts/eth-compiler-project.receipt.json"
           cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- compile \
             --backend compiler-ir \
             --source-repo "$GITHUB_WORKSPACE" \
             --source-revision "$(git rev-parse HEAD)" \
-            --source-path rust/native_lean_backend/fixtures/CompilerCli/Sample.lean \
-            --source-toolchain-path rust/native_lean_backend/fixtures/CompilerCli/lean-toolchain \
+            --source-path compiler/fixtures/CompilerCli/Sample.lean \
+            --source-toolchain-path compiler/fixtures/CompilerCli/lean-toolchain \
             --lake-root "$fixture" \
             --module Sample --root Sample.inc --root Sample.twice --root Sample.choose \
             --output "$package" --receipt "$certificate"
@@ -106,8 +106,8 @@ jobs:
             --backend compiler-ir \
             --source-repo "$GITHUB_WORKSPACE" \
             --source-revision "$(git rev-parse HEAD)" \
-            --source-path rust/native_lean_backend/fixtures/CompilerCli/Sample.lean \
-            --source-toolchain-path rust/native_lean_backend/fixtures/CompilerCli/lean-toolchain \
+            --source-path compiler/fixtures/CompilerCli/Sample.lean \
+            --source-toolchain-path compiler/fixtures/CompilerCli/lean-toolchain \
             --module Sample --root Sample.inc --root Sample.twice --root Sample.choose \
             --artifact "$package" --receipt "$certificate"
           jq -e '
@@ -123,32 +123,32 @@ jobs:
           grep -Fq 'Generated directly from Lean IR declaration: Sample.twice' "$package/src/lib.rs"
           grep -Fq 'Generated directly from Lean IR declaration: Sample.choose' "$package/src/lib.rs"
           # Reject and invalidate certification for a mutated Cargo package.
-          cp -a "$package" "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered"
-          cp "$certificate" "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json"
-          printf '\n// modified after native compilation\n' >> "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered/src/lib.rs"
+          cp -a "$package" "$GITHUB_WORKSPACE/compiler/artifacts/eth-compiler-tampered"
+          cp "$certificate" "$GITHUB_WORKSPACE/compiler/artifacts/eth-compiler-tampered.receipt.json"
+          printf '\n// modified after native compilation\n' >> "$GITHUB_WORKSPACE/compiler/artifacts/eth-compiler-tampered/src/lib.rs"
           if cargo run --locked --offline -p lean-eth-reference --bin eth-compiler -- verify \
               --backend compiler-ir \
               --source-repo "$GITHUB_WORKSPACE" \
               --source-revision "$(git rev-parse HEAD)" \
-              --source-path rust/native_lean_backend/fixtures/CompilerCli/Sample.lean \
-              --source-toolchain-path rust/native_lean_backend/fixtures/CompilerCli/lean-toolchain \
+              --source-path compiler/fixtures/CompilerCli/Sample.lean \
+              --source-toolchain-path compiler/fixtures/CompilerCli/lean-toolchain \
               --module Sample --root Sample.inc --root Sample.twice --root Sample.choose \
-              --artifact "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered" \
-              --receipt "$GITHUB_WORKSPACE/rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json"; then
+              --artifact "$GITHUB_WORKSPACE/compiler/artifacts/eth-compiler-tampered" \
+              --receipt "$GITHUB_WORKSPACE/compiler/artifacts/eth-compiler-tampered.receipt.json"; then
             echo "Tampered canonical IR Cargo package accepted" >&2
             exit 1
           fi
-          test ! -e rust/native_lean_backend/artifacts/eth-compiler-tampered.receipt.json
+          test ! -e compiler/artifacts/eth-compiler-tampered.receipt.json
           # Keep the exact-head provenance and all generated-code hashes in the job log.
-          cat rust/native_lean_backend/artifacts/native-smoke-receipt.txt
-          cat rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
-          cat rust/native_lean_backend/artifacts/imported-probes/manifest.tsv
-          cat rust/native_lean_backend/artifacts/native-compiler-bundle-receipt.txt
-          cat rust/native_lean_backend/artifacts/parity-native/receipt.txt
-          cat rust/native_lean_backend/artifacts/compare-native/receipt.txt
-          cat rust/native_lean_backend/artifacts/bench-matrix/receipt.txt
-          cat rust/native_lean_backend/artifacts/external-projects/manifest.tsv
-          cat rust/native_lean_backend/artifacts/external-projects/receipt.txt
+          cat compiler/artifacts/native-smoke-receipt.txt
+          cat compiler/artifacts/native-g1-evidence-receipt.txt
+          cat compiler/artifacts/imported-probes/manifest.tsv
+          cat compiler/artifacts/native-compiler-bundle-receipt.txt
+          cat compiler/artifacts/parity-native/receipt.txt
+          cat compiler/artifacts/compare-native/receipt.txt
+          cat compiler/artifacts/bench-matrix/receipt.txt
+          cat compiler/artifacts/external-projects/manifest.tsv
+          cat compiler/artifacts/external-projects/receipt.txt
           {
             echo 'NATIVE_LEAN_G0=REAL_IN_PROCESS_FFI_AND_GENERATED_RUST'
             echo 'Lean=4.34.1'
@@ -164,86 +164,86 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: |
-            rust/native_lean_backend/artifacts/native-smoke-receipt.txt
-            rust/native_lean_backend/artifacts/lcnf-capture.json
-            rust/native_lean_backend/artifacts/lcnf-capture-receipt.txt
-            rust/native_lean_backend/artifacts/lcnf-baseline.rs
-            rust/native_lean_backend/artifacts/lcnf-observed.rs
-            rust/native_lean_backend/artifacts/reader-rust-execution-receipt.txt
-            rust/native_lean_backend/artifacts/reader-rust-statement-axioms.txt
-            rust/native_lean_backend/artifacts/reader-rust-execution-inputs.txt
-            rust/native_lean_backend/artifacts/reader-rust-exec-*.rs
-            rust/native_lean_backend/artifacts/reader-rust-exec-*.expected
-            rust/native_lean_backend/artifacts/reader-rust-exec-*.actual
-            rust/native_lean_backend/artifacts/reader-rust-exec-*.mir
-            rust/native_lean_backend/artifacts/reader-rust-mir-footprint.log
-            rust/native_lean_backend/artifacts/reader-mir-soundness-axioms.txt
-            rust/native_lean_backend/artifacts/reader-mir-live-axioms.txt
-            rust/native_lean_backend/artifacts/reader-mir-cfg-*.txt
-            rust/native_lean_backend/artifacts/reader-projected-rc-axioms.txt
-            rust/native_lean_backend/artifacts/ownership-object-trace/receipt.txt
-            rust/native_lean_backend/artifacts/ownership-object-trace/c-*.txt
-            rust/native_lean_backend/artifacts/ownership-object-trace/rust-*.txt
-            rust/native_lean_backend/artifacts/ownership-object-trace/OwnershipObjectTraceKernels.c
-            rust/native_lean_backend/examples/ownership-object-trace-package/src/lib.rs
-            rust/native_lean_backend/artifacts/ir-coverage.tsv
-            rust/native_lean_backend/artifacts/ir-constructor-summary.tsv
-            rust/native_lean_backend/artifacts/ir-constructors.tsv
-            rust/native_lean_backend/artifacts/primitive-conformance.tsv
-            rust/native_lean_backend/artifacts/item30-ir-probes.txt
-            rust/native_lean_backend/artifacts/item30-oracles.rs
-            rust/native_lean_backend/artifacts/item30-rejection.log
-            rust/native_lean_backend/artifacts/native-g1-evidence-receipt.txt
-            rust/native_lean_backend/artifacts/imported-probes/*
-            rust/native_lean_backend/artifacts/native-compiler-bundle-*.txt
-            rust/native_lean_backend/artifacts/native-project-cli-receipt.txt
-            rust/native_lean_backend/artifacts/eth-compiler-project/Cargo.toml
-            rust/native_lean_backend/artifacts/eth-compiler-project/src/lib.rs
-            rust/native_lean_backend/artifacts/eth-compiler-project/receipt.txt
-            rust/native_lean_backend/artifacts/eth-compiler-project.receipt.json
-            rust/native_lean_backend/artifacts/parity-native/*.txt
-            rust/native_lean_backend/artifacts/parity-native/*.tsv
-            rust/native_lean_backend/artifacts/parity-native/*.log
-            rust/native_lean_backend/artifacts/compare-native/*.tsv
-            rust/native_lean_backend/artifacts/compare-native/*.txt
-            rust/native_lean_backend/artifacts/compare-native/*.log
-            rust/native_lean_backend/artifacts/compare-native/*.time
-            rust/native_lean_backend/artifacts/compare-native/*.c
-            rust/native_lean_backend/artifacts/compare-native/*.rs
-            rust/native_lean_backend/artifacts/bench-matrix/*.tsv
-            rust/native_lean_backend/artifacts/bench-matrix/*.txt
-            rust/native_lean_backend/artifacts/bench-matrix/*.log
-            rust/native_lean_backend/artifacts/bench-matrix/*.time
-            rust/native_lean_backend/artifacts/bench-matrix/*.c
-            rust/native_lean_backend/artifacts/bench-matrix/generated-package/src/lib.rs
-            rust/native_lean_backend/artifacts/bench-matrix/generated-package/src/main.rs
-            rust/native_lean_backend/artifacts/external-projects/*.tsv
-            rust/native_lean_backend/artifacts/external-projects/*.txt
-            rust/native_lean_backend/artifacts/external-projects/*/unified-cli.*
-            rust/native_lean_backend/artifacts/external-projects/*/unified-oracle-cargo.log
-            rust/native_lean_backend/artifacts/external-projects/*/unified-cli-package/Cargo.toml
-            rust/native_lean_backend/artifacts/external-projects/*/unified-cli-package/src/lib.rs
-            rust/native_lean_backend/artifacts/external-projects/*/unified-cli-package/receipt.txt
-            rust/native_lean_backend/artifacts/external-projects/unified-cli-*.tsv
-            rust/native_lean_backend/artifacts/external-projects/unified-cli-*.txt
-            rust/native_lean_backend/artifacts/external-projects/*/*.lean
-            rust/native_lean_backend/artifacts/external-projects/*/*.txt
-            rust/native_lean_backend/artifacts/external-projects/*/*.log
-            rust/native_lean_backend/artifacts/external-projects/*/*.time
-            rust/native_lean_backend/artifacts/external-projects/*/generated.rs
-            rust/native_lean_backend/artifacts/external-projects/*/verified-crate/Cargo.toml
-            rust/native_lean_backend/artifacts/external-projects/*/verified-crate/src/*.rs
-            rust/native_lean_backend/artifacts/external-projects/*/verified-crate/tests/*.rs
-            rust/native_lean_backend/artifacts/external-projects/*/verified-crate/oracles/*.rs
-            rust/native_lean_backend/examples/ListFixture.lean
-            rust/native_lean_backend/examples/OptionDefaultFixture.lean
-            rust/native_lean_backend/examples/option-default-package/original-ir.txt
-            rust/native_lean_backend/examples/option-default-package/Cargo.toml
-            rust/native_lean_backend/examples/option-default-package/src/*.rs
-            rust/native_lean_backend/examples/option-default-package/tests/*.rs
-            rust/native_lean_backend/artifacts/external-projects/*/positive-package/Cargo.toml
-            rust/native_lean_backend/artifacts/external-projects/*/positive-package/src/*.rs
-            rust/native_lean_backend/artifacts/external-projects/*/positive-package/tests/*.rs
-            rust/native_lean_backend/artifacts/external-projects/*/fullpull-crate/Cargo.toml
-            rust/native_lean_backend/artifacts/external-projects/*/fullpull-crate/src/*.rs
-            rust/native_lean_backend/artifacts/external-projects/*/fullpull-crate/oracles/*.rs
+            compiler/artifacts/native-smoke-receipt.txt
+            compiler/artifacts/lcnf-capture.json
+            compiler/artifacts/lcnf-capture-receipt.txt
+            compiler/artifacts/lcnf-baseline.rs
+            compiler/artifacts/lcnf-observed.rs
+            compiler/artifacts/reader-rust-execution-receipt.txt
+            compiler/artifacts/reader-rust-statement-axioms.txt
+            compiler/artifacts/reader-rust-execution-inputs.txt
+            compiler/artifacts/reader-rust-exec-*.rs
+            compiler/artifacts/reader-rust-exec-*.expected
+            compiler/artifacts/reader-rust-exec-*.actual
+            compiler/artifacts/reader-rust-exec-*.mir
+            compiler/artifacts/reader-rust-mir-footprint.log
+            compiler/artifacts/reader-mir-soundness-axioms.txt
+            compiler/artifacts/reader-mir-live-axioms.txt
+            compiler/artifacts/reader-mir-cfg-*.txt
+            compiler/artifacts/reader-projected-rc-axioms.txt
+            compiler/artifacts/ownership-object-trace/receipt.txt
+            compiler/artifacts/ownership-object-trace/c-*.txt
+            compiler/artifacts/ownership-object-trace/rust-*.txt
+            compiler/artifacts/ownership-object-trace/OwnershipObjectTraceKernels.c
+            compiler/examples/ownership-object-trace-package/src/lib.rs
+            compiler/artifacts/ir-coverage.tsv
+            compiler/artifacts/ir-constructor-summary.tsv
+            compiler/artifacts/ir-constructors.tsv
+            compiler/artifacts/primitive-conformance.tsv
+            compiler/artifacts/item30-ir-probes.txt
+            compiler/artifacts/item30-oracles.rs
+            compiler/artifacts/item30-rejection.log
+            compiler/artifacts/native-g1-evidence-receipt.txt
+            compiler/artifacts/imported-probes/*
+            compiler/artifacts/native-compiler-bundle-*.txt
+            compiler/artifacts/native-project-cli-receipt.txt
+            compiler/artifacts/eth-compiler-project/Cargo.toml
+            compiler/artifacts/eth-compiler-project/src/lib.rs
+            compiler/artifacts/eth-compiler-project/receipt.txt
+            compiler/artifacts/eth-compiler-project.receipt.json
+            compiler/artifacts/parity-native/*.txt
+            compiler/artifacts/parity-native/*.tsv
+            compiler/artifacts/parity-native/*.log
+            compiler/artifacts/compare-native/*.tsv
+            compiler/artifacts/compare-native/*.txt
+            compiler/artifacts/compare-native/*.log
+            compiler/artifacts/compare-native/*.time
+            compiler/artifacts/compare-native/*.c
+            compiler/artifacts/compare-native/*.rs
+            compiler/artifacts/bench-matrix/*.tsv
+            compiler/artifacts/bench-matrix/*.txt
+            compiler/artifacts/bench-matrix/*.log
+            compiler/artifacts/bench-matrix/*.time
+            compiler/artifacts/bench-matrix/*.c
+            compiler/artifacts/bench-matrix/generated-package/src/lib.rs
+            compiler/artifacts/bench-matrix/generated-package/src/main.rs
+            compiler/artifacts/external-projects/*.tsv
+            compiler/artifacts/external-projects/*.txt
+            compiler/artifacts/external-projects/*/unified-cli.*
+            compiler/artifacts/external-projects/*/unified-oracle-cargo.log
+            compiler/artifacts/external-projects/*/unified-cli-package/Cargo.toml
+            compiler/artifacts/external-projects/*/unified-cli-package/src/lib.rs
+            compiler/artifacts/external-projects/*/unified-cli-package/receipt.txt
+            compiler/artifacts/external-projects/unified-cli-*.tsv
+            compiler/artifacts/external-projects/unified-cli-*.txt
+            compiler/artifacts/external-projects/*/*.lean
+            compiler/artifacts/external-projects/*/*.txt
+            compiler/artifacts/external-projects/*/*.log
+            compiler/artifacts/external-projects/*/*.time
+            compiler/artifacts/external-projects/*/generated.rs
+            compiler/artifacts/external-projects/*/verified-crate/Cargo.toml
+            compiler/artifacts/external-projects/*/verified-crate/src/*.rs
+            compiler/artifacts/external-projects/*/verified-crate/tests/*.rs
+            compiler/artifacts/external-projects/*/verified-crate/oracles/*.rs
+            compiler/examples/ListFixture.lean
+            compiler/examples/OptionDefaultFixture.lean
+            compiler/examples/option-default-package/original-ir.txt
+            compiler/examples/option-default-package/Cargo.toml
+            compiler/examples/option-default-package/src/*.rs
+            compiler/examples/option-default-package/tests/*.rs
+            compiler/artifacts/external-projects/*/positive-package/Cargo.toml
+            compiler/artifacts/external-projects/*/positive-package/src/*.rs
+            compiler/artifacts/external-projects/*/positive-package/tests/*.rs
+            compiler/artifacts/external-projects/*/fullpull-crate/Cargo.toml
+            compiler/artifacts/external-projects/*/fullpull-crate/src/*.rs
+            compiler/artifacts/external-projects/*/fullpull-crate/oracles/*.rs

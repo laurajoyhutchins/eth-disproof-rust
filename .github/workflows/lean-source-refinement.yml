@@ -3,7 +3,7 @@ name: Formal Lean source-graph refinement
 on:
   pull_request:
     paths:
-      - 'rust/lean_eth_reference/proofs/SourceGraphRefinement.lean'
+      - 'eth/proofs/SourceGraphRefinement.lean'
       - '.github/workflows/lean-source-refinement.yml'
   workflow_dispatch:
 
@@ -59,13 +59,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
-          if grep -nE '\b(sorry|admit)\b' rust/lean_eth_reference/proofs/SourceGraphRefinement.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/SourceGraphRefinement.lean; then
             echo 'Proof contains unresolved admission' >&2
             exit 1
           fi
           (
             cd instrumentation/lean-env
             lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler
-            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/SourceGraphRefinement.lean"
+            lake env lean "$GITHUB_WORKSPACE/eth/proofs/SourceGraphRefinement.lean"
           )
           echo 'LEAN_SOURCE_GRAPH_REFINEMENT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"

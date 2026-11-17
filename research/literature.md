@@ -54,7 +54,7 @@ The [Lean formalization scope](https://github.com/openai/math/blob/main/lean/doc
 
 up to polynomial encoding factors. The manuscript states a sharper \(2^{O_k(n\log\log n/\sqrt{\log n})}\) route. Do not transfer the sharper statement to the Lean scope without checking the corresponding theorem.
 
-Our [pinned source](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT) and [execution evidence](../rust/lean_eth_reference/docs/evidence.md) are separate from claims about the mathematical result.
+Our [pinned source](https://github.com/openai/math/tree/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT) and [execution evidence](../eth/docs/evidence.md) are separate from claims about the mathematical result.
 
 ## Formalization and reproduction
 

@@ -13,11 +13,11 @@ class MkdocsHookTests(unittest.TestCase):
         self.assertIn("README.md", paths)
         self.assertIn("CONTRIBUTING.md", paths)
         self.assertIn("research/two-adic-recursion.md", paths)
-        self.assertIn("rust/lean_eth_reference/docs/evidence.md", paths)
-        self.assertIn("rust/native_lean_backend/SEMANTICS.md", paths)
-        self.assertIn("rust/native_lean_backend/docs/backend-first-architecture.md", paths)
-        self.assertIn("rust/native_lean_backend/docs/compiler-status.md", paths)
-        self.assertIn("rust/native_lean_backend/docs/execution-runtime-contract.md", paths)
+        self.assertIn("eth/docs/evidence.md", paths)
+        self.assertIn("compiler/SEMANTICS.md", paths)
+        self.assertIn("compiler/docs/backend-first-architecture.md", paths)
+        self.assertIn("compiler/docs/compiler-status.md", paths)
+        self.assertIn("compiler/docs/execution-runtime-contract.md", paths)
         self.assertGreaterEqual(len(paths), 50)
         self.assertEqual(len(paths), len(set(paths)))
 
@@ -28,17 +28,17 @@ class MkdocsHookTests(unittest.TestCase):
     def test_source_file_points_to_github(self):
         result = rewrite_source_links(
             "[source](../reference/source-manifest.json)",
-            "rust/lean_eth_reference/docs/evidence.md",
+            "eth/docs/evidence.md",
         )
         self.assertEqual(
             "[source](https://github.com/laurajoyhutchins/eth-disproof-rust/"
-            "blob/main/rust/lean_eth_reference/reference/source-manifest.json)",
+            "blob/main/eth/reference/source-manifest.json)",
             result,
         )
 
     def test_source_directory_and_fragments(self):
-        base = "rust/lean_eth_reference/docs/evidence.md"
-        self.assertIn("/tree/main/rust/lean_eth_reference/src)",
+        base = "eth/docs/evidence.md"
+        self.assertIn("/tree/main/eth/src)",
                       rewrite_source_links("[source](../src)", base))
         self.assertIn("native_terminal.rs#L4)",
                       rewrite_source_links("[source](../src/native_terminal.rs#L4)", base))
@@ -51,13 +51,13 @@ class MkdocsHookTests(unittest.TestCase):
         tick = chr(96) * 3
         raw = (
             tick + "md\n"
-            + "[source](rust/lean_eth_reference/reference/source-manifest.json)\n"
+            + "[source](eth/reference/source-manifest.json)\n"
             + tick + "\n"
-            + "[source](rust/lean_eth_reference/reference/source-manifest.json)\n"
+            + "[source](eth/reference/source-manifest.json)\n"
         )
         result = rewrite_source_links(raw, "README.md")
-        self.assertIn(tick + "md\n[source](rust/lean_eth_reference/reference/source-manifest.json)", result)
-        self.assertIn("/blob/main/rust/lean_eth_reference/reference/source-manifest.json", result)
+        self.assertIn(tick + "md\n[source](eth/reference/source-manifest.json)", result)
+        self.assertIn("/blob/main/eth/reference/source-manifest.json", result)
 
 
 if __name__ == "__main__":

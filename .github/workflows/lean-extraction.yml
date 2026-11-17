@@ -3,9 +3,9 @@ name: Pinned Lean literal extraction
 on:
   pull_request:
     paths:
-      - 'rust/lean_eth_reference/src/bin/extract-lean-tables.rs'
-      - 'rust/lean_eth_reference/tools/lean_table_codegen.rs'
-      - 'rust/lean_eth_reference/tools/fixtures/original/**'
+      - 'eth/src/bin/extract-lean-tables.rs'
+      - 'eth/tools/lean_table_codegen.rs'
+      - 'eth/tools/fixtures/original/**'
       - '.github/workflows/lean-extraction.yml'
   workflow_dispatch:
 
@@ -39,9 +39,9 @@ jobs:
         run: |
           cargo run --locked --offline -p lean-eth-reference --bin extract-lean-tables -- \
             --upstream "$RUNNER_TEMP/original-math" \
-            --output-dir rust/lean_eth_reference/tools/fixtures/original --check
+            --output-dir eth/tools/fixtures/original --check
       - name: Check legacy fixed table identities
         run: |
           cargo run --locked --offline -p lean-eth-reference --bin extract-lean-tables -- \
             --upstream "$RUNNER_TEMP/original-math" \
-            --output-dir rust/lean_eth_reference/tools/fixtures/original --legacy --check
+            --output-dir eth/tools/fixtures/original --legacy --check

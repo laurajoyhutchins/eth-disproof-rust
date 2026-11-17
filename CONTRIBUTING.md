@@ -10,7 +10,7 @@ See [Writing these notes](docs/STYLE.md) for the editorial conventions: equation
 A pull request should answer four concrete questions:
 
 1. **Original source:** Which Lean symbol, file and pinned Git revision is the
-   implementation based on? See the [source manifest](rust/lean_eth_reference/reference/source-manifest.json).
+   implementation based on? See the [source manifest](eth/reference/source-manifest.json).
 2. **Execution:** Is the change an instruction-level source port, a host Rust
    semantic helper, a separate optimization, or a proof-only argument?
 3. **Evidence:** Which tests were run on the **exact PR head**, with what
@@ -25,13 +25,13 @@ Keep changes reviewable: one source-defined behavior or one distinct argument
 per PR. Do not combine source-faithful translation, performance optimization,
 and new mathematical conjectures without separately testing each claim.
 Follow the [PR template](.github/PULL_REQUEST_TEMPLATE.md) and
-[execution/evidence matrix](rust/lean_eth_reference/docs/evidence.md).
+[execution/evidence matrix](eth/docs/evidence.md).
 
 ## One Lean-to-Rust compiler path
 
 The authoritative language pipeline is **Lean 4 source → Lean frontend and
 compiler → final ownership-explicit compiler IR**. Extend the one in-process
-Rust backend in `rust/native_lean_backend/`. Do not add another surface
+Rust backend in `compiler/`. Do not add another surface
 parser, independent IR optimizer, parallel code generator or silent fallback
 to a source-graph substitution.
 
@@ -59,9 +59,9 @@ of a **bounded tested subset**, not the baseline proof of physical
 runtime equivalence. LCNF inspection informs analysis; it is not
 another backend. A Rust proof kernel is a separate project.
 
-The [architecture](rust/native_lean_backend/docs/backend-first-architecture.md),
-[execution runtime contract](rust/native_lean_backend/docs/execution-runtime-contract.md)
-and [compiler status](rust/native_lean_backend/docs/compiler-status.md)
+The [architecture](compiler/docs/backend-first-architecture.md),
+[execution runtime contract](compiler/docs/execution-runtime-contract.md)
+and [compiler status](compiler/docs/compiler-status.md)
 identify what is implemented, proposed or still unsupported.
 Original ETH QueryStream residualization is G2, not a reason to
 weaken G1's IR contract.
@@ -75,7 +75,7 @@ with rustfmt and Clippy:
 cargo fetch --locked
 cargo fmt --all -- --check
 cargo test --locked --offline --all-targets
-python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
+python3 -m unittest discover -s eth/tools -p 'test_verify_source_graph.py'
 cargo clippy --locked --offline --all-targets -- -D warnings
 ```
 

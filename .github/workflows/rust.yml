@@ -29,6 +29,8 @@ jobs:
       # rust-toolchain.toml pins Rust 1.99.1, rustfmt and Clippy.
       - name: Restore locked crate dependencies
         run: cargo fetch --locked
+      - name: Repository layout contract
+        run: python3 -m unittest discover -s tools -p 'test_repository_layout.py'
       - name: Formatting (workspace)
         run: cargo fmt --all -- --check
       - name: Exact Rust tests
@@ -38,6 +40,6 @@ jobs:
       - name: First original QueryStream node physical composition receipt
         run: cargo test --locked --offline -p lean-eth-reference --test native_query_first_node_composition -- --nocapture
       - name: Source-graph compiler contract tests (offline)
-        run: python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_verify_source_graph.py'
+        run: python3 -m unittest discover -s eth/tools -p 'test_verify_source_graph.py'
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

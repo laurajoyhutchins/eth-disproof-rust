@@ -23,7 +23,7 @@ The two Lean source models are not the same datatype.
 - Anthropic's `encInput` starts with `1^k 0`, followed by `encClauses`: `1^n 0` then fixed-width, **least-significant-bit-first** positions. `slot none = 0`; for literal `(i,b)`, `slot = 2i + 1 + b.toNat`. Width is `Nat.log2 (2*n) + 1`. Its output is the lowest `n+1` bits of `numSat`, LSB first. This is **not** the OpenAI native input or output ABI.
 - Both formula semantics interpret a clause as OR and a formula as AND. At the mathematical level, forgetting list order and duplicates preserves satisfaction for every Boolean assignment. This does **not** establish an equality of encoded words, runtime programs, transitions or complexity functions.
 
-The first bridge is **proved** in [`IndependentCnfBridge.lean`](../rust/lean_eth_reference/proofs/IndependentCnfBridge.lean). The total conversion `IndependentETH.toCNF` preserves satisfaction and count for every Anthropic CNF, with no machine-theorem eligibility hypotheses. The count retains the `n`-variable universe, including unused variables. The original definitions are imported unchanged from their pinned revisions. In particular:
+The first bridge is **proved** in [`IndependentCnfBridge.lean`](../eth/proofs/IndependentCnfBridge.lean). The total conversion `IndependentETH.toCNF` preserves satisfaction and count for every Anthropic CNF, with no machine-theorem eligibility hypotheses. The count retains the `n`-variable universe, including unused variables. The original definitions are imported unchanged from their pinned revisions. In particular:
 
 ```text
 IndependentETH.satisfiable_iff : MainResults.Satisfiable φ ↔ SAT.Satisfiable (toCNF φ)
@@ -61,7 +61,7 @@ For each proposed shared lemma, the acceptance record needs (i) both source decl
 
 ## Verified source-level count bridge and local algebra check
 
-The Lean file [`IndependentCnfBridge.lean`](../rust/lean_eth_reference/proofs/IndependentCnfBridge.lean) imports the original pinned OpenAI `SAT.lean` and Anthropic `MainResults.lean` without changing their bytes and proves:
+The Lean file [`IndependentCnfBridge.lean`](../eth/proofs/IndependentCnfBridge.lean) imports the original pinned OpenAI `SAT.lean` and Anthropic `MainResults.lean` without changing their bytes and proves:
 
 ```text
 IndependentETH.satisfiable_iff :
@@ -73,7 +73,7 @@ IndependentETH.numSat_eq_count :
 
 The full theorem names are in the Lean file. This is **all finite formulas**, not merely Anthropic's narrower machine-theorem input domain. The exact-head Lean checkpoint [run #43727057523](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/43727057523) passed with axioms `propext`, `Classical.choice`, `Quot.sound` for each theorem.
 
-[`IndependentSwapIdentity.lean`](../rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean) proves `SWAP = I - vvᵀ` over the integers in basis (00,01,10,11), for `v=(0,1,-1,0)`. This is the local `SWAP = I - 2·singlet` formula in Anthropic's pinned exposition. The independent [Rust test](../rust/lean_eth_reference/tests/independent_swap_identity.rs) also checks exact expansions and contracted integer values for 1–3 crossings.
+[`IndependentSwapIdentity.lean`](../eth/proofs/IndependentSwapIdentity.lean) proves `SWAP = I - vvᵀ` over the integers in basis (00,01,10,11), for `v=(0,1,-1,0)`. This is the local `SWAP = I - 2·singlet` formula in Anthropic's pinned exposition. The independent [Rust test](../eth/tests/independent_swap_identity.rs) also checks exact expansions and contracted integer values for 1–3 crossings.
 
 ### Arbitrary finite network contraction, grouped by weight
 
@@ -87,7 +87,7 @@ Most importantly, the correction `-vvᵀ` has odd entries. Singlet Hamming weigh
 
 ## Group-routing and precision boundary (15 November 2026)
 
-[IndependentRoutingBoundary.lean](../rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean) separates two mathematical operations:
+[IndependentRoutingBoundary.lean](../eth/proofs/IndependentRoutingBoundary.lean) separates two mathematical operations:
 
 1. **Route/factor:** After fixing a shared outer assignment, sum each independent group setting and multiply those group sums. The outer assignment's sum remains *outside* the product. A concrete two-setting counterexample shows that pulling it inside produces the wrong value.
 2. **Truncate:** In a ring with `2^p = 0`, a mode of weight `w ≥ p` may be discarded **if its actual coefficient contains the factor `2^w`**. This is a divisibility certificate, not a consequence of its label.
@@ -134,7 +134,7 @@ This is not yet an algorithm-equivalence theorem: neither source-specific value-
 
 ## Original Anthropic network source adapter
 
-[IndependentAnthropicNetworkAdapter.lean](../rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean) imports three **unchanged** source modules from Anthropic's pinned repository:
+[IndependentAnthropicNetworkAdapter.lean](../eth/proofs/IndependentAnthropicNetworkAdapter.lean) imports three **unchanged** source modules from Anthropic's pinned repository:
 
 | Original source | Git blob SHA |
 | --- | --- |

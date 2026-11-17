@@ -1,6 +1,6 @@
 # Optional Rust-hosted Lean compiler experiment
 
-The [backend-first architecture](rust/native_lean_backend/docs/backend-first-architecture.md)
+The [backend-first architecture](compiler/docs/backend-first-architecture.md)
 does **not** require porting Lean's parser, elaborator, compiler or proof
 kernel to Rust. Lean remains the language implementation. The executable
 backend consumes Lean's existing ownership-explicit compiler IR.
@@ -8,7 +8,7 @@ backend consumes Lean's existing ownership-explicit compiler IR.
 [PR #331](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/331)
 tests a different question: can original Lean compiler modules themselves
 be compiled to Rust using pinned `machinefabric/lungo-rs`? Its work under
-`tools/lean-rust-bootstrap` is isolated research, **not** the canonical
+`experiments/lean-compiler-bootstrap` is isolated research, **not** the canonical
 native IR backend, a required compiler bootstrap or an ETH counting
 implementation.
 
@@ -42,7 +42,7 @@ by themselves. A second-generation binary matching its predecessor is
 not a source semantics proof.
 
 The corresponding production work belongs to the
-[canonical native backend](rust/native_lean_backend/README.md):
+[canonical native backend](compiler/README.md):
 first establish generated Rust against Lean C, then independently
 validate Rust-native runtime operations. Do not retire the current
 reader, primitive registries, publication path or tests merely

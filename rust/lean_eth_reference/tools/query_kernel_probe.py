@@ -317,10 +317,10 @@ def validate_kernel_root(raw: str) -> dict:
         raise ValueError("original preparation source obligation forged or prematurely lowered")
     for prefix in ("program", "bank"):
         count = prep[prefix + "_argument_count"]
-        nodes = prep[prefix + "_expression_nodes"]
+        prep_nodes = prep[prefix + "_expression_nodes"]
         children = prep[prefix + "_immediate_symbols"]
         if (type(count) is not int or not 1 <= count <= 24 or
-                type(nodes) is not int or not 1 <= nodes <= 512 or
+                type(prep_nodes) is not int or not 1 <= prep_nodes <= 512 or
                 not isinstance(children, list) or len(children) > 512 or
                 len(children) != len(set(children)) or
                 any(type(s) is not str or not s or len(s) > 512 for s in children)):

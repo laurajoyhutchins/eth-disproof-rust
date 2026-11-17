@@ -60,6 +60,14 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      # Cheap checkpoint: the source receipt schema must validate the
+      # adversarial fixture before restoring Lean/Mathlib or OAI modules.
+      - name: Offline original kernel source receipt tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s rust/lean_eth_reference/tools -p 'test_query_kernel_probe.py' -v
+
       - name: Test native Rust stage builder and strict refusal
         run: |
           cargo fetch --locked

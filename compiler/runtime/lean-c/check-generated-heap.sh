@@ -178,8 +178,58 @@ test -s "$out/source-shell-physical.tsv"
 lean proofs/ReaderShellTraceAudit.lean | tee "$out/source-shell-trace-audit.txt"
 grep -Fq 'source-shell-physical-trace=PASS rows=28 cases=4 complete-order-and-identity' \
   "$out/source-shell-trace-audit.txt"
-grep -Fq "'ReaderShellTraceAudit.accepted_physical_step_has_source_step' depends on axioms:" \
-  "$out/source-shell-trace-audit.txt"
+# Accept only kernel-sanctioned logical axioms, never sorryAx,
+# arbitrary FFI axioms, or an omitted theorem audit.
+python3 - "$out/source-shell-trace-audit.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+report = Path(sys.argv[1]).read_text()
+allowed = {"propext", "Quot.sound", "Classical.choice"}
+for name in ("accepted_physical_step_has_source_step",
+             "rejected_physical_step_rejects_source"):
+    token = re.escape(f"'ReaderShellTraceAudit.{name}'")
+    match = re.search(
+        token + r" (does not depend on any axioms|depends on axioms: \[([^\]]*)\])",
+        report,
+    )
+    if not match:
+        raise SystemExit(f"missing trace-audit proof or axiom report: {name}")
+    used = set((match.group(2) or "").split(", ")) - {""}
+    if not used <= allowed:
+        raise SystemExit(f"trace-audit proof {name} has unapproved axioms: {sorted(used - allowed)}")
+print("source_shell_observed_refinement=KERNEL_STANDARD_AXIOMS_ONLY")
+PY
+# Prove that the observer rejects adversarial measurements rather than
+# accepting a missing event or a rewritten allocation identity.
+python3 - "$out/source-shell-physical.tsv" "$out" <<'PY'
+from pathlib import Path
+import sys
+src = Path(sys.argv[1]).read_text().splitlines()
+out = Path(sys.argv[2])
+assert len(src) == 29, "expected 28 rows plus one header"
+identity = src.copy()
+fields = identity[2].split("\t")
+fields[11] = str(int(fields[11]) + 1)  # childId of a live allocation
+identity[2] = "\t".join(fields)
+(out / "source-shell-mutated-identity.tsv").write_text("\n".join(identity) + "\n")
+missing = src[:2] + src[3:]
+(out / "source-shell-mutated-missing.tsv").write_text("\n".join(missing) + "\n")
+PY
+for variant in identity missing; do
+  file="$out/source-shell-mutated-$variant.tsv"
+  log="$out/source-shell-rejected-$variant.txt"
+  if LR_SOURCE_TRACE_AUDIT="$file" lean proofs/ReaderShellTraceAudit.lean > "$log" 2>&1; then
+    echo "C step audit falsely accepted mutated $variant trace" >&2
+    exit 2
+  fi
+  grep -Fq 'Source C physical trace refinement refused:' "$log" || {
+    echo "Mutation rejection had an incidental failure, not model refusal: $variant" >&2
+    cat "$log" >&2
+    exit 2
+  }
+done
+echo 'source_shell_trace_mutations=IDENTITY_AND_OMISSION_REFUSED'
 grep -Fx 'reader-generated-source-del-lean-c=PASS cases=720' "$out/source-del-trace.txt"
 echo 'source_del_original_lean_c_vs_exact_reader=PASS_BOUNDED_720' \
   > "$out/source-del-execution-status.txt"

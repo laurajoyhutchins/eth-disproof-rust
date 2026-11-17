@@ -25,6 +25,10 @@ The actual first Lean C execution-time handle adapter is
 `lean_object *` and tests against original Lean/C. It is a bounded
 physical FFI witness, **not yet** a replacement runtime for generated
 Rust source.
+The limited `RuntimeHeap.Pair.mk` constructor and projection path now
+selects a physical Lean C execution runtime for the **same emitted Rust
+functions** through `--cfg 'feature="lean-c-runtime"'`. Only tagged Nat fields
+are admitted, and this does not establish general source heap ownership.
 The exact Reader-emitted `ScalarFixture.plus` is linked into a Lean
 C-hosted executable in the same runtime gate, with original Lean output
 comparisons. This first actual compiler emission is **scalar-only**:

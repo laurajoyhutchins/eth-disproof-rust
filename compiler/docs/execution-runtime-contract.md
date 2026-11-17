@@ -57,8 +57,15 @@ The runtime gate now additionally links the **exact Reader-generated**
 `ScalarFixture.plus` Rust function into a Lean C-hosted executable and
 compares 100 scalar input pairs against the original Lean source. This
 validates the initial emitted-function C ABI, but only for an unboxed
-scalar function. The generated heap-backed Rust still does not select
-the Lean C runtime.
+scalar function. A restricted generated-heap mode now selects the physical C runtime at
+Rust compilation time by `--cfg 'feature="lean-c-runtime"'`, without changing the
+canonical IR emitter or emitted function bodies. The currently admitted
+`RuntimeHeap.Pair.mk` constructor takes two tagged immediate Nat fields;
+projection returns only tagged immediate fields. The system refuses
+unsupported heap-child transfers, bignum fields, persistent counts, and
+unproved runtime operations. It compares generated constructor, projection,
+and direct-call behavior against original Lean C using actual physical
+heap state. This is not general Lean heap equivalence.
 
 ## Lean C-backed baseline
 

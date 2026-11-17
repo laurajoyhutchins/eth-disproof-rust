@@ -103,6 +103,8 @@ struct ImmutableCaseContext<'a> {
 // Rc retains aliases for the bounded accepted value subset. Ownership-
 // observable programs still require Lean/Rust cross-call conformance.
 const RUNTIME_SOURCE: &str = include_str!("../../runtime/rust/immutable_value.rs");
+// Same emitted IR body, selectable real Lean C object implementation.
+const C_RUNTIME_SOURCE: &str = include_str!("../../runtime/lean-c/generated_value.rs");
 
 const CONSTRUCTOR_SET_TEST_SOURCE: &str = r#"
 #[cfg(test)]
@@ -627,7 +629,7 @@ fn include_value_runtime(source: String, features: RuntimeFeatures) -> CompilerR
         } else {
             ""
         };
-        format!("{RUNTIME_SOURCE}\n{source}\n{tests}\n{closure_tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}\n{SOURCE_RC_TEST_SOURCE}")
+        format!("{RUNTIME_SOURCE}\n{C_RUNTIME_SOURCE}\n{source}\n{tests}\n{closure_tests}\n{set_tests}\n{ERASED_JOIN_TEST_SOURCE}\n{heap_join_tests}\n{SOURCE_RC_TEST_SOURCE}")
     } else {
         source
     };

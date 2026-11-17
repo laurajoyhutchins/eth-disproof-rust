@@ -47,7 +47,11 @@ flowchart TD
   L["Boundary encode/decode retraction"] --> LC["lower_sound"]
   CL["Representable intermediate closure"] --> CMP["lower_comp"]
   L --> CMP
-  NM --> R["Network rewrite interface"]
+  NM --> Q["Native quotient network Q(N)"]
+  Q --> QS["Allowed state images + fiberwise weights"]
+  VM --> QS
+  QS --> SQ["Full observational merge/quotient square"]
+  SQ --> R["Network rewrite interface"]
   CMP --> R
   R --> D["Certified shared-DAG execution"]
   D --> CT["Exact #SAT theorem"]
@@ -115,28 +119,76 @@ This is a true non-injective quotient: different states may share one
 boundary class, while their weights are added. It is not merely equality
 of the completed network's scalar contraction.
 
-### What survives original merge?
+### Full quotient/merge commuting square (verified)
 
-Anthropic's original `Network.merge color defaultState defaultLabel`
-forms each merged half-edge factor as a product of source factors.
-The pointwise-lifted quotient
+The **native** \`quotientNetwork N q r\` uses state sets \(q(S_a)\),
+fiber-summed weights \(\bar W_a\), original labels and capacities, and
+the outgoing factor \(f_{ab}(r(k),t)\). The source-facing theorem
+\`quotientNetwork_toInst\` proves equality of every outgoing
+\`Network.toInst\` table entry between \(N\) and its quotient.
+
+Anthropic's original \`Network.merge color defaultState defaultLabel\`
+builds merged states as function-valued tuples. The lifted quotient is
 
 \[
-q^G(z)(a)=q(z(a)),\quad r^G(k)(a)=r(k(a))
+q^G(z)(a)=q(z(a)),\qquad r^G(k)(a)=r(k(a)).
 \]
 
-preserves every merged outgoing factor, because **every factor of the
-product** is invariant under the original quotient. Therefore the
-merged network's `toInst` table also has a context-uniform quotient.
+**The full observed network square is now proved** under factor invariance:
 
-This is preservation of the *factor-invariance certificate through merge*.
-It is **not yet** a statement that quotienting the source network before
-merging produces an isomorphic smaller merged network. A native quotient
-network constructor and its functoriality remain open.
+\[
+\boxed{
+\operatorname{toInst}\bigl(\operatorname{merge}(Q(N))\bigr)
+=
+\operatorname{toInst}\bigl(Q(\operatorname{merge}(N))\bigr).
+}
+\]
+
+This equality is uniform over all external instance label sets and
+decoders. The proof goes beyond the earlier scalar equality:
+
+1. \`quotient_merge_states_commute\`: the *admissible* merged state
+   sets are equal; this is an exact image-of-tuples theorem.
+2. \`tuple_fiber_product\`: a weighted sum over the fiber of a
+   merged state is the product of the individual state-fiber sums.
+3. \`quotient_pair_interaction\`: the actual source \`Network.Ψ\`
+   is invariant under representative replacement at both ends.
+4. \`quotient_merge_weight_on_states\`: merged node weights agree
+   on **admissible** states, using the previous two lemmas.
+5. Factors, \`Θ\` labels and capacities agree componentwise,
+   giving \`quotient_merge_network_agreement\`.
+6. \`NetworkAgreement.toInst\` derives the final context-uniform
+   \`quotient_merge_toInst_commutes\` for the actual pinned source.
+
+It would be incorrect to require the arbitrary \`W\` functions to be
+identical on states forbidden by \`S\`; those entries are not read
+during contraction. The proved equivalence is exact observational
+network equivalence, not literal structure equality at invalid inputs.
+
+**Evidence:** [pinned Lean 4.34.1 run #44109954836](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44109954836)
+on commit \`d9304a4fd760b1709b41f868a4adb8ca24892a49\`.
+All three workflows passed. The new \`#print axioms\` declarations show
+only \`propext\`, \`Classical.choice\` and \`Quot.sound\`, no \`sorryAx\`.
+
+### An obstruction at OpenAI's zero deformation
+
+The October 25 appendix specifies a Cauchy packet deformation satisfying
+\(W(0)=I\). The induced binary port glue at \(T=0\) is the exact identity
+kernel \(K(Y,X)=\mathbf1[Y=X]\).
+
+The generic Lean theorem \`identity_kernel_forces_injective_labels\`
+proves that any **state-identification** quotient whose representative
+preserves every identity-kernel entry has injective labels. Therefore
+there is no nontrivial state merging of that full identity interface.
+
+This does **not** rule out correlated linear operators, spectral modes,
+symbolic circuits, or exploiting restricted/weighted contexts. It
+does prevent automatically transferring our Anthropic factor-class
+compression to the OpenAI packet glue.
 
 ### Constructive/computational limitations
 
-The proof uses a finite image and fiber sums. It establishes no bound
+The proof uses finite images and fiber sums. It establishes no bound
 on the time to discover (q), the class count \(|q(S_a)|\), the work
 to enumerate the fibers, the size of a merged state, or the final circuit.
 The best-case strict compression (two distinct Boolean states to one class)
@@ -152,14 +204,14 @@ proof until its corresponding factor invariance is independently shown.
 | C2 | Pinned Anthropic `Network.value` and `value_merge` adapter | Kernel check, exact original import |
 | C3 | Pinned OpenAI `SAT.count` adapter | Kernel check, unused variables included |
 | C4 | Typed shared DAG | Exact evaluation, acyclicity, sharing without recomputation |
-| C5a | Anthropic factor-invariant quotient after merge | Pointwise outgoing table identity and lifted source factors; exact-head Lean check pending | 
-| C5b | Quotient-before-merge full circuit square | Construct quotient network and show the two rewrite orders agree; open |
+| C5a | Anthropic factor-invariant quotient after merge | Verified in pinned Lean | 
+| C5b | Native quotient/merge observational network square | Verified in pinned Lean for all admissible states and external toInst tables |
 | C6 | OpenAI source-defined packet transform | Original packet constructor, factor/port identities, precision and routing |
 | C7 | Combined recursion, complexity | Full constructive bit and peak-space recurrence |
 
-`C1-C3` form the first verified milestone. `C5a` is a second, separate proof
-obligation in this branch; it does not imply `C5b`, a shared executable DAG,
-or a new complexity bound.
+`C1-C3` and `C5a-C5b` are verified under their exposed assumptions.
+Neither a shared executable DAG, a source-derived OpenAI packet adapter,
+nor a new bit-complexity bound follows from these semantic theorems.
 
 ## Toolchain and verification
 

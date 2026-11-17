@@ -1,10 +1,12 @@
 // Physical Lean C execution backend for a tiny, explicitly admitted IR subset.
-// Selected by rustc --cfg lean_c_runtime. Not a replacement for general G1.
+// Select via Cargo feature lean-c-runtime or the equivalent rustc --cfg. Not general G1.
 // The emitter's source expressions are identical in both runtime builds.
+#[allow(unexpected_cfgs)]
 #[cfg(feature = "lean-c-runtime")]
 #[repr(C)]
 pub struct __LeanCObject { _opaque: [u8; 0] }
 
+#[allow(unexpected_cfgs)]
 #[cfg(feature = "lean-c-runtime")]
 unsafe extern "C" {
     fn lr_exec_box_small(n: usize) -> *mut __LeanCObject;
@@ -20,6 +22,7 @@ unsafe extern "C" {
     fn lr_exec_exclusive(p: *const __LeanCObject) -> i32;
 }
 
+#[allow(unexpected_cfgs)]
 #[cfg(feature = "lean-c-runtime")]
 #[derive(Debug)]
 struct __LeanCSlot {
@@ -29,6 +32,7 @@ struct __LeanCSlot {
     credits: std::cell::Cell<usize>,
 }
 
+#[allow(unexpected_cfgs)]
 #[cfg(feature = "lean-c-runtime")]
 impl Drop for __LeanCSlot {
     fn drop(&mut self) {
@@ -39,10 +43,12 @@ impl Drop for __LeanCSlot {
     }
 }
 
+#[allow(unexpected_cfgs)]
 #[cfg(feature = "lean-c-runtime")]
 #[derive(Debug)]
 pub struct __LeanValue(std::rc::Rc<__LeanCSlot>);
 
+#[allow(unexpected_cfgs)]
 #[cfg(feature = "lean-c-runtime")]
 #[allow(dead_code)]
 impl __LeanValue {

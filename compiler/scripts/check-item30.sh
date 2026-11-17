@@ -65,6 +65,11 @@ name = "lean_native_item30_conformance"
 version = "0.1.0"
 edition = "2021"
 
+# This independent host crate embeds the exact generated source files.
+# It defaults to standalone Rust but recognizes the pinned C-backed mode.
+[features]
+lean-c-runtime = []
+
 [workspace]
 CARGO
 env -u LEAN_PREFIX -u LEAN_PATH -u LD_LIBRARY_PATH \

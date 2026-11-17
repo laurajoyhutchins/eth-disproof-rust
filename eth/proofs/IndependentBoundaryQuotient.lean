@@ -242,7 +242,7 @@ theorem quotientNetwork_toInst
     factor function. This is a component of the full network square. -/
 theorem quotient_merge_factor_commutes
     {J J' σ τ K : Type*}
-    [Fintype J] [LinearOrder J] [LinearOrder J']
+    [Fintype J] [LinearOrder J] [Fintype J'] [LinearOrder J']
     (N : Groundwork.Network J σ τ)
     (color : J → J') (defaultState : σ) (defaultLabel : τ)
     (label : σ → K) (representative : K → σ)
@@ -258,7 +258,7 @@ theorem quotient_merge_factor_commutes
 /-- The two constructions have identical label universes. -/
 theorem quotient_merge_labels_commute
     {J J' σ τ K : Type*}
-    [Fintype J] [LinearOrder J] [LinearOrder J']
+    [Fintype J] [LinearOrder J] [Fintype J'] [LinearOrder J']
     (N : Groundwork.Network J σ τ)
     (color : J → J') (defaultState : σ) (defaultLabel : τ)
     (label : σ → K) (representative : K → σ)
@@ -274,7 +274,7 @@ theorem quotient_merge_labels_commute
 /-- Their capacity fields also agree, independently of the quotient. -/
 theorem quotient_merge_capacity_commutes
     {J J' σ τ K : Type*}
-    [Fintype J] [LinearOrder J] [LinearOrder J']
+    [Fintype J] [LinearOrder J] [Fintype J'] [LinearOrder J']
     (N : Groundwork.Network J σ τ)
     (color : J → J') (defaultState : σ) (defaultLabel : τ)
     (label : σ → K) (representative : K → σ)
@@ -291,5 +291,105 @@ theorem quotient_merge_capacity_commutes
 #print axioms ACC.BoundaryQuotient.quotient_merge_factor_commutes
 #print axioms ACC.BoundaryQuotient.quotient_merge_labels_commute
 #print axioms ACC.BoundaryQuotient.quotient_merge_capacity_commutes
+
+
+/-- Finite-label semantic preservation of a *constructed* quotient network,
+    not merely of its proposed table representation. The source's exact
+    Z_toInst theorem provides the bridge to the full network contraction. -/
+theorem quotientNetwork_value
+    {J σ τ K : Type*}
+    [Fintype J] [LinearOrder J] [Fintype τ]
+    (N : Groundwork.Network J σ τ)
+    (label : σ → K) (representative : K → σ)
+    (hf : ∀ a b s t,
+      N.f a b s t = N.f a b (representative (label s)) t)
+    (defaultLabel : τ) :
+    (quotientNetwork N label representative).value = N.value := by
+  classical
+  let Q := quotientNetwork N label representative
+  let D : J → J → Finset τ := N.Θ
+  let dec : J → J → τ → τ := fun _ _ x => x
+  have hcode : ∀ a b, a < b →
+      Set.BijOn (dec a b) (D a b) (N.Θ a b) := by
+    intro a b hab
+    exact ⟨(fun x hx => hx), (fun x hx y hy hxy => hxy),
+      (fun x hx => ⟨x, hx, rfl⟩)⟩
+  have hinst : Q.toInst D dec = N.toInst D dec := by
+    funext a boundary
+    exact quotientNetwork_toInst N label representative hf D dec a boundary
+  have hN : (N.toInst D dec).Z defaultLabel = N.value :=
+    Groundwork.Network.Z_toInst N D dec hcode defaultLabel
+  have hQ : (Q.toInst D dec).Z defaultLabel = Q.value := by
+    apply Groundwork.Network.Z_toInst
+    intro a b hab
+    exact hcode a b hab
+  calc
+    Q.value = (Q.toInst D dec).Z defaultLabel := hQ.symm
+    _ = (N.toInst D dec).Z defaultLabel := by rw [hinst]
+    _ = N.value := hN
+
+/-- Both paths of the quotient/merge diagram have the same exact full
+    scalar network value. This is a value-level square: an isomorphism
+    between the intermediate networks is not claimed here. -/
+theorem quotient_merge_value_commutes
+    {J J' σ τ K : Type*}
+    [Fintype J] [LinearOrder J] [Fintype J'] [LinearOrder J']
+    [Fintype τ]
+    (N : Groundwork.Network J σ τ)
+    (color : J → J') (defaultState : σ) (defaultLabel : τ)
+    (label : σ → K) (representative : K → σ)
+    (hf : ∀ a b s t,
+      N.f a b s t = N.f a b (representative (label s)) t) :
+    ((quotientNetwork N label representative).merge color
+        (label defaultState) defaultLabel).value =
+      (quotientNetwork
+        (N.merge color defaultState defaultLabel)
+        (fun x : J → σ => fun a => label (x a))
+        (fun k : J → K => fun a => representative (k a))).value := by
+  classical
+  calc
+    ((quotientNetwork N label representative).merge color
+        (label defaultState) defaultLabel).value =
+      (quotientNetwork N label representative).value := by
+        exact Groundwork.Network.value_merge _ color (label defaultState) defaultLabel
+    _ = N.value := quotientNetwork_value N label representative hf defaultLabel
+    _ = (N.merge color defaultState defaultLabel).value := by
+      exact (Groundwork.Network.value_merge N color defaultState defaultLabel).symm
+    _ = (quotientNetwork
+          (N.merge color defaultState defaultLabel)
+          (fun x : J → σ => fun a => label (x a))
+          (fun k : J → K => fun a => representative (k a))).value := by
+        symm
+        apply quotientNetwork_value
+        intro a b s t
+        exact merge_preserves_factor_invariance
+          N color defaultState defaultLabel label representative hf a b s t
+
+/-!
+Source-level obstruction for the OpenAI appendix's zero-deformation Cauchy
+identity W(0) = I. This theorem concerns a *full* identity kernel, and
+does not assert that OpenAI's full recursive packet algorithm is such a
+simple quotient construction. Other algebraic compressors remain possible.
+-/
+theorem identity_kernel_forces_injective_labels
+    {X K : Type*} [DecidableEq X]
+    (label : X → K) (representative : K → X)
+    (h : ∀ x y,
+      (if x = y then (1 : ℤ) else 0) =
+      (if representative (label x) = y then (1 : ℤ) else 0)) :
+    Function.Injective label := by
+  have hrecover (x : X) : representative (label x) = x := by
+    have hx := h x x
+    by_contra hne
+    simp [hne] at hx
+  intro x y hxy
+  calc
+    x = representative (label x) := (hrecover x).symm
+    _ = representative (label y) := by rw [hxy]
+    _ = y := hrecover y
+
+#print axioms ACC.BoundaryQuotient.quotientNetwork_value
+#print axioms ACC.BoundaryQuotient.quotient_merge_value_commutes
+#print axioms ACC.BoundaryQuotient.identity_kernel_forces_injective_labels
 
 end ACC.BoundaryQuotient

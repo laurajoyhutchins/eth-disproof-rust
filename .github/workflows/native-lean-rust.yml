@@ -189,6 +189,7 @@ jobs:
             compiler/artifacts/reader-mir-cfg-*.txt
             compiler/artifacts/reader-projected-rc-axioms.txt
             compiler/artifacts/reader-transfer-credits-axioms.txt
+            compiler/artifacts/reader-object-credits-axioms.txt
             compiler/artifacts/transfer-contract-lean-ir.log
             compiler/artifacts/ownership-object-trace/receipt.txt
             compiler/artifacts/ownership-object-trace/c-*.txt

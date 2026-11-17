@@ -60,3 +60,40 @@ effects, mutation allocation identity, or object-finalization cascades.
 The script fails on the first divergent trace and retains C/Rust outputs,
 generated kernel C, generated Rust and source-hash receipts in exact-head CI. There is no learned mapping, expected-output
 substitution, or alternate production Rust runtime.
+
+
+## Multi-allocation source-credit and physical observation increment
+
+The earlier source accounting proof handled a single allocation.
+`compiler/proofs/ReaderObjectCredits.lean` now indexes independent
+source ledgers by **allocation identity**. It proves that arbitrary
+finite interleavings of owned and borrowed calls, join transfers, and
+returns conserve the count **for each individual allocation**. A
+successful operation cannot change a different allocation's ownership
+slots, and an explicit `inc` changes only its selected allocation's
+count. A borrowed object cannot spend a reference belonging to a
+second object, no matter how many Rust `Rc` aliases either has.
+
+The existing same-source physical observation driver has gained two
+additional checkpoints. Both the original Lean C compilation and the
+Reader-generated Rust compilation invoke the actual source-defined
+`identity` function on a **second, distinct Token**. They then
+observe both identities after source-defined `select` branches.
+`scripts/check-object-identity-transfers.py` audits allocation
+separation, callee return identity, branch-selected identity, counts
+of both aliases of an object, and the retained grandchildren after
+destruction. Three mutation controls must fail. This is independently
+recorded for three runtime input pairs, with the whole C/Rust transcript
+still required to match exactly.
+
+The Lean proof and original C/Rust trace are complementary **but
+not mechanically coupled**: the trace IDs are per-run identities
+assigned at first observation and are not formal witnesses that
+the complete physical heap implements the proof's abstract ledger.
+The source conditional exercises real branch paths, but this
+does not independently establish that its pinned compiler IR
+contains a particular `jdecl/jmp` lowering. The separate
+`TransferContractFixture` checks actual source-level join transfers.
+A physical-C-versus-Rust complete join-stack/heap
+bisimulation, finalizers, optimizations and arbitrary alias cycles
+remain unproved.

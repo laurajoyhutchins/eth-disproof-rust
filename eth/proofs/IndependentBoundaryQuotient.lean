@@ -360,10 +360,14 @@ theorem quotient_merge_value_commutes
           (fun x : J → σ => fun a => label (x a))
           (fun k : J → K => fun a => representative (k a))).value := by
         symm
-        apply quotientNetwork_value
-        intro a b s t
-        exact merge_preserves_factor_invariance
-          N color defaultState defaultLabel label representative hf a b s t
+        exact quotientNetwork_value
+          (N.merge color defaultState defaultLabel)
+          (fun x : J → σ => fun a => label (x a))
+          (fun k : J → K => fun a => representative (k a))
+          (fun a b s t =>
+            merge_preserves_factor_invariance
+              N color defaultState defaultLabel label representative hf a b s t)
+          (fun _ : J × J => defaultLabel)
 
 /-!
 Source-level obstruction for the OpenAI appendix's zero-deformation Cauchy

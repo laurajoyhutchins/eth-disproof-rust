@@ -443,7 +443,7 @@ mod tests {
                             projected.value(&exterior).unwrap().to_i128(),
                             Some(expected)
                         );
-                        assert!(projected.equations().len() <= n - 1);
+                        assert!(projected.equations().len() < n);
                     }
                 }
             }

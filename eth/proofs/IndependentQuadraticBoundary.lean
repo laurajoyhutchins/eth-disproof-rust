@@ -91,7 +91,7 @@ theorem quadratic_stitch_exact {n : ℕ} (selector : Affine n)
     (left right combined : Quadratic n)
     (hdegree : ∀ b : Fin n → Bool,
       combined.eval b = (left.eval b ^^ (selector.eval b &&
-        (left.eval b ^^ right.eval b)))
+        (left.eval b ^^ right.eval b))))
     (b : Fin n → Bool) :
     (if selector.eval b = true then (0 : ℤ) else sign (left.eval b)) +
       (if selector.eval b = true then sign (right.eval b) else 0) =

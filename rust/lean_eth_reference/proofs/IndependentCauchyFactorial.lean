@@ -1,5 +1,6 @@
 import Mathlib
 import IndependentCauchySourceGrid
+import IndependentCauchyBinomialParity
 
 /-!
 # Exact factorial identity for a consecutive Cauchy derivative grid
@@ -144,9 +145,42 @@ theorem source_derivative_mul_choose
     _ = (-1 : ℤ) ^ (n - k) * (n.factorial : ℤ) := by
       rw [hchoose]
 
+/--
+The binomial coefficient attached to each original Cauchy grid
+point is odd, directly by Lucas parity at the correct index.
+-/
+theorem source_derivative_binomial_odd
+    (a : ℕ) (t : ℤ)
+    (ht : t ∈ IndependentETH.CauchySourceGrid.sourceGrid a) :
+    Odd ((2 ^ (a + 1) - 1).choose
+      (IndependentETH.CauchySourceGrid.gridIndex a t)) := by
+  have hparity :=
+    IndependentETH.CauchyBinomialParity.choose_two_pow_sub_one_mod_two
+      (a + 1) (IndependentETH.CauchySourceGrid.gridIndex a t)
+      (IndependentETH.CauchySourceGrid.gridIndex_lt a t ht)
+  exact Nat.odd_iff.mpr hparity
+
+/--
+The actual source Cauchy derivative normalization's binomial
+denominator is a unit at *every* two-power precision. This holds
+without dividing by C'(0), which itself need not be a unit.
+-/
+theorem source_derivative_binomial_unit_mod_two_pow
+    (a p : ℕ) (t : ℤ)
+    (ht : t ∈ IndependentETH.CauchySourceGrid.sourceGrid a) :
+    IsUnit
+      (((2 ^ (a + 1) - 1).choose
+        (IndependentETH.CauchySourceGrid.gridIndex a t) : ℕ) :
+        ZMod (2 ^ p)) := by
+  apply (ZMod.isUnit_iff_coprime _ _).mpr
+  exact (Nat.coprime_two_right.mpr
+    (source_derivative_binomial_odd a t ht)).pow_right p
+
 #print axioms IndependentETH.CauchyFactorial.integer_interval_derivative_factorial
 #print axioms IndependentETH.CauchyFactorial.integer_interval_derivative_factorial_at
 #print axioms IndependentETH.CauchyFactorial.source_derivative_factorial
 #print axioms IndependentETH.CauchyFactorial.source_derivative_mul_choose
+#print axioms IndependentETH.CauchyFactorial.source_derivative_binomial_odd
+#print axioms IndependentETH.CauchyFactorial.source_derivative_binomial_unit_mod_two_pow
 
 end IndependentETH.CauchyFactorial

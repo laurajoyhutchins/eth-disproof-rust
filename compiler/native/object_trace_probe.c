@@ -95,22 +95,64 @@ lean_obj_res lr_object_trace_run(lean_obj_arg first, lean_obj_arg second) {
     lean_object *inner = lean_ctor_get(tree, 0);
     lean_object *grandchild = lean_ctor_get(inner, 0);
     lean_object *sibling = lean_ctor_get(tree, 1);
-    lean_inc(grandchild); /* separate live ownership of a grandchild */
-    lean_inc(sibling);    /* separate live ownership of direct child */
+    lean_object *cousin = lean_ctor_get(inner, 1);
     unsigned long long tree_id = (unsigned long long)lr_object_trace_id(tree);
     unsigned long long inner_id = (unsigned long long)lr_object_trace_id(inner);
     unsigned long long grand_id = (unsigned long long)lr_object_trace_id(grandchild);
     unsigned long long sibling_id = (unsigned long long)lr_object_trace_id(sibling);
+    unsigned long long cousin_id = (unsigned long long)lr_object_trace_id(cousin);
+    /* A dependency-ordered snapshot of observed live allocations, NOT
+     * a timestamped record of internal allocator calls. */
+    printf("HEAP seed %llu %llu 0\n", grand_id,
+           (unsigned long long)lr_object_trace_rc(grandchild));
+    printf("HEAP seed %llu %llu 0\n", cousin_id,
+           (unsigned long long)lr_object_trace_rc(cousin));
+    printf("HEAP seed %llu %llu 2 %llu %llu\n", inner_id,
+           (unsigned long long)lr_object_trace_rc(inner), grand_id, cousin_id);
+    printf("HEAP seed %llu %llu 0\n", sibling_id,
+           (unsigned long long)lr_object_trace_rc(sibling));
+    printf("HEAP seed %llu %llu 2 %llu %llu\n", tree_id,
+           (unsigned long long)lr_object_trace_rc(tree), inner_id, sibling_id);
+    printf("HEAP observe %llu %llu\n", tree_id,
+           (unsigned long long)lr_object_trace_rc(tree));
+    printf("HEAP observe %llu %llu\n", inner_id,
+           (unsigned long long)lr_object_trace_rc(inner));
+    printf("HEAP observe %llu %llu\n", grand_id,
+           (unsigned long long)lr_object_trace_rc(grandchild));
+    printf("HEAP observe %llu %llu\n", cousin_id,
+           (unsigned long long)lr_object_trace_rc(cousin));
+    printf("HEAP observe %llu %llu\n", sibling_id,
+           (unsigned long long)lr_object_trace_rc(sibling));
+    uint64_t grand_before = lr_object_trace_rc(grandchild);
+    lean_inc(grandchild);
+    printf("HEAP retain %llu %llu %llu\n", grand_id,
+           (unsigned long long)grand_before,
+           (unsigned long long)lr_object_trace_rc(grandchild));
+    uint64_t sibling_before = lr_object_trace_rc(sibling);
+    lean_inc(sibling);
+    printf("HEAP retain %llu %llu %llu\n", sibling_id,
+           (unsigned long long)sibling_before,
+           (unsigned long long)lr_object_trace_rc(sibling));
     printf("TRACE graph-before %llu %llu %llu %llu %llu %llu %llu %llu\n",
            tree_id, (unsigned long long)lr_object_trace_rc(tree),
            inner_id, (unsigned long long)lr_object_trace_rc(inner),
            grand_id, (unsigned long long)lr_object_trace_rc(grandchild),
            sibling_id, (unsigned long long)lr_object_trace_rc(sibling));
+    printf("HEAP release %llu %llu\n", tree_id,
+           (unsigned long long)lr_object_trace_rc(tree));
     lean_dec(tree);
+    printf("HEAP observe %llu %llu\n", grand_id,
+           (unsigned long long)lr_object_trace_rc(grandchild));
+    printf("HEAP observe %llu %llu\n", sibling_id,
+           (unsigned long long)lr_object_trace_rc(sibling));
     printf("TRACE graph-after %llu %llu %llu %llu\n",
            grand_id, (unsigned long long)lr_object_trace_rc(grandchild),
            sibling_id, (unsigned long long)lr_object_trace_rc(sibling));
+    printf("HEAP release %llu %llu\n", grand_id,
+           (unsigned long long)lr_object_trace_rc(grandchild));
     lean_dec(grandchild);
+    printf("HEAP release %llu %llu\n", sibling_id,
+           (unsigned long long)lr_object_trace_rc(sibling));
     lean_dec(sibling);
     lean_dec(a);
     lean_dec(same);

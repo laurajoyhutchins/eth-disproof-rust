@@ -32,7 +32,7 @@ private def frames (p : Program 3 4 3) : Nat → Cfg 3 4 3 → List Json
 private def samples : List (List Bool) :=
   [[], [true], [false, true], [true, false, true]]
 
-def main : IO Unit := do
+def runReference : IO Unit := do
   let p : Program 3 4 3 := clearProgram 1 0 1
   let mut results : List Json := []
   for word in samples do
@@ -68,3 +68,7 @@ def main : IO Unit := do
   IO.println ("ORIGINAL_LEAN_CLEAR_TRACE=" ++ receipt.compress)
 
 end OAI.Algorithms.SubexponentialSAT.PrepareClearTrace
+
+/-! The Lean --run entrypoint must be in the root namespace. -/
+def main : IO Unit :=
+  OAI.Algorithms.SubexponentialSAT.PrepareClearTrace.runReference

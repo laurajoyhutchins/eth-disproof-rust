@@ -14,6 +14,7 @@ case "$SOURCE" in
     MODULE=OAI.Algorithms.SubexponentialSAT.Main
     ROOTS=(
       OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.exact_count_and_sat
+      OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.exact_count_eth
       OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.original_sat_main
       OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.command
       OAI.Algorithms.SubexponentialSAT.SqrtLog.Execution.Final.mainTheorem

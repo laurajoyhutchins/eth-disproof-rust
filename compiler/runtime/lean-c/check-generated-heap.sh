@@ -41,6 +41,11 @@ if lean --load-dynlib="$NATIVE_LIB" examples/RuntimeHeapDelEmitFixture.lean \
   echo 'source_del_reader=EMITTED_NOT_EXECUTED' > "$out/source-del-reader-status.txt"
   cp "$del_rs" "$out/source-del-exact-reader.rs"
 else
+  grep -Fq 'Rust native backend refused' "$out/source-del-emit.log" || {
+    echo 'Source del Reader probe failed before a recorded backend refusal' >&2
+    cat "$out/source-del-emit.log" >&2
+    exit 2
+  }
   test ! -e examples/lean-c-del-package || {
     echo 'Reader published a partial package after refusal' >&2
     exit 2

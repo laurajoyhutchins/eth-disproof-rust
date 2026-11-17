@@ -41,3 +41,10 @@ Rust-native runtime must implement the same interface.
 See [architecture](docs/backend-first-architecture.md),
 [runtime contract](docs/execution-runtime-contract.md) and
 [status](docs/compiler-status.md).
+
+
+The Lean C execution runtime's `source_del` only supports a
+unique `Box.mk` shell whose projected `Pair` child is explicitly
+transferred. Check `runtime/lean-c/check-generated-heap.sh` for
+the separate C/Rust test-host oracle and failure cases. Do not
+claim source IR.del equivalence from this test.

@@ -3,6 +3,8 @@ import RuntimeHeapKernels
 @[extern "lr_heap_compare"] opaque compareHeap (a b : Nat) : Nat
 @[extern "lr_heap_compare_nested"] opaque compareNested
   (a b stamp : Nat) : Nat
+@[extern "lr_heap_compare_shell_del"] opaque compareShellDel
+  (a b stamp : Nat) : Nat
 
 def main : IO Unit := do
   let edges : Array Nat := #[
@@ -21,3 +23,12 @@ def main : IO Unit := do
           throw <| IO.userError
             s!"nested retained Lean C/Rust mismatch ({a}, {b}, {stamp}): code {rc}"
   IO.println "reader-generated-lean-c-nested-retain=PASS"
+
+  for a in edges do
+    for b in edges do
+      for stamp in #[0, 17, 901] do
+        let rc := compareShellDel a b stamp
+        if rc != 0 then
+          throw <| IO.userError
+            s!"Lean C shell-only del transfer mismatch ({a}, {b}, {stamp}): code {rc}"
+  IO.println "lean-c-shell-only-del-transfer=PASS"

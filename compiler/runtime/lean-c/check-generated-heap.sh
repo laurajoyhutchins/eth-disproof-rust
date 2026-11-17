@@ -62,6 +62,7 @@ leanc -O2 -o "$out/lean-c-generated-heap" \
 "$out/lean-c-generated-heap" | tee "$out/trace.txt"
 grep -Fx 'reader-generated-lean-c-heap=PASS' "$out/trace.txt"
 grep -Fx 'reader-generated-lean-c-nested-retain=PASS' "$out/trace.txt"
+grep -Fx 'lean-c-shell-only-del-transfer=PASS' "$out/trace.txt"
 {
   echo 'status=PASS_ORIGINAL_LEAN_C_AND_READER_GENERATED_HEAP'
   echo "revision=$(git rev-parse HEAD)"
@@ -75,6 +76,12 @@ grep -Fx 'reader-generated-lean-c-nested-retain=PASS' "$out/trace.txt"
   echo 'heap_field_retain=source_IR_inc_one_physical_Lean_C_credit'
   echo 'heap_ctor_field_transfer=source_credit_moved_without_increment'
   echo 'parent_release=retained_child_still_physically_owned'
+  echo 'runtime_shell_del=PINNED_LEAN_C_FFI_PRIMITIVE_MATCHED'
+  echo 'shell_only_child_transfer=ONE_CREDIT_NO_INC'
+  echo 'shell_del_no_projection=REFUSED'
+  echo 'shell_del_shared_parent=REFUSED'
+  echo 'emitted_ir_source_del=NOT_YET_ESTABLISHED'
+  echo 'join_transfer=NOT_YET_ESTABLISHED'
   echo 'unboxed_payload_argument=BORROWED'
   echo 'boxed_payload_wrapper=RELEASES_PARENT'
   echo 'host_wrapper=FROM_BORROWED_RAW_NO_INVENTED_DEC'
@@ -86,7 +93,8 @@ grep -Fx 'reader-generated-lean-c-nested-retain=PASS' "$out/trace.txt"
   sha256sum examples/RuntimeHeapKernels.lean \
     examples/RuntimeHeapFixture.lean runtime/lean-c/HeapDriver.lean \
     runtime/lean-c/generated_value.rs runtime/lean-c/heap_host.rs \
-    runtime/lean-c/heap_oracle.c runtime/rust/immutable_value.rs \
+    runtime/lean-c/heap_oracle.c runtime/lean-c/abi.c \
+    runtime/rust/immutable_value.rs \
     "$out/exact-emitter.rs" "$out/combined.rs" "$out/RuntimeHeapKernels.c" \
     "$out/HeapDriver.c" "$out/trace.txt"
 } > "$out/receipt.txt"

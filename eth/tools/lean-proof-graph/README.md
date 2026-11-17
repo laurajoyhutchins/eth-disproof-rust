@@ -70,24 +70,29 @@ acceptance tier; this extractor studies formal proof dependencies.
 ## Manual GitHub Actions runner
 
 The workflow `.github/workflows/complete-lean-proof-graph.yml` is
-`workflow_dispatch` only to avoid an expensive Mathlib build on every commit.
+manual or explicitly triggered by the `run-complete-lean-graph` PR label,
+avoiding an expensive Mathlib build on every commit.
 It fetches each original source pin, uses the corresponding Lean/Mathlib
 version, and uploads separate raw graph, summary, and iPad projection artifacts
 for OpenAI and Anthropic. It must run on a networked runner with adequate
-GitHub Actions minutes (or be adapted to a GCP worker). It has not yet run
-against the pinned originals in this PR.
+GitHub Actions minutes (or be adapted to a GCP worker). The first original build attempt reached the Anthropic Lean compiler
+successfully but stopped on an extractor CLI type error, which was corrected.
+Until both outputs validate, the complete proof closures remain unverified.
 
 ## Elaborated computational expressions
 
-The pinned runner additionally exports `*-computation.jsonl`,
+The pinned runner in `computation` mode exports `*-computation.jsonl`,
 `*-computation-view.json`, and `*-computation-summary.json` from the actual
 checked Lean environments. OpenAI starts at
 `OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.command`.
 Anthropic starts at `ExplicitCost.recursion`, `levelSolver`,
 `solver`, and `patternValue`.
 
-`ComputeExtract.lean` walks **all reachable constant-value references within
-the named source packages**. It records each definition or explicit boundary,
+`ComputeExtract.lean` walks **all reachable constant-value references
+defined by modules in the exact pinned original source tree**. The runner
+generates a file-level module inventory from that Git tree; the extractor
+uses the original checked environment's defining-module information instead
+of guessing that particular namespaces identify the entire project. It records each definition or explicit boundary,
 every external reference, and each recognized elaborated `Cmd` or
 `QueryMachine` control combinator with its AST path and argument heads.
 `validate_computation.py` checks terminal completion, exact roots, the
@@ -96,13 +101,36 @@ The browser projection is validated; the raw JSONL is authoritative.
 
 These are **elaborated expression dependencies, not runtime call or control
 flow**, nor a physical instruction trace. Higher-order oracle calls and
-recursion can conceal dynamic behavior. Sound register/stack read/write
-effects require a separate typed-effects extraction; no such effects are
+recursion can conceal dynamic behavior. Original `StructuredProgram.Atom`
+constructors expose static operand **roles** (which arguments read or write
+registers or stacks), but numeric port identities and sound dynamic
+read/write sets require a separate execution-aware analysis. They are not
 invented here. No mathematical equivalence or complexity claim follows
 from similar-looking subgraphs.
 
 Open validated JSON at:
 https://lean-proof-explorer.hatchable.site/elaborated.html
 
-Before costly builds, run:
-`python3 -m unittest discover -s eth/tools/lean-proof-graph -p 'test_validate*.py' -v`
+The same pinned runner supports independent output modes:
+
+```sh
+bash run_pinned.sh openai /work/openai-math /work/output computation
+bash run_pinned.sh anthropic /work/anthropic-formal-math /work/output computation
+bash run_pinned.sh openai /work/openai-math /work/output proof
+bash run_pinned.sh anthropic /work/anthropic-formal-math /work/output proof
+```
+
+The independent computational workflow is
+`.github/workflows/original-computational-graphs.yml`, triggered by
+`run-original-compute-graphs`. The small Lean-version gate is
+`.github/workflows/lean-graph-extractor-smoke.yml`, triggered by
+`run-lean-graph-smoke`; it uses Lean 4.33.1 and 4.34.1 without Mathlib.
+No validated original program graph should be claimed until its original
+source module compiles, extraction terminates and the validator passes.
+
+Before expensive original builds, run:
+
+```sh
+python3 -m unittest discover -s eth/tools/lean-proof-graph -p 'test_validate*.py' -v
+bash eth/tools/lean-proof-graph/test_run_pinned.sh
+```

@@ -7,8 +7,8 @@ import RuntimeHeapDelKernels
 @[extern "lr_heap_compare_source_del"] opaque compareSourceDel
   (a b oldStamp newStamp threshold shared : Nat) : Nat
 
-// The physical-operation oracle uses real Lean 4.34.1 C functions;
-// the borrowed dynamic heap Nat stays live across every checkpoint.
+-- The physical-operation oracle uses real Lean 4.34.1 C functions;
+-- the borrowed dynamic heap Nat stays live across every checkpoint.
 @[extern "lr_heap_trace_source_credits"] opaque traceSourceCredits
   (oldStamp : @& Nat) : Nat
 

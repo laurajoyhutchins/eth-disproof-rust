@@ -56,7 +56,7 @@ is necessary to demonstrate a useful Lean-to-Rust compiler.
 ## First release: backend on Lean's existing runtime
 
 The detailed code-generation and ABI contract lives in
-[backend-runtime-boundary](../rust/native_lean_backend/docs/backend-runtime-boundary.md).
+[backend/runtime contract](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/rust/native_lean_backend/docs/backend-runtime-boundary.md).
 
 The native `rust/native_lean_backend` Reader is the **one existing in-process
 code generator**. Its current standalone GMP/`Rc` runtime is retained for
@@ -155,4 +155,4 @@ claimed physical and resource semantics. In particular,
 backend exists; such cases must retain explicit refusal until source
 equivalence is established.
 
-See [Lean-to-Rust correspondence](../research/lean-rust-acceptance.md).
+See [Lean-to-Rust correspondence](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/research/lean-rust-acceptance.md).

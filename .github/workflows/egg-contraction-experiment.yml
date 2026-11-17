@@ -1,0 +1,21 @@
+name: egg contraction experiment
+
+on:
+  pull_request:
+    paths:
+      - "experiments/egg-contraction-optimizer/**"
+      - ".github/workflows/egg-contraction-experiment.yml"
+  workflow_dispatch:
+
+jobs:
+  standalone-rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test standalone experiment
+        run: cargo test --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
+      - name: Run reproducible examples
+        run: cargo run --manifest-path experiments/egg-contraction-optimizer/Cargo.toml

@@ -1,0 +1,14 @@
+[package]
+name = "egg-contraction-experiment"
+version = "0.1.0"
+edition = "2021"
+license = "MIT AND Apache-2.0"
+publish = false
+
+# Keep this crate outside both canonical root workspaces.
+[workspace]
+resolver = "2"
+
+[dependencies]
+egg = "=0.9.5"
+num-bigint = "=0.4.6"

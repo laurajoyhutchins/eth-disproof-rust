@@ -13,7 +13,7 @@ def records():
     return [
         {
             "kind": "manifest", "protocol": "original-computational-expr-v1",
-            "source": "openai", "module": "Smoke", "roots": ["Root"],
+            "source": "openai", "module": "Smoke", "original_modules": 2, "roots": ["Root"],
             "complete": False, "semantics": "elaborated-source",
         },
         {

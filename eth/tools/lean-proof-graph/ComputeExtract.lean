@@ -14,17 +14,31 @@ explicit non-definition boundaries. External references remain enumerated.
 -/
 namespace ComputeGraph
 
-def isProject (source : String) (name : Name) : Bool :=
-  let value := name.toString
-  if source == "openai" then
-    value.startsWith "OAI.Algorithms.SubexponentialSAT."
-  else
-    value.startsWith "ExplicitCost." ||
-    value.startsWith "QueryMachines." ||
-    value.startsWith "Groundwork." ||
-    value.startsWith "PiecesCounted." ||
-    value.startsWith "Printed." ||
-    value.startsWith "CountedRecursion."
+/--
+Project membership is derived from the exact pinned source's module file list,
+not from a guessed namespace prefix. Anthropic's many proof libraries reuse
+namespaces and define computational helpers across multiple source families.
+-/
+def isOriginalModule (env : Environment) (modules : NameSet)
+    (decl : Name) : Bool :=
+  match env.getModuleIdxFor? decl with
+  | some idx => modules.contains env.header.moduleNames[idx.toNat]!
+  | none => false
+
+def readOriginalModules (path : System.FilePath) : IO (NameSet × Nat) := do
+  let content ← IO.FS.readFile path
+  let mut modules : NameSet := {}
+  let mut count := 0
+  for line in content.splitOn "\n" do
+    if !line.isEmpty then
+      let name := line.toName
+      if modules.contains name then
+        throw (IO.userError s!"Duplicate original module: {name}")
+      modules := modules.insert name
+      count := count + 1
+  if count == 0 then
+    throw (IO.userError "Missing original source module manifest")
+  return (modules, count)
 
 def opKind (name : Name) : Option String := Id.run do
   let s := name.toString
@@ -158,18 +172,20 @@ def executableBody? (ci : ConstantInfo) : Option Expr :=
 def sortedRefs (e : Expr) : Array Name :=
   e.getUsedConstantsAsSet.toArray.qsort Name.lt
 
-def run (source moduleName : String) (dest : System.FilePath)
+def run (source moduleName : String) (dest modulesPath : System.FilePath)
     (roots : Array String) : IO Unit := do
   if source != "openai" && source != "anthropic" then
     throw (IO.userError "Expected original source openai or anthropic")
   if roots.isEmpty then
     throw (IO.userError "Expected at least one computational root")
   let env ← importModules #[{module := moduleName.toName}] {}
+  let (modules, moduleCount) ← readOriginalModules modulesPath
+  let original := isOriginalModule env modules
   let mut queue : Array Name := #[]
   let mut queued : NameSet := {}
   for root in roots do
     let name := root.toName
-    if !isProject source name then
+    if !original name then
       throw (IO.userError s!"Root outside pinned computational project: {root}")
     if (env.checked.get.find? name).isNone then
       throw (IO.userError s!"Computational root absent from checked environment: {root}")
@@ -182,6 +198,7 @@ def run (source moduleName : String) (dest : System.FilePath)
     ("protocol", toJson "original-computational-expr-v1"),
     ("source", toJson source),
     ("module", toJson moduleName),
+    ("original_modules", toJson moduleCount),
     ("roots", toJson roots),
     ("complete", toJson false),
     ("semantics", toJson "Elaborated expression references and operator syntax; not execution CFG")]).compress
@@ -199,8 +216,8 @@ def run (source moduleName : String) (dest : System.FilePath)
     let refs := match body with
       | some b => sortedRefs b
       | none => #[]
-    let projectRefs := refs.filter (isProject source)
-    let externalRefs := refs.filter (fun n => !isProject source n)
+    let projectRefs := refs.filter original
+    let externalRefs := refs.filter (fun n => !original n)
     let ops := match body with
       | some b => collectOps b "0"
       | none => #[]
@@ -234,7 +251,7 @@ end ComputeGraph
 
 def main (args : List String) : IO Unit := do
   match args with
-  | source :: moduleName :: destination :: roots =>
-    ComputeGraph.run source moduleName destination roots.toArray
+  | source :: moduleName :: destination :: modulesPath :: roots =>
+    ComputeGraph.run source moduleName destination modulesPath roots.toArray
   | _ =>
-    throw (IO.userError "Usage: lean --run ComputeExtract.lean openai|anthropic MODULE OUTPUT root...")
+    throw (IO.userError "Usage: lean --run ComputeExtract.lean openai|anthropic MODULE OUTPUT ORIGINAL_MODULES_FILE root...")

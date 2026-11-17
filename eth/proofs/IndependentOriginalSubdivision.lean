@@ -109,10 +109,11 @@ def subdividedValue : ℤ :=
             rightProduct φ g μ k z right) *
           copyTensor left right
 
+set_option maxHeartbeats 2000000
+
 /-- The original source network has the same exact contraction as
 the explicitly subdivided Boolean-wire graph. No sign, factor, or
 edge multiplicity changes, even for empty graphs. -/
-set_option maxHeartbeats 2000000 in
 theorem original_value_eq_subdivided :
     (original φ g μ k).value = subdividedValue φ g μ k := by
   classical

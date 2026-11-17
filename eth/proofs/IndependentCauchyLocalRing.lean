@@ -55,6 +55,10 @@ irreducible, so f remains a parameter.
 abbrev SourceO (f : Polynomial TwoLocalIntegers) : Type :=
   Polynomial TwoLocalIntegers ⧸ Ideal.span {f}
 
+/-- Make the quotient's commutative ring instance explicit at the dependent alias. -/
+instance sourceOCommRing (f : Polynomial TwoLocalIntegers) : CommRing (SourceO f) :=
+  Ideal.Quotient.commRing (Ideal.span {f})
+
 /-- An odd scalar remains invertible after adjoining U and quotienting by f. -/
 theorem odd_unit_source_O
     (f : Polynomial TwoLocalIntegers)

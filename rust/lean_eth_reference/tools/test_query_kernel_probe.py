@@ -379,7 +379,10 @@ class KernelRootReceiptTests(unittest.TestCase):
         refused = fixture["external_definition_bodies"][0]
         refused.update(status="node_budget_refused", expression_nodes=0,
                        immediate_symbols=[], immediate_symbol_kinds=[])
-        fixture["second_hop_definition_bodies"] = []
+        fixture["second_hop_definition_bodies"] = [
+            body for body in fixture["second_hop_definition_bodies"]
+            if body["name"].endswith(".liftCommand")
+        ]
         self.assertEqual(validate_kernel_root(json.dumps(fixture))[
             "external_definition_bodies"][0]["status"], "node_budget_refused")
 
@@ -387,7 +390,10 @@ class KernelRootReceiptTests(unittest.TestCase):
         refused = fixture["external_definition_bodies"][0]
         refused.update(status="aggregate_budget_refused", expression_nodes=0,
                        immediate_symbols=[], immediate_symbol_kinds=[])
-        fixture["second_hop_definition_bodies"] = []
+        fixture["second_hop_definition_bodies"] = [
+            body for body in fixture["second_hop_definition_bodies"]
+            if body["name"].endswith(".liftCommand")
+        ]
         self.assertEqual(validate_kernel_root(json.dumps(fixture))[
             "external_definition_bodies"][0]["status"], "aggregate_budget_refused")
 

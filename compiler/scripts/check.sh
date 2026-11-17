@@ -775,7 +775,7 @@ mkdir -p artifacts
     examples/Item30IRProbe.lean examples/Item30Conformance.lean \
     examples/Item30Errors.lean examples/RefusalNameNul.lean examples/RefusalPublicName.lean \
     artifacts/item30-oracles.rs artifacts/item30-ir-probes.txt artifacts/item30-rejection.log
-  sha256sum src/safety.rs
+  sha256sum backend/src/safety.rs
   sha256sum scripts/VerifyIRInventory.lean artifacts/ir-constructor-summary.tsv
   sha256sum examples/ListFixture.lean examples/list-package/src/lib.rs examples/list-package/tests/list_nat_oracle.rs examples/list-package/Cargo.toml
   sha256sum examples/ArrayFixture.lean examples/RefusalArrayPop.lean examples/RefusalArrayBang.lean \
@@ -789,6 +789,6 @@ mkdir -p artifacts
   sha256sum examples/CrossCallFixture.lean examples/cross-call-package/src/lib.rs examples/cross-call-package/tests/cross_call.rs examples/cross-call-package/Cargo.toml
   sha256sum examples/Objects.lean examples/FunctionValues.lean examples/RefusalObjectNat.lean examples/RefusalObjectCtor.lean examples/RefusalFunctionValues.lean examples/object-package/src/lib.rs examples/function-package/src/lib.rs
   sha256sum examples/BorrowFlagFixture.lean examples/ReferenceBookkeepingFixture.lean
-  sha256sum NativeRust.lean native/abi.c src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
+  sha256sum NativeRust.lean frontend/ffi/abi.c backend/src/lib.rs examples/Example.lean examples/Refusal.lean examples/JoinFixture.lean examples/MultiRoot.lean examples/native-package/src/lib.rs examples/native-package/Cargo.toml examples/generated_*.rs
 } > artifacts/native-smoke-receipt.txt
 cat artifacts/native-smoke-receipt.txt | head -9

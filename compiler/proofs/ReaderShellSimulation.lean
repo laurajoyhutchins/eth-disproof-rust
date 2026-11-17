@@ -20,7 +20,7 @@ credit to the existing borrowed handle and destroys only the parent shell.
 A join transfers its source name but changes neither physical RC nor the
 allocation identity.
 
-The real implementation and its pinned Lean C oracle live in
+The model's shell deletion also requires zero independently retained child\ncredits, matching the physical adapter's child-RC-equals-one guard.\n\nThe real implementation and its pinned Lean C oracle live in
 compiler/runtime/lean-c; this model has not yet been linked to their code
 by a compiler or FFI refinement theorem.
 -/
@@ -113,7 +113,8 @@ def sourceStep (s : Source) : Instruction → Option Source
       else some { s with stampSlot := .fresh }
   | .shellDel =>
       if !s.observedUnique || s.parentCredits != 1 || !s.childField ||
-         !s.borrowedChild || s.stampSlot == .old then none
+         !s.borrowedChild || s.stampSlot == .old ||
+         s.childProjectionCredits != 0 then none
       else some { s with
         parentCredits := 0
         childField := false
@@ -151,7 +152,7 @@ def physicalStep (p : Physical) : Instruction → Option Physical
       else some { p with stampSlot := .fresh }
   | .shellDel =>
       if !p.observedUnique || p.parentRC != 1 || !p.childField ||
-         !p.borrowedChild || p.stampSlot == .old || p.childRC == 0 then none
+         !p.borrowedChild || p.stampSlot == .old || p.childRC != 1 then none
       else some { p with parentRC := 0, shellLive := false, childField := false }
   | .releaseProjectedChild =>
       if p.childField || p.childRC == 0 then none
@@ -193,13 +194,19 @@ theorem step_simulation (s : Source) (instr : Instruction) :
       | fresh =>
           simp [sourceStep, physicalStep, represent, credit, hs]
   | shellDel =>
-      cases hs : s.stampSlot with
-      | old =>
-          simp [sourceStep, physicalStep, represent, credit, hs]
-      | spent =>
-          simp [sourceStep, physicalStep, represent, credit, hs, Nat.add_comm]
-      | fresh =>
-          simp [sourceStep, physicalStep, represent, credit, hs, Nat.add_comm]
+      cases hfield : s.childField with
+      | false =>
+          simp [sourceStep, physicalStep, represent, credit, hfield]
+      | true =>
+          cases hproj : s.childProjectionCredits with
+          | zero =>
+              cases hs : s.stampSlot <;>
+                simp [sourceStep, physicalStep, represent, credit,
+                  hfield, hproj, hs]
+          | succ n =>
+              cases hs : s.stampSlot <;>
+                simp [sourceStep, physicalStep, represent, credit,
+                  hfield, hproj, hs]
   | releaseProjectedChild =>
       cases hfield : s.childField with
       | false =>

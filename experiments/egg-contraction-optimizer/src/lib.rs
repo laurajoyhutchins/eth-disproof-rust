@@ -17,6 +17,7 @@ define_language! {
 mod arith;
 mod search;
 pub mod sat;
+pub mod affine;
 
 pub use arith::{exact_polynomial_equivalent, Evaluation, Plan};
 pub use search::{optimize, Report};

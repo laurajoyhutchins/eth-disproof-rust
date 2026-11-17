@@ -97,7 +97,7 @@ theorem source_derivative_multiple_of_at_zero
   have htxb : (sourceDerivativeAt a t : R) * (b : R) =
       (-1 : R) ^ (n - k) * (n.factorial : R) := by
     rw [hb]
-    exact htx
+    simpa only [Int.cast_natCast] using htx
   refine ⟨(-1 : R) ^ (n - k) * (-1 : R) ^ (n - k0) *
     (n.choose k0 : R) * ((b⁻¹ : Rˣ) : R), ?_⟩
   exact common_signed_numerator

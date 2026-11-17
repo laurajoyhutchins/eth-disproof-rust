@@ -355,8 +355,11 @@ private def sourceNat (e : Expr) : Except String Nat :=
     else
       let args := e.getAppArgs
       match args[1]? with
-      | some (.lit (.natVal n)) => .ok n
-      | _ => .error "source numeral has no literal numeric argument"
+      | some arg =>
+        match arg with
+        | .lit (.natVal n) => .ok n
+        | _ => .error "source numeral has no literal numeric argument"
+      | none => .error "source numeral has no literal numeric argument"
 
 private def requiredNat (e : Expr) (label : String) : IO Nat :=
   match sourceNat e with

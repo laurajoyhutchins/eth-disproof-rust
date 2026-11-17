@@ -416,6 +416,7 @@ theorem quotient_merge_states_commute
   classical
   apply Finset.ext
   intro z
+  letI : DecidableEq (J → K) := Classical.decEq (J → K)
   simp only [quotientNetwork, Groundwork.Network.merge]
   change
     (z ∈ Groundwork.tuples (fun a : J => color a = G)

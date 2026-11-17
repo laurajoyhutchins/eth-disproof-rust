@@ -12,6 +12,7 @@ result as accepted.
 | Canonical Rust emitter | Implemented for an explicit subset | [Reader structure](reader-architecture.md); [compiler CLI](../../eth/docs/compiler-ir-backend.md) |
 | Rust-emitted object/value runtime | Implemented for bounded subsets | GMP/`Rc` value runtime, [semantic limitations](../SEMANTICS.md) |
 | Physical source RC fidelity | Incomplete | Source RC ledger proposed in [PR #283](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/283); no general heap simulation |
+| Rust/C ownership boundary witness | Implemented as a bounded integration test | [Lean C runtime bridge](../runtime/lean-c/README.md); not an emitted-Rust runtime |
 | Generated Rust using Lean C runtime | **Not yet implemented as a general execution target** | Next baseline: pinned Lean C adapter and output/physical-trace oracle |
 | Rust-native runtime replacement | **Not established** | Migrate only after C-backed comparison under the [runtime contract](execution-runtime-contract.md) |
 | General G1 compiler release | **Open** | [Issue #193](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/193): original project coverage, ownership, ABI, integration |

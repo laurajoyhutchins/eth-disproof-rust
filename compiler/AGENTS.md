@@ -20,6 +20,11 @@ Current concrete layout:
 
 Do not add a parallel interpreter or Lean frontend. Preserve the source
 `inc`, `dec`, `del`, borrow, move, reuse and release decisions.
+The actual first Lean C execution-time handle adapter is
+`runtime/lean-c/`, which owns allocation/retain/drop/borrow over
+`lean_object *` and tests against original Lean/C. It is a bounded
+physical FFI witness, **not yet** a replacement runtime for generated
+Rust source.
 The next implementation gate is generated Rust calling the pinned
 Lean C runtime for independent physical tracing. The subsequent
 Rust-native runtime must implement the same interface.

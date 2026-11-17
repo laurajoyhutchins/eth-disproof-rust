@@ -30,8 +30,10 @@ The general compiler's current implementation is still physically in
 `compiler/backend/src/`, including one Reader and its embedded
 `runtime/rust/immutable_value.rs`. The proposed
 [backend-first architecture](compiler/docs/backend-first-architecture.md)
-separates IR lowering from runtime execution. The C **execution** adapter
-is not yet implemented; the existing `compiler/frontend/ffi/abi.c` only reads
+separates IR lowering from runtime execution. An initial bounded Lean C execution-time bridge now lives in
+`compiler/runtime/lean-c/`, tested against an original Lean C compiled
+constructor. It is not connected to the canonical generated-Rust
+emitter, and does not prove full runtime equivalence. the existing `compiler/frontend/ffi/abi.c` only reads
 compiler IR during generation.
 
 The standalone `compiler/cli/` crate owns the public `lean-rust-compiler` entry point and artifact contract, with no dependency on `eth/`. The old `eth-compiler` executable is a delegating compatibility wrapper. The first compiler acceptance target is an unchanged external Lean project.

@@ -17,6 +17,7 @@ on:
       - 'rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean'
       - 'rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean'
       - 'rust/lean_eth_reference/proofs/IndependentCauchyFactorial.lean'
+      - 'rust/lean_eth_reference/proofs/IndependentCauchyTwoLocal.lean'
       - '.github/workflows/lean-independent-formulations.yml'
   workflow_dispatch:
 
@@ -93,7 +94,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
-          if grep -nE '\b(sorry|admit)\b' rust/lean_eth_reference/proofs/IndependentCnfBridge.lean rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean rust/lean_eth_reference/proofs/IndependentTwoAdicMoments.lean rust/lean_eth_reference/proofs/IndependentTwoAdicConditionalMoments.lean rust/lean_eth_reference/proofs/IndependentTwoAdicMatchingGraph.lean rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean rust/lean_eth_reference/proofs/IndependentPacketSourceRate.lean rust/lean_eth_reference/proofs/IndependentPacketModeSelection.lean rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean rust/lean_eth_reference/proofs/IndependentCauchyFactorial.lean; then
+          if grep -nE '\b(sorry|admit)\b' rust/lean_eth_reference/proofs/IndependentCnfBridge.lean rust/lean_eth_reference/proofs/IndependentSwapIdentity.lean rust/lean_eth_reference/proofs/IndependentRoutingBoundary.lean rust/lean_eth_reference/proofs/IndependentTwoAdicJointPotential.lean rust/lean_eth_reference/proofs/IndependentTwoAdicMoments.lean rust/lean_eth_reference/proofs/IndependentTwoAdicConditionalMoments.lean rust/lean_eth_reference/proofs/IndependentTwoAdicMatchingGraph.lean rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean rust/lean_eth_reference/proofs/IndependentPacketSourceRate.lean rust/lean_eth_reference/proofs/IndependentPacketModeSelection.lean rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean rust/lean_eth_reference/proofs/IndependentCauchyFactorial.lean rust/lean_eth_reference/proofs/IndependentCauchyTwoLocal.lean; then
             echo 'Independent proof contains unresolved admission' >&2
             exit 1
           fi
@@ -110,12 +111,14 @@ jobs:
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentAnthropicNetworkAdapter.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentPacketSourceRate.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentPacketModeSelection.lean"
-            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean"
+            cp "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean" "./IndependentCauchyTileMode.lean"
+            lake env lean -o ".lake/build/lib/lean/IndependentCauchyTileMode.olean" "./IndependentCauchyTileMode.lean"
             cp "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean" "./IndependentCauchySourceGrid.lean"
             lake env lean -o ".lake/build/lib/lean/IndependentCauchySourceGrid.olean" "./IndependentCauchySourceGrid.lean"
             cp "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean" "./IndependentCauchyBinomialParity.lean"
             lake env lean -o ".lake/build/lib/lean/IndependentCauchyBinomialParity.olean" "./IndependentCauchyBinomialParity.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyFactorial.lean"
+            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyTwoLocal.lean"
           )
           echo 'INDEPENDENT_CNF_COUNT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'INDEPENDENT_SWAP_IDENTITY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
@@ -132,5 +135,6 @@ jobs:
           echo 'OAI_SOURCE_CAUCHY_GRID_ROOT_AND_RESIDUE_PROFILE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'OAI_CAUCHY_ODD_BINOMIAL_LUCAS_PARITY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'OAI_CAUCHY_DERIVATIVE_FACTORIAL=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'OAI_LITERAL_CAUCHY_TWO_LOCAL_DIFFERENCE_QUOTIENT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'OpenAI source: 4eaee87548250b2682affda7d05d947c05554bae' >> "$GITHUB_STEP_SUMMARY"
           echo 'Anthropic source: 16a5ce41304fcdaea4e0be7c132e1c361dc26da5' >> "$GITHUB_STEP_SUMMARY"

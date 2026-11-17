@@ -135,14 +135,16 @@ theorem observation_preserves_heap (fuel : Nat) (h h' : Heap)
     (id count : Nat)
     (ok : step fuel h (.observe id count) = some h') :
     h' = h := by
-  simp only [step] at ok
+  change (match h id with
+    | some n => if n.refs == count && count > 0 then some h else none
+    | none => none) = some h' at ok
   cases hn : h id with
   | none => simp [hn] at ok
   | some n =>
-      split at ok
-      · cases ok
-        rfl
-      · cases ok
+      by_cases hc : (n.refs == count && decide (count > 0)) = true
+      · simp [hn, hc] at ok
+        exact ok.symm
+      · simp [hn, hc] at ok
 
 theorem observation_requires_live (fuel : Nat) (h : Heap)
     (id count : Nat) (dead : h id = none) :

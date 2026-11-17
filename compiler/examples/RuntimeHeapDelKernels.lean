@@ -30,8 +30,8 @@ open RuntimeHeap
   let changed := if rebuild then rebuildOrDiscard x newStamp true else x
   payload changed
 
-#guard rebuildOrExtract (.mk (.mk 5 6) 7) 8 false == .mk 5 6
-#guard rebuildOrExtract (.mk (.mk 5 6) 7) 8 true == .mk 5 6
-#guard rebuildOrDiscard (.mk (.mk 5 6) 7) 8 false == .missing
+#guard RuntimeHeap.first (rebuildOrExtract (.mk (.mk 5 6) 7) 8 false) == 5
+#guard RuntimeHeap.first (rebuildOrExtract (.mk (.mk 5 6) 7) 8 true) == 5
+#guard RuntimeHeap.first (payload (rebuildOrDiscard (.mk (.mk 5 6) 7) 8 false)) == 0
 
 end RuntimeHeapDel

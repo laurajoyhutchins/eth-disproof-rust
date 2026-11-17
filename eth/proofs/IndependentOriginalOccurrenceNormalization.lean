@@ -60,6 +60,11 @@ def OccurrenceNormalForm (z : Fin g → Sl μ k → Bool) : Prop :=
       some (z a (c, j))) ∧
   AllCopiesEqual φ g μ k z
 
+/-- Decidability is constructive because source slots and clusters are finite. -/
+instance : DecidablePred (OccurrenceNormalForm φ g μ k) := fun z => by
+  unfold OccurrenceNormalForm AllCopiesEqual SameVariable
+  infer_instance
+
 /-- The original SAT constructor's Good predicate is precisely the
 common occurrence-level clause/equality normal form, for every
 formula including duplicate literals and empty slots. -/
@@ -78,11 +83,14 @@ theorem original_value_eq_occurrence_normal :
     (net φ g μ k).value =
       (Finset.univ.filter
         (OccurrenceNormalForm φ g μ k)).card := by
-  rw [Groundwork.SatNet.value_eq_card_good]
-  congr 1
-  ext z
-  simp only [Finset.mem_filter, Finset.mem_univ, true_and]
-  exact source_good_iff_normal φ g μ k z
+  have hset :
+      (Finset.univ.filter
+        (Groundwork.SatNet.Good φ (g := g) (μ := μ) (k := k))) =
+      (Finset.univ.filter (OccurrenceNormalForm φ g μ k)) := by
+    ext z
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and]
+    exact source_good_iff_normal φ g μ k z
+  rw [Groundwork.SatNet.value_eq_card_good, hset]
 
 #print axioms IndependentETH.OriginalOccurrence.source_chain_iff_global
 #print axioms IndependentETH.OriginalOccurrence.source_good_iff_normal

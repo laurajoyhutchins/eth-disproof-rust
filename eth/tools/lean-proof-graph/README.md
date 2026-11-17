@@ -76,3 +76,33 @@ version, and uploads separate raw graph, summary, and iPad projection artifacts
 for OpenAI and Anthropic. It must run on a networked runner with adequate
 GitHub Actions minutes (or be adapted to a GCP worker). It has not yet run
 against the pinned originals in this PR.
+
+## Elaborated computational expressions
+
+The pinned runner additionally exports `*-computation.jsonl`,
+`*-computation-view.json`, and `*-computation-summary.json` from the actual
+checked Lean environments. OpenAI starts at
+`OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.command`.
+Anthropic starts at `ExplicitCost.recursion`, `levelSolver`,
+`solver`, and `patternValue`.
+
+`ComputeExtract.lean` walks **all reachable constant-value references within
+the named source packages**. It records each definition or explicit boundary,
+every external reference, and each recognized elaborated `Cmd` or
+`QueryMachine` control combinator with its AST path and argument heads.
+`validate_computation.py` checks terminal completion, exact roots, the
+closed project-reference set, operator paths, counters and source pins.
+The browser projection is validated; the raw JSONL is authoritative.
+
+These are **elaborated expression dependencies, not runtime call or control
+flow**, nor a physical instruction trace. Higher-order oracle calls and
+recursion can conceal dynamic behavior. Sound register/stack read/write
+effects require a separate typed-effects extraction; no such effects are
+invented here. No mathematical equivalence or complexity claim follows
+from similar-looking subgraphs.
+
+Open validated JSON at:
+https://lean-proof-explorer.hatchable.site/elaborated.html
+
+Before costly builds, run:
+`python3 -m unittest discover -s eth/tools/lean-proof-graph -p 'test_validate*.py' -v`

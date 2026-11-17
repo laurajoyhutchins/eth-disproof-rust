@@ -28,7 +28,7 @@ EXPECTED_FIELDS = {
     "command_symbol_kinds", "source_command_ir", "source_command_expanded_ir",
     "source_lift_application", "source_core_command_ir",
     "source_native_command_ir", "source_prepare_obligation",
-    "source_core_expanded_ir", "source_lift_call_ir", "source_command_call_ir",
+    "source_prepare_partial_ir", "source_core_expanded_ir", "source_lift_call_ir", "source_command_call_ir",
     "source_command_ir_resolved",
     "same_module_local_declarations",
     "external_module_edges", "external_definition_bodies",
@@ -55,7 +55,7 @@ def validate_kernel_root(raw: str) -> dict:
     if not isinstance(receipt, dict) or set(receipt) != EXPECTED_FIELDS:
         raise ValueError("kernel root evidence has a missing or extra field")
     fixed = {
-        "format": "original-query-kernel-root-v10",
+        "format": "original-query-kernel-root-v11",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -128,9 +128,9 @@ def validate_kernel_root(raw: str) -> dict:
     reconstruction = (
         "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command"
     )
-    def unresolved(name):
+    def unresolved(name, source_kind="definition"):
         return {"kind": "unresolved", "declaration": name,
-                "source_kind": "definition"}
+                "source_kind": source_kind}
     expected_prefix = {
         "kind": "seq",
         "first": unresolved(high),
@@ -294,9 +294,16 @@ def validate_kernel_root(raw: str) -> dict:
     }
     if receipt["source_native_command_ir"] != expected_native:
         raise ValueError("original reconstruction native sequence or child identities changed")
+    expected_prepare_partial = {
+        "kind": "seq",
+        "first": unresolved("OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram", "applied-program-call"),
+        "second": unresolved("OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd", "applied-command"),
+    }
+    if receipt["source_prepare_partial_ir"] != expected_prepare_partial:
+        raise ValueError("original preparation partial command changed source sequence")
     expected_expanded_core = {
         "kind": "seq",
-        "first": unresolved(prepare),
+        "first": expected_prepare_partial,
         "second": expected_native,
     }
     if receipt["source_core_expanded_ir"] != expected_expanded_core:
@@ -307,6 +314,9 @@ def validate_kernel_root(raw: str) -> dict:
             "bank_command", "program_argument_count", "bank_argument_count",
             "program_expression_nodes", "bank_expression_nodes",
             "program_immediate_symbols", "bank_immediate_symbols",
+            "program_dimensions", "bank_dimensions", "program_indices",
+            "bank_indices", "bank_port_declaration", "bank_port_definition_nodes",
+            "bank_port_definition_symbols", "bank_port_values_resolved",
             "embedded_in_rust_ir",
     } or prep["kind"] != "source-only-unresolved-sequence" or
             prep["declaration"] != prepare or
@@ -315,6 +325,28 @@ def validate_kernel_root(raw: str) -> dict:
             prep["bank_command"] != "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd" or
             prep["embedded_in_rust_ir"] is not False):
         raise ValueError("original preparation source obligation forged or prematurely lowered")
+    expected_dims = [40, 768]
+    expected_indices = [699, 0, 1]
+    if (prep["program_argument_count"] != 5 or
+            prep["bank_argument_count"] != 6 or
+            prep["program_dimensions"] != expected_dims or
+            prep["bank_dimensions"] != expected_dims or
+            prep["program_indices"] != expected_indices or
+            prep["bank_indices"] != expected_indices or
+            prep["bank_port_declaration"] != "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.ports" or
+            prep["bank_port_values_resolved"] is not False):
+        raise ValueError("original preparation source indices or unresolved port list changed")
+    port_nodes = prep["bank_port_definition_nodes"]
+    port_symbols = prep["bank_port_definition_symbols"]
+    if (type(port_nodes) is not int or not 1 <= port_nodes <= 512 or
+            not isinstance(port_symbols, list) or
+            len(port_symbols) > 512 or len(set(port_symbols)) != len(port_symbols) or
+            any(type(s) is not str or not s or len(s) > 512 for s in port_symbols)):
+        raise ValueError("original preparation port-list definition evidence invalid")
+    # A source port-list body may reference imported declarations through
+    # their actual qualified names. Do not infer contents from the reference.
+    if prep["bank_port_declaration"] not in prep["bank_immediate_symbols"]:
+        raise ValueError("original bank clear no longer references its source port list")
     for prefix in ("program", "bank"):
         count = prep[prefix + "_argument_count"]
         prep_nodes = prep[prefix + "_expression_nodes"]
@@ -587,6 +619,7 @@ def probe(args):
         "source_core_command_ir": report["source_core_command_ir"],
         "source_native_command_ir": report["source_native_command_ir"],
         "source_prepare_obligation": report["source_prepare_obligation"],
+        "source_prepare_partial_ir": report["source_prepare_partial_ir"],
         "source_core_expanded_ir": report["source_core_expanded_ir"],
         "source_lift_call_ir": report["source_lift_call_ir"],
         "source_command_call_ir": report["source_command_call_ir"],

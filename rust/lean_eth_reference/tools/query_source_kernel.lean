@@ -482,6 +482,31 @@ private def originalPrepareEvidence (env : Environment) : IO Json := do
   if programArgs.size == 0 || programArgs.size > 24 ||
       bankArgs.size == 0 || bankArgs.size > 24 then
     throw <| IO.userError "original preparation applied source argument budget"
+  unless programArgs.size == 5 && bankArgs.size == 6 do
+    throw <| IO.userError "original preparation call/bank argument arity changed"
+  let r ← requiredNat programArgs[0]! "prepare clearProgram registers"
+  let s ← requiredNat programArgs[1]! "prepare clearProgram stacks"
+  let scratch ← requiredFin programArgs[2]! s "prepare clearProgram scratch"
+  let value ← requiredFin programArgs[3]! r "prepare clearProgram value register"
+  let present ← requiredFin programArgs[4]! r "prepare clearProgram present register"
+  let r2 ← requiredNat bankArgs[0]! "prepare clearCmd registers"
+  let s2 ← requiredNat bankArgs[1]! "prepare clearCmd stacks"
+  let scratch2 ← requiredFin bankArgs[2]! s2 "prepare clearCmd scratch"
+  let value2 ← requiredFin bankArgs[3]! r2 "prepare clearCmd value register"
+  let present2 ← requiredFin bankArgs[4]! r2 "prepare clearCmd present register"
+  unless r == r2 && s == s2 && scratch == scratch2 &&
+      value == value2 && present == present2 do
+    throw <| IO.userError "source clearProgram and clearCmd port arguments disagree"
+  let portName := qualified "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.ports"
+  unless headIdentity bankArgs[5]! == portName.toString &&
+      bankArgs[5]!.getAppArgs.isEmpty do
+    throw <| IO.userError "original bank port list is not closed Prepare.ports"
+  let some (.defnInfo portInfo) := env.find? portName
+    | throw <| IO.userError "original preparation port list definition missing"
+  let (portSymbols, portNodes) ←
+    match immediateSymbols portInfo.value 512 with
+    | .ok pair => pure pair
+    | .error reason => throw <| IO.userError s!"prepare ports source: {reason}"
   let (programSymbols, programNodes) ←
     match immediateSymbols program 512 with
     | .ok pair => pure pair
@@ -498,11 +523,34 @@ private def originalPrepareEvidence (env : Environment) : IO Json := do
     ("bank_command", toJson "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd"),
     ("program_argument_count", toJson programArgs.size),
     ("bank_argument_count", toJson bankArgs.size),
+    ("program_dimensions", toJson #[r, s]),
+    ("bank_dimensions", toJson #[r2, s2]),
+    ("program_indices", toJson #[scratch, value, present]),
+    ("bank_indices", toJson #[scratch2, value2, present2]),
+    ("bank_port_declaration", toJson portName.toString),
+    ("bank_port_definition_nodes", toJson portNodes),
+    ("bank_port_definition_symbols", toJson portSymbols),
+    ("bank_port_values_resolved", toJson false),
     ("program_expression_nodes", toJson programNodes),
     ("bank_expression_nodes", toJson bankNodes),
     ("program_immediate_symbols", toJson programSymbols),
     ("bank_immediate_symbols", toJson bankSymbols),
     ("embedded_in_rust_ir", toJson false)
+  ]
+
+private def originalPreparePartialIR : Json :=
+  Json.mkObj [
+    ("kind", toJson "seq"),
+    ("first", Json.mkObj [
+      ("kind", toJson "unresolved"),
+      ("declaration", toJson "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram"),
+      ("source_kind", toJson "applied-program-call")
+    ]),
+    ("second", Json.mkObj [
+      ("kind", toJson "unresolved"),
+      ("declaration", toJson "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd"),
+      ("source_kind", toJson "applied-command")
+    ])
   ]
 
 private def originalLiftCall (env : Environment) (expandedCore : Json) : IO Json := do
@@ -670,10 +718,10 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let coreIR ← originalCoreCommand env
   let nativeIR ← originalReconstructionNative env
   let prepareEvidence ← originalPrepareEvidence env
-  let coreFirst ← fieldRequired coreIR "first"
+  let preparePartialIR := originalPreparePartialIR
   let expandedCore := Json.mkObj [
     ("kind", toJson "seq"),
-    ("first", coreFirst),
+    ("first", preparePartialIR),
     ("second", nativeIR)
   ]
   let liftCall ← originalLiftCall env expandedCore
@@ -686,7 +734,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let (secondBodies, _) ←
     inspectExternalDefinitions env secondTargets 65536 65536 false
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v10"),
+    ("format", toJson "original-query-kernel-root-v11"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -705,6 +753,7 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("source_core_command_ir", coreIR),
     ("source_native_command_ir", nativeIR),
     ("source_prepare_obligation", prepareEvidence),
+    ("source_prepare_partial_ir", preparePartialIR),
     ("source_core_expanded_ir", expandedCore),
     ("source_lift_call_ir", liftCall),
     ("source_command_call_ir", callIR),

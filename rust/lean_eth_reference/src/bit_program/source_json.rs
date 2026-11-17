@@ -1083,9 +1083,17 @@ mod native_interning_tests {
                     "command": {
                         "kind": "seq",
                         "first": {
-                            "kind": "unresolved",
-                            "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.command",
-                            "source_kind": "definition"
+                            "kind": "seq",
+                            "first": {
+                                "kind": "unresolved",
+                                "declaration": "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram",
+                                "source_kind": "applied-program-call"
+                            },
+                            "second": {
+                                "kind": "unresolved",
+                                "declaration": "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd",
+                                "source_kind": "applied-command"
+                            }
                         },
                         "second": {
                             "kind": "seq",
@@ -1117,7 +1125,7 @@ mod native_interning_tests {
         let mut callees = HashMap::new();
         let err = lower::<40, 896>(command, &mut remaining, &mut callees)
             .expect_err("unresolved original source preparation must not run");
-        assert!(err.to_string().contains("LeafProgram.Count.Prepare.command"), "{err}");
+        assert!(err.to_string().contains("StackRoutines.clearProgram"), "{err}");
         assert!(callees.is_empty(), "refused call must not create callee cache entries");
     }
 
@@ -1125,14 +1133,14 @@ mod native_interning_tests {
     /// pinned Lean receipt. This never accepts the incomplete program as
     /// executable, even though its nested call is valid canonical Rust IR.
     #[test]
-    #[ignore = "requires the original pinned Lean v10 kernel receipt"]
+    #[ignore = "requires the original pinned Lean v11 kernel receipt"]
     fn pinned_original_partial_lift_is_typed_and_refused() {
         let path = std::env::var("ORIGINAL_QUERY_KERNEL_RECEIPT")
             .expect("original source workflow must supply the retained receipt");
         let bytes = std::fs::read(path).expect("original Lean receipt must be readable");
         let report: serde_json::Value =
             serde_json::from_slice(&bytes).expect("original Lean receipt must be JSON");
-        assert_eq!(report["format"], "original-query-kernel-root-v10");
+        assert_eq!(report["format"], "original-query-kernel-root-v11");
         assert_eq!(
             report["root"],
             "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.program"
@@ -1153,7 +1161,27 @@ mod native_interning_tests {
         let expanded = &report["source_core_expanded_ir"];
         let native = &report["source_native_command_ir"];
         assert_eq!(expanded["kind"], "seq");
-        assert_eq!(expanded["first"], core["first"]);
+        assert_eq!(expanded["first"], report["source_prepare_partial_ir"]);
+        assert_eq!(
+            expanded["first"]["first"]["declaration"],
+            "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram"
+        );
+        assert_eq!(
+            expanded["first"]["second"]["declaration"],
+            "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd"
+        );
+        assert_eq!(
+            report["source_prepare_obligation"]["program_indices"],
+            serde_json::json!([699, 0, 1])
+        );
+        assert_eq!(
+            report["source_prepare_obligation"]["bank_indices"],
+            serde_json::json!([699, 0, 1])
+        );
+        assert_eq!(
+            report["source_prepare_obligation"]["bank_port_values_resolved"].as_bool(),
+            Some(false)
+        );
         assert_eq!(expanded["second"], *native);
         assert_eq!(native["kind"], "seq");
         assert_eq!(
@@ -1183,7 +1211,7 @@ mod native_interning_tests {
         let mut callees = HashMap::new();
         let err = lower::<40, 896>(call, &mut remaining, &mut callees)
             .expect_err("original source cannot execute with unresolved Count.Prepare");
-        assert!(err.to_string().contains("LeafProgram.Count.Prepare.command"), "{err}");
+        assert!(err.to_string().contains("StackRoutines.clearProgram"), "{err}");
         assert!(callees.is_empty(), "refused Lean call must not populate callee cache");
     }
 

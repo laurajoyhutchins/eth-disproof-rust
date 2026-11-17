@@ -8,7 +8,7 @@ from query_stream_aot import DECLARATION
 
 def root_receipt():
     receipt = {
-        "format": "original-query-kernel-root-v10",
+        "format": "original-query-kernel-root-v11",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -259,8 +259,16 @@ def root_receipt():
         },
     }
     receipt["source_native_command_ir"] = native_seq
+    prepare_partial = {
+        "kind": "seq",
+        "first": {"kind": "unresolved", "declaration": "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram",
+                  "source_kind": "applied-program-call"},
+        "second": {"kind": "unresolved", "declaration": "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd",
+                   "source_kind": "applied-command"},
+    }
+    receipt["source_prepare_partial_ir"] = prepare_partial
     receipt["source_core_expanded_ir"] = {
-        "kind": "seq", "first": src_ref(prepare), "second": native_seq,
+        "kind": "seq", "first": prepare_partial, "second": native_seq,
     }
     receipt["source_prepare_obligation"] = {
         "kind": "source-only-unresolved-sequence",
@@ -269,11 +277,19 @@ def root_receipt():
         "call_program": "OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram",
         "bank_command": "OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd",
         "program_argument_count": 5,
-        "bank_argument_count": 7,
+        "bank_argument_count": 6,
+        "program_dimensions": [40, 768],
+        "bank_dimensions": [40, 768],
+        "program_indices": [699, 0, 1],
+        "bank_indices": [699, 0, 1],
+        "bank_port_declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.ports",
+        "bank_port_definition_nodes": 12,
+        "bank_port_definition_symbols": ["List.dedup", "List.append"],
+        "bank_port_values_resolved": False,
         "program_expression_nodes": 20,
         "bank_expression_nodes": 25,
         "program_immediate_symbols": ["OAI.Algorithms.SubexponentialSAT.StackRoutines.clearProgram", "OfNat.ofNat"],
-        "bank_immediate_symbols": ["OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd", "OfNat.ofNat"],
+        "bank_immediate_symbols": ["OAI.Algorithms.SubexponentialSAT.BankRoutines.clearCmd", "OfNat.ofNat", "OAI.Algorithms.SubexponentialSAT.SqrtLog.LeafProgram.Count.Prepare.ports"],
         "embedded_in_rust_ir": False,
     }
     call["program"]["source"]["command"] = receipt["source_core_expanded_ir"]
@@ -596,6 +612,34 @@ class KernelRootReceiptTests(unittest.TestCase):
                     prep["program_expression_nodes"] = -2
                 else:
                     prep["program_immediate_symbols"] = ["OAI.Forged.program"]
+                with self.assertRaises(ValueError):
+                    validate_kernel_root(json.dumps(r))
+
+    def test_original_prepare_indices_and_symbolic_port_list_refuse_mutations(self):
+        report = validate_kernel_root(json.dumps(root_receipt()))
+        assert report["source_prepare_obligation"]["bank_port_values_resolved"] is False
+        for change in ("program_scratch", "bank_value", "stack_count", "port_name",
+                       "port_promotion", "port_body_ref", "reorder", "forge_call"):
+            with self.subTest(change=change):
+                r = root_receipt()
+                evidence = r["source_prepare_obligation"]
+                ir = r["source_prepare_partial_ir"]
+                if change == "program_scratch":
+                    evidence["program_indices"][0] = 698
+                elif change == "bank_value":
+                    evidence["bank_indices"][1] = 2
+                elif change == "stack_count":
+                    evidence["program_dimensions"][1] = 767
+                elif change == "port_name":
+                    evidence["bank_port_declaration"] = "OAI.Forged.ports"
+                elif change == "port_promotion":
+                    evidence["bank_port_values_resolved"] = True
+                elif change == "port_body_ref":
+                    evidence["bank_port_definition_nodes"] = -1
+                elif change == "reorder":
+                    ir["first"], ir["second"] = ir["second"], ir["first"]
+                else:
+                    ir["first"]["source_kind"] = "definition"
                 with self.assertRaises(ValueError):
                     validate_kernel_root(json.dumps(r))
 

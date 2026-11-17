@@ -1,0 +1,93 @@
+name: Complete original Lean proof dependency graphs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-lean-proof-graph-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: openai
+            repo: openai/math
+            source_sha: 7ef5c0cc5ca4b0e072b7a050fca09ab24bc6fa3a
+            sparse_path: lean/OAI/Algorithms/SubexponentialSAT
+            lake_root: instrumentation/lean-env
+          - flavor: anthropic
+            repo: anthropics/formal-math
+            source_sha: 16a5ce41304fcdaea4e0be7c132e1c361dc26da5
+            sparse_path: eth
+            lake_root: original/eth
+
+    steps:
+      - name: Checkout extractor
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fetch original pinned source
+        shell: bash
+        env:
+          UPSTREAM: ${{ matrix.repo }}
+          UPSTREAM_SHA: ${{ matrix.source_sha }}
+          SPARSE: ${{ matrix.sparse_path }}
+        run: |
+          set -euo pipefail
+          git init -q original
+          git -C original remote add origin "https://github.com/$UPSTREAM.git"
+          git -C original sparse-checkout init --cone
+          git -C original sparse-checkout set "$SPARSE"
+          git -C original fetch --depth 1 --filter=blob:none origin "$UPSTREAM_SHA"
+          git -C original checkout -q --detach FETCH_HEAD
+          test "$(git -C original rev-parse HEAD)" = "$UPSTREAM_SHA"
+
+      - name: Link pinned OpenAI SAT modules
+        if: matrix.flavor == 'openai'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ln -s "$GITHUB_WORKSPACE/original/lean/OAI" instrumentation/lean-env/OAI
+
+      - name: Restore original Lean version and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: ${{ matrix.lake_root }}
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Extract full checked-environment closure
+        shell: bash
+        env:
+          SOURCE: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/kernel-graph"
+          bash eth/tools/lean-proof-graph/run_pinned.sh \
+            "$SOURCE" "$GITHUB_WORKSPACE/original" "$RUNNER_TEMP/kernel-graph"
+          python3 -m unittest discover -s eth/tools/lean-proof-graph \
+            -p test_validate.py -v
+          ls -lh "$RUNNER_TEMP/kernel-graph"
+
+      - name: Preserve raw transitive closure, checksums and browser projection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lean-original-${{ matrix.flavor }}-complete-graph-${{ github.sha }}
+          path: ${{ runner.temp }}/kernel-graph/
+          if-no-files-found: warn
+          retention-days: 30

@@ -25,7 +25,8 @@ EXPECTED_FIELDS = {
     "format", "status", "root", "compiler", "source_kind",
     "immediate_symbols", "immediate_symbol_kinds", "expression_nodes", "root_app_arity",
     "command_name", "command_expression_nodes", "command_immediate_symbols",
-    "command_symbol_kinds", "same_module_local_declarations",
+    "command_symbol_kinds", "source_command_ir", "source_command_ir_resolved",
+    "same_module_local_declarations",
     "external_module_edges", "external_definition_bodies",
     "second_hop_definition_bodies",
     "external_module_edges_unresolved",
@@ -50,12 +51,13 @@ def validate_kernel_root(raw: str) -> dict:
     if not isinstance(receipt, dict) or set(receipt) != EXPECTED_FIELDS:
         raise ValueError("kernel root evidence has a missing or extra field")
     fixed = {
-        "format": "original-query-kernel-root-v4",
+        "format": "original-query-kernel-root-v5",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
         "source_kind": "definition",
         "command_name": MODULE + ".command",
+        "source_command_ir_resolved": False,
         "external_module_edges_unresolved": True,
         "transitive_computational_closure": False,
         "rust_executable": False,
@@ -114,6 +116,36 @@ def validate_kernel_root(raw: str) -> dict:
                 type(item["kind"]) is not str or item["kind"] not in allowed
                 for item, name in zip(command_kinds, command_symbols))):
         raise ValueError("original command classifications are not bound to source symbols")
+    # This source-specific first lowering is checked against the pinned
+    # command AST, not merely its unordered constant set. 'seq' agrees with
+    # the existing native Rust Command shape; 'unresolved' is intentionally
+    # NOT a Rust Command variant and cannot silently reach execution.
+    high = "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh"
+    reconstruction = (
+        "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command"
+    )
+    def unresolved(name):
+        return {"kind": "unresolved", "declaration": name,
+                "source_kind": "definition"}
+    expected_prefix = {
+        "kind": "seq",
+        "first": unresolved(high),
+        "second": {
+            "kind": "seq",
+            "first": unresolved(MODULE + ".nodes"),
+            "second": unresolved(reconstruction),
+        },
+    }
+    if receipt["source_command_ir"] != expected_prefix:
+        raise ValueError("source command IR differs from pinned original constructor order")
+    expected_references = {high, MODULE + ".nodes", reconstruction}
+    command_kind_by_name = {
+        item["name"]: item["kind"] for item in command_kinds
+    }
+    if any(command_kind_by_name.get(name) != "definition"
+           for name in expected_references):
+        raise ValueError("source command IR references are not original definitions")
+
     local = receipt["same_module_local_declarations"]
     prefix = MODULE + "."
     expected_keys = {
@@ -333,6 +365,20 @@ def probe(args):
         "receipt_is_kernel_certificate": False,
     })
     atomic_write(receipt_path, json.dumps(report, sort_keys=True, indent=2) + "\n")
+    # This artifact is *not* an executable source graph, and deliberately
+    # cannot be admitted as a StructuredCalls source graph by Rust codegen.
+    prefix_receipt = {
+        "format": "original-query-command-prefix-v1",
+        "source_commit": report["source_commit"],
+        "source_git_blob": report["source_git_blob"],
+        "original_olean_sha256": report["original_olean_sha256"],
+        "declaration": report["command_name"],
+        "resolved": False,
+        "rust_executable": False,
+        "command": report["source_command_ir"],
+    }
+    atomic_write(out / "original-command-prefix.json",
+                 json.dumps(prefix_receipt, sort_keys=True, indent=2) + "\n")
     print(f"ORIGINAL_QUERY_KERNEL_ROOT_OBSERVED nodes={report['expression_nodes']} "
           f"symbols={len(report['immediate_symbols'])} "
           f"local_declarations={len(report['same_module_local_declarations'])} "

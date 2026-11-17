@@ -8,7 +8,7 @@ from query_stream_aot import DECLARATION
 
 def root_receipt():
     receipt = {
-        "format": "original-query-kernel-root-v4",
+        "format": "original-query-kernel-root-v5",
         "status": STATUS,
         "root": DECLARATION,
         "compiler": COMPILER,
@@ -21,6 +21,28 @@ def root_receipt():
         "expression_nodes": 8,
         "root_app_arity": 5,
         "command_name": DECLARATION.removesuffix(".program") + ".command",
+        "source_command_ir_resolved": False,
+        "source_command_ir": {
+            "kind": "seq",
+            "first": {
+                "kind": "unresolved",
+                "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh",
+                "source_kind": "definition",
+            },
+            "second": {
+                "kind": "seq",
+                "first": {
+                    "kind": "unresolved",
+                    "declaration": DECLARATION.removesuffix(".program") + ".nodes",
+                    "source_kind": "definition",
+                },
+                "second": {
+                    "kind": "unresolved",
+                    "declaration": "OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command",
+                    "source_kind": "definition",
+                },
+            },
+        },
         "command_expression_nodes": 24,
         "command_immediate_symbols": [
             "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq",
@@ -327,6 +349,32 @@ class KernelRootReceiptTests(unittest.TestCase):
         fixture["second_hop_definition_bodies"] = []
         self.assertEqual(validate_kernel_root(json.dumps(fixture))[
             "external_definition_bodies"][0]["status"], "aggregate_budget_refused")
+
+    def test_source_command_prefix_cannot_be_forged_or_promoted(self):
+        fixture = root_receipt()
+        actual = validate_kernel_root(json.dumps(fixture))
+        self.assertEqual(actual["source_command_ir"]["kind"], "seq")
+        self.assertFalse(actual["source_command_ir_resolved"])
+        fixture = root_receipt()
+        fixture["source_command_ir_resolved"] = True
+        with self.assertRaisesRegex(ValueError, "mismatch"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["source_command_ir"]["first"]["declaration"] = "OAI.Forged.prepareHigh"
+        with self.assertRaisesRegex(ValueError, "constructor order"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["source_command_ir"]["kind"] = "call"
+        with self.assertRaisesRegex(ValueError, "constructor order"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["source_command_ir"]["second"]["first"]["kind"] = "skip"
+        with self.assertRaisesRegex(ValueError, "constructor order"):
+            validate_kernel_root(json.dumps(fixture))
+        fixture = root_receipt()
+        fixture["source_command_ir"]["second"]["second"]["source_kind"] = "theorem"
+        with self.assertRaisesRegex(ValueError, "constructor order"):
+            validate_kernel_root(json.dumps(fixture))
 
     def test_second_hop_is_exact_and_type_references_are_not_erasure(self):
         receipt = root_receipt()

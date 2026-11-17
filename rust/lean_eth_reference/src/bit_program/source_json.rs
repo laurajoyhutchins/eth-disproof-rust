@@ -1000,6 +1000,16 @@ mod native_interning_tests {
         }
     }
 
+    /// The kernel-only source prefix uses the exact canonical 'seq' shape,
+    /// but unresolved declaration leaves are never executable commands.
+    #[test]
+    fn source_prefix_refs_are_rejected_without_real_source_lowering() {
+        let prefix = r#"{"kind":"seq","first":{"kind":"unresolved","declaration":"OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.HighQueryAdapter.prepareHigh","source_kind":"definition"},"second":{"kind":"seq","first":{"kind":"unresolved","declaration":"OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamProgram.nodes","source_kind":"definition"},"second":{"kind":"unresolved","declaration":"OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryReconstruction.command","source_kind":"definition"}}}"#;
+        assert!(serde_json::from_str::<Command>(prefix).is_err());
+        let executable = r#"{"kind":"seq","first":{"kind":"skip"},"second":{"kind":"skip"}}"#;
+        assert!(serde_json::from_str::<Command>(executable).is_ok());
+    }
+
     #[test]
     fn identical_callee_table_is_shared_and_distinct_abi_is_not() {
         let repeated = Command::Seq {

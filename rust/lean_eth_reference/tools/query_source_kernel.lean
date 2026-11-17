@@ -214,6 +214,48 @@ private def inspectExternalDefinitions (env : Environment)
     ]
   return (bodies, nextTargets)
 
+/-!
+A *partial* source-to-IR projection. The only admitted constructor here is
+the original StructuredCalls.Cmd.seq, which has the same node/child names as
+the canonical Rust Command::Seq protocol. A closed named source definition
+is preserved as an unresolved reference, never replaced with a surrogate
+operation or treated as an executable leaf. No Meta whnf or evaluator.
+-/
+private partial def sourceCommandPrefix (env : Environment) (value : Expr)
+    (fuel : Nat) : IO Json := do
+  if fuel == 0 then
+    throw <| IO.userError "original command prefix exceeds finite structural depth"
+  match value with
+  | .mdata _ nested =>
+    sourceCommandPrefix env nested (fuel - 1)
+  | _ =>
+    match value.getAppFn with
+    | .const symbol _ =>
+      let args := value.getAppArgs
+      if symbol == qualified "OAI.Algorithms.SubexponentialSAT.StructuredCalls.Cmd.seq" then
+        if args.size != 4 then
+          throw <| IO.userError "original source Cmd.seq application arity differs"
+        let first ← sourceCommandPrefix env args[2]! (fuel - 1)
+        let second ← sourceCommandPrefix env args[3]! (fuel - 1)
+        return Json.mkObj [
+          ("kind", toJson "seq"), ("first", first), ("second", second)
+        ]
+      if args.isEmpty then
+        match env.find? symbol with
+        | some (.defnInfo _) =>
+          return Json.mkObj [
+            ("kind", toJson "unresolved"),
+            ("declaration", toJson symbol.toString),
+            ("source_kind", toJson "definition")
+          ]
+        | some info =>
+          throw <| IO.userError s!"source command leaf is not a definition: {symbol} ({kindOf info})"
+        | none =>
+          throw <| IO.userError s!"missing original command leaf: {symbol}"
+      throw <| IO.userError s!"original command prefix has unsupported constructor/application: {symbol}"
+    | _ =>
+      throw <| IO.userError "original command prefix is not a constructor or closed source definition"
+
 private def inspect (env : Environment) (root compiled : Name) : IO Json := do
   let some (.defnInfo info) := env.find? root
     | throw <| IO.userError s!"original root is not a compiled definition: {root}"
@@ -246,13 +288,14 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     | .ok result => pure result
     | .error reason => throw <| IO.userError s!"original command: {reason}"
   let commandKinds ← classifySymbols env commandSymbols
+  let commandIR ← sourceCommandPrefix env commandInfo.value 32
   let (localGraph, externalEdges, externalTargets) ← localDeclarations env root
   let (externalBodies, secondTargets) ←
     inspectExternalDefinitions env externalTargets 32768 32768 true
   let (secondBodies, _) ←
     inspectExternalDefinitions env secondTargets 65536 65536 false
   return Json.mkObj [
-    ("format", toJson "original-query-kernel-root-v4"),
+    ("format", toJson "original-query-kernel-root-v5"),
     ("status", toJson "SOURCE_ROOT_INVENTORIED_UNVERIFIED"),
     ("root", toJson root.toString),
     ("compiler", toJson compiledName),
@@ -265,6 +308,8 @@ private def inspect (env : Environment) (root compiled : Name) : IO Json := do
     ("command_expression_nodes", toJson commandNodes),
     ("command_immediate_symbols", toJson commandSymbols),
     ("command_symbol_kinds", toJson commandKinds),
+    ("source_command_ir", commandIR),
+    ("source_command_ir_resolved", toJson false),
     ("same_module_local_declarations", toJson localGraph),
     ("external_module_edges", toJson externalEdges),
     ("external_definition_bodies", toJson externalBodies),

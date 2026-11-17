@@ -111,7 +111,7 @@ jobs:
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentPacketSourceRate.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentPacketModeSelection.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyTileMode.lean"
-            lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean"
+            lake env lean -o ".lake/build/lib/lean/IndependentCauchySourceGrid.olean" "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchySourceGrid.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyBinomialParity.lean"
             lake env lean "$GITHUB_WORKSPACE/rust/lean_eth_reference/proofs/IndependentCauchyFactorial.lean"
           )

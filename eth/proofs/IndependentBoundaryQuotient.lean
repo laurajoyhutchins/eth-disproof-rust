@@ -420,9 +420,11 @@ theorem quotient_merge_states_commute
   change
     (z ∈ Groundwork.tuples (fun a : J => color a = G)
        (fun a => (N.S a).image label) (label defaultState)) ↔
-    (z ∈ (Groundwork.tuples (fun a : J => color a = G)
-       N.S defaultState).image
-         (fun w : J → σ => fun a => label (w a)))
+    (z ∈ @Finset.image (J → σ) (J → K)
+       (Classical.decEq (J → K))
+       (fun w : J → σ => fun a => label (w a))
+       (Groundwork.tuples (fun a : J => color a = G)
+          N.S defaultState))
   constructor
   · intro hz
     have hz' := (Groundwork.mem_tuples
@@ -538,7 +540,7 @@ theorem tuple_fiber_product
 /-- Source pair interactions are also unchanged by replacing each state
     with its quotient representative. This holds for all pair labels. -/
 theorem quotient_pair_interaction
-    {J σ τ K : Type*} [LinearOrder J]
+    {J σ τ K : Type*} [Fintype J] [LinearOrder J]
     (N : Groundwork.Network J σ τ)
     (label : σ → K) (representative : K → σ)
     (hf : ∀ a b s t,

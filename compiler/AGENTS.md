@@ -25,8 +25,11 @@ The actual first Lean C execution-time handle adapter is
 `lean_object *` and tests against original Lean/C. It is a bounded
 physical FFI witness, **not yet** a replacement runtime for generated
 Rust source.
-The next implementation gate is generated Rust calling the pinned
-Lean C runtime for independent physical tracing. The subsequent
+The exact Reader-emitted `ScalarFixture.plus` is linked into a Lean
+C-hosted executable in the same runtime gate, with original Lean output
+comparisons. This first actual compiler emission is **scalar-only**:
+the next gate is a generated heap-backed function using the Lean C
+handle adapter for physical tracing. The subsequent
 Rust-native runtime must implement the same interface.
 
 See [architecture](docs/backend-first-architecture.md),

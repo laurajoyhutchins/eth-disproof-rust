@@ -110,9 +110,13 @@ impl EliminationCertificate {
                 }
             }
         }
+        // Free internal columns MAY occur in pivot rows: those rows solve
+        // each pivot variable as a function of free bits and boundary.
+        // They must be absent only from residual (nonpivot) rows.
         for column in 0..k {
-            if !pivots.contains(&column) && rows.iter().any(|row| row[column]) {
-                return Err("nonpivot internal column remains active".into());
+            if !pivots.contains(&column) &&
+                rows.iter().skip(r).any(|row| row[column]) {
+                return Err("free internal column survives in residual rows".into());
             }
         }
         if claimed.residual.len() != rows.len() - r {

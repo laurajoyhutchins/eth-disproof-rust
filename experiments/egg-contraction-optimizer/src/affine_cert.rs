@@ -274,6 +274,71 @@ mod tests {
         assert_eq!(certificate.verify(&region, &iface).unwrap().rank, 1);
         assert!(certificate.steps.len() < 10);
     }
+
+    #[test]
+    fn native_u64_transcripts_agree_with_separate_boolean_bit_replay() {
+        // An implementation-side correspondence test for the Lean BitVec
+        // model. The packed u64 transition and flat Boolean transition
+        // have different data structures and separate mutation code.
+        fn draw(s: &mut u64) -> u64 {
+            *s ^= *s << 13;
+            *s ^= *s >> 7;
+            *s ^= *s << 17;
+            *s
+        }
+        for seed in 1..=128u64 {
+            let mut state = seed;
+            let m = (draw(&mut state) % 6 + 2) as usize;
+            let words = (draw(&mut state) % 5 + 1) as usize;
+            let width = words * 64;
+            let mut packed = vec![vec![0_u64; words]; m];
+            let mut rhs = vec![false; m];
+            let mut flat = vec![vec![false; width + 1]; m];
+            for r in 0..m {
+                for w in 0..words {
+                    packed[r][w] = draw(&mut state);
+                    for bit in 0..64 {
+                        flat[r][64 * w + bit] = (packed[r][w] >> bit) & 1 == 1;
+                    }
+                }
+                rhs[r] = draw(&mut state) & 1 == 1;
+                flat[r][width] = rhs[r];
+            }
+            for iteration in 0..32 {
+                let target = (draw(&mut state) as usize) % m;
+                let mut source = (draw(&mut state) as usize) % (m - 1);
+                if source >= target { source += 1; }
+                if iteration % 3 == 0 {
+                    packed.swap(target, source);
+                    rhs.swap(target, source);
+                    flat.swap(target, source);
+                } else {
+                    let src_words = packed[source].clone();
+                    for (dst, src) in packed[target].iter_mut().zip(src_words) {
+                        *dst ^= src;
+                    }
+                    rhs[target] ^= rhs[source];
+                    let src_bits = flat[source].clone();
+                    for (bit, src) in flat[target].iter_mut().zip(src_bits) {
+                        *bit ^= src;
+                    }
+                }
+                for r in 0..m {
+                    for col in 0..width {
+                        assert_eq!(
+                            (packed[r][col / 64] >> (col % 64)) & 1 != 0,
+                            flat[r][col],
+                            "seed={seed}, iteration={iteration}, row={r}, column={col}",
+                        );
+                    }
+                    assert_eq!(rhs[r], flat[r][width],
+                        "seed={seed}, iteration={iteration}, row={r}, rhs");
+                }
+            }
+        }
+    }
+
+
     #[test]
     fn packed_words_cross_63_64_127_128_and_preserve_rhs() {
         // The source rows cross several 64-bit boundaries. The second

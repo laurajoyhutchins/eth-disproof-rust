@@ -306,8 +306,8 @@ def FullPhase.split {n : ℕ} : FullPhase n → Split n
   | .xor l r => (l.split).xor r.split
 
 private theorem xor_split_identity (base₁ base₂ mixed₁ mixed₂ x : Bool) :
-    (base₁ ^^ base₂) ^^ (x && (mixed₁ ^^ mixed₂)) =
-      (base₁ ^^ (x && mixed₁)) ^^ (base₂ ^^ (x && mixed₂)) := by
+    ((base₁ ^^ base₂) ^^ (x && (mixed₁ ^^ mixed₂))) =
+      ((base₁ ^^ (x && mixed₁)) ^^ (base₂ ^^ (x && mixed₂))) := by
   cases base₁ <;> cases base₂ <;> cases mixed₁ <;>
     cases mixed₂ <;> cases x <;> decide
 

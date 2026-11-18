@@ -199,7 +199,7 @@ theorem project_constrained_weighted_exact {n : ℕ}
         (2 : ℤ) ^ k * sign (termParity (evalSquarefreeTerm b)
           (base ++ affineProduct mixed pivot)) else 0) := by
   simp only [SplitRow.residual_holds, termParity_append, eval_affineProduct]
-  cases h : termParity (evalAffineTerm b) pivot <;> simp [h]
+  cases termParity (evalAffineTerm b) pivot <;> simp
 
 /-- Shannon-style stitching of complementary supports in exact integers. -/
 theorem stitch_sign (selector a b : Bool) :
@@ -320,7 +320,7 @@ theorem FullPhase.split_correct {n : ℕ} (q : FullPhase n)
   | constant c =>
       cases c <;> cases x <;>
         simp [FullPhase.split, Split.eval, QuadExpr.eval, AffExpr.eval, FullPhase.eval]
-  | variable i =>
+  | «variable» i =>
       cases i with
       | none =>
           cases x <;> simp [FullPhase.split, Split.eval,

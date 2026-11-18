@@ -6,6 +6,7 @@ on:
       - "experiments/egg-contraction-optimizer/**"
       - "eth/proofs/IndependentAffineBoundary.lean"
       - "eth/proofs/IndependentAffineRankNullity.lean"
+      - "eth/proofs/IndependentAffineRowOps.lean"
       - ".github/workflows/egg-contraction-experiment.yml"
   workflow_dispatch:
 
@@ -45,10 +46,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
           cd instrumentation/lean-env
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineBoundary.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRankNullity.lean"
+          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRowOps.lean"

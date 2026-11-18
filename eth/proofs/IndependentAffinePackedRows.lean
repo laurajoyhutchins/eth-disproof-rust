@@ -52,7 +52,10 @@ theorem decode_swap {m w : ℕ} (first second : Fin m)
       booleanSwap first second (decode rows) := by
   funext row word bit
   by_cases h₁ : row = first <;> by_cases h₂ : row = second
-  all_goals simp [decode, packedSwap, booleanSwap, h₁, h₂]
+  all_goals
+    by_cases hs : second = first
+    · simp_all [decode, packedSwap, booleanSwap]
+    · simp_all [decode, packedSwap, booleanSwap]
 
 theorem decode_xor {m w : ℕ} (target source : Fin m)
     (rows : Words m w) :

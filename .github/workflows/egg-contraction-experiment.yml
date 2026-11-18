@@ -23,6 +23,11 @@ jobs:
         run: cargo test --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
       - name: Run reproducible examples
         run: cargo run --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
+      - name: Run exact counting CLI smoke case
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'p cnf 3 2\n1 -2 0\n-1 2 0\n' | cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin exact-cnf-count -- - | grep -F '"count":"4"'
 
   affine-lean:
     runs-on: ubuntu-24.04

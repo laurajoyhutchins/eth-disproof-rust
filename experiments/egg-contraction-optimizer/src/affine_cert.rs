@@ -2,7 +2,7 @@
 //!
 //! No calls to the producer's packed elimination routine. Every emitted step
 //! is an invertible row operation. The terminal matrix must have exactly
-//! one isolated pivot per recorded internal column and zero free columns.
+//! one isolated pivot per recorded internal column and no internal bits in residual rows.
 //! Those conditions imply the claimed number of free internal bits.
 
 use crate::affine::{AffineInterface, AffineRegion};
@@ -274,4 +274,74 @@ mod tests {
         assert_eq!(certificate.verify(&region, &iface).unwrap().rank, 1);
         assert!(certificate.steps.len() < 10);
     }
+    #[test]
+    fn packed_words_cross_63_64_127_128_and_preserve_rhs() {
+        // The source rows cross several 64-bit boundaries. The second
+        // equation shares the internal parity of the first with opposite
+        // RHS, forcing a nontrivial residual boundary equation.
+        let internal = (0..130).map(|i| format!("u{i}")).collect::<Vec<_>>();
+        let region = AffineRegion {
+            internal,
+            boundary: vec!["b0".into(), "b1".into(), "b2".into()],
+            equations: vec![
+                Equation { variables: vec!["u63".into(), "u64".into(), "b0".into()], rhs: false },
+                Equation { variables: vec!["u63".into(), "u64".into(), "b1".into()], rhs: true },
+                Equation { variables: vec!["u127".into(), "u128".into(), "b2".into()], rhs: false },
+                Equation { variables: vec!["u129".into(), "u0".into()], rhs: true },
+            ],
+        };
+        let (interface, certificate) = region.eliminate_with_certificate().unwrap();
+        let receipt = certificate.verify(&region, &interface).unwrap();
+        assert_eq!(receipt.rank, 3);
+        assert_eq!(receipt.free_internal, 127);
+        assert!(certificate.steps.iter().any(|op| matches!(op, RowOperation::Swap { .. })));
+        assert!(certificate.steps.iter().any(|op| matches!(op, RowOperation::Xor { .. })));
+        for mask in 0..8 {
+            let boundary = (0..3).map(|i| {
+                (format!("b{i}"), mask & (1 << i) != 0)
+            }).collect::<BTreeMap<_, _>>();
+            let expected = if boundary["b0"] ^ boundary["b1"] {
+                num_bigint::BigUint::from(1u8) << 127
+            } else {
+                num_bigint::BigUint::from(0u8)
+            };
+            assert_eq!(interface.evaluate(&boundary).unwrap(), expected, "mask={mask}");
+        }
+    }
+
+    #[test]
+    fn zero_dimension_empty_and_inconsistent_equations_are_replayable() {
+        let empty = AffineRegion {
+            internal: vec![], boundary: vec![], equations: vec![],
+        };
+        let (interface, proof) = empty.eliminate_with_certificate().unwrap();
+        proof.verify(&empty, &interface).unwrap();
+        assert_eq!(interface.evaluate(&BTreeMap::new()).unwrap(),
+            num_bigint::BigUint::from(1u8));
+        let impossible = AffineRegion {
+            equations: vec![Equation { variables: vec![], rhs: true }],
+            ..empty
+        };
+        let (interface, proof) = impossible.eliminate_with_certificate().unwrap();
+        proof.verify(&impossible, &interface).unwrap();
+        assert_eq!(interface.evaluate(&BTreeMap::new()).unwrap(),
+            num_bigint::BigUint::from(0u8));
+    }
+
+    #[test]
+    fn raw_invalid_indices_and_self_swaps_are_refused() {
+        let region = example();
+        let (result, valid) = region.eliminate_with_certificate().unwrap();
+        for step in [
+            RowOperation::Swap { first: 0, second: 0 },
+            RowOperation::Swap { first: 0, second: 999 },
+            RowOperation::Xor { target: 999, source: 0 },
+            RowOperation::Xor { target: 0, source: 999 },
+        ] {
+            let mut bad = valid.clone();
+            bad.steps.push(step);
+            assert!(bad.verify(&region, &result).is_err());
+        }
+    }
+
 }

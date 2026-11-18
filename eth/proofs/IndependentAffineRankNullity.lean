@@ -96,8 +96,14 @@ theorem all_boundary_count
   classical
   let e : {u : Bits k // A u + B b = c} ≃
       {u : Bits k // A u = c - B b} :=
-    { toFun := fun u => ⟨u.val, (add_eq_iff_eq_sub).mp u.property⟩
-      invFun := fun u => ⟨u.val, (add_eq_iff_eq_sub).mpr u.property⟩
+    { toFun := fun u => ⟨u.val, by
+        calc
+          A u.val = (A u.val + B b) - B b := by abel
+          _ = c - B b := by rw [u.property]⟩
+      invFun := fun u => ⟨u.val, by
+        calc
+          A u.val + B b = (c - B b) + B b := by rw [u.property]
+          _ = c := by abel⟩
       left_inv := fun u => Subtype.ext rfl
       right_inv := fun u => Subtype.ext rfl }
   exact (Fintype.card_congr e).trans (fiber_count A (c - B b))

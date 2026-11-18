@@ -252,6 +252,14 @@ impl QuadraticMode {
         if self.zero {
             return Ok(Self::zero(self.variables - 1));
         }
+        let (equations, phase, exponent) = self.eliminate_before_normalization(variable)?;
+        Self::new(self.variables - 1, equations, phase, exponent)
+    }
+
+    fn eliminate_before_normalization(
+        &self,
+        variable: usize,
+    ) -> Result<(Vec<Equation>, Anf, usize), BoundaryError> {
         let mut equations = self.equations.clone();
         let (phase, exponent) =
             if let Some(pivot) = equations.iter().position(|eq| eq.coefficients[variable]) {
@@ -308,7 +316,7 @@ impl QuadraticMode {
             .into_iter()
             .map(|term| drop_variable(&term, variable))
             .collect();
-        Self::new(self.variables - 1, equations, phase, exponent)
+        Ok((equations, phase, exponent))
     }
 
     /// Certified two-to-one Shannon interpolation. A cubic result refuses.
@@ -447,6 +455,59 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn constrained_projection_witness() {
+        // Input order is (y, z, x, u, v). Both stored rows contain x.
+        let rows = vec![
+            Equation {
+                coefficients: vec![true, false, true, true, false],
+                rhs: true,
+            },
+            Equation {
+                coefficients: vec![false, true, true, false, true],
+                rhs: false,
+            },
+        ];
+        let phase = terms(&[&[2, 3]]);
+        let input = QuadraticMode::new(5, rows.clone(), phase.clone(), 130).unwrap();
+        assert_eq!(input.equations(), rows.as_slice());
+        assert_eq!(input.phase(), &phase);
+
+        let (residual, substituted, exponent) = input.eliminate_before_normalization(2).unwrap();
+        assert_eq!(
+            residual,
+            vec![Equation {
+                coefficients: vec![true, true, true, true],
+                rhs: true,
+            }]
+        );
+        // In (y, z, u, v), (1 ^ y ^ u) * u = y * u.
+        assert_eq!(substituted, terms(&[&[0, 2]]));
+        assert_eq!(exponent, 130);
+
+        let output = input.eliminate(2).unwrap();
+        assert_eq!(output.equations(), residual.as_slice());
+        assert_eq!(output.phase(), &terms(&[&[1, 2], &[2, 3]]));
+        for word in 0..16 {
+            let exterior = bits(4, word);
+            let [y, z, u, v] = exterior.as_slice() else {
+                unreachable!("four exterior coordinates");
+            };
+            let mut expected = SignedPower::Zero;
+            for x in [false, true] {
+                if *y ^ x ^ *u && !(*z ^ x ^ *v) {
+                    assert_eq!(expected, SignedPower::Zero, "unique extension");
+                    expected = if x && *u {
+                        SignedPower::Negative(130)
+                    } else {
+                        SignedPower::Positive(130)
+                    };
+                }
+            }
+            assert_eq!(output.value(&exterior).unwrap(), expected, "{exterior:?}");
         }
     }
 

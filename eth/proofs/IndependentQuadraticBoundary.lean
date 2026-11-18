@@ -78,6 +78,129 @@ theorem project_free_weighted_exact {n : ℕ} (p : SplitPhase n)
     cases hq : p.base.eval b <;>
     simp [SplitPhase.eval, sign, hl, hq, pow_succ] <;> ring
 
+
+/-- An affine monomial is either the constant or one boundary variable. -/
+abbrev AffineTerm (n : ℕ) := Option (Fin n)
+
+def evalAffineTerm {n : ℕ} (b : Fin n → Bool) : AffineTerm n → Bool
+  | none => true
+  | some i => b i
+
+/-- Sparse squarefree terms. Repeated terms in a list encode coefficient XOR. -/
+inductive SquarefreeTerm (n : ℕ)
+  | constant
+  | linear (i : Fin n)
+  | pair (i j : Fin n)
+
+def evalSquarefreeTerm {n : ℕ} (b : Fin n → Bool) : SquarefreeTerm n → Bool
+  | .constant => true
+  | .linear i => b i
+  | .pair i j => b i && b j
+
+def affineAsSquarefree {n : ℕ} : AffineTerm n → SquarefreeTerm n
+  | none => .constant
+  | some i => .linear i
+
+def multiplyAffineTerms {n : ℕ} : AffineTerm n → AffineTerm n → SquarefreeTerm n
+  | none, t => affineAsSquarefree t
+  | t, none => affineAsSquarefree t
+  | some i, some j =>
+      if i = j then .linear i else if i < j then .pair i j else .pair j i
+
+theorem eval_multiplyAffineTerms {n : ℕ} (b : Fin n → Bool)
+    (s t : AffineTerm n) :
+    evalSquarefreeTerm b (multiplyAffineTerms s t) =
+      (evalAffineTerm b s && evalAffineTerm b t) := by
+  cases s with
+  | none => cases t <;> simp [multiplyAffineTerms, affineAsSquarefree,
+      evalSquarefreeTerm, evalAffineTerm]
+  | some i =>
+      cases t with
+      | none => simp [multiplyAffineTerms, affineAsSquarefree, evalSquarefreeTerm,
+          evalAffineTerm]
+      | some j =>
+          by_cases h : i = j
+          · subst j
+            simp [multiplyAffineTerms, evalSquarefreeTerm, evalAffineTerm]
+          · by_cases hlt : i < j <;>
+              simp [multiplyAffineTerms, evalSquarefreeTerm, evalAffineTerm,
+                h, hlt, Bool.and_comm]
+
+def termParity {α : Type*} (eval : α → Bool) : List α → Bool
+  | [] => false
+  | a :: as => eval a ^^ termParity eval as
+
+theorem termParity_append {α : Type*} (eval : α → Bool) (xs ys : List α) :
+    termParity eval (xs ++ ys) = (termParity eval xs ^^ termParity eval ys) := by
+  induction xs with
+  | nil => simp [termParity]
+  | cons a as ih =>
+      simp only [List.cons_append, termParity, ih]
+      cases eval a <;> cases termParity eval as <;> cases termParity eval ys <;> decide
+
+private theorem eval_affine_row_product {n : ℕ} (b : Fin n → Bool)
+    (s : AffineTerm n) (ts : List (AffineTerm n)) :
+    termParity (evalSquarefreeTerm b) (ts.map (multiplyAffineTerms s)) =
+      (evalAffineTerm b s && termParity (evalAffineTerm b) ts) := by
+  induction ts with
+  | nil => simp [termParity]
+  | cons t ts ih =>
+      simp only [List.map_cons, termParity, eval_multiplyAffineTerms, ih]
+      cases evalAffineTerm b s <;> cases evalAffineTerm b t <;>
+        cases termParity (evalAffineTerm b) ts <;> decide
+
+def affineProduct {n : ℕ} (ts : List (AffineTerm n)) :
+    List (AffineTerm n) → List (SquarefreeTerm n)
+  | [] => []
+  | s :: ss => ts.map (multiplyAffineTerms s) ++ affineProduct ts ss
+
+theorem eval_affineProduct {n : ℕ} (b : Fin n → Bool)
+    (ss ts : List (AffineTerm n)) :
+    termParity (evalSquarefreeTerm b) (affineProduct ts ss) =
+      (termParity (evalAffineTerm b) ss && termParity (evalAffineTerm b) ts) := by
+  induction ss with
+  | nil => simp [affineProduct, termParity]
+  | cons s ss ih =>
+      simp only [affineProduct, termParity_append, eval_affine_row_product,
+        termParity, ih]
+      cases evalAffineTerm b s <;> cases termParity (evalAffineTerm b) ss <;>
+        cases termParity (evalAffineTerm b) ts <;> decide
+
+/-- A row stores the coefficient of the eliminated variable separately. -/
+structure SplitRow (n : ℕ) where
+  coefficient : Bool
+  boundary : List (AffineTerm n)
+  rhs : Bool
+
+def SplitRow.holds {n : ℕ} (row : SplitRow n) (x : Bool) (b : Fin n → Bool) : Bool :=
+  (termParity (evalAffineTerm b) row.boundary ^^ (row.coefficient && x)) == row.rhs
+
+def SplitRow.residual {n : ℕ} (row : SplitRow n) (pivot : List (AffineTerm n)) :
+    List (AffineTerm n) :=
+  row.boundary ++ if row.coefficient then pivot else []
+
+theorem SplitRow.residual_holds {n : ℕ} (row : SplitRow n)
+    (pivot : List (AffineTerm n)) (b : Fin n → Bool) :
+    (termParity (evalAffineTerm b) (row.residual pivot) == row.rhs) =
+      row.holds (termParity (evalAffineTerm b) pivot) b := by
+  cases h : row.coefficient <;>
+    simp [SplitRow.residual, SplitRow.holds, termParity_append, termParity, h]
+
+/-- Exact constrained projection on split sparse ANFs, before normalization. -/
+theorem project_constrained_weighted_exact {n : ℕ}
+    (pivot mixed : List (AffineTerm n)) (base : List (SquarefreeTerm n))
+    (rows : List (SplitRow n)) (k : ℕ) (b : Fin n → Bool) :
+    (∑ x : Bool, if (x == termParity (evalAffineTerm b) pivot) &&
+        rows.all (fun row => row.holds x b) then
+        (2 : ℤ) ^ k * sign (termParity (evalSquarefreeTerm b) base ^^
+          (x && termParity (evalAffineTerm b) mixed)) else 0) =
+      (if rows.all (fun row =>
+        termParity (evalAffineTerm b) (row.residual pivot) == row.rhs) then
+        (2 : ℤ) ^ k * sign (termParity (evalSquarefreeTerm b)
+          (base ++ affineProduct mixed pivot)) else 0) := by
+  simp only [SplitRow.residual_holds, termParity_append, eval_affineProduct]
+  cases h : termParity (evalAffineTerm b) pivot <;> simp [h]
+
 /-- Shannon-style stitching of complementary supports in exact integers. -/
 theorem stitch_sign (selector a b : Bool) :
     (if selector = true then (0 : ℤ) else sign a) +
@@ -109,6 +232,7 @@ theorem two_to_one_example (b₀ b₁ : Bool) :
 #print axioms IndependentETH.QuadraticBoundary.sum_sign_xor
 #print axioms IndependentETH.QuadraticBoundary.project_free_exact
 #print axioms IndependentETH.QuadraticBoundary.project_free_weighted_exact
+#print axioms IndependentETH.QuadraticBoundary.project_constrained_weighted_exact
 #print axioms IndependentETH.QuadraticBoundary.quadratic_stitch_exact
 #print axioms IndependentETH.QuadraticBoundary.two_to_one_example
 

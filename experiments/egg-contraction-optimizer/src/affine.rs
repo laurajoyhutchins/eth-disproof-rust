@@ -6,6 +6,7 @@
 //! Neither arbitrary CNF recognition nor general #SAT is implemented.
 
 use num_bigint::BigUint;
+use crate::affine_cert::{EliminationCertificate, RowOperation};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug)]
@@ -130,6 +131,18 @@ impl AffineRegion {
     /// dimensions and the number of machine words per bit-vector row.
     /// Does not enumerate the 2^n internal assignments.
     pub fn eliminate(&self) -> Result<AffineInterface, String> {
+        let (result, certificate) = self.eliminate_with_certificate()?;
+        // Every public result is independently verified before use.
+        certificate.verify(self, &result)?;
+        Ok(result)
+    }
+
+    /// The producer also emits a replayable row-operation witness.
+    /// The independent checker reconstructs the source matrix using
+    /// dense Booleans instead of trusting this packed-bit algorithm.
+    pub fn eliminate_with_certificate(
+        &self,
+    ) -> Result<(AffineInterface, EliminationCertificate), String> {
         self.validate()?;
         let ni = self.internal.len();
         let nb = self.boundary.len();
@@ -156,10 +169,15 @@ impl AffineRegion {
 
         let mut pivot = 0;
         let mut elimination_xors = 0;
+        let mut steps = Vec::new();
+        let mut pivot_columns = Vec::new();
         for col in 0..ni {
             let Some(found) = (pivot..rows.len())
                 .find(|&r| rows[r].0[col / 64] & (1_u64 << (col % 64)) != 0)
             else { continue; };
+            if pivot != found {
+                steps.push(RowOperation::Swap { first: pivot, second: found });
+            }
             rows.swap(pivot, found);
             let pivot_words = rows[pivot].0.clone();
             let pivot_rhs = rows[pivot].1;
@@ -171,8 +189,10 @@ impl AffineRegion {
                     *word ^= source;
                 }
                 rows[r].1 ^= pivot_rhs;
+                steps.push(RowOperation::Xor { target: r, source: pivot });
                 elimination_xors += 1;
             }
+            pivot_columns.push(col);
             pivot += 1;
         }
         let mut residual = Vec::new();
@@ -186,13 +206,13 @@ impl AffineRegion {
             }).collect();
             residual.push(BoundaryRow { boundary_indices, rhs });
         }
-        Ok(AffineInterface {
+        Ok((AffineInterface {
             boundary: self.boundary.clone(),
             residual,
             free_internal: ni - pivot,
             rank: pivot,
             elimination_xors,
-        })
+        }, EliminationCertificate { steps, pivot_columns }))
     }
 
     /// Independent brute-force oracle, deliberately bounded to small n.

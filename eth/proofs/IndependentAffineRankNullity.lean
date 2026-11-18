@@ -15,7 +15,15 @@ namespace IndependentETH.AffineRankNullity
 
 open Module
 
+attribute [local instance] Classical.propDecidable
+
 abbrev Bits (n : ℕ) := Fin n → ZMod 2
+
+-- The kernel is a subtype of a finite function space. Its enumerability
+-- is needed only in the mathematical statement, never in the Rust solver.
+noncomputable instance kernelFintype
+    {k m : ℕ} (A : Bits k →ₗ[ZMod 2] Bits m) :
+    Fintype (LinearMap.ker A) := Fintype.ofFinite _
 
 /-- Every nonempty affine fiber is in bijection with the homogeneous kernel. -/
 noncomputable def fiberEquivKer

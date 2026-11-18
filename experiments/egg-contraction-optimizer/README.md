@@ -211,3 +211,8 @@ been formally refined into the Lean semantics, and compilation, raw
 usize validity, certificate serialization, and memory/bit-cost bounds
 are not proved. See the
 [technical notebook](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).
+
+
+## Exact DIMACS counting CLI
+
+See [COUNTING.md](COUNTING.md) for the fail-closed source-to-affine counting executable, certificate replay, JSON resource receipts, and supported CNF grammar.

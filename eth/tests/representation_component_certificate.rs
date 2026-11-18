@@ -19,12 +19,9 @@ fn every_small_simple_graph_produces_a_verified_spanning_forest() {
                 }
             }
             let (receipt, certificate) = region.contract_with_certificate().unwrap();
-            let verified = verify_component_certificate(
-                region.len(),
-                region.source_edges(),
-                &certificate,
-            )
-            .unwrap();
+            let verified =
+                verify_component_certificate(region.len(), region.source_edges(), &certificate)
+                    .unwrap();
             assert_eq!(verified.variables, n);
             assert_eq!(verified.original_edges, region.edge_count());
             assert_eq!(verified.components, region.component_count());
@@ -69,9 +66,10 @@ fn forged_splits_are_rejected_by_source_edge_closure() {
 
 #[test]
 fn forged_merges_are_rejected_by_missing_forest_paths() {
-    let edges = [(0, 1), (2, 3), (0, 1)];
-    // The claimed class merges all vertices without a source path between
-    // the two actual connected components. Reusing edge zero is not evidence.
+    let edges = [(0, 1), (1, 2), (2, 0)];
+    // The claimed class merges the triangle with disconnected vertex 3.
+    // Three genuine source edges give the right count but form a cycle,
+    // not a spanning tree. Only independent reachability detects this.
     let certificate = ComponentCertificate {
         labels: vec![0, 0, 0, 0],
         forest_edge_indices: vec![0, 1, 2],
@@ -138,7 +136,12 @@ fn empty_graph_and_thousand_pair_witness() {
     let (_, cert) = empty.contract_with_certificate().unwrap();
     assert!(cert.labels.is_empty());
     assert!(cert.forest_edge_indices.is_empty());
-    assert_eq!(verify_component_certificate(0, &[], &cert).unwrap().components, 0);
+    assert_eq!(
+        verify_component_certificate(0, &[], &cert)
+            .unwrap()
+            .components,
+        0
+    );
 
     let mut region = EqualityComponentRegion::new(vec![[1, 0]; 2000]);
     for i in (0..2000).step_by(2) {
@@ -148,12 +151,7 @@ fn empty_graph_and_thousand_pair_witness() {
         region.apply_equality(i + 1, i).unwrap();
     }
     let (receipt, certificate) = region.contract_with_certificate().unwrap();
-    let verified = verify_component_certificate(
-        2000,
-        region.source_edges(),
-        &certificate,
-    )
-    .unwrap();
+    let verified = verify_component_certificate(2000, region.source_edges(), &certificate).unwrap();
     assert_eq!(receipt.value, 1);
     assert_eq!(verified.components, 1000);
     assert_eq!(verified.forest_edges, 1000);

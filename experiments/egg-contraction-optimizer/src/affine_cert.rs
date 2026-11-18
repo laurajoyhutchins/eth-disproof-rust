@@ -317,7 +317,8 @@ mod tests {
                     for (dst, src) in packed[target].iter_mut().zip(src_words) {
                         *dst ^= src;
                     }
-                    rhs[target] ^= rhs[source];
+                    let source_rhs = rhs[source];
+                    rhs[target] ^= source_rhs;
                     let src_bits = flat[source].clone();
                     for (bit, src) in flat[target].iter_mut().zip(src_bits) {
                         *bit ^= src;

@@ -201,6 +201,53 @@ theorem project_constrained_weighted_exact {n : ℕ}
   simp only [SplitRow.residual_holds, termParity_append, eval_affineProduct]
   cases termParity (evalAffineTerm b) pivot <;> simp
 
+
+/-- The elementary Gaussian-elimination row addition. Duplicate monomials
+in the concatenation cancel under parity, exactly as coefficient XOR. -/
+def SplitRow.add {n : ℕ} (r s : SplitRow n) : SplitRow n :=
+  { coefficient := r.coefficient ^^ s.coefficient
+    boundary := r.boundary ++ s.boundary
+    rhs := r.rhs ^^ s.rhs }
+
+def SplitRow.lhs {n : ℕ} (r : SplitRow n) (x : Bool)
+    (b : Fin n → Bool) : Bool :=
+  termParity (evalAffineTerm b) r.boundary ^^ (r.coefficient && x)
+
+private theorem xor_distributes_mixed (a b c d x : Bool) :
+    ((a ^^ b) ^^ ((c ^^ d) && x)) =
+      ((a ^^ (c && x)) ^^ (b ^^ (d && x))) := by
+  cases a <;> cases b <;> cases c <;> cases d <;> cases x <;> decide
+
+theorem SplitRow.add_lhs {n : ℕ} (r s : SplitRow n)
+    (x : Bool) (b : Fin n → Bool) :
+    (r.add s).lhs x b = (r.lhs x b ^^ s.lhs x b) := by
+  change ((termParity (evalAffineTerm b) (r.boundary ++ s.boundary)) ^^
+      ((r.coefficient ^^ s.coefficient) && x)) =
+    ((termParity (evalAffineTerm b) r.boundary ^^ (r.coefficient && x)) ^^
+      (termParity (evalAffineTerm b) s.boundary ^^ (s.coefficient && x)))
+  rw [termParity_append]
+  exact xor_distributes_mixed _ _ _ _ _
+
+private theorem xor_equations_preserve (p q a b : Bool) :
+    ((p == a) && (q == b)) =
+      ((p == a) && ((p ^^ q) == (a ^^ b))) := by
+  cases p <;> cases q <;> cases a <;> cases b <;> decide
+
+/-- The solution predicate of two rows is unchanged when the second row
+is replaced by its XOR with the first. This is valid at every assignment. -/
+theorem SplitRow.add_preserves_feasibility {n : ℕ} (r s : SplitRow n)
+    (x : Bool) (b : Fin n → Bool) :
+    (r.holds x b && s.holds x b) =
+      (r.holds x b && (r.add s).holds x b) := by
+  change ((r.lhs x b == r.rhs) && (s.lhs x b == s.rhs)) =
+      ((r.lhs x b == r.rhs) &&
+        ((r.add s).lhs x b == (r.rhs ^^ s.rhs)))
+  rw [r.add_lhs]
+  exact xor_equations_preserve _ _ _ _
+
+#print axioms IndependentETH.QuadraticBoundary.SplitRow.add_lhs
+#print axioms IndependentETH.QuadraticBoundary.SplitRow.add_preserves_feasibility
+
 /-- Shannon-style stitching of complementary supports in exact integers. -/
 theorem stitch_sign (selector a b : Bool) :
     (if selector = true then (0 : ℤ) else sign a) +

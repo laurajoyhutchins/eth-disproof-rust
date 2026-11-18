@@ -58,8 +58,12 @@ theorem card_kernel_eq_pow
     have hk : Module.finrank (ZMod 2) (Bits k) = k := by
       simpa [Bits] using (Module.finrank_fin_fun (R := ZMod 2) (n := k))
     omega
-  rw [Module.card_eq_pow_finrank, h]
-  norm_num
+  calc
+    Fintype.card (LinearMap.ker A) =
+        Fintype.card (ZMod 2) ^ Module.finrank (ZMod 2) (LinearMap.ker A) :=
+      Module.card_eq_pow_finrank (K := ZMod 2) (V := LinearMap.ker A)
+    _ = 2 ^ (k - Module.finrank (ZMod 2) (LinearMap.range A)) := by
+      norm_num [h]
 
 /-- Exact number of solutions for any target of any GF(2) linear map. -/
 theorem fiber_count

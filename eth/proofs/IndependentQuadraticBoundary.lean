@@ -229,6 +229,188 @@ theorem two_to_one_example (b₀ b₁ : Bool) :
         sign (b₀ && b₁) := by
   cases b₀ <;> cases b₁ <;> decide
 
+
+/-!
+## Constructive quadratic decomposition
+
+An ANF on a distinguished internal variable x and n boundary variables
+is an XOR of constants, linear variables and degree-two monomials.
+The split procedure is executable structural recursion, not a
+noncomputable existential choice.
+-/
+
+namespace Syntax
+
+inductive AffExpr (n : ℕ) where
+  | constant : Bool → AffExpr n
+  | variable : Fin n → AffExpr n
+  | xor : AffExpr n → AffExpr n → AffExpr n
+
+def AffExpr.eval {n : ℕ} (a : AffExpr n) (b : Fin n → Bool) : Bool :=
+  match a with
+  | .constant c => c
+  | .variable i => b i
+  | .xor l r => l.eval b ^^ r.eval b
+
+/-- Quadratic degree is a syntactic invariant, not a runtime guess. -/
+inductive QuadExpr (n : ℕ) where
+  | affine : AffExpr n → QuadExpr n
+  | product : AffExpr n → AffExpr n → QuadExpr n
+  | xor : QuadExpr n → QuadExpr n → QuadExpr n
+
+def QuadExpr.eval {n : ℕ} (q : QuadExpr n) (b : Fin n → Bool) : Bool :=
+  match q with
+  | .affine a => a.eval b
+  | .product a c => a.eval b && c.eval b
+  | .xor l r => l.eval b ^^ r.eval b
+
+/-- none is the distinguished internal variable, some i an exterior bit. -/
+inductive FullPhase (n : ℕ) where
+  | constant : Bool → FullPhase n
+  | variable : Option (Fin n) → FullPhase n
+  | product : Option (Fin n) → Option (Fin n) → FullPhase n
+  | xor : FullPhase n → FullPhase n → FullPhase n
+
+def bit {n : ℕ} (x : Bool) (b : Fin n → Bool) : Option (Fin n) → Bool
+  | none => x
+  | some i => b i
+
+def FullPhase.eval {n : ℕ} (q : FullPhase n) (x : Bool)
+    (b : Fin n → Bool) : Bool :=
+  match q with
+  | .constant c => c
+  | .variable i => bit x b i
+  | .product i j => bit x b i && bit x b j
+  | .xor l r => l.eval x b ^^ r.eval x b
+
+structure Split (n : ℕ) where
+  base : QuadExpr n
+  mixed : AffExpr n
+
+def Split.eval {n : ℕ} (p : Split n) (x : Bool)
+    (b : Fin n → Bool) : Bool :=
+  p.base.eval b ^^ (x && p.mixed.eval b)
+
+def Split.xor {n : ℕ} (p q : Split n) : Split n :=
+  ⟨.xor p.base q.base, .xor p.mixed q.mixed⟩
+
+def FullPhase.split {n : ℕ} : FullPhase n → Split n
+  | .constant c => ⟨.affine (.constant c), .constant false⟩
+  | .variable none => ⟨.affine (.constant false), .constant true⟩
+  | .variable (some i) => ⟨.affine (.variable i), .constant false⟩
+  | .product none none => ⟨.affine (.constant false), .constant true⟩
+  | .product none (some j) => ⟨.affine (.constant false), .variable j⟩
+  | .product (some i) none => ⟨.affine (.constant false), .variable i⟩
+  | .product (some i) (some j) =>
+      ⟨.product (.variable i) (.variable j), .constant false⟩
+  | .xor l r => (l.split).xor r.split
+
+private theorem xor_split_identity (base₁ base₂ mixed₁ mixed₂ x : Bool) :
+    (base₁ ^^ base₂) ^^ (x && (mixed₁ ^^ mixed₂)) =
+      (base₁ ^^ (x && mixed₁)) ^^ (base₂ ^^ (x && mixed₂)) := by
+  cases base₁ <;> cases base₂ <;> cases mixed₁ <;>
+    cases mixed₂ <;> cases x <;> decide
+
+/-- Every syntactic quadratic ANF has an exact constructible
+boundary-quadratic plus mixed-affine decomposition. -/
+theorem FullPhase.split_correct {n : ℕ} (q : FullPhase n)
+    (x : Bool) (b : Fin n → Bool) :
+    q.split.eval x b = q.eval x b := by
+  induction q with
+  | constant c =>
+      cases c <;> cases x <;>
+        simp [FullPhase.split, Split.eval, QuadExpr.eval, AffExpr.eval, FullPhase.eval]
+  | variable i =>
+      cases i with
+      | none =>
+          cases x <;> simp [FullPhase.split, Split.eval,
+            QuadExpr.eval, AffExpr.eval, FullPhase.eval, bit]
+      | some j =>
+          cases x <;> cases b j <;>
+            simp [FullPhase.split, Split.eval, QuadExpr.eval,
+              AffExpr.eval, FullPhase.eval, bit]
+  | product i j =>
+      cases i with
+      | none =>
+          cases j with
+          | none =>
+              cases x <;> simp [FullPhase.split, Split.eval,
+                QuadExpr.eval, AffExpr.eval, FullPhase.eval, bit]
+          | some j =>
+              cases x <;> cases b j <;>
+                simp [FullPhase.split, Split.eval, QuadExpr.eval,
+                  AffExpr.eval, FullPhase.eval, bit]
+      | some i =>
+          cases j with
+          | none =>
+              cases x <;> cases b i <;>
+                simp [FullPhase.split, Split.eval, QuadExpr.eval,
+                  AffExpr.eval, FullPhase.eval, bit]
+          | some j =>
+              cases x <;> cases b i <;> cases b j <;>
+                simp [FullPhase.split, Split.eval, QuadExpr.eval,
+                  AffExpr.eval, FullPhase.eval, bit]
+  | xor l r hl hr =>
+      change (l.split.base.eval b ^^ r.split.base.eval b) ^^
+          (x && (l.split.mixed.eval b ^^ r.split.mixed.eval b)) =
+          (l.eval x b ^^ r.eval x b)
+      rw [← hl, ← hr]
+      exact xor_split_identity _ _ _ _ _
+
+/-- Exact free elimination for every quadratic monomial syntax. -/
+theorem FullPhase.project_exact {n : ℕ} (q : FullPhase n)
+    (b : Fin n → Bool) :
+    (∑ x : Bool, sign (q.eval x b)) =
+      if q.split.mixed.eval b = true then 0
+      else 2 * sign (q.split.base.eval b) := by
+  calc
+    (∑ x : Bool, sign (q.eval x b)) =
+        ∑ x : Bool, sign (q.split.eval x b) := by
+          apply Finset.sum_congr rfl
+          intro x _
+          rw [q.split_correct x b]
+    _ = _ := sum_sign_xor (q.split.base.eval b) (q.split.mixed.eval b)
+
+/-- A forced internal bit has one extension, not two, at each exterior
+assignment. This is an exact integer sum in every context. -/
+theorem forced_projection_exact {n : ℕ} (p : Split n)
+    (forced : AffExpr n) (feasible : (Fin n → Bool) → Bool)
+    (k : ℕ) (b : Fin n → Bool) :
+    (∑ x : Bool, if x = forced.eval b ∧ feasible b = true then
+       (2 : ℤ) ^ k * sign (p.eval x b) else 0) =
+      if feasible b = true then
+        (2 : ℤ) ^ k * sign (p.eval (forced.eval b) b) else 0 := by
+  cases hf : feasible b <;> cases hx : forced.eval b <;>
+    simp [Fintype.sum_bool, hf, hx]
+
+/-- Substitution is syntactically quadratic, not merely semantically equal
+to an unbounded formula. -/
+def Split.substitute {n : ℕ} (p : Split n)
+    (forced : AffExpr n) : QuadExpr n :=
+  .xor p.base (.product forced p.mixed)
+
+theorem Split.substitute_correct {n : ℕ} (p : Split n)
+    (forced : AffExpr n) (b : Fin n → Bool) :
+    (p.substitute forced).eval b = p.eval (forced.eval b) b := by
+  rfl
+
+theorem forced_projection_quadratic {n : ℕ} (p : Split n)
+    (forced : AffExpr n) (feasible : (Fin n → Bool) → Bool)
+    (k : ℕ) (b : Fin n → Bool) :
+    (∑ x : Bool, if x = forced.eval b ∧ feasible b = true then
+       (2 : ℤ) ^ k * sign (p.eval x b) else 0) =
+      if feasible b = true then
+        (2 : ℤ) ^ k * sign ((p.substitute forced).eval b) else 0 := by
+  rw [forced_projection_exact, p.substitute_correct]
+
+#print axioms IndependentETH.QuadraticBoundary.Syntax.FullPhase.split_correct
+#print axioms IndependentETH.QuadraticBoundary.Syntax.FullPhase.project_exact
+#print axioms IndependentETH.QuadraticBoundary.Syntax.forced_projection_exact
+#print axioms IndependentETH.QuadraticBoundary.Syntax.Split.substitute_correct
+#print axioms IndependentETH.QuadraticBoundary.Syntax.forced_projection_quadratic
+
+end Syntax
+
 #print axioms IndependentETH.QuadraticBoundary.sum_sign_xor
 #print axioms IndependentETH.QuadraticBoundary.project_free_exact
 #print axioms IndependentETH.QuadraticBoundary.project_free_weighted_exact

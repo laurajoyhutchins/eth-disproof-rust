@@ -181,3 +181,33 @@ implementation evidence, not a verified implementation of arbitrary SAT
 or an end-to-end ETH speedup.
 
 Notebook: [Affine elimination and replayable certificates](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).
+
+
+## BitVec64 correspondence layer (November 18, 2026)
+
+The new [IndependentAffinePackedRows.lean](../../eth/proofs/IndependentAffinePackedRows.lean)
+models the packed coefficient storage as a finite collection of 64-bit
+words, plus a separate Boolean right-hand side. It proves that every
+packed word XOR and row swap decodes to the corresponding individual
+Boolean-bit operation, with the same equality for arbitrary finite
+operation transcripts. Flat column indices are interpreted by
+word = index / 64 and bit = index % 64. This is universal over the
+modeled finite word-row shapes, not just a test on one matrix.
+
+The [pinned Lean acceptance workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44371318470)
+passed with standard axioms only and no sorryAx.
+
+Rust regression tests compare actual u64 word operations and RHS parity
+against independently mutated flat Boolean rows after every step of
+128 deterministic 32-operation transcripts. Other tests target columns
+63/64 and 127/128, empty dimensions, and invalid row indices. The
+[30-test Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44371459539)
+passed alongside the Lean module.
+
+**Remaining trust boundary:** The Lean theorem establishes correctness
+of the 64-bit-word *model*. The Rust word operations agree with a distinct
+Boolean implementation in tested cases. The native Rust checker has not
+been formally refined into the Lean semantics, and compilation, raw
+usize validity, certificate serialization, and memory/bit-cost bounds
+are not proved. See the
+[technical notebook](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).

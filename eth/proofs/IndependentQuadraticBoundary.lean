@@ -351,8 +351,8 @@ theorem FullPhase.split_correct {n : ℕ} (q : FullPhase n)
                 simp [FullPhase.split, Split.eval, QuadExpr.eval,
                   AffExpr.eval, FullPhase.eval, bit]
   | xor l r hl hr =>
-      change (l.split.base.eval b ^^ r.split.base.eval b) ^^
-          (x && (l.split.mixed.eval b ^^ r.split.mixed.eval b)) =
+      change ((l.split.base.eval b ^^ r.split.base.eval b) ^^
+          (x && (l.split.mixed.eval b ^^ r.split.mixed.eval b))) =
           (l.eval x b ^^ r.eval x b)
       rw [← hl, ← hr]
       exact xor_split_identity _ _ _ _ _

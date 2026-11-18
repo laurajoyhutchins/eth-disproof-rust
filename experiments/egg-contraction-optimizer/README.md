@@ -111,11 +111,11 @@ The constructor performs **no internal assignment enumeration**. Its matrix cons
 
 A two-row example with equations u XOR v = b and u XOR v = c produces one residual boundary condition b=c and multiplicity two. Independent composition of two such regions with shared boundary is tested on every boundary assignment. A separate 128-internal-variable fixture returns 2^127 solutions without enumerating any internal states. An attempted direct oracle at that size explicitly refuses.
 
-**Formal scope:** [IndependentAffineBoundary.lean](../../eth/proofs/IndependentAffineBoundary.lean) defines the actual two-bit finite sum and proves the compact two-or-zero formula for all Boolean b,c. It also proves preservation under weighted contexts and composition with a second interface. That is a particular universal mathematical theorem, **not** formal verification of the arbitrary-size Rust Gaussian-elimination algorithm.
+**Formal scope:** [IndependentAffineBoundary.lean](../../eth/proofs/IndependentAffineBoundary.lean) proves the original two-bit finite sum and CNF/XOR encoding. [IndependentAffineRankNullity.lean](../../eth/proofs/IndependentAffineRankNullity.lean) now proves the **general, all-dimensions GF(2) fiber-count formula**, including every boundary target. [IndependentAffineRowOps.lean](../../eth/proofs/IndependentAffineRowOps.lean) proves that arbitrary finite row-swap/XOR transcripts preserve all equations. These are universal Lean theorems, **not** formal verification of the arbitrary-size Rust implementation.
 
 For small interfaces, the optional polynomial lowering translates boundary parity equations into exact integer-polynomial indicators. These can enter the existing egg search and independent polynomial checker. The textual tree lowering may grow exponentially with the length of residual equations; the compact affine representation and evaluator avoid that expansion. This experiment therefore does **not** show a full-pipeline speedup from egg on the general affine input.
 
-Limitations: input is an explicit parity-equation system, not an automatically recognized general CNF. The implementation has no independently verified global bit-operation or peak-memory bound and no source-to-Rust correspondence to the pinned ETH QueryStream algorithm. Compact affine elimination does not refute ETH.
+Limitations: input is explicit parity equations or strict canonical XOR3 CNF blocks, not arbitrary CNF. The implementation has no independently verified global bit-operation or peak-memory bound and no source-to-Rust correspondence to the pinned ETH QueryStream algorithm. Compact affine elimination does not refute ETH.
 
 
 ### Strict source-CNF-to-affine bridge
@@ -146,3 +146,38 @@ still lack full formal refinement proofs.
 This is not a general XOR recognition algorithm and will refuse
 many logically equivalent CNF encodings. The strictness is intentional
 until an independently checked more flexible recognizer exists.
+
+
+## Independent certificate replay and verified mathematics
+
+The packed-bit affine eliminator now emits a finite transcript of row swaps
+and XOR operations, plus ordered pivot columns. The separately written
+[affine_cert.rs](src/affine_cert.rs) checker reconstructs the original
+system as dense Boolean vectors and replays every operation. The public
+elimination method refuses a result unless the independent checker validates
+all pivot columns, rank and free dimension, boundary ordering, residual
+equations, row-operation indices and XOR count.
+
+The **free-variable subtlety** matters: free internal columns may appear in
+pivot rows. Only *residual* rows must contain no internal columns. An
+initially overstrong checker rejected valid examples; its corrected
+invariant has passed the regression suite.
+
+- [Pinned Rust and Lean verification](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44362293013)
+  passed **26 Rust tests** and three Lean proof modules, with standard axioms
+  only and no sorryAx.
+- The Rust tests include **200 deterministic affine systems** checked on
+  every Boolean boundary against independent direct enumeration, and
+  negative mutations of transcripts, residuals and source equations.
+- The general Lean theorem proves that each nonempty GF(2) affine fiber
+  is in bijection with the kernel, hence has size 2^(k-rank).
+  A second general theorem proves all finite row-permutation/XOR
+  transcripts preserve the full equation system.
+
+**Remaining refinement gap:** The Rust producer, certificate representation
+and independently implemented checker have not been formally refined into
+the Lean definitions. This is proof-supported, independently tested
+implementation evidence, not a verified implementation of arbitrary SAT
+or an end-to-end ETH speedup.
+
+Notebook: [Affine elimination and replayable certificates](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).

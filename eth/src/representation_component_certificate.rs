@@ -64,7 +64,9 @@ pub fn verify_component_certificate(
 
     for &(a, b) in source_edges {
         if certificate.labels[a] != certificate.labels[b] {
-            return Err(Error::Invalid("source edge crosses claimed components".into()));
+            return Err(Error::Invalid(
+                "source edge crosses claimed components".into(),
+            ));
         }
     }
 
@@ -82,7 +84,9 @@ pub fn verify_component_certificate(
         }
         used_source_edge[edge_index] = true;
         if a == b || certificate.labels[a] != certificate.labels[b] {
-            return Err(Error::Invalid("forest edge is not an internal tree link".into()));
+            return Err(Error::Invalid(
+                "forest edge is not an internal tree link".into(),
+            ));
         }
         adjacency[a].push(b);
         adjacency[b].push(a);

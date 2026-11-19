@@ -231,6 +231,81 @@ theorem fiberProduct_sourceItems {n c : ℕ}
   cases bit <;>
     simp [fiberProduct, sourceItems, List.map_map, Function.comp_def]
 
+/-- The source-ordered fiber product agrees with the finite-set product
+    over vertices bearing the same label. Reordering is sound because the
+    weights lie in the commutative integer multiplication monoid. -/
+theorem fiberProduct_sourceFinset {n c : ℕ}
+    (label : Fin n → Fin c)
+    (weights : Fin n → Bool → ℤ)
+    (k : Fin c) (bit : Bool) :
+    fiberProduct (sourceItems label weights) k bit =
+      ∏ i ∈ (Finset.univ : Finset (Fin n)) with label i = k,
+        weights i bit := by
+  classical
+  rw [fiberProduct_sourceItems]
+  calc
+    ((List.finRange n).map (fun i =>
+      if label i = k then weights i bit else 1)).prod =
+        ∏ i : Fin n, if label i = k then weights i bit else 1 := by
+      rw [← List.prod_toFinset (fun i : Fin n =>
+        if label i = k then weights i bit else 1) (List.nodup_finRange n)]
+      simp
+    _ = _ := by
+      simp only [Finset.prod_filter]
+
+/-- The complete bridge for the Lean reference execution: accepted indexed
+    source certificates plus a successful vertex-major checked fold imply
+    the *literal source-edge constrained sum* equals the returned integer.
+    Neither graph connectivity nor grouping is assumed as an external oracle.
+
+    This is not yet a theorem about compiled Rust arrays/instructions. -/
+theorem checkedClassFold_source_edges {n c : ℕ}
+    (edges : List (Fin n × Fin n))
+    (label : Fin n → Fin c)
+    (root : Fin c → Fin n)
+    (sourceIndex : Fin n → Option (Fin edges.length))
+    (rank : Fin n → ℕ)
+    (weights : Fin n → Bool → ℤ)
+    (value : ℤ)
+    (hcert : ACC.IndexedRankedCertificate.checkIndexed
+      edges label root sourceIndex rank = true)
+    (hresult : checkedClassFold (sourceItems label weights) = some value) :
+    value =
+      (∑ x : {x : Fin n → Bool // ∀ e ∈ edges, x e.1 = x e.2},
+         ∏ i : Fin n, weights i (x.1 i)) := by
+  have hedge := ACC.IndexedRankedCertificate.checked_indexed_contraction
+    edges label root sourceIndex rank weights hcert
+  rw [hedge]
+  calc
+    value =
+      ((List.finRange c).map (fun k =>
+        fiberProduct (sourceItems label weights) k false +
+          fiberProduct (sourceItems label weights) k true)).prod :=
+      checkedClassFold_sound (sourceItems label weights) value hresult
+    _ = ∏ k : Fin c,
+        ∑ bit : Bool,
+          ∏ i ∈ (Finset.univ : Finset (Fin n)) with label i = k,
+            weights i bit := by
+      calc
+        _ = ∏ k : Fin c,
+            fiberProduct (sourceItems label weights) k false +
+            fiberProduct (sourceItems label weights) k true := by
+          rw [← List.prod_toFinset (fun k : Fin c =>
+            fiberProduct (sourceItems label weights) k false +
+            fiberProduct (sourceItems label weights) k true)
+            (List.nodup_finRange c)]
+          simp
+        _ = _ := by
+          apply Finset.prod_congr rfl
+          intro k _
+          rw [fiberProduct_sourceFinset label weights k false,
+            fiberProduct_sourceFinset label weights k true]
+          simp only [Fintype.sum_bool]
+          ring
+
+#print axioms ACC.ComponentFoldCorrespondence.fiberProduct_sourceFinset
+#print axioms ACC.ComponentFoldCorrespondence.checkedClassFold_source_edges
+
 #print axioms ACC.ComponentFoldCorrespondence.checkedStep_sound
 #print axioms ACC.ComponentFoldCorrespondence.checkedScanFrom_sound
 #print axioms ACC.ComponentFoldCorrespondence.uncheckedScanFrom_fiber

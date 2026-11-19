@@ -20,6 +20,7 @@ pub mod sat;
 pub mod affine;
 pub mod affine_cert;
 pub mod cnf_count;
+pub mod affine_planner;
 
 pub use arith::{exact_polynomial_equivalent, Evaluation, Plan};
 pub use search::{optimize, Report};

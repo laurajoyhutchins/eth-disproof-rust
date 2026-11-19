@@ -19,8 +19,7 @@ use crate::representation_component_certificate::{
     ComponentCertificate, verify_component_certificate,
 };
 use crate::representation_ranked_certificate::{
-    RankedComponentCertificate, RankedCountReceipt,
-    contract_checked_ranked_weights,
+    RankedComponentCertificate, RankedCountReceipt, contract_checked_ranked_weights,
 };
 use std::collections::VecDeque;
 use std::mem::size_of;
@@ -241,7 +240,9 @@ impl EqualityComponentRegion {
         let mut queue = VecDeque::new();
         for &root in &roots {
             if root == usize::MAX || visited[root] {
-                return Err(Error::Invalid("producer emitted duplicate or missing root".into()));
+                return Err(Error::Invalid(
+                    "producer emitted duplicate or missing root".into(),
+                ));
             }
             visited[root] = true;
             queue.push_back(root);
@@ -272,11 +273,7 @@ impl EqualityComponentRegion {
         &self,
     ) -> Result<(RankedCountReceipt, RankedComponentCertificate), Error> {
         let certificate = self.ranked_component_certificate()?;
-        let receipt = contract_checked_ranked_weights(
-            &self.unary,
-            &self.edges,
-            &certificate,
-        )?;
+        let receipt = contract_checked_ranked_weights(&self.unary, &self.edges, &certificate)?;
         Ok((receipt, certificate))
     }
 

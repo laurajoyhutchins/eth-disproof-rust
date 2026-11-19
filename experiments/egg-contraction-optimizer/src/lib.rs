@@ -19,6 +19,7 @@ mod search;
 pub mod sat;
 pub mod affine;
 pub mod affine_cert;
+pub mod affine_wire;
 
 pub use arith::{exact_polynomial_equivalent, Evaluation, Plan};
 pub use search::{optimize, Report};

@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub enum Family {
     Chain,
     CirculantXor3,
+    FreeAmplifiers,
 }
 
 impl Family {
@@ -21,6 +22,7 @@ impl Family {
         match self {
             Self::Chain => "chain-equality",
             Self::CirculantXor3 => "circulant-xor3",
+            Self::FreeAmplifiers => "free-amplifier",
         }
     }
 }
@@ -38,6 +40,7 @@ pub fn generate(family: Family, size: usize) -> Result<Vec<AffineRegion>, String
                 vec![format!("x{i}"), format!("x{}", i + 1)],
                 false,
             ),
+            Family::FreeAmplifiers => (vec![format!("x{i}")], false),
             Family::CirculantXor3 => {
                 let stride = (size / 2).max(2);
                 let indices = [i, (i + 1) % size, (i + stride) % size];
@@ -45,10 +48,11 @@ pub fn generate(family: Family, size: usize) -> Result<Vec<AffineRegion>, String
                 (indices.iter().map(|j| format!("x{j}")).collect(), rhs)
             }
         };
+        let is_free = family == Family::FreeAmplifiers;
         factors.push(AffineRegion {
-            internal: Vec::new(),
+            internal: if is_free { vec![format!("u{i}")] } else { Vec::new() },
             boundary: scope.clone(),
-            equations: vec![Equation { variables: scope, rhs }],
+            equations: if is_free { Vec::new() } else { vec![Equation { variables: scope, rhs }] },
         });
     }
     Ok(factors)
@@ -292,6 +296,12 @@ mod tests {
             compare(Family::CirculantXor3, n, &[]);
             compare(Family::CirculantXor3, n, &["x0".into(), "x1".into()]);
         }
+        // Free factors each contribute two independent Boolean variables.
+        // A small complete oracle checks all 2^(2n) source assignments.
+        for n in 3..=6 {
+            compare(Family::FreeAmplifiers, n, &[]);
+            compare(Family::FreeAmplifiers, n, &["x0".into(), "x1".into()]);
+        }
     }
 
     #[test]
@@ -318,6 +328,27 @@ mod tests {
             assert!(count > BigUint::from(0u8)); // Witness baked into RHS.
             assert_eq!(b.stage.count_at(&BTreeMap::new()).unwrap(), count);
             assert_eq!(c.stage.count_at(&BTreeMap::new()).unwrap(), count);
+        }
+    }
+
+    #[test]
+    fn free_amplifiers_grow_b_without_growing_the_final_interface() {
+        // Each factor has one hidden free bit u_i and an unconstrained
+        // exterior bit x_i. Closing all factors counts 2^(2n) assignments.
+        // B grows linearly in n while D drops to zero after the first merge.
+        let n = 128;
+        let factors = generate(Family::FreeAmplifiers, n).unwrap();
+        let a = fold(&factors, &Schedule::Sequential.indices(n), &[], &Limits::default()).unwrap();
+        let b = fold(&factors, &Schedule::EvenFirst.indices(n), &[], &Limits::default()).unwrap();
+        let expected = BigUint::from(1u8) << (2 * n);
+        for trace in [&a, &b] {
+            assert_eq!(trace.stage.count_at(&BTreeMap::new()).unwrap(), expected);
+            assert_eq!(trace.peak_d, 1);
+            assert_eq!(trace.stage.metrics.d, 0);
+            assert_eq!(trace.stage.metrics.b, 2 * n + 1);
+            assert_eq!(trace.peak_b, 2 * n + 1);
+            assert_eq!(trace.steps[0].metrics.b, 2);
+            assert!(trace.steps.windows(2).all(|pair| pair[1].metrics.b > pair[0].metrics.b));
         }
     }
 

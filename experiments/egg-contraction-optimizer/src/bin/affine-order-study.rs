@@ -9,10 +9,10 @@ use std::collections::BTreeMap;
 use std::time::Instant;
 
 fn usage() -> &'static str {
-    "usage: affine-order-study [--sizes 8,16,32] [--family chain|circulant|both] \
+    "usage: affine-order-study [--sizes 8,16,32] [--family chain|circulant|free|both|all] \
      [--max-merge-cells N] [--max-total-merge-cells N] [--summaries-only]\n\
      Prints JSON Lines, one record per stage and one summary per schedule. \
-     For <=10 variables, the final count is independently checked by enumeration."
+     Small instances are checked by independent Boolean enumeration."
 }
 
 fn parse_sizes(s: &str) -> Result<Vec<usize>, String> {
@@ -27,7 +27,7 @@ fn parse_sizes(s: &str) -> Result<Vec<usize>, String> {
 fn execute() -> Result<(), Refusal> {
     let mut args = std::env::args().skip(1);
     let mut sizes = vec![8, 16, 32];
-    let mut families = vec![Family::Chain, Family::CirculantXor3];
+    let mut families = vec![Family::Chain, Family::CirculantXor3, Family::FreeAmplifiers];
     let mut limits = Limits::default();
     let mut summaries_only = false;
     while let Some(arg) = args.next() {
@@ -47,7 +47,9 @@ fn execute() -> Result<(), Refusal> {
             "--family" => families = match value.as_str() {
                 "chain" => vec![Family::Chain],
                 "circulant" => vec![Family::CirculantXor3],
+                "free" => vec![Family::FreeAmplifiers],
                 "both" => vec![Family::Chain, Family::CirculantXor3],
+                "all" => vec![Family::Chain, Family::CirculantXor3, Family::FreeAmplifiers],
                 _ => return Err(Refusal::new("input", "arguments", "unknown --family")),
             },
             "--max-merge-cells" => limits.max_merge_cells = value.parse()
@@ -72,8 +74,9 @@ fn execute() -> Result<(), Refusal> {
                 let elapsed = start.elapsed().as_nanos();
                 let oracle_status = if (family == Family::Chain && n <= 9)
                     || (family == Family::CirculantXor3 && n <= 10)
+                    || (family == Family::FreeAmplifiers && n <= 6)
                 {
-                    let direct = oracle(&factors, &BTreeMap::new(), 12)
+                    let direct = oracle(&factors, &BTreeMap::new(), 14)
                         .map_err(|e| Refusal::new("resource", "oracle", e))?;
                     if count != direct {
                         return Err(Refusal::new(

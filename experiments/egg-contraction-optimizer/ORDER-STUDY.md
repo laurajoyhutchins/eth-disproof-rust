@@ -17,7 +17,7 @@ by unprocessed factors or preserved as outputs. Only ports not in that live set
 are summed out. All merges use the existing independently replay-checked
 affine solver. An unsupported count or resource limit causes explicit refusal.
 
-Two original affine-factor families:
+Three original affine-factor families:
 
 1. **Chain equality:** N equality edges connecting N+1 Boolean variables.
    The exact closed count is 2. Sequential and reverse folds have small
@@ -28,6 +28,12 @@ Two original affine-factor families:
    (with stride at least 2). RHS bits are generated from an explicit witness,
    ensuring consistency. This is a **bounded-degree cyclic family**, not a
    proved expander. Counts and intermediate sizes are measured, not presumed.
+3. **Free amplifiers:** each of N disconnected factors has one unconstrained
+   hidden bit u_i and one unconstrained exposed port x_i. Closing all
+   variables produces exactly 2^(2N) assignments. This deliberately stresses
+   coefficient/count bit length B without increasing the retained interface D.
+   The closed count is huge as an integer, but its exact binary representation
+   takes only O(N) bits.
 
 The study records a stage for every consumed factor and a final summary for
 each schedule:
@@ -47,11 +53,13 @@ of the **active left-fold accumulator only**. They exclude simultaneously
 stored unmerged leaves, certificate memory, and temporary solver workspace. The cumulative
 cell count is a proxy, not a verified runtime complexity theorem. Because
 GF(2) coefficients are just bits, this suite does **not** exercise coefficient
-height explosion in general integer or symbolic interfaces. The
+height explosion in general integer or symbolic interfaces. The new free
+amplifiers exercise exact **multiplicity bit-length growth** without pretending
+that a 2^(2N) integer requires exponential storage. The
 `elapsed_ns` observations are not deterministic across machines.
 
 **Independent correctness evidence:** for small networks (chain <=9 edges,
-circulant <=10 vertices) the CLI enumerates all original assignments and
+circulant <=10 vertices, free amplifiers <=6 factors) the CLI enumerates all original assignments and
 compares the exact count. The unit tests also check all external assignments
 on a two-port boundary, at many small sizes. Large runs compare three plans
 but do not have a genuinely independent large-instance oracle.

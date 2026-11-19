@@ -23,6 +23,7 @@ theorem merge_at_live_port
     (∑ a, left a p) * (∑ b, right b p) =
       ∑ a, ∑ b, left a p * right b p := by
   simp only [Finset.sum_mul, Finset.mul_sum]
+  rw [Finset.sum_comm]
 
 /-- A future continuation may inspect the shared port. Exact interfaces
 are contextual: they agree after weighting by *any* continuation. -/

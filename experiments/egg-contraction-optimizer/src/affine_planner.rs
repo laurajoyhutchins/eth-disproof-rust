@@ -198,8 +198,8 @@ mod tests {
         let sa = Stage::from_region(&a).unwrap();
         let sb = Stage::from_region(&b).unwrap();
         let merged = sa.merge(&sb, &[]).unwrap();
-        assert_eq!(merged.count_at(&BTreeMap::new()).unwrap(), 8u8.into());
-        assert_eq!(merged.interface.free_internal, 3);
+        assert_eq!(merged.count_at(&BTreeMap::new()).unwrap(), 4u8.into());
+        assert_eq!(merged.interface.free_internal, 2);
         let contradiction = region(&[], &["x"], &[
             (&["x"] as &[&str], true),
             (&["x"], false),

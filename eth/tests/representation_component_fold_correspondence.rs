@@ -14,10 +14,10 @@ use lean_eth_reference::representation_ranked_certificate::{
     verify_ranked_component_certificate,
 };
 
-fn star_certificate(labels: Vec<usize>, classes: usize) -> (
-    Vec<(usize, usize)>,
-    RankedComponentCertificate,
-) {
+fn star_certificate(
+    labels: Vec<usize>,
+    classes: usize,
+) -> (Vec<(usize, usize)>, RankedComponentCertificate) {
     let n = labels.len();
     let mut edges = Vec::new();
     let mut roots = vec![usize::MAX; classes];
@@ -45,11 +45,7 @@ fn star_certificate(labels: Vec<usize>, classes: usize) -> (
 
 /// Independent class-major specification. It deliberately does not update
 /// products in the vertex-major order of the implementation under test.
-fn grouped_reference(
-    weights: &[[i128; 2]],
-    labels: &[usize],
-    classes: usize,
-) -> Option<i128> {
+fn grouped_reference(weights: &[[i128; 2]], labels: &[usize], classes: usize) -> Option<i128> {
     if weights.len() != labels.len() {
         return None;
     }
@@ -124,16 +120,7 @@ fn independently_grouped_oracle_matches_vertex_major_accumulator() {
 
 #[test]
 fn grouped_oracle_matches_refusal_and_success_near_i128_boundaries() {
-    const BOUNDS: [i128; 8] = [
-        i128::MIN,
-        i128::MIN + 1,
-        -3,
-        -1,
-        0,
-        1,
-        3,
-        i128::MAX,
-    ];
+    const BOUNDS: [i128; 8] = [i128::MIN, i128::MIN + 1, -3, -1, 0, 1, 3, i128::MAX];
     for n in 1..=4usize {
         let classes = 2usize.min(n);
         for code in 0..classes.pow(n as u32) {

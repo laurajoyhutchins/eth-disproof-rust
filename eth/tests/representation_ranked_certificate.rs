@@ -14,9 +14,10 @@ fn direct_oracle(n: usize, edges: &[(usize, usize)], weights: &[[i128; 2]]) -> i
                 .all(|&(a, b)| ((bits >> a) & 1) == ((bits >> b) & 1))
         })
         .map(|bits| {
-            weights.iter().enumerate().fold(1i128, |acc, (i, w)| {
-                acc * w[(bits >> i) & 1]
-            })
+            weights
+                .iter()
+                .enumerate()
+                .fold(1i128, |acc, (i, w)| acc * w[(bits >> i) & 1])
         })
         .sum()
 }
@@ -64,7 +65,10 @@ fn duplicate_reversed_and_self_edges_do_not_change_certified_count() {
         region.apply_equality(a, b).unwrap();
     }
     let (receipt, certificate) = region.contract_with_ranked_certificate().unwrap();
-    assert_eq!(receipt.value, direct_oracle(6, region.source_edges(), &weights));
+    assert_eq!(
+        receipt.value,
+        direct_oracle(6, region.source_edges(), &weights)
+    );
     assert_eq!(certificate.roots.len(), 3);
     assert_eq!(certificate.rank[certificate.roots[0]], 0);
     assert_eq!(certificate.rank[certificate.roots[1]], 0);
@@ -189,7 +193,10 @@ fn large_ranked_chain_has_linear_certificate_size() {
     assert_eq!(receipt.component_count, 1);
     assert_eq!(receipt.checked_multiplications, 2 * n + 1);
     assert_eq!(receipt.checked_additions, 1);
-    assert_eq!(certificate.parent_edge_indices.iter().flatten().count(), n - 1);
+    assert_eq!(
+        certificate.parent_edge_indices.iter().flatten().count(),
+        n - 1
+    );
     assert_eq!(
         verify_ranked_component_certificate(n, region.source_edges(), &certificate)
             .unwrap()

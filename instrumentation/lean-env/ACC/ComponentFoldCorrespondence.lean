@@ -135,8 +135,8 @@ def checkedFinishFrom {c : ℕ}
     (products : Products c) (acc : ℤ) : List (Fin c) → Option ℤ
   | [] => some acc
   | k :: rest =>
-      (checkedAdd (products k).1 (products k).2).bind (fun local =>
-        (checkedMul acc local).bind (fun next =>
+      (checkedAdd (products k).1 (products k).2).bind (fun factor =>
+        (checkedMul acc factor).bind (fun next =>
           checkedFinishFrom products next rest))
 
 /-- Successful class-finalization computes the exact product of sums. -/
@@ -148,14 +148,13 @@ theorem checkedFinishFrom_sound {c : ℕ}
   induction classes generalizing acc with
   | nil =>
       simp [checkedFinishFrom] at h
-      cases Option.some.inj h
-      simp
+      simpa using h.symm
   | cons k rest ih =>
       cases ha : checkedAdd (products k).1 (products k).2 with
       | none =>
           simp [checkedFinishFrom, ha] at h
-      | some local =>
-          cases hm : checkedMul acc local with
+      | some factor =>
+          cases hm : checkedMul acc factor with
           | none =>
               simp [checkedFinishFrom, ha, hm] at h
           | some next =>
@@ -202,8 +201,15 @@ theorem checkedClassFold_sound {c : ℕ}
         rw [hstate]
         have hzero := uncheckedScanFrom_fiber (initialProducts c) items k false
         have hone := uncheckedScanFrom_fiber (initialProducts c) items k true
-        simp only [choose, initialProducts, one_mul] at hzero hone
-        rw [hzero, hone]
+        have hzero' :
+            (uncheckedScanFrom (initialProducts c) items k).1 =
+              fiberProduct items k false := by
+          simpa [choose, initialProducts] using hzero
+        have hone' :
+            (uncheckedScanFrom (initialProducts c) items k).2 =
+              fiberProduct items k true := by
+          simpa [choose, initialProducts] using hone
+        rw [hzero', hone']
       simpa only [one_mul, hclass] using hprod
 
 /-- Source-indexed stream in the same vertex order as the Rust zip loop. -/
@@ -223,7 +229,7 @@ theorem fiberProduct_sourceItems {n c : ℕ}
       ((List.finRange n).map (fun i =>
         if label i = k then weights i bit else 1)).prod := by
   cases bit <;>
-    simp [fiberProduct, sourceItems, List.map_map]
+    simp [fiberProduct, sourceItems, List.map_map, Function.comp_def]
 
 #print axioms ACC.ComponentFoldCorrespondence.checkedStep_sound
 #print axioms ACC.ComponentFoldCorrespondence.checkedScanFrom_sound

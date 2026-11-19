@@ -27,8 +27,7 @@ fn connected_pair() -> RankedComponentCertificate {
 
 #[test]
 fn asymmetric_minimum_is_a_representable_exact_answer() {
-    let receipt =
-        contract_checked_ranked_weights(&[[i128::MIN, 0]], &[], &singleton()).unwrap();
+    let receipt = contract_checked_ranked_weights(&[[i128::MIN, 0]], &[], &singleton()).unwrap();
     assert_eq!(receipt.value, i128::MIN);
     assert_eq!(receipt.checked_multiplications, 3);
     assert_eq!(receipt.checked_additions, 1);
@@ -41,11 +40,7 @@ fn positive_limit_and_negative_overflow_both_refuse() {
         Err(Error::Overflow)
     ));
     assert!(matches!(
-        contract_checked_ranked_weights(
-            &[[i128::MIN, 0], [-1, 0]],
-            &[(0, 1)],
-            &connected_pair(),
-        ),
+        contract_checked_ranked_weights(&[[i128::MIN, 0], [-1, 0]], &[(0, 1)], &connected_pair(),),
         Err(Error::Overflow)
     ));
 }
@@ -53,8 +48,7 @@ fn positive_limit_and_negative_overflow_both_refuse() {
 #[test]
 fn negative_weights_preserve_integer_semantics() {
     let receipt =
-        contract_checked_ranked_weights(&[[-3, 5], [7, -2]], &[(0, 1)], &connected_pair())
-            .unwrap();
+        contract_checked_ranked_weights(&[[-3, 5], [7, -2]], &[(0, 1)], &connected_pair()).unwrap();
     assert_eq!(receipt.value, -31);
     assert_eq!(receipt.checked_multiplications, 5);
     assert_eq!(receipt.checked_additions, 1);

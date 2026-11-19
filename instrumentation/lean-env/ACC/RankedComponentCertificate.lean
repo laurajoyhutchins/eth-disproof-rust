@@ -59,7 +59,7 @@ theorem connected_to_declared_root
       cases hp : parent j with
       | none =>
           have hroot : j = root (label j) := h.none_is_root j hp
-          rw [hroot]
+          rw [← hroot]
           exact Relation.EqvGen.refl _
       | some p =>
           have hstep : EdgeConnected edges j p := by

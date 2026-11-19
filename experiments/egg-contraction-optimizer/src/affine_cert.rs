@@ -49,7 +49,7 @@ pub enum RowOperation {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EliminationCertificate {
     pub steps: Vec<RowOperation>,
-    pivot_columns: Vec<usize>,
+    pub pivot_columns: Vec<usize>,
 }
 
 /// A normal-form witness reconstructed from an independently replayed

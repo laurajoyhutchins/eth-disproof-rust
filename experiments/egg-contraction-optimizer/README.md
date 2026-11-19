@@ -239,3 +239,14 @@ The Rust suite checks every boundary for **200 seeded small affine systems**, en
 [Exact-head experiment CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44614539579) passed **38 Rust tests** and the pinned Lean 4.34.1 theorem check. [Original ETH Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44614539583) passed at the same commit.
 
 **Formal boundary:** The terminal counting theorem is kernel-verified and applies to the *mathematically specified* normal form. The executable checker and terminal witness are independently tested, **not formally refined to Lean**. This does not prove the compiled Rust program correct or establish general #SAT/ETH complexity.
+
+
+## Checked full-row terminal shape and source occurrence parity
+
+The [new Lean terminal check theorem](../../eth/proofs/IndependentAffineTerminal.lean) applies to the **full replayed equations**. Its accepted block structure requires an identity pivot-by-pivot matrix and zero residual-internal blocks, while permitting unrestricted free-variable coefficients in pivot equations. It proves the full system has exactly 2^(free dimension) internal solutions at feasible boundary assignments, and none otherwise. The earlier arbitrary-column theorem handles noncontiguous pivots.
+
+[IndependentAffineSourceRows.lean](../../eth/proofs/IndependentAffineSourceRows.lean) verifies source-list-to-GF(2) row reconstruction for arbitrary finite variable sets and occurrence lists, including duplicate-name cancellation, and relates Boolean XOR folds to the reconstructed coefficient row.
+
+The Rust independent checker suite now includes falsification cases for missing or unisolated pivots, internal bits in residual rows, and changed boundary residuals. It also accepts the legitimate free-variable coefficients in pivot equations. [Pinned exact-head CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44638863761) passed **six Lean modules and 39 Rust tests** with no sorryAx, and the [original ETH Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44638863755) passed at the same commit.
+
+**Trust boundary:** The new Lean theorem validates the mathematical predicate for a replayed terminal matrix; source occurrence parity is likewise a mathematical theorem. The actual Rust string lookup, row assembly, terminal checker decisions and machine-level resources still lack a source-to-Lean implementation refinement proof. No general SAT or ETH speedup is claimed.

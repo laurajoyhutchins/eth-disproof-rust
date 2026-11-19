@@ -45,9 +45,9 @@ moved outside its sum. The following Boolean witness rules out that
 incorrect early-elimination transformation. -/
 theorem early_elimination_counterexample :
     (∑ p : Bool, (if p then (1 : ℕ) else 0) *
-      (if p then (1 : ℕ) else 0)) ≠
+      (if p then 0 else (1 : ℕ))) ≠
     (∑ p : Bool, (if p then (1 : ℕ) else 0)) *
-    (∑ p : Bool, (if p then (1 : ℕ) else 0)) := by
+    (∑ p : Bool, (if p then 0 else (1 : ℕ))) := by
   decide
 
 #print axioms IndependentETH.LivePorts.merge_at_live_port

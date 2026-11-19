@@ -5,7 +5,8 @@
 //! one isolated pivot per recorded internal column and no internal bits in residual rows.
 //! Those conditions imply the claimed number of free internal bits.
 
-use crate::affine::{AffineInterface, AffineRegion};
+use crate::affine::{AffineInterface, AffineRegion, BoundaryRow};
+use num_bigint::BigUint;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Explicit verifier resources. These bound the *independent checker*, not
@@ -51,6 +52,82 @@ pub struct EliminationCertificate {
     pub pivot_columns: Vec<usize>,
 }
 
+/// A normal-form witness reconstructed from an independently replayed
+/// terminal matrix, not copied from the producer's proposed interface.
+/// Pivots can be at arbitrary internal columns; free columns are the
+/// complement, ordered increasingly. This is the Rust schema for the
+/// Lean pivot/free/residual terminal theorem.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedTerminal {
+    pub internal_width: usize,
+    pub boundary_width: usize,
+    pub pivot_columns: Vec<usize>,
+    pub free_columns: Vec<usize>,
+    pub pivot_free_coefficients: Vec<Vec<usize>>,
+    pub pivot_boundary_coefficients: Vec<Vec<usize>>,
+    pub pivot_rhs: Vec<bool>,
+    pub residual_rows: Vec<BoundaryRow>,
+}
+
+impl VerifiedTerminal {
+    /// Return the unique completion of all pivot variables for one free
+    /// assignment if the boundary satisfies every residual constraint.
+    pub fn complete(
+        &self,
+        free: &[bool],
+        boundary: &[bool],
+    ) -> Result<Option<Vec<bool>>, String> {
+        if free.len() != self.free_columns.len() ||
+            boundary.len() != self.boundary_width {
+            return Err("terminal completion dimension mismatch".into());
+        }
+        for row in &self.residual_rows {
+            let mut parity = false;
+            for &index in &row.boundary_indices {
+                let bit = boundary.get(index)
+                    .ok_or("malformed terminal boundary index")?;
+                parity ^= *bit;
+            }
+            if parity != row.rhs {
+                return Ok(None);
+            }
+        }
+        let mut internal = vec![false; self.internal_width];
+        for (i, &column) in self.free_columns.iter().enumerate() {
+            let slot = internal.get_mut(column)
+                .ok_or("malformed terminal free column")?;
+            *slot = free[i];
+        }
+        for (i, &column) in self.pivot_columns.iter().enumerate() {
+            let mut value = *self.pivot_rhs.get(i)
+                .ok_or("malformed terminal pivot RHS")?;
+            for &free_position in self.pivot_free_coefficients.get(i)
+                .ok_or("malformed terminal pivot/free row")? {
+                value ^= *free.get(free_position)
+                    .ok_or("malformed terminal free position")?;
+            }
+            for &boundary_position in self.pivot_boundary_coefficients.get(i)
+                .ok_or("malformed terminal pivot/boundary row")? {
+                value ^= *boundary.get(boundary_position)
+                    .ok_or("malformed terminal boundary position")?;
+            }
+            let slot = internal.get_mut(column)
+                .ok_or("malformed terminal pivot column")?;
+            *slot = value;
+        }
+        Ok(Some(internal))
+    }
+
+    pub fn count_at(&self, boundary: &[bool]) -> Result<BigUint, String> {
+        let free = vec![false; self.free_columns.len()];
+        Ok(if self.complete(&free, boundary)?.is_some() {
+            BigUint::from(1u8) << self.free_columns.len()
+        } else {
+            BigUint::from(0u8)
+        })
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerificationReceipt {
     pub rank: usize,
@@ -76,6 +153,17 @@ impl EliminationCertificate {
         claimed: &AffineInterface,
         limits: VerificationLimits,
     ) -> Result<VerificationReceipt, String> {
+        self.verify_with_terminal(source, claimed, limits).map(|(receipt, _)| receipt)
+    }
+
+    /// Produce a semantic terminal witness *only after* checking all
+    /// source, transcript, pivot, rank and residual conditions.
+    pub fn verify_with_terminal(
+        &self,
+        source: &AffineRegion,
+        claimed: &AffineInterface,
+        limits: VerificationLimits,
+    ) -> Result<(VerificationReceipt, VerifiedTerminal), String> {
         let k = source.internal.len();
         let b = source.boundary.len();
         let width = k.checked_add(b)
@@ -173,12 +261,37 @@ impl EliminationCertificate {
                 return Err("residual boundary equation differs from replay".into());
             }
         }
-        Ok(VerificationReceipt {
+        // The checker has proved all pivot columns isolated and all
+        // residual internal columns zero. Materialize the corresponding
+        // pivot/free system from replayed rows, not from the claimed result.
+        let free_columns = (0..k).filter(|col| !pivots.contains(col))
+            .collect::<Vec<_>>();
+        let pivot_free_coefficients = rows.iter().take(r).map(|row| {
+            free_columns.iter().enumerate()
+                .filter_map(|(i, &col)| row[col].then_some(i))
+                .collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
+        let pivot_boundary_coefficients = rows.iter().take(r).map(|row| {
+            (0..b).filter(|&col| row[k + col]).collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
+        let pivot_rhs = rows.iter().take(r)
+            .map(|row| row[width - 1]).collect::<Vec<_>>();
+        let terminal = VerifiedTerminal {
+            internal_width: k,
+            boundary_width: b,
+            pivot_columns: self.pivot_columns.clone(),
+            free_columns,
+            pivot_free_coefficients,
+            pivot_boundary_coefficients,
+            pivot_rhs,
+            residual_rows: claimed.residual.clone(),
+        };
+        Ok((VerificationReceipt {
             rank: r,
             free_internal: k - r,
             operations_checked: self.steps.len(),
             residual_rows_checked: rows.len() - r,
-        })
+        }, terminal))
     }
 }
 

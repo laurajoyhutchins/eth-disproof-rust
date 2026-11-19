@@ -37,14 +37,12 @@ theorem checkedMul_some {a b z : ℤ}
   unfold checkedMul at h
   split_ifs at h with hb
   · exact (Option.some.inj h).symm
-  · contradiction
 
 theorem checkedAdd_some {a b z : ℤ}
     (h : checkedAdd a b = some z) : z = a + b := by
   unfold checkedAdd at h
   split_ifs at h with hb
   · exact (Option.some.inj h).symm
-  · contradiction
 
 /-- Sequential checked multiplication with an explicit initial accumulator. -/
 def checkedProductFrom (acc : ℤ) : List ℤ → Option ℤ

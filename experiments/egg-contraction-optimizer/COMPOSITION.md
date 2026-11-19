@@ -45,3 +45,7 @@ to nonlinear and truncated operations is the actual open problem.
 
 Related notebook studies: affine elimination certificates, linear boundary
 interfaces, equality-component contraction, factored full-rank operators.
+
+## Reproducible contraction-order experiments
+
+See [ORDER-STUDY.md](ORDER-STUDY.md) for generated equality-chain and circulant-parity networks, three explicit contraction orders, per-stage D/B receipts, and bounded independent exact-count oracles.

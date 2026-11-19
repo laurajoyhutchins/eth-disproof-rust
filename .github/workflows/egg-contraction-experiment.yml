@@ -29,6 +29,14 @@ jobs:
           set -euo pipefail
           printf 'p cnf 3 2\n1 -2 0\n-1 2 0\n' | cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin exact-cnf-count -- - | grep -F '"count":"4"'
 
+      - name: Run contraction-order study and check small-case oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin affine-order-study -- --sizes 8,16 --summaries-only | tee /tmp/affine-order-receipts.jsonl
+          grep -F '"oracle":"checked"' /tmp/affine-order-receipts.jsonl
+          grep -F '"order":"even-first"' /tmp/affine-order-receipts.jsonl
+
   affine-lean:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

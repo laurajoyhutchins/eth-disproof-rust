@@ -24,9 +24,7 @@ fn indexed_guard_model(
     {
         return false;
     }
-    let source_closed = edges
-        .iter()
-        .all(|&(a, b)| cert.labels[a] == cert.labels[b]);
+    let source_closed = edges.iter().all(|&(a, b)| cert.labels[a] == cert.labels[b]);
     let root_guards = cert.roots.iter().enumerate().all(|(class, &root)| {
         root < n
             && cert.labels[root] == class
@@ -34,21 +32,24 @@ fn indexed_guard_model(
             && cert.rank[root] == 0
     });
     let vertex_guards =
-        cert.parent_edge_indices.iter().enumerate().all(|(i, parent)| match parent {
-            None => i == cert.roots[cert.labels[i]] && cert.rank[i] == 0,
-            Some(index) => edges.get(*index).is_some_and(|&(a, b)| {
-                let neighbor = if a == i {
-                    Some(b)
-                } else if b == i {
-                    Some(a)
-                } else {
-                    None
-                };
-                neighbor.is_some_and(|p| {
-                    cert.labels[p] == cert.labels[i] && cert.rank[p] < cert.rank[i]
-                })
-            }),
-        });
+        cert.parent_edge_indices
+            .iter()
+            .enumerate()
+            .all(|(i, parent)| match parent {
+                None => i == cert.roots[cert.labels[i]] && cert.rank[i] == 0,
+                Some(index) => edges.get(*index).is_some_and(|&(a, b)| {
+                    let neighbor = if a == i {
+                        Some(b)
+                    } else if b == i {
+                        Some(a)
+                    } else {
+                        None
+                    };
+                    neighbor.is_some_and(|p| {
+                        cert.labels[p] == cert.labels[i] && cert.rank[p] < cert.rank[i]
+                    })
+                }),
+            });
     source_closed && root_guards && vertex_guards
 }
 
@@ -65,12 +66,8 @@ fn digits(mut code: usize, radix: usize, count: usize) -> Vec<usize> {
 #[test]
 fn indexed_model_and_early_refusal_loops_agree_on_small_certificates() {
     let n = 3usize;
-    let sources: [&[(usize, usize)]; 4] = [
-        &[],
-        &[(0, 1)],
-        &[(0, 1), (1, 2)],
-        &[(0, 1), (1, 2), (2, 0)],
-    ];
+    let sources: [&[(usize, usize)]; 4] =
+        [&[], &[(0, 1)], &[(0, 1), (1, 2)], &[(0, 1), (1, 2), (2, 0)]];
     for source in sources {
         let parent_radix = source.len() + 2; // None, valid indices, one invalid index.
         let parent_combinations = parent_radix.pow(n as u32);

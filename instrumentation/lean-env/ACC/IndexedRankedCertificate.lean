@@ -54,18 +54,23 @@ theorem decoded_parent_is_source {n : ℕ}
   | none =>
       simp [decodedParent, hidx] at h
   | some k =>
-      simp only [decodedParent, hidx] at h
+      have he : ((edges.get k).1, (edges.get k).2) ∈ edges := by
+        simpa using (List.get_mem edges k)
       by_cases hfirst : (edges.get k).1 = i
-      · simp [hfirst] at h
-        cases h
-        left
-        simpa [hfirst] using (List.get_mem edges k)
+      · have hp : (edges.get k).2 = p := by
+          have hs : some (edges.get k).2 = some p := by
+            simpa [decodedParent, hidx, hfirst] using h
+          exact Option.some.inj hs
+        exact Or.inl (by simpa only [hfirst, hp] using he)
       · by_cases hsecond : (edges.get k).2 = i
-        · simp [hfirst, hsecond] at h
-          cases h
-          right
-          simpa [hsecond] using (List.get_mem edges k)
-        · simp [hfirst, hsecond] at h
+        · have hp : (edges.get k).1 = p := by
+            have hs : some (edges.get k).1 = some p := by
+              simpa [decodedParent, hidx, hfirst, hsecond] using h
+            exact Option.some.inj hs
+          exact Or.inr (by simpa only [hsecond, hp] using he)
+        · have hs : (none : Option (Fin n)) = some p := by
+            simpa [decodedParent, hidx, hfirst, hsecond] using h
+          cases hs
 
 /-- This Boolean guard captures source-index validity as an indexed scan,
     followed by the already proved ranked-parent local guards. In particular,
@@ -90,7 +95,9 @@ theorem checkIndexed_sound {n c : ℕ}
     RankedConditions edges label root (decodedParent edges sourceIndex) rank := by
   have hrank : checkRanked edges label root
       (decodedParent edges sourceIndex) rank = true := by
-    exact (Bool.and_eq_true.mp h).2
+    have hh := h
+    simp only [checkIndexed, Bool.and_eq_true] at hh
+    exact hh.2
   exact checkRanked_sound edges label root
     (decodedParent edges sourceIndex) rank hrank
 
@@ -104,13 +111,17 @@ theorem checkIndexed_index_incident {n c : ℕ}
     (h : checkIndexed edges label root sourceIndex rank = true)
     (i : Fin n) (hindex : (sourceIndex i).isSome = true) :
     (decodedParent edges sourceIndex i).isSome = true := by
+  have hh := h
+  simp only [checkIndexed, Bool.and_eq_true] at hh
   have hscan :
       (List.finRange n).all (fun j =>
         decide ((sourceIndex j).isSome →
-          (decodedParent edges sourceIndex j).isSome)) = true :=
-    (Bool.and_eq_true.mp h).1
+          (decodedParent edges sourceIndex j).isSome)) = true := hh.1
   have hi := (List.all_eq_true.mp hscan) i (List.mem_finRange i)
-  exact (of_decide_true hi) hindex
+  have himp : (sourceIndex i).isSome = true →
+      (decodedParent edges sourceIndex i).isSome = true := by
+    simpa only [decide_eq_true_eq] using hi
+  exact himp hindex
 
 /-- The indexed Boolean verifier's acceptance implies source-level
     semantic correctness for signed integer equality-component contraction. -/

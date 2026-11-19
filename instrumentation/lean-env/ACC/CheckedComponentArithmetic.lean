@@ -96,10 +96,9 @@ theorem checkedComponent_sound
               simp [checkedComponent, hzero, hone, hadd] at h
           | some total =>
               have hv : value = zero + one := by
-                have hvalue : value = total := by
-                  simpa [checkedComponent, hzero, hone, hadd] using
-                    congrArg id h
-                exact hvalue.trans (checkedAdd_some hadd)
+                have hvalue : total = value := by
+                  simpa [checkedComponent, hzero, hone, hadd] using h
+                exact hvalue.symm.trans (checkedAdd_some hadd)
               have hz := checkedProductFrom_sound 1 block.1 zero hzero
               have ho := checkedProductFrom_sound 1 block.2 one hone
               simpa [hz, ho] using hv

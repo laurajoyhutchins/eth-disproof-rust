@@ -49,7 +49,7 @@ pub enum RowOperation {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EliminationCertificate {
     pub steps: Vec<RowOperation>,
-    pub pivot_columns: Vec<usize>,
+    pivot_columns: Vec<usize>,
 }
 
 /// A normal-form witness reconstructed from an independently replayed
@@ -59,14 +59,14 @@ pub struct EliminationCertificate {
 /// Lean pivot/free/residual terminal theorem.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedTerminal {
-    pub internal_width: usize,
-    pub boundary_width: usize,
+    internal_width: usize,
+    boundary_width: usize,
     pub pivot_columns: Vec<usize>,
-    pub free_columns: Vec<usize>,
-    pub pivot_free_coefficients: Vec<Vec<usize>>,
-    pub pivot_boundary_coefficients: Vec<Vec<usize>>,
-    pub pivot_rhs: Vec<bool>,
-    pub residual_rows: Vec<BoundaryRow>,
+    free_columns: Vec<usize>,
+    pivot_free_coefficients: Vec<Vec<usize>>,
+    pivot_boundary_coefficients: Vec<Vec<usize>>,
+    pivot_rhs: Vec<bool>,
+    residual_rows: Vec<BoundaryRow>,
 }
 
 impl VerifiedTerminal {
@@ -391,17 +391,83 @@ mod tests {
             }
             let region = AffineRegion { internal, boundary, equations };
             let (interface, certificate) = region.eliminate_with_certificate().unwrap();
-            certificate.verify(&region, &interface).unwrap();
+            let (_, terminal) = certificate
+                .verify_with_terminal(&region, &interface, VerificationLimits::default())
+                .unwrap();
+            assert_eq!(terminal.free_columns.len(), interface.free_internal);
+            assert_eq!(terminal.pivot_columns.len(), interface.rank);
             for mask in 0..(1usize << b) {
                 let values = region.boundary.iter().enumerate().map(|(j, name)| {
                     (name.clone(), mask & (1 << j) != 0)
                 }).collect::<BTreeMap<_, _>>();
-                assert_eq!(
-                    interface.evaluate(&values).unwrap(),
-                    region.direct_count(&values, 16).unwrap(),
-                    "seed={seed}, mask={mask}"
-                );
+                let expected = region.direct_count(&values, 16).unwrap();
+                assert_eq!(interface.evaluate(&values).unwrap(), expected,
+                    "interface seed={seed}, mask={mask}");
+                let boundary_bits = region.boundary.iter().map(|key| values[key])
+                    .collect::<Vec<_>>();
+                assert_eq!(terminal.count_at(&boundary_bits).unwrap(), expected,
+                    "terminal seed={seed}, mask={mask}");
+                let mut seen = BTreeSet::new();
+                for free_mask in 0..(1usize << terminal.free_columns.len()) {
+                    let free = (0..terminal.free_columns.len())
+                        .map(|i| free_mask & (1 << i) != 0)
+                        .collect::<Vec<_>>();
+                    if let Some(internal) = terminal.complete(&free, &boundary_bits).unwrap() {
+                        assert!(seen.insert(internal.clone()));
+                        let all = region.internal.iter().zip(&internal)
+                            .map(|(key, value)| (key.clone(), *value))
+                            .chain(values.iter().map(|(k, v)| (k.clone(), *v)))
+                            .collect::<BTreeMap<_, _>>();
+                        assert!(region.equations.iter().all(|eq| {
+                            eq.variables.iter().fold(false, |p, v| p ^ all[v]) == eq.rhs
+                        }), "invalid pivot completion seed={seed}, mask={mask}");
+                    }
+                }
+                assert_eq!(num_bigint::BigUint::from(seen.len()), expected,
+                    "non-bijective pivot/free completion seed={seed}, mask={mask}");
             }
+        }
+    }
+
+    #[test]
+    fn noncontiguous_pivot_columns_have_unique_free_completions() {
+        let internal = (0..6).map(|i| format!("u{i}")).collect::<Vec<_>>();
+        let region = AffineRegion {
+            internal,
+            boundary: vec!["b".into(), "c".into(), "d".into()],
+            equations: vec![
+                Equation { variables: vec!["u1".into(), "u3".into(), "b".into()], rhs: false },
+                Equation { variables: vec!["u4".into(), "u5".into(), "c".into()], rhs: true },
+                Equation { variables: vec!["u1".into(), "u3".into(), "d".into()], rhs: false },
+            ],
+        };
+        let (interface, certificate) = region.eliminate_with_certificate().unwrap();
+        let (receipt, terminal) = certificate
+            .verify_with_terminal(&region, &interface, VerificationLimits::default())
+            .unwrap();
+        assert_eq!(receipt.rank, 2);
+        assert_eq!(terminal.pivot_columns, vec![1, 4]);
+        assert_eq!(terminal.free_columns, vec![0, 2, 3, 5]);
+        for mask in 0..8 {
+            let bits = [mask & 1 != 0, mask & 2 != 0, mask & 4 != 0];
+            let expected = if bits[0] == bits[2] {
+                num_bigint::BigUint::from(16_u8)
+            } else {
+                num_bigint::BigUint::from(0_u8)
+            };
+            assert_eq!(terminal.count_at(&bits).unwrap(), expected);
+            let mut seen = BTreeSet::new();
+            for free_mask in 0..16usize {
+                let free = (0..4).map(|i| free_mask & (1 << i) != 0)
+                    .collect::<Vec<_>>();
+                if let Some(internal) = terminal.complete(&free, &bits).unwrap() {
+                    assert!(seen.insert(internal.clone()));
+                    assert_eq!(internal[1] ^ internal[3] ^ bits[0], false);
+                    assert_eq!(internal[4] ^ internal[5] ^ bits[1], true);
+                    assert_eq!(internal[1] ^ internal[3] ^ bits[2], false);
+                }
+            }
+            assert_eq!(num_bigint::BigUint::from(seen.len()), expected);
         }
     }
 

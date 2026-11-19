@@ -18,6 +18,11 @@ use crate::Error;
 use crate::representation_component_certificate::{
     ComponentCertificate, verify_component_certificate,
 };
+use crate::representation_ranked_certificate::{
+    RankedComponentCertificate, RankedCountReceipt,
+    contract_checked_ranked_weights,
+};
+use std::collections::VecDeque;
 use std::mem::size_of;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -204,6 +209,75 @@ impl EqualityComponentRegion {
     /// verify a certificate obtained from this region.
     pub fn source_edges(&self) -> &[(usize, usize)] {
         &self.edges
+    }
+
+    /// Construct a ranked-parent witness using *source-referenced* merge
+    /// edges. Production union-find supplies a candidate set of forest
+    /// edges, but the local verifier independently checks every witness
+    /// field against the exact source graph before an answer is returned.
+    pub fn ranked_component_certificate(&self) -> Result<RankedComponentCertificate, Error> {
+        let n = self.len();
+        let labels = self.component_labels()?;
+        let c = self.component_count;
+        let mut roots = vec![usize::MAX; c];
+        let mut adjacency = vec![Vec::<(usize, usize)>::new(); n];
+        for &edge_index in &self.forest_edge_indices {
+            let &(a, b) = self
+                .edges
+                .get(edge_index)
+                .ok_or_else(|| Error::Invalid("missing producer forest edge".into()))?;
+            adjacency[a].push((b, edge_index));
+            adjacency[b].push((a, edge_index));
+        }
+        for (vertex, &label) in labels.iter().enumerate() {
+            if roots[label] == usize::MAX {
+                roots[label] = vertex;
+            }
+        }
+
+        let mut parent_edge_indices = vec![None; n];
+        let mut rank = vec![0usize; n];
+        let mut visited = vec![false; n];
+        let mut queue = VecDeque::new();
+        for &root in &roots {
+            if root == usize::MAX || visited[root] {
+                return Err(Error::Invalid("producer emitted duplicate or missing root".into()));
+            }
+            visited[root] = true;
+            queue.push_back(root);
+            while let Some(vertex) = queue.pop_front() {
+                for &(next, source_index) in &adjacency[vertex] {
+                    if !visited[next] {
+                        visited[next] = true;
+                        parent_edge_indices[next] = Some(source_index);
+                        rank[next] = rank[vertex].checked_add(1).ok_or(Error::Overflow)?;
+                        queue.push_back(next);
+                    }
+                }
+            }
+        }
+        Ok(RankedComponentCertificate {
+            labels,
+            roots,
+            parent_edge_indices,
+            rank,
+        })
+    }
+
+    /// Source-facing exact checked count. Unlike the old DSU-root-based
+    /// contract(), this method evaluates *verified certificate labels*
+    /// directly. Verification runs for every call and is bound to the exact
+    /// source edges present in this region.
+    pub fn contract_with_ranked_certificate(
+        &self,
+    ) -> Result<(RankedCountReceipt, RankedComponentCertificate), Error> {
+        let certificate = self.ranked_component_certificate()?;
+        let receipt = contract_checked_ranked_weights(
+            &self.unary,
+            &self.edges,
+            &certificate,
+        )?;
+        Ok((receipt, certificate))
     }
 
     /// Exact pointwise semantics; useful as an independent finite oracle.

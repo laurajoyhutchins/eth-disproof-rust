@@ -88,7 +88,7 @@ theorem sourceRow_boolean_correct
   rw [bit_foldl_xor]
   simp only [bit, Bool.false_eq_true, ↓reduceIte, zero_add]
   rw [sourceCoeff_eval]
-  simp only [List.map_map, Function.comp_def]
+  simp [bit, List.map_map, Function.comp_def]
 
 #print axioms IndependentETH.AffineSourceRows.sourceCoeff_eval
 #print axioms IndependentETH.AffineSourceRows.sourceCoeff_duplicate

@@ -132,6 +132,61 @@ mod tests {
     use crate::affine::two_equations;
 
     #[test]
+    fn exhaustive_small_raw_step_decisions_match_external_predicate() {
+        // Do not ask the decoder to explain itself: construct the expected
+        // acceptance predicate independently from tag/index arithmetic.
+        for rows in 0..=4usize {
+            for tag in [0_u8, 1, 2, 255] {
+                for first in [0_u64, 1, 2, 3, 4, u64::MAX] {
+                    for second in [0_u64, 1, 2, 3, 4, u64::MAX] {
+                        let raw = RawCertificate {
+                            version: WIRE_VERSION,
+                            steps: vec![RawStep { tag, first, second }],
+                            pivot_columns: vec![],
+                        };
+                        let expected = (tag == 0 || tag == 1)
+                            && first < rows as u64
+                            && second < rows as u64
+                            && first != second;
+                        assert_eq!(raw.decode(rows, 0, 1).is_ok(), expected,
+                            "rows={rows}, tag={tag}, first={first}, second={second}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn exhaustive_short_pivot_lists_match_external_strict_ordering() {
+        let values = [0_u64, 1, 2, 3, u64::MAX];
+        for rows in 0..=4usize {
+            for internal in 0..=4usize {
+                let mut lists = vec![vec![]];
+                lists.extend(values.iter().copied().map(|x| vec![x]));
+                for &x in &values {
+                    for &y in &values {
+                        lists.push(vec![x, y]);
+                        for &z in &values { lists.push(vec![x, y, z]); }
+                    }
+                }
+                for pivots in lists {
+                    let raw = RawCertificate {
+                        version: WIRE_VERSION,
+                        steps: vec![],
+                        pivot_columns: pivots.clone(),
+                    };
+                    let expected = pivots.len() <= rows
+                        && pivots.len() <= internal
+                        && pivots.iter().all(|&p| p < internal as u64)
+                        && pivots.windows(2).all(|pair| pair[0] < pair[1]);
+                    assert_eq!(raw.decode(rows, internal, 0).is_ok(), expected,
+                        "rows={rows}, internal={internal}, pivots={pivots:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn native_to_raw_to_independent_replay_roundtrip() {
         let source = two_equations("b", "c");
         let (interface, original) = source.eliminate_with_certificate().unwrap();

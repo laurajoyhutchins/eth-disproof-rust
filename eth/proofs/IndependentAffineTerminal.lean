@@ -341,6 +341,7 @@ theorem fullRows_iff_terminal [DecidableEq P]
 *actual full terminal matrix* implies the exact number of internal
 assignments, for every boundary, without trusting claimed rank,
 multiplicity or residual rows. -/
+set_option maxHeartbeats 1500000 in
 theorem checked_terminal_count [DecidableEq P]
     (rows : ReplayedRows P F B R)
     (h : checkTerminalRows rows = true)

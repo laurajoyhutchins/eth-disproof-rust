@@ -22,6 +22,7 @@ on:
       - 'instrumentation/lean-env/ACC/EqualityComponents.lean'
       - 'instrumentation/lean-env/ACC/EqualityEdgeClosure.lean'
       - 'instrumentation/lean-env/ACC/EqualityCertificate.lean'
+      - 'instrumentation/lean-env/ACC/RankedComponentCertificate.lean'
       - 'instrumentation/lean-env/lakefile.lean'
       - '.github/workflows/lean-independent-formulations.yml'
   workflow_dispatch:
@@ -99,13 +100,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentCnfBridge.lean eth/proofs/IndependentSwapIdentity.lean eth/proofs/IndependentRoutingBoundary.lean eth/proofs/IndependentTwoAdicJointPotential.lean eth/proofs/IndependentTwoAdicMoments.lean eth/proofs/IndependentTwoAdicConditionalMoments.lean eth/proofs/IndependentTwoAdicMatchingGraph.lean eth/proofs/IndependentAnthropicNetworkAdapter.lean eth/proofs/IndependentCircuitSource.lean eth/proofs/IndependentBoundaryQuotient.lean eth/proofs/IndependentLinearBoundary.lean eth/proofs/IndependentOpenAIZeroGlue.lean instrumentation/lean-env/ACC/Circuit.lean instrumentation/lean-env/ACC/LinearInterface.lean instrumentation/lean-env/ACC/FactoredOperator.lean instrumentation/lean-env/ACC/CrossCutClosure.lean instrumentation/lean-env/ACC/EqualityComponents.lean instrumentation/lean-env/ACC/EqualityEdgeClosure.lean instrumentation/lean-env/ACC/EqualityCertificate.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentCnfBridge.lean eth/proofs/IndependentSwapIdentity.lean eth/proofs/IndependentRoutingBoundary.lean eth/proofs/IndependentTwoAdicJointPotential.lean eth/proofs/IndependentTwoAdicMoments.lean eth/proofs/IndependentTwoAdicConditionalMoments.lean eth/proofs/IndependentTwoAdicMatchingGraph.lean eth/proofs/IndependentAnthropicNetworkAdapter.lean eth/proofs/IndependentCircuitSource.lean eth/proofs/IndependentBoundaryQuotient.lean eth/proofs/IndependentLinearBoundary.lean eth/proofs/IndependentOpenAIZeroGlue.lean instrumentation/lean-env/ACC/Circuit.lean instrumentation/lean-env/ACC/LinearInterface.lean instrumentation/lean-env/ACC/FactoredOperator.lean instrumentation/lean-env/ACC/CrossCutClosure.lean instrumentation/lean-env/ACC/EqualityComponents.lean instrumentation/lean-env/ACC/EqualityEdgeClosure.lean instrumentation/lean-env/ACC/EqualityCertificate.lean instrumentation/lean-env/ACC/RankedComponentCertificate.lean; then
             echo 'Independent proof contains unresolved admission' >&2
             exit 1
           fi
           (
             cd instrumentation/lean-env
-            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults Groundwork.Net.Net ACC.Circuit ACC.LinearInterface ACC.FactoredOperator ACC.CrossCutClosure ACC.EqualityComponents ACC.EqualityEdgeClosure ACC.EqualityCertificate
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults Groundwork.Net.Net ACC.Circuit ACC.LinearInterface ACC.FactoredOperator ACC.CrossCutClosure ACC.EqualityComponents ACC.EqualityEdgeClosure ACC.EqualityCertificate ACC.RankedComponentCertificate
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentCnfBridge.lean"
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentSwapIdentity.lean"
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentRoutingBoundary.lean"
@@ -135,6 +136,7 @@ jobs:
           echo 'ACC_EQUALITY_COMPONENT_CONTRACTION=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ACC_EQUALITY_EDGE_QUOTIENT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ACC_EQUALITY_CERTIFICATE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'ACC_RANKED_COMPONENT_CERTIFICATE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ACC_LINEAR_INTERFACE_TRANSFER_TENSOR_CIRCUIT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ACC_LINEAR_INTERFACE_ORIGINAL_SOURCE_ADAPTER=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ACC_BOUNDARY_QUOTIENT_MERGE_CLOSURE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"

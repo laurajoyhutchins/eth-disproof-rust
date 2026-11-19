@@ -58,7 +58,9 @@ pub fn verify_ranked_component_certificate(
     }
     for &label in &certificate.labels {
         if label >= c {
-            return Err(Error::Invalid("ranked certificate label outside range".into()));
+            return Err(Error::Invalid(
+                "ranked certificate label outside range".into(),
+            ));
         }
     }
     for (class, &root) in certificate.roots.iter().enumerate() {
@@ -86,9 +88,9 @@ pub fn verify_ranked_component_certificate(
                 }
             }
             Some(index) => {
-                let &(a, b) = source_edges
-                    .get(*index)
-                    .ok_or_else(|| Error::Invalid("ranked parent edge absent from source".into()))?;
+                let &(a, b) = source_edges.get(*index).ok_or_else(|| {
+                    Error::Invalid("ranked parent edge absent from source".into())
+                })?;
                 let parent = if a == vertex {
                     b
                 } else if b == vertex {
@@ -124,11 +126,7 @@ pub fn contract_checked_ranked_weights(
 ) -> Result<RankedCountReceipt, Error> {
     // Always verify the exact certificate and edge list being consumed.
     // A receipt alone is not a reusable authority for different input bytes.
-    let verified = verify_ranked_component_certificate(
-        weights.len(),
-        source_edges,
-        certificate,
-    )?;
+    let verified = verify_ranked_component_certificate(weights.len(), source_edges, certificate)?;
     let mut products = vec![[1i128, 1i128]; verified.components];
     let mut multiplications = 0usize;
     for (weights, &class) in weights.iter().zip(certificate.labels.iter()) {

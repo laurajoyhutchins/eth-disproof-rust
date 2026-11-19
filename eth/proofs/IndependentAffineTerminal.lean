@@ -201,6 +201,176 @@ theorem terminal_card_arbitrary_columns
       Fintype.card_congr (columnSolutionEquiv t e b)
     _ = if residualOK t b then 2 ^ Fintype.card F else 0 := terminal_card t b
 
+
+
+/-!
+## Checked replayed rows: exact-count soundness of the terminal *decision*
+
+This faithfully models the independent Rust checker's final structural
+conditions, after the source rows have been replayed and their columns
+partitioned into pivot, free and boundary coordinates.
+
+The checker does not assume that free coefficients in pivot rows vanish.
+It checks that the pivot-pivot submatrix is the identity and both
+residual-internal blocks vanish. The resulting acceptance decision
+implies exact counting of the *original full row equations*.
+
+This is a theorem about a pure checker specification, not yet
+verification of the Rust implementation of that specification.
+-/
+
+structure ReplayedRows (P F B R : Type) where
+  pivotPivot : P → P → GF2
+  pivotFree : P → F → GF2
+  pivotBoundary : P → B → GF2
+  pivotRhs : P → GF2
+  residualPivot : R → P → GF2
+  residualFree : R → F → GF2
+  residualBoundary : R → B → GF2
+  residualRhs : R → GF2
+
+/-- Precisely the coefficient-shape conditions checked by the native
+terminal verifier, after a validated pivot/free and row partition. -/
+def TerminalShape [DecidableEq P]
+    (rows : ReplayedRows P F B R) : Prop :=
+  (∀ i j : P, rows.pivotPivot i j =
+    if i = j then 1 else 0) ∧
+  (∀ q : R, ∀ i : P, rows.residualPivot q i = 0) ∧
+  (∀ q : R, ∀ j : F, rows.residualFree q j = 0)
+
+/-- Boolean acceptance decision on the replayed matrix blocks. -/
+noncomputable def checkTerminalRows [DecidableEq P]
+    (rows : ReplayedRows P F B R) : Bool :=
+  decide (TerminalShape rows)
+
+theorem checkTerminalRows_iff [DecidableEq P]
+    (rows : ReplayedRows P F B R) :
+    checkTerminalRows rows = true ↔ TerminalShape rows := by
+  simp [checkTerminalRows]
+
+/-- Unlike a reduced interface, these equations retain *all* internal
+coefficients and therefore describe the raw terminal matrix directly. -/
+def satisfiesFullRows (rows : ReplayedRows P F B R)
+    (p : P → GF2) (f : F → GF2) (b : B → GF2) : Prop :=
+  (∀ i : P,
+    (∑ j : P, rows.pivotPivot i j * p j) +
+      (∑ j : F, rows.pivotFree i j * f j) +
+      (∑ j : B, rows.pivotBoundary i j * b j) = rows.pivotRhs i) ∧
+  (∀ q : R,
+    (∑ i : P, rows.residualPivot q i * p i) +
+      (∑ j : F, rows.residualFree q j * f j) +
+      (∑ j : B, rows.residualBoundary q j * b j) = rows.residualRhs q)
+
+/-- Extract the exact terminal interface from the accepted raw matrix,
+not from the producer's claimed interface. -/
+def asTerminal (rows : ReplayedRows P F B R) : Terminal P F B R where
+  freeCoeff := rows.pivotFree
+  pivotBoundaryCoeff := rows.pivotBoundary
+  pivotRhs := rows.pivotRhs
+  residualBoundaryCoeff := rows.residualBoundary
+  residualRhs := rows.residualRhs
+
+theorem pivotBlock_sum_eq [DecidableEq P]
+    (rows : ReplayedRows P F B R)
+    (h : TerminalShape rows) (p : P → GF2) (i : P) :
+    (∑ j : P, rows.pivotPivot i j * p j) = p i := by
+  calc
+    (∑ j : P, rows.pivotPivot i j * p j) =
+        (∑ j : P, (if i = j then (1 : GF2) else 0) * p j) := by
+          apply Finset.sum_congr rfl
+          intro j _
+          rw [h.1 i j]
+    _ = p i := by simp
+
+theorem residualBlock_sum_zero [DecidableEq P]
+    (rows : ReplayedRows P F B R)
+    (h : TerminalShape rows) (p : P → GF2) (f : F → GF2) (q : R) :
+    (∑ i : P, rows.residualPivot q i * p i) = 0 ∧
+    (∑ j : F, rows.residualFree q j * f j) = 0 := by
+  constructor
+  · apply Finset.sum_eq_zero
+    intro i _
+    rw [h.2.1 q i]
+    simp
+  · apply Finset.sum_eq_zero
+    intro j _
+    rw [h.2.2 q j]
+    simp
+
+theorem fullRows_iff_terminal [DecidableEq P]
+    (rows : ReplayedRows P F B R) (h : TerminalShape rows)
+    (p : P → GF2) (f : F → GF2) (b : B → GF2) :
+    satisfiesFullRows rows p f b ↔ satisfies (asTerminal rows) p f b := by
+  have hp (i : P) :
+      (∑ j : P, rows.pivotPivot i j * p j) +
+      (∑ j : F, rows.pivotFree i j * f j) +
+      (∑ j : B, rows.pivotBoundary i j * b j) =
+      p i + freeTerm (asTerminal rows) i f +
+        pivotBoundaryTerm (asTerminal rows) i b := by
+    rw [pivotBlock_sum_eq rows h p i]
+    rfl
+  have hr (q : R) :
+      (∑ i : P, rows.residualPivot q i * p i) +
+      (∑ j : F, rows.residualFree q j * f j) +
+      (∑ j : B, rows.residualBoundary q j * b j) =
+      residualBoundaryTerm (asTerminal rows) q b := by
+    obtain ⟨hzeroP, hzeroF⟩ := residualBlock_sum_zero rows h p f q
+    rw [hzeroP, hzeroF]
+    simp [residualBoundaryTerm, asTerminal]
+  constructor
+  · intro hs
+    constructor
+    · intro i
+      have hi := hs.1 i
+      rw [hp i] at hi
+      exact hi
+    · intro q
+      have hq := hs.2 q
+      rw [hr q] at hq
+      exact hq
+  · intro hs
+    constructor
+    · intro i
+      rw [hp i]
+      exact hs.1 i
+    · intro q
+      rw [hr q]
+      exact hs.2 q
+
+/-- The main missing mathematical connection: acceptance of the
+*actual full terminal matrix* implies the exact number of internal
+assignments, for every boundary, without trusting claimed rank,
+multiplicity or residual rows. -/
+theorem checked_terminal_count [DecidableEq P]
+    (rows : ReplayedRows P F B R)
+    (h : checkTerminalRows rows = true)
+    (b : B → GF2) :
+    Fintype.card
+      {pf : (P → GF2) × (F → GF2) //
+        satisfiesFullRows rows pf.1 pf.2 b} =
+      if residualOK (asTerminal rows) b
+      then 2 ^ Fintype.card F else 0 := by
+  classical
+  have hs : TerminalShape rows := (checkTerminalRows_iff rows).mp h
+  let e :
+      {pf : (P → GF2) × (F → GF2) //
+        satisfiesFullRows rows pf.1 pf.2 b} ≃
+      {pf : (P → GF2) × (F → GF2) //
+        satisfies (asTerminal rows) pf.1 pf.2 b} :=
+    { toFun := fun pf =>
+        ⟨pf.val, (fullRows_iff_terminal rows hs pf.val.1 pf.val.2 b).mp pf.property⟩
+      invFun := fun pf =>
+        ⟨pf.val, (fullRows_iff_terminal rows hs pf.val.1 pf.val.2 b).mpr pf.property⟩
+      left_inv := fun pf => Subtype.ext rfl
+      right_inv := fun pf => Subtype.ext rfl }
+  exact (Fintype.card_congr e).trans (terminal_card (asTerminal rows) b)
+
+#print axioms IndependentETH.AffineTerminal.checkTerminalRows_iff
+#print axioms IndependentETH.AffineTerminal.pivotBlock_sum_eq
+#print axioms IndependentETH.AffineTerminal.residualBlock_sum_zero
+#print axioms IndependentETH.AffineTerminal.fullRows_iff_terminal
+#print axioms IndependentETH.AffineTerminal.checked_terminal_count
+
 #print axioms IndependentETH.AffineTerminal.pivotEquation_iff
 #print axioms IndependentETH.AffineTerminal.satisfyingEquivFree
 #print axioms IndependentETH.AffineTerminal.terminal_card

@@ -353,6 +353,87 @@ mod tests {
         assert!(certificate.verify(&other, &interface).is_err());
     }
 
+
+    #[test]
+    fn checker_rejects_every_violated_terminal_shape_condition() {
+        use crate::affine::BoundaryRow;
+        fn source(rows: Vec<Vec<&str>>) -> AffineRegion {
+            AffineRegion {
+                internal: vec!["u".into(), "v".into()],
+                boundary: vec!["b".into()],
+                equations: rows.into_iter().map(|variables| Equation {
+                    variables: variables.into_iter().map(str::to_owned).collect(),
+                    rhs: false,
+                }).collect(),
+            }
+        }
+        let base = source(vec![vec!["u", "v", "b"]]);
+        let certificate = EliminationCertificate {
+            steps: vec![], pivot_columns: vec![0],
+        };
+        let claimed = AffineInterface {
+            boundary: base.boundary.clone(),
+            residual: vec![], rank: 1, free_internal: 1, elimination_xors: 0,
+        };
+        let (_, terminal) = certificate
+            .verify_with_terminal(&base, &claimed, VerificationLimits::default())
+            .unwrap();
+        assert_eq!(terminal.count_at(&[false]).unwrap(), BigUint::from(2u8));
+        assert_eq!(terminal.count_at(&[true]).unwrap(), BigUint::from(2u8));
+
+        // A free variable is permitted in pivot rows, but NOT below them.
+        let residual_free = source(vec![vec!["u"], vec!["v"]]);
+        let residual_claim = AffineInterface {
+            boundary: residual_free.boundary.clone(),
+            residual: vec![BoundaryRow {
+                boundary_indices: vec![], rhs: false,
+            }],
+            rank: 1, free_internal: 1, elimination_xors: 0,
+        };
+        assert!(certificate.verify(&residual_free, &residual_claim).is_err());
+
+        // Pivot must occur in its own row, not in any residual row.
+        let residual_pivot = source(vec![vec!["u"], vec!["u"]]);
+        assert!(certificate.verify(&residual_pivot, &residual_claim).is_err());
+
+        // The claimed pivot must exist and be equal to 1.
+        let missing_pivot = source(vec![vec!["v"]]);
+        assert!(certificate.verify(&missing_pivot, &claimed).is_err());
+
+        // A genuine residual boundary equation must not be edited.
+        let boundary_only = source(vec![vec!["u"], vec!["b"]]);
+        let good_claim = AffineInterface {
+            boundary: boundary_only.boundary.clone(),
+            residual: vec![BoundaryRow {
+                boundary_indices: vec![0], rhs: false,
+            }],
+            rank: 1, free_internal: 1, elimination_xors: 0,
+        };
+        let (_, terminal) = certificate.verify_with_terminal(
+            &boundary_only, &good_claim, VerificationLimits::default()
+        ).unwrap();
+        assert_eq!(terminal.count_at(&[false]).unwrap(), BigUint::from(2u8));
+        assert_eq!(terminal.count_at(&[true]).unwrap(), BigUint::from(0u8));
+        let mut changed_rhs = good_claim.clone();
+        changed_rhs.residual[0].rhs = true;
+        assert!(certificate.verify(&boundary_only, &changed_rhs).is_err());
+        let mut changed_boundary = good_claim;
+        changed_boundary.residual[0].boundary_indices.clear();
+        assert!(certificate.verify(&boundary_only, &changed_boundary).is_err());
+
+        // A source with two pivot columns is rejected if the columns are
+        // not isolated (even if a claimed result names two pivots).
+        let two = source(vec![vec!["u", "v"], vec!["v"]]);
+        let wrong = EliminationCertificate {
+            steps: vec![], pivot_columns: vec![0, 1],
+        };
+        let two_claim = AffineInterface {
+            boundary: two.boundary.clone(), residual: vec![],
+            rank: 2, free_internal: 0, elimination_xors: 0,
+        };
+        assert!(wrong.verify(&two, &two_claim).is_err());
+    }
+
     #[test]
     fn seeded_matrices_exactly_match_direct_enumeration() {
         // Independent Boolean oracle and an independent dense Boolean

@@ -10,6 +10,8 @@ on:
       - "eth/proofs/IndependentAffinePackedRows.lean"
       - "eth/proofs/IndependentAffineTerminal.lean"
       - "eth/proofs/IndependentAffineSourceRows.lean"
+      - "eth/proofs/IndependentQuadraticLowWeight.lean"
+      - "eth/proofs/IndependentSignedComposition.lean"
       - ".github/workflows/egg-contraction-experiment.yml"
   workflow_dispatch:
 
@@ -49,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean eth/proofs/IndependentQuadraticLowWeight.lean eth/proofs/IndependentSignedComposition.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
@@ -61,7 +63,9 @@ jobs:
             IndependentAffineRowOps \
             IndependentAffinePackedRows \
             IndependentAffineTerminal \
-            IndependentAffineSourceRows; do
+            IndependentAffineSourceRows \
+            IndependentQuadraticLowWeight \
+            IndependentSignedComposition; do
             echo "::group::Lean proof: $proof"
             if ! lake env lean "$GITHUB_WORKSPACE/eth/proofs/${proof}.lean"; then
               failures=1

@@ -42,9 +42,12 @@ each schedule:
 - Incremental and cumulative XOR operations and independent replay steps,
   plus observed elapsed time over each whole fold (including leaf construction).
 
-The `peak_d` and `sum_d` fields separate maximum intermediate
-representation size from aggregate stored representation sizes. The cumulative
-cell count is a proxy, not a verified runtime complexity theorem. The
+The `peak_d` and `sum_d` fields describe the maximum and summed sizes
+of the **active left-fold accumulator only**. They exclude simultaneously
+stored unmerged leaves, certificate memory, and temporary solver workspace. The cumulative
+cell count is a proxy, not a verified runtime complexity theorem. Because
+GF(2) coefficients are just bits, this suite does **not** exercise coefficient
+height explosion in general integer or symbolic interfaces. The
 `elapsed_ns` observations are not deterministic across machines.
 
 **Independent correctness evidence:** for small networks (chain <=9 edges,

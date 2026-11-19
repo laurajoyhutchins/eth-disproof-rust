@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin affine-order-study -- --sizes 8,16 --summaries-only | tee /tmp/affine-order-receipts.jsonl
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin affine-order-study -- --sizes 8,16,32,64 --summaries-only | tee /tmp/affine-order-receipts.jsonl
           grep -F '"oracle":"checked"' /tmp/affine-order-receipts.jsonl
           grep -F '"order":"even-first"' /tmp/affine-order-receipts.jsonl
 

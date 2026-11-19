@@ -54,9 +54,18 @@ jobs:
             exit 1
           fi
           cd instrumentation/lean-env
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineBoundary.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRankNullity.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRowOps.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffinePackedRows.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineTerminal.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineSourceRows.lean"
+          failures=0
+          for proof in \
+            IndependentAffineBoundary \
+            IndependentAffineRankNullity \
+            IndependentAffineRowOps \
+            IndependentAffinePackedRows \
+            IndependentAffineTerminal \
+            IndependentAffineSourceRows; do
+            echo "::group::Lean proof: $proof"
+            if ! lake env lean "$GITHUB_WORKSPACE/eth/proofs/${proof}.lean"; then
+              failures=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failures"

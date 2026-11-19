@@ -78,7 +78,7 @@ fn indexed_model_and_early_refusal_loops_agree_on_small_certificates() {
                 for root_code in 0..n.pow(classes as u32) {
                     let roots = digits(root_code, n, classes);
                     for parent_code in 0..parent_combinations {
-                        let parent_edge_indices = digits(parent_code, parent_radix, n)
+                        let parent_edge_indices: Vec<Option<usize>> = digits(parent_code, parent_radix, n)
                             .into_iter()
                             .map(|digit| (digit != 0).then(|| digit - 1))
                             .collect();

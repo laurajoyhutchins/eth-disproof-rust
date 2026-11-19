@@ -337,11 +337,12 @@ theorem fullRows_iff_terminal [DecidableEq P]
       rw [hr q]
       exact hs.2 q
 
+set_option maxHeartbeats 1500000
+
 /-- The main missing mathematical connection: acceptance of the
 *actual full terminal matrix* implies the exact number of internal
 assignments, for every boundary, without trusting claimed rank,
 multiplicity or residual rows. -/
-set_option maxHeartbeats 1500000 in
 theorem checked_terminal_count [DecidableEq P]
     (rows : ReplayedRows P F B R)
     (h : checkTerminalRows rows = true)
@@ -364,7 +365,25 @@ theorem checked_terminal_count [DecidableEq P]
         ⟨pf.val, (fullRows_iff_terminal rows hs pf.val.1 pf.val.2 b).mpr pf.property⟩
       left_inv := fun pf => Subtype.ext rfl
       right_inv := fun pf => Subtype.ext rfl }
-  exact (Fintype.card_congr e).trans (terminal_card (asTerminal rows) b)
+  by_cases hres : residualOK (asTerminal rows) b
+  · rw [if_pos hres]
+    calc
+      Fintype.card
+          {pf : (P → GF2) × (F → GF2) //
+            satisfiesFullRows rows pf.1 pf.2 b} =
+          Fintype.card (F → GF2) :=
+        Fintype.card_congr (e.trans (satisfyingEquivFree (asTerminal rows) b hres))
+      _ = 2 ^ Fintype.card F := by
+        simp [GF2, Fintype.card_fun]
+  · rw [if_neg hres]
+    have hempty :
+        IsEmpty {pf : (P → GF2) × (F → GF2) //
+          satisfiesFullRows rows pf.1 pf.2 b} := ⟨by
+      intro pf
+      have ht := (fullRows_iff_terminal rows hs pf.val.1 pf.val.2 b).mp pf.property
+      exact hres ht.2⟩
+    letI := hempty
+    simp
 
 #print axioms IndependentETH.AffineTerminal.checkTerminalRows_iff
 #print axioms IndependentETH.AffineTerminal.pivotBlock_sum_eq

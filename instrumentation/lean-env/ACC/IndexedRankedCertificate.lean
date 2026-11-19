@@ -54,23 +54,25 @@ theorem decoded_parent_is_source {n : ℕ}
   | none =>
       simp [decodedParent, hidx] at h
   | some k =>
-      have he : ((edges.get k).1, (edges.get k).2) ∈ edges := by
-        simpa using (List.get_mem edges k)
-      by_cases hfirst : (edges.get k).1 = i
-      · have hp : (edges.get k).2 = p := by
-          have hs : some (edges.get k).2 = some p := by
-            simpa [decodedParent, hidx, hfirst] using h
-          exact Option.some.inj hs
-        exact Or.inl (by simpa only [hfirst, hp] using he)
-      · by_cases hsecond : (edges.get k).2 = i
-        · have hp : (edges.get k).1 = p := by
-            have hs : some (edges.get k).1 = some p := by
-              simpa [decodedParent, hidx, hfirst, hsecond] using h
-            exact Option.some.inj hs
-          exact Or.inr (by simpa only [hsecond, hp] using he)
-        · have hs : (none : Option (Fin n)) = some p := by
-            simpa [decodedParent, hidx, hfirst, hsecond] using h
-          cases hs
+      cases heq : edges.get k with
+      | mk a b =>
+          have he : (a, b) ∈ edges := by
+            simpa [heq] using (List.get_mem edges k)
+          by_cases hfirst : a = i
+          · have hp : b = p := by
+              have hs : some b = some p := by
+                simpa [decodedParent, hidx, heq, hfirst] using h
+              exact Option.some.inj hs
+            exact Or.inl (by simpa only [hfirst, hp] using he)
+          · by_cases hsecond : b = i
+            · have hp : a = p := by
+                have hs : some a = some p := by
+                  simpa [decodedParent, hidx, heq, hfirst, hsecond] using h
+                exact Option.some.inj hs
+              exact Or.inr (by simpa only [hsecond, hp] using he)
+            · have hs : (none : Option (Fin n)) = some p := by
+                simpa [decodedParent, hidx, heq, hfirst, hsecond] using h
+              cases hs
 
 /-- This Boolean guard captures source-index validity as an indexed scan,
     followed by the already proved ranked-parent local guards. In particular,

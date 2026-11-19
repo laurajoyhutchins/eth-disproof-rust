@@ -288,8 +288,8 @@ theorem checkedClassFold_source_edges {n c : ℕ}
             weights i bit := by
       calc
         _ = ∏ k : Fin c,
-            fiberProduct (sourceItems label weights) k false +
-            fiberProduct (sourceItems label weights) k true := by
+            (fiberProduct (sourceItems label weights) k false +
+            fiberProduct (sourceItems label weights) k true) := by
           rw [← List.prod_toFinset (fun k : Fin c =>
             fiberProduct (sourceItems label weights) k false +
             fiberProduct (sourceItems label weights) k true)

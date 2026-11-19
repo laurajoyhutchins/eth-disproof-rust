@@ -21,6 +21,11 @@ namespace ACC.CheckedComponentArithmetic
 def WithinI128 (z : ℤ) : Prop :=
   -(2 ^ 127 : ℤ) ≤ z ∧ z < (2 ^ 127 : ℤ)
 
+/-- Constructive comparison on mathematical integers; executable in Lean. -/
+instance instDecidableWithinI128 (z : ℤ) : Decidable (WithinI128 z) := by
+  dsimp [WithinI128]
+  infer_instance
+
 def checkedMul (a b : ℤ) : Option ℤ :=
   if WithinI128 (a * b) then some (a * b) else none
 

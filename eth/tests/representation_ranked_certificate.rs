@@ -151,7 +151,7 @@ fn source_change_invalidates_certificate_without_reusable_receipt() {
         contract_checked_ranked_weights(&weights, &edges, &good)
             .unwrap()
             .value,
-        (1 + 1 * 1 * 2) * (1 + 2)
+        (1 + 2 * 2) * (1 + 2)
     );
     assert!(contract_checked_ranked_weights(&weights, &[(1, 2)], &good).is_err());
 

@@ -19,6 +19,8 @@ This is *not* a proof of the executable Rust checker itself.
 
 namespace IndependentETH.AffineTerminal
 
+attribute [local instance] Classical.propDecidable
+
 abbrev GF2 := ZMod 2
 
 structure Terminal (P F B R : Type) where
@@ -95,7 +97,7 @@ noncomputable def satisfyingEquivFree
     apply Subtype.ext
     apply Prod.ext
     · funext i
-      have hi := (pivotEquation_iff t pf.val.1 pf.val.2 b i).1 pf.property.1 i
+      have hi := (pivotEquation_iff t pf.val.1 pf.val.2 b i).1 (pf.property.1 i)
       exact hi.symm
     · rfl
   right_inv := by

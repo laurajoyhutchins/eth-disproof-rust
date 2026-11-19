@@ -211,3 +211,18 @@ been formally refined into the Lean semantics, and compilation, raw
 usize validity, certificate serialization, and memory/bit-cost bounds
 are not proved. See the
 [technical notebook](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).
+
+
+## Strict raw-value certificate admission
+
+The public affine eliminate method now routes through a **versioned raw-value certificate**, decodes that raw witness, and runs the independent dense-Boolean replay checker before returning a boundary interface. The source producer's unchecked witness function remains available for adversarial experiments.
+
+The [raw-value contract](src/affine_wire.rs) uses version 1; tag 0 is row swap, tag 1 is target-XOR-source, and row indices and pivot columns are unsigned 64-bit values. It refuses unknown versions/tags, aliases, out-of-range indices, invalid or unsorted pivot lists, and conversions to platform usize that cannot be represented. This is a **typed raw-value schema**, not a serialized byte format or parser.
+
+Explicit [VerificationLimits](src/affine_cert.rs) set max_cells and max_steps, each defaulting to 8,000,000. Checked multiplication rejects overflow and budget excess before the dense matrix is allocated; the transcript length is checked before replay. These limits do not bound the entire process, producer, or externally allocated raw input.
+
+The [Lean packed-row model](../../eth/proofs/IndependentAffinePackedRows.lean) now has 8-bit raw tags, 64-bit raw indices, a checked finite-index decoder, a version-and-budget admission predicate, and a replay theorem. The formal lemmas prove that its decoder rejects unknown, aliased and out-of-range operations, rejects exceeded budgets, and preserves exact Boolean replay for accepted transcripts. This is a kernel-checked mathematical model, **not** a Lean refinement of the compiled Rust decoder.
+
+The Rust suite additionally compares **720 tag/index cases** (5 row counts × 4 tags × 6 first indices × 6 second indices) and **3,900 pivot/dimension cases** to independently constructed acceptance predicates. The full path, corruptions, empty matrices and budget limits are also tested. See the [experiment workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/workflows/egg-contraction-experiment.yml) for exact-head CI evidence.
+
+Remaining open: formal correspondence of the entire native Rust verifier and terminal pivot/residual decisions to Lean, any canonical byte-serialization/parser proof, compiler and memory/ownership semantics, and a certified whole-pipeline cost bound.

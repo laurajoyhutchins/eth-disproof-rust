@@ -119,15 +119,16 @@ pub fn verify_ranked_component_certificate(
 /// Overflows refuse instead of silently truncating a signed integer count.
 pub fn contract_checked_ranked_weights(
     weights: &[[i128; 2]],
+    source_edges: &[(usize, usize)],
     certificate: &RankedComponentCertificate,
-    verified: VerifiedRankedCertificate,
 ) -> Result<RankedCountReceipt, Error> {
-    if weights.len() != verified.variables
-        || certificate.labels.len() != verified.variables
-        || certificate.roots.len() != verified.components
-    {
-        return Err(Error::Invalid("ranked contraction widths disagree".into()));
-    }
+    // Always verify the exact certificate and edge list being consumed.
+    // A receipt alone is not a reusable authority for different input bytes.
+    let verified = verify_ranked_component_certificate(
+        weights.len(),
+        source_edges,
+        certificate,
+    )?;
     let mut products = vec![[1i128, 1i128]; verified.components];
     let mut multiplications = 0usize;
     for (weights, &class) in weights.iter().zip(certificate.labels.iter()) {

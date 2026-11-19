@@ -7,6 +7,9 @@ import ACC.RankedComponentCertificate
 The Rust verifier reads arrays and source-edge indices, not an arbitrary
 parent function. This model uses finite vertex/label indices and original
 edge-list positions, then decodes a parent using the same orientation rule.
+The accepted ranked-guard predicate already checks source-edge membership
+for every decoded parent, so a separate decoder-membership lemma is not
+required for the exactness theorem.
 
 The new theorem proves that the finite indexed Boolean guard implies
 the earlier abstract RankedConditions, hence the exact component quotient
@@ -42,37 +45,6 @@ theorem decoded_none_of_absent {n : ℕ}
     (i : Fin n) (h : sourceIndex i = none) :
     decodedParent edges sourceIndex i = none := by
   simp [decodedParent, h]
-
-/-- Successful indexed decoding always refers to an actual source edge.
-    The direction of the input tuple is irrelevant to equality factors. -/
-theorem decoded_parent_is_source {n : ℕ}
-    (edges : List (Fin n × Fin n))
-    (sourceIndex : Fin n → Option (Fin edges.length))
-    (i p : Fin n) (h : decodedParent edges sourceIndex i = some p) :
-    (i, p) ∈ edges ∨ (p, i) ∈ edges := by
-  cases hidx : sourceIndex i with
-  | none =>
-      simp [decodedParent, hidx] at h
-  | some k =>
-      cases heq : edges.get k with
-      | mk a b =>
-          have he : (a, b) ∈ edges := by
-            simpa [heq] using (List.get_mem edges k)
-          by_cases hfirst : a = i
-          · have hp : b = p := by
-              have hs : some b = some p := by
-                simpa [decodedParent, hidx, heq, hfirst] using h
-              exact Option.some.inj hs
-            exact Or.inl (by simpa only [hfirst, hp] using he)
-          · by_cases hsecond : b = i
-            · have hp : a = p := by
-                have hs : some a = some p := by
-                  simpa [decodedParent, hidx, heq, hfirst, hsecond] using h
-                exact Option.some.inj hs
-              exact Or.inr (by simpa only [hsecond, hp] using he)
-            · have hs : (none : Option (Fin n)) = some p := by
-                simpa [decodedParent, hidx, heq, hfirst, hsecond] using h
-              cases hs
 
 /-- This Boolean guard captures source-index validity as an indexed scan,
     followed by the already proved ranked-parent local guards. In particular,
@@ -163,7 +135,6 @@ example :
         else if i = 1 then some (0 : Fin 1) else none)
       (fun i => if i = 1 then 1 else 0) = false := by decide
 
-#print axioms ACC.IndexedRankedCertificate.decoded_parent_is_source
 #print axioms ACC.IndexedRankedCertificate.checkIndexed_sound
 #print axioms ACC.IndexedRankedCertificate.checkIndexed_index_incident
 #print axioms ACC.IndexedRankedCertificate.checked_indexed_contraction

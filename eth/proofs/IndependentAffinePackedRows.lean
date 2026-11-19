@@ -93,6 +93,7 @@ theorem word_and_bit_reconstruct {w : ℕ} (column : Fin (w * 64)) :
 inductive Step (m : ℕ) where
   | swap (first second : Fin m)
   | xor (target source : Fin m)
+  deriving DecidableEq, Repr
 
 def applyPacked {m w : ℕ} (op : Step m) (rows : Words m w) :
     Words m w :=
@@ -188,6 +189,10 @@ def validStep (m : ℕ) (raw : RawStep) : Prop :=
   raw.first.toNat < m ∧ raw.second.toNat < m ∧
   raw.first.toNat ≠ raw.second.toNat
 
+instance (m : ℕ) (raw : RawStep) : Decidable (validStep m raw) := by
+  unfold validStep
+  infer_instance
+
 def decodeStep (m : ℕ) (raw : RawStep) : Option (Step m) :=
   if h : validStep m raw then
     let first : Fin m := ⟨raw.first.toNat, h.2.1⟩
@@ -251,12 +256,22 @@ def validPivots (m k : ℕ) (pivots : List (BitVec 64)) : Prop :=
   (pivots.map (fun col => col.toNat)).Pairwise (· < ·) ∧
   ∀ col ∈ pivots, col.toNat < k
 
+instance (m k : ℕ) (pivots : List (BitVec 64)) :
+    Decidable (validPivots m k pivots) := by
+  unfold validPivots
+  infer_instance
+
 def admissible (m k b maxCells maxSteps : ℕ)
     (cert : RawCertificate) : Prop :=
   cert.version.toNat = 1 ∧
   m * (k + b + 1) ≤ maxCells ∧
   cert.steps.length ≤ maxSteps ∧
   validPivots m k cert.pivotColumns
+
+instance (m k b maxCells maxSteps : ℕ) (cert : RawCertificate) :
+    Decidable (admissible m k b maxCells maxSteps cert) := by
+  unfold admissible
+  infer_instance
 
 def decodeCertificate (m k b maxCells maxSteps : ℕ)
     (cert : RawCertificate) : Option (List (Step m)) :=
@@ -303,7 +318,7 @@ theorem accepted_raw_replay_decodes
   | some ops =>
       simp [hdec] at h
       subst terminal
-      exact ⟨ops, hdec, decode_replay ops rows⟩
+      exact ⟨ops, rfl, decode_replay ops rows⟩
 
 example : decodeStep 2 ⟨0, 0, 1⟩ = some (.swap ⟨0, by omega⟩ ⟨1, by omega⟩) := by
   decide

@@ -226,3 +226,16 @@ The [Lean packed-row model](../../eth/proofs/IndependentAffinePackedRows.lean) n
 The Rust suite additionally compares **720 tag/index cases** (5 row counts × 4 tags × 6 first indices × 6 second indices) and **3,900 pivot/dimension cases** to independently constructed acceptance predicates. The full path, corruptions, empty matrices and budget limits are also tested. See the [experiment workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/workflows/egg-contraction-experiment.yml) for exact-head CI evidence.
 
 Remaining open: formal correspondence of the entire native Rust verifier and terminal pivot/residual decisions to Lean, any canonical byte-serialization/parser proof, compiler and memory/ownership semantics, and a certified whole-pipeline cost bound.
+
+
+## Terminal pivot/free completion theorem and witness
+
+The [new Lean terminal theorem](../../eth/proofs/IndependentAffineTerminal.lean) proves, for **any finite pivot, free, boundary and residual index sets**, that a matrix with isolated pivot variables and boundary-only residual constraints has exactly **2^number_of_free_variables** internal solutions for a feasible boundary, or zero otherwise. Free columns may remain in pivot equations. An additional theorem transports the result through *any bijection* between the actual internal-column order and the pivot/free partition; pivots need not be consecutive.
+
+The independent [Rust checker](src/affine_cert.rs) now constructs a read-only **VerifiedTerminal** from independently replayed source rows, only after all earlier pivot isolation, rank, boundary-order, and residual-equality checks succeed. Its **complete** method calculates the unique pivot extension from free and boundary bits, returning None for impossible residual contexts. Its **count_at** method implements the resulting exact count. Witness fields are private to prevent accidental unchecked construction.
+
+The Rust suite checks every boundary for **200 seeded small affine systems**, enumerates every free assignment, verifies every completed internal assignment against the original equations, and confirms no duplicate completions. A noncontiguous-pivot fixture has pivot columns 1 and 4 and free columns 0, 2, 3 and 5, with exactly 16 completions in feasible contexts.
+
+[Exact-head experiment CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44614539579) passed **38 Rust tests** and the pinned Lean 4.34.1 theorem check. [Original ETH Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44614539583) passed at the same commit.
+
+**Formal boundary:** The terminal counting theorem is kernel-verified and applies to the *mathematically specified* normal form. The executable checker and terminal witness are independently tested, **not formally refined to Lean**. This does not prove the compiled Rust program correct or establish general #SAT/ETH complexity.

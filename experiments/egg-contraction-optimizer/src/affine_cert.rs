@@ -8,6 +8,37 @@
 use crate::affine::{AffineInterface, AffineRegion};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Explicit verifier resources. These bound the *independent checker*, not
+/// the producer or the arbitrary-precision result allocation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct VerificationLimits {
+    pub max_cells: usize,
+    pub max_steps: usize,
+}
+
+impl Default for VerificationLimits {
+    fn default() -> Self {
+        Self { max_cells: 8_000_000, max_steps: 8_000_000 }
+    }
+}
+
+impl VerificationLimits {
+    /// Fail before constructing the dense matrix or replaying the transcript.
+    /// Kept as a pure function so overflow/refusal can be tested without
+    /// attempting to allocate pathological inputs.
+    pub fn check(self, rows: usize, columns: usize, steps: usize) -> Result<(), String> {
+        let cells = rows.checked_mul(columns)
+            .ok_or("checker matrix storage overflow")?;
+        if cells > self.max_cells {
+            return Err("checker matrix storage budget exceeded".into());
+        }
+        if steps > self.max_steps {
+            return Err("checker transcript budget exceeded".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RowOperation {
     Swap { first: usize, second: usize },
@@ -36,19 +67,21 @@ impl EliminationCertificate {
         source: &AffineRegion,
         claimed: &AffineInterface,
     ) -> Result<VerificationReceipt, String> {
+        self.verify_with_limits(source, claimed, VerificationLimits::default())
+    }
+
+    pub fn verify_with_limits(
+        &self,
+        source: &AffineRegion,
+        claimed: &AffineInterface,
+        limits: VerificationLimits,
+    ) -> Result<VerificationReceipt, String> {
         let k = source.internal.len();
         let b = source.boundary.len();
         let width = k.checked_add(b)
             .and_then(|x| x.checked_add(1))
             .ok_or("checker matrix width overflow")?;
-        let size = source.equations.len().checked_mul(width)
-            .ok_or("checker matrix storage overflow")?;
-        if size > 8_000_000 {
-            return Err("checker matrix storage budget exceeded".into());
-        }
-        if self.steps.len() > 8_000_000 {
-            return Err("checker transcript budget exceeded".into());
-        }
+        limits.check(source.equations.len(), width, self.steps.len())?;
         if claimed.boundary != source.boundary {
             return Err("boundary names/order were changed".into());
         }
@@ -393,6 +426,36 @@ mod tests {
         assert_eq!(interface.evaluate(&BTreeMap::new()).unwrap(),
             num_bigint::BigUint::from(0u8));
     }
+
+
+    #[test]
+    fn configurable_checker_limits_fail_before_allocation_or_replay() {
+        let region = example();
+        let (interface, transcript) = region.eliminate_with_certificate().unwrap();
+        let width = region.internal.len() + region.boundary.len() + 1;
+        let cells = region.equations.len() * width;
+        let steps = transcript.steps.len();
+        transcript.verify_with_limits(&region, &interface, VerificationLimits {
+            max_cells: cells,
+            max_steps: steps,
+        }).unwrap();
+        assert!(transcript.verify_with_limits(&region, &interface, VerificationLimits {
+            max_cells: cells - 1,
+            max_steps: steps,
+        }).unwrap_err().contains("storage budget exceeded"));
+        assert!(steps > 0);
+        assert!(transcript.verify_with_limits(&region, &interface, VerificationLimits {
+            max_cells: cells,
+            max_steps: steps - 1,
+        }).unwrap_err().contains("transcript budget exceeded"));
+        assert!(VerificationLimits::default()
+            .check(usize::MAX, 2, 0).unwrap_err().contains("overflow"));
+        assert!(VerificationLimits { max_cells: usize::MAX, max_steps: 0 }
+            .check(0, usize::MAX, 1).unwrap_err().contains("transcript budget"));
+        VerificationLimits { max_cells: 0, max_steps: 0 }
+            .check(0, usize::MAX, 0).unwrap();
+    }
+
 
     #[test]
     fn raw_invalid_indices_and_self_swaps_are_refused() {

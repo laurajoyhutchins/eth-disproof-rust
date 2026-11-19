@@ -143,6 +143,26 @@ theorem compact_eq_product
       simp only [compact, List.map_cons, List.prod_cons]
       rw [ih]
 
+/-- Any two permutations of the same independent private blocks have
+    the same exact exterior function, not just the same closed total. -/
+theorem compact_perm
+    (factor : I → A → P → R) {xs ys : List I}
+    (h : xs.Perm ys) (p : P) :
+    compact factor xs p = compact factor ys p := by
+  rw [compact_eq_product, compact_eq_product]
+  exact (h.map (fun i => ∑ a : A, factor i a p)).prod_eq
+
+/-- Direct nested enumeration is also invariant under factor permutation. -/
+theorem direct_perm
+    (factor : I → A → P → R) {xs ys : List I}
+    (h : xs.Perm ys) (p : P) :
+    direct factor xs p = direct factor ys p := by
+  calc
+    direct factor xs p = compact factor xs p :=
+      (independent_private_fold_correct factor xs p).symm
+    _ = compact factor ys p := compact_perm factor h p
+    _ = direct factor ys p := independent_private_fold_correct factor ys p
+
 end IndependentPrivateBlocks
 
 #print axioms IndependentETH.LivePortFold.nextPorts_eq_livePorts
@@ -151,3 +171,5 @@ end IndependentPrivateBlocks
 #print axioms IndependentETH.LivePortFold.runPorts_from_raw_first
 #print axioms IndependentETH.LivePortFold.independent_private_fold_correct
 #print axioms IndependentETH.LivePortFold.compact_eq_product
+#print axioms IndependentETH.LivePortFold.compact_perm
+#print axioms IndependentETH.LivePortFold.direct_perm

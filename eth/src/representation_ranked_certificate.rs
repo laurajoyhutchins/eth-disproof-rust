@@ -133,16 +133,16 @@ fn check_ranked_parents(
                     };
                     match parent {
                         None => {
-                            failure = Some(Error::Invalid(
-                                "ranked parent edge misses vertex".into(),
-                            ));
+                            failure =
+                                Some(Error::Invalid("ranked parent edge misses vertex".into()));
                         }
                         Some(parent) => {
                             if certificate.labels[parent] != class
                                 || certificate.rank[parent] >= certificate.rank[vertex]
                             {
                                 failure = Some(Error::Invalid(
-                                    "ranked parent does not preserve label and decrease rank".into(),
+                                    "ranked parent does not preserve label and decrease rank"
+                                        .into(),
                                 ));
                             } else {
                                 parent_links += 1;

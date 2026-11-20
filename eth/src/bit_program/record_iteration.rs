@@ -56,11 +56,20 @@ pub(crate) fn iterate<const R: usize, const S: usize>(
 /// The reader uses [tag, present] and [source, payload]; an invalid
 /// (aliased or out-of-range) lift refuses rather than silently remapping.
 /// The callback remains source-specific and is never interpreted on the host.
+/// As in the pinned Lean `RecordPrograms.Ports`, `found` must also be
+/// distinct from `tag` and `present`; a parser lift cannot test that.
 pub(crate) fn iterate_framed<const R: usize, const S: usize>(
     ports: RecordPorts,
     payload: usize,
     callback: Cmd<R, S>,
 ) -> Result<Cmd<R, S>, Error> {
+    // Lean RecordPrograms.Ports requires three distinct reader registers.
+    // Program::lift alone validates tag/present, not found.
+    if ports.found >= R || ports.found == ports.tag || ports.found == ports.present {
+        return Err(Error::Invalid(
+            "framed iterator requires a distinct in-range found register".into(),
+        ));
+    }
     let reader = Cmd::Call(
         frame_program()?.lift::<R, S>([ports.tag, ports.present], [ports.source, payload])?,
     );
@@ -94,6 +103,9 @@ mod tests {
             (PORTS, 0),
             (RecordPorts { tag: 3, ..PORTS }, 1),
             (PORTS, 3),
+            (RecordPorts { found: 0, ..PORTS }, 1),
+            (RecordPorts { found: 1, ..PORTS }, 1),
+            (RecordPorts { found: 3, ..PORTS }, 1),
         ];
         for (ports, payload) in invalid {
             assert!(matches!(

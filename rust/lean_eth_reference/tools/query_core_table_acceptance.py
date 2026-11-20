@@ -169,7 +169,7 @@ def accept(lake: Path, output: Path, timeout: int) -> dict:
             raise ValueError("canonical source theorem layout changed")
         assertion = (
             f"  have h : ∀ q : Fin {fields['labels']}, candidate.code q = "
-            f"{DECL}.code q := of_decide_true rfl\n"
+            f"{DECL}.code q := by decide\n"
             "  exact h pc"
         )
         certificate = certificate.replace(old, assertion)

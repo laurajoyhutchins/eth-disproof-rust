@@ -224,6 +224,20 @@ theorem plus_times (a b c : Leading) :
     times a (plus b c) = plus (times a b) (times a c) := by
   rw [times_comm a (plus b c), times_plus, times_comm b a, times_comm c a]
 
+/-- The degree-zero unit is multiplicatively neutral. -/
+theorem unit_times (x : Leading) :
+    times (monomial 0 1 (by omega)) x = x := by
+  cases x with
+  | none => rfl
+  | some x =>
+      simp only [times, monomial]
+      apply congrArg Option.some
+      apply term_ext <;> simp
+
+theorem times_unit (x : Leading) :
+    times x (monomial 0 1 (by omega)) = x := by
+  rw [times_comm, unit_times]
+
 theorem monomial_times (d e a b : ℕ) (ha : 0 < a) (hb : 0 < b) :
     times (monomial d a ha) (monomial e b hb) =
       monomial (d + e) (a * b) (Nat.mul_pos ha hb) := rfl
@@ -250,6 +264,7 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.plus_assoc
 #print axioms IndependentETH.Tropical.times_plus
 #print axioms IndependentETH.Tropical.plus_times
+#print axioms IndependentETH.Tropical.unit_times
 #print axioms IndependentETH.Tropical.times_assoc
 #print axioms IndependentETH.Tropical.monomial_times
 #print axioms IndependentETH.Tropical.monomial_plus_equal

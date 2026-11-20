@@ -18,6 +18,10 @@ namespace OAI.Algorithms.SubexponentialSAT.ReadoutRow
 open OAI.Algorithms.SubexponentialSAT.StructuredCalls
 open OAI.Algorithms.SubexponentialSAT.SqrtLog.MomentsReadoutProgram
 
+-- Avoid Lean's unrelated Mathlib `Inner.inner` typeclass operation.
+private abbrev sourceInner : WideCode :=
+  OAI.Algorithms.SubexponentialSAT.SqrtLog.MomentsReadoutProgram.inner
+
 /-- Original source-defined single coefficient operation: key, arithmetic
     accumulation through a lifted program, then unary index increment. -/
 theorem slot_source :
@@ -40,7 +44,7 @@ theorem advance_source :
 /-- One numerical row is one zero-vector initialization, an inner source
     loop, and coefficient completion, with no change of association. -/
 theorem row_source :
-    row = .seq startRow (.seq inner finishRow) := rfl
+    row = .seq startRow (.seq sourceInner finishRow) := rfl
 
 /-- The source's actual seed and final transfer operations. -/
 theorem start_row_source :
@@ -52,7 +56,7 @@ theorem finish_row_source :
 /-- The inner loop is source-defined as one initial pop, followed by a
     structured while guard with one slot callback and one pop per visit. -/
 theorem inner_source :
-    inner =
+    sourceInner =
       .seq (UnaryForPrograms.popCmd innerPorts)
         (.while innerPorts.flag
           (.seq slot (UnaryForPrograms.popCmd innerPorts))) := rfl
@@ -73,7 +77,7 @@ theorem slot_site_count :
 
 /-- Runtime U values do not unroll the inner control in the instruction table. -/
 theorem inner_site_count :
-    StructuredCalls.size inner = StructuredCalls.size slot + 3 := by
+    StructuredCalls.size sourceInner = StructuredCalls.size slot + 3 := by
   change 1 + ((StructuredCalls.size slot + 1) + 1) =
     StructuredCalls.size slot + 3
   omega
@@ -90,7 +94,7 @@ theorem row_site_count :
       StructuredCalls.size startRow +
         (StructuredCalls.size slot + 3 + StructuredCalls.size finishRow) := by
   change StructuredCalls.size startRow +
-      (StructuredCalls.size inner + StructuredCalls.size finishRow) = _
+      (StructuredCalls.size sourceInner + StructuredCalls.size finishRow) = _
   rw [inner_site_count]
 
 /-- Exact source-level factorization of one coefficient slot.
@@ -123,11 +127,11 @@ theorem row_eval_iff (n : ℕ) (a b : StructuredCalls.State 8 40) :
       ∃ (ns ni nf : ℕ) (seeded accumulated : StructuredCalls.State 8 40),
         n = ns + (ni + nf) ∧
         StructuredCalls.Eval startRow ns a seeded ∧
-        StructuredCalls.Eval inner ni seeded accumulated ∧
+        StructuredCalls.Eval sourceInner ni seeded accumulated ∧
         StructuredCalls.Eval finishRow nf accumulated b := by
   constructor
   · intro h
-    change StructuredCalls.Eval (.seq startRow (.seq inner finishRow)) n a b at h
+    change StructuredCalls.Eval (.seq startRow (.seq sourceInner finishRow)) n a b at h
     cases h with
     | seq hs hrest =>
       cases hrest with
@@ -136,7 +140,7 @@ theorem row_eval_iff (n : ℕ) (a b : StructuredCalls.State 8 40) :
   · rintro ⟨ns, ni, nf, seeded, accumulated, hn, hs, hi, hf⟩
     subst n
     change StructuredCalls.Eval
-      (.seq startRow (.seq inner finishRow)) (ns + (ni + nf)) a b
+      (.seq startRow (.seq sourceInner finishRow)) (ns + (ni + nf)) a b
     exact StructuredCalls.Eval.seq hs (StructuredCalls.Eval.seq hi hf)
 
 /-- The actual source's U controller pays exactly two steps per slot callback,
@@ -145,7 +149,7 @@ theorem row_eval_iff (n : ℕ) (a b : StructuredCalls.State 8 40) :
 theorem inner_visits_exact {costs : List ℕ} {n : ℕ}
     {a b : StructuredCalls.State 8 40}
     (h : UnaryForPrograms.Visits innerPorts slot costs n a b) :
-    StructuredCalls.Eval inner n a b ∧
+    StructuredCalls.Eval sourceInner n a b ∧
       costs.length = (a.stacks innerPorts.counter).length ∧
       b.stacks innerPorts.counter = [] ∧
       n = costs.sum + 2 * costs.length + 2 := by

@@ -3,8 +3,8 @@
 //! independently derived Serde variants are checked downstream.
 //! This module does not emit Lean proofs, interpret source graphs,
 //! or claim that serialization refines arbitrary Rust execution.
-use serde_json::{Value, json};
 use super::{Instr, Program};
+use serde_json::{Value, json};
 
 /// The 12 physical opcodes use the *existing* source-graph table format.
 /// This is a serializer of Rust values, not a second Lean formatter.
@@ -76,4 +76,3 @@ pub fn program_record<const R: usize, const S: usize>(program: &Program<R, S>) -
         "code": program.code().iter().map(instruction_record).collect::<Vec<_>>(),
     })
 }
-

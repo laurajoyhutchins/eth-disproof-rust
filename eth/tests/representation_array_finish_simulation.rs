@@ -87,7 +87,10 @@ fn rejects_running_multiplication_overflow_but_not_after_early_zero() {
         checked_component_product_finish(&products),
         Err(Error::Overflow)
     ));
-    assert_eq!(checked_component_product_finish(&[[0, 0], [i128::MAX, 0], [2, 0]]).unwrap(), 0);
+    assert_eq!(
+        checked_component_product_finish(&[[0, 0], [i128::MAX, 0], [2, 0]]).unwrap(),
+        0
+    );
     // Even after the zero has made the running count zero, each subsequent
     // local sum is checked independently and may still fail.
     assert!(matches!(
@@ -98,9 +101,7 @@ fn rejects_running_multiplication_overflow_but_not_after_early_zero() {
 
 #[test]
 fn short_boundary_sequences_match_reference() {
-    const BOUNDS: [i128; 8] = [
-        i128::MIN, i128::MAX, i128::MIN + 1, -2, -1, 0, 1, 2,
-    ];
+    const BOUNDS: [i128; 8] = [i128::MIN, i128::MAX, i128::MIN + 1, -2, -1, 0, 1, 2];
     for classes in 0..=5usize {
         for seed in 0..128usize {
             let products: Vec<_> = (0..classes)

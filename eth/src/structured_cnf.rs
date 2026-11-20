@@ -937,10 +937,7 @@ mod tests {
                         .zip(signs.iter())
                         .any(|(&column, &sign)| x.get(column).copied() == Some(sign == 1))
                 });
-                assert_eq!(
-                    decoded, direct,
-                    "word mask={mask}, variable count={n}"
-                );
+                assert_eq!(decoded, direct, "word mask={mask}, variable count={n}");
             }
         }
     }

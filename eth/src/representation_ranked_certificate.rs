@@ -102,43 +102,55 @@ fn check_edge_class_closure(
     }
 }
 
+// Validation of one parent witness is pure and returns a scalar refusal
+// code. It is deliberately outside the indexed scan, so the scan does not
+// have to join nested Rust borrow contexts or allocate error strings.
+// Refusal codes are converted to the original diagnostic at the end.
+fn parent_refusal_code(
+    vertex: usize,
+    source_edges: &[(usize, usize)],
+    certificate: &RankedComponentCertificate,
+) -> u8 {
+    let class = certificate.labels[vertex];
+    match certificate.parent_edge_indices[vertex] {
+        None => {
+            if vertex != certificate.roots[class] || certificate.rank[vertex] != 0 {
+                1
+            } else {
+                0
+            }
+        }
+        Some(index) => {
+            if index >= source_edges.len() {
+                return 2;
+            }
+            let (a, b) = source_edges[index];
+            if a != vertex && b != vertex {
+                return 3;
+            }
+            let parent = if a == vertex { b } else { a };
+            if certificate.labels[parent] != class
+                || certificate.rank[parent] >= certificate.rank[vertex]
+            {
+                4
+            } else {
+                0
+            }
+        }
+    }
+}
+
 fn check_ranked_parents(
     source_edges: &[(usize, usize)],
     certificate: &RankedComponentCertificate,
 ) -> Result<usize, Error> {
-    // Keep the per-vertex loop state scalar so the source-derived translator
-    // does not need to join heap-backed String errors across loop branches.
-    // Error codes preserve the first-refusal ordering of the original guard.
     let mut parent_links = 0usize;
     let mut refusal = 0u8;
     let mut vertex = 0usize;
     while vertex < certificate.parent_edge_indices.len() && refusal == 0 {
-        let class = certificate.labels[vertex];
-        match certificate.parent_edge_indices[vertex] {
-            None => {
-                if vertex != certificate.roots[class] || certificate.rank[vertex] != 0 {
-                    refusal = 1;
-                }
-            }
-            Some(index) => {
-                if index >= source_edges.len() {
-                    refusal = 2;
-                } else {
-                    let (a, b) = source_edges[index];
-                    if a != vertex && b != vertex {
-                        refusal = 3;
-                    } else {
-                        let parent = if a == vertex { b } else { a };
-                        if certificate.labels[parent] != class
-                            || certificate.rank[parent] >= certificate.rank[vertex]
-                        {
-                            refusal = 4;
-                        } else {
-                            parent_links += 1;
-                        }
-                    }
-                }
-            }
+        refusal = parent_refusal_code(vertex, source_edges, certificate);
+        if refusal == 0 && certificate.parent_edge_indices[vertex].is_some() {
+            parent_links += 1;
         }
         vertex += 1;
     }

@@ -238,9 +238,13 @@ mod tests {
 
     #[test]
     fn duplicate_hidden_fibers_reuse_forbidden_and_allowed_results() {
+        // First leaf deliberately lacks p. A checked future (p)
+        // clause cannot reject its eight x,z,w states yet. The next
+        // leaf introduces p and x, creating 16 compatible join pairs,
+        // with eight hidden completions for each retained p output.
         let source = vec![
-            free(&["p", "x", "z"]),
-            free(&["x"]),
+            free(&["w", "x", "z"]),
+            free(&["p", "x"]),
             unit_clause("p"),
         ];
         let order = [0, 1, 2];
@@ -252,12 +256,12 @@ mod tests {
                 Some(MemoMode::CompleteDecisions),
             ).unwrap();
         assert_eq!(cached, direct);
-        assert_eq!(cached, BigUint::from(4u8));
+        assert_eq!(cached, BigUint::from(8u8));
         assert_eq!(memo.exact.multiplications, raw.exact.multiplications);
-        assert_eq!(memo.candidate_products_refused, 4);
-        assert_eq!(memo.memo_hits_forbidden, 3);
-        assert_eq!(memo.memo_hits_allowed, 3);
-        assert_eq!(raw.mask_tests_before_product, 8);
+        assert_eq!(memo.candidate_products_refused, 8);
+        assert_eq!(memo.memo_hits_forbidden, 7);
+        assert_eq!(memo.memo_hits_allowed, 7);
+        assert_eq!(raw.mask_tests_before_product, 16);
         assert_eq!(memo.mask_tests_before_product, 2);
         assert_eq!(memo.memo_misses, 2);
         assert_eq!(memo.memo_inserts, 2);

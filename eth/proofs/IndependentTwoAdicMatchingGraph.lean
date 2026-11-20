@@ -256,8 +256,6 @@ theorem matchingEndpointLabels_weighted_sum
         (∑ pairs : E → A × A, weight pairs) := by
         rw [Finset.mul_sum]
 
-/-! ## Fibers conditioned on prescribed vertex labels -/
-
 /--
 Cross-multiplied equality of the **uniform** mean over all graph
 vertex labelings and the uniform mean over all matching edge-pair
@@ -292,6 +290,8 @@ theorem matchingEndpointLabels_uniform_mean_cross_mul
     simpa using hone
   rw [htotal, hcard]
   ring
+
+/-! ## Fibers conditioned on prescribed vertex labels -/
 
 /-
 The following partial-assignment lemmas use vertex-specific *finite*
@@ -627,8 +627,6 @@ theorem matchingEndpointLabels_conditional_class_moment
           if pair = target then (2 : ℚ) else 1) := by
       rw [Finset.prod_univ_sum]
 
-/-! ## Vertex choices and conditional means -/
-
 /-- The uniform conditional mean over the **actual source graph
 vertex** completions agrees exactly with the uniform conditional mean
 over the independent, endpoint-compatible matching-edge pair choices.
@@ -668,6 +666,8 @@ theorem matchingEndpointLabels_conditional_uniform_mean_cross_mul
     simpa using hone
   rw [hweight, hcard]
   ring
+
+/-! ## Vertex choices and conditional means -/
 
 /-
 Sequential selection on actual graph-vertex labelings. The score can

@@ -11,6 +11,8 @@ use crate::tropical_orders::Leading;
 use num_bigint::BigUint;
 use std::collections::{BTreeMap, BTreeSet};
 
+pub mod adaptive;
+
 const MAX_WIDTH: usize = 16;
 const MAX_CACHE_STATES: usize = 200_000;
 const MAX_COUNTED_WORK: u64 = 4_000_000;
@@ -270,6 +272,7 @@ fn tropical_add(a: Option<Leading>, b: Option<Leading>, work: &mut Work)
         (Some(a), Some(b)) if a.energy < b.energy => Some(a),
         (Some(a), Some(b)) if b.energy < a.energy => Some(b),
         (Some(a), Some(b)) => {
+            work.bit_work_proxy += u128::from(a.count.bits().max(b.count.bits()).max(1));
             let count = a.count + b.count;
             work.max_coefficient_bits = work.max_coefficient_bits.max(count.bits());
             Some(Leading { energy: a.energy, count })
@@ -283,6 +286,8 @@ fn tropical_mul(a: &Option<Leading>, b: &Option<Leading>, work: &mut Work)
     work.multiplications += 1;
     match (a, b) {
         (Some(a), Some(b)) => {
+            work.bit_work_proxy += u128::from(a.count.bits().max(1))
+                * u128::from(b.count.bits().max(1));
             let count = &a.count * &b.count;
             work.max_coefficient_bits = work.max_coefficient_bits.max(count.bits());
             Ok(Some(Leading {

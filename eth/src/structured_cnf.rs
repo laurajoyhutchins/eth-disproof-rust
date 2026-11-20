@@ -722,6 +722,41 @@ mod tests {
         }
     }
 
+    /// Finite differential check of the actual shared Rust reader against
+    /// an elementwise implementation. Unlike mutations of canonical source
+    /// rows, these tuples include every small malformed ordering and sign.
+    #[test]
+    fn checked_row_exhaustive_ternary_slice_boundary() {
+        for stop in [0, 1, 2, 3, 4, usize::MAX] {
+            for a in 0..=4 {
+                for b in 0..=4 {
+                    for c in 0..=4 {
+                        for sa in -2..=2 {
+                            for sb in -2..=2 {
+                                for sc in -2..=2 {
+                                    let offsets = [0, stop];
+                                    let columns = [a, b, c];
+                                    let signs = [sa, sb, sc];
+                                    let csr = SignedCsr {
+                                        variables: 4,
+                                        row_offsets: &offsets,
+                                        column_indices: &columns,
+                                        signs: &signs,
+                                    };
+                                    assert_eq!(
+                                        csr.checked_row(0),
+                                        reference_checked_row(csr, 0),
+                                        "stop={stop}, columns={columns:?}, signs={signs:?}"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// A second, test-only decoder of Lean's signed-CSR *input* semantics.
     /// This deliberately does not call either the Rust recognizer or receipt
     /// verifier. It keeps duplicate rows, malformed widths, missing elements,

@@ -1,6 +1,16 @@
 use egg_contraction_experiment::optimize;
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--emit-lean-certificates") {
+        match egg_contraction_experiment::affine_native_lean::emit_native_lean_fixtures() {
+            Ok(source) => print!("{source}"),
+            Err(error) => {
+                eprintln!("Lean witness emission refused: {error}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
     let examples = [
         ("cross-output association", "(pair (+ a (+ b c)) (+ (+ a b) d))"),
         ("factoring", "(pair (+ (* a b) (* a c)) (* a (+ b c)))"),

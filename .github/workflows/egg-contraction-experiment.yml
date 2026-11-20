@@ -8,6 +8,7 @@ on:
       - "eth/proofs/IndependentLivePortComposition.lean"
       - "eth/proofs/IndependentLivePortFold.lean"
       - "eth/proofs/IndependentOverlappingFactors.lean"
+      - "eth/proofs/IndependentAffineNativeAudit.lean"
       - "eth/proofs/IndependentAffineRankNullity.lean"
       - "eth/proofs/IndependentAffineRowOps.lean"
       - "eth/proofs/IndependentAffinePackedRows.lean"
@@ -63,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean eth/proofs/IndependentAffineNativeAudit.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
@@ -75,3 +76,15 @@ jobs:
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentLivePortComposition.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentLivePortFold.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentOverlappingFactors.lean"
+          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineNativeAudit.lean"
+          # Data terms emitted by the real typed Rust producer and checked
+          # using the independent auditor ported unchanged from PR #360.
+          generated="$RUNNER_TEMP/ordered-affine-generated.lean"
+          audited="$RUNNER_TEMP/ordered-affine-audited.lean"
+          cargo run --quiet --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" -- --emit-lean-certificates > "$generated"
+          if grep -nE '\b(sorry|admit|axiom|unsafe)\b' "$generated"; then
+            echo "Unsafe generated Lean evidence" >&2
+            exit 1
+          fi
+          cat "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineNativeAudit.lean" "$generated" > "$audited"
+          lake env lean "$audited"

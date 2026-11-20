@@ -70,6 +70,19 @@ impl Stage {
     /// Each child contributes its existing 2^free_internal factor.
     /// The merged affine elimination contributes 2^new_free factor.
     pub fn merge(&self, other: &Self, retained: &[String]) -> Result<Self, String> {
+        self.merge_with_receipt(other, retained).map(|(stage, _, _, _)| stage)
+    }
+
+    /// Share the identical merge implementation with a bounded native audit.
+    /// The receipt records the exact *local* parity region, typed row
+    /// operations and proposed interface before inherited multiplicity
+    /// from the two previously eliminated child interiors is added.
+    pub fn merge_with_receipt(
+        &self, other: &Self, retained: &[String],
+    ) -> Result<(
+        Self, AffineRegion, crate::affine_cert::EliminationCertificate,
+        AffineInterface,
+    ), String> {
         if !self.hidden.is_disjoint(&other.hidden) {
             return Err("overlapping hidden interiors".into());
         }
@@ -98,14 +111,15 @@ impl Stage {
         let region = AffineRegion { internal, boundary, equations };
         let (mut interface, certificate) = region.eliminate_with_certificate()?;
         let checked = certificate.verify(&region, &interface)?;
+        let local_claim = interface.clone();
         interface.free_internal = interface.free_internal
             .checked_add(self.interface.free_internal)
             .and_then(|x| x.checked_add(other.interface.free_internal))
             .ok_or("multiplicity exponent overflow")?;
         let metrics = measure(&interface, checked.operations_checked)?;
         let hidden = self.hidden.union(&other.hidden)
-            .cloned().chain(region.internal).collect();
-        Ok(Self { interface, hidden, metrics })
+            .cloned().chain(region.internal.iter().cloned()).collect();
+        Ok((Self { interface, hidden, metrics }, region, certificate, local_claim))
     }
 
     pub fn count_at(&self, boundary: &BTreeMap<String, bool>) -> Result<BigUint, String> {

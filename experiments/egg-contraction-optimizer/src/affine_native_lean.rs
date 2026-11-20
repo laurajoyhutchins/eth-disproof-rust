@@ -510,6 +510,27 @@ mod tests {
     }
 
     #[test]
+    fn free_amplifier_inherited_exponents_match_original_ten_free_bits() {
+        use num_bigint::BigUint;
+        use std::collections::BTreeMap;
+
+        let factors = generate(Family::FreeAmplifiers, 5).unwrap();
+        let order = Schedule::EvenFirst.indices(factors.len());
+        let trace = fold(&factors, &order, &[], &Limits::default()).unwrap();
+        // Five leaf-private bits and five ultimately hidden boundary bits:
+        // both contributions must survive all four merge stages.
+        assert_eq!(
+            trace.steps.iter().map(|step| step.metrics.free_internal)
+                .collect::<Vec<_>>(),
+            vec![1, 4, 6, 8, 10],
+        );
+        assert_eq!(
+            trace.stage.count_at(&BTreeMap::new()).unwrap(),
+            BigUint::from(1u8) << 10,
+        );
+    }
+
+    #[test]
     fn hostile_names_remain_data_not_lean_syntax() {
         let source = AffineRegion {
             internal: vec!["x\" : False := by sorry --".into()],

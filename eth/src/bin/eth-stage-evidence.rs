@@ -4,7 +4,7 @@
 //! locally pinned upstream manifest. No stage status certifies Lean/Rust
 //! refinement, proof completeness, or a complexity bound.
 use lean_eth_reference::remaining::{Machine, SOURCE_COMMIT, STAGES, Status};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashSet;
 
 const SOURCE_PREFIX: &str = "lean/OAI/Algorithms/SubexponentialSAT/";
@@ -186,7 +186,7 @@ mod tests {
         assert!(report_from_manifest(&manifest.to_string()).is_err());
 
         let mut manifest: Value = serde_json::from_str(MANIFEST).unwrap();
-        manifest["files"][path] = json!("NOT_A_GIT_BLOB");
+        manifest["files"][path.as_str()] = json!("NOT_A_GIT_BLOB");
         assert!(report_from_manifest(&manifest.to_string()).is_err());
     }
 }

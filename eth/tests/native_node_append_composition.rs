@@ -21,7 +21,7 @@ fn readout_fixture() -> Program<8, 40> {
         }),
         Cmd::Atom(Atom::Push { stack: 0, src: 2 }),
     )
-    .compiled(5, 0)
+    .compiled(15, 0)
     .unwrap()
 }
 
@@ -119,4 +119,18 @@ fn resource_refusal_is_not_reported_as_a_completed_node() {
     assert!(matches!(error, Error::Capacity(_)));
     assert!(state.pc.is_some());
     assert_eq!(word(&state, 863), vec![false, true]);
+}
+
+#[test]
+fn source_readout_wrong_input_or_output_abi_refuses_before_composition() {
+    for (input, output) in [(5, 0), (15, 5), (0, 0)] {
+        let wrong = Cmd::<8, 40>::Skip.compiled(input, output).unwrap();
+        let error = node_append_with_readout(wrong).unwrap_err();
+        assert!(matches!(error, Error::Invalid(_)));
+    }
+
+    // Original source contract is local input 15 and output 0, not the
+    // mapped ambient stack numbers. The dummy command is a structural probe.
+    let source_ports = Cmd::<8, 40>::Skip.compiled(15, 0).unwrap();
+    assert!(node_append_with_readout(source_ports).is_ok());
 }

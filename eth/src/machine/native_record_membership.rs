@@ -5,54 +5,14 @@
 
 use crate::Error;
 use crate::bit_program::record_iteration::{RecordPorts, iterate};
-use crate::bit_program::{Atom, Cmd, Instr, Program};
+use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_high::clear_program;
 use crate::native_membership::membership_callback_command;
 
 /// Seven-label source ParserProgram.frameProgram, including the final halt.
 /// Escape-tagged bits are pushed reversed onto stack 1.
-pub fn frame_program() -> Result<Program<2, 2>, Error> {
-    Program::new(
-        0,
-        1,
-        0,
-        vec![
-            Instr::Pop {
-                stack: 0,
-                value: 0,
-                present: 1,
-                next: 1,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 2,
-                no: 6,
-            },
-            Instr::Branch {
-                test: 0,
-                yes: 3,
-                no: 6,
-            },
-            Instr::Pop {
-                stack: 0,
-                value: 0,
-                present: 1,
-                next: 4,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 5,
-                no: 6,
-            },
-            Instr::Push {
-                stack: 1,
-                src: 0,
-                next: 0,
-            },
-            Instr::Halt,
-        ],
-    )
-}
+/// Compatibility path for the pinned source frame parser.
+pub use crate::bit_program::frame_programs::frame_program;
 
 /// RecordPrograms.iterate specialized to the original ExecCNFMembership ports:
 /// tag=5, present=6, found=4, source=0, payload=1.

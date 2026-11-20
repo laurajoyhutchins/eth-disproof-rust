@@ -4,7 +4,7 @@
 //! RowSelectionProgramEntriesEmit, LayoutScalarEmitter,
 //! LayoutProgramScalarCacheCell. All loops are finite static instruction tables.
 use crate::Error;
-use crate::bit_program::{Atom, Cmd, Instr, Program};
+use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_high::{clear_program, copy_program};
 use crate::native_integer_cache::{cache_cell_command, initial_h_build_command};
 use crate::native_query_prefix::{frame_program, transfer_program};
@@ -25,61 +25,8 @@ fn copy<const R: usize, const S: usize>(
 }
 
 /// Exact `SubexpPostfixControl.literalService` 17-label table, entered at 7.
-pub fn emit_record_program() -> Result<Program<3, 4>, Error> {
-    let parser = frame_program()?.lift::<3, 4>([0, 1], [0, 3])?;
-    let mut code = parser.code().to_vec();
-    code[6] = Instr::Goto { next: 7 };
-    code.extend([
-        Instr::Set {
-            dst: 0,
-            value: false,
-            next: 8,
-        },
-        Instr::Push {
-            stack: 2,
-            src: 0,
-            next: 9,
-        },
-        Instr::Pop {
-            stack: 3,
-            value: 0,
-            present: 1,
-            next: 10,
-        },
-        Instr::Branch {
-            test: 1,
-            yes: 11,
-            no: 14,
-        },
-        Instr::Push {
-            stack: 2,
-            src: 0,
-            next: 12,
-        },
-        Instr::Set {
-            dst: 0,
-            value: true,
-            next: 13,
-        },
-        Instr::Push {
-            stack: 2,
-            src: 0,
-            next: 9,
-        },
-        Instr::Set {
-            dst: 0,
-            value: true,
-            next: 15,
-        },
-        Instr::Push {
-            stack: 2,
-            src: 0,
-            next: 16,
-        },
-        Instr::Halt,
-    ]);
-    Program::new(3, 2, 7, code)
-}
+/// Compatibility path for the source literal-service record emitter.
+pub use crate::bit_program::frame_programs::emit_record_program;
 fn emit_one(negative: bool) -> Result<Cmd<3, 6>, Error> {
     let stacks = if negative { [3, 4, 2, 1] } else { [3, 4, 2, 0] };
     Ok(Cmd::Call(

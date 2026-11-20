@@ -22,6 +22,10 @@ not proof of behavioral equivalence.
   it implements and what remains outside its execution boundary. Use `///`
   for public contracts and `//` for local invariants. State facts once;
   avoid repeating a paragraph of qualifications on every function.
+- Keep the seven-label `ParserProgram.frameProgram` and seventeen-label
+  `SubexpPostfixControl.literalService` tables in
+  `bit_program/frame_programs.rs`. Normalize their import locations with
+  compatibility re-exports, not new host-level parsing or framing.
 - Keep the source `StackRoutines.clearProgram`, `copyProgram`, and
   `transferProgram` label tables in `bit_program/stack_routines.rs`. Use
   compatibility re-exports rather than copying instruction tables into

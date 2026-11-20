@@ -641,6 +641,7 @@ pub struct RunStats {
 }
 
 mod deferred;
+pub mod frame_programs;
 pub(crate) mod record_iteration;
 mod source_json;
 pub mod stack_routines;

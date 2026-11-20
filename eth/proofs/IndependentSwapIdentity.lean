@@ -51,6 +51,7 @@ def identityEntry (i j : Fin 4) : ℤ :=
 def negativeSinglet (i j : Fin 4) : ℤ :=
   -(antisymmetric i * antisymmetric j)
 
+/-- The local swap equals its identity and signed rank-one contributions. -/
 theorem swapEntry_eq_singlet_plus_identity (i j : Fin 4) :
     swapEntry i j = negativeSinglet i j + identityEntry i j := by
   unfold swapEntry negativeSinglet identityEntry

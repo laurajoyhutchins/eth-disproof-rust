@@ -28,3 +28,6 @@ The machine/query/counting files have been relocated without changing
 their Rust module identities. Do not silently turn this directory
 split into a semantics change; preserve exact source bindings and
 independent physical traces.
+
+Proof authors should follow `proofs/STYLE.md`; its fast style checker is
+textual and does not replace the pinned Lean kernel gates.

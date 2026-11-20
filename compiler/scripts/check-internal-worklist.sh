@@ -51,7 +51,8 @@ test "$(ar t "$out/diag-lib/libleanrt.a" | grep -Fxc 'object.cpp.o')" = 1
 # host C linker/CRT rather than Lean's bundled older C sysroot, which lacks
 # the host headers' __isoc23_strtol. Lean libraries and source remain pinned.
 # LEAN_CC affects only THIS diagnostic link, not the stock runtime check.
-LEAN_CC=clang leanc -O2 -L"$out/diag-lib" \
+test -x /usr/bin/clang
+LEAN_CC=/usr/bin/clang leanc -O2 -L"$out/diag-lib" \
   -Wl,-Map,"$out/diag-link.map" \
   -o "$out/source-del-worklist-diagnostic" \
   "$out/RuntimeHeapKernels-traced.c" "$out/RuntimeHeapDelKernels-traced.c" \

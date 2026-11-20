@@ -396,6 +396,95 @@ def fullWitnessSeedEquiv (ds : List Bool) :
     apply Subtype.ext
     rfl
 
+
+/-! ## Complete signed 3-CNF words, not merely recurrence traces
+
+Each step imposes *the four actual ternary clauses* via parityGadget
+and the current positive OR clause via orWindow. The final constructor
+imposes the final OR clause. All bits, including each fourth bit e, are
+explicitly supplied by the source word rather than computed in advance.
+-/
+
+theorem gadget_forces_next (d a b e : Bool) :
+    parityGadget d a b e = true ↔
+      e = Bool.xor (Bool.xor a b) d := by
+  cases d <;> cases a <;> cases b <;> cases e <;> decide
+
+inductive SourceCNFWord : State → List Bool → List Bool → Prop
+  | last (a b c : Bool) (h : orWindow (a, b, c) = true) :
+      SourceCNFWord (a, b, c) [] [a, b, c]
+  | step (a b c d e : Bool) (ds tail : List Bool)
+      (hOr : orWindow (a, b, c) = true)
+      (hParity : parityGadget d a b e = true)
+      (hTail : SourceCNFWord (b, c, e) ds tail) :
+      SourceCNFWord (a, b, c) (d :: ds) (a :: tail)
+
+theorem sourceCNFWord_to_trace {s : State} {ds w : List Bool}
+    (h : SourceCNFWord s ds w) : FullTrace s ds w := by
+  induction h with
+  | last a b c h =>
+      exact FullTrace.last a b c (by simpa only [orWindow_exact] using h)
+  | step a b c d e ds tail hOr hParity hTail ih =>
+      have he : e = Bool.xor (Bool.xor a b) d :=
+        (gadget_forces_next d a b e).mp hParity
+      subst e
+      have hn : nonzero (a, b, c) = true := by
+        simpa only [orWindow_exact] using hOr
+      exact FullTrace.step a b c d ds tail hn ih
+
+theorem fullTrace_to_sourceCNFWord {s : State} {ds w : List Bool}
+    (h : FullTrace s ds w) : SourceCNFWord s ds w := by
+  induction h with
+  | last a b c h =>
+      exact SourceCNFWord.last a b c (by simpa only [orWindow_exact] using h)
+  | step a b c d ds tail h hTail ih =>
+      have ho : orWindow (a, b, c) = true := by
+        simpa only [orWindow_exact] using h
+      have hp : parityGadget d a b (Bool.xor (Bool.xor a b) d) = true :=
+        (gadget_forces_next d a b _).mpr rfl
+      exact SourceCNFWord.step a b c d
+        (Bool.xor (Bool.xor a b) d) ds tail ho hp ih
+
+theorem sourceCNFWord_iff_trace (s : State) (ds w : List Bool) :
+    SourceCNFWord s ds w ↔ FullTrace s ds w :=
+  ⟨sourceCNFWord_to_trace, fullTrace_to_sourceCNFWord⟩
+
+theorem sourceCNFWord_length {s : State} {ds w : List Bool}
+    (h : SourceCNFWord s ds w) : w.length = ds.length + 3 :=
+  fullTrace_length (sourceCNFWord_to_trace h)
+
+/-- The source CNF's complete satisfying-word witnesses are a *different*
+representation from the recurrence traces: their constructors test each
+literal-gadget clause. The equivalence is proved from the local truth table. -/
+def SourceWitnesses (ds : List Bool) :=
+  { p : State × List Bool // SourceCNFWord p.1 ds p.2 }
+
+def sourceWitnessTraceEquiv (ds : List Bool) :
+    SourceWitnesses ds ≃ FullWitnesses ds where
+  toFun p := ⟨p.1, sourceCNFWord_to_trace p.2⟩
+  invFun p := ⟨p.1, fullTrace_to_sourceCNFWord p.2⟩
+  left_inv := by
+    intro p
+    apply Subtype.ext
+    rfl
+  right_inv := by
+    intro p
+    apply Subtype.ext
+    rfl
+
+/-- Exact finite-length SAT correspondence for all source-gadget CNF
+witnesses: one and only one complete word for each accepted seed. -/
+def sourceWitnessSeedEquiv (ds : List Bool) :
+    SourceWitnesses ds ≃ AcceptedSeeds ds :=
+  (sourceWitnessTraceEquiv ds).trans (fullWitnessSeedEquiv ds)
+
+#print axioms IndependentETH.NonAffine.gadget_forces_next
+#print axioms IndependentETH.NonAffine.sourceCNFWord_to_trace
+#print axioms IndependentETH.NonAffine.fullTrace_to_sourceCNFWord
+#print axioms IndependentETH.NonAffine.sourceCNFWord_iff_trace
+#print axioms IndependentETH.NonAffine.sourceCNFWord_length
+#print axioms IndependentETH.NonAffine.sourceWitnessSeedEquiv
+
 #print axioms IndependentETH.NonAffine.fullWord_length
 #print axioms IndependentETH.NonAffine.fullTrace_word
 #print axioms IndependentETH.NonAffine.fullTrace_length

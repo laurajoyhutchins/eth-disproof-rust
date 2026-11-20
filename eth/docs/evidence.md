@@ -59,6 +59,32 @@ theorem applies to the mathematically modeled list operations;
 the Rust test independently probes whether the production deque
 operations obey that contract in the exercised states.
 
+**Conditional native-deque operation contract.** The pinned
+[`PhysicalArrayInterpreterRefinement.lean`](../proofs/PhysicalArrayInterpreterRefinement.lean)
+now specifies a generic host deque with an explicit logical
+`observe : D → List Bool` interpretation, and four *assumed*
+operation obligations: `front` returns the list head,
+`pushFront` prepends, and `popFront` returns the old head
+while exposing the remaining tail. `hostDequeTrace_refines`
+proves that **arbitrary finite sequences** of these operations
+produce the exact source-list observations whenever those
+obligations hold. Focused push/pop lemmas connect those
+operations to the previously verified full
+`Represents` relation, preserving every other register/stack.
+
+The host obligations correspond to the
+[Rust standard library's documented `VecDeque` API](https://doc.rust-lang.org/std/collections/struct.VecDeque.html),
+including its front-to-back iteration semantics. **These
+API specifications are inputs to the proof, not theorems about
+the compiled Rust standard library**. The native adversarial
+suite exercises an independently carried `Vec<bool>` list
+against actual production `Program::step`, and additionally
+checks all length-six action sequences over push-false,
+push-true, peek, and pop for empty, contiguous, and genuinely
+wrapped initial deque layouts. This includes empty pop and
+capacity growth. Finite tests are evidence of conformance,
+not universal proof of host operations or allocation.
+
 **Still open:** a *universal* refinement theorem from the actual Rust
 interpreter, including arbitrary `usize` indices after admission,
 memory representation, allocation and refusal behavior, to the original

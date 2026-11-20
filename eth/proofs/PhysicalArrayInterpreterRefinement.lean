@@ -326,4 +326,143 @@ theorem arrayStep_refuses_invalidPC {r s l : ℕ} (program : Program r s l)
     arrayStep program {raw with pc := some n} = .error () := by
   simp [arrayStep, hsize, hbad]
 
+/-!
+## Conditional native-deque operation contract
+
+The preceding universal theorem is about a Lean array/list executor, not the
+Rust standard library. Here we isolate the **four obligations** needed to
+replace each model stack with a native deque: `front` observes the list head;
+`push_front` prepends; `pop_front` returns the old head and exposes the
+remaining tail. All statements below are conditional on these laws.
+
+No Rust standard-library semantics is postulated as an unconditional axiom.
+For the actual `std::collections::VecDeque<bool>`, these laws come from the
+Rust library's published API contract and require a separate
+implementation-to-specification justification. They are not proved by Lean.
+-/
+
+universe u
+
+/-- Explicit host obligations for a deque whose logical front is list index
+zero. Separating observations from operations prevents the list semantics
+from being redefined as whatever the host operation happens to do. -/
+structure DequeContract (D : Type u) where
+  observe : D → List Bool
+  front : D → Option Bool
+  pushFront : D → Bool → D
+  popFront : D → Option Bool × D
+  front_spec : ∀ d, front d = (observe d).head?
+  push_spec : ∀ d bit, observe (pushFront d bit) = bit :: observe d
+  pop_value_spec : ∀ d, (popFront d).1 = (observe d).head?
+  pop_rest_spec : ∀ d, observe (popFront d).2 = (observe d).tail
+
+/-- Primitive host actions without a second program interpreter. -/
+inductive DequeAction where
+  | push (bit : Bool)
+  | peek
+  | pop
+deriving Repr, DecidableEq
+
+private def hostDequeOne {D : Type u} (c : DequeContract D)
+    (a : DequeAction) (d : D) : Option Bool × D :=
+  match a with
+  | .push bit => (none, c.pushFront d bit)
+  | .peek => (c.front d, d)
+  | .pop => c.popFront d
+
+private def listDequeOne (a : DequeAction) (xs : List Bool) :
+    Option Bool × List Bool :=
+  match a with
+  | .push bit => (none, bit :: xs)
+  | .peek => (xs.head?, xs)
+  | .pop => (xs.head?, xs.tail)
+
+/-- One operation of any host deque satisfying the contract produces exactly
+the list result and observation, including the empty-pop case. -/
+theorem hostDequeOne_refines {D : Type u} (c : DequeContract D)
+    (a : DequeAction) (d : D) :
+    (hostDequeOne c a d).1 = (listDequeOne a (c.observe d)).1 ∧
+    c.observe (hostDequeOne c a d).2 =
+      (listDequeOne a (c.observe d)).2 := by
+  cases a with
+  | push bit => exact ⟨rfl, c.push_spec d bit⟩
+  | peek => exact ⟨c.front_spec d, rfl⟩
+  | pop => exact ⟨c.pop_value_spec d, c.pop_rest_spec d⟩
+
+private def hostDequeTrace {D : Type u} (c : DequeContract D) :
+    List DequeAction → D → List (Option Bool) × D
+  | [], d => ([], d)
+  | a :: tail, d =>
+      let one := hostDequeOne c a d
+      let rest := hostDequeTrace c tail one.2
+      (one.1 :: rest.1, rest.2)
+
+private def listDequeTrace :
+    List DequeAction → List Bool → List (Option Bool) × List Bool
+  | [], xs => ([], xs)
+  | a :: tail, xs =>
+      let one := listDequeOne a xs
+      let rest := listDequeTrace tail one.2
+      (one.1 :: rest.1, rest.2)
+
+/-- Universal, **conditional** trace correspondence. No number of actions,
+stack contents, initial layout, or Boolean word length is fixed. -/
+theorem hostDequeTrace_refines {D : Type u} (c : DequeContract D)
+    (actions : List DequeAction) (d : D) :
+    (hostDequeTrace c actions d).1 =
+      (listDequeTrace actions (c.observe d)).1 ∧
+    c.observe (hostDequeTrace c actions d).2 =
+      (listDequeTrace actions (c.observe d)).2 := by
+  induction actions generalizing d with
+  | nil =>
+      exact ⟨rfl, rfl⟩
+  | cons a tail ih =>
+      obtain ⟨hvalue, hstate⟩ := hostDequeOne_refines c a d
+      obtain ⟨hresults, hfinal⟩ := ih (hostDequeOne c a d).2
+      constructor
+      · change (hostDequeOne c a d).1 ::
+            (hostDequeTrace c tail (hostDequeOne c a d).2).1 =
+          (listDequeOne a (c.observe d)).1 ::
+            (listDequeTrace tail (listDequeOne a (c.observe d)).2).1
+        rw [hvalue, ← hstate]
+        exact congrArg (List.cons (listDequeOne a (c.observe d)).1) hresults
+      · change c.observe (hostDequeTrace c tail (hostDequeOne c a d).2).2 =
+            (listDequeTrace tail (listDequeOne a (c.observe d)).2).2
+        rw [← hstate]
+        exact hfinal
+
+/-- The host observation for Peek agrees with the already proved
+array-shaped model whenever the host stack decodes to the source slot. -/
+theorem deque_front_matches_model {D : Type u} (c : DequeContract D)
+    (d : D) (xs : List Bool) (h : c.observe d = xs) :
+    c.front d = xs.head? := by
+  rw [c.front_spec d, h]
+
+/-- A host Push satisfies the existing full-register-and-stack representation
+relation, not just equality of the one modified source stack. -/
+theorem deque_push_preserves_represents {D : Type u} (c : DequeContract D)
+    {r s l : ℕ} {raw : ArrayCfg} {cfg : Cfg r s l}
+    (h : Represents raw cfg) (port : Fin s) (host : D) (bit : Bool)
+    (hport : c.observe host = cfg.«stacks» port) :
+    Represents
+      (setStack raw port (c.observe (c.pushFront host bit)))
+      (sourceSetStack cfg port (bit :: cfg.«stacks» port)) := by
+  rw [c.push_spec host bit, hport]
+  exact represents_setStack h port (bit :: cfg.«stacks» port)
+
+/-- A host Pop must preserve the whole representation **and** return the
+original list head, even for an empty source stack. -/
+theorem deque_pop_preserves_represents {D : Type u} (c : DequeContract D)
+    {r s l : ℕ} {raw : ArrayCfg} {cfg : Cfg r s l}
+    (h : Represents raw cfg) (port : Fin s) (host : D)
+    (hport : c.observe host = cfg.«stacks» port) :
+    Represents
+      (setStack raw port (c.observe (c.popFront host).2))
+      (sourceSetStack cfg port (cfg.«stacks» port).tail) ∧
+    (c.popFront host).1 = (cfg.«stacks» port).head? := by
+  constructor
+  · rw [c.pop_rest_spec host, hport]
+    exact represents_setStack h port (cfg.«stacks» port).tail
+  · rw [c.pop_value_spec host, hport]
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

@@ -277,6 +277,75 @@ fn physically_wrapped_word(epoch: usize) -> (VecDeque<bool>, Vec<bool>) {
     (word, list)
 }
 
+/// Exhaustively check the four primitive operations (push false/true,
+/// peek, pop) for all six-operation traces against a carried list-state
+/// oracle. This checks the exact host assumptions of DequeContract in Lean;
+/// it does not assert their universal validity for all native allocations.
+#[test]
+fn native_deque_contract_covers_all_short_action_traces() {
+    const ALPHABET: usize = 4;
+    const STEPS: usize = 6;
+    let mut split_samples = 0usize;
+    let mut capacity_growth = 0usize;
+    let mut empty_removals = 0usize;
+    for layout in 0..3 {
+        for trace in 0..ALPHABET.pow(STEPS as u32) {
+            let (mut actual, mut expected) = match layout {
+                0 => (VecDeque::new(), Vec::new()),
+                1 => (VecDeque::from([true, false]), vec![true, false]),
+                _ => physically_wrapped_word(7),
+            };
+            let mut code = trace;
+            for step in 0..STEPS {
+                let action = code % ALPHABET;
+                code /= ALPHABET;
+                let old_capacity = actual.capacity();
+                match action {
+                    0 | 1 => {
+                        let bit = action == 1;
+                        actual.push_front(bit);
+                        expected.insert(0, bit);
+                    }
+                    2 => assert_eq!(
+                        actual.front().copied(),
+                        expected.first().copied(),
+                        "layout={layout} trace={trace} step={step} peek"
+                    ),
+                    _ => {
+                        let wanted = if expected.is_empty() {
+                            empty_removals += 1;
+                            None
+                        } else {
+                            Some(expected.remove(0))
+                        };
+                        assert_eq!(
+                            actual.pop_front(),
+                            wanted,
+                            "layout={layout} trace={trace} step={step} pop"
+                        );
+                    }
+                }
+                split_samples += usize::from(!actual.as_slices().1.is_empty());
+                capacity_growth += usize::from(actual.capacity() > old_capacity);
+                assert_eq!(actual.len(), expected.len());
+                assert_eq!(
+                    actual.front().copied(),
+                    expected.first().copied(),
+                    "layout={layout} trace={trace} step={step} head"
+                );
+                assert_eq!(
+                    actual.iter().copied().collect::<Vec<_>>(),
+                    expected,
+                    "layout={layout} trace={trace} step={step} full list"
+                );
+            }
+        }
+    }
+    assert!(split_samples > 0, "wrapped ring states must be exercised");
+    assert!(capacity_growth > 0, "heap growth must be exercised");
+    assert!(empty_removals > 0, "empty pop must be exercised");
+}
+
 #[test]
 fn native_deque_front_push_pop_match_independent_lists_even_when_wrapped() {
     let mut seed = 0x8c71_ef92_4bad_0315_u64;

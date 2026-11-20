@@ -60,8 +60,13 @@ theorem alias_fields_spend_exactly_their_credits
   | succ k ih =>
       have h : external + (k + 1) + 1 = (external + k) + 2 := by omega
       rw [h]
-      simp only [dropFields, dropField, Option.bind_some]
-      simpa [Nat.add_assoc] using ih
+      change (dropField ⟨(external + k) + 2, false⟩).bind
+        (dropFields (k + 1)) = some ⟨external, external == 0⟩
+      have hdrop : dropField ⟨(external + k) + 2, false⟩ =
+          some ⟨external + (k + 1), false⟩ := by
+        simp [dropField, Nat.add_assoc]
+      rw [hdrop]
+      simpa using ih
 
 /-- When an external owner survives, even arbitrarily many aliased
 fields cannot enqueue its target. -/

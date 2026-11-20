@@ -256,20 +256,27 @@ reorderings; no undecidable Pairwise relation is needed to compute it. -/
 def sparsePairsInOrder (pairs : List (Nat × Nat)) : Bool :=
   (pairs.zip (pairs.drop 1)).all (fun p => pairBefore p.1 p.2)
 
-/-- Width, bounds, ascending pair entries and globally increasing pair order.
-The latter excludes duplicate entries as well as reordered pairs. -/
-def SparseCoefficientRecord.wellFormed (r : SparseCoefficientRecord) (n : ℕ) : Prop :=
-  r.linear.length = n ∧
-  r.orderedPairs.Forall (fun p => p.1 < p.2 ∧ p.2 < n) ∧
-  sparsePairsInOrder r.orderedPairs = true
-
+/-- Exact native-style executable width, bounds and canonical pair order. -/
 def SparseCoefficientRecord.checkShape (r : SparseCoefficientRecord) (n : ℕ) : Bool :=
-  decide (r.wellFormed n)
+  decide (r.linear.length = n) &&
+    r.orderedPairs.all (fun p => decide (p.1 < p.2 ∧ p.2 < n)) &&
+    sparsePairsInOrder r.orderedPairs
+
+/-- Acceptance is the executable structural predicate, not an oracle. -/
+def SparseCoefficientRecord.wellFormed (r : SparseCoefficientRecord) (n : ℕ) : Prop :=
+  r.checkShape n = true
 
 theorem SparseCoefficientRecord.checkShape_sound
     (r : SparseCoefficientRecord) (n : ℕ)
-    (accepted : r.checkShape n = true) : r.wellFormed n := by
-  simpa only [SparseCoefficientRecord.checkShape, decide_eq_true_eq] using accepted
+    (accepted : r.checkShape n = true) : r.wellFormed n :=
+  accepted
+
+theorem SparseCoefficientRecord.checkShape_width
+    (r : SparseCoefficientRecord) (n : ℕ)
+    (accepted : r.checkShape n = true) : r.linear.length = n := by
+  simp only [SparseCoefficientRecord.checkShape, Bool.and_eq_true,
+    decide_eq_true_eq] at accepted
+  exact accepted.1.1
 
 /-- Total logical decoding; use only a shape-checked record for native claims.
 The Option fallback keeps this model total on malformed lists, while checkShape
@@ -412,21 +419,21 @@ def nativeSignedOutput {n : ℕ} (out : NativeOutputRecord)
     (2 : ℤ) ^ out.exponent * signedBit (nativePhase bits out.phaseTerms)
   else 0
 
-/-- A squarefree degree-two native monomial with ordered, in-range indices. -/
-def nativeTermWellFormed (width : ℕ) (term : List Nat) : Prop :=
-  term.length ≤ 2 ∧
-  ((term.zip (term.drop 1)).all (fun p => decide (p.1 < p.2))) = true ∧
-  term.Forall (· < width)
+/-- All shape checks use explicit Boolean folds so they compute under decide. -/
+def nativeTermWellFormed (width : ℕ) (term : List Nat) : Bool :=
+  decide (term.length ≤ 2) &&
+    (term.zip (term.drop 1)).all (fun p => decide (p.1 < p.2)) &&
+    term.all (fun i => decide (i < width))
 
 def nativeSourceShape (n : ℕ) (src : NativeSourceRecord) : Prop :=
-  src.phaseTerms.Forall (nativeTermWellFormed (n + 1)) ∧
-    src.rows.Forall (fun row => row.1.Forall (· < n + 1))
+  src.phaseTerms.all (nativeTermWellFormed (n + 1)) = true ∧
+    src.rows.all (fun row => row.1.all (fun i => decide (i < n + 1))) = true
 
 def nativeOutputShape (n : ℕ) (out : NativeOutputRecord) : Prop :=
-  out.phaseTerms.Forall (nativeTermWellFormed n) ∧
-    out.rows.Forall (fun row => row.1.Forall (· < n)) ∧
-    out.added.toList.Forall (fun row => row.1.Forall (· < n)) ∧
-    out.receipt.wellFormed n
+  out.phaseTerms.all (nativeTermWellFormed n) = true ∧
+    out.rows.all (fun row => row.1.all (fun i => decide (i < n))) = true ∧
+    out.added.toList.all (fun row => row.1.all (fun i => decide (i < n))) = true ∧
+    out.receipt.checkShape n = true
 
 def nativeSupport {n : ℕ} (boundary : Fin n → Bool) :
     Finset (Fin n) :=

@@ -80,12 +80,12 @@ jobs:
           # and actively assert that each forbidden marker is recognized.
           placeholder_pattern='(^|[^[:alnum:]_])(sorry|admit|axiom|sorryAx)([^[:alnum:]_]|$)'
           for poison in 'def x := by sorry' 'def x := by admit' 'axiom x : False' 'def x := sorryAx'; do
-            if ! printf '%s\\n' "$poison" | grep -Eq "$placeholder_pattern"; then
+            if ! printf '%s\n' "$poison" | grep -Eq "$placeholder_pattern"; then
               echo "placeholder detector failed its negative control: $poison" >&2
               exit 1
             fi
           done
-          if printf '%s\\n' 'def x := unsorryed' | grep -Eq "$placeholder_pattern"; then
+          if printf '%s\n' 'def x := unsorryed' | grep -Eq "$placeholder_pattern"; then
             echo 'placeholder detector rejected a non-placeholder identifier' >&2
             exit 1
           fi

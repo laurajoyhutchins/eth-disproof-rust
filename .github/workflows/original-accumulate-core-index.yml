@@ -1,4 +1,4 @@
-name: Original accumulator indexed instruction probe (no Meta)
+name: Original accumulator complete table and kernel certificate (no Meta)
 
 on:
   pull_request:
@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/original-accumulate-core-index.yml'
       - 'rust/lean_eth_reference/tools/query_accumulate_core_index.lean'
+      - 'rust/lean_eth_reference/tools/query_core_table_acceptance.py'
 
 permissions:
   contents: read
@@ -69,82 +70,26 @@ jobs:
           restore-keys: |
             original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-
 
-      - name: Query actual original compiled instruction addresses in Lean core
+      # Use the canonical main verification library at an immutable commit.
+      # No second physical-instruction serializer is admitted.
+      - name: Restore canonical source-graph decoder and Lean certificate generator
         shell: bash
         run: |
           set -euo pipefail
-          export ACC_INDEX_OUTPUT="$RUNNER_TEMP/acc-index"
-          mkdir -p "$ACC_INDEX_OUTPUT"
-          python3 - <<'PY'
-          import hashlib, json, os, re, sys
-          from pathlib import Path
-          sys.path.insert(0,"rust/lean_eth_reference/tools")
-          from query_stream_aot import run_bounded, MAX_EXPORT_RSS_BYTES
-          base=Path(os.environ["ACC_INDEX_OUTPUT"])
-          lake=Path(os.environ["GITHUB_WORKSPACE"])/"instrumentation/lean-env"
-          lean=Path(os.environ["GITHUB_WORKSPACE"])/"rust/lean_eth_reference/tools/query_accumulate_core_index.lean"
-          olean=lake/".lake/build/lib/lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.olean"
-          receipt={
-              "status":"REFUSED",
-              "original_commit":os.environ["ORIGINAL_SOURCE_SHA"],
-              "original_source_git_blob":"3e1664be261748c6e12a2d1cafb033dc26131bf9",
-              "full_source_graph":False,
-              "lean_kernel_code_certificate":False,
-              "native_rust_correspondence":False,
-              "uniform_complexity_proof":False,
-          }
-          try:
-              if not olean.is_file() or olean.is_symlink():
-                  raise ValueError("pinned original numerical accumulator .olean missing; no rebuild")
-              receipt["original_olean_sha256"]=hashlib.sha256(olean.read_bytes()).hexdigest()
-              receipt["index_lean_sha256"]=hashlib.sha256(lean.read_bytes()).hexdigest()
-              checked=run_bounded(
-                  ["lake","env","lean","-j","1","-M","9216",str(lean)],
-                  lake,300,log_base=base/"lean-index",rss_limit_bytes=MAX_EXPORT_RSS_BYTES
-              )
-              if checked.returncode:
-                  raise ValueError("original core indexing failed exit="+str(checked.returncode)+
-                                   " tail="+checked.stdout[-1800:]+checked.stderr[-1200:])
-              if checked.stderr.strip():
-                  raise ValueError("Lean emitted unexpected stderr: "+checked.stderr[-1000:])
-              lines=checked.stdout.strip().splitlines()
-              data={}
-              for line in lines:
-                  if not line.startswith("ORIGINAL_ACCUMULATE_") or "=" not in line:
-                      raise ValueError("unrecognized original index output: "+line[:200])
-                  k,v=line.split("=",1)
-                  if k in data and data[k]!=v:
-                      raise ValueError("conflicting original index line: "+k)
-                  data[k]=v
-              count=int(data["ORIGINAL_ACCUMULATE_LABELS"])
-              entry=int(data["ORIGINAL_ACCUMULATE_ENTRY"])
-              if not (0<count<=1000000000 and 0<=entry<count and
-                      data["ORIGINAL_ACCUMULATE_INPUT"]=="15" and
-                      data["ORIGINAL_ACCUMULATE_OUTPUT"]=="17"):
-                  raise ValueError("original source ABI or label count refused")
-              for label in {0,1,entry,count-1}:
-                  if label<count:
-                      key="ORIGINAL_ACCUMULATE_CODE_AT["+str(label)+"]"
-                      if key not in data or not re.fullmatch(
-                          r"(?:halt|(?:goto|set|copy|not|and|or|xor|branch|push|peek|pop):[0-9:]+)",data[key]
-                      ):
-                          raise ValueError("missing or malformed original code_at "+str(label))
-              if data["ORIGINAL_ACCUMULATE_CODE_AT["+str(count-1)+"]"]!="halt":
-                  raise ValueError("original compiled final instruction is not halt")
-              receipt.update({
-                  "status":"ORIGINAL_LEAN_CORE_CODE_AT_OBSERVED",
-                  "labels":count,"entry":entry,"input":15,"output":17,
-                  "code_at":{k:v for k,v in data.items() if k.startswith("ORIGINAL_ACCUMULATE_CODE_AT[")},
-                  "observation_only":True,
-              })
-          except Exception as e:
-              receipt["status"]="REFUSED"
-              receipt["reason"]=str(e)[-3000:]
-          (base/"report.json").write_text(json.dumps(receipt,sort_keys=True,indent=2)+"\n")
-          print("ACCUMULATOR_CORE_INDEX="+json.dumps(receipt,sort_keys=True))
-          if receipt["status"]!="ORIGINAL_LEAN_CORE_CODE_AT_OBSERVED":
-              raise SystemExit(2)
-          PY
+          git fetch --depth=1 origin 6fefebfcdfefd7faef77605cf171c20ad307e718
+          test "$(git rev-parse FETCH_HEAD)" = 6fefebfcdfefd7faef77605cf171c20ad307e718
+          git restore --source=FETCH_HEAD --worktree -- eth/tools
+          test -f eth/tools/source_graph_kernel_certificate.py
+          test -f eth/tools/verify_source_graph.py
+
+      - name: Enumerate exact source instructions and require fresh all-label Lean certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile rust/lean_eth_reference/tools/query_core_table_acceptance.py
+          python3 rust/lean_eth_reference/tools/query_core_table_acceptance.py \
+            --lake-root "$LEAN_ROOT" \
+            --output-dir "$RUNNER_TEMP/acc-index" --timeout 300
 
       - name: Preserve exact original source instructions or typed refusal
         if: always()

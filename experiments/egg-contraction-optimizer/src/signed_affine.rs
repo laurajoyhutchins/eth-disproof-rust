@@ -853,6 +853,14 @@ mod tests {
                 let source = QuadraticPhase::new(width, raw).unwrap();
                 let (base, mixed_constraint) = source.remove_first(None).unwrap();
                 let mixed = mixed_constraint.unwrap();
+                let replacement_constant = next(&mut seed) & 1 != 0;
+                let replacement_linear = (0..n)
+                    .map(|_| next(&mut seed) & 1 != 0)
+                    .collect::<Vec<_>>();
+                let (forced, forced_constraint) = source
+                    .remove_first(Some(&(replacement_constant, replacement_linear.clone())))
+                    .unwrap();
+                assert!(forced_constraint.is_none());
                 for word in 0..(1usize << n) {
                     let boundary = bits(n, word);
                     let mixed_bit = mixed.boundary_indices.iter().fold(
@@ -867,6 +875,15 @@ mod tests {
                             "internal-bit phase split failed: n={n}, word={word}, x={x}",
                         );
                     }
+                    let forced_x = replacement_linear.iter().zip(&boundary).fold(
+                        replacement_constant,
+                        |parity, (&coefficient, &bit)| parity ^ (coefficient && bit),
+                    );
+                    assert_eq!(
+                        source.eval(&assignment(&boundary, forced_x)),
+                        forced.eval(&boundary),
+                        "forced affine source substitution failed: n={n}, word={word}",
+                    );
                 }
             }
         }

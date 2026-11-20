@@ -35,6 +35,12 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      - name: Fail-fast worklist diagnostic script syntax
+        run: |
+          bash -n compiler/scripts/check-internal-worklist.sh
+          python3 -m py_compile compiler/scripts/instrument-pinned-worklist.py
+          python3 -m py_compile compiler/scripts/check-internal-worklist.py
+
       - name: Restore pinned Rust 1.99.1
         run: |
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy

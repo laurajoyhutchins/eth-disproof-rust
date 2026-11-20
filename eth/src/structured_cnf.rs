@@ -107,6 +107,24 @@ struct CheckedCsrRow {
 }
 
 impl SignedCsr<'_> {
+    /// One fail-closed outer CSR contract shared by the recognizer and
+    /// independent receipt replay. This validates the declared shape,
+    /// not the row contents; checked_row validates those separately.
+    fn validated_row_count(&self) -> Result<usize, Error> {
+        if self.variables < 4 {
+            return Err(refuse("requires at least four variables"));
+        }
+        let (rows, offsets) = expected_csr_shape(self.variables)?;
+        if self.row_offsets.len() != offsets
+            || self.column_indices.len() != self.signs.len()
+            || self.row_offsets.first() != Some(&0)
+            || self.row_offsets.last() != Some(&self.column_indices.len())
+        {
+            return Err(refuse("incorrect matrix shape or CSR offsets"));
+        }
+        Ok(rows)
+    }
+
     /// Return the exact ternary row or refuse. All indexing is checked.
     /// In particular, start+3 and row+1 are checked before slicing; there
     /// is no unchecked access even when called before outer-shape validation.
@@ -135,17 +153,7 @@ impl SignedCsr<'_> {
     /// This is a word-operation bound; no whole-machine bit-cost theorem.
     pub fn recognize_recurrence(&self) -> Result<RecurrenceReceipt, Error> {
         let n = self.variables;
-        if n < 4 {
-            return Err(refuse("requires at least four variables"));
-        }
-        let (expected_rows, expected_offsets) = expected_csr_shape(n)?;
-        if self.row_offsets.len() != expected_offsets
-            || self.column_indices.len() != self.signs.len()
-            || self.row_offsets.first() != Some(&0)
-            || self.row_offsets.last() != Some(&self.column_indices.len())
-        {
-            return Err(refuse("incorrect matrix shape or CSR offsets"));
-        }
+        let expected_rows = self.validated_row_count()?;
 
         // Group exact rows by their three distinct variable indices; an
         // eight-bit value records which of the eight polarities occur.
@@ -234,14 +242,7 @@ pub fn verify_recurrence_receipt(
         return Err(refuse("receipt has incorrect variable count or RHS length"));
     }
 
-    let (expected_rows, expected_offsets) = expected_csr_shape(n)?;
-    if csr.row_offsets.len() != expected_offsets
-        || csr.row_offsets.first() != Some(&0)
-        || csr.row_offsets.last() != Some(&csr.column_indices.len())
-        || csr.column_indices.len() != csr.signs.len()
-    {
-        return Err(refuse("invalid source offsets or row count"));
-    }
+    let expected_rows = csr.validated_row_count()?;
 
     let mut actual = BTreeSet::new();
     for row_index in 0..expected_rows {

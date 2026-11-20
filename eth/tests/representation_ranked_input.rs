@@ -142,7 +142,6 @@ fn malformed_source_refuses_before_any_arithmetic_and_preserves_guard_precedence
     assert_eq!(trace.len(), 10);
 }
 
-
 #[test]
 fn trace_records_exact_arithmetic_sequence_from_one_source_execution() {
     let input = fixture();
@@ -151,11 +150,8 @@ fn trace_records_exact_arithmetic_sequence_from_one_source_execution() {
         &input.source_edges,
         &input.certificate,
     );
-    let ordinary = contract_checked_ranked_weights(
-        &input.weights,
-        &input.source_edges,
-        &input.certificate,
-    );
+    let ordinary =
+        contract_checked_ranked_weights(&input.weights, &input.source_edges, &input.certificate);
     assert_eq!(traced, ordinary);
     let actual = events
         .iter()
@@ -218,7 +214,10 @@ fn trace_includes_first_overflow_and_stops_before_other_operations() {
     );
     let bytes = encode_ranked_input(&input).unwrap();
     let (wire_result, wire_events) = execute_ranked_wire(&bytes);
-    assert_eq!(wire_result.unwrap_err(), lean_eth_reference::Error::Overflow);
+    assert_eq!(
+        wire_result.unwrap_err(),
+        lean_eth_reference::Error::Overflow
+    );
     assert_eq!(wire_events, events);
 }
 

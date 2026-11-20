@@ -1560,7 +1560,23 @@ theorem checkedCsr_addOne_bitvec (w n : Nat)
     Nat.mod_eq_of_lt hone]
   rw [hsize, Nat.mod_eq_of_lt htotal]
 
+/-- On n ≥ 4, the checked offset-count calculation succeeds exactly
+when the five-fold product is representable. There is no hidden failure
+from subtracting fourteen or adding the terminating offset. -/
+theorem checkedCsrOffsetCount_success_iff (w n : Nat) (hn : 4 ≤ n) :
+    checkedCsrOffsetCount w n = some (5 * n - 13) ↔ 5 * n < 2 ^ w := by
+  constructor
+  · intro h
+    by_cases hfit : 5 * n < 2 ^ w
+    · exact hfit
+    · have overflow : 2 ^ w ≤ 5 * n := by omega
+      have refused := checkedCsrRowCount_overflow w n overflow
+      simp [checkedCsrOffsetCount, refused] at h
+  · intro hfit
+    exact checkedCsrOffsetCount_of_fits w n hn hfit
+
 #print axioms IndependentETH.NonAffine.checkedCsrRowCount_of_fits
+#print axioms IndependentETH.NonAffine.checkedCsrOffsetCount_success_iff
 #print axioms IndependentETH.NonAffine.checkedCsrOffsetCount_of_fits
 #print axioms IndependentETH.NonAffine.checkedCsrRowCount_overflow
 #print axioms IndependentETH.NonAffine.checkedCsrRowCount_success_bounds

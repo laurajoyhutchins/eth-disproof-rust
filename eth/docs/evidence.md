@@ -48,4 +48,21 @@ printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
 
 The [Rust workflow](../../.github/workflows/rust.yml) reports the exact head checked. A green run from yesterday validates yesterday's commit, not today's.
 
+### Why the root gate has no extra profiling or first-node step
+
+`cargo test --locked --offline --all-targets` already runs the
+`profile_source_accounting` integration tests, which invoke
+`profile-full-machine --nonterminal` and `--terminal`, assert both
+unsupported-count refusal and measured stage accounting, and reject invalid
+observer modes. The same command runs
+`native_query_first_node_composition`, checking stage-replay states and
+explicit absence of a fabricated QueryStream count. Running either again as
+a named CI step repeats the *same implementation* and does not diversify
+evidence. The standalone profiling commands remain available for diagnosis.
+
+Distinct gates still matter: pinned Lean kernel checks, fresh original-Lean
+execution against generated Rust, independent certificates with adversarial
+mutations, and explicit fail-closed input decoding each test a different
+failure mode. Rust test success alone establishes none of those claims.
+
 [Compiler acceptance](../../research/lean-rust-acceptance.md) · [Independent differential specification](independent-differential-and-accounting.md)

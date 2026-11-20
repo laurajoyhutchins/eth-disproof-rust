@@ -201,8 +201,6 @@ theorem terminal_card_arbitrary_columns
       Fintype.card_congr (columnSolutionEquiv t e b)
     _ = if residualOK t b then 2 ^ Fintype.card F else 0 := terminal_card t b
 
-
-
 /-!
 ## Checked replayed rows: exact-count soundness of the terminal *decision*
 

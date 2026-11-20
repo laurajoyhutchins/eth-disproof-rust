@@ -306,11 +306,13 @@ mod tests {
 
     #[test]
     fn future_clause_rejects_two_join_pairs_before_products() {
-        // x is dead at this join; p is retained because the future
-        // source clause is (p). Each final p key has two distinct
-        // x-completions. Check those duplicate fibers explicitly.
+        // x and z are dead at this join; p is retained because
+        // the original future source clause is (p). Each p key
+        // receives four distinct (x,z) completions. Unlike an
+        // artificially forced compile, this fixture has eight
+        // incoming nonzero left entries and meets the real gate.
         let factors = vec![
-            free(&["p", "x"]),
+            free(&["p", "x", "z"]),
             free(&["x"]),
             clause(&["p"], &[("p", true)]),
         ];
@@ -329,10 +331,10 @@ mod tests {
         let mut before = Work::default();
         let mut after = Work::default();
         let compiled_before = compile(
-            &factors, &order, 1, &kept, 8, &mut before,
+            &factors, &order, 1, &kept, left.entries(), &mut before,
         ).unwrap();
         let compiled_after = compile(
-            &factors, &order, 1, &kept, 8, &mut after,
+            &factors, &order, 1, &kept, left.entries(), &mut after,
         ).unwrap();
         let first = merge_preproduct(
             &left, &right, &kept, &compiled_before, &mut before,
@@ -345,14 +347,14 @@ mod tests {
             assert_eq!(first.get(mask), second.get(mask));
         }
         assert_eq!(first.get(0), BigUint::default());
-        assert_eq!(first.get(1), BigUint::from(2u8));
-        assert_eq!(before.exact.multiplications, 2);
-        assert_eq!(after.exact.multiplications, 4);
-        assert_eq!(before.candidate_products_refused, 2);
-        // At final factor admission the complete source has two
-        // satisfying assignments (x remains a free hidden variable).
+        assert_eq!(first.get(1), BigUint::from(4u8));
+        assert_eq!(before.exact.multiplications, 4);
+        assert_eq!(after.exact.multiplications, 8);
+        assert_eq!(before.candidate_products_refused, 4);
+        // After the final clause the original source has four
+        // satisfying assignments: x and z are both hidden and free.
         let expected = source_oracle(&factors, &[], 0).unwrap().count_at_zero();
-        assert_eq!(expected, BigUint::from(2u8));
+        assert_eq!(expected, BigUint::from(4u8));
     }
 
     #[test]

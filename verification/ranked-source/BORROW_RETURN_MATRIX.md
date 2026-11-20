@@ -7,7 +7,7 @@ mutation/return boundary. They are compiled as a separate module by the
 existing source-linked verification harness, alongside the **unmodified**
 production ranked decoder, guard and traced executor.
 
-The ninth extraction target, `ranked-source`, includes the **actual production
+The thirteenth extraction target, `ranked-source`, includes the **actual production
 `execute_ranked_wire`** and must remain blocked unless *that* source closure
 is translated. The synthetic probe results never certify it.
 

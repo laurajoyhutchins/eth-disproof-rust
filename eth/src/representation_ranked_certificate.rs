@@ -40,7 +40,15 @@ fn check_edge_bounds(n: usize, source_edges: &[(usize, usize)]) -> Result<(), Er
     let mut index = 0;
     while index < source_edges.len() && !invalid {
         let (a, b) = source_edges[index];
-        invalid = a >= n || b >= n;
+        // Keep the Bool state explicit for source-to-Lean extraction. The
+        // checks are pure and read both already-loaded endpoint values.
+        // This is equivalent to a >= n || b >= n on all valid usize inputs.
+        if a >= n {
+            invalid = true;
+        }
+        if b >= n {
+            invalid = true;
+        }
         index += 1;
     }
     if invalid {

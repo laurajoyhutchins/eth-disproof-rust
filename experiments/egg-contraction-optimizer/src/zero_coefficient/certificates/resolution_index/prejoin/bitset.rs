@@ -393,12 +393,16 @@ mod tests {
         let shared = vec!["s".to_owned(), "x".to_owned()];
         let Values::Sparse(a) = &left.values else { unreachable!() };
         let Values::Sparse(b) = &right.values else { unreachable!() };
-        let matched = a.keys().flat_map(|&m| {
-            b.keys().filter(move |&&n| {
-                project(m, &left.ports, &shared) ==
+        let mut matched = 0;
+        for &m in a.keys() {
+            for &n in b.keys() {
+                if project(m, &left.ports, &shared) ==
                     project(n, &right.ports, &shared)
-            })
-        }).count();
+                {
+                    matched += 1;
+                }
+            }
+        }
         assert_eq!(matched, 0);
     }
 

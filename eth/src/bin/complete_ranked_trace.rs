@@ -293,14 +293,19 @@ fn main() {
 mod tests {
     use super::*;
 
+    fn traced(fixture: &Fixture) -> (Result<lean_eth_reference::representation_ranked_certificate::RankedCountReceipt, Error>, Vec<ArithmeticReceipt>) {
+        let source = RankedContractionInput {
+            weights: fixture.weights.clone(),
+            source_edges: fixture.edges.clone(),
+            certificate: fixture.certificate.clone(),
+        };
+        execute_ranked_wire(&encode_ranked_input(&source).unwrap())
+    }
+
     #[test]
     fn full_trace_is_ordered_and_stops_on_overflow() {
         let cases = fixtures();
-        let (success, trace) = contract_checked_ranked_weights_with_trace(
-            &cases[0].weights,
-            &cases[0].edges,
-            &cases[0].certificate,
-        );
+        let (success, trace) = traced(&cases[0]);
         assert_eq!(success.unwrap().value, -42);
         assert_eq!(trace.len(), 10); // 2*n scan mul + 2*c final ops
         assert_eq!(
@@ -314,11 +319,7 @@ mod tests {
 
         for (index, expected_len) in [(1, 3), (2, 3)] {
             let fixture = &cases[index];
-            let (result, trace) = contract_checked_ranked_weights_with_trace(
-                &fixture.weights,
-                &fixture.edges,
-                &fixture.certificate,
-            );
+            let (result, trace) = traced(fixture);
             assert_eq!(result, Err(Error::Overflow));
             assert_eq!(trace.len(), expected_len);
             assert!(trace.last().is_some_and(|r| r.observed.is_none()));

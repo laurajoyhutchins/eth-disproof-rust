@@ -93,6 +93,17 @@ jobs:
           test "$(grep -c '"mode":"nogood-full-assignment"' /tmp/nogood-reuse-receipts.jsonl)" -eq 56
           test "$(grep -c '"mode":"nogood-minimized"' /tmp/nogood-reuse-receipts.jsonl)" -eq 56
 
+      - name: Check source-resolution frontier masks against source enumeration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin frontier-resolution-study | tee /tmp/frontier-resolution-receipts.jsonl
+          test "$(wc -l < /tmp/frontier-resolution-receipts.jsonl)" -eq 144
+          test "$(grep -c '"oracle":"checked"' /tmp/frontier-resolution-receipts.jsonl)" -eq 144
+          test "$(grep -c '"cohort":"fresh-validation"' /tmp/frontier-resolution-receipts.jsonl)" -eq 32
+          test "$(grep -c '"mode":"indexed-source-clauses"' /tmp/frontier-resolution-receipts.jsonl)" -eq 72
+          test "$(grep -c '"mode":"indexed-checked-resolution"' /tmp/frontier-resolution-receipts.jsonl)" -eq 72
+
       - name: Run contraction-order study and check small-case oracle
         shell: bash
         run: |

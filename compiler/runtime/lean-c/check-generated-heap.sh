@@ -214,7 +214,8 @@ LR_SOURCE_DEL_EVENTS="$out/source-del-events.tsv" \
 # increments/decrements or forged object identities. The event scope is the
 # compiler-visible primitive calls, not recursive worklist suboperations.
 test -s "$out/source-del-events.tsv"
-python3 scripts/check-source-del-events.py "$out/source-del-events.tsv" --self-test \
+python3 scripts/check-source-del-events.py "$out/source-del-events.tsv" \
+  artifacts/source-del-final-ir.txt --self-test \
   | tee "$out/source-del-events-audit.txt"
 grep -Fq 'source_del_original_C_vs_exact_Reader_event_parity=PASS cases=8 lanes=16' \
   "$out/source-del-events-audit.txt"

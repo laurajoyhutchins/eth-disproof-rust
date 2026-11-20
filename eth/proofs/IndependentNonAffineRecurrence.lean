@@ -618,9 +618,11 @@ theorem sourceCNFWord_rows {s : State} {ds w : List Bool}
       apply (sourceRows_exact [] (wordAssignment [a, b, c])).2
       constructor
       · intro i hi
-        omega
+        simp at hi
       · intro i hi
-        have hi0 : i = 0 := by omega
+        have hi0 : i = 0 := by
+          simp at hi
+          omega
         subst i
         have hn : nonzero (a, b, c) = true := by
           simpa only [orWindow_exact] using h

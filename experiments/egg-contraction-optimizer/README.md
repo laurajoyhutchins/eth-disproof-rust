@@ -250,3 +250,22 @@ The [new Lean terminal check theorem](../../eth/proofs/IndependentAffineTerminal
 The Rust independent checker suite now includes falsification cases for missing or unisolated pivots, internal bits in residual rows, and changed boundary residuals. It also accepts the legitimate free-variable coefficients in pivot equations. [Pinned exact-head CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44638863761) passed **six Lean modules and 39 Rust tests** with no sorryAx, and the [original ETH Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44638863755) passed at the same commit.
 
 **Trust boundary:** The new Lean theorem validates the mathematical predicate for a replayed terminal matrix; source occurrence parity is likewise a mathematical theorem. The actual Rust string lookup, row assembly, terminal checker decisions and machine-level resources still lack a source-to-Lean implementation refinement proof. No general SAT or ETH speedup is claimed.
+
+
+## Independent Lean audit of native Rust-produced certificates
+
+The opt-in Rust CLI emits **data-only Lean fixture records**, not claims trusted by the Lean side:
+
+~~~sh
+cargo run --manifest-path experiments/egg-contraction-optimizer/Cargo.toml -- --emit-lean-certificates
+~~~
+
+The [Rust emitter](src/affine_native_lean.rs) serializes original source equation occurrence lists, raw row operations, pivot columns and the claimed boundary interface into closed Lean terms. Names are decimal UTF-8 byte lists, not executable text. It emits six valid receipts from the live producer and six fault-injected negative receipts.
+
+The [independent Lean auditor](../../eth/proofs/IndependentAffineNativeAudit.lean) reconstructs coefficient rows **from source occurrences**, replays raw swaps and XORs and checks the terminal certificate independently of the native checker. Lean proves closed receipt acceptance/refusal equalities using the kernel-checked decide tactic. Five small accepted cases are also exhaustively checked against direct Boolean source counting, for **every boundary assignment**. A 130-variable case crosses packed-word boundaries but does not use exponential direct counting.
+
+The pinned [exact-head CI run #44743370753](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44743370753) passed the generated Lean audit, seven Lean source modules and **40 Rust tests**. The [original ETH Rust CI #44743370842](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44743370842) independently passed at the same commit.
+
+**Trust boundary:** This is a finite, actual-Rust-output cross-implementation test with kernel-checked Lean propositions, not a universal formal refinement of the Rust source, compiler or binary. The fixed Lean auditor and limited fixture emitter are not an arbitrary byte protocol parser. The Rust data structures, every input/rejection path, machine memory semantics and worst-case costs remain separately unverified.
+
+Notebook: [Affine elimination certificates](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).

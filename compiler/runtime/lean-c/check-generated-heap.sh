@@ -204,6 +204,7 @@ leanc -O2 -o "$out/source-del-execute" \
   runtime/lean-c/source_release_oracle.c \
   runtime/lean-c/destructor_worklist_oracle.c \
   runtime/lean-c/source_del_event_trace.c \
+  runtime/lean-c/worklist_internal_trace.c \
   "$out/abi-traced.c" "$out/libsource_del_generated.a"
 # The physically observed trace comes from actual pinned Lean C calls,
 # not a Rust or Lean reimplementation of those primitive operations.
@@ -232,6 +233,14 @@ grep -Fq 'destructor_worklist_witnesses=PASS cases=8 rows=81 physical_refcount_e
   "$out/destructor-worklist-witness-audit.txt"
 grep -Fq 'destructor_witness_mutations=9/9_REFUSED' \
   "$out/destructor-worklist-witness-audit.txt"
+# Only after the STOCK Lean runtime's reference effects pass, run the
+# separate pinned-source diagnostic executable with internal event hooks.
+# The original build and its emitted Reader/C outputs remain unchanged.
+bash scripts/check-internal-worklist.sh
+grep -Fq 'worklist_internal_trace=PASS cases=8' \
+  "$out/internal-worklist-audit.txt"
+grep -Fxq 'worklist_stock_vs_diagnostic_physical_effects=PASS rows=81' \
+  "$out/stock-diagnostic-comparison.txt"
 test -s "$out/source-shell-physical.tsv"
 test -s "$out/source-release-physical.tsv"
 lean proofs/ReaderCReleaseAudit.lean | tee "$out/source-release-trace-audit.txt"
@@ -399,6 +408,13 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
   echo 'shell_del_shared_parent=REFUSED'
   echo 'source_del_ownership_event_trace=8_CASES_EXACT_EMITTED_C_AND_RUST_PRIMITIVE_CALLS'
   echo 'source_del_recursive_destructor_internals=NOT_INSTRUMENTED'
+  echo 'internal_destructor_worklist=PINNED_SOURCE_DIAGNOSTIC_INDEPENDENT_EXECUTABLE'
+  echo 'internal_destructor_stock_effect_equivalence=81_LIVE_WITNESS_ROWS'
+  echo 'internal_destructor_unmodified_runtime_trace=NOT_OBSERVED'
+  sha256sum scripts/check-internal-worklist.sh scripts/instrument-pinned-worklist.py \
+    scripts/check-internal-worklist.py runtime/lean-c/worklist_internal_trace.c \
+    "$out/internal-worklist-events.tsv" "$out/internal-worklist-audit.txt" \
+    "$out/internal-witnesses.tsv" "$out/worklist-source-audit.txt"
   echo 'physical_destructor_worklist=8_CASES_81_REAL_C_RC_WITNESSES'
   echo 'physical_destructor_free_timestamps=NOT_OBSERVED'
   echo 'physical_destructor_order=NOT_OBSERVED'

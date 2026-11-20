@@ -24,6 +24,12 @@ extern int fprintf(FILE *, const char *, ...);
 extern char *getenv(const char *);
 #define REQUIRE(b) do { if (!(b)) __builtin_trap(); } while (0)
 
+/* No-op unless the diagnostic executable selects LR_WORKLIST_EVENTS.
+ * These register live identities, never dereference an object after free. */
+extern void lr_wl_trace_register(const char *, unsigned, lean_object *);
+extern void lr_wl_trace_begin(const char *);
+extern void lr_wl_trace_end(void);
+
 enum { MAX_WITNESSES = 8 };
 
 typedef struct {
@@ -32,6 +38,8 @@ typedef struct {
     lean_object *retained;        /* Has an independent owned credit, or NULL. */
     lean_object *witness[MAX_WITNESSES];
     uintptr_t witness_id[MAX_WITNESSES];
+    lean_object *nodes[MAX_WITNESSES + 2];
+    unsigned node_count;
     uintptr_t root_id;
     unsigned count;
     int shared_root;
@@ -82,6 +90,8 @@ static cascade make_chain(const char *name, unsigned depth, int retained_index,
     }
     c.root = nodes[0];
     c.root_id = (uintptr_t)c.root;
+    c.node_count = depth;
+    for (unsigned i = 0; i < depth; ++i) c.nodes[i] = nodes[i];
     if (retained_index >= 0) {
         c.retained = nodes[retained_index];
         lean_inc(c.retained);
@@ -119,6 +129,10 @@ static cascade make_fork(const char *name, int retain_right) {
     lean_ctor_set(root, 1, leaves[2]);
     c.root = root;
     c.root_id = (uintptr_t)root;
+    c.node_count = 5;
+    c.nodes[0] = root;
+    c.nodes[1] = inner;
+    for (unsigned i = 0; i < 3; ++i) c.nodes[i + 2] = leaves[i];
     REQUIRE(live_rc(root) == 1 && live_rc(inner) == 1);
     if (retain_right) {
         c.retained = leaves[2];
@@ -146,8 +160,16 @@ static void record(FILE *f, const cascade *c, const char *phase) {
 static void run(FILE *f, cascade c) {
     REQUIRE(c.root != NULL && c.count >= 1);
     record(f, &c, "before");
-    /* This invokes the pinned Lean C++ runtime. It is NOT simulated. */
+    /* In the diagnostic build the original pinned object.cpp logs internal
+       worklist events. The stock executable still runs unmodified and
+       supplies independent descendant RC witness observations. */
+    for (unsigned i = 0; i < c.node_count; ++i)
+        lr_wl_trace_register("node", i, c.nodes[i]);
+    for (unsigned i = 0; i < c.count; ++i)
+        lr_wl_trace_register("witness", i, c.witness[i]);
+    lr_wl_trace_begin(c.name);
     lean_dec(c.root);
+    lr_wl_trace_end();
     /* The root is potentially freed: record only live, independently owned
        witnesses. Never dereference the old root or a freed descendant. */
     record(f, &c, "afterRoot");

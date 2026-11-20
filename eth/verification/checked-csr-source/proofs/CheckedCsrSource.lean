@@ -19,13 +19,13 @@ the complete generated-to-independent-model theorem remains open. -/
 theorem CheckedCsrSource.generated_checked_row_missing_start_refuses
     (offsets columns : Aeneas.Std.Slice Aeneas.Std.Usize)
     (signs : Aeneas.Std.Slice Aeneas.Std.I8)
-    (variables row : Aeneas.Std.Usize)
+    (variableCount row : Aeneas.Std.Usize)
     (h :
       Aeneas.Std.core.slice.Slice.get
         (Aeneas.Std.core.slice.index.SliceIndexUsizeSlice Aeneas.Std.Usize)
         offsets row = Aeneas.Std.Result.ok none) :
     CheckedCsrSource.checked_csr_row.checked_row
-      offsets columns signs variables row = Aeneas.Std.Result.ok none := by
+      offsets columns signs variableCount row = Aeneas.Std.Result.ok none := by
   simp [CheckedCsrSource.checked_csr_row.checked_row, h,
     Aeneas.Std.core.option.Option.Insts.CoreOpsTry_traitTry.branch,
     Aeneas.Std.core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residual]

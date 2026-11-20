@@ -222,6 +222,41 @@ theorem checkedReplay_sound {n : Nat}
           simp only [List.foldl_cons]
           rw [heq]
 
+
+/-- Dropping raw candidate indices after checked replay leaves the
+same ordered name-occurrence trace. -/
+theorem foldl_names_of_pairs {n : Nat}
+    (names : Fin n → Name) (steps : List (Name × Nat))
+    (initial : Fin n → Bool) :
+    steps.foldl (fun row pair => toggleName names row pair.1) initial =
+      (steps.map Prod.fst).foldl (toggleName names) initial := by
+  induction steps generalizing initial with
+  | nil => rfl
+  | cons head tail ih =>
+      rcases head with ⟨requested, raw⟩
+      simp only [List.foldl_cons, List.map_cons]
+      exact ih (toggleName names initial requested)
+
+/-- Strongest source-matrix seam in this experiment: for every accepted
+trace of arbitrary raw indices and names, each final bit equals the
+GF(2) source-occurrence parity at that declared column. The theorem
+does not assume the raw map values were correct: the checked admission
+step must independently validate each one before success. -/
+theorem checked_row_matches_occurrence_parity {n : Nat}
+    (names : Fin n → Name) (hUnique : Function.Injective names)
+    (steps : List (Name × Nat)) (result : Fin n → Bool)
+    (h : checkedReplay names steps (fun _ => false) = some result)
+    (column : Fin n) :
+    result column =
+      (steps.map Prod.fst).foldl
+        (fun parity name => parity ^^ decide (name = names column)) false := by
+  rw [checkedReplay_sound names hUnique steps (fun _ => false) result h]
+  rw [foldl_names_of_pairs names steps (fun _ => false)]
+  exact foldl_named_at names (steps.map Prod.fst) (fun _ => false) column
+
+#print axioms IndependentETH.AffineIndexToggle.foldl_names_of_pairs
+#print axioms IndependentETH.AffineIndexToggle.checked_row_matches_occurrence_parity
+
 #print axioms IndependentETH.AffineIndexToggle.checkedIndex_sound
 #print axioms IndependentETH.AffineIndexToggle.checkedToggle_sound
 #print axioms IndependentETH.AffineIndexToggle.checkedReplay_sound

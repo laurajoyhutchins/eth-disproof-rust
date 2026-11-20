@@ -44,11 +44,19 @@ private abbrev sourceProgram :=
   IO.println s!"ORIGINAL_ACCUMULATE_INPUT={p.inputStack.val}"
   IO.println s!"ORIGINAL_ACCUMULATE_OUTPUT={p.outputStack.val}"
   IO.println s!"ORIGINAL_ACCUMULATE_ENTRY={p.entry.val}"
-  for idx in [0, 1, p.entry.val, labels-1] do
-    if h : idx < labels then
-      let pc : Fin labels := ⟨idx, h⟩
-      IO.println s!"ORIGINAL_ACCUMULATE_CODE_AT[{idx}]={encodeInstr (p.code pc)}"
-    else
-      IO.println s!"ORIGINAL_ACCUMULATE_CODE_REFUSED[{idx}]=out_of_range"
+  let exitAddress := StructuredCalls.exitAddress accumulate
+  IO.println s!"ORIGINAL_ACCUMULATE_EXIT={exitAddress.val}"
+  -- All labels are now observed, but only under an explicit finite bound.
+  -- The subsequent independent Lean kernel certificate must still compare
+  -- the observed bytes against the original source definition.
+  if labels > 4096 then
+    IO.println s!"ORIGINAL_ACCUMULATE_CODE_REFUSED=labels_exceed_4096"
+  else
+    for idx in [:labels] do
+      if h : idx < labels then
+        let pc : Fin labels := ⟨idx, h⟩
+        IO.println s!"ORIGINAL_ACCUMULATE_CODE_AT[{idx}]={encodeInstr (p.code pc)}"
+      else
+        IO.println s!"ORIGINAL_ACCUMULATE_CODE_REFUSED[{idx}]=out_of_range"
 
 end OriginalAccumulatorIndexedProbe

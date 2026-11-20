@@ -5,8 +5,8 @@
 //! independently replays the full schedule, including early overflow.
 use lean_eth_reference::Error;
 use lean_eth_reference::representation_ranked_certificate::{
-    ArithmeticKind, ArithmeticReceipt, RankedComponentCertificate,
-    contract_checked_ranked_weights, contract_checked_ranked_weights_with_trace,
+    ArithmeticKind, ArithmeticReceipt, RankedComponentCertificate, contract_checked_ranked_weights,
+    contract_checked_ranked_weights_with_trace,
 };
 
 struct Fixture {
@@ -145,7 +145,13 @@ fn emit_source(fixture: &Fixture) {
         &fixture
             .weights
             .iter()
-            .map(|w| format!("(fun bit => if bit then {} else {})", word(w[1]), word(w[0])))
+            .map(|w| {
+                format!(
+                    "(fun bit => if bit then {} else {})",
+                    word(w[1]),
+                    word(w[0])
+                )
+            })
             .collect::<Vec<_>>(),
     );
 }
@@ -161,11 +167,7 @@ fn emit_receipts(name: &str, receipts: &[ArithmeticReceipt], observed: Option<i1
             Some(value) => format!("some {}", word(value)),
             None => "none".to_owned(),
         };
-        let end = if index + 1 == receipts.len() {
-            ""
-        } else {
-            ","
-        };
+        let end = if index + 1 == receipts.len() { "" } else { "," };
         println!(
             "  {{ kind := {kind}, left := {}, right := {}, observed := {result} }}{end}",
             word(receipt.left),
@@ -181,12 +183,9 @@ fn emit_receipts(name: &str, receipts: &[ArithmeticReceipt], observed: Option<i1
 }
 
 fn emit_checks(name: &str, successful: bool) {
-    let args = format!(
-        "{name}Edges {name}Labels {name}Roots {name}Parents {name}Rank {name}Weights"
-    );
-    println!(
-        "example : checkComplete {args} {name}Trace {name}Result = true := by decide"
-    );
+    let args =
+        format!("{name}Edges {name}Labels {name}Roots {name}Parents {name}Rank {name}Weights");
+    println!("example : checkComplete {args} {name}Trace {name}Result = true := by decide");
     println!(
         "example : checkComplete {args} ({name}Trace.drop 1) {name}Result = false := by decide"
     );
@@ -199,7 +198,13 @@ fn emit_checks(name: &str, successful: bool) {
     );
     println!(
         "example : checkComplete {name}Edges {name}Labels {name}Roots {name}Parents {name}Rank (fun i bit => if i = (0 : Fin {}) then {} else {name}Weights i bit) {name}Trace {name}Result = false := by decide",
-        if name == "successful" { 3 } else if name == "scanRefusal" { 2 } else { 1 },
+        if name == "successful" {
+            3
+        } else if name == "scanRefusal" {
+            2
+        } else {
+            1
+        },
         word(999)
     );
     if successful {
@@ -230,11 +235,8 @@ fn main() {
             &fixture.edges,
             &fixture.certificate,
         );
-        let ordinary = contract_checked_ranked_weights(
-            &fixture.weights,
-            &fixture.edges,
-            &fixture.certificate,
-        );
+        let ordinary =
+            contract_checked_ranked_weights(&fixture.weights, &fixture.edges, &fixture.certificate);
         assert_eq!(result, ordinary, "traced path changed the counter");
         let observed = match result {
             Ok(receipt) => Some(receipt.value),
@@ -265,7 +267,13 @@ mod tests {
         );
         assert_eq!(success.unwrap().value, -42);
         assert_eq!(trace.len(), 10); // 2*n scan mul + 2*c final ops
-        assert_eq!(trace.iter().filter(|r| r.kind == ArithmeticKind::Add).count(), 2);
+        assert_eq!(
+            trace
+                .iter()
+                .filter(|r| r.kind == ArithmeticKind::Add)
+                .count(),
+            2
+        );
         assert!(trace.iter().all(|r| r.observed.is_some()));
 
         for (index, expected_len) in [(1, 3), (2, 3)] {
@@ -278,7 +286,11 @@ mod tests {
             assert_eq!(result, Err(Error::Overflow));
             assert_eq!(trace.len(), expected_len);
             assert!(trace.last().is_some_and(|r| r.observed.is_none()));
-            assert!(trace[..trace.len() - 1].iter().all(|r| r.observed.is_some()));
+            assert!(
+                trace[..trace.len() - 1]
+                    .iter()
+                    .all(|r| r.observed.is_some())
+            );
         }
     }
 }

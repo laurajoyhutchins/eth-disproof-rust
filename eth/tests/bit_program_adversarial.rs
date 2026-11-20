@@ -38,6 +38,13 @@ fn assert_native_represents_list(native: &Config<3, 2>, expected: &ListConfig, c
             observed, expected.stacks[s],
             "{context}: logical stack {s} (head at index zero)"
         );
+        // Check the actual host primitive independently of deque iteration:
+        // Peek/Pop depend on front(), while the oracle uses Vec::first().
+        assert_eq!(
+            native.stacks[s].front().copied(),
+            expected.stacks[s].first().copied(),
+            "{context}: physical top of stack {s}"
+        );
     }
 }
 
@@ -250,7 +257,7 @@ fn physically_wrapped_word(epoch: usize) -> (VecDeque<bool>, Vec<bool>) {
     let mut list = Vec::new();
     let capacity = word.capacity();
     for i in 0..capacity {
-        let bit = (i + epoch) % 3 == 0;
+        let bit = (i + epoch).is_multiple_of(3);
         word.push_back(bit);
         list.push(bit);
     }
@@ -258,7 +265,7 @@ fn physically_wrapped_word(epoch: usize) -> (VecDeque<bool>, Vec<bool>) {
         assert_eq!(word.pop_front(), Some(list.remove(0)));
     }
     for i in 0..capacity - 2 {
-        let bit = (i + epoch) % 2 == 0;
+        let bit = (i + epoch).is_multiple_of(2);
         word.push_back(bit);
         list.push(bit);
     }

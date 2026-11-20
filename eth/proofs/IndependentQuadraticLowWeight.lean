@@ -650,7 +650,7 @@ theorem nativeConstruct_forced_degree (width : ℕ) (raw : List (List ℕ))
   by_cases hindex : index ∈ key.erase 0
   · rw [Finset.insert_eq_of_mem hindex]
     omega
-  · rw [Finset.card_insert_of_not_mem hindex]
+  · rw [Finset.card_insert_of_notMem hindex]
     omega
 
 /-- Explicit mathematical shape gate for eliminating coordinate zero.

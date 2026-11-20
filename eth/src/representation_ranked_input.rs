@@ -122,6 +122,46 @@ fn fallible_vec<T>(capacity: usize) -> Result<Vec<T>, Error> {
     Ok(output)
 }
 
+// Each field reader has exactly one ordered loop and returns a complete
+// collection or the first decoding failure. Splitting them makes parser
+// phases individually testable without duplicating the production logic.
+fn read_edges(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<(usize, usize)>, Error> {
+    let mut source_edges = fallible_vec(count)?;
+    for _ in 0..count {
+        source_edges.push((cursor.word()?, cursor.word()?));
+    }
+    Ok(source_edges)
+}
+
+fn read_words(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<usize>, Error> {
+    let mut words = fallible_vec(count)?;
+    for _ in 0..count {
+        words.push(cursor.word()?);
+    }
+    Ok(words)
+}
+
+fn read_parents(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<Option<usize>>, Error> {
+    let mut parents = fallible_vec(count)?;
+    for _ in 0..count {
+        let raw = u64::from_le_bytes(cursor.take()?);
+        parents.push(if raw == ABSENT_PARENT {
+            None
+        } else {
+            Some(from_u64(raw)?)
+        });
+    }
+    Ok(parents)
+}
+
+fn read_weights(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<[i128; 2]>, Error> {
+    let mut weights = fallible_vec(count)?;
+    for _ in 0..count {
+        weights.push([cursor.signed_word()?, cursor.signed_word()?]);
+    }
+    Ok(weights)
+}
+
 /// Parse the exact bytes, including source edges and all finite-index checks.
 /// No partially decoded input escapes on failure.
 pub fn decode_ranked_input(bytes: &[u8]) -> Result<RankedContractionInput, Error> {
@@ -139,35 +179,12 @@ pub fn decode_ranked_input(bytes: &[u8]) -> Result<RankedContractionInput, Error
         return Err(bad("declared length disagrees with input bytes"));
     }
 
-    let mut source_edges = fallible_vec(edges)?;
-    for _ in 0..edges {
-        source_edges.push((cursor.word()?, cursor.word()?));
-    }
-    let mut labels = fallible_vec(n)?;
-    for _ in 0..n {
-        labels.push(cursor.word()?);
-    }
-    let mut roots = fallible_vec(classes)?;
-    for _ in 0..classes {
-        roots.push(cursor.word()?);
-    }
-    let mut parent_edge_indices = fallible_vec(n)?;
-    for _ in 0..n {
-        let raw = u64::from_le_bytes(cursor.take()?);
-        parent_edge_indices.push(if raw == ABSENT_PARENT {
-            None
-        } else {
-            Some(from_u64(raw)?)
-        });
-    }
-    let mut rank = fallible_vec(n)?;
-    for _ in 0..n {
-        rank.push(cursor.word()?);
-    }
-    let mut weights = fallible_vec(n)?;
-    for _ in 0..n {
-        weights.push([cursor.signed_word()?, cursor.signed_word()?]);
-    }
+    let source_edges = read_edges(&mut cursor, edges)?;
+    let labels = read_words(&mut cursor, n)?;
+    let roots = read_words(&mut cursor, classes)?;
+    let parent_edge_indices = read_parents(&mut cursor, n)?;
+    let rank = read_words(&mut cursor, n)?;
+    let weights = read_weights(&mut cursor, n)?;
     if cursor.offset != bytes.len() {
         return Err(bad("trailing data"));
     }

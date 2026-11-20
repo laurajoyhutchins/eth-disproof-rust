@@ -19,14 +19,7 @@ fn list<T: Display>(values: &[T]) -> String {
 fn mask_source(mask: u8) -> String {
     let states = (0..8)
         .filter(|&seed| mask & (1u8 << seed) != 0)
-        .map(|seed| {
-            format!(
-                "({}, {}, {})",
-                seed & 1 != 0,
-                seed & 2 != 0,
-                seed & 4 != 0
-            )
-        })
+        .map(|seed| format!("({}, {}, {})", seed & 1 != 0, seed & 2 != 0, seed & 4 != 0))
         .collect::<Vec<_>>();
     if states.is_empty() {
         "∅".to_string()
@@ -38,10 +31,15 @@ fn mask_source(mask: u8) -> String {
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args_os().skip(1);
     let path = args.next().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "expected one DIMACS CNF file path")
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "expected one DIMACS CNF file path",
+        )
     })?;
     if args.next().is_some() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "unexpected extra arguments").into());
+        return Err(
+            io::Error::new(io::ErrorKind::InvalidInput, "unexpected extra arguments").into(),
+        );
     }
 
     let source = fs::read_to_string(path)?;

@@ -137,14 +137,7 @@ theorem product_of_powers_is_power_of_sum
     (∏ v : V, z ^ exponent v) =
       z ^ (∑ v : V, exponent v) := by
   classical
-  have h (s : Finset V) :
-      (∏ v ∈ s, z ^ exponent v) =
-        z ^ (∑ v ∈ s, exponent v) := by
-    induction s using Finset.induction_on with
-    | empty => simp
-    | @insert v s hv ih =>
-        simp [hv, ih, pow_add]
-  exact h Finset.univ
+  rw [← Finset.prod_pow_eq_pow_sum]
 
 /--
 The exact real-port exponential is a product of independent local

@@ -234,8 +234,9 @@ def residualInternalZero (s : Source) (c : Certificate) : Bool :=
 /-- Reconstruct the boundary-only residual directly from independently
 replayed rows, not from the producer's proposed claim. -/
 def replayedResidual (s : Source) (c : Certificate) : List Residual :=
-  ((replay s c).drop c.pivots.length).map
-    (fun row => expectedResidual row s.internal.length s.boundary.length)
+  ((replay s c).map
+    (fun row => expectedResidual row s.internal.length s.boundary.length)).drop
+      c.pivots.length
 
 /-- Actual auditor acceptance implies the complete pivot identity
 condition for every row and admitted pivot column. -/
@@ -246,7 +247,13 @@ theorem audit_implies_pivot_identity (snapshot : Snapshot)
   cases hp : pivotIdentityOK snapshot.source snapshot.cert with
   | true => rfl
   | false =>
-      simp [audit, pivotIdentityOK, hp] at h
+      have hbad :
+          ∃ i < snapshot.cert.pivots.length,
+            ∃ j < snapshot.source.equations.length,
+              ¬bitAt (rowAt (replay snapshot.source snapshot.cert) j)
+                ((snapshot.cert.pivots[i]?).getD 0) = (i == j) := by
+        simpa [pivotIdentityOK] using hp
+      simp [audit, hbad] at h
 
 /-- Actual auditor acceptance implies every residual row is independent
 of all internal variables, not merely that its claimed format is valid. -/
@@ -257,7 +264,11 @@ theorem audit_implies_residual_internal_zero (snapshot : Snapshot)
   cases hz : residualInternalZero snapshot.source snapshot.cert with
   | true => rfl
   | false =>
-      simp [audit, residualInternalZero, hz] at h
+      have hbad :
+          ∃ row ∈ (replay snapshot.source snapshot.cert).drop snapshot.cert.pivots.length,
+            ∃ j < snapshot.source.internal.length, bitAt row j = true := by
+        simpa [residualInternalZero] using hz
+      simp [audit, hbad] at h
 
 /-- Acceptance forces exactly the independently reconstructed residual
 equations, including each coefficient column and right-hand side.

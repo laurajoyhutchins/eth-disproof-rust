@@ -5,7 +5,7 @@ use lean_eth_reference::representation_ranked_certificate::{
     RankedComponentCertificate, contract_checked_ranked_weights_with_trace,
 };
 use lean_eth_reference::representation_ranked_input::{
-    RankedContractionInput, decode_ranked_input, encode_ranked_input,
+    RankedContractionInput, decode_ranked_input, encode_ranked_input, execute_ranked_wire,
 };
 
 fn fixture() -> RankedContractionInput {
@@ -107,6 +107,35 @@ fn malformed_indices_and_source_evidence_are_refused() {
             "accepted corrupt 64-bit field at {offset}"
         );
     }
+}
+
+#[test]
+fn malformed_source_refuses_before_any_arithmetic_and_preserves_guard_precedence() {
+    let good = encode_ranked_input(&fixture()).unwrap();
+    let mut bad_edge = good.clone();
+    // Source-edge endpoints precede all certificate guards in the verifier.
+    bad_edge[28..36].copy_from_slice(&3u64.to_le_bytes());
+    let mut bad_label = good.clone();
+    bad_label[44..52].copy_from_slice(&2u64.to_le_bytes());
+    let mut both = bad_edge.clone();
+    both[44..52].copy_from_slice(&2u64.to_le_bytes());
+
+    for (bytes, reason) in [
+        (&bad_edge, "source edge outside declared region"),
+        (&bad_label, "ranked certificate label outside range"),
+        (&both, "source edge outside declared region"),
+    ] {
+        let (result, trace) = execute_ranked_wire(bytes);
+        assert_eq!(
+            result.unwrap_err(),
+            lean_eth_reference::Error::Invalid(reason.into())
+        );
+        assert!(trace.is_empty(), "arithmetic started after malformed source");
+    }
+
+    let (result, trace) = execute_ranked_wire(&good);
+    assert_eq!(result.unwrap().value, -42);
+    assert_eq!(trace.len(), 10);
 }
 
 fn next(seed: &mut u64) -> u64 {

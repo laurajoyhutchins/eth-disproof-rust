@@ -424,3 +424,204 @@ theorem declared_plan_correct
 #print axioms IndependentETH.OverlappingFactors.allSourceEliminated_mem_iff
 #print axioms IndependentETH.OverlappingFactors.allSourceEliminated_nodup
 #print axioms IndependentETH.OverlappingFactors.declared_plan_correct
+
+
+/-! ## Deterministic sorted plans for executable correspondence
+
+The preceding set-to-list operation is intentionally noncomputable over
+an unordered variable type. With a declared linear order, Finset.sort
+supplies a concrete list. These theorems prove that choosing this sorted
+order preserves semantic safety, exactly-once coverage, and contraction
+correctness. They do not prove Rust's BTreeSet implementation refines
+Lean's sorting algorithm or that the packed GF(2) kernel refines the
+abstract contraction operator.
+-/
+
+section OrderedPlan
+
+variable [LinearOrder V]
+
+/-- Explicitly ordered, computable replacement for Finset.toList. -/
+def sortedDead (active : Finset V) (f : ScopedFactor V R)
+    (rest : List (ScopedFactor V R)) (output : Finset V) : List V :=
+  ((active ∪ f.scope) \ (scopeUnion rest ∪ output)).sort (· ≤ ·)
+
+/-- Every stage, including the terminal neutral stage, uses sorted
+rather than arbitrarily chosen elimination order. -/
+def sortedPlan (active output : Finset V) :
+    List (ScopedFactor V R) → List (Step V R)
+  | [] =>
+      [{ factor := {
+           scope := ∅,
+           value := fun _ => 1,
+           local_update := by intros; rfl
+         },
+         dead := (active \ output).sort (· ≤ ·) }]
+  | f :: rest =>
+      { factor := f, dead := sortedDead active f rest output } ::
+        sortedPlan (nextKept active f rest output) output rest
+
+/-- A generated ordered plan never drops a variable that a future
+factor could observe. The ordering decision is irrelevant to safety. -/
+theorem sortedPlan_safe
+    (active output : Finset V) (factors : List (ScopedFactor V R)) :
+    ∀ hidden : List V,
+      (∀ v ∈ hidden, v ∉ scopeUnion factors) →
+      Safe hidden (sortedPlan active output factors) := by
+  induction factors generalizing active with
+  | nil =>
+      intro hidden _
+      change (∀ v ∈ hidden, v ∉ (∅ : Finset V)) ∧ True
+      constructor
+      · intro v hv
+        simp
+      · trivial
+  | cons f rest ih =>
+      intro hidden hhidden
+      change (∀ v ∈ hidden, v ∉ f.scope) ∧
+        Safe (hidden ++ sortedDead active f rest output)
+          (sortedPlan (nextKept active f rest output) output rest)
+      constructor
+      · intro v hv
+        have hh := hhidden v hv
+        simp only [scopeUnion, Finset.mem_union, not_or] at hh
+        exact hh.1
+      · apply ih
+        intro v hv
+        rcases List.mem_append.mp hv with hold | hnew
+        · have hh := hhidden v hold
+          simp only [scopeUnion, Finset.mem_union, not_or] at hh
+          exact hh.2
+        · have hh : v ∈ (active ∪ f.scope) \
+              (scopeUnion rest ∪ output) := by
+            simpa only [sortedDead, Finset.mem_sort] using hnew
+          have hnot := (Finset.mem_sdiff.mp hh).2
+          simp only [Finset.mem_union, not_or] at hnot
+          exact hnot.1
+
+/-- The ordered plan eliminates exactly the currently active or
+future-used variables that the output does not require. -/
+theorem sortedPlan_mem_iff
+    (active output : Finset V) (factors : List (ScopedFactor V R))
+    (v : V) :
+    v ∈ eliminated (sortedPlan active output factors) ↔
+      v ∈ (active ∪ scopeUnion factors) \ output := by
+  induction factors generalizing active with
+  | nil =>
+      simp [sortedPlan, eliminated, scopeUnion, Finset.mem_sdiff]
+  | cons f rest ih =>
+      simp only [sortedPlan, eliminated, List.mem_append, scopeUnion]
+      rw [ih (nextKept active f rest output)]
+      simp only [sortedDead, Finset.mem_sort,
+        Finset.mem_sdiff, nextKept, Finset.mem_inter,
+        Finset.mem_union]
+      tauto
+
+/-- The concrete ordered plan does not sum any variable twice. -/
+theorem sortedPlan_nodup
+    (active output : Finset V) (factors : List (ScopedFactor V R)) :
+    (eliminated (sortedPlan active output factors)).Nodup := by
+  induction factors generalizing active with
+  | nil =>
+      simpa [sortedPlan, eliminated] using
+        (Finset.sort_nodup (active \ output) (· ≤ ·))
+  | cons f rest ih =>
+      change
+        (sortedDead active f rest output ++
+          eliminated (sortedPlan
+            (nextKept active f rest output) output rest)).Nodup
+      apply List.Nodup.append
+      · exact Finset.sort_nodup _ (· ≤ ·)
+      · exact ih (nextKept active f rest output)
+      · intro v hdead hlater
+        have hnew : v ∈ (active ∪ f.scope) \
+            (scopeUnion rest ∪ output) := by
+          simpa only [sortedDead, Finset.mem_sort] using hdead
+        have hremain :
+            v ∈ (nextKept active f rest output ∪ scopeUnion rest) \
+              output :=
+          (sortedPlan_mem_iff
+            (nextKept active f rest output) output rest v).mp hlater
+        simp only [Finset.mem_sdiff, Finset.mem_union,
+          Finset.mem_inter, nextKept] at *
+        tauto
+
+/-- Explicitly sorted invisible-source variables. -/
+def sortedUnusedDeclared (declared output : Finset V)
+    (factors : List (ScopedFactor V R)) : List V :=
+  (declared \ (scopeUnion factors ∪ output)).sort (· ≤ ·)
+
+def sortedSourceEliminated (declared output : Finset V)
+    (factors : List (ScopedFactor V R)) : List V :=
+  sortedUnusedDeclared declared output factors ++
+    eliminated (sortedPlan ∅ output factors)
+
+/-- Each declared non-output variable occurs in the ordered list. -/
+theorem sortedSourceEliminated_mem_iff
+    (declared output : Finset V)
+    (factors : List (ScopedFactor V R))
+    (hscopes : scopeUnion factors ⊆ declared)
+    (v : V) :
+    v ∈ sortedSourceEliminated declared output factors ↔
+      v ∈ declared \ output := by
+  simp only [sortedSourceEliminated, List.mem_append]
+  rw [sortedPlan_mem_iff]
+  simp only [sortedUnusedDeclared, Finset.mem_sort,
+    Finset.mem_sdiff, Finset.mem_union]
+  have hs : v ∈ scopeUnion factors → v ∈ declared :=
+    fun hv => hscopes hv
+  tauto
+
+/-- Each declared non-output variable occurs at most once. -/
+theorem sortedSourceEliminated_nodup
+    (declared output : Finset V)
+    (factors : List (ScopedFactor V R)) :
+    (sortedSourceEliminated declared output factors).Nodup := by
+  change
+    (sortedUnusedDeclared declared output factors ++
+      eliminated (sortedPlan ∅ output factors)).Nodup
+  apply List.Nodup.append
+  · exact Finset.sort_nodup _ (· ≤ ·)
+  · exact sortedPlan_nodup ∅ output factors
+  · intro v hunused hplan
+    have hu : v ∈ declared \ (scopeUnion factors ∪ output) := by
+      simpa only [sortedUnusedDeclared, Finset.mem_sort] using hunused
+    have hp : v ∈ (∅ ∪ scopeUnion factors) \ output :=
+      (sortedPlan_mem_iff ∅ output factors v).mp hplan
+    simp only [Finset.mem_sdiff, Finset.mem_union] at *
+    simp at hp
+    tauto
+
+/-- The ordered plan calculates the exact original product followed by
+the generated sorted elimination list, with no semantic approximation. -/
+theorem sortedSource_correct
+    (declared output : Finset V)
+    (factors : List (ScopedFactor V R))
+    (base : Weight V R) :
+    contract
+      (eliminateList (sortedUnusedDeclared declared output factors) base)
+      (sortedPlan ∅ output factors) =
+    eliminateList (sortedSourceEliminated declared output factors)
+      (times base (factorProduct (sortedPlan ∅ output factors))) := by
+  apply contract_correct
+  apply sortedPlan_safe
+  intro v hv
+  have hu : v ∈ declared \ (scopeUnion factors ∪ output) := by
+    simpa only [sortedUnusedDeclared, Finset.mem_sort] using hv
+  have hn := (Finset.mem_sdiff.mp hu).2
+  simp only [Finset.mem_union, not_or] at hn
+  exact hn.1
+
+/-- A small executable ordering example: output zero is kept and the
+other declared bit names are summed once, in increasing numeric order. -/
+example : (({0, 2, 5} : Finset ℕ) \ {2}).sort (· ≤ ·) = [0, 5] := by
+  decide
+
+end OrderedPlan
+
+#print axioms IndependentETH.OverlappingFactors.sortedPlan_safe
+#print axioms IndependentETH.OverlappingFactors.sortedPlan_mem_iff
+#print axioms IndependentETH.OverlappingFactors.sortedPlan_nodup
+#print axioms IndependentETH.OverlappingFactors.sortedSourceEliminated_mem_iff
+#print axioms IndependentETH.OverlappingFactors.sortedSourceEliminated_nodup
+#print axioms IndependentETH.OverlappingFactors.sortedSource_correct

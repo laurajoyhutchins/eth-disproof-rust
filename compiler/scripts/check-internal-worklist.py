@@ -19,6 +19,7 @@ HEADER = ["case", "index", "kind", "object", "related", "field", "before", "afte
 CASES = (
     "chain1", "chain3", "chain8", "retainMid3", "retainLeaf3",
     "sharedRoot3", "forkAll", "forkRetainRight",
+    "duplicateField", "diamond", "diamondRetained",
 )
 
 
@@ -49,6 +50,23 @@ def reference(case: str) -> list[Event]:
             "node:4": ("small:0", "witness:2"),
         }
         count = 3
+    elif case == "duplicateField":
+        # One allocation is owned by two fields of the SAME constructor.
+        nodes = {
+            "node:0": ("node:1", "node:1"),
+            "node:1": ("small:0", "witness:0"),
+        }
+        count = 1
+    elif case in ("diamond", "diamondRetained"):
+        # Two parent constructors share one leaf. The right parent is
+        # popped first, so only the left parent can queue the last credit.
+        nodes = {
+            "node:0": ("node:1", "node:2"),
+            "node:1": ("node:3", "small:0"),
+            "node:2": ("node:3", "small:0"),
+            "node:3": ("small:0", "witness:0"),
+        }
+        count = 1
     else:
         count = depth
         for i in range(depth):
@@ -56,6 +74,10 @@ def reference(case: str) -> list[Event]:
             nodes[f"node:{i}"] = (next_node, f"witness:{i}")
     refs = {name: 1 for name in nodes}
     refs.update({f"witness:{i}": 2 for i in range(count)})
+    if case == "duplicateField":
+        refs["node:1"] = 2
+    elif case in ("diamond", "diamondRetained"):
+        refs["node:3"] = 2 + (1 if case == "diamondRetained" else 0)
     if case == "retainMid3":
         refs["node:1"] += 1
     elif case == "retainLeaf3":
@@ -175,6 +197,9 @@ def self_test(rows: list[dict[str, str]]) -> int:
         corrupt("forkRetainRight", "decrement", "before", "1"),
         corrupt("chain1", "field", "field", "17"),
         corrupt("chain1", "free", "kind", "visit"),
+        corrupt("duplicateField", "decrement", "after", "2"),
+        corrupt("diamond", "enqueue", "object", "node:2"),
+        corrupt("diamondRetained", "decrement", "after", "1"),
         rows[:-1],
     ]
     for index, variant in enumerate(variants):

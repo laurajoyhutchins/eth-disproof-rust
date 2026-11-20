@@ -26,6 +26,9 @@ CASES: dict[str, tuple[int, frozenset[int]]] = {
     "sharedRoot3": (3, frozenset({0, 1, 2})),
     "forkAll": (3, frozenset()),
     "forkRetainRight": (3, frozenset({2})),
+    "duplicateField": (1, frozenset()),
+    "diamond": (1, frozenset()),
+    "diamondRetained": (1, frozenset({0})),
 }
 
 
@@ -109,6 +112,10 @@ def self_test(rows: list[Row]) -> int:
         mutation_at("forkRetainRight", "afterRoot", 0, rc=2),
         mutation_at("forkRetainRight", "afterRoot", 2, rc=1),
         mutation_at("chain3", "afterCleanup", 2, rc=2),
+        mutation_at("duplicateField", "afterRoot", 0, rc=2),
+        mutation_at("diamond", "afterRoot", 0, rc=2),
+        mutation_at("diamondRetained", "afterRoot", 0, rc=1),
+        mutation_at("diamondRetained", "afterCleanup", 0, rc=2),
         mutation_at("chain3", "afterRoot", 0, root_id=0),
         mutation_at("chain3", "afterRoot", 0, witness_id=9999999),
         rows[:3] + rows[4:],

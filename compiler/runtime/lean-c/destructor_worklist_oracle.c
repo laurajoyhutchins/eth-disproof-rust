@@ -142,6 +142,55 @@ static cascade make_fork(const char *name, int retain_right) {
     return c;
 }
 
+/* Non-tree constructor graphs: a child can carry multiple incoming
+   field credits. The runtime must decrement each edge in source field order,
+   and enqueue the target exactly once when its LAST owner is consumed.
+   These are the first cases in this audit that the prior Tree model cannot
+   express without falsely duplicating an allocation identity. */
+static cascade make_aliased(const char *name, int diamond, int retain_shared) {
+    cascade c = {0};
+    c.name = name;
+    c.count = 1;
+    c.witness[0] = make_witness(0);
+    c.witness_id[0] = (uintptr_t)c.witness[0];
+    lean_object *shared = make_link(lean_box(0), c.witness[0]);
+    lean_inc(shared); /* Two distinct owning fields target ONE object. */
+    REQUIRE(live_rc(shared) == 2);
+    if (!diamond) {
+        REQUIRE(!retain_shared);
+        lean_object *root = lean_alloc_ctor(1, 2, 0);
+        lean_ctor_set(root, 0, shared);
+        lean_ctor_set(root, 1, shared);
+        c.root = root;
+        c.node_count = 2;
+        c.nodes[0] = root;
+        c.nodes[1] = shared;
+    } else {
+        lean_object *left = lean_alloc_ctor(1, 2, 0);
+        lean_ctor_set(left, 0, shared);
+        lean_ctor_set(left, 1, lean_box(0));
+        lean_object *right = lean_alloc_ctor(1, 2, 0);
+        lean_ctor_set(right, 0, shared);
+        lean_ctor_set(right, 1, lean_box(0));
+        lean_object *root = lean_alloc_ctor(1, 2, 0);
+        lean_ctor_set(root, 0, left);
+        lean_ctor_set(root, 1, right);
+        c.root = root;
+        c.node_count = 4;
+        c.nodes[0] = root;
+        c.nodes[1] = left;
+        c.nodes[2] = right;
+        c.nodes[3] = shared;
+    }
+    c.root_id = (uintptr_t)c.root;
+    if (retain_shared) {
+        c.retained = shared;
+        lean_inc(shared); /* One independent owner stops the cascade. */
+        REQUIRE(live_rc(shared) == 3);
+    }
+    return c;
+}
+
 static void record(FILE *f, const cascade *c, const char *phase) {
     for (unsigned i = 0; i < c->count; ++i) {
         REQUIRE(c->witness[i] != NULL && c->witness_id[i] != 0);
@@ -200,6 +249,9 @@ lean_obj_res lr_heap_trace_destructor_worklist(b_lean_obj_arg dummy) {
     run(f, make_chain("sharedRoot3", 3, -1, 1));
     run(f, make_fork("forkAll", 0));
     run(f, make_fork("forkRetainRight", 1));
+    run(f, make_aliased("duplicateField", 0, 0));
+    run(f, make_aliased("diamond", 1, 0));
+    run(f, make_aliased("diamondRetained", 1, 1));
     if (fclose(f) != 0) return lean_box(3);
     return lean_box(0);
 }

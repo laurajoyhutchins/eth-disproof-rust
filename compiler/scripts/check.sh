@@ -97,6 +97,43 @@ for theorem in same_visited_identities same_number_of_visits retained_subtree_is
     exit 2
   fi
 done
+# Alias edges require an ownership-count theorem independent of tree identity.
+# Refusals here are a model property, not evidence of C++ use-after-free safety.
+lean proofs/ReaderWorklistAliases.lean | tee artifacts/reader-worklist-aliases-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-worklist-aliases-axioms.txt; then
+  echo 'Aliased worklist proof contains sorryAx' >&2
+  exit 2
+fi
+python3 - artifacts/reader-worklist-aliases-axioms.txt <<'PY'
+import re
+import sys
+from pathlib import Path
+
+receipt = Path(sys.argv[1]).read_text()
+allowed = {"propext", "Quot.sound", "Classical.choice"}
+theorems = (
+    "alias_fields_spend_exactly_their_credits",
+    "aliased_fields_preserve_external_owner",
+    "alias_last_owner_enqueues_once",
+    "duplicate_field_last_credit",
+    "retained_diamond_stops",
+    "spent_alias_cannot_release_again",
+    "physical_drop_simulates_source",
+    "physical_trace_simulates_source",
+    "queued_last_owner_has_physical_rc_one",
+    "alias_physical_counter_at_queue_boundary",
+)
+for name in theorems:
+    pattern = re.escape(f"'ReaderWorklistAliases.{name}'")
+    pattern += r" (does not depend on any axioms|depends on axioms: \[([^]]*)\])"
+    match = re.search(pattern, receipt, re.S)
+    if not match:
+        raise SystemExit(f"missing alias kernel axiom receipt: {name}")
+    used = {s.strip() for s in (match.group(2) or "").split(",") if s.strip()}
+    if not used <= allowed:
+        raise SystemExit(f"unapproved alias kernel axioms: {name}: {used - allowed}")
+print("worklist_alias_kernel=STANDARD_AXIOMS_ONLY declarations=10")
+PY
 lean proofs/ReaderObjectCredits.lean | tee artifacts/reader-object-credits-axioms.txt
 if grep -Fq 'sorryAx' artifacts/reader-object-credits-axioms.txt; then
   echo 'Multi-allocation ownership theorem contains sorryAx' >&2

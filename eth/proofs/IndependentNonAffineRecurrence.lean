@@ -1703,6 +1703,182 @@ theorem checkedCsrRowStop_bitvec (w start stop : Nat)
     Nat.mod_eq_of_lt hthree]
   rw [← hwidth, Nat.mod_eq_of_lt ht]
 
+/-! ## Concrete checked three-element CSR row model
+
+This is an explicit model of the *operations* in production Rust's
+SignedCsr::checked_row, rather than a claim about the compiled Rust binary.
+It models checked row+1/start+3 arithmetic, get(start..stop), converting
+that slice to an array of three elements, and the shared polarity/column
+predicate. Unlike a model made solely from three independent get calls,
+the checkedSlice3 definition uses an actual list slice and a length-three
+match. The equivalence below proves that this distinction does not change
+acceptance or refusal.
+
+The theorem is conditional only on the fact that the in-memory offsets and
+their list length are representable as machine words. The real Rust type
+usize supplies these assumptions, while compiler execution correspondence
+and heap/collection semantics remain separate obligations.
+-/
+
+variable {α : Type}
+
+/-- The exact three-element data returned by a valid list slice. -/
+theorem take_drop_three (xs : List α) (start : Nat)
+    (h : start + 3 ≤ xs.length) :
+    (xs.drop start).take 3 = [xs[start], xs[start + 1], xs[start + 2]] := by
+  have h0 : start < xs.length := by omega
+  have h1 : start + 1 < xs.length := by omega
+  have h2 : start + 2 < xs.length := by omega
+  rw [List.drop_eq_getElem_cons h0]
+  rw [List.drop_eq_getElem_cons h1]
+  rw [List.drop_eq_getElem_cons h2]
+  simp only [List.take]
+
+/-- Model Rust's checked get(start..stop) followed by [T; 3] conversion,
+once the caller has established stop = start+3. -/
+def checkedSlice3 (xs : List α) (start : Nat) : Option (α × α × α) :=
+  if start + 3 ≤ xs.length then
+    match (xs.drop start).take 3 with
+    | [a, b, c] => some (a, b, c)
+    | _ => none
+  else none
+
+/-- Elementwise checked reads, independent of the slice representation. -/
+def indexedTriple (xs : List α) (start : Nat) : Option (α × α × α) := do
+  let a ← xs[start]?
+  let b ← xs[start + 1]?
+  let c ← xs[start + 2]?
+  pure (a, b, c)
+
+/-- A checked three-element slice is equivalent to three checked indexed
+reads, including when its final read would be out of bounds. -/
+theorem checkedSlice3_eq_indexedTriple (xs : List α) (start : Nat) :
+    checkedSlice3 xs start = indexedTriple xs start := by
+  by_cases h : start + 3 ≤ xs.length
+  · have h0 : start < xs.length := by omega
+    have h1 : start + 1 < xs.length := by omega
+    have h2 : start + 2 < xs.length := by omega
+    simp [checkedSlice3, h, indexedTriple, take_drop_three xs start h,
+      List.getElem?_eq_getElem h0, List.getElem?_eq_getElem h1,
+      List.getElem?_eq_getElem h2]
+  · have h2 : xs[start + 2]? = none := List.getElem?_eq_none (by omega)
+    simp [checkedSlice3, h, indexedTriple, h2]
+
+/-- The checked index increment in Rust's offsets.get(row.checked_add(1)?). -/
+def checkedUsizeSucc (w i : Nat) : Option Nat :=
+  if i + 1 < 2 ^ w then some (i + 1) else none
+
+/-- If the offset array's length fits in w bits, an overflowing row+1
+cannot index an actual element, so both checked and unbounded reads refuse. -/
+theorem checkedUsizeSucc_lookup (w i : Nat) (offsets : List Nat)
+    (hbounded : offsets.length ≤ 2 ^ w) :
+    (do let j ← checkedUsizeSucc w i; offsets[j]?) = offsets[i + 1]? := by
+  by_cases h : i + 1 < 2 ^ w
+  · simp [checkedUsizeSucc, h]
+  · have hoob : offsets[i + 1]? = none := List.getElem?_eq_none (by omega)
+    simp [checkedUsizeSucc, h, hoob]
+
+/-- Rust checked_row in a pure, width-parametric operational model:
+checked row index, checked end offset, two range reads converted to triples,
+then exactly the same validated-sign/column predicate as the production
+CheckedCsrRow constructor. The returned SignedRow is semantic, not ABI data. -/
+def machineCheckedRow (w : Nat) (csr : SignedCsrInput) (i : Nat) :
+    Option SignedRow := do
+  let start ← csr.offsets[i]?
+  let next ← checkedUsizeSucc w i
+  let stop ← csr.offsets[next]?
+  let expectedStop ← checkedCsrRowStop w start
+  if stop != expectedStop then none else
+    let (a, b, c) ← checkedSlice3 csr.columns start
+    let (sa, sb, sc) ← checkedSlice3 csr.signs start
+    rustTripleRow csr.variableCount a b c sa sb sc
+
+/-- For observed, representable offsets with width three, every concrete
+checked-slice acceptance and refusal agrees with the existing scanner. -/
+theorem machineCheckedRow_of_valid_offsets (w : Nat)
+    (csr : SignedCsrInput) (i start stop : Nat)
+    (hs : csr.offsets[i]? = some start)
+    (he : csr.offsets[i + 1]? = some stop)
+    (hi : i + 1 < 2 ^ w)
+    (hsfit : start < 2 ^ w)
+    (hefit : stop < 2 ^ w)
+    (hw : stop = start + 3) :
+    machineCheckedRow w csr i = rustScanCsrRow csr i := by
+  have hsum : start + 3 < 2 ^ w := by omega
+  by_cases hb : stop ≤ csr.columns.length
+  · have hb' : start + 3 ≤ csr.columns.length := by omega
+    simp [machineCheckedRow, rustScanCsrRow, checkedUsizeSucc, checkedCsrRowStop,
+      hs, he, hi, hsfit, hsum, hw,
+      checkedSlice3_eq_indexedTriple, indexedTriple, hb', Option.bind_assoc]
+  · have hfail : checkedSlice3 csr.columns start = none := by
+      simp [checkedSlice3, show ¬ start + 3 ≤ csr.columns.length by omega]
+    simp [machineCheckedRow, rustScanCsrRow, checkedUsizeSucc, checkedCsrRowStop,
+      hs, he, hi, hsfit, hsum, hw, hfail,
+      show ¬ start + 3 ≤ csr.columns.length by omega]
+
+/-- Wrong-width rows refuse identically, even if start+3 would overflow
+usize and no slice is ever touched. -/
+theorem machineCheckedRow_of_wrong_width (w : Nat)
+    (csr : SignedCsrInput) (i start stop : Nat)
+    (hs : csr.offsets[i]? = some start)
+    (he : csr.offsets[i + 1]? = some stop)
+    (hi : i + 1 < 2 ^ w)
+    (hsfit : start < 2 ^ w)
+    (hw : stop ≠ start + 3) :
+    machineCheckedRow w csr i = rustScanCsrRow csr i := by
+  have hbad :
+      ¬(start ≤ stop ∧ stop ≤ csr.columns.length ∧ stop - start = 3) := by
+    omega
+  by_cases hsum : start + 3 < 2 ^ w
+  · simp [machineCheckedRow, rustScanCsrRow, checkedUsizeSucc, checkedCsrRowStop,
+      hs, he, hi, hsfit, hsum, hw, hbad]
+  · simp [machineCheckedRow, rustScanCsrRow, checkedUsizeSucc, checkedCsrRowStop,
+      hs, he, hi, hsfit, hsum, hbad]
+
+/-- The two row decoders have identical Option outcomes for every row and
+every malformed offset, provided the offsets live in the represented
+machine-word domain. Neither well-formedness nor success is assumed. -/
+theorem machineCheckedRow_total_refinement (w : Nat)
+    (csr : SignedCsrInput) (i : Nat)
+    (hOffsets : csr.offsets.length ≤ 2 ^ w)
+    (hValues : ∀ (j z : Nat), csr.offsets[j]? = some z → z < 2 ^ w) :
+    machineCheckedRow w csr i = rustScanCsrRow csr i := by
+  cases hs : csr.offsets[i]? with
+  | none => simp [machineCheckedRow, rustScanCsrRow, hs]
+  | some start =>
+    by_cases hi : i + 1 < 2 ^ w
+    · cases he : csr.offsets[i + 1]? with
+      | none =>
+        simp [machineCheckedRow, rustScanCsrRow, checkedUsizeSucc, hs, he, hi]
+      | some stop =>
+        have hsfit := hValues i start hs
+        have hefit := hValues (i + 1) stop he
+        by_cases hw : stop = start + 3
+        · exact machineCheckedRow_of_valid_offsets w csr i start stop
+            hs he hi hsfit hefit hw
+        · exact machineCheckedRow_of_wrong_width w csr i start stop
+            hs he hi hsfit hw
+    · have hmiss : csr.offsets[i + 1]? = none :=
+        List.getElem?_eq_none (by omega)
+      simp [machineCheckedRow, rustScanCsrRow, checkedUsizeSucc, hs, hi, hmiss]
+
+/-- Exact full-row correspondence with the *original* Lean decoder,
+including both successful rows and malformed-input refusal. This is
+conditional on representation as finite machine words, not on source
+satisfiability or the recurrence restriction. -/
+theorem machineCheckedRow_eq_decodeCsrRow (w : Nat)
+    (csr : SignedCsrInput) (i : Nat)
+    (hOffsets : csr.offsets.length ≤ 2 ^ w)
+    (hValues : ∀ (j z : Nat), csr.offsets[j]? = some z → z < 2 ^ w) :
+    machineCheckedRow w csr i = decodeCsrRow csr i := by
+  rw [machineCheckedRow_total_refinement w csr i hOffsets hValues]
+  exact rustScanCsrRow_total_refinement csr i
+
+#print axioms IndependentETH.NonAffine.checkedSlice3_eq_indexedTriple
+#print axioms IndependentETH.NonAffine.checkedUsizeSucc_lookup
+#print axioms IndependentETH.NonAffine.machineCheckedRow_total_refinement
+#print axioms IndependentETH.NonAffine.machineCheckedRow_eq_decodeCsrRow
+
 #print axioms IndependentETH.NonAffine.checkedCsrRowStop_of_inbounds
 #print axioms IndependentETH.NonAffine.checkedCsrRowStop_overflow
 #print axioms IndependentETH.NonAffine.checkedCsrRowStop_bitvec

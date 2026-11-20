@@ -1213,4 +1213,138 @@ theorem rustTripleRow_bounded_refinement
 #print axioms IndependentETH.NonAffine.decodeCsrRow_badWidth
 #print axioms IndependentETH.NonAffine.rustTripleRow_bounded_refinement
 
+/-! ## Whole-CSR semantic composition
+
+A Rust-shaped scanner validates offsets with subtraction and reads array
+elements before applying the signed three-column row check. Its outer
+structure checks the declared CSR shape and rejects duplicate decoded rows
+before constructing a finite set. This is a *pure semantic model* of the
+validation boundary, not a refinement of BTreeMap allocation or machine code.
+-/
+
+/-- Rust-style offset and array observations for one row. The shape guard
+corresponds to the negation of the Rust malformed-offset refusal test.
+The remaining decoder uses the previously refined Rust-shaped row predicate.
+No array access is unchecked in this model. -/
+def rustScanCsrRow (csr : SignedCsrInput) (i : Nat) : Option SignedRow := do
+  let start ← csr.offsets[i]?
+  let stop ← csr.offsets[i + 1]?
+  if start ≤ stop ∧ stop ≤ csr.columns.length ∧ stop - start = 3 then
+    let a ← csr.columns[start]?
+    let b ← csr.columns[start + 1]?
+    let c ← csr.columns[start + 2]?
+    let sa ← csr.signs[start]?
+    let sb ← csr.signs[start + 1]?
+    let sc ← csr.signs[start + 2]?
+    rustTripleRow csr.variableCount a b c sa sb sc
+  else none
+
+/-- The entire *mathematical* CSR collection, with all row scans and duplicate
+checks. The Rust recognizer's later gadget grouping and receipt logic are not
+represented by this function. Arithmetic overflow is outside this definition
+and belongs to its explicitly bounded refinement domain. -/
+def rustScanSignedCsr (csr : SignedCsrInput) : Option (Finset SignedRow) := do
+  if csr.variableCount < 4 then none
+  else
+    let rowsCount := 5 * csr.variableCount - 14
+    if csr.offsets.length = rowsCount + 1 ∧
+        csr.columns.length = csr.signs.length ∧
+        csr.offsets.head? = some 0 ∧
+        csr.offsets[rowsCount]? = some csr.columns.length then
+      let rows ← (List.range rowsCount).mapM (rustScanCsrRow csr)
+      if rows.Nodup then
+        pure rows.toFinset
+      else none
+    else none
+
+/-- All six observed row entries are explicit. This is the stable
+representation contract for transferring the previous local proof to
+an arbitrary row index; no value is guessed from a canonical fixture. -/
+def HasRustRowSlice (csr : SignedCsrInput) (i : Nat) : Prop :=
+  ∃ (start stop a b c : Nat) (sa sb sc : Int),
+    csr.offsets[i]? = some start ∧
+    csr.offsets[i + 1]? = some stop ∧
+    (start ≤ stop ∧ stop ≤ csr.columns.length ∧ stop - start = 3) ∧
+    csr.columns[start]? = some a ∧
+    csr.columns[start + 1]? = some b ∧
+    csr.columns[start + 2]? = some c ∧
+    csr.signs[start]? = some sa ∧
+    csr.signs[start + 1]? = some sb ∧
+    csr.signs[start + 2]? = some sc
+
+/-- A witnessed row scan refines the existing executable Lean decoder.
+This is an equality of Option values, so it includes all semantic refusals
+from malformed columns or polarities, not just successful rows. -/
+theorem rustScanCsrRow_eq_decodeCsrRow
+    (csr : SignedCsrInput) (i : Nat) (h : HasRustRowSlice csr i) :
+    rustScanCsrRow csr i = decodeCsrRow csr i := by
+  rcases h with ⟨start, stop, a, b, c, sa, sb, sc,
+    hstart, hstop, hshape, ha, hb, hc, hsa, hsb, hsc⟩
+  have hscan : rustScanCsrRow csr i =
+      rustTripleRow csr.variableCount a b c sa sb sc := by
+    simp [rustScanCsrRow, hstart, hstop, hshape, ha, hb, hc, hsa, hsb, hsc]
+  calc
+    rustScanCsrRow csr i =
+        rustTripleRow csr.variableCount a b c sa sb sc := hscan
+    _ = decodeCsrRow csr i :=
+      rustTripleRow_eq_decodeCsrRow csr i start stop a b c sa sb sc
+        hstart hstop hshape ha hb hc hsa hsb hsc
+
+/-- Pointwise Option equality composes through arbitrary sequential row
+traversal, including early refusal. This establishes the first genuine
+list-level bridge, independently of row ordering. -/
+theorem csrRowMapM_congr (csr : SignedCsrInput) (indices : List Nat)
+    (h : ∀ i ∈ indices, rustScanCsrRow csr i = decodeCsrRow csr i) :
+    indices.mapM (rustScanCsrRow csr) =
+      indices.mapM (decodeCsrRow csr) := by
+  induction indices with
+  | nil => rfl
+  | cons i rest ih =>
+      have hi : rustScanCsrRow csr i = decodeCsrRow csr i :=
+        h i (by simp)
+      have ht : ∀ j ∈ rest, rustScanCsrRow csr j = decodeCsrRow csr j := by
+        intro j hj
+        exact h j (by simp [hj])
+      simp [List.mapM_cons, hi, ih ht]
+
+/-- Under a row-wise agreement hypothesis, whole-CSR scanning and duplicate
+rejection produce exactly the same finite row set, or both refuse. The
+hypothesis can be discharged by the local row-witness theorem, rather than
+assuming equality of the final clause sets. -/
+theorem rustScanSignedCsr_eq_decodeSignedCsr_of_row_agreement
+    (csr : SignedCsrInput)
+    (h : ∀ i ∈ List.range (5 * csr.variableCount - 14),
+      rustScanCsrRow csr i = decodeCsrRow csr i) :
+    rustScanSignedCsr csr = decodeSignedCsr csr := by
+  have hmap := csrRowMapM_congr csr
+    (List.range (5 * csr.variableCount - 14)) h
+  simp [rustScanSignedCsr, decodeSignedCsr, hmap]
+
+/-- An arbitrary collection of witnessed rows, not merely the n=4 fixture,
+satisfies the full-set representation refinement. Duplicate rows are
+refused by both scanners, as are malformed signs/columns inside witnesses. -/
+theorem rustScanSignedCsr_eq_decodeSignedCsr
+    (csr : SignedCsrInput)
+    (h : ∀ i ∈ List.range (5 * csr.variableCount - 14),
+      HasRustRowSlice csr i) :
+    rustScanSignedCsr csr = decodeSignedCsr csr := by
+  apply rustScanSignedCsr_eq_decodeSignedCsr_of_row_agreement
+  intro i hi
+  exact rustScanCsrRow_eq_decodeCsrRow csr i (h i hi)
+
+/-- Both successful outputs and refusals of the full modeled scanner agree
+on the witnessed domain. No duplicate row can disappear silently. -/
+theorem rustScanSignedCsr_refusal_iff
+    (csr : SignedCsrInput)
+    (h : ∀ i ∈ List.range (5 * csr.variableCount - 14),
+      HasRustRowSlice csr i) :
+    rustScanSignedCsr csr = none ↔ decodeSignedCsr csr = none := by
+  rw [rustScanSignedCsr_eq_decodeSignedCsr csr h]
+
+#print axioms IndependentETH.NonAffine.rustScanCsrRow_eq_decodeCsrRow
+#print axioms IndependentETH.NonAffine.csrRowMapM_congr
+#print axioms IndependentETH.NonAffine.rustScanSignedCsr_eq_decodeSignedCsr_of_row_agreement
+#print axioms IndependentETH.NonAffine.rustScanSignedCsr_eq_decodeSignedCsr
+#print axioms IndependentETH.NonAffine.rustScanSignedCsr_refusal_iff
+
 end IndependentETH.NonAffine

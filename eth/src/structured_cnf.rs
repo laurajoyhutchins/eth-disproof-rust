@@ -180,7 +180,9 @@ impl SignedCsr<'_> {
         // The forbidden local assignments have opposite parity to the RHS.
         // For rhs=0: 001,010,100,111 -> bits 1,2,4,7 -> 0x96.
         // For rhs=1: 000,011,101,110 -> bits 0,3,5,6 -> 0x69.
-        let mut rhs = Vec::with_capacity(n - 3);
+        let mut rhs = Vec::new();
+        rhs.try_reserve_exact(n - 3)
+            .map_err(|_| Error::Capacity("unable to reserve recurrence RHS".into()))?;
         for i in 0..n - 3 {
             let key = [i, i + 1, i + 3];
             match groups.remove(&key) {
@@ -276,10 +278,18 @@ pub fn verify_recurrence_receipt(
 
     let mut observed_mask = 0u8;
     for seed in 0..8u8 {
-        let mut x = Vec::with_capacity(n);
+        let mut x = Vec::new();
+        x.try_reserve_exact(n)
+            .map_err(|_| Error::Capacity("unable to reserve seed assignment".into()))?;
         x.extend([seed & 1 != 0, seed & 2 != 0, seed & 4 != 0]);
         for (i, rhs) in receipt.rhs.iter().copied().enumerate() {
-            x.push(x[i] ^ x[i + 1] ^ rhs);
+            let left = *x
+                .get(i)
+                .ok_or_else(|| refuse("missing recurrence state input"))?;
+            let right = *x
+                .get(i + 1)
+                .ok_or_else(|| refuse("missing recurrence state input"))?;
+            x.push(left ^ right ^ rhs);
         }
 
         // Evaluate the *validated source rows* independently of the

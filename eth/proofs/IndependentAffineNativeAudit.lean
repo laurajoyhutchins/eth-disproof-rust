@@ -174,6 +174,49 @@ def audit (snapshot : Snapshot) (maxCells maxSteps : Nat := 8000000) : Bool := I
   let residual := (rows.drop r).map (fun row => expectedResidual row k b)
   return residual == claimed.residual
 
+/-! ## Universal consequences of accepting the concrete auditor
+
+These facts are about the actual executable \`audit\` predicate, not an
+abstract stand-in. They are deliberately extracted from the same guards
+that the generated native certificate corpus exercises.
+-/
+
+/-- No certificate can be accepted when its source names or occurrences
+violate the independent source admission predicate. -/
+theorem audit_implies_sourceOK (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    sourceOK snapshot.source = true := by
+  cases hs : sourceOK snapshot.source with
+  | true => exact hs
+  | false =>
+      simp [audit, hs] at h
+
+/-- The raw contract refuses every certificate from an unsupported
+version, regardless of its row transcript or claimed result. -/
+theorem audit_implies_version (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    snapshot.cert.version = 1 := by
+  have hs := audit_implies_sourceOK snapshot maxCells maxSteps h
+  by_contra hv
+  simp [audit, hs, hv] at h
+
+/-- The accepted free exponent must equal the number of original
+internal columns minus the exact admitted pivot count. This is an
+admission fact, not yet a proof that those pivots span the kernel. -/
+theorem audit_implies_free_dimension (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    snapshot.claim.free =
+      snapshot.source.internal.length - snapshot.cert.pivots.length := by
+  unfold audit at h
+  split_ifs at h <;> simp_all
+
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_sourceOK
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_version
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_free_dimension
+
 /-- Independent source-name Boolean XOR oracle on small examples. -/
 def namedBit : List Name → List Bool → Name → Bool
   | [], _, _ => false

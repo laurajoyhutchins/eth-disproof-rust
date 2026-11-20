@@ -75,7 +75,7 @@ jobs:
           # extraction is still not a Lean theorem. Run every target even
           # when another fails, preserving the exact unsupported closure.
           status=0
-          for scenario in ranked-parent ranked-guard ranked-decoder ranked-source; do
+          for scenario in ranked-parent ranked-guard ranked-decoder ranked-recorder ranked-source; do
             if cargo hax extract "$scenario" --locked 2>&1 | tee "$RUNNER_TEMP/$scenario-extraction.log"; then
               echo "EXTRACTION_$scenario=PASS" >> "$GITHUB_STEP_SUMMARY"
             else
@@ -86,7 +86,7 @@ jobs:
           # Extraction exit code is not enough: never count generated stubs
           # as source-derived semantics. Both target declarations must be
           # present with no sorry/admit/axiom in their generated definitions.
-          for scenario in ranked-parent ranked-guard ranked-decoder; do
+          for scenario in ranked-parent ranked-guard ranked-decoder ranked-recorder; do
             case "$scenario" in
               ranked-parent)
                 dir=RankedParent
@@ -99,6 +99,10 @@ jobs:
               ranked-decoder)
                 dir=RankedDecoder
                 target='^def representation_ranked_input.decode_ranked_input'
+                ;;
+              ranked-recorder)
+                dir=RankedRecorder
+                target='^def representation_ranked_certificate.checked_arithmetic_and_record'
                 ;;
             esac
             generated="proofs/$scenario/lean/$dir/Extraction"
@@ -144,6 +148,7 @@ jobs:
             verification/ranked-source/proofs/ranked-parent/lean/
             verification/ranked-source/proofs/ranked-guard/lean/
             verification/ranked-source/proofs/ranked-decoder/lean/
+            verification/ranked-source/proofs/ranked-recorder/lean/
             verification/ranked-source/proofs/ranked-source/lean/
           if-no-files-found: warn
           retention-days: 7

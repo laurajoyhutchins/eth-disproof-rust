@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: read
+  # Verify historical exact-head Actions receipts, not merely URLs in JSON.
+  actions: read
 
 # Cancel superseded PR checkpoints; retain every pushed main commit receipt.
 concurrency:
@@ -31,6 +33,13 @@ jobs:
         run: cargo fetch --locked
       - name: Repository layout contract
         run: python3 -m unittest discover -s tools -p 'test_repository_layout.py'
+      - name: Scoped source and CI receipt verification
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 -m unittest discover -s tools -p 'test_evidence_claims.py' -v
+          python3 tools/check_evidence_claims.py --verify-remote --json > "$RUNNER_TEMP/evidence-claims.json"
+          cat "$RUNNER_TEMP/evidence-claims.json"
       - name: Formatting (workspace)
         run: cargo fmt --all -- --check
       - name: Compiler CLI independence, formatting and tests

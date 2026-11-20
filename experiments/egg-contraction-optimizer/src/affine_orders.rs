@@ -109,6 +109,9 @@ pub struct Step {
     /// Exact ordered stage boundary names. These are checked against the
     /// independent processed/future support-set oracle for every merge.
     pub retained_ports: Vec<String>,
+    /// Ports quantified by this merge, in BTreeSet's actual sorted order.
+    /// Source-owned internal variables are eliminated earlier by each leaf.
+    pub newly_dead_ports: Vec<String>,
     /// Number of cells in the newly constructed dense logical matrix.
     /// This is a proxy for input footprint, not peak RSS or bit operations.
     pub merge_matrix_cells: usize,
@@ -190,6 +193,7 @@ pub fn fold(
         index: 0, absorbed_factor: order[0],
         metrics: stage.metrics.clone(),
         retained_ports: stage.interface.boundary.clone(),
+        newly_dead_ports: Vec::new(),
         merge_matrix_cells: 0,
         cumulative_merge_cells: 0, cumulative_xors: 0, cumulative_replay_steps: 0,
     }];
@@ -207,6 +211,9 @@ pub fn fold(
         let union = active.union(&added).cloned().collect::<BTreeSet<_>>();
         let kept = kept_port_set(&active, &added, &future, &outputs)
             .into_iter().collect::<Vec<_>>();
+        let kept_set = kept.iter().cloned().collect::<BTreeSet<_>>();
+        let newly_dead_ports = union.difference(&kept_set)
+            .cloned().collect::<Vec<_>>();
 
         let rows = stage.interface.residual.len()
             .checked_add(leaf.interface.residual.len())
@@ -232,6 +239,7 @@ pub fn fold(
             index: step_index, absorbed_factor: leaf_index,
             metrics: stage.metrics.clone(),
             retained_ports: stage.interface.boundary.clone(),
+            newly_dead_ports,
             merge_matrix_cells: cells,
             cumulative_merge_cells: sum_cells,
             cumulative_xors: sum_xors, cumulative_replay_steps: sum_steps,
@@ -663,6 +671,67 @@ mod tests {
         assert_eq!(trace.stage.count_at(&BTreeMap::new()).unwrap(),
             BigUint::from(1u8) << 130);
         assert_eq!(trace.stage.metrics.b, 131);
+    }
+
+    #[test]
+    fn concrete_port_elimination_order_is_sorted_complete_and_once_only() {
+        for family in [Family::Chain, Family::CirculantXor3, Family::FreeAmplifiers] {
+            for size in 3..=10 {
+                let factors = generate(family, size).unwrap();
+                let declared_ports = factors.iter()
+                    .flat_map(|f| f.boundary.iter().cloned())
+                    .collect::<BTreeSet<_>>();
+                for schedule in [
+                    Schedule::Sequential, Schedule::Reverse, Schedule::EvenFirst,
+                ] {
+                    let order = schedule.indices(size);
+                    for output in [Vec::<String>::new(), vec!["x0".into()]] {
+                        let trace = fold(&factors, &order, &output, &Limits::default()).unwrap();
+                        let mut eliminated = BTreeSet::new();
+                        let mut prior = trace.steps[0].retained_ports.iter()
+                            .cloned().collect::<BTreeSet<_>>();
+                        assert!(trace.steps[0].newly_dead_ports.is_empty());
+                        for (position, step) in trace.steps.iter().enumerate().skip(1) {
+                            let merged = prior.union(
+                                &factors[order[position]].boundary.iter()
+                                    .cloned().collect::<BTreeSet<_>>(),
+                            ).cloned().collect::<BTreeSet<_>>();
+                            let retained = step.retained_ports.iter()
+                                .cloned().collect::<BTreeSet<_>>();
+                            let expected = merged.difference(&retained)
+                                .cloned().collect::<Vec<_>>();
+                            assert_eq!(step.newly_dead_ports, expected);
+                            assert!(step.newly_dead_ports.windows(2).all(|pair| pair[0] < pair[1]));
+                            for name in &step.newly_dead_ports {
+                                assert!(eliminated.insert(name.clone()),
+                                    "port eliminated twice: {name}");
+                            }
+                            prior = retained;
+                        }
+                        let outputs = output.iter().cloned().collect::<BTreeSet<_>>();
+                        assert_eq!(eliminated, declared_ports.difference(&outputs)
+                            .cloned().collect::<BTreeSet<_>>());
+                        assert_eq!(prior, outputs);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn declared_universe_closure_covers_invisible_names_in_sorted_order() {
+        let declared = ["x2", "x10", "x1", "x0"].into_iter()
+            .map(str::to_string).collect::<BTreeSet<_>>();
+        let trace = fold_declared(&[], &[], &declared, &[], &Limits::default()).unwrap();
+        assert_eq!(trace.stage.count_at(&BTreeMap::new()).unwrap(),
+            BigUint::from(1u8) << declared.len());
+        // Deliberately NOT numeric order: this is exactly the lexical
+        // order of the native BTreeSet (x0,x1,x10,x2).
+        let order = declared.iter().cloned().collect::<Vec<_>>();
+        assert_eq!(order, vec!["x0", "x1", "x10", "x2"]);
+        assert!(trace.steps.iter().all(|step| {
+            step.newly_dead_ports.windows(2).all(|pair| pair[0] < pair[1])
+        }));
     }
 
     #[test]

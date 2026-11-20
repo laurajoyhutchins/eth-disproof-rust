@@ -15,24 +15,24 @@ They prove no Rust instruction, raw decoder, or source parser correct.
 namespace IndependentETH.AffineMultiplicity
 
 /-- The exponent used by a two-child affine merge. -/
-def mergedExponent (left right local : Nat) : Nat :=
-  local + left + right
+def mergedExponent (left right newFree : Nat) : Nat :=
+  newFree + left + right
 
 /-- The exact, cancellation-free multiplicity equation holds in any
 commutative semiring, not merely when the coefficient is a Boolean. -/
 theorem merged_factor {R : Type*} [CommSemiring R]
-    (left right local : Nat) (f g : R) :
+    (left right newFree : Nat) (f g : R) :
     ((2 : R) ^ left * f) * ((2 : R) ^ right * g) *
-        ((2 : R) ^ local) =
-      (2 : R) ^ (mergedExponent left right local) * (f * g) := by
+        ((2 : R) ^ newFree) =
+      (2 : R) ^ (mergedExponent left right newFree) * (f * g) := by
   simp [mergedExponent, pow_add, mul_assoc, mul_left_comm, mul_comm]
 
 /-- A complete left fold of the extra free dimensions contributed by
 subsequent leaves and by local merge eliminations. -/
 def carryFree : Nat → List (Nat × Nat) → Nat
   | total, [] => total
-  | total, (nextLeaf, local) :: rest =>
-      carryFree (total + nextLeaf + local) rest
+  | total, (nextLeaf, newFree) :: rest =>
+      carryFree (total + nextLeaf + newFree) rest
 
 theorem carryFree_eq (initial : Nat) (steps : List (Nat × Nat)) :
     carryFree initial steps =
@@ -41,7 +41,7 @@ theorem carryFree_eq (initial : Nat) (steps : List (Nat × Nat)) :
   | nil =>
       simp [carryFree]
   | cons pair rest ih =>
-      rcases pair with ⟨nextLeaf, local⟩
+      rcases pair with ⟨nextLeaf, newFree⟩
       simp only [carryFree, List.map_cons, List.sum_cons]
       rw [ih]
       omega

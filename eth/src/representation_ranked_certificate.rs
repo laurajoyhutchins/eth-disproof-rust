@@ -129,6 +129,44 @@ pub fn checked_i128_mul(a: i128, b: i128) -> Result<i128, Error> {
     a.checked_mul(b).ok_or(Error::Overflow)
 }
 
+/// Which *actual* checked arithmetic helper an untrusted receipt sampled.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArithmeticKind {
+    Add,
+    Mul,
+}
+
+/// A single recorded invocation of the production checked-i128 helper.
+/// The observed result is untrusted until checked independently.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ArithmeticReceipt {
+    pub kind: ArithmeticKind,
+    pub left: i128,
+    pub right: i128,
+    pub observed: Option<i128>,
+}
+
+/// Execute the same arithmetic helper used in the production contraction
+/// and record its concrete outcome for independent translation validation.
+/// This function deliberately does not claim to instrument every operation
+/// of a larger counting run.
+pub fn observe_checked_arithmetic(
+    kind: ArithmeticKind,
+    left: i128,
+    right: i128,
+) -> ArithmeticReceipt {
+    let observed = match kind {
+        ArithmeticKind::Add => checked_i128_add(left, right).ok(),
+        ArithmeticKind::Mul => checked_i128_mul(left, right).ok(),
+    };
+    ArithmeticReceipt {
+        kind,
+        left,
+        right,
+        observed,
+    }
+}
+
 /// One source-vertex update to the indexed component-product array.
 /// Both checked multiplications complete before the slot is changed.
 /// Failed operations (including invalid class indices) leave every slot

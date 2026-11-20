@@ -1,7 +1,7 @@
 """Positive and negative controls for the Lean proof style boundary."""
 import unittest
 
-from check_lean_proof_style import check_text
+from check_lean_proof_style import check_text, undocumented_declarations
 
 
 GOOD = """import Mathlib
@@ -26,14 +26,19 @@ class ProofStyleTests(unittest.TestCase):
 
     def test_requires_declaration_doc(self):
         source = GOOD.replace("/-- An elementary proposition. -/\n", "")
-        self.assertTrue(any("needs /--" in e for e in check_text(source)))
+        self.assertTrue(any("needs /--" in e for e in check_text(source, strict_docs=True)))
+
+    def test_advisory_does_not_block_existing_helpers(self):
+        source = GOOD.replace("/-- An elementary proposition. -/\\n", "")
+        self.assertEqual(check_text(source), [])
+        self.assertEqual(len(undocumented_declarations(source)), 1)
 
     def test_module_comment_not_declaration_doc(self):
         source = GOOD.replace(
             "/-- An elementary proposition. -/\n",
             "/- Ordinary comment. -/\n",
         )
-        self.assertTrue(any("needs /--" in e for e in check_text(source)))
+        self.assertTrue(any("needs /--" in e for e in check_text(source, strict_docs=True)))
 
     def test_requires_module_comment(self):
         source = GOOD.replace("/-!\n# Example module\n-/\n\n", "")

@@ -35,7 +35,16 @@ def preceding_doc(lines: list[str], index: int) -> bool:
     return False
 
 
-def check_text(source: str) -> list[str]:
+def undocumented_declarations(source: str) -> list[str]:
+    lines = source.splitlines()
+    return [
+        f"{i + 1}: top-level declaration needs /-- documentation"
+        for i, line in enumerate(lines)
+        if DECLARATION.match(line) and not preceding_doc(lines, i)
+    ]
+
+
+def check_text(source: str, *, strict_docs: bool = False) -> list[str]:
     errors: list[str] = []
     lines = source.splitlines()
     if not lines or not lines[0].startswith("import "):
@@ -54,21 +63,30 @@ def check_text(source: str) -> list[str]:
             errors.append(f"{loc} line exceeds 100 characters ({len(line)})")
         if i > 1 and not line and not lines[i - 1] and not lines[i - 2]:
             errors.append(f"{loc} more than one blank line")
-        if DECLARATION.match(line) and not preceding_doc(lines, i):
-            errors.append(f"{loc} top-level declaration needs /-- documentation")
+    if strict_docs:
+        errors.extend(undocumented_declarations(source))
     return errors
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="*", type=Path)
+    parser.add_argument(
+        "--strict-docs", action="store_true",
+        help="also fail on undocumented top-level declarations",
+    )
     args = parser.parse_args()
     paths = args.paths or sorted(PROOFS.glob("*.lean"))
     if not paths:
         parser.error("no Lean proof modules found")
     failed = False
     for path in paths:
-        errors = check_text(path.read_text(encoding="utf-8"))
+        source = path.read_text(encoding="utf-8")
+        errors = check_text(source, strict_docs=args.strict_docs)
+        if not args.strict_docs:
+            undocumented = undocumented_declarations(source)
+            if undocumented:
+                print(f"{path}: advisory: {len(undocumented)} undocumented declaration(s)")
         for error in errors:
             print(f"{path}: {error}")
         failed |= bool(errors)

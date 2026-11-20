@@ -27,11 +27,11 @@ def completePivots {r f b : Nat} (t : Terminal r f b)
 
 def satisfies {r f b : Nat} (t : Terminal r f b)
     (pivot : Bits r) (free : Bits f) (boundary : Bits b) : Prop :=
-  (∀ i, pivot i ^^ t.offset free boundary i = t.target i) ∧
+  (∀ i, (pivot i ^^ t.offset free boundary i) = t.target i) ∧
     t.residual boundary = true
 
 private theorem xor_rhs_iff (a correction rhs : Bool) :
-    (a ^^ correction = rhs) ↔ (a = rhs ^^ correction) := by
+    ((a ^^ correction) = rhs) ↔ (a = (rhs ^^ correction)) := by
   cases a <;> cases correction <;> cases rhs <;> decide
 
 theorem satisfies_iff {r f b : Nat} (t : Terminal r f b)
@@ -98,15 +98,11 @@ theorem terminal_count {r f b : Nat}
       letI := hempty
       simp [hres]
   | true =>
-      have hequiv := solutionsEquivFree t boundary hres
-      calc
-        Fintype.card (Solutions t boundary) =
-            Fintype.card (Bits f) :=
-          Fintype.card_congr hequiv
-        _ = (if t.residual boundary then 2 ^ f else 0) := by
-          have hc : Fintype.card (Bits f) = 2 ^ f := by simp [Bits]
-          rw [hc]
-          simp [hres]
+      have hc : Fintype.card (Bits f) = 2 ^ f := by
+        simp [Bits]
+      have hcard : Fintype.card (Solutions t boundary) = 2 ^ f :=
+        (Fintype.card_congr (solutionsEquivFree t boundary hres)).trans hc
+      simpa [hres] using hcard
 
 theorem inconsistent_boundary_zero {r f b : Nat}
     (t : Terminal r f b) (boundary : Bits b)

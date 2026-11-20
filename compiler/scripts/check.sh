@@ -125,7 +125,7 @@ theorems = (
 )
 for name in theorems:
     pattern = re.escape(f"'ReaderWorklistAliases.{name}'")
-    pattern += r" (does not depend on any axioms|depends on axioms: \\[([^]]*)\\])"
+    pattern += r" (does not depend on any axioms|depends on axioms: \[([^]]*)\])"
     match = re.search(pattern, receipt, re.S)
     if not match:
         raise SystemExit(f"missing alias kernel axiom receipt: {name}")

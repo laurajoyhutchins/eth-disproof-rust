@@ -341,6 +341,166 @@ example :
       { constant := false, linear := [true, false],
         orderedPairs := [(0, 1), (0, 1)] } 2) = false := by decide
 
+/-!
+## Independent, exhaustive native-record acceptance oracle
+
+This checker interprets raw zero-based source and output monomial lists and
+affine row-index lists, rather than trusting a producer's normalized phase.
+It is deliberately exponential in the number of boundary bits: it closes
+the *instance-level semantic acceptance* boundary, not the polynomial-time
+native verifier refinement or any ETH complexity claim.
+
+Coordinate 0 of a source is the internal bit, and coordinates 1..n are
+the exterior ports. Output coordinates are 0..n-1. A converter from native
+Rust data must faithfully serialize these fields; that converter is outside
+this Lean kernel theorem's trust boundary.
+-/
+
+structure NativeSourceRecord where
+  phaseTerms : List (List Nat)
+  rows : List (List Nat × Bool)
+  exponent : Nat
+deriving Repr
+
+structure NativeOutputRecord where
+  phaseTerms : List (List Nat)
+  rows : List (List Nat × Bool)
+  added : Option (List Nat × Bool)
+  exponent : Nat
+  receipt : SparseCoefficientRecord
+deriving Repr
+
+/-- Native Rust style XOR of the named coordinate occurrences. -/
+def nativeXorRow (bits : Nat → Bool) (indices : List Nat) : Bool :=
+  indices.foldl (fun parity index => parity ^^ bits index) false
+
+/-- Native Rust style ANF evaluation: conjunction inside a monomial,
+XOR across monomials. This remains defined even on malformed raw data. -/
+def nativePhase (bits : Nat → Bool) (terms : List (List Nat)) : Bool :=
+  terms.foldl (fun parity term => parity ^^ term.all bits) false
+
+def nativeSourceBit {n : ℕ} (x : Bool) (boundary : Fin n → Bool)
+    (index : Nat) : Bool :=
+  if index == 0 then x else ((List.ofFn boundary)[index - 1]?).getD false
+
+def nativeOutputBit {n : ℕ} (boundary : Fin n → Bool)
+    (index : Nat) : Bool :=
+  ((List.ofFn boundary)[index]?).getD false
+
+def nativeRowsHold (bits : Nat → Bool)
+    (rows : List (List Nat × Bool)) : Bool :=
+  rows.all (fun row => nativeXorRow bits row.1 == row.2)
+
+def nativeSignedSource {n : ℕ} (src : NativeSourceRecord)
+    (x : Bool) (boundary : Fin n → Bool) : ℤ :=
+  let bits := nativeSourceBit x boundary
+  if nativeRowsHold bits src.rows then
+    (2 : ℤ) ^ src.exponent * signedBit (nativePhase bits src.phaseTerms)
+  else 0
+
+def nativeSignedOutput {n : ℕ} (out : NativeOutputRecord)
+    (boundary : Fin n → Bool) : ℤ :=
+  let bits := nativeOutputBit boundary
+  let rows := out.rows ++ out.added.toList
+  if nativeRowsHold bits rows then
+    (2 : ℤ) ^ out.exponent * signedBit (nativePhase bits out.phaseTerms)
+  else 0
+
+/-- A squarefree degree-two native monomial with ordered, in-range indices. -/
+def nativeTermWellFormed (width : ℕ) (term : List Nat) : Prop :=
+  term.length ≤ 2 ∧ term.Pairwise (· < ·) ∧ term.Forall (· < width)
+
+def nativeSourceShape (n : ℕ) (src : NativeSourceRecord) : Prop :=
+  src.phaseTerms.Forall (nativeTermWellFormed (n + 1)) ∧
+    src.rows.Forall (fun row => row.1.Forall (· < n + 1))
+
+def nativeOutputShape (n : ℕ) (out : NativeOutputRecord) : Prop :=
+  out.phaseTerms.Forall (nativeTermWellFormed n) ∧
+    out.rows.Forall (fun row => row.1.Forall (· < n)) ∧
+    out.added.toList.Forall (fun row => row.1.Forall (· < n)) ∧
+    out.receipt.wellFormed n
+
+def nativeSupport {n : ℕ} (boundary : Fin n → Bool) :
+    Finset (Fin n) :=
+  Finset.univ.filter (fun i => boundary i = true)
+
+/-- The source-independent check also tests that the signed phase receipt
+actually agrees with the output's raw monomial interpreter. -/
+def nativeReceiptMatches {n : ℕ} (out : NativeOutputRecord) :
+    Prop :=
+  ∀ boundary : Fin n → Bool,
+    nativePhase (nativeOutputBit boundary) out.phaseTerms =
+      phaseBit (out.receipt.decode n) (nativeSupport boundary)
+
+/-- Reference acceptance over the *actual* raw source and output
+interpretations. Deliberately finite/exhaustive, suitable for small oracles
+and semantic debugging. -/
+def checkNativeInstance {n : ℕ}
+    (src : NativeSourceRecord) (out : NativeOutputRecord) : Bool :=
+  decide (nativeSourceShape n src ∧ nativeOutputShape n out ∧
+    nativeReceiptMatches out ∧
+    (∀ boundary : Fin n → Bool,
+      nativeSignedOutput out boundary =
+        ∑ x : Bool, nativeSignedSource src x boundary))
+
+theorem checkNativeInstance_sound {n : ℕ}
+    (src : NativeSourceRecord) (out : NativeOutputRecord)
+    (accepted : checkNativeInstance (n := n) src out = true)
+    (boundary : Fin n → Bool) :
+    nativeSignedOutput out boundary =
+      ∑ x : Bool, nativeSignedSource src x boundary := by
+  have h : nativeSourceShape n src ∧ nativeOutputShape n out ∧
+      nativeReceiptMatches out ∧
+      (∀ boundary : Fin n → Bool,
+        nativeSignedOutput out boundary =
+          ∑ x : Bool, nativeSignedSource src x boundary) := by
+    simpa only [checkNativeInstance, decide_eq_true_eq] using accepted
+  exact h.2.2.2 boundary
+
+theorem checkNativeInstance_receipt_sound {n : ℕ}
+    (src : NativeSourceRecord) (out : NativeOutputRecord)
+    (accepted : checkNativeInstance (n := n) src out = true)
+    (boundary : Fin n → Bool) :
+    nativePhase (nativeOutputBit boundary) out.phaseTerms =
+      phaseBit (out.receipt.decode n) (nativeSupport boundary) := by
+  have h : nativeSourceShape n src ∧ nativeOutputShape n out ∧
+      nativeReceiptMatches out ∧
+      (∀ boundary : Fin n → Bool,
+        nativeSignedOutput out boundary =
+          ∑ x : Bool, nativeSignedSource src x boundary) := by
+    simpa only [checkNativeInstance, decide_eq_true_eq] using accepted
+  exact h.2.2.1 boundary
+
+private def freeOracleSource : NativeSourceRecord :=
+  { phaseTerms := [[0, 1]], rows := [], exponent := 0 }
+
+private def freeOracleOutput : NativeOutputRecord :=
+  { phaseTerms := [], rows := [],
+    added := some ([0], false), exponent := 1,
+    receipt := { constant := false, linear := [false], orderedPairs := [] } }
+
+/-- Summing (-1)^(x*b) leaves the affine constraint b = 0. -/
+example : checkNativeInstance (n := 1)
+    freeOracleSource freeOracleOutput = true := by decide
+
+private def forcedOracleSource : NativeSourceRecord :=
+  { phaseTerms := [[0, 1]], rows := [([0, 1], true)], exponent := 0 }
+
+private def forcedOracleOutput : NativeOutputRecord :=
+  { phaseTerms := [], rows := [], added := none, exponent := 0,
+    receipt := { constant := false, linear := [false], orderedPairs := [] } }
+
+/-- x XOR b = 1 forces x = !b; consequently x*b is always zero. -/
+example : checkNativeInstance (n := 1)
+    forcedOracleSource forcedOracleOutput = true := by decide
+
+/-- A forged exponent must be rejected. -/
+example : checkNativeInstance (n := 1) freeOracleSource
+    { freeOracleOutput with exponent := 0 } = false := by decide
+
+#print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_sound
+#print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_receipt_sound
+
 #print axioms IndependentETH.QuadraticLowWeight.SparseCoefficientRecord.decode_eval
 #print axioms IndependentETH.QuadraticLowWeight.checkSparseSamples_sign_sound
 #print axioms IndependentETH.QuadraticLowWeight.xorFold_eq_zmod_sum

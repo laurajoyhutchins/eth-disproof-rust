@@ -1500,16 +1500,12 @@ def RustScannedCsrWords (csr : SignedCsrInput) (ds : List Bool) :=
 for malformed inputs. The equivalence preserves the word unchanged. -/
 def rustScannedWordsEquiv (csr : SignedCsrInput) (ds : List Bool) :
     RustScannedCsrWords csr ds ≃ DecodedCsrWords csr ds where
-  toFun := by
-    intro w
-    rcases w with ⟨word, hlen, rows, hscan, hholds⟩
-    refine ⟨word, hlen, rows, ?_, hholds⟩
-    simpa only [rustScanSignedCsr_total_refinement] using hscan
-  invFun := by
-    intro w
-    rcases w with ⟨word, hlen, rows, hdecoded, hholds⟩
-    refine ⟨word, hlen, rows, ?_, hholds⟩
-    simpa only [rustScanSignedCsr_total_refinement] using hdecoded
+  toFun := fun w =>
+    ⟨w.val, by
+      simpa only [rustScanSignedCsr_total_refinement] using w.property⟩
+  invFun := fun w =>
+    ⟨w.val, by
+      simpa only [rustScanSignedCsr_total_refinement] using w.property⟩
   left_inv := by
     intro w
     apply Subtype.ext

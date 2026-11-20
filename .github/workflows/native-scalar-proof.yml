@@ -51,10 +51,39 @@ jobs:
             exit 1
           fi
           echo "verified-head=${{ github.event.pull_request.head.sha || github.sha }}" >> scalar-proof-kernel-receipt.txt
+      - name: Kernel-check C release source-to-physical model and axiom boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          lean_binary="$(cd instrumentation/lean-env && elan which lean)"
+          "$lean_binary" compiler/proofs/ReaderCReleaseSemantics.lean \
+            | tee c-release-proof-kernel-receipt.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          raw = Path("c-release-proof-kernel-receipt.txt").read_text()
+          allowed = {"propext", "Quot.sound", "Classical.choice"}
+          for name in ("cStep_represent", "runC_represent"):
+              m = re.search(
+                  re.escape(f"'ReaderCReleaseSemantics.{name}'") +
+                  r" (does not depend on any axioms|depends on axioms: \\[([^\\]]*)\\])",
+                  raw,
+              )
+              if m is None:
+                  raise SystemExit(f"Missing Lean theorem receipt: {name}")
+              used = set((m.group(2) or "").split(", ")) - {""}
+              if not used <= allowed:
+                  raise SystemExit(f"Unreviewed axioms for {name}: {used - allowed}")
+          if "sorryAx" in raw or "error:" in raw:
+              raise SystemExit("C release proof has errors or sorry axioms")
+          print("C_RELEASE_SOURCE_TO_PHYSICAL_MODEL=KERNEL_VERIFIED")
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: native-scalar-proof-kernel-receipt
           retention-days: 30
           if-no-files-found: warn
-          path: scalar-proof-kernel-receipt.txt
+          path: |
+            scalar-proof-kernel-receipt.txt
+            c-release-proof-kernel-receipt.txt

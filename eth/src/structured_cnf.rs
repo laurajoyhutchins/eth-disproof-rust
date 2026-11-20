@@ -703,6 +703,80 @@ mod tests {
         }
     }
 
+    /// The source-to-CSR adapter preserves every canonical literal row.
+    /// This covers empty, unary, ternary, long, mixed-polarity, tautological,
+    /// and duplicate source clauses. Cnf's canonical set normalization is
+    /// performed before encoding; no claim is made about raw DIMACS parsing.
+    #[test]
+    fn canonical_cnf_survives_csr_encoding_and_reconstruction() {
+        use crate::{Clause, Literal};
+
+        for n in [4_usize, 8, 16] {
+            let mut clauses = vec![
+                Clause::new(Vec::new()),
+                Clause::new(vec![Literal {
+                    variable: n - 1,
+                    positive: false,
+                }]),
+                Clause::new(vec![
+                    Literal {
+                        variable: n - 1,
+                        positive: true,
+                    },
+                    Literal {
+                        variable: 0,
+                        positive: false,
+                    },
+                    Literal {
+                        variable: 0,
+                        positive: true,
+                    },
+                ]),
+            ];
+            for row in 0..n {
+                let signed = (0..=row)
+                    .map(|j| Literal {
+                        variable: j,
+                        positive: (j + row) % 2 == 0,
+                    })
+                    .collect::<Vec<_>>();
+                clauses.push(Clause::new(signed));
+            }
+            clauses.push(clauses[1].clone());
+
+            let source = Cnf::new(n, clauses).unwrap();
+            let encoded = OwnedSignedCsr::from_cnf(&source);
+            assert_eq!(encoded.variables, source.variables());
+            assert_eq!(encoded.row_offsets.len(), source.clauses().len() + 1);
+            assert_eq!(encoded.row_offsets.first(), Some(&0));
+            assert_eq!(
+                encoded.row_offsets.last(),
+                Some(&encoded.column_indices.len())
+            );
+            assert_eq!(encoded.column_indices.len(), encoded.signs.len());
+
+            let restored_rows = encoded
+                .row_offsets
+                .windows(2)
+                .map(|window| {
+                    let literals = (window[0]..window[1])
+                        .map(|i| {
+                            let polarity = encoded.signs[i];
+                            assert!(polarity == -1 || polarity == 1);
+                            Literal {
+                                variable: encoded.column_indices[i],
+                                positive: polarity == 1,
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    Clause::new(literals)
+                })
+                .collect::<Vec<_>>();
+            let restored = Cnf::new(encoded.variables, restored_rows).unwrap();
+            assert_eq!(restored, source);
+        }
+    }
+
     #[test]
     fn fixed_lean_csr_vector_matches_rust_encoding() {
         // The same six complete clauses and all arrays are kernel-checked

@@ -15,6 +15,9 @@
 use super::*;
 use std::time::Instant;
 
+#[path = "certificates/nogood.rs"]
+pub mod nogood;
+
 const MAX_CLAUSE_VISITS: u64 = 100_000;
 const MAX_QUERIES: u64 = 4_096;
 const MAX_FUTURE_CLAUSES: usize = 64;

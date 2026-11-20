@@ -324,7 +324,6 @@ theorem fullWord_length (s : State) (ds : List Bool) :
       rcases s with ⟨a, b, c⟩
       simp only [fullWord, List.length_cons]
       rw [ih]
-      omega
 
 inductive FullTrace : State → List Bool → List Bool → Prop
   | last (a b c : Bool) (h : nonzero (a, b, c) = true) :
@@ -361,12 +360,12 @@ theorem accepted_fullTrace (s : State) (ds : List Bool)
       exact FullTrace.last a b c h
   | cons d ds ih =>
       rcases s with ⟨a, b, c⟩
-      have hs : nonzero (a, b, c) = true := by
-        have h' : nonzero (a, b, c) && accepts (next d (a, b, c)) ds = true := h
-        exact (Bool.and_eq_true.mp h').1
-      have ht : accepts (next d (a, b, c)) ds = true := by
-        have h' : nonzero (a, b, c) && accepts (next d (a, b, c)) ds = true := h
-        exact (Bool.and_eq_true.mp h').2
+      have hp : nonzero (a, b, c) = true ∧
+          accepts (next d (a, b, c)) ds = true := by
+        cases h0 : nonzero (a, b, c) <;>
+          cases h1 : accepts (next d (a, b, c)) ds <;>
+          simp [accepts, h0, h1] at h ⊢
+      obtain ⟨hs, ht⟩ := hp
       exact FullTrace.step a b c d ds
         (fullWord (next d (a, b, c)) ds) hs (ih _ ht)
 

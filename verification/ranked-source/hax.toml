@@ -1,6 +1,12 @@
 # These scenarios import the production module files *by path*. Isolating
 # guard and byte decoder exposes which source dependency actually translates
 # without substituting a proof-friendly implementation.
+# The smallest genuine source-derived parent-decision obligation. It
+# contains no diagnostic String allocation or trace-recording callback.
+[scenario.ranked-parent]
+backend = "lean"
+include = ["ranked_source_proof_harness::representation_ranked_certificate::parent_refusal_code"]
+
 [scenario.ranked-guard]
 backend = "lean"
 include = ["ranked_source_proof_harness::representation_ranked_certificate::verify_ranked_component_certificate"]

@@ -132,13 +132,48 @@ fn case<const R: usize, const S: usize>(
         },
         "lifted": program_record(&lifted),
         "compiled": program_record(&compiled),
+        // Serde derives this independently from the Rust variants and named
+        // fields. The Python gate compares it with every hand-formatted row.
+        "structure": {
+            "lifted": serde_json::to_value(&lifted)?,
+            "compiled": serde_json::to_value(&compiled)?,
+        },
+    }))
+}
+
+/// Check all 12 instruction constructors, with both values of Set,
+/// through the hand-written row formatter and independently derived Serde
+/// structural serialization. This is not a source-program certificate.
+fn encoding_corpus() -> Result<Value, Box<dyn std::error::Error>> {
+    let program = Program::<4, 3>::new(
+        0, 1, 0,
+        vec![
+            Instr::Halt,
+            Instr::Goto { next: 0 },
+            Instr::Set { dst: 0, value: true, next: 1 },
+            Instr::Set { dst: 1, value: false, next: 2 },
+            Instr::Copy { dst: 0, src: 1, next: 2 },
+            Instr::Not { dst: 1, src: 2, next: 3 },
+            Instr::And { dst: 0, left: 1, right: 2, next: 4 },
+            Instr::Or { dst: 1, left: 2, right: 3, next: 5 },
+            Instr::Xor { dst: 2, left: 3, right: 0, next: 6 },
+            Instr::Branch { test: 3, yes: 0, no: 12 },
+            Instr::Push { stack: 2, src: 3, next: 7 },
+            Instr::Peek { stack: 1, value: 2, present: 3, next: 8 },
+            Instr::Pop { stack: 2, value: 1, present: 0, next: 9 },
+        ],
+    )?;
+    Ok(json!({
+        "physical": program_record(&program),
+        "structure": serde_json::to_value(&program)?,
     }))
 }
 
 fn receipt() -> Result<Value, Box<dyn std::error::Error>> {
     Ok(json!({
-        "kind": "rust-physical-programs-v1",
+        "kind": "rust-physical-programs-v2",
         "source_commit": SOURCE_COMMIT,
+        "encoding_corpus": encoding_corpus()?,
         "cases": [
             case::<15, 16>("dedup", Ports {
                 tag: 0, present: 1, found: 14, source: 13, payload: 15,
@@ -217,106 +252,21 @@ mod tests {
     }
 
     #[test]
-    fn every_physical_opcode_has_a_canonical_row() {
-        let rows = [
-            (Instr::Halt, "halt"),
-            (Instr::Goto { next: 0 }, "goto:0"),
-            (
-                Instr::Set {
-                    dst: 0,
-                    value: true,
-                    next: 1,
-                },
-                "set:0:1:1",
-            ),
-            (
-                Instr::Set {
-                    dst: 0,
-                    value: false,
-                    next: 1,
-                },
-                "set:0:0:1",
-            ),
-            (
-                Instr::Copy {
-                    dst: 0,
-                    src: 1,
-                    next: 2,
-                },
-                "copy:0:1:2",
-            ),
-            (
-                Instr::Not {
-                    dst: 0,
-                    src: 1,
-                    next: 2,
-                },
-                "not:0:1:2",
-            ),
-            (
-                Instr::And {
-                    dst: 0,
-                    left: 1,
-                    right: 2,
-                    next: 3,
-                },
-                "and:0:1:2:3",
-            ),
-            (
-                Instr::Or {
-                    dst: 0,
-                    left: 1,
-                    right: 2,
-                    next: 3,
-                },
-                "or:0:1:2:3",
-            ),
-            (
-                Instr::Xor {
-                    dst: 0,
-                    left: 1,
-                    right: 2,
-                    next: 3,
-                },
-                "xor:0:1:2:3",
-            ),
-            (
-                Instr::Branch {
-                    test: 0,
-                    yes: 1,
-                    no: 2,
-                },
-                "branch:0:1:2",
-            ),
-            (
-                Instr::Push {
-                    stack: 0,
-                    src: 1,
-                    next: 2,
-                },
-                "push:0:1:2",
-            ),
-            (
-                Instr::Peek {
-                    stack: 0,
-                    value: 1,
-                    present: 2,
-                    next: 3,
-                },
-                "peek:0:1:2:3",
-            ),
-            (
-                Instr::Pop {
-                    stack: 0,
-                    value: 1,
-                    present: 2,
-                    next: 3,
-                },
-                "pop:0:1:2:3",
-            ),
-        ];
-        for (instruction, expected) in rows {
-            assert_eq!(instruction_record(&instruction), expected);
-        }
+    fn every_physical_opcode_and_boolean_bit_has_independent_format_evidence() {
+        let corpus = encoding_corpus().unwrap();
+        assert_eq!(
+            corpus["physical"]["code"],
+            json!([
+                "halt", "goto:0", "set:0:1:1", "set:1:0:2",
+                "copy:0:1:2", "not:1:2:3", "and:0:1:2:4",
+                "or:1:2:3:5", "xor:2:3:0:6", "branch:3:0:12",
+                "push:2:3:7", "peek:1:2:3:8", "pop:2:1:0:9"
+            ])
+        );
+        assert_eq!(corpus["structure"]["code"][2]["Set"]["value"], true);
+        assert_eq!(corpus["structure"]["code"][3]["Set"]["value"], false);
+        assert_eq!(corpus["structure"]["code"][11]["Peek"]["present"], 3);
+        assert_eq!(corpus["structure"]["code"][12]["Pop"]["present"], 0);
     }
+
 }

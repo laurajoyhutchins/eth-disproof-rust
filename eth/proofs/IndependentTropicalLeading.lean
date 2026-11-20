@@ -334,6 +334,37 @@ theorem polynomialToLeading_as_sum (p : Polynomial ℕ) :
   intro k _
   exact polynomialToLeading_monomial k (p.coeff k)
 
+/-- The tropical image of a pure power has that power as its degree. -/
+theorem tropical_variable_pow (d : ℕ) :
+    (monomial 1 1 (by omega) : Leading) ^ d =
+      monomial d 1 (by omega) := by
+  induction d with
+  | zero => rfl
+  | succ d ih =>
+      rw [pow_succ, ih]
+      change times (monomial d 1 (by omega)) (monomial 1 1 (by omega)) =
+        monomial (d + 1) 1 (by omega)
+      simp [times, monomial]
+
+/-- Every positive-coefficient monomial maps to its exact leading pair. -/
+theorem polynomialToLeading_monomial_pos
+    (d n : ℕ) (hn : 0 < n) :
+    polynomialToLeading (Polynomial.monomial d n) = monomial d n hn := by
+  rw [polynomialToLeading_monomial, tropical_variable_pow]
+  have hn0 : n ≠ 0 := Nat.ne_of_gt hn
+  simp [natLeading, hn0, times, monomial]
+
+/-- The CNF violation polynomial maps to the tropical sum over precisely
+all declared-variable assignments, one monomial per assignment. -/
+theorem generating_to_tropical {n : ℕ} (φ : CNF n) :
+    polynomialToLeading (generating φ) =
+      ∑ a : Fin n → Bool, monomial (energy φ a) 1 (by omega) := by
+  classical
+  simp only [generating, map_sum]
+  apply Finset.sum_congr rfl
+  intro a _
+  exact polynomialToLeading_monomial_pos (energy φ a) 1 (by omega)
+
 /-- Signed coefficients can cancel the purported tropical leading term. -/
 theorem signed_cancellation :
     ((Polynomial.X ^ 2 + Polynomial.X ^ 7 : Polynomial ℤ) -
@@ -361,6 +392,8 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.polynomialToLeading_mul
 #print axioms IndependentETH.Tropical.polynomialToLeading_monomial
 #print axioms IndependentETH.Tropical.polynomialToLeading_as_sum
+#print axioms IndependentETH.Tropical.polynomialToLeading_monomial_pos
+#print axioms IndependentETH.Tropical.generating_to_tropical
 #print axioms IndependentETH.Tropical.modular_prune
 
 end IndependentETH.Tropical

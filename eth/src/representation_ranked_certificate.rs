@@ -145,7 +145,9 @@ fn check_ranked_parents(
     match refusal {
         0 => Ok(parent_links),
         1 => Err(Error::Invalid("unjustified ranked component root".into())),
-        2 => Err(Error::Invalid("ranked parent edge absent from source".into())),
+        2 => Err(Error::Invalid(
+            "ranked parent edge absent from source".into(),
+        )),
         3 => Err(Error::Invalid("ranked parent edge misses vertex".into())),
         4 => Err(Error::Invalid(
             "ranked parent does not preserve label and decrease rank".into(),

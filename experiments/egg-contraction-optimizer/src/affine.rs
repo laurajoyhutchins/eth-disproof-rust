@@ -106,13 +106,20 @@ pub fn recognize_strict_xor3_cnf(source: &crate::sat::Region) -> Result<AffineRe
     Ok(affine)
 }
 
+/// Authoritative source identifier grammar shared by the producer and
+/// checker. The independent Lean audit restates this rule on raw UTF-8
+/// bytes and tests malformed names, rather than trusting this function.
+pub(crate) fn valid_source_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|first| first.is_ascii_alphabetic()) &&
+        chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
 impl AffineRegion {
     fn validate(&self) -> Result<(), String> {
         let mut declared = BTreeSet::new();
         for name in self.internal.iter().chain(&self.boundary) {
-            if name.is_empty() || !name.chars().next().unwrap().is_ascii_alphabetic()
-                || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                || !declared.insert(name.clone())
+            if !valid_source_identifier(name) || !declared.insert(name.clone())
             {
                 return Err(format!("invalid or duplicated variable {name:?}"));
             }
@@ -131,10 +138,20 @@ impl AffineRegion {
     /// dimensions and the number of machine words per bit-vector row.
     /// Does not enumerate the 2^n internal assignments.
     pub fn eliminate(&self) -> Result<AffineInterface, String> {
-        let (result, certificate) = self.eliminate_with_certificate()?;
-        // Every public result is independently verified before use.
-        certificate.verify(self, &result)?;
+        let (result, _receipt) = self.eliminate_with_raw_certificate()?;
         Ok(result)
+    }
+
+    /// Normal admission path: generate a typed witness, cross the strict
+    /// versioned raw-value boundary, then independently replay it.
+    /// The returned raw values are not yet a byte-serialized artifact.
+    pub fn eliminate_with_raw_certificate(
+        &self,
+    ) -> Result<(AffineInterface, crate::affine_wire::RawCertificate), String> {
+        let (result, typed) = self.eliminate_with_certificate()?;
+        let raw = crate::affine_wire::RawCertificate::from_typed(&typed)?;
+        raw.verify(self, &result, crate::affine_cert::VerificationLimits::default())?;
+        Ok((result, raw))
     }
 
     /// The producer also emits a replayable row-operation witness.

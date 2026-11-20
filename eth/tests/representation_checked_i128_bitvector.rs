@@ -9,9 +9,7 @@
 //! BitVec-128 overflow specification, not Rust compiler refinement.
 
 use lean_eth_reference::Error;
-use lean_eth_reference::representation_ranked_certificate::{
-    checked_i128_add, checked_i128_mul,
-};
+use lean_eth_reference::representation_ranked_certificate::{checked_i128_add, checked_i128_mul};
 
 fn magnitude_parts(value: i128) -> (bool, u128) {
     (value < 0, value.unsigned_abs())

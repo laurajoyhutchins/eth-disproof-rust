@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+import subprocess
 import tomllib
 import unittest
 
@@ -96,6 +98,36 @@ class RepositoryLayoutTests(unittest.TestCase):
                     self.assertIn("BASE_PREFIX=rust/native_lean_backend", content)
                     continue
                 self.assertNotIn(prefix, content, f"{workflow}: {prefix}")
+
+
+    def test_ranked_generated_lean_placeholder_detector_is_live(self):
+        # A previous double-escaped \\b pattern never matched real `sorry`.
+        # Test the *actual workflow regex* with GNU grep, not Python's regex.
+        workflow = (ROOT / ".github/workflows/ranked-rust-extraction.yml").read_text()
+        matches = re.findall(r"^\s*placeholder_pattern='([^']+)'$", workflow, re.MULTILINE)
+        self.assertEqual(len(matches), 1, "one canonical detector is required")
+        pattern = matches[0]
+        for source, detected in (
+            ("def bad := by sorry", True),
+            ("def bad := by admit", True),
+            ("axiom bad : False", True),
+            ("def bad := sorryAx", True),
+            ("def fine := unsorryed", False),
+            ("def fine := sorryish", False),
+        ):
+            with self.subTest(source=source):
+                check = subprocess.run(
+                    ["grep", "-Eq", pattern],
+                    input=source + "\n",
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(check.returncode, 0 if detected else 1)
+        self.assertIn('grep -nE "$placeholder_pattern"', workflow)
+        self.assertIn('[ ! -f "$generated/Funs.lean" ]', workflow)
+        self.assertIn('[ ! -f "$generated/Types.lean" ]', workflow)
+        self.assertIn('PLACEHOLDER_SCAN_ERROR=$scenario:', workflow)
+        self.assertIn('NO_LOCAL_PLACEHOLDERS', workflow)
 
 
 if __name__ == "__main__":

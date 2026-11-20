@@ -75,6 +75,21 @@ jobs:
           # Extraction exit code is not enough: never count generated stubs
           # as source-derived semantics. Both target declarations must be
           # present with no sorry/admit/axiom in their generated definitions.
+          # GNU grep -E does not interpret '\\b' as a word boundary when
+          # double-escaped inside single quotes. Use POSIX character classes
+          # and actively assert that each forbidden marker is recognized.
+          placeholder_pattern='(^|[^[:alnum:]_])(sorry|admit|axiom|sorryAx)([^[:alnum:]_]|$)'
+          for poison in 'def x := by sorry' 'def x := by admit' 'axiom x : False' 'def x := sorryAx'; do
+            if ! printf '%s\n' "$poison" | grep -Eq "$placeholder_pattern"; then
+              echo "placeholder detector failed its negative control: $poison" >&2
+              exit 1
+            fi
+          done
+          if printf '%s\n' 'def x := unsorryed' | grep -Eq "$placeholder_pattern"; then
+            echo 'placeholder detector rejected a non-placeholder identifier' >&2
+            exit 1
+          fi
+          echo 'PLACEHOLDER_DETECTOR_NEGATIVE_CONTROLS=PASS' >> "$GITHUB_STEP_SUMMARY"
           for scenario in ranked-parent ranked-guard ranked-decoder; do
             case "$scenario" in
               ranked-parent)
@@ -91,15 +106,26 @@ jobs:
                 ;;
             esac
             generated="proofs/$scenario/lean/$dir/Extraction"
+            if [ ! -f "$generated/Funs.lean" ] || [ ! -f "$generated/Types.lean" ]; then
+              echo "MISSING_GENERATED_LEAN=$scenario" >> "$GITHUB_STEP_SUMMARY"
+              status=1
+              continue
+            fi
             if ! grep -q "$target" "$generated/Funs.lean"; then
               echo "MISSING_SOURCE_BODY=$scenario" >> "$GITHUB_STEP_SUMMARY"
               status=1
             fi
-            if grep -nE '\\b(sorry|admit|axiom)\\b' "$generated/Funs.lean" "$generated/Types.lean"; then
+            if grep -nE "$placeholder_pattern" "$generated/Funs.lean" "$generated/Types.lean"; then
               echo "UNPROVED_GENERATED_DECLARATION=$scenario" >> "$GITHUB_STEP_SUMMARY"
               status=1
             else
-              echo "SOURCE_DERIVED_LEAN_DECLARATIONS=$scenario:NO_PLACEHOLDERS" >> "$GITHUB_STEP_SUMMARY"
+              scan_status=$?
+              if [ "$scan_status" -ne 1 ]; then
+                echo "PLACEHOLDER_SCAN_ERROR=$scenario:$scan_status" >> "$GITHUB_STEP_SUMMARY"
+                status=1
+              else
+                echo "SOURCE_DERIVED_LEAN_DECLARATIONS=$scenario:NO_LOCAL_PLACEHOLDERS" >> "$GITHUB_STEP_SUMMARY"
+              fi
             fi
           done
           exit "$status"

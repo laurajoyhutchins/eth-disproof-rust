@@ -73,7 +73,10 @@ fn dedup_and_three_clause_filter_modes_match_the_previous_command_tree() {
     assert_same(
         native_clause_dedup::scan_command().unwrap(),
         previous(
-            0, 1, 14, 13,
+            0,
+            1,
+            14,
+            13,
             reader.clone(),
             native_clause_dedup::dedup_callback().unwrap(),
         ),
@@ -84,7 +87,10 @@ fn dedup_and_three_clause_filter_modes_match_the_previous_command_tree() {
         assert_same(
             native_clause_filter::filter_scan(mode).unwrap(),
             previous(
-                0, 1, 14, 13,
+                0,
+                1,
+                14,
+                13,
                 reader.clone(),
                 native_clause_dedup::filter_callback(mode).unwrap(),
             ),
@@ -106,7 +112,10 @@ fn three_relation_modes_match_the_previous_command_tree() {
         assert_same(
             native_clause_relation_scan::scan_command(mode).unwrap(),
             previous(
-                12, 13, 14, 10,
+                12,
+                13,
+                14,
+                10,
                 reader.clone(),
                 native_clause_relation_scan::callback(mode).unwrap(),
             ),

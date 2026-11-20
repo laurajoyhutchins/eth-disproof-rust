@@ -146,21 +146,72 @@ fn case<const R: usize, const S: usize>(
 /// structural serialization. This is not a source-program certificate.
 fn encoding_corpus() -> Result<Value, Box<dyn std::error::Error>> {
     let program = Program::<4, 3>::new(
-        0, 1, 0,
+        0,
+        1,
+        0,
         vec![
             Instr::Halt,
             Instr::Goto { next: 0 },
-            Instr::Set { dst: 0, value: true, next: 1 },
-            Instr::Set { dst: 1, value: false, next: 2 },
-            Instr::Copy { dst: 0, src: 1, next: 2 },
-            Instr::Not { dst: 1, src: 2, next: 3 },
-            Instr::And { dst: 0, left: 1, right: 2, next: 4 },
-            Instr::Or { dst: 1, left: 2, right: 3, next: 5 },
-            Instr::Xor { dst: 2, left: 3, right: 0, next: 6 },
-            Instr::Branch { test: 3, yes: 0, no: 12 },
-            Instr::Push { stack: 2, src: 3, next: 7 },
-            Instr::Peek { stack: 1, value: 2, present: 3, next: 8 },
-            Instr::Pop { stack: 2, value: 1, present: 0, next: 9 },
+            Instr::Set {
+                dst: 0,
+                value: true,
+                next: 1,
+            },
+            Instr::Set {
+                dst: 1,
+                value: false,
+                next: 2,
+            },
+            Instr::Copy {
+                dst: 0,
+                src: 1,
+                next: 2,
+            },
+            Instr::Not {
+                dst: 1,
+                src: 2,
+                next: 3,
+            },
+            Instr::And {
+                dst: 0,
+                left: 1,
+                right: 2,
+                next: 4,
+            },
+            Instr::Or {
+                dst: 1,
+                left: 2,
+                right: 3,
+                next: 5,
+            },
+            Instr::Xor {
+                dst: 2,
+                left: 3,
+                right: 0,
+                next: 6,
+            },
+            Instr::Branch {
+                test: 3,
+                yes: 0,
+                no: 12,
+            },
+            Instr::Push {
+                stack: 2,
+                src: 3,
+                next: 7,
+            },
+            Instr::Peek {
+                stack: 1,
+                value: 2,
+                present: 3,
+                next: 8,
+            },
+            Instr::Pop {
+                stack: 2,
+                value: 1,
+                present: 0,
+                next: 9,
+            },
         ],
     )?;
     Ok(json!({
@@ -257,10 +308,19 @@ mod tests {
         assert_eq!(
             corpus["physical"]["code"],
             json!([
-                "halt", "goto:0", "set:0:1:1", "set:1:0:2",
-                "copy:0:1:2", "not:1:2:3", "and:0:1:2:4",
-                "or:1:2:3:5", "xor:2:3:0:6", "branch:3:0:12",
-                "push:2:3:7", "peek:1:2:3:8", "pop:2:1:0:9"
+                "halt",
+                "goto:0",
+                "set:0:1:1",
+                "set:1:0:2",
+                "copy:0:1:2",
+                "not:1:2:3",
+                "and:0:1:2:4",
+                "or:1:2:3:5",
+                "xor:2:3:0:6",
+                "branch:3:0:12",
+                "push:2:3:7",
+                "peek:1:2:3:8",
+                "pop:2:1:0:9"
             ])
         );
         assert_eq!(corpus["structure"]["code"][2]["Set"]["value"], true);
@@ -268,5 +328,4 @@ mod tests {
         assert_eq!(corpus["structure"]["code"][11]["Peek"]["present"], 3);
         assert_eq!(corpus["structure"]["code"][12]["Pop"]["present"], 0);
     }
-
 }

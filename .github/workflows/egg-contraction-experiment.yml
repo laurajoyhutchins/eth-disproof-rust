@@ -49,6 +49,16 @@ jobs:
           test "$(wc -l < /tmp/representation-study-receipts.jsonl)" -eq 51
           test "$(grep -c '"oracle":"checked"' /tmp/representation-study-receipts.jsonl)" -eq 51
 
+      - name: Run isolated held-out adaptive order comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin adaptive-order-study | tee /tmp/adaptive-order-receipts.jsonl
+          test "$(wc -l < /tmp/adaptive-order-receipts.jsonl)" -eq 64
+          test "$(grep -c '"oracle":"checked"' /tmp/adaptive-order-receipts.jsonl)" -eq 64
+          test "$(grep -c '"policy":"tropical-zero-support"' /tmp/adaptive-order-receipts.jsonl)" -eq 16
+          grep -F '"kind":"frustrated-xor3-cnf"' /tmp/adaptive-order-receipts.jsonl | grep -F '"satisfying_count":"0"' >/dev/null
+
       - name: Run contraction-order study and check small-case oracle
         shell: bash
         run: |

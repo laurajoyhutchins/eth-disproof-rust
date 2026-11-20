@@ -151,12 +151,18 @@ mod tests {
 
         let mut scalar_events = Vec::new();
         assert_eq!(p10_checked_scalar_sink(&mut scalar_events, 2, 3), Ok(5));
-        assert_eq!(p10_checked_scalar_sink(&mut scalar_events, i128::MAX, 1), Err(9));
+        assert_eq!(
+            p10_checked_scalar_sink(&mut scalar_events, i128::MAX, 1),
+            Err(9)
+        );
         assert_eq!(scalar_events, vec![2, i128::MAX]);
 
         let mut option_events = Vec::new();
         assert_eq!(p11_checked_option_sink(&mut option_events, 2, 3), Ok(2));
-        assert_eq!(p11_checked_option_sink(&mut option_events, i128::MAX, 1), Ok(i128::MAX));
+        assert_eq!(
+            p11_checked_option_sink(&mut option_events, i128::MAX, 1),
+            Ok(i128::MAX)
+        );
         assert_eq!(option_events, vec![Some(5), None]);
     }
 

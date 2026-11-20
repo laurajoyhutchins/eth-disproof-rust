@@ -93,6 +93,10 @@ run_cmd do
   let ordered := NativeRust.emit (.fdecl name #[x] .uint8 checkFirst info) "rc_check_before_inc"
   unless ordered.startsWith "OK\n" do
     throwError "pre-mutation source sharing check unexpectedly refused: {ordered}"
+  -- The Reader now independently compares this real source IR's effect list
+  -- with the exact emitted statements before accepting the declaration.
+  unless (ordered.splitOn "let x_2: u8 = x_0.is_shared();\n    x_0.source_inc(1, true, false);").length > 1 do
+    throwError "source-derived sharing/retain order was not preserved: {ordered}"
   -- The join body executes only at jmp. A sharing check in the
   -- continuation is not tainted by an RC effect later in that join.
   let joinReturn : Lean.IR.FnBody :=

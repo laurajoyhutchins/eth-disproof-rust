@@ -5,6 +5,7 @@ on:
     paths:
       - 'eth/proofs/SourceGraphRefinement.lean'
       - 'eth/proofs/FramedRecordReaderRefinement.lean'
+      - 'eth/proofs/PhysicalArrayInterpreterRefinement.lean'
       - 'instrumentation/lean-env/ACC/BitProgramFields.lean'
       # The proof and original-source imports are elaborated in this Lake environment.
       - 'instrumentation/lean-env/lean-toolchain'
@@ -89,6 +90,19 @@ jobs:
           )
           echo 'LEAN_SOURCE_GRAPH_REFINEMENT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'LEAN_FRAMED_RECORD_READER=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+      - name: Prove universal Rust-shaped array interpreter simulation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -nE '\\b(sorry|admit)\\b' eth/proofs/PhysicalArrayInterpreterRefinement.lean; then
+            echo 'Physical interpreter proof contains unresolved admission' >&2
+            exit 1
+          fi
+          (
+            cd instrumentation/lean-env
+            lake env lean "$GITHUB_WORKSPACE/eth/proofs/PhysicalArrayInterpreterRefinement.lean"
+          )
+          echo 'LEAN_PHYSICAL_ARRAY_SIMULATION=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
       - name: Kernel-validate actual Rust tables through canonical source-graph certificate renderer
         shell: bash
         run: |

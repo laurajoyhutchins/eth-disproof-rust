@@ -127,8 +127,6 @@ theorem WholeAgreement.code_eq {r s : ℕ} {c : StructuredCalls.Cmd r s}
       simpa only [StructuredCalls.siteAddress, StructuredCalls.compiled_site]
         using h.sites site
 
-/-- Exact agreement of ports, entry and *every* physical instruction gives
-equality of the complete Lean bit program. No sampled states are involved. -/
 /-- A certificate identifies the *entire* Lean source physical program,
 not merely its bounded output or a selection of transitions. -/
 theorem WholeAgreement.program_eq {r s : ℕ} {c : StructuredCalls.Cmd r s}

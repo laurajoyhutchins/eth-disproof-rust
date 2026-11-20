@@ -822,6 +822,81 @@ mod tests {
     }
 
     #[test]
+    fn raw_quadratic_phase_splits_at_internal_bit_for_every_boundary() {
+        // Independent truth-table interpretation of the native remove_first
+        // result. Include repeated/diagonal/unsorted input monomials to
+        // exercise the actual constructor's canonical XOR normalization.
+        let mut seed = 0x5eed_2026_1120_u64;
+        for n in 0..=8 {
+            let width = n + 1;
+            for _case in 0..32 {
+                let mut raw = Vec::new();
+                if next(&mut seed) & 1 != 0 {
+                    raw.push(vec![]);
+                }
+                for i in 0..width {
+                    if next(&mut seed) & 1 != 0 {
+                        raw.push(vec![i]);
+                    }
+                    if next(&mut seed) & 1 != 0 {
+                        raw.push(vec![i, i]);
+                    }
+                    for j in (i + 1)..width {
+                        if next(&mut seed) & 1 != 0 {
+                            raw.push(vec![j, i]); // unsorted input
+                        }
+                        if next(&mut seed) & 1 != 0 {
+                            raw.push(vec![i, j]); // duplicate pair may cancel
+                        }
+                    }
+                }
+                let source = QuadraticPhase::new(width, raw).unwrap();
+                let (base, mixed_constraint) = source.remove_first(None).unwrap();
+                let mixed = mixed_constraint.unwrap();
+                for word in 0..(1usize << n) {
+                    let boundary = bits(n, word);
+                    let mixed_bit = mixed.boundary_indices.iter().fold(
+                        mixed.rhs,
+                        |parity, &index| parity ^ boundary[index],
+                    );
+                    for x in [false, true] {
+                        let original = source.eval(&assignment(&boundary, x));
+                        let split = base.eval(&boundary) ^ (x && mixed_bit);
+                        assert_eq!(
+                            original, split,
+                            "internal-bit phase split failed: n={n}, word={word}, x={x}",
+                        );
+                    }
+                }
+            }
+        }
+
+        // The algebraic identity is independent of small truth-table widths.
+        let source = QuadraticPhase::new(
+            131,
+            vec![vec![], vec![0, 0], vec![0, 127], vec![0, 129], vec![130]],
+        )
+        .unwrap();
+        let (base, mixed) = source.remove_first(None).unwrap();
+        let mixed = mixed.unwrap();
+        for word in 0..16 {
+            let mut boundary = vec![false; 130];
+            for i in 0..4 {
+                boundary[125 + i] = word & (1 << i) != 0;
+            }
+            let mixed_bit = mixed.boundary_indices.iter().fold(
+                mixed.rhs, |parity, &index| parity ^ boundary[index],
+            );
+            for x in [false, true] {
+                assert_eq!(
+                    source.eval(&assignment(&boundary, x)),
+                    base.eval(&boundary) ^ (x && mixed_bit),
+                );
+            }
+        }
+    }
+
+    #[test]
     fn native_lean_oracle_emits_source_semantics_not_an_opaque_success_bit() {
         let input = source(1, vec![], phase(2, &[&[0, 1]]), 0);
         let (out, certificate) = input.eliminate_with_certificate().unwrap();

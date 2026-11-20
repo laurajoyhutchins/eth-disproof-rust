@@ -100,21 +100,42 @@ def sameIdentity (initial next : Row) : Bool :=
   next.oldId == initial.oldId &&
   next.freshId == initial.freshId
 
-def verifySteps (initial : Row) :
-    List String → Physical → List Row →
+/-- A measured selected-C-model transition has a corresponding source
+credit step. This lemma is conditional on the model transition: it does
+not assert that arbitrary C++ executions implement `cStep`. -/
+theorem modeled_c_step_has_source (s : Source) (op : Op) (measured : Physical)
+    (h : cStep (represent s) op = some measured) :
+    ∃ next, sourceStep s op = some next ∧ represent next = measured := by
+  rw [cStep_represent] at h
+  cases hs : sourceStep s op with
+  | none =>
+      simp [hs] at h
+  | some next =>
+      refine ⟨next, hs, ?_⟩
+      simpa [hs] using h
+
+/-- Independently replay both the source-credit ledger and the selected
+physical C model against each actual observed C checkpoint. The induction
+state is the source ledger, not the previous physical count row. -/
+def verifySteps (first : Row) :
+    List String → Source → List Row →
       Except String (List Row × Nat)
   | [], _, rest => pure (rest, 0)
-  | opName :: restOps, before, r :: remaining => do
-      if !sameIdentity initial r || r.event != opName || r.outcome != "ok" then
-        throw s!"C release event order or pointer identity mismatch in {initial.caseName}: {opName}"
+  | opName :: restOps, source, r :: remaining => do
+      if !sameIdentity first r || r.event != opName || r.outcome != "ok" then
+        throw s!"C release event order or pointer identity mismatch in {first.caseName}: {opName}"
       let op ← instruction opName
-      let predicted := cStep before op
+      let some next := sourceStep source op
+        | throw s!"Source-credit model refused observed C release in {first.caseName}/{opName}"
+      unless represent next == r.physical do
+        throw s!"C release source-credit mismatch in {first.caseName}/{opName}: expected {repr (represent next)}, measured {repr r.physical}"
+      let predicted := cStep (represent source) op
       unless predicted == some r.physical do
-        throw s!"C release branch mismatch in {initial.caseName}/{opName}: predicted {repr predicted}, measured {repr r.physical}"
-      let (tail, n) ← verifySteps initial restOps r.physical remaining
+        throw s!"C release physical-branch mismatch in {first.caseName}/{opName}: predicted {repr predicted}, measured {repr r.physical}"
+      let (tail, n) ← verifySteps first restOps next remaining
       pure (tail, n + 1)
   | _ :: _, _, [] =>
-      throw s!"missing C release event for {initial.caseName}"
+      throw s!"missing C release event for {first.caseName}"
 
 def verifyOne (name : String) (events : List String) (rows : List Row) :
     Except String (List Row × Nat) := do
@@ -135,10 +156,10 @@ def verifyOne (name : String) (events : List String) (rows : List Row) :
         throw s!"invalid or aliased C release pointer identity for {name}"
       if first.physical.oldRC < 2 || first.physical.freshRC == 0 then
         throw s!"missing protected external heap stamp roots for {name}"
-      let starting := represent (initial (first.physical.oldRC - 1) first.physical.freshRC)
-      unless first.physical == starting do
+      let startingSource := initial (first.physical.oldRC - 1) first.physical.freshRC
+      unless first.physical == represent startingSource do
         throw s!"C release initial state violates source-owned field credits: {name}"
-      let (tail, n) ← verifySteps first events first.physical rest
+      let (tail, n) ← verifySteps first events startingSource rest
       pure (tail, n + 1)
 
 def verify (rows : List Row) : Except String Nat := do
@@ -173,3 +194,6 @@ run_cmd do
   let .ok count := checked
     | throwError "C final-release model refused: {repr checked}"
   logInfo m!"c_release_trace=PASS cases=3 rows={count} identities_and_last_ref_tombstones"
+  logInfo m!"c_release_source_ledger=PASS cases=3 rows={count} per_checkpoint"
+
+#print axioms ReaderCReleaseAudit.modeled_c_step_has_source

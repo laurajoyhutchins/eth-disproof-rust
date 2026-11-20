@@ -566,7 +566,7 @@ theorem pivotFree_card {k : Nat} (pivots : Finset (Fin k)) :
     Fintype.card ↥(Finset.univ \ pivots) = k - pivots.card := by
   classical
   rw [Fintype.card_coe]
-  rw [Finset.card_sdiff (Finset.subset_univ pivots)]
+  rw [Finset.card_sdiff_of_subset (Finset.subset_univ pivots)]
   simp
 
 #print axioms IndependentETH.AffineNativeAudit.occurrence_parity_eq_source_coefficients

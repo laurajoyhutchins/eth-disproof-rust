@@ -18,7 +18,7 @@ abbrev CNF := List Clause
 abbrev Partial := String → Option Bool
 
 def extendsPartial (a : String → Bool) (p : Partial) : Prop :=
-  ∀ variable value, p variable = some value → a variable = value
+  ∀ v value, p v = some value → a v = value
 
 def clauseTrue (a : String → Bool) (clause : Clause) : Prop :=
   ∃ lit ∈ clause, a lit.1 = lit.2
@@ -40,9 +40,9 @@ theorem empty_reason_sound
   cases lit.2 <;> simp_all
 
 def unitReason (p : Partial) (clause : Clause)
-    (variable : String) (sign : Bool) : Prop :=
-  (variable, sign) ∈ clause ∧ p variable = none ∧
-    ∀ lit ∈ clause, lit ≠ (variable, sign) →
+    (v : String) (sign : Bool) : Prop :=
+  (v, sign) ∈ clause ∧ p v = none ∧
+    ∀ lit ∈ clause, lit ≠ (v, sign) →
       p lit.1 = some (!lit.2)
 
 /-- If a source clause is unit under a partial assignment, every
@@ -50,31 +50,31 @@ satisfying extension must have the forced value. This is the sound
 primitive used in independently replaying a sequence of reasons. -/
 theorem unit_reason_forces
     (a : String → Bool) (p : Partial) (clause : Clause)
-    (variable : String) (sign : Bool)
+    (v : String) (sign : Bool)
     (hext : extendsPartial a p)
     (hsat : clauseTrue a clause)
-    (hunit : unitReason p clause variable sign) :
-    a variable = sign := by
+    (hunit : unitReason p clause v sign) :
+    a v = sign := by
   rcases hsat with ⟨lit, hmem, htrue⟩
   rcases hunit with ⟨_, _, hothers⟩
-  by_cases h : lit = (variable, sign)
+  by_cases h : lit = (v, sign)
   · simpa [h] using htrue
   · have hf := hext lit.1 (!lit.2) (hothers lit hmem h)
     cases lit.2 <;> simp_all
 
-/-- An exhaustive one-variable split is a valid refutation when both
+/-- An exhaustive one-v split is a valid refutation when both
 branches are incompatible with the source CNF and the same boundary
 assumptions. The Rust checker additionally checks each branch's
 source-indexed unit trace; that implementation refinement remains open. -/
 theorem two_branches_refute
-    (cnf : CNF) (p : Partial) (variable : String)
+    (cnf : CNF) (p : Partial) (v : String)
     (hfalse : ∀ a, extendsPartial a p →
-      a variable = false → ¬ cnfTrue a cnf)
+      a v = false → ¬ cnfTrue a cnf)
     (htrue : ∀ a, extendsPartial a p →
-      a variable = true → ¬ cnfTrue a cnf) :
+      a v = true → ¬ cnfTrue a cnf) :
     ∀ a, extendsPartial a p → ¬ cnfTrue a cnf := by
   intro a hext
-  cases hv : a variable with
+  cases hv : a v with
   | false => exact hfalse a hext hv
   | true => exact htrue a hext hv
 

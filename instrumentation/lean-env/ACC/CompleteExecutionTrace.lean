@@ -289,7 +289,7 @@ theorem expectedExecution_refines {n c : ℕ}
             simpa using hs.symm
           have hstopped :
               (scanTrace (Array.replicate c
-                ((1 : Word), (1 : Word)))
+                (BitVec.ofInt 128 1, BitVec.ofInt 128 1))
                 (wordItems label weight)).2 = none := by
             simpa [initial, items, one] using congrArg Prod.snd hp
           unfold expectedExecution
@@ -311,7 +311,7 @@ theorem expectedExecution_refines {n c : ℕ}
               finishTrace_refines products one (List.finRange c)
           have hcontinued :
               (scanTrace (Array.replicate c
-                ((1 : Word), (1 : Word)))
+                (BitVec.ofInt 128 1, BitVec.ofInt 128 1))
                 (wordItems label weight)).2 = some products := by
             simpa [initial, items, one] using congrArg Prod.snd hp
           unfold expectedExecution

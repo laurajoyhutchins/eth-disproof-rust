@@ -100,10 +100,10 @@ jobs:
             cd instrumentation/lean-env
             lake env lean "$cert"
           )
-          # Mutate the canonical *data*, not generated Lean source; the same
-          # shared parser/renderer must accept the well-typed physical mutant
-          # and the pinned Lean kernel must reject its source comparison.
-          python3 - "$data" "$RUNNER_TEMP/framed-reader-mutated.json" <<'PY'
+          # First change only the manually formatted row. The independent
+          # Serde-derived Rust-structure witness must reject this lie *before*
+          # any Lean source comparison is attempted.
+          python3 - "$data" "$RUNNER_TEMP/framed-reader-row-lie.json" <<'PY'
           import json
           from pathlib import Path
           import sys
@@ -111,6 +111,28 @@ jobs:
           compiled = source["cases"][0]["compiled"]["code"]
           assert compiled[1] == "pop:13:0:1:2"
           compiled[1] = "pop:13:1:0:2"
+          Path(sys.argv[2]).write_text(json.dumps(source, separators=(',', ':')) + "\n")
+          PY
+          if python3 eth/tools/verify_rust_physical_receipt.py "$RUNNER_TEMP/framed-reader-row-lie.json" > "$RUNNER_TEMP/framed-reader-row-lie.log" 2>&1; then
+            echo 'inconsistent physical row and Rust structure unexpectedly accepted' >&2
+            exit 1
+          fi
+
+          # Now mutate both independent representations coherently. The
+          # adapter should accept the well-formed data, but the pinned Lean
+          # kernel must reject the *wrong* source program.
+          python3 - "$data" "$RUNNER_TEMP/framed-reader-mutated.json" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          source = json.loads(Path(sys.argv[1]).read_text())
+          compiled = source["cases"][0]["compiled"]["code"]
+          typed = source["cases"][0]["structure"]["compiled"]["code"][1]["Pop"]
+          assert compiled[1] == "pop:13:0:1:2"
+          assert typed == {"stack": 13, "value": 0, "present": 1, "next": 2}
+          compiled[1] = "pop:13:1:0:2"
+          typed["value"] = 1
+          typed["present"] = 0
           Path(sys.argv[2]).write_text(json.dumps(source, separators=(',', ':')) + "\n")
           PY
           cat eth/proofs/FramedRecordReaderRefinement.lean > "$RUNNER_TEMP/framed-reader-mutated.lean"
@@ -122,5 +144,6 @@ jobs:
               exit 1
             fi
           )
+          echo 'RUST_PHYSICAL_ROW_STRUCTURE_MUTANT=REJECTED' >> "$GITHUB_STEP_SUMMARY"
           echo 'RUST_EMITTED_FRAMED_READER_LEAN_KERNEL=ACCEPTED' >> "$GITHUB_STEP_SUMMARY"
           echo 'RUST_EMITTED_FRAMED_READER_MUTANT=REJECTED' >> "$GITHUB_STEP_SUMMARY"

@@ -1,7 +1,7 @@
 # Source-derived Vec borrow/return translation matrix
 
 This is a **diagnostic**, not a second implementation of ranked counting. The
-eight small functions in [borrow_return_probe.rs](src/borrow_return_probe.rs)
+twelve small functions in [borrow_return_probe.rs](src/borrow_return_probe.rs)
 isolate the Aeneas translation failure at the real arithmetic-recorder
 mutation/return boundary. They are compiled as a separate module by the
 existing source-linked verification harness, alongside the **unmodified**
@@ -21,6 +21,12 @@ is translated. The synthetic probe results never certify it.
 | p5 | `&mut Vec<Option<i128>>` | no | stored checked `Result` | borrowed |
 | p6 | `&mut Option<&mut Vec<Option<i128>>>` | yes | stored checked `Result` | nested borrow |
 | p7 | owned `Vec<Option<i128>>` | no | stored checked `Result` | owned |
+| p8 | none | no | checked `i128` result | scalar |
+| p9 | `&mut Vec<Option<i128>>` | no | fresh `Ok` | borrowed |
+| p10 | `&mut Vec<i128>` | no | stored checked `Result` | borrowed |
+| p11 | `&mut Vec<Option<i128>>` | no | fresh `Ok` after checked addition | borrowed |
+
+**Two-phase diagnosis:** the first exact-head extraction [run #44807999037](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44807999037) translated p0–p2 with no local placeholders. Optional-nested-borrow p3/p4 failed as `Unimplemented`, while p5–p7 and the real source failed with partial `sorry` declarations. Even owned p7 failed, so neither a direct `Vec::push` nor returning a stored `Result` alone explains the recorder failure. The added p8–p11 cases distinguish whether the remaining failure needs checked-`i128`, option payloads, mutation, or their interaction. No synthetic case certifies actual production execution.
 
 The [change-scoped matrix workflow](../../.github/workflows/ranked-borrow-matrix.yml)
 runs the Rust behavioral tests and each scenario in the pinned hax 0.4.2

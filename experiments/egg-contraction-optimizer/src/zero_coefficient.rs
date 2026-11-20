@@ -19,6 +19,7 @@ use super::*;
 use crate::representation_study::adaptive::{self, Case, Policy};
 use std::time::Instant;
 
+#[path = "zero_coefficient/certificates.rs"]
 pub mod certificates;
 
 const MAX_JOIN_PAIRS: u64 = 5_000_000;

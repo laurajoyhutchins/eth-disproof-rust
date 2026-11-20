@@ -104,7 +104,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         # A previous double-escaped \\b pattern never matched real `sorry`.
         # Test the *actual workflow regex* with GNU grep, not Python's regex.
         workflow = (ROOT / ".github/workflows/ranked-rust-extraction.yml").read_text()
-        matches = re.findall(r"^\\s*placeholder_pattern='([^']+)'$", workflow, re.MULTILINE)
+        matches = re.findall(r"^\s*placeholder_pattern='([^']+)'$", workflow, re.MULTILINE)
         self.assertEqual(len(matches), 1, "one canonical detector is required")
         pattern = matches[0]
         for source, detected in (
@@ -118,7 +118,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             with self.subTest(source=source):
                 check = subprocess.run(
                     ["grep", "-Eq", pattern],
-                    input=source + "\\n",
+                    input=source + "\n",
                     text=True,
                     check=False,
                 )

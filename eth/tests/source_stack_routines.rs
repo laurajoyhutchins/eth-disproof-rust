@@ -34,13 +34,28 @@ fn transfer_aliases_retain_the_original_four_labels() {
         Instr::Halt,
     ];
     assert_eq!(direct.code(), &table);
-    assert_eq!((direct.input_stack(), direct.output_stack(), direct.entry()), (11, 8, 0));
-    assert_eq!(native_query_prefix::transfer_program::<15, 16>(11, 8, 0, 1).unwrap().code(), &table);
+    assert_eq!(
+        (direct.input_stack(), direct.output_stack(), direct.entry()),
+        (11, 8, 0)
+    );
+    assert_eq!(
+        native_query_prefix::transfer_program::<15, 16>(11, 8, 0, 1)
+            .unwrap()
+            .code(),
+        &table
+    );
     assert_eq!(native_clause_dedup::transfer(11, 8).unwrap().code(), &table);
 
     let candidate = native_clause_relation_scan::transfer_candidate().unwrap();
     assert_eq!(candidate.code(), &table);
-    assert_eq!((candidate.input_stack(), candidate.output_stack(), candidate.entry()), (11, 8, 0));
+    assert_eq!(
+        (
+            candidate.input_stack(),
+            candidate.output_stack(),
+            candidate.entry()
+        ),
+        (11, 8, 0)
+    );
 }
 
 #[test]
@@ -48,15 +63,25 @@ fn original_stack_routines_keep_port_order_and_source_cost() {
     let transfer = transfer_program::<2, 3>(0, 1, 0, 1).unwrap();
     let clear = clear_program::<2, 3>(0, 0, 1).unwrap();
     let copy = copy_program::<2, 3>(0, 1, 2, 0, 1).unwrap();
-    assert_eq!(native_high::clear_program::<2, 3>(0, 0, 1).unwrap().code(), clear.code());
-    assert_eq!(native_high::copy_program::<2, 3>(0, 1, 2, 0, 1).unwrap().code(), copy.code());
+    assert_eq!(
+        native_high::clear_program::<2, 3>(0, 0, 1).unwrap().code(),
+        clear.code()
+    );
+    assert_eq!(
+        native_high::copy_program::<2, 3>(0, 1, 2, 0, 1)
+            .unwrap()
+            .code(),
+        copy.code()
+    );
 
     for len in 0..=7 {
         let word: Vec<bool> = (0..len).map(|i| i % 3 == 0).collect();
 
         let mut transfer_state = transfer.initial(word.iter().copied());
         transfer_state.stacks[1] = VecDeque::from([false, true]);
-        let transfer_stats = transfer.run(&mut transfer_state, RunLimits::default()).unwrap();
+        let transfer_stats = transfer
+            .run(&mut transfer_state, RunLimits::default())
+            .unwrap();
         let mut expected = word.clone();
         expected.reverse();
         expected.extend([false, true]);

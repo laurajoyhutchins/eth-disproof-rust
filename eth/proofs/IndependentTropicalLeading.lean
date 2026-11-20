@@ -186,6 +186,36 @@ theorem plus_assoc (a b c : Leading) :
                   | (apply congrArg Option.some
                      apply term_ext <;> omega)
 
+/-- Distributivity, including equal minimum degrees and multiplicity ties. -/
+theorem times_plus (a b c : Leading) :
+    times (plus a b) c = plus (times a c) (times b c) := by
+  cases a with
+  | none =>
+      cases b <;> cases c <;> rfl
+  | some a =>
+      cases b with
+      | none => cases c <;> rfl
+      | some b =>
+          cases c with
+          | none =>
+              cases h : plus (some a) (some b) <;> rfl
+          | some c =>
+              by_cases hab : a.degree < b.degree
+              · have hba : ¬ b.degree < a.degree := by omega
+                have hab' : a.degree + c.degree < b.degree + c.degree := by omega
+                have hba' : ¬ b.degree + c.degree < a.degree + c.degree := by omega
+                simp [plus, times, hab, hba, hab', hba']
+              · by_cases hba : b.degree < a.degree
+                · have hab' : ¬ a.degree + c.degree < b.degree + c.degree := by omega
+                  have hba' : b.degree + c.degree < a.degree + c.degree := by omega
+                  simp [plus, times, hab, hba, hab', hba']
+                · have heq : a.degree = b.degree := by omega
+                  simp [plus, times, heq, Nat.add_mul]
+
+theorem plus_times (a b c : Leading) :
+    times a (plus b c) = plus (times a b) (times a c) := by
+  rw [times_comm a (plus b c), times_plus, times_comm b a, times_comm c a]
+
 theorem plus_zero (x : Leading) : plus x none = x := by
   cases x <;> rfl
 
@@ -220,6 +250,8 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.count_satisfying
 #print axioms IndependentETH.Tropical.plus_comm
 #print axioms IndependentETH.Tropical.plus_assoc
+#print axioms IndependentETH.Tropical.times_plus
+#print axioms IndependentETH.Tropical.plus_times
 #print axioms IndependentETH.Tropical.times_assoc
 #print axioms IndependentETH.Tropical.monomial_times
 #print axioms IndependentETH.Tropical.monomial_plus_equal

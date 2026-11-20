@@ -1,7 +1,9 @@
 //! Actual source `ExecClauseRelationScan.command mode`, not host set logic.
 //! Source has 15 one-bit registers and 12 Boolean stacks.
 use crate::Error;
-use crate::bit_program::{Atom, Cmd, Instr, Program};
+use crate::bit_program::record_iteration::{RecordPorts, iterate};
+use crate::bit_program::stack_routines::transfer_program;
+use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_clause_relations::relation_program;
 use crate::native_high::clear_program;
 use crate::native_query_prefix::frame_program;
@@ -23,30 +25,7 @@ impl Mode {
 }
 
 pub fn transfer_candidate() -> Result<Program<15, 12>, Error> {
-    Program::new(
-        11,
-        8,
-        0,
-        vec![
-            Instr::Pop {
-                stack: 11,
-                value: 0,
-                present: 1,
-                next: 1,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 2,
-                no: 3,
-            },
-            Instr::Push {
-                stack: 8,
-                src: 0,
-                next: 0,
-            },
-            Instr::Halt,
-        ],
-    )
+    transfer_program(11, 8, 0, 1)
 }
 
 pub fn relation_lift() -> Result<Program<15, 12>, Error> {
@@ -76,32 +55,15 @@ pub fn callback(mode: Mode) -> Result<Cmd<15, 12>, Error> {
 /// unread input stack 10, reversed payload stack 11.
 pub fn scan_command(mode: Mode) -> Result<Cmd<15, 12>, Error> {
     let reader = Cmd::Call(frame_program()?.lift::<15, 12>([12, 13], [10, 11])?);
-    let advance = Cmd::ite(
-        14,
-        Cmd::Atom(Atom::Set {
-            dst: 12,
-            value: false,
-        }),
-        Cmd::Atom(Atom::Pop {
-            stack: 10,
-            value: 12,
+    Ok(iterate(
+        RecordPorts {
+            tag: 12,
             present: 13,
-        }),
-    );
-    let body = Cmd::seq(reader, Cmd::seq(callback(mode)?, advance));
-    Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set {
-            dst: 14,
-            value: false,
-        }),
-        Cmd::seq(
-            Cmd::Atom(Atom::Pop {
-                stack: 10,
-                value: 12,
-                present: 13,
-            }),
-            Cmd::while_(12, body),
-        ),
+            found: 14,
+            source: 10,
+        },
+        reader,
+        callback(mode)?,
     ))
 }
 

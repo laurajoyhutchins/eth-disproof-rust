@@ -15,6 +15,25 @@ mkdir -p "$out"
 # Kernel-check the abstract source-credit / physical-count simulation
 # before compiling expensive generated Rust and Lean C integrations.
 lean -o proofs/ReaderShellSimulation.olean proofs/ReaderShellSimulation.lean | tee "$out/source-shell-simulation-lean.txt"
+lean -o proofs/ReaderCReleaseSemantics.olean proofs/ReaderCReleaseSemantics.lean \
+  | tee "$out/reader-c-release-axioms.txt"
+python3 - "$out/reader-c-release-axioms.txt" <<'PY'
+import re, sys
+from pathlib import Path
+raw=Path(sys.argv[1]).read_text()
+allowed={"propext","Quot.sound","Classical.choice"}
+for name in ("store_fresh_does_not_increment",
+             "shell_del_preserves_child_rc",
+             "last_parent_release_drops_unretained_child",
+             "last_parent_release_preserves_retained_child",
+             "last_parent_release_fresh_stamp"):
+    label=re.escape(f"'ReaderCReleaseSemantics.{name}'")
+    m=re.search(label+r" (does not depend on any axioms|depends on axioms: \[([^\]]*)\])",raw)
+    if not m: raise SystemExit("Missing C release branch proof receipt: "+name)
+    used=set((m.group(2) or "").split(", "))-{""}
+    if not used <= allowed: raise SystemExit(f"Unapproved release axioms in {name}: {sorted(used-allowed)}")
+print("c_release_selected_branches=KERNEL_MODEL_PROVED")
+PY
 # The proof may use only Lean's built-in logical axioms. The kernel
 # already rejects unsolved goals; a separate provenance gate rejects
 # sorryAx, custom axioms, and missing theorem audit lines.
@@ -166,13 +185,48 @@ leanc -O2 -o "$out/source-del-execute" \
   "$out/RuntimeHeapKernels.c" "$out/RuntimeHeapDelKernels.c" \
   "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \
   runtime/lean-c/source_shell_step_oracle.c \
+  runtime/lean-c/source_release_oracle.c \
   runtime/lean-c/abi.c "$out/libsource_del_generated.a"
 # The physically observed trace comes from actual pinned Lean C calls,
 # not a Rust or Lean reimplementation of those primitive operations.
 LR_SOURCE_TRACE="$out/source-shell-physical.tsv" \
+LR_RELEASE_TRACE="$out/source-release-physical.tsv" \
   "$out/source-del-execute" | tee "$out/source-del-trace.txt"
 grep -Fx 'reader-source-shell-physical-checkpoints=RECORDED' "$out/source-del-trace.txt"
+grep -Fx 'reader-c-release-heap-stamp-checkpoints=RECORDED' "$out/source-del-trace.txt"
 test -s "$out/source-shell-physical.tsv"
+test -s "$out/source-release-physical.tsv"
+lean proofs/ReaderCReleaseAudit.lean | tee "$out/source-release-trace-audit.txt"
+grep -Fq 'c_release_trace=PASS cases=3 rows=16 identities_and_last_ref_tombstones' \
+  "$out/source-release-trace-audit.txt"
+python3 - "$out/source-release-physical.tsv" "$out" <<'PY'
+from pathlib import Path
+import sys
+src=Path(sys.argv[1]).read_text().splitlines()
+out=Path(sys.argv[2])
+if len(src)!=17: raise SystemExit("expected 16 release rows plus header")
+corrupted=src.copy()
+fields=corrupted[2].split("\t")
+fields[6]=str(int(fields[6])+1)
+corrupted[2]="\t".join(fields)
+(out/"source-release-mutated-count.tsv").write_text("\n".join(corrupted)+"\n")
+missing=src[:2]+src[3:]
+(out/"source-release-mutated-missing.tsv").write_text("\n".join(missing)+"\n")
+PY
+for variant in count missing; do
+  file="$out/source-release-mutated-$variant.tsv"
+  log="$out/source-release-rejected-$variant.txt"
+  if LR_RELEASE_AUDIT="$file" lean proofs/ReaderCReleaseAudit.lean >"$log" 2>&1; then
+    echo "Final-release auditor wrongly accepted tampered $variant evidence" >&2
+    exit 2
+  fi
+  grep -Fq 'C final-release model refused:' "$log" || {
+    echo "Tampering caused an unrelated failure: $variant" >&2
+    cat "$log" >&2
+    exit 2
+  }
+done
+echo 'c_release_trace_mutations=COUNT_AND_OMISSION_REFUSED'
 # Kernel's already-proved physicalStep checks the *independently measured*
 # C rows and refuses omissions, reordering, illegal transitions and ID drift.
 lean proofs/ReaderShellTraceAudit.lean | tee "$out/source-shell-trace-audit.txt"
@@ -241,6 +295,14 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
   echo 'physical_c_operations=real_pinned_lean_inc_dec_ctor_get_ctor_set_is_exclusive_del_object'
   echo 'physical_trace=28_observations_in_4_allocation_episodes'
   echo 'source_shell_c_semantics_proof=NOT_ESTABLISHED'
+  echo 'c_release_branch_model=KERNEL_PROVED_SELECTED_BRANCHES'
+  echo 'c_release_traces=16_REAL_LEAN_C_CHECKPOINTS_IN_THREE_EPISODES'
+  echo 'c_release_tombstone=NOT_AN_ACTUAL_READ_FROM_FREED_MEMORY'
+  echo 'c_release_universal_c_semantics=NOT_ESTABLISHED'
+  sha256sum proofs/ReaderCReleaseSemantics.lean proofs/ReaderCReleaseAudit.lean \
+    runtime/lean-c/source_release_oracle.c "$out/source-release-physical.tsv" \
+    "$out/source-release-trace-audit.txt" "$out"/source-release-mutated-*.tsv \
+    "$out"/source-release-rejected-*.txt
   echo 'source_shell_observed_refinement=LEAN_KERNEL_CHECKED_CONDITIONAL_THEOREMS'
   echo 'source_shell_trace_tampering=IDENTITY_AND_OMISSION_REFUSED'
   sha256sum "$out"/source-shell-mutated-*.tsv "$out"/source-shell-rejected-*.txt

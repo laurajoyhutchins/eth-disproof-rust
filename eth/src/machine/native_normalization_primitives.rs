@@ -5,6 +5,7 @@
 //! These components are not a complete CNF normalization program.
 
 use crate::Error;
+use crate::bit_program::record_iteration::{RecordPorts, iterate};
 use crate::bit_program::{Atom, Cmd, Instr, Program};
 use crate::native_high::clear_program;
 use crate::native_record_membership::frame_program;
@@ -100,84 +101,8 @@ pub fn negate_literal_program() -> Result<Program<2, 2>, Error> {
 /// SubexpPostfixControl.literalService table, entered directly at label 7.
 /// Source parser labels 0-6 remain part of the table, with the original
 /// continuation at 7. Encodes a reversed payload from stack 3 onto stack 2.
-pub fn emit_record_program() -> Result<Program<3, 4>, Error> {
-    let parser = frame_program()?;
-    let mut code = Vec::with_capacity(17);
-    for instruction in parser.code() {
-        let relocated = match *instruction {
-            Instr::Pop {
-                stack,
-                value,
-                present,
-                next,
-            } => Instr::Pop {
-                stack: if stack == 1 { 3 } else { stack },
-                value,
-                present,
-                next,
-            },
-            Instr::Push { stack, src, next } => Instr::Push {
-                stack: if stack == 1 { 3 } else { stack },
-                src,
-                next,
-            },
-            Instr::Halt => Instr::Goto { next: 7 },
-            Instr::Branch { test, yes, no } => Instr::Branch { test, yes, no },
-            _ => return Err(Error::Invalid("unexpected source frame instruction".into())),
-        };
-        code.push(relocated);
-    }
-    code.extend([
-        Instr::Set {
-            dst: 0,
-            value: false,
-            next: 8,
-        },
-        Instr::Push {
-            stack: 2,
-            src: 0,
-            next: 9,
-        },
-        Instr::Pop {
-            stack: 3,
-            value: 0,
-            present: 1,
-            next: 10,
-        },
-        Instr::Branch {
-            test: 1,
-            yes: 11,
-            no: 14,
-        },
-        Instr::Push {
-            stack: 2,
-            src: 0,
-            next: 12,
-        },
-        Instr::Set {
-            dst: 0,
-            value: true,
-            next: 13,
-        },
-        Instr::Push {
-            stack: 2,
-            src: 0,
-            next: 9,
-        },
-        Instr::Set {
-            dst: 0,
-            value: true,
-            next: 15,
-        },
-        Instr::Push {
-            stack: 2,
-            src: 0,
-            next: 16,
-        },
-        Instr::Halt,
-    ]);
-    Program::new(3, 2, 7, code)
-}
+/// Compatibility path for the source literal-service record emitter.
+pub use crate::bit_program::frame_programs::emit_record_program;
 
 /// Original SubexpNormalizeProgram.emitIfSelected. The discard branch and
 /// register reset both execute as finite physical machine instructions.
@@ -218,32 +143,15 @@ pub fn reverse_records_command() -> Result<Cmd<3, 4>, Error> {
         }),
         emit_if_selected_command()?,
     );
-    let advance = Cmd::ite(
-        2,
-        Cmd::Atom(Atom::Set {
-            dst: 0,
-            value: false,
-        }),
-        Cmd::Atom(Atom::Pop {
-            stack: 0,
-            value: 0,
+    Ok(iterate(
+        RecordPorts {
+            tag: 0,
             present: 1,
-        }),
-    );
-    let body = Cmd::seq(reader, Cmd::seq(emit_every, advance));
-    Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set {
-            dst: 2,
-            value: false,
-        }),
-        Cmd::seq(
-            Cmd::Atom(Atom::Pop {
-                stack: 0,
-                value: 0,
-                present: 1,
-            }),
-            Cmd::while_(0, body),
-        ),
+            found: 2,
+            source: 0,
+        },
+        reader,
+        emit_every,
     ))
 }
 

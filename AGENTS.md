@@ -23,7 +23,8 @@ documented extraction seam, not authorization for a second backend.
 original Lean compiler declarations. It is neither a production backend
 nor a G1/G2 gate. Do not route unsupported Lean IR through Lungo.
 
-**Math and proofs:** `research/` and `eth/proofs/` contain mathematical
+**Math and proofs:** `research/`, `eth/proofs/`, and
+`instrumentation/lean-env/ACC/` contain authored mathematical
 analysis and Lean proof obligations; `instrumentation/lean-env/` pins
 the Lean/Mathlib acceptance environment. A successful compiler
 integration does not prove the ETH counting theorem.
@@ -32,6 +33,18 @@ integration does not prove the ETH counting theorem.
 planned seams. `compiler/docs/backend-first-architecture.md` defines the
 execution/runtime order. Do not claim that the future C execution adapter
 or Rust-native runtime is already implemented.
+
+Rust conventions for new or edited source and diagnostic tools are in
+[`docs/RUST_STYLE.md`](docs/RUST_STYLE.md). Preserve established public names
+and source-reference identities when applying them.
+
+## Proof and implementation language boundary
+
+- **Lean for mathematics:** the authoritative proof of new algebraic identities, source-specific transformations, interface composition laws, and algorithmic complexity claims must be formulated and kernel-checked in pinned Lean. Paper derivations and plausible algebra are useful research, but report them as *not yet Lean-verified*.
+- **Rust for durable systems:** implement exact counting interfaces, strategy selection, circuit DAGs, optimized kernels, resource accounting, and execution infrastructure in Rust, while preserving original pinned-source semantics. Verify implementation-to-Lean correspondence separately; ordinary unit tests are not a substitute for that bridge.
+- **Python for disposable exploration:** small exhaustive oracles, counterexample generation, baseline benchmarks and temporary numerical experiments. Retain useful independent fixtures only where they serve as tests, not as a production solver or proof substrate.
+- Advance work in evidence stages: mathematical statement → pinned Lean proof → Rust implementation → independent correspondence receipts → whole-execution bit-cost/peak-space argument. Keep incomplete stages explicit and fail closed when semantics or bounds are unsupported.
+- In particular, the experimental quadratic sign-interface composition and mode-stitching identities have **not** yet been kernel-verified against the original Anthropic and OpenAI Lean programs. Do not treat finite Python checks or wiki derivations as that verification.
 
 ## Change rules
 

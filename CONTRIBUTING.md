@@ -27,6 +27,10 @@ and new mathematical conjectures without separately testing each claim.
 Follow the [PR template](.github/PULL_REQUEST_TEMPLATE.md) and
 [execution/evidence matrix](eth/docs/evidence.md).
 
+For Rust implementation and diagnostic binaries, follow the
+[Rust code conventions](docs/RUST_STYLE.md). Keep style-only changes separate
+from Lean correspondence and algorithmic changes.
+
 ## One Lean-to-Rust compiler path
 
 The authoritative language pipeline is **Lean 4 source → Lean frontend and

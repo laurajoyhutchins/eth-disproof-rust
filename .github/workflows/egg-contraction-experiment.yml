@@ -46,17 +46,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Test standalone experiment
-        run: cargo test --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
-      # Bootstrap once from Cargo's actual resolver, then commit Cargo.lock
-      # and replace this diagnostic with --locked test/receipt commands.
-      - name: Capture resolved experiment dependency lock
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo 'EXPERIMENT_LOCK_BEGIN'
-          cat experiments/egg-contraction-optimizer/Cargo.lock
-          echo 'EXPERIMENT_LOCK_END'
+      - name: Test standalone experiment against committed dependency lock
+        run: cargo test --locked --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
 
   affine-lean:
     runs-on: ubuntu-24.04

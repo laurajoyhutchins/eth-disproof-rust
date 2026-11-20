@@ -257,6 +257,8 @@ instance : CommSemiring Leading where
   add := plus
   mul := times
   natCast := natLeading
+  nsmul := nsmulRec
+  npow := npowRec
   add_assoc := plus_assoc
   zero_add := zero_plus
   add_zero := plus_zero

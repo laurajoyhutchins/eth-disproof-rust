@@ -1074,9 +1074,9 @@ theorem rustLiteralBit_eq_polarityFromSign (z : Int) :
     rustLiteralBit z = polarityFromSign z := by
   by_cases hp : z = 1
   · have hn : z ≠ -1 := by omega
-    simp [rustLiteralBit, polarityFromSign, hp, hn]
+    simp [rustLiteralBit, polarityFromSign, hp]
   · by_cases hn : z = -1
-    · simp [rustLiteralBit, polarityFromSign, hp, hn]
+    · simp [rustLiteralBit, polarityFromSign, hn]
     · simp [rustLiteralBit, polarityFromSign, hp, hn]
 
 /-- A separate semantic model of one Rust-recognized three-literal slice.
@@ -1177,6 +1177,9 @@ def rustRowMachineBounds (wordBits : Nat) (csr : SignedCsrInput)
   csr.columns.length < 2 ^ wordBits ∧
   csr.signs.length = csr.columns.length ∧
   csr.offsets.length < 2 ^ wordBits ∧
+  (∀ col ∈ csr.columns, col < 2 ^ wordBits) ∧
+  (∀ offset ∈ csr.offsets, offset < 2 ^ wordBits) ∧
+  (∀ sign ∈ csr.signs, -128 ≤ sign ∧ sign ≤ 127) ∧
   start < 2 ^ wordBits ∧ stop < 2 ^ wordBits ∧
   (-128 ≤ sa ∧ sa ≤ 127) ∧
   (-128 ≤ sb ∧ sb ≤ 127) ∧

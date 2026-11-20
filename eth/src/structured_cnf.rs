@@ -330,6 +330,26 @@ mod tests {
     }
 
     #[test]
+    fn fixed_lean_csr_vector_matches_rust_encoding() {
+        // The same six complete clauses and all arrays are kernel-checked
+        // by smallHomogeneousCsr in IndependentNonAffineRecurrence.lean.
+        let cnf = source(4, &[false]);
+        let csr = OwnedSignedCsr::from_cnf(&cnf);
+        assert_eq!(csr.variables, 4);
+        assert_eq!(csr.row_offsets, [0, 3, 6, 9, 12, 15, 18]);
+        assert_eq!(
+            csr.column_indices,
+            [0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 2, 1, 2, 3]
+        );
+        assert_eq!(
+            csr.signs,
+            [-1, 1, 1, 1, -1, 1, 1, 1, -1, -1, -1, -1, 1, 1, 1, 1, 1, 1]
+        );
+        assert_eq!(count_recognized_cnf(&cnf), Ok(7));
+        assert_eq!(oracle(4, &cnf), 7);
+    }
+
+    #[test]
     fn homogeneous_all_scales() {
         for n in [4, 5, 6, 8, 12, 14, 100, 1000] {
             let cnf = source(n, &vec![false; n - 3]);

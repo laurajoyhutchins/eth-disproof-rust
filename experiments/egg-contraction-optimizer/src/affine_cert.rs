@@ -175,7 +175,7 @@ impl EliminationCertificate {
         }
         let mut locations = BTreeMap::new();
         for (column, name) in source.internal.iter().chain(&source.boundary).enumerate() {
-            if name.is_empty() ||
+            if !crate::affine::valid_source_identifier(name) ||
                 locations.insert(name.as_str(), column).is_some() {
                 return Err("duplicate or empty source variable".into());
             }
@@ -353,6 +353,34 @@ mod tests {
         assert!(certificate.verify(&other, &interface).is_err());
     }
 
+
+    #[test]
+    fn checker_refuses_malformed_registered_names_even_if_equations_are_consistent() {
+        let original = example();
+        let (claimed, certificate) = original.eliminate_with_certificate().unwrap();
+        for malformed in ["1u", "_u", "u-name", "u name", "é", "u🙂", ""] {
+            // Rename every occurrence as well: this deliberately remains
+            // the same *mathematical* parity system. A checker which merely
+            // validates lookup success, not the source grammar, would accept.
+            let mut source = original.clone();
+            let previous = source.internal[0].clone();
+            source.internal[0] = malformed.to_owned();
+            for equation in &mut source.equations {
+                for name in &mut equation.variables {
+                    if *name == previous {
+                        *name = malformed.to_owned();
+                    }
+                }
+            }
+            assert!(certificate.verify(&source, &claimed).is_err(),
+                "source grammar incorrectly admitted {malformed:?}");
+            assert!(source.eliminate().is_err(),
+                "producer grammar incorrectly admitted {malformed:?}");
+        }
+        for valid in ["u_1", "U", "a9", "z_9_A"] {
+            assert!(crate::affine::valid_source_identifier(valid));
+        }
+    }
 
     #[test]
     fn checker_rejects_every_violated_terminal_shape_condition() {

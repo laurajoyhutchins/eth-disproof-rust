@@ -149,8 +149,12 @@ jobs:
           (
             cd "$package"
             lake -K maxJobs=2 build
-            lake env lean BorrowReturnP2.lean
+            lake env lean BorrowReturnP2.lean | tee "$RUNNER_TEMP/p2-theorem-axioms.txt"
           )
+          if grep -Eq 'sorryAx' "$RUNNER_TEMP/p2-theorem-axioms.txt"; then
+            echo 'EXTRACTED_P2_CONDITIONAL_EFFECT=UNPROVED_AXIOMS' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           echo 'EXTRACTED_P2_CONDITIONAL_EFFECT=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve failed and successful LLBC/Lean evidence

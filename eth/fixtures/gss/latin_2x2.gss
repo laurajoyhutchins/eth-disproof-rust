@@ -1,0 +1,10 @@
+# Minimal GSS block topology with two legal Latin-square completions.
+<size>4
+<blocksize>2
+<block> 1 2
+<block> 3 4
+<block> 1 3
+<block> 2 4
+<sudoku>
+. . . .
+<endsudoku>

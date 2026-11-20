@@ -81,6 +81,7 @@ nav:
       - Formalization evaluation: research/formalization-evaluation.md
   - Execution:
       - Execution evidence: eth/docs/evidence.md
+      - GSS puzzle input benchmarks: gss-eth-inputs.md
       - Remaining Lean port: eth/docs/remaining-lean-port.md
       - Lean–Rust acceptance: research/lean-rust-acceptance.md
       - Independent differential: eth/docs/independent-differential-and-accounting.md

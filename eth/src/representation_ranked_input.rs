@@ -112,6 +112,27 @@ impl<'a> Cursor<'a> {
     fn signed_word(&mut self) -> Result<i128, Error> {
         Ok(i128::from_le_bytes(self.take()?))
     }
+
+    fn edge(&mut self) -> Result<(usize, usize), Error> {
+        let a = self.word()?;
+        let b = self.word()?;
+        Ok((a, b))
+    }
+
+    fn parent(&mut self) -> Result<Option<usize>, Error> {
+        let raw = u64::from_le_bytes(self.take()?);
+        if raw == ABSENT_PARENT {
+            Ok(None)
+        } else {
+            Ok(Some(from_u64(raw)?))
+        }
+    }
+
+    fn weight_pair(&mut self) -> Result<[i128; 2], Error> {
+        let zero = self.signed_word()?;
+        let one = self.signed_word()?;
+        Ok([zero, one])
+    }
 }
 
 fn fallible_vec<T>(capacity: usize) -> Result<Vec<T>, Error> {
@@ -122,44 +143,79 @@ fn fallible_vec<T>(capacity: usize) -> Result<Vec<T>, Error> {
     Ok(output)
 }
 
-// Each field reader has exactly one ordered loop and returns a complete
-// collection or the first decoding failure. Splitting them makes parser
-// phases individually testable without duplicating the production logic.
+// The cursor operations may refuse, but only the outer reader returns its
+// first stored failure. The loop *breaks* rather than returning from inside
+// a loop body, which is unsupported by the pinned Aeneas translation.
 fn read_edges(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<(usize, usize)>, Error> {
     let mut source_edges = fallible_vec(count)?;
+    let mut failure = None;
     for _ in 0..count {
-        source_edges.push((cursor.word()?, cursor.word()?));
+        match cursor.edge() {
+            Ok(edge) => source_edges.push(edge),
+            Err(error) => {
+                failure = Some(error);
+                break;
+            }
+        }
     }
-    Ok(source_edges)
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(source_edges),
+    }
 }
 
 fn read_words(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<usize>, Error> {
     let mut words = fallible_vec(count)?;
+    let mut failure = None;
     for _ in 0..count {
-        words.push(cursor.word()?);
+        match cursor.word() {
+            Ok(word) => words.push(word),
+            Err(error) => {
+                failure = Some(error);
+                break;
+            }
+        }
     }
-    Ok(words)
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(words),
+    }
 }
 
 fn read_parents(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<Option<usize>>, Error> {
     let mut parents = fallible_vec(count)?;
+    let mut failure = None;
     for _ in 0..count {
-        let raw = u64::from_le_bytes(cursor.take()?);
-        parents.push(if raw == ABSENT_PARENT {
-            None
-        } else {
-            Some(from_u64(raw)?)
-        });
+        match cursor.parent() {
+            Ok(parent) => parents.push(parent),
+            Err(error) => {
+                failure = Some(error);
+                break;
+            }
+        }
     }
-    Ok(parents)
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(parents),
+    }
 }
 
 fn read_weights(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<[i128; 2]>, Error> {
     let mut weights = fallible_vec(count)?;
+    let mut failure = None;
     for _ in 0..count {
-        weights.push([cursor.signed_word()?, cursor.signed_word()?]);
+        match cursor.weight_pair() {
+            Ok(weight) => weights.push(weight),
+            Err(error) => {
+                failure = Some(error);
+                break;
+            }
+        }
     }
-    Ok(weights)
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(weights),
+    }
 }
 
 /// Parse the exact bytes, including source edges and all finite-index checks.

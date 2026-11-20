@@ -31,53 +31,77 @@ pub struct VerifiedRankedCertificate {
     pub parent_links: usize,
 }
 
-// Each guard scans exactly one source collection in the original order.
-// Keeping each loop in its own total Result-returning function preserves
-// refusal precedence while giving Aeneas a single-loop translation target.
-// These functions inspect the *production* certificate, not a copy.
+// Each helper examines the original source collection in order. Error
+// decisions are recorded and returned only *after* the scan exits: this
+// preserves first-refusal behavior while avoiding Aeneas-unsupported early
+// function returns from a loop. No suffix is visited after the first failure.
 fn check_edge_bounds(n: usize, source_edges: &[(usize, usize)]) -> Result<(), Error> {
+    let mut invalid = false;
     for &(a, b) in source_edges {
         if a >= n || b >= n {
-            return Err(Error::Invalid("source edge outside declared region".into()));
+            invalid = true;
+            break;
         }
     }
-    Ok(())
+    if invalid {
+        Err(Error::Invalid("source edge outside declared region".into()))
+    } else {
+        Ok(())
+    }
 }
 
 fn check_label_bounds(classes: usize, labels: &[usize]) -> Result<(), Error> {
+    let mut invalid = false;
     for &label in labels {
         if label >= classes {
-            return Err(Error::Invalid(
-                "ranked certificate label outside range".into(),
-            ));
+            invalid = true;
+            break;
         }
     }
-    Ok(())
+    if invalid {
+        Err(Error::Invalid(
+            "ranked certificate label outside range".into(),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 fn check_declared_roots(n: usize, certificate: &RankedComponentCertificate) -> Result<(), Error> {
+    let mut invalid = false;
     for (class, &root) in certificate.roots.iter().enumerate() {
         if root >= n
             || certificate.labels[root] != class
             || certificate.parent_edge_indices[root].is_some()
             || certificate.rank[root] != 0
         {
-            return Err(Error::Invalid("invalid ranked component root".into()));
+            invalid = true;
+            break;
         }
     }
-    Ok(())
+    if invalid {
+        Err(Error::Invalid("invalid ranked component root".into()))
+    } else {
+        Ok(())
+    }
 }
 
 fn check_edge_class_closure(
     source_edges: &[(usize, usize)],
     labels: &[usize],
 ) -> Result<(), Error> {
+    let mut invalid = false;
     for &(a, b) in source_edges {
         if labels[a] != labels[b] {
-            return Err(Error::Invalid("source edge crosses claimed classes".into()));
+            invalid = true;
+            break;
         }
     }
-    Ok(())
+    if invalid {
+        Err(Error::Invalid("source edge crosses claimed classes".into()))
+    } else {
+        Ok(())
+    }
 }
 
 fn check_ranked_parents(
@@ -85,37 +109,46 @@ fn check_ranked_parents(
     certificate: &RankedComponentCertificate,
 ) -> Result<usize, Error> {
     let mut parent_links = 0usize;
+    let mut failure = None;
     for (vertex, parent_index) in certificate.parent_edge_indices.iter().enumerate() {
         let class = certificate.labels[vertex];
         match parent_index {
             None => {
                 if vertex != certificate.roots[class] || certificate.rank[vertex] != 0 {
-                    return Err(Error::Invalid("unjustified ranked component root".into()));
+                    failure = Some(Error::Invalid("unjustified ranked component root".into()));
+                    break;
                 }
             }
             Some(index) => {
-                let &(a, b) = source_edges.get(*index).ok_or_else(|| {
-                    Error::Invalid("ranked parent edge absent from source".into())
-                })?;
-                let parent = if a == vertex {
-                    b
-                } else if b == vertex {
-                    a
+                if let Some(&(a, b)) = source_edges.get(*index) {
+                    let parent = if a == vertex {
+                        b
+                    } else if b == vertex {
+                        a
+                    } else {
+                        failure = Some(Error::Invalid("ranked parent edge misses vertex".into()));
+                        break;
+                    };
+                    if certificate.labels[parent] != class
+                        || certificate.rank[parent] >= certificate.rank[vertex]
+                    {
+                        failure = Some(Error::Invalid(
+                            "ranked parent does not preserve label and decrease rank".into(),
+                        ));
+                        break;
+                    }
+                    parent_links += 1;
                 } else {
-                    return Err(Error::Invalid("ranked parent edge misses vertex".into()));
-                };
-                if certificate.labels[parent] != class
-                    || certificate.rank[parent] >= certificate.rank[vertex]
-                {
-                    return Err(Error::Invalid(
-                        "ranked parent does not preserve label and decrease rank".into(),
-                    ));
+                    failure = Some(Error::Invalid("ranked parent edge absent from source".into()));
+                    break;
                 }
-                parent_links += 1;
             }
         }
     }
-    Ok(parent_links)
+    match failure {
+        Some(error) => Err(error),
+        None => Ok(parent_links),
+    }
 }
 
 /// Verify source-bound local guards in O(n+e) word operations and O(1)

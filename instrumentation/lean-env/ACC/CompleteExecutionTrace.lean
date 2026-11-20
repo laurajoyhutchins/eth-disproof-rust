@@ -96,16 +96,11 @@ def expectedExecution {n c : ℕ}
     List Receipt × Option Word :=
   let one : Word := BitVec.ofInt 128 1
   let scanned := scanTrace (Array.replicate c (one, one)) (wordItems label weight)
-  let result :=
+  let finished : List Receipt × Option Word :=
     match scanned.2 with
-    | none => none
-    | some products => (finishTrace products one (List.finRange c)).2
-  let trace :=
-    match scanned.2 with
-    | none => scanned.1
-    | some products =>
-        scanned.1 ++ (finishTrace products one (List.finRange c)).1
-  (trace, result)
+    | none => ([], none)
+    | some products => finishTrace products one (List.finRange c)
+  (scanned.1 ++ finished.1, finished.2)
 
 
 /-- Decode an entire concrete word-array state, preserving slot order. -/

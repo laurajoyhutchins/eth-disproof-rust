@@ -106,6 +106,42 @@ theorem replay_preserves_source_solutions {m n : Nat}
   exact IndependentETH.AffineRowOps.replay_preserves operations
     (evaluate a assignment) a.rhs
 
+
+/-- Valid matrix row replay preserves exact counts even after imposing
+ANY external constraint on the assignment, such as fixing arbitrary
+boundary columns to any desired values. No particular boundary prefix,
+column ordering, or resource schedule is required. -/
+theorem replay_preserves_restricted_count {m n : Nat}
+    (operations : List (RowOp m)) (a : Matrix m n)
+    (constraint : (Fin n → GF2) → Prop) :
+    Fintype.card
+      {x : Fin n → GF2 //
+        constraint x ∧ ∀ row, evaluate a x row = a.rhs row} =
+    Fintype.card
+      {x : Fin n → GF2 //
+        constraint x ∧ ∀ row,
+          evaluate (replay operations a) x row =
+          (replay operations a).rhs row} := by
+  classical
+  let equivalence :
+      {x : Fin n → GF2 //
+        constraint x ∧ ∀ row, evaluate a x row = a.rhs row} ≃
+      {x : Fin n → GF2 //
+        constraint x ∧ ∀ row,
+          evaluate (replay operations a) x row =
+          (replay operations a).rhs row} :=
+    { toFun := fun x =>
+        ⟨x.val, ⟨x.property.1,
+          (replay_preserves_source_solutions operations a x.val).mp x.property.2⟩⟩
+      invFun := fun x =>
+        ⟨x.val, ⟨x.property.1,
+          (replay_preserves_source_solutions operations a x.val).mpr x.property.2⟩⟩
+      left_inv := fun x => Subtype.ext rfl
+      right_inv := fun x => Subtype.ext rfl }
+  exact Fintype.card_congr equivalence
+
+#print axioms IndependentETH.AffineMatrixReplay.replay_preserves_restricted_count
+
 #print axioms IndependentETH.AffineMatrixReplay.evaluate_transform
 #print axioms IndependentETH.AffineMatrixReplay.evaluate_replay
 #print axioms IndependentETH.AffineMatrixReplay.rhs_replay

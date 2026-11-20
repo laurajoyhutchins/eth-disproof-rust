@@ -29,7 +29,7 @@ structure Receipt where
   left : Word
   right : Word
   observed : Option Word
-  deriving Repr
+  deriving Repr, DecidableEq
 
 /-- Independently compute the signed-word answer for a claimed operation. -/
 def expected (kind : Kind) (left right : Word) : Option Word :=

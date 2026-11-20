@@ -31,6 +31,8 @@ on:
       - 'instrumentation/lean-env/ACC/ArrayFinishSimulation.lean'
       - 'instrumentation/lean-env/ACC/CheckedI128BitVec.lean'
       - 'instrumentation/lean-env/ACC/ArithmeticReceipts.lean'
+      - 'instrumentation/lean-env/ACC/CompleteExecutionTrace.lean'
+      - 'eth/src/bin/complete_ranked_trace.rs'
       - 'eth/src/bin/checked_i128_receipts.rs'
       - 'eth/src/representation_ranked_certificate.rs'
       - 'instrumentation/lean-env/lakefile.lean'
@@ -110,13 +112,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentCnfBridge.lean eth/proofs/IndependentSwapIdentity.lean eth/proofs/IndependentRoutingBoundary.lean eth/proofs/IndependentTwoAdicJointPotential.lean eth/proofs/IndependentTwoAdicMoments.lean eth/proofs/IndependentTwoAdicConditionalMoments.lean eth/proofs/IndependentTwoAdicMatchingGraph.lean eth/proofs/IndependentAnthropicNetworkAdapter.lean eth/proofs/IndependentCircuitSource.lean eth/proofs/IndependentBoundaryQuotient.lean eth/proofs/IndependentLinearBoundary.lean eth/proofs/IndependentOpenAIZeroGlue.lean instrumentation/lean-env/ACC/Circuit.lean instrumentation/lean-env/ACC/LinearInterface.lean instrumentation/lean-env/ACC/FactoredOperator.lean instrumentation/lean-env/ACC/CrossCutClosure.lean instrumentation/lean-env/ACC/EqualityComponents.lean instrumentation/lean-env/ACC/EqualityEdgeClosure.lean instrumentation/lean-env/ACC/EqualityCertificate.lean instrumentation/lean-env/ACC/RankedComponentCertificate.lean instrumentation/lean-env/ACC/IndexedRankedCertificate.lean instrumentation/lean-env/ACC/CheckedComponentArithmetic.lean instrumentation/lean-env/ACC/ComponentFoldCorrespondence.lean instrumentation/lean-env/ACC/ArrayStepSimulation.lean instrumentation/lean-env/ACC/ArrayScanSimulation.lean instrumentation/lean-env/ACC/ArrayFinishSimulation.lean instrumentation/lean-env/ACC/CheckedI128BitVec.lean instrumentation/lean-env/ACC/ArithmeticReceipts.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentCnfBridge.lean eth/proofs/IndependentSwapIdentity.lean eth/proofs/IndependentRoutingBoundary.lean eth/proofs/IndependentTwoAdicJointPotential.lean eth/proofs/IndependentTwoAdicMoments.lean eth/proofs/IndependentTwoAdicConditionalMoments.lean eth/proofs/IndependentTwoAdicMatchingGraph.lean eth/proofs/IndependentAnthropicNetworkAdapter.lean eth/proofs/IndependentCircuitSource.lean eth/proofs/IndependentBoundaryQuotient.lean eth/proofs/IndependentLinearBoundary.lean eth/proofs/IndependentOpenAIZeroGlue.lean instrumentation/lean-env/ACC/Circuit.lean instrumentation/lean-env/ACC/LinearInterface.lean instrumentation/lean-env/ACC/FactoredOperator.lean instrumentation/lean-env/ACC/CrossCutClosure.lean instrumentation/lean-env/ACC/EqualityComponents.lean instrumentation/lean-env/ACC/EqualityEdgeClosure.lean instrumentation/lean-env/ACC/EqualityCertificate.lean instrumentation/lean-env/ACC/RankedComponentCertificate.lean instrumentation/lean-env/ACC/IndexedRankedCertificate.lean instrumentation/lean-env/ACC/CheckedComponentArithmetic.lean instrumentation/lean-env/ACC/ComponentFoldCorrespondence.lean instrumentation/lean-env/ACC/ArrayStepSimulation.lean instrumentation/lean-env/ACC/ArrayScanSimulation.lean instrumentation/lean-env/ACC/ArrayFinishSimulation.lean instrumentation/lean-env/ACC/CheckedI128BitVec.lean instrumentation/lean-env/ACC/ArithmeticReceipts.lean instrumentation/lean-env/ACC/CompleteExecutionTrace.lean; then
             echo 'Independent proof contains unresolved admission' >&2
             exit 1
           fi
           (
             cd instrumentation/lean-env
-            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults Groundwork.Net.Net ACC.Circuit ACC.LinearInterface ACC.FactoredOperator ACC.CrossCutClosure ACC.EqualityComponents ACC.EqualityEdgeClosure ACC.EqualityCertificate ACC.RankedComponentCertificate ACC.IndexedRankedCertificate ACC.CheckedComponentArithmetic ACC.ComponentFoldCorrespondence ACC.ArrayStepSimulation ACC.ArrayScanSimulation ACC.ArrayFinishSimulation ACC.CheckedI128BitVec ACC.ArithmeticReceipts
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SAT OAI.IndependentAnthropic.MainResults Groundwork.Net.Net ACC.Circuit ACC.LinearInterface ACC.FactoredOperator ACC.CrossCutClosure ACC.EqualityComponents ACC.EqualityEdgeClosure ACC.EqualityCertificate ACC.RankedComponentCertificate ACC.IndexedRankedCertificate ACC.CheckedComponentArithmetic ACC.ComponentFoldCorrespondence ACC.ArrayStepSimulation ACC.ArrayScanSimulation ACC.ArrayFinishSimulation ACC.CheckedI128BitVec ACC.ArithmeticReceipts ACC.CompleteExecutionTrace
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentCnfBridge.lean"
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentSwapIdentity.lean"
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentRoutingBoundary.lean"
@@ -134,6 +136,12 @@ jobs:
             cargo run --quiet --locked --manifest-path "$GITHUB_WORKSPACE/eth/Cargo.toml" --bin checked_i128_receipts > "$RUNNER_TEMP/observed-i128-receipts.lean"
             test "$(grep -c '^  { kind :=' "$RUNNER_TEMP/observed-i128-receipts.lean")" -eq 54
             lake env lean "$RUNNER_TEMP/observed-i128-receipts.lean"
+            # Independent finite validation of source, indexed certificate,
+            # every ordered arithmetic operation, exact early refusal, and
+            # final result, using an observed run of the production counter.
+            cargo run --quiet --locked --manifest-path "$GITHUB_WORKSPACE/eth/Cargo.toml" --bin complete_ranked_trace > "$RUNNER_TEMP/complete-ranked-traces.lean"
+            test "$(grep -c "^example : checkComplete .* = true := by decide$" "$RUNNER_TEMP/complete-ranked-traces.lean")" -eq 3
+            lake env lean "$RUNNER_TEMP/complete-ranked-traces.lean"
           )
           echo 'INDEPENDENT_CNF_COUNT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'INDEPENDENT_SWAP_IDENTITY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
@@ -161,6 +169,7 @@ jobs:
           echo 'ACC_CHECKED_I128_BITVECTOR=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ACC_ARITHMETIC_RECEIPTS=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'RUST_OBSERVED_I128_RECEIPTS=LEAN_CHECKED_54' >> "$GITHUB_STEP_SUMMARY"
+          echo 'RUST_COMPLETE_RANKED_TRACES=LEAN_CHECKED_3' >> "$GITHUB_STEP_SUMMARY"
           echo 'ACC_LINEAR_INTERFACE_TRANSFER_TENSOR_CIRCUIT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ACC_LINEAR_INTERFACE_ORIGINAL_SOURCE_ADAPTER=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'ACC_BOUNDARY_QUOTIENT_MERGE_CLOSURE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"

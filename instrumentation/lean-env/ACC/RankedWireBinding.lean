@@ -61,9 +61,10 @@ def encodeRankedWire {n c : ℕ}
     The guard's class count may be zero when n = 0. -/
 def FitsWire {n c : ℕ}
     (edges : List (Fin n × Fin n))
-    (rank : Fin n → ℕ) : Prop :=
-  c ≤ n ∧ n < 2 ^ 64 ∧ c < 2 ^ 64 ∧
-    edges.length < 2 ^ 64 ∧ ∀ i : Fin n, rank i < 2 ^ 64
+    (rank : Fin n → ℕ) : Bool :=
+  decide (c ≤ n) && decide (n < 2 ^ 64) &&
+    decide (c < 2 ^ 64) && decide (edges.length < 2 ^ 64) &&
+    (List.finRange n).all (fun i => decide (rank i < 2 ^ 64))
 
 /-- Claims and observed arithmetic are untrusted. The verifier compares
     every caller-supplied input byte against an independent canonical
@@ -77,7 +78,7 @@ def checkWireClaim {n c : ℕ}
     (rank : Fin n → ℕ)
     (weight : Fin n → Bool → Word)
     (trace : List Receipt) (reported : Option Word) : Bool :=
-  decide (FitsWire (c := c) edges rank) &&
+  FitsWire (c := c) edges rank &&
   decide (encodeRankedWire edges label root parent rank weight = rawBytes) &&
   checkComplete edges label root parent rank weight trace reported
 

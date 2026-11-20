@@ -12,6 +12,7 @@ use num_bigint::BigUint;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub mod adaptive;
+pub mod zero_coefficient;
 
 const MAX_WIDTH: usize = 16;
 const MAX_CACHE_STATES: usize = 200_000;

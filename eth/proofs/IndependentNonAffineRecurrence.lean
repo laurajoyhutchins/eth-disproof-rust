@@ -1333,6 +1333,52 @@ theorem rustScanCsrRow_eq_decodeCsrRow
       rustTripleRow_eq_decodeCsrRow csr i start stop a b c sa sb sc
         hstart hstop hshape ha hb hc hsa hsb hsc
 
+/-- All malformed-offset cases are covered, without a valid-slice witness.
+If an index or offset is missing, both decoders refuse. If the mathematical
+width differs from three, neither decoder can accept. When width is three
+but the last offset exceeds the column array, the third checked Lean column
+lookup fails. Remaining in-range cases agree on values and polarity. -/
+theorem rustScanCsrRow_total_refinement (csr : SignedCsrInput) (i : Nat) :
+    rustScanCsrRow csr i = decodeCsrRow csr i := by
+  cases hs : csr.offsets[i]? with
+  | none => simp [rustScanCsrRow, decodeCsrRow, hs]
+  | some start =>
+    cases he : csr.offsets[i + 1]? with
+    | none => simp [rustScanCsrRow, decodeCsrRow, hs, he]
+    | some stop =>
+      by_cases hw : stop = start + 3
+      · by_cases hb : stop ≤ csr.columns.length
+        · have hb' : start + 3 ≤ csr.columns.length := by omega
+          cases ha : csr.columns[start]? with
+          | none =>
+              have hmissing := (List.getElem?_eq_none_iff).mp ha
+              omega
+          | some a =>
+            cases hbb : csr.columns[start + 1]? with
+            | none =>
+                have hmissing := (List.getElem?_eq_none_iff).mp hbb
+                omega
+            | some b =>
+              cases hc : csr.columns[start + 2]? with
+              | none =>
+                  have hmissing := (List.getElem?_eq_none_iff).mp hc
+                  omega
+              | some c =>
+                by_cases hsorted : a < b ∧ b < c ∧ c < csr.variableCount
+                · simp [rustScanCsrRow, decodeCsrRow, hs, he,
+                    hw, hb', ha, hbb, hc, rustTripleRow,
+                    rustLiteralBit_eq_polarityFromSign, hsorted]
+                · simp [rustScanCsrRow, decodeCsrRow, hs, he,
+                    hw, hb', ha, hbb, hc, rustTripleRow,
+                    rustLiteralBit_eq_polarityFromSign, hsorted]
+        · have hmissing : csr.columns[start + 2]? = none := by
+            apply List.getElem?_eq_none
+            omega
+          simp [rustScanCsrRow, decodeCsrRow, hs, he, hw, hmissing]
+      · have hbad : ¬(start ≤ stop ∧
+            stop ≤ csr.columns.length ∧ stop - start = 3) := by omega
+        simp [rustScanCsrRow, decodeCsrRow, hs, he, hw, hbad]
+
 /-- Pointwise Option equality composes through arbitrary sequential row
 traversal, including early refusal. This establishes the first genuine
 list-level bridge, independently of row ordering. -/
@@ -1376,6 +1422,20 @@ theorem rustScanSignedCsr_eq_decodeSignedCsr
   intro i hi
   exact rustScanCsrRow_eq_decodeCsrRow csr i (h i hi)
 
+/-- Every mathematical signed CSR input, including malformed offsets and
+duplicate rows, is decoded identically by the two *pure* scanners.
+This has no row-validity assumption. It is not a claim about machine
+integer overflow, memory allocation, or the compiled Rust recognizer. -/
+theorem rustScanSignedCsr_total_refinement (csr : SignedCsrInput) :
+    rustScanSignedCsr csr = decodeSignedCsr csr := by
+  apply rustScanSignedCsr_eq_decodeSignedCsr_of_row_agreement
+  intro i _
+  exact rustScanCsrRow_total_refinement csr i
+
+theorem rustScanSignedCsr_total_refusal_iff (csr : SignedCsrInput) :
+    rustScanSignedCsr csr = none ↔ decodeSignedCsr csr = none := by
+  rw [rustScanSignedCsr_total_refinement csr]
+
 /-- Both successful outputs and refusals of the full modeled scanner agree
 on the witnessed domain. No duplicate row can disappear silently. -/
 theorem rustScanSignedCsr_refusal_iff
@@ -1388,6 +1448,9 @@ theorem rustScanSignedCsr_refusal_iff
 #print axioms IndependentETH.NonAffine.rustPolarityIndex_injective
 #print axioms IndependentETH.NonAffine.rustGroupingKey_injective
 #print axioms IndependentETH.NonAffine.rustGroupingKey_nodup_iff
+#print axioms IndependentETH.NonAffine.rustScanCsrRow_total_refinement
+#print axioms IndependentETH.NonAffine.rustScanSignedCsr_total_refinement
+#print axioms IndependentETH.NonAffine.rustScanSignedCsr_total_refusal_iff
 #print axioms IndependentETH.NonAffine.rustScanCsrRow_eq_decodeCsrRow
 #print axioms IndependentETH.NonAffine.csrRowMapM_congr
 #print axioms IndependentETH.NonAffine.rustScanSignedCsr_eq_decodeSignedCsr_of_row_agreement

@@ -4,7 +4,7 @@
 #[path = "trace/format.rs"]
 mod trace_format;
 
-use lean_eth_reference::bit_program::{Config, RunLimits};
+use lean_eth_reference::bit_program::RunLimits;
 use lean_eth_reference::native_high::{branch_program, initialize_program};
 
 use trace_format::{bit_char, stack_bits};

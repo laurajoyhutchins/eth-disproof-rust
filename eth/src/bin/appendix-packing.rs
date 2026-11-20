@@ -23,8 +23,7 @@ fn run() -> Result<(), String> {
     let cap = args[4]
         .parse::<u128>()
         .map_err(|_| "invalid degree-cap".to_owned())?;
-    let audit = RootPackingAudit::new(edges, groups, u, cap)
-        .map_err(|error| error.to_string())?;
+    let audit = RootPackingAudit::new(edges, groups, u, cap).map_err(|error| error.to_string())?;
 
     println!(
         "{}",

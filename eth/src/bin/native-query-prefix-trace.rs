@@ -12,7 +12,6 @@ use lean_eth_reference::native_tuple::encode_words;
 
 use trace_format::{bit_char, stack_bits};
 
-
 fn cases() -> Vec<(&'static str, Vec<bool>, Vec<bool>)> {
     vec![
         ("empty", vec![], vec![]),

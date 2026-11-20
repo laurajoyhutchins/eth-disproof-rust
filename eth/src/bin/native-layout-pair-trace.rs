@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use lean_eth_reference::bit_program::{Config, RunLimits};
 use lean_eth_reference::{native_layout, native_pair_setup};
 
-use trace_format::{stack_bits};
+use trace_format::stack_bits;
 
 fn flag(b: bool) -> &'static str {
     if b { "1" } else { "0" }

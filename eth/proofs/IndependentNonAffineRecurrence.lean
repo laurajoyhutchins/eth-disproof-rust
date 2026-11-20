@@ -1457,4 +1457,115 @@ theorem rustScanSignedCsr_refusal_iff
 #print axioms IndependentETH.NonAffine.rustScanSignedCsr_eq_decodeSignedCsr
 #print axioms IndependentETH.NonAffine.rustScanSignedCsr_refusal_iff
 
+/-! ## Checked machine-word CSR shape arithmetic
+
+This models the precise `usize` representability conditions of the shared
+Rust `expected_csr_shape` helper. Unlike the preceding pure-Nat scanner,
+multiplication, subtraction and the terminating-offset addition are also
+proved compatible with genuinely finite `BitVec` arithmetic. The model
+is parameterized by word width; it does not prove compiled Rust execution,
+memory allocation, or external input parsing.
+-/
+
+/-- A Rust-shaped checked `5*n - 14` operation with explicit word bounds.
+Values of `usize` are represented by Nats strictly below `2^wordBits`. -/
+def checkedCsrRowCount (wordBits n : Nat) : Option Nat := do
+  if n < 2 ^ wordBits && 5 * n < 2 ^ wordBits then
+    if 14 ≤ 5 * n then
+      some (5 * n - 14)
+    else none
+  else none
+
+/-- The additional terminating offset is another checked operation. -/
+def checkedCsrOffsetCount (wordBits n : Nat) : Option Nat := do
+  let rows ← checkedCsrRowCount wordBits n
+  if rows + 1 < 2 ^ wordBits then some (rows + 1)
+  else none
+
+/-- Successful checked multiplication for n ≥ 4 supplies the exact row count. -/
+theorem checkedCsrRowCount_of_fits (wordBits n : Nat)
+    (hn : 4 ≤ n) (hfit : 5 * n < 2 ^ wordBits) :
+    checkedCsrRowCount wordBits n = some (5 * n - 14) := by
+  have hnfit : n < 2 ^ wordBits := by omega
+  have hsub : 14 ≤ 5 * n := by omega
+  simp [checkedCsrRowCount, hnfit, hfit, hsub]
+
+/-- The final offset-count increment never overflows after successful
+five-fold multiplication on the supported n ≥ 4 domain. -/
+theorem checkedCsrOffsetCount_of_fits (wordBits n : Nat)
+    (hn : 4 ≤ n) (hfit : 5 * n < 2 ^ wordBits) :
+    checkedCsrOffsetCount wordBits n = some (5 * n - 13) := by
+  have hrows := checkedCsrRowCount_of_fits wordBits n hn hfit
+  have hsafe : (5 * n - 14) + 1 < 2 ^ wordBits := by omega
+  have hsize : (5 * n - 14) + 1 = 5 * n - 13 := by omega
+  have hsafeFinal : 5 * n - 13 < 2 ^ wordBits := by omega
+  simp [checkedCsrOffsetCount, hrows, hsize, hsafeFinal]
+
+/-- A five-fold product outside the word range refuses instead of wrapping
+or saturating. -/
+theorem checkedCsrRowCount_overflow (wordBits n : Nat)
+    (h : 2 ^ wordBits ≤ 5 * n) :
+    checkedCsrRowCount wordBits n = none := by
+  by_cases hn : n < 2 ^ wordBits
+  · simp [checkedCsrRowCount, hn, show ¬ 5 * n < 2 ^ wordBits by omega]
+  · simp [checkedCsrRowCount, hn]
+
+/-- Any successful returned row count agrees with the exact Nat formula. -/
+theorem checkedCsrRowCount_success_bounds (wordBits n rows : Nat)
+    (h : checkedCsrRowCount wordBits n = some rows) :
+    n < 2 ^ wordBits ∧ 5 * n < 2 ^ wordBits ∧
+    14 ≤ 5 * n ∧ rows = 5 * n - 14 := by
+  unfold checkedCsrRowCount at h
+  split at h <;> simp_all
+
+/-- Actual bitvector multiplication agrees with the unbounded integer
+product when checked arithmetic reports that the result fits. -/
+theorem checkedCsr_mul_bitvec (w n : Nat)
+    (hn : 4 ≤ n) (hfit : 5 * n < 2 ^ w) :
+    ((BitVec.ofNat w n) * (BitVec.ofNat w 5)).toNat = 5 * n := by
+  have hnfit : n < 2 ^ w := by omega
+  have hf : 5 < 2 ^ w := by omega
+  rw [BitVec.toNat_mul]
+  simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hnfit, Nat.mod_eq_of_lt hf]
+  rw [Nat.mul_comm, Nat.mod_eq_of_lt hfit]
+
+/-- Subtracting fourteen in the finite word agrees with exact Nat
+subtraction; no wraparound is possible in this domain. -/
+theorem checkedCsr_sub_bitvec (w n : Nat)
+    (hn : 4 ≤ n) (hfit : 5 * n < 2 ^ w) :
+    ((BitVec.ofNat w (5 * n)) - (BitVec.ofNat w 14)).toNat =
+      5 * n - 14 := by
+  have hlarge : 14 ≤ 5 * n := by omega
+  have hfourteen : 14 < 2 ^ w := by omega
+  have hsmall : 5 * n - 14 < 2 ^ w := by omega
+  rw [BitVec.toNat_sub]
+  simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hfit,
+    Nat.mod_eq_of_lt hfourteen]
+  have hrew : 2 ^ w - 14 + 5 * n = 2 ^ w + (5 * n - 14) := by omega
+  rw [hrew, Nat.add_mod, Nat.mod_self]
+  simp [Nat.mod_eq_of_lt hsmall]
+
+/-- The extra terminating offset fits in the same finite word, making the
+former production saturation operation unnecessary on accepted instances. -/
+theorem checkedCsr_addOne_bitvec (w n : Nat)
+    (hn : 4 ≤ n) (hfit : 5 * n < 2 ^ w) :
+    ((BitVec.ofNat w (5 * n - 14)) + (BitVec.ofNat w 1)).toNat =
+      5 * n - 13 := by
+  have hrows : 5 * n - 14 < 2 ^ w := by omega
+  have hone : 1 < 2 ^ w := by omega
+  have htotal : 5 * n - 13 < 2 ^ w := by omega
+  have hsize : (5 * n - 14) + 1 = 5 * n - 13 := by omega
+  rw [BitVec.toNat_add]
+  simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hrows,
+    Nat.mod_eq_of_lt hone]
+  rw [hsize, Nat.mod_eq_of_lt htotal]
+
+#print axioms IndependentETH.NonAffine.checkedCsrRowCount_of_fits
+#print axioms IndependentETH.NonAffine.checkedCsrOffsetCount_of_fits
+#print axioms IndependentETH.NonAffine.checkedCsrRowCount_overflow
+#print axioms IndependentETH.NonAffine.checkedCsrRowCount_success_bounds
+#print axioms IndependentETH.NonAffine.checkedCsr_mul_bitvec
+#print axioms IndependentETH.NonAffine.checkedCsr_sub_bitvec
+#print axioms IndependentETH.NonAffine.checkedCsr_addOne_bitvec
+
 end IndependentETH.NonAffine

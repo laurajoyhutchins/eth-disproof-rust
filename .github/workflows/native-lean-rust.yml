@@ -179,6 +179,8 @@ jobs:
             compiler/artifacts/lean-c-generated-heap/source-del-trace.txt
             compiler/artifacts/lean-c-generated-heap/source-del-events.tsv
             compiler/artifacts/lean-c-generated-heap/source-del-events-audit.txt
+            compiler/artifacts/lean-c-generated-heap/destructor-worklist-witnesses.tsv
+            compiler/artifacts/lean-c-generated-heap/destructor-worklist-witness-audit.txt
             compiler/artifacts/lean-c-generated-heap/RuntimeHeapKernels-traced.c
             compiler/artifacts/lean-c-generated-heap/RuntimeHeapDelKernels-traced.c
             compiler/artifacts/lean-c-generated-heap/abi-traced.c

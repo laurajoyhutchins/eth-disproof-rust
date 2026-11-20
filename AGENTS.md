@@ -33,6 +33,10 @@ planned seams. `compiler/docs/backend-first-architecture.md` defines the
 execution/runtime order. Do not claim that the future C execution adapter
 or Rust-native runtime is already implemented.
 
+Rust conventions for new or edited source and diagnostic tools are in
+[`docs/RUST_STYLE.md`](docs/RUST_STYLE.md). Preserve established public names
+and source-reference identities when applying them.
+
 ## Proof and implementation language boundary
 
 - **Lean for mathematics:** the authoritative proof of new algebraic identities, source-specific transformations, interface composition laws, and algorithmic complexity claims must be formulated and kernel-checked in pinned Lean. Paper derivations and plausible algebra are useful research, but report them as *not yet Lean-verified*.

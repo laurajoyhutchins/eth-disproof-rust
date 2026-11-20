@@ -229,9 +229,9 @@ test -s "$out/destructor-worklist-witnesses.tsv"
 python3 scripts/check-destructor-witnesses.py \
   "$out/destructor-worklist-witnesses.tsv" --self-test \
   | tee "$out/destructor-worklist-witness-audit.txt"
-grep -Fq 'destructor_worklist_witnesses=PASS cases=8 rows=81 physical_refcount_effects_only' \
+grep -Fq 'destructor_worklist_witnesses=PASS cases=11 rows=90 physical_refcount_effects_only' \
   "$out/destructor-worklist-witness-audit.txt"
-grep -Fq 'destructor_witness_mutations=9/9_REFUSED' \
+grep -Fq 'destructor_witness_mutations=13/13_REFUSED' \
   "$out/destructor-worklist-witness-audit.txt"
 # Only after the STOCK Lean runtime's reference effects pass, run the
 # separate pinned-source diagnostic executable with internal event hooks.
@@ -415,7 +415,7 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
     scripts/check-internal-worklist.py runtime/lean-c/worklist_internal_trace.c \
     "$out/internal-worklist-events.tsv" "$out/internal-worklist-audit.txt" \
     "$out/internal-witnesses.tsv" "$out/worklist-source-audit.txt"
-  echo 'physical_destructor_worklist=8_CASES_81_REAL_C_RC_WITNESSES'
+  echo 'physical_destructor_worklist=11_CASES_90_REAL_C_RC_WITNESSES'
   echo 'physical_destructor_free_timestamps=NOT_OBSERVED'
   echo 'physical_destructor_order=NOT_OBSERVED'
   echo 'physical_destructor_witness_graphs=CHAINS_AND_FORKS_WITH_INDEPENDENT_RETAINS'

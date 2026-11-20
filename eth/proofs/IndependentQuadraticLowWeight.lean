@@ -499,6 +499,19 @@ theorem nativePhase_split {n : ℕ}
   simpa [nativePhase] using
     nativePhase_split_acc boundary terms x false false
 
+/-- The signed sum is computed directly from the raw source phase,
+without separately assuming the polynomial split is correct. For a free
+internal bit, a nonzero mixed phase cancels both signed contributions. -/
+theorem nativePhase_signed_fiber {n : ℕ}
+    (boundary : Fin n → Bool) (terms : List (List Nat)) :
+    (∑ x : Bool, signedBit (nativePhase (nativeSourceBit x boundary) terms)) =
+      (let state := terms.foldl (nativePhaseStep boundary) (false, false)
+       if state.2 = true then 0 else 2 * signedBit state.1) := by
+  simp_rw [nativePhase_split]
+  exact signedBoolFiber
+    (terms.foldl (nativePhaseStep boundary) (false, false)).1
+    (terms.foldl (nativePhaseStep boundary) (false, false)).2
+
 /-- Check every raw affine parity constraint against the given coordinate interpreter. -/
 def nativeRowsHold (bits : Nat → Bool)
     (rows : List (List Nat × Bool)) : Bool :=
@@ -673,6 +686,7 @@ example : checkNativeInstance (n := 1) freeOracleSource
 
 #print axioms IndependentETH.QuadraticLowWeight.nativeTerm_split
 #print axioms IndependentETH.QuadraticLowWeight.nativePhase_split
+#print axioms IndependentETH.QuadraticLowWeight.nativePhase_signed_fiber
 
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_sound
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_receipt_sound

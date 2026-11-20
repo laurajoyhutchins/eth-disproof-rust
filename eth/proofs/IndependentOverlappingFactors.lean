@@ -146,12 +146,20 @@ noncomputable def nextDead (active : Finset V) (f : ScopedFactor V R)
     List V :=
   ((active ∪ f.scope) \ (scopeUnion rest ∪ output)).toList
 
-/-- A complete order-respecting plan. Source factors may share ports
+/-- A complete order-respecting plan, with a terminal identity factor
+that explicitly closes any active ports not requested as output.
+This matters when the source factor list is empty. Source factors may share ports
 with preceding and following factors; only actual future dependencies
 prevent elimination. -/
 noncomputable def makePlan (active output : Finset V) :
     List (ScopedFactor V R) → List (Step V R)
-  | [] => []
+  | [] =>
+      [{ factor := {
+           scope := ∅,
+           value := fun _ => 1,
+           local_update := by intros; rfl
+         },
+         dead := (active \ output).toList }]
   | f :: rest =>
       { factor := f, dead := nextDead active f rest output } ::
       makePlan (nextKept active f rest output) output rest
@@ -167,7 +175,11 @@ theorem makePlan_safe
   induction factors generalizing active with
   | nil =>
       intro hidden _
-      trivial
+      change (∀ v ∈ hidden, v ∉ (∅ : Finset V)) ∧ True
+      constructor
+      · intro v hv
+        simp
+      · trivial
   | cons f rest ih =>
       intro hidden hhidden
       change (∀ v ∈ hidden, v ∉ f.scope) ∧
@@ -296,7 +308,7 @@ theorem makePlan_mem_iff
       v ∈ (active ∪ scopeUnion factors) \ output := by
   induction factors generalizing active with
   | nil =>
-      simp [makePlan, eliminated, scopeUnion]
+      simp [makePlan, eliminated, scopeUnion, Finset.mem_sdiff]
   | cons f rest ih =>
       change
         (v ∈ nextDead active f rest output ∨
@@ -315,7 +327,8 @@ theorem makePlan_nodup
     (eliminated (makePlan active output factors)).Nodup := by
   induction factors generalizing active with
   | nil =>
-      simp [makePlan, eliminated]
+      simpa [makePlan, eliminated] using
+        (Finset.nodup_toList (active \ output))
   | cons f rest ih =>
       change
         (nextDead active f rest output ++

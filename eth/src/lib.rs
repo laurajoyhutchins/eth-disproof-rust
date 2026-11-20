@@ -12,27 +12,8 @@
 //! bit-complexity claim is transferred. The finite fallback in upstream
 //! `FiniteFallback.lean` is noncomputable and is not implemented here.
 
-use std::fmt;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Error {
-    Invalid(String),
-    Capacity(String),
-    Overflow,
-    /// An explicit unfinished source-defined command, never a successful halt.
-    NotImplemented(&'static str),
-}
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Invalid(s) => write!(f, "invalid formula: {s}"),
-            Self::Capacity(s) => write!(f, "capacity refusal: {s}"),
-            Self::Overflow => write!(f, "exact count overflow"),
-            Self::NotImplemented(symbol) => write!(f, "unimplemented Lean source stage: {symbol}"),
-        }
-    }
-}
-impl std::error::Error for Error {}
+pub mod error;
+pub use error::Error;
 
 /// A Lean `SAT.Literal (Fin n)`, with `variable` indexed from zero.
 /// Its `Ord` is the `Encoding.literalCode` order: variable, false before true.
@@ -421,6 +402,7 @@ pub mod representation_component_certificate;
 pub mod representation_equality_components;
 pub mod representation_matching;
 pub mod representation_ranked_certificate;
+pub mod representation_ranked_input;
 
 #[path = "counting/finite_fallback.rs"]
 pub mod finite_fallback;

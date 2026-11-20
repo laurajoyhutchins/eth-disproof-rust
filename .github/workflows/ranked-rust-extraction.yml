@@ -1,0 +1,138 @@
+name: Experimental ranked Rust-to-Lean extraction
+
+on:
+  pull_request:
+    paths:
+      - 'verification/ranked-source/hax.toml'
+      - 'verification/ranked-source/src/lib.rs'
+      - 'eth/src/error.rs'
+      - 'eth/src/representation_ranked_input.rs'
+      - 'eth/src/representation_ranked_certificate.rs'
+      - '.github/workflows/ranked-rust-extraction.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ranked-rust-extract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      # Cache immediately after installation: the research extraction stage
+      # is deliberately fail-closed, and a post-job cache/save on failure does
+      # not persist the verified cargo-hax binary.
+      - name: Restore pinned hax frontend executable
+        id: hax-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cargo/bin/cargo-hax
+          key: pinned-cargo-hax-v0.4.2-ubuntu24-rust199
+
+      - name: Install and verify pinned hax frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v cargo-hax >/dev/null 2>&1; then
+            cargo install --version 0.4.2 --locked cargo-hax
+          fi
+          cargo hax --version | tee "$RUNNER_TEMP/hax-version.txt"
+          grep -Fx 'version=0.4.2' "$RUNNER_TEMP/hax-version.txt"
+
+      - name: Cache verified pinned hax before proof experiments
+        if: steps.hax-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cargo/bin/cargo-hax
+          key: pinned-cargo-hax-v0.4.2-ubuntu24-rust199
+
+      - name: Extract actual guard, decoder and complete execution source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd verification/ranked-source
+          # Each target imports the same production source files. A passing
+          # extraction is still not a Lean theorem. Run every target even
+          # when another fails, preserving the exact unsupported closure.
+          status=0
+          for scenario in ranked-parent ranked-guard ranked-decoder ranked-source; do
+            if cargo hax extract "$scenario" --locked 2>&1 | tee "$RUNNER_TEMP/$scenario-extraction.log"; then
+              echo "EXTRACTION_$scenario=PASS" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "EXTRACTION_$scenario=BLOCKED" >> "$GITHUB_STEP_SUMMARY"
+              status=1
+            fi
+          done
+          # Extraction exit code is not enough: never count generated stubs
+          # as source-derived semantics. Both target declarations must be
+          # present with no sorry/admit/axiom in their generated definitions.
+          for scenario in ranked-parent ranked-guard ranked-decoder; do
+            case "$scenario" in
+              ranked-parent)
+                dir=RankedParent
+                target='^def representation_ranked_certificate.parent_refusal_code'
+                ;;
+              ranked-guard)
+                dir=RankedGuard
+                target='^def representation_ranked_certificate.verify_ranked_component_certificate'
+                ;;
+              ranked-decoder)
+                dir=RankedDecoder
+                target='^def representation_ranked_input.decode_ranked_input'
+                ;;
+            esac
+            generated="proofs/$scenario/lean/$dir/Extraction"
+            if ! grep -q "$target" "$generated/Funs.lean"; then
+              echo "MISSING_SOURCE_BODY=$scenario" >> "$GITHUB_STEP_SUMMARY"
+              status=1
+            fi
+            if grep -nE '\\b(sorry|admit|axiom)\\b' "$generated/Funs.lean" "$generated/Types.lean"; then
+              echo "UNPROVED_GENERATED_DECLARATION=$scenario" >> "$GITHUB_STEP_SUMMARY"
+              status=1
+            else
+              echo "SOURCE_DERIVED_LEAN_DECLARATIONS=$scenario:NO_PLACEHOLDERS" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          exit "$status"
+
+      - name: Kernel-typecheck source-derived guard and decoder definitions
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Generated Lean packages are pinned to a different toolchain than
+          # ACC's independent proof project. Do not silently use Lean 4.34.1.
+          # Prove we can typecheck the pure first source boundary before
+          # attempting external Error/String/allocator models for the guard.
+          scenario=ranked-parent
+          grep -Fx 'leanprover/lean4:v4.31.0' "verification/ranked-source/proofs/$scenario/lean/lean-toolchain"
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$RUNNER_TEMP/elan-init.sh"
+          sh "$RUNNER_TEMP/elan-init.sh" -y --no-modify-path
+          export PATH="$HOME/.elan/bin:$PATH"
+          (
+            cd "verification/ranked-source/proofs/$scenario/lean"
+            lake -K maxJobs=2 build
+          )
+          echo 'SOURCE_DERIVED_PARENT=KERNEL_TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve extraction receipts and source-derived Lean
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ranked-rust-lean-source-extraction
+          path: |
+            verification/ranked-source/proofs/ranked-parent/lean/
+            verification/ranked-source/proofs/ranked-guard/lean/
+            verification/ranked-source/proofs/ranked-decoder/lean/
+            verification/ranked-source/proofs/ranked-source/lean/
+          if-no-files-found: warn
+          retention-days: 7

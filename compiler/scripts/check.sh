@@ -95,6 +95,20 @@ for theorem in stepAt_conserves_each every_successful_trace_conserves_each trans
     exit 2
   fi
 done
+# Kernel-check the restricted effect-order theorem and its negative witness.
+# This models abstract allocation identities; it does not certify actual
+# Lean C object graphs or native Rust runtime behavior.
+lean proofs/ReaderEffectOrder.lean | tee artifacts/reader-effect-order-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-effect-order-axioms.txt; then
+  echo 'Effect-order proof contains sorryAx' >&2
+  exit 2
+fi
+for theorem in retain_preserves_other_count retain_preserves_other_sharing retain_commutes retaining_once_changes_sharing independent_retain_observe replay_exact_order observed_retain_cannot_swap; do
+  if ! grep -Fq "'ReaderEffectOrder.${theorem}' " artifacts/reader-effect-order-axioms.txt; then
+    echo "Missing effect-order proof axiom receipt: ${theorem}" >&2
+    exit 2
+  fi
+done
 lean -o proofs/ScalarFixture.olean proofs/ScalarFixture.lean
 lean -o proofs/ReaderScalarCertificate.olean --load-dynlib="$NATIVE_LIB" proofs/ReaderScalarCertificate.lean
 # Kernel-check actual Lean IR operational semantics linked to Reader emission.

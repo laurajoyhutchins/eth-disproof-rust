@@ -260,7 +260,6 @@ reorderings; no undecidable Pairwise relation is needed to compute it. -/
 def sparsePairsInOrder (pairs : List (Nat × Nat)) : Bool :=
   (pairs.zip (pairs.drop 1)).all (fun p => pairBefore p.1 p.2)
 
-/-- Exact native-style executable width, bounds and canonical pair order. -/
 /-- Decide whether the native sparse coefficient record satisfies its shape contract. -/
 def SparseCoefficientRecord.checkShape (r : SparseCoefficientRecord) (n : ℕ) : Bool :=
   decide (r.linear.length = n) &&
@@ -466,10 +465,37 @@ def nativeReceiptMatches {n : ℕ} (out : NativeOutputRecord) :
     nativePhase (nativeOutputBit boundary) out.phaseTerms =
       phaseBit (out.receipt.decode n) (nativeSupport boundary)
 
-/-- Enumerate all Boolean boundary contexts in an *executable* list.
-This list is exponential; it is only the independent finite-instance oracle. -/
+/-- Constructively enumerate the 2^n Boolean vectors in index order.
+There is no noncomputable Finset.toList in this executable oracle. -/
+def nativeBitVectors : (n : ℕ) → List (List Bool)
+  | 0 => [[]]
+  | n + 1 =>
+      (nativeBitVectors n).map (false :: ·) ++
+        (nativeBitVectors n).map (true :: ·)
+
+theorem nativeBitVectors_complete (n : ℕ) (bits : List Bool)
+    (h : bits.length = n) : bits ∈ nativeBitVectors n := by
+  induction n generalizing bits with
+  | zero =>
+      cases bits with
+      | nil => simp [nativeBitVectors]
+      | cons bit rest => simp at h
+  | succ n ih =>
+      cases bits with
+      | nil => simp at h
+      | cons bit rest =>
+          have hrest : rest.length = n := by simpa using h
+          have ht := ih rest hrest
+          cases bit <;> simp [nativeBitVectors, ht]
+
+/-- Read a validated n-bit vector as a native coordinate assignment. -/
+def nativeBoundaryFromList {n : ℕ} (bits : List Bool) : Fin n → Bool :=
+  fun i => (bits[i.val]?).getD false
+
+/-- Enumerate all Boolean boundary contexts in an executable list.
+This remains exponential; it is only the independent finite-instance oracle. -/
 def nativeBoundaries (n : ℕ) : List (Fin n → Bool) :=
-  (Finset.univ : Finset (Fin n → Bool)).toList
+  (nativeBitVectors n).map nativeBoundaryFromList
 
 /-- For one explicit boundary, independently check the claimed output's
 phase record and the exact signed sum over the internal Boolean bit. -/
@@ -491,16 +517,23 @@ def checkNativeInstance {n : ℕ}
 /-- Every context is included in the finite executable oracle. -/
 theorem nativeBoundary_mem {n : ℕ} (boundary : Fin n → Bool) :
     boundary ∈ nativeBoundaries n := by
-  simp [nativeBoundaries]
+  apply List.mem_map.mpr
+  refine ⟨List.ofFn boundary, ?_, ?_⟩
+  · apply nativeBitVectors_complete
+    simp
+  · funext i
+    simp [nativeBoundaryFromList]
 
 theorem checkNativeInstance_boundary {n : ℕ}
     (src : NativeSourceRecord) (out : NativeOutputRecord)
     (accepted : checkNativeInstance (n := n) src out = true)
     (boundary : Fin n → Bool) :
     nativeBoundaryCheck src out boundary = true := by
-  have h : (nativeBoundaries n).all (nativeBoundaryCheck src out) = true := by
-    exact (Bool.and_eq_true.mp accepted).2
-  exact (List.all_eq_true.mp h) boundary (nativeBoundary_mem boundary)
+  have h := accepted
+  simp only [checkNativeInstance, Bool.and_eq_true] at h
+  have hall := h.2
+  simp only [List.all_eq_true] at hall
+  exact hall boundary (nativeBoundary_mem boundary)
 
 /-- Exhaustive instance acceptance implies exact source-to-output signed projection. -/
 theorem checkNativeInstance_sound {n : ℕ}
@@ -510,7 +543,8 @@ theorem checkNativeInstance_sound {n : ℕ}
     nativeSignedOutput out boundary =
       ∑ x : Bool, nativeSignedSource src x boundary := by
   have h := checkNativeInstance_boundary src out accepted boundary
-  exact of_decide_true (Bool.and_eq_true.mp h).2
+  simp only [nativeBoundaryCheck, Bool.and_eq_true, decide_eq_true_eq] at h
+  exact h.2
 
 /-- Exhaustive acceptance also validates the output coefficient receipt. -/
 theorem checkNativeInstance_receipt_sound {n : ℕ}
@@ -520,7 +554,8 @@ theorem checkNativeInstance_receipt_sound {n : ℕ}
     nativePhase (nativeOutputBit boundary) out.phaseTerms =
       phaseBit (out.receipt.decode n) (nativeSupport boundary) := by
   have h := checkNativeInstance_boundary src out accepted boundary
-  exact of_decide_true (Bool.and_eq_true.mp h).1
+  simp only [nativeBoundaryCheck, Bool.and_eq_true, decide_eq_true_eq] at h
+  exact h.1
 
 private def freeOracleSource : NativeSourceRecord :=
   { phaseTerms := [[0, 1]], rows := [], exponent := 0 }

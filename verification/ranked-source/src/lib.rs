@@ -35,14 +35,33 @@ mod tests {
             let actual = source::execute_ranked_wire(&bytes);
             let expected = production::execute_ranked_wire(&bytes);
             assert_eq!(
-                actual.0.map(|r| (r.value, r.component_count, r.checked_multiplications)),
-                expected.0.map(|r| (r.value, r.component_count, r.checked_multiplications))
+                actual
+                    .0
+                    .map(|r| (r.value, r.component_count, r.checked_multiplications)),
+                expected
+                    .0
+                    .map(|r| (r.value, r.component_count, r.checked_multiplications))
             );
-            let normalize_a = actual.1.iter().map(|r| (r.kind == super::representation_ranked_certificate::ArithmeticKind::Add, r.left, r.right, r.observed)).collect::<Vec<_>>();
+            let normalize_a = actual
+                .1
+                .iter()
+                .map(|r| {
+                    (
+                        r.kind == super::representation_ranked_certificate::ArithmeticKind::Add,
+                        r.left,
+                        r.right,
+                        r.observed,
+                    )
+                })
+                .collect::<Vec<_>>();
             let normalize_b = expected.1.iter().map(|r| (r.kind == lean_eth_reference::representation_ranked_certificate::ArithmeticKind::Add, r.left, r.right, r.observed)).collect::<Vec<_>>();
             assert_eq!(normalize_a, normalize_b);
-            if case == 0 { bytes.push(0); }
-            if case == 1 { bytes[0] = b'X'; }
+            if case == 0 {
+                bytes.push(0);
+            }
+            if case == 1 {
+                bytes[0] = b'X';
+            }
         }
     }
 }

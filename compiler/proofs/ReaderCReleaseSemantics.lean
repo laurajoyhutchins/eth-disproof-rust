@@ -153,10 +153,11 @@ theorem old_stamp_credit_identity (s : Source) :
 theorem fresh_stamp_credit_identity (s : Source) :
     (represent s).freshRC = s.freshExternal + freshCredit s := rfl
 
+set_option maxHeartbeats 2000000
+
 /-- All eight modeled operations commute with the source-credit representation,
 including refused steps. This is about two explicit Lean models, not the C++
 runtime implementation. -/
-set_option maxHeartbeats 2000000 in
 theorem cStep_represent (s : Source) (op : Op) :
     cStep (represent s) op = (sourceStep s op).map represent := by
   cases s with
@@ -164,7 +165,8 @@ theorem cStep_represent (s : Source) (op : Op) :
     cases op <;> cases stampSlot <;> cases childField <;>
       cases freshPending <;> cases childBorrowed <;>
       simp [sourceStep, cStep, represent, liveFieldCredit, freshCredit, credit] <;>
-      split_ifs <;> simp_all <;> omega
+      (repeat (split <;> simp_all [represent, liveFieldCredit, freshCredit, credit])) <;>
+      omega
 
 /-- The C branch for field replacement changes NO physical RC.
 The incoming owned credit was already acquired in incFresh. -/

@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 23
     env:
-      PINNED_EXTRACTOR_SHA: 4f3063fe6e1fe05770ea180d2bd22b28995bc661
+      PINNED_EXTRACTOR_SHA: 6733bd9e5e912f82f05b3462ebbc3aa2e8930c41
       ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
       ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
       LEAN_ROOT: instrumentation/lean-env
@@ -26,7 +26,7 @@ jobs:
         with:
           # Test the exact new canonical main-targeted extractor, not a stale
           # copy left on this original-source branch.
-          ref: 4f3063fe6e1fe05770ea180d2bd22b28995bc661
+          ref: 6733bd9e5e912f82f05b3462ebbc3aa2e8930c41
           persist-credentials: false
       - name: Verify exact tested extractor revision and offline contracts
         shell: bash

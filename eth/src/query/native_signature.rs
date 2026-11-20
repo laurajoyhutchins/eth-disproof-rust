@@ -12,19 +12,13 @@
 //! (nonnegative) coefficient matrix and head-assignment bits of matching width.
 
 use crate::Error;
+use crate::bit_program::source_commands::seq;
 use crate::bit_program::{Atom, Cmd, Instr, Program};
 use crate::native_high::{clear_program, copy_program};
 use crate::native_matrix_preprocess::{emit_frame_command, read_word_command};
 use crate::native_query_prefix::transfer_program;
 use crate::native_signed_arithmetic::add_at_command;
 
-fn seq<const R: usize, const S: usize>(cmds: impl IntoIterator<Item = Cmd<R, S>>) -> Cmd<R, S> {
-    cmds.into_iter()
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .fold(Cmd::Skip, |rest, first| Cmd::seq(first, rest))
-}
 fn atom<const R: usize, const S: usize>(a: Atom) -> Cmd<R, S> {
     Cmd::Atom(a)
 }

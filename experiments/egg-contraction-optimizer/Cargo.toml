@@ -1,5 +1,6 @@
 [package]
 name = "egg-contraction-experiment"
+default-run = "egg-contraction-experiment"
 version = "0.1.0"
 edition = "2021"
 license = "MIT AND Apache-2.0"

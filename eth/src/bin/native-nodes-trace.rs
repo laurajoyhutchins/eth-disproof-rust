@@ -1,19 +1,17 @@
 //! Physical node-cursor trace corresponding to
 //! `reference/lean_native_nodes_trace.lean` on the original Lean source.
+
+#[path = "trace/format.rs"]
+mod trace_format;
+
+use std::collections::VecDeque;
+
 use lean_eth_reference::bit_program::{Config, RunLimits};
 use lean_eth_reference::native_nodes::{begin_node_program, nodes_entry_command};
 use lean_eth_reference::native_tuple::encode_words;
-use std::collections::VecDeque;
 
-fn word(d: &Config<40, 896>, port: usize) -> String {
-    d.stacks[port]
-        .iter()
-        .map(|b| if *b { '1' } else { '0' })
-        .collect()
-}
-fn bit(b: bool) -> char {
-    if b { '1' } else { '0' }
-}
+use trace_format::{bit_char, stack_bits};
+
 fn cases() -> Vec<(&'static str, Vec<Vec<bool>>)> {
     vec![
         ("empty", vec![]),
@@ -35,20 +33,20 @@ fn cases() -> Vec<(&'static str, Vec<Vec<bool>>)> {
 fn snapshot(name: &str, entry: u64, read: u64, d: &Config<40, 896>) {
     println!(
         "nodes|{name}|{entry}|{read}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
-        word(d, 300),
-        word(d, 301),
-        word(d, 302),
-        word(d, 305),
-        word(d, 307),
-        word(d, 78),
-        word(d, 850),
-        word(d, 851),
-        word(d, 863),
-        word(d, 799),
-        bit(d.regs[21]),
-        bit(d.regs[37]),
-        bit(d.regs[38]),
-        bit(d.regs[39]),
+        stack_bits(d, 300),
+        stack_bits(d, 301),
+        stack_bits(d, 302),
+        stack_bits(d, 305),
+        stack_bits(d, 307),
+        stack_bits(d, 78),
+        stack_bits(d, 850),
+        stack_bits(d, 851),
+        stack_bits(d, 863),
+        stack_bits(d, 799),
+        bit_char(d.regs[21]),
+        bit_char(d.regs[37]),
+        bit_char(d.regs[38]),
+        bit_char(d.regs[39]),
     );
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {

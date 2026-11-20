@@ -32,6 +32,12 @@ A program that produces the same answer on five tiny examples is not necessarily
 
 The [dated ledger](2026-10-31-to-2026-11-14-ledger.md) gives the experiments and associated PRs. [Peer-reviewed references](literature.md) and the [LaTeX-to-Lean benchmark](formalization-evaluation.md) are indexed separately.
 
+## Proof-to-implementation handoff
+
+Use **Lean** to establish the exact mathematical contract (including ring, phase, truncation and boundary semantics), **Rust** to implement serious reusable execution and costed infrastructure, and **Python** only for bounded exploration and independent test oracles. Never upgrade a promising paper derivation or exhaustive Python fixture to a kernel-checked theorem. Likewise, neither a Lean theorem nor a correct Rust test establishes a full bit-operation or space bound without the corresponding refinement.
+
+For the quadratic signed-interface investigation, the next research checkpoint is a pinned Lean proof of product/project closure and stitching, with an explicit refusal for cases that escape the quadratic fragment. Only then should a Rust interface kernel become a maintained algorithmic component.
+
 ## Evidence categories
 
 **Proved:** a theorem checked in pinned Lean with its hypotheses exposed.  

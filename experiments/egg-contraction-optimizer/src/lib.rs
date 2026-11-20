@@ -22,6 +22,7 @@ pub mod affine_cert;
 mod checked_toggle;
 pub mod affine_wire;
 pub mod affine_native_lean;
+pub mod signed_affine;
 
 pub use arith::{exact_polynomial_equivalent, Evaluation, Plan};
 pub use search::{optimize, Report};

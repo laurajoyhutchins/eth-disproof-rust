@@ -14,6 +14,9 @@
 use super::*;
 use std::time::Instant;
 
+#[path = "resolution_index/prejoin.rs"]
+pub mod prejoin;
+
 const MAX_SOURCE_CLAUSES: usize = 64;
 const MIN_SUPPORT_TO_COMPILE: usize = 8;
 const MAX_DERIVED_CLAUSES: usize = 48;

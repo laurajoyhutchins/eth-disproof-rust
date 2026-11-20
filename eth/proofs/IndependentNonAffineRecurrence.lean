@@ -559,7 +559,7 @@ Rust usize and i8; this is NOT a machine-integer refinement theorem.
 -/
 
 structure SignedCsrInput where
-  variables : Nat
+  variableCount : Nat
   offsets : List Nat
   columns : List Nat
   signs : List Int
@@ -584,16 +584,16 @@ def decodeCsrRow (csr : SignedCsrInput) (i : Nat) : Option SignedRow := do
     let pa ← polarityFromSign sa
     let pb ← polarityFromSign sb
     let pc ← polarityFromSign sc
-    if a < b ∧ b < c ∧ c < csr.variables then
+    if a < b ∧ b < c ∧ c < csr.variableCount then
       pure (row a b c (pa, pb, pc))
     else none
 
 /-- Decode the complete row multiset, refusing shape mismatches, malformed
 rows, and duplicates before converting it to a finite set. No row is dropped. -/
 def decodeSignedCsr (csr : SignedCsrInput) : Option (Finset SignedRow) := do
-  if csr.variables < 4 then none
+  if csr.variableCount < 4 then none
   else
-    let rowsCount := 5 * csr.variables - 14
+    let rowsCount := 5 * csr.variableCount - 14
     if csr.offsets.length = rowsCount + 1 ∧
         csr.columns.length = csr.signs.length ∧
         csr.offsets.head? = some 0 ∧
@@ -609,14 +609,14 @@ recurrence RHS, and every forbidden seed must match the independently
 defined Boolean recurrence specification. -/
 def checkCsrReceipt (csr : SignedCsrInput)
     (ds : List Bool) (mask : Finset State) : Bool :=
-  decide (csr.variables = ds.length + 3 ∧
+  decide (csr.variableCount = ds.length + 3 ∧
     decodeSignedCsr csr = some (sourceRows ds) ∧
     mask = forbidden ds)
 
 theorem checkCsrReceipt_fields
     (csr : SignedCsrInput) (ds : List Bool) (mask : Finset State)
     (h : checkCsrReceipt csr ds mask = true) :
-    csr.variables = ds.length + 3 ∧
+    csr.variableCount = ds.length + 3 ∧
     decodeSignedCsr csr = some (sourceRows ds) ∧
     mask = forbidden ds := by
   exact of_decide_eq_true h

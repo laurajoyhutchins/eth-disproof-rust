@@ -1665,6 +1665,52 @@ theorem checkedCsrOffsetCount_success_iff (w n : Nat) (hn : 4 ≤ n) :
   · intro hfit
     exact checkedCsrOffsetCount_of_fits w n hn hfit
 
+/-! ## The checked per-row usize offset boundary
+
+The shared Rust `checked_row` operation computes `start.checked_add(3)`
+before reading exactly three signed literals. On a represented source
+slice, equality of the two offsets with the mathematical width `3`
+guarantees that this checked addition cannot overflow. These identities
+bind the *arithmetic part* of the concrete Rust operation to the existing
+mathematical decoder, not its compiled instructions or allocation behavior.
+-/
+
+/-- The representability check performed by Rust's `checked_add(3)`. -/
+def checkedCsrRowStop (w start : Nat) : Option Nat :=
+  if start < 2 ^ w && start + 3 < 2 ^ w then some (start + 3) else none
+
+/-- Every valid, represented three-column slice passes the checked
+addition. The matching second offset itself is evidence against overflow. -/
+theorem checkedCsrRowStop_of_inbounds (w start stop : Nat)
+    (hs : start < 2 ^ w) (ht : stop < 2 ^ w)
+    (hwidth : stop = start + 3) :
+    checkedCsrRowStop w start = some stop := by
+  have hfit : start + 3 < 2 ^ w := by omega
+  simp [checkedCsrRowStop, hs, hfit, hwidth]
+
+/-- An overflowing mathematical row stop fails the checked operation. -/
+theorem checkedCsrRowStop_overflow (w start : Nat)
+    (h : 2 ^ w ≤ start + 3) : checkedCsrRowStop w start = none := by
+  by_cases hs : start < 2 ^ w
+  · simp [checkedCsrRowStop, hs, show ¬ start + 3 < 2 ^ w by omega]
+  · simp [checkedCsrRowStop, hs]
+
+/-- The actual finite-width `BitVec` addition agrees with the stop offset
+whenever the mathematical row boundary is accepted and representable. -/
+theorem checkedCsrRowStop_bitvec (w start stop : Nat)
+    (hs : start < 2 ^ w) (ht : stop < 2 ^ w)
+    (hwidth : stop = start + 3) :
+    ((BitVec.ofNat w start) + (BitVec.ofNat w 3)).toNat = stop := by
+  have hthree : 3 < 2 ^ w := by omega
+  rw [BitVec.toNat_add]
+  simp only [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hs,
+    Nat.mod_eq_of_lt hthree]
+  rw [← hwidth, Nat.mod_eq_of_lt ht]
+
+#print axioms IndependentETH.NonAffine.checkedCsrRowStop_of_inbounds
+#print axioms IndependentETH.NonAffine.checkedCsrRowStop_overflow
+#print axioms IndependentETH.NonAffine.checkedCsrRowStop_bitvec
+
 #print axioms IndependentETH.NonAffine.checkedCsrRowCount_of_fits
 #print axioms IndependentETH.NonAffine.checkedCsrOffsetCount_success_iff
 #print axioms IndependentETH.NonAffine.checkedCsrOffsetCount_of_fits

@@ -27,6 +27,9 @@ class RepositoryLayoutTests(unittest.TestCase):
             "compiler/examples/RuntimeHeapKernels.lean",
             "compiler/examples/RuntimeHeapFixture.lean",
             "eth/Cargo.toml",
+            "verification/ranked-source/Cargo.toml",
+            "verification/ranked-source/src/lib.rs",
+            "verification/ranked-source/hax.toml",
             "compiler/cli/Cargo.toml",
             "compiler/cli/src/contract.rs",
             "compiler/cli/src/interface.rs",
@@ -40,11 +43,19 @@ class RepositoryLayoutTests(unittest.TestCase):
             self.assertTrue((ROOT / path).is_file(), path)
         self.assertEqual(
             tomllib.loads((ROOT / "Cargo.toml").read_text())["workspace"]["members"],
-            ["eth"],
+            ["eth", "verification/ranked-source"],
         )
         self.assertIn(
             "[workspace]", (ROOT / "compiler/Cargo.toml").read_text()
         )
+        harness = (ROOT / "verification/ranked-source/src/lib.rs").read_text()
+        for source in (
+            "representation_ranked_certificate.rs",
+            "representation_ranked_input.rs",
+        ):
+            self.assertIn(f'#[path = "../../../eth/src/{source}"]', harness)
+            self.assertTrue((ROOT / "eth/src" / source).is_file())
+
         for old in ("rust/native_lean_backend", "rust/lean_eth_reference", "tools/lean-rust-bootstrap"):
             self.assertFalse((ROOT / old).exists(), old)
 

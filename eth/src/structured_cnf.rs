@@ -179,6 +179,100 @@ impl SignedCsr<'_> {
     }
 }
 
+/// Independently replay a receipt against the *whole* source CSR.
+///
+/// The producer groups actual clauses by scope and infers polarity masks.
+/// This verifier instead generates the complete expected signed row set from
+/// the claimed RHS, compares all source rows, then directly evaluates the
+/// original signed rows on all eight reconstructed full assignments.
+///
+/// No trust is placed in the producer's group map, inferred masks, or seed
+/// traversal. This is an independent Rust check, not a Lean-to-Rust proof.
+pub fn verify_recurrence_receipt(
+    csr: SignedCsr<'_>,
+    receipt: &RecurrenceReceipt,
+) -> Result<u8, Error> {
+    use std::collections::BTreeSet;
+
+    let n = csr.variables;
+    if n < 4 || receipt.rhs.len() != n - 3 {
+        return Err(refuse("receipt has incorrect variable count or RHS length"));
+    }
+
+    let mut expected = BTreeSet::<([usize; 3], [i8; 3])>::new();
+    for (i, rhs) in receipt.rhs.iter().copied().enumerate() {
+        for mask in 0..8u8 {
+            if (mask.count_ones() % 2 == 1) != rhs {
+                let columns = [i, i + 1, i + 3];
+                let signs = std::array::from_fn(|j| if mask & (1 << j) != 0 { -1 } else { 1 });
+                expected.insert((columns, signs));
+            }
+        }
+    }
+    for i in 0..n - 2 {
+        expected.insert(([i, i + 1, i + 2], [1, 1, 1]));
+    }
+
+    let row_count = n
+        .checked_mul(5)
+        .and_then(|v| v.checked_sub(14))
+        .ok_or(Error::Overflow)?;
+    if csr.row_offsets.len() != row_count + 1
+        || csr.row_offsets.first() != Some(&0)
+        || csr.row_offsets.last() != Some(&csr.column_indices.len())
+        || csr.column_indices.len() != csr.signs.len()
+    {
+        return Err(refuse("invalid source offsets or row count"));
+    }
+
+    let mut actual = BTreeSet::new();
+    for offsets in csr.row_offsets.windows(2) {
+        let (start, end) = (offsets[0], offsets[1]);
+        if end < start || end > csr.column_indices.len() || end - start != 3 {
+            return Err(refuse("invalid source row"));
+        }
+        let columns: [usize; 3] = csr.column_indices[start..end]
+            .try_into()
+            .map_err(|_| refuse("not a ternary source row"))?;
+        let signs: [i8; 3] = csr.signs[start..end]
+            .try_into()
+            .map_err(|_| refuse("invalid source sign array"))?;
+        if columns[0] >= columns[1] || columns[1] >= columns[2] || columns[2] >= n
+            || !signs.iter().all(|v| *v == -1 || *v == 1)
+            || !actual.insert((columns, signs))
+        {
+            return Err(refuse("noncanonical, duplicated, or out-of-domain row"));
+        }
+    }
+    if actual != expected {
+        return Err(refuse("receipt does not describe all source clauses"));
+    }
+
+    let mut observed_mask = 0u8;
+    for seed in 0..8u8 {
+        let mut x = Vec::with_capacity(n);
+        x.extend([seed & 1 != 0, seed & 2 != 0, seed & 4 != 0]);
+        for (i, rhs) in receipt.rhs.iter().copied().enumerate() {
+            x.push(x[i] ^ x[i + 1] ^ rhs);
+        }
+
+        // Evaluate the signed CSR directly; parity and OR logic are not
+        // reused from the receipt producer.
+        let is_satisfied = csr.row_offsets.windows(2).all(|offsets| {
+            (offsets[0]..offsets[1]).any(|p| {
+                x[csr.column_indices[p]] == (csr.signs[p] == 1)
+            })
+        });
+        if !is_satisfied {
+            observed_mask |= 1 << seed;
+        }
+    }
+    if observed_mask != receipt.forbidden_seeds {
+        return Err(refuse("receipt forbids an incorrect set of seeds"));
+    }
+    Ok(receipt.count())
+}
+
 /// Fail-closed recognition from a canonical normalized CNF (no matching-only
 /// shortcut). Returns an error for all unsupported formula structures.
 pub fn recognize_cnf(cnf: &Cnf) -> Result<RecurrenceReceipt, Error> {
@@ -321,4 +415,64 @@ mod tests {
         let invalid = Cnf::from_signed(n, &refs).unwrap();
         assert!(recognize_cnf(&invalid).is_err());
     }
+    #[test]
+    fn independent_receipt_replay_and_tampering() {
+        for n in [4, 6, 8, 12, 1000] {
+            let rhs = (0..n - 3).map(|i| i % 3 == 0).collect::<Vec<_>>();
+            let cnf = source(n, &rhs);
+            let csr = OwnedSignedCsr::from_cnf(&cnf);
+            let receipt = csr.view().recognize_recurrence().unwrap();
+            assert_eq!(
+                verify_recurrence_receipt(csr.view(), &receipt),
+                Ok(receipt.count())
+            );
+
+            let mut bad_mask = receipt.clone();
+            bad_mask.forbidden_seeds ^= 1;
+            assert!(verify_recurrence_receipt(csr.view(), &bad_mask).is_err());
+
+            let mut bad_rhs = receipt.clone();
+            bad_rhs.rhs[0] = !bad_rhs.rhs[0];
+            assert!(verify_recurrence_receipt(csr.view(), &bad_rhs).is_err());
+
+            let mut bad_csr = csr.clone();
+            bad_csr.signs[0] *= -1;
+            assert!(verify_recurrence_receipt(bad_csr.view(), &receipt).is_err());
+        }
+    }
+
+    #[test]
+    fn verifier_rejects_bad_offsets_and_row_permutations_do_not_matter() {
+        let cnf = source(8, &[true, false, true, false, true]);
+        let original = OwnedSignedCsr::from_cnf(&cnf);
+        let receipt = original.view().recognize_recurrence().unwrap();
+
+        let mut reversed_rows = original.clone();
+        let chunks = original
+            .row_offsets
+            .windows(2)
+            .map(|v| {
+                (
+                    original.column_indices[v[0]..v[1]].to_vec(),
+                    original.signs[v[0]..v[1]].to_vec(),
+                )
+            })
+            .rev()
+            .collect::<Vec<_>>();
+        reversed_rows.column_indices.clear();
+        reversed_rows.signs.clear();
+        reversed_rows.row_offsets.clear();
+        reversed_rows.row_offsets.push(0);
+        for (cols, signs) in chunks {
+            reversed_rows.column_indices.extend(cols);
+            reversed_rows.signs.extend(signs);
+            reversed_rows.row_offsets.push(reversed_rows.signs.len());
+        }
+        assert_eq!(verify_recurrence_receipt(reversed_rows.view(), &receipt), Ok(receipt.count()));
+
+        let mut bad_offset = original.clone();
+        bad_offset.row_offsets[1] = usize::MAX;
+        assert!(verify_recurrence_receipt(bad_offset.view(), &receipt).is_err());
+    }
+
 }

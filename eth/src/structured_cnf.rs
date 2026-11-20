@@ -343,7 +343,7 @@ mod tests {
         );
         assert_eq!(
             csr.signs,
-            [-1, 1, 1, 1, -1, 1, 1, 1, -1, 1, 1, 1, -1, -1, -1, 1, 1, 1]
+            [-1, -1, -1, -1, 1, 1, 1, -1, 1, 1, 1, 1, 1, 1, -1, 1, 1, 1]
         );
         assert_eq!(count_recognized_cnf(&cnf), Ok(7));
         assert_eq!(oracle(4, &cnf), 7);

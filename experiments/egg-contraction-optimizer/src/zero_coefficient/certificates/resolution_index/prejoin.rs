@@ -16,6 +16,9 @@
 use super::*;
 use std::time::Instant;
 
+#[path = "prejoin/memo.rs"]
+pub mod memo;
+
 const MIN_LEFT_SUPPORT: usize = 8;
 const MAX_SOURCE_NODES: usize = 64;
 const MAX_MASK_TESTS_PER_CASE: u64 = 200_000;
@@ -53,6 +56,15 @@ pub struct Work {
     pub source_provenance_literal_reads: u64,
     pub peak_rules: usize,
     pub peak_rule_payload_bytes_lower_bound: usize,
+    pub memo_lookup_requests: u64,
+    pub memo_hits_forbidden: u64,
+    pub memo_hits_allowed: u64,
+    pub memo_misses: u64,
+    pub memo_inserts: u64,
+    pub memo_capacity_refusals: u64,
+    pub memo_incomplete_refusals: u64,
+    pub memo_peak_entries: usize,
+    pub memo_peak_payload_bytes_lower_bound: usize,
 }
 
 #[derive(Debug)]
@@ -164,6 +176,14 @@ fn merge_preproduct(
     left: &Stage, right: &Stage, kept: &[String],
     patterns: &[ForbiddenPattern], work: &mut Work,
 ) -> Result<Stage, String> {
+    merge_preproduct_with_memo(left, right, kept, patterns, work, None)
+}
+
+fn merge_preproduct_with_memo(
+    left: &Stage, right: &Stage, kept: &[String],
+    patterns: &[ForbiddenPattern], work: &mut Work,
+    mut memo: Option<&mut memo::DecisionCache>,
+) -> Result<Stage, String> {
     let (Values::Sparse(a), Values::Sparse(b)) = (&left.values, &right.values)
     else { return Err("pre-product source check requires sparse inputs".into()); };
     let union = union_ports(&left.ports, &right.ports);
@@ -191,7 +211,11 @@ fn merge_preproduct(
             let union_mask = embed(left_mask, &left.ports, &union)
                 | embed(right_mask, &right.ports, &union);
             let output = project(union_mask, &union, kept);
-            if rejected(output, patterns, true, work) {
+            let forbidden = match memo.as_deref_mut() {
+                Some(cache) => cache.check(output, patterns, work),
+                None => rejected(output, patterns, true, work),
+            };
+            if forbidden {
                 work.candidate_products_refused += 1;
                 continue;
             }
@@ -205,6 +229,13 @@ fn merge_preproduct(
 
 fn fold(
     source: &[Factor], order: &[usize], placement: Placement,
+) -> Result<(BigUint, Work, u128), String> {
+    fold_with_memo(source, order, placement, None)
+}
+
+fn fold_with_memo(
+    source: &[Factor], order: &[usize], placement: Placement,
+    memo_mode: Option<memo::MemoMode>,
 ) -> Result<(BigUint, Work, u128), String> {
     validate_order(source, order)?;
     let start = Instant::now();
@@ -235,10 +266,15 @@ fn fold(
                 remove_after_merge(&mut merged, &constraints, &mut work)?;
                 merged
             },
-            Placement::BeforeProduct =>
-                merge_preproduct(
-                    &stage, &leaves[factor], &kept, &constraints, &mut work,
-                )?,
+            Placement::BeforeProduct => {
+                // A fresh cache belongs to exactly one checked future
+                // clause set; never carry decisions to the next frontier.
+                let mut cache = memo_mode.map(memo::DecisionCache::new);
+                merge_preproduct_with_memo(
+                    &stage, &leaves[factor], &kept, &constraints,
+                    &mut work, cache.as_mut(),
+                )?
+            },
         };
     }
     if !stage.ports.is_empty() {

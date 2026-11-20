@@ -30,7 +30,11 @@ pub(super) enum Event {
 fn rust_var(token: &str) -> Result<usize, &'static str> {
     token
         .strip_prefix("x_")
-        .filter(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+        .filter(|digits| {
+            !digits.is_empty()
+                && (*digits == "0" || !digits.starts_with('0'))
+                && digits.bytes().all(|b| b.is_ascii_digit())
+        })
         .and_then(|digits| digits.parse::<usize>().ok())
         .ok_or("expected canonical source variable x_<decimal>")
 }
@@ -203,6 +207,8 @@ mod tests {
     fn refuses_alias_or_flag_relabeling() {
         for bad in [
             emitted().replace("x_2.source_inc", "x_7.source_inc"),
+            emitted().replace("x_2.source_inc", "x_02.source_inc"),
+            emitted().replace("x_3: u8", "x_03: u8"),
             emitted().replace("source_inc(1, true, false)", "source_inc(1, false, false)"),
             emitted().replace("x_3: u8", "x_4: u8"),
             emitted().replace("source_dec(1, false, false)", "source_dec(2, false, false)"),

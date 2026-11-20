@@ -31,38 +31,34 @@ pub struct VerifiedRankedCertificate {
     pub parent_links: usize,
 }
 
-/// Verify source-bound local guards in O(n+e) word operations and O(1)
-/// auxiliary storage (outside the input/certificate and diagnostic error).
-///
-/// This function does not construct connected components or trust DSU roots.
-/// An accepted certificate supplies paths from every vertex to a real root
-/// using strictly decreasing ranks and actual source edges.
-pub fn verify_ranked_component_certificate(
-    variable_count: usize,
-    source_edges: &[(usize, usize)],
-    certificate: &RankedComponentCertificate,
-) -> Result<VerifiedRankedCertificate, Error> {
-    let n = variable_count;
-    let c = certificate.roots.len();
-    if certificate.labels.len() != n
-        || certificate.parent_edge_indices.len() != n
-        || certificate.rank.len() != n
-        || c > n
-    {
-        return Err(Error::Invalid("ranked certificate widths disagree".into()));
-    }
+// Each guard scans exactly one source collection in the original order.
+// Keeping each loop in its own total Result-returning function preserves
+// refusal precedence while giving Aeneas a single-loop translation target.
+// These functions inspect the *production* certificate, not a copy.
+fn check_edge_bounds(n: usize, source_edges: &[(usize, usize)]) -> Result<(), Error> {
     for &(a, b) in source_edges {
         if a >= n || b >= n {
             return Err(Error::Invalid("source edge outside declared region".into()));
         }
     }
-    for &label in &certificate.labels {
-        if label >= c {
+    Ok(())
+}
+
+fn check_label_bounds(classes: usize, labels: &[usize]) -> Result<(), Error> {
+    for &label in labels {
+        if label >= classes {
             return Err(Error::Invalid(
                 "ranked certificate label outside range".into(),
             ));
         }
     }
+    Ok(())
+}
+
+fn check_declared_roots(
+    n: usize,
+    certificate: &RankedComponentCertificate,
+) -> Result<(), Error> {
     for (class, &root) in certificate.roots.iter().enumerate() {
         if root >= n
             || certificate.labels[root] != class
@@ -72,12 +68,25 @@ pub fn verify_ranked_component_certificate(
             return Err(Error::Invalid("invalid ranked component root".into()));
         }
     }
+    Ok(())
+}
+
+fn check_edge_class_closure(
+    source_edges: &[(usize, usize)],
+    labels: &[usize],
+) -> Result<(), Error> {
     for &(a, b) in source_edges {
-        if certificate.labels[a] != certificate.labels[b] {
+        if labels[a] != labels[b] {
             return Err(Error::Invalid("source edge crosses claimed classes".into()));
         }
     }
+    Ok(())
+}
 
+fn check_ranked_parents(
+    source_edges: &[(usize, usize)],
+    certificate: &RankedComponentCertificate,
+) -> Result<usize, Error> {
     let mut parent_links = 0usize;
     for (vertex, parent_index) in certificate.parent_edge_indices.iter().enumerate() {
         let class = certificate.labels[vertex];
@@ -109,6 +118,35 @@ pub fn verify_ranked_component_certificate(
             }
         }
     }
+    Ok(parent_links)
+}
+
+/// Verify source-bound local guards in O(n+e) word operations and O(1)
+/// auxiliary storage (outside the input/certificate and diagnostic error).
+///
+/// All five guards retain the original order and immediate refusal behavior,
+/// but their separately named loops also form smaller extraction and proof
+/// obligations. A valid certificate supplies a strictly decreasing original
+/// source-edge parent path to a root for every vertex.
+pub fn verify_ranked_component_certificate(
+    variable_count: usize,
+    source_edges: &[(usize, usize)],
+    certificate: &RankedComponentCertificate,
+) -> Result<VerifiedRankedCertificate, Error> {
+    let n = variable_count;
+    let c = certificate.roots.len();
+    if certificate.labels.len() != n
+        || certificate.parent_edge_indices.len() != n
+        || certificate.rank.len() != n
+        || c > n
+    {
+        return Err(Error::Invalid("ranked certificate widths disagree".into()));
+    }
+    check_edge_bounds(n, source_edges)?;
+    check_label_bounds(c, &certificate.labels)?;
+    check_declared_roots(n, certificate)?;
+    check_edge_class_closure(source_edges, &certificate.labels)?;
+    let parent_links = check_ranked_parents(source_edges, certificate)?;
     Ok(VerifiedRankedCertificate {
         variables: n,
         source_edges: source_edges.len(),

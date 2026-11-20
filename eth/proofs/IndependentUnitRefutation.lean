@@ -107,10 +107,10 @@ theorem cached_refutation_monotone
 prefix's boundary contribution only when its *future* count is certified
 zero. The pruned prefix alone is NOT generally equal to the original. -/
 theorem contextual_zero_count_preserved {α : Type} (s : Finset α)
-    (prefix future : α → ℕ) (cachedMatch : α → Prop)
+    (prefixCount future : α → ℕ) (cachedMatch : α → Prop)
     (hsound : ∀ i ∈ s, cachedMatch i → future i = 0) :
-    (∑ i ∈ s, prefix i * future i) =
-      ∑ i ∈ s, if cachedMatch i then 0 else prefix i * future i := by
+    (∑ i ∈ s, prefixCount i * future i) =
+      ∑ i ∈ s, if cachedMatch i then 0 else prefixCount i * future i := by
   classical
   apply Finset.sum_congr rfl
   intro i hi

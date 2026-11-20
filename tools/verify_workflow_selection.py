@@ -8,6 +8,7 @@ used by these workflows; unsupported syntax must not silently match.
 """
 from __future__ import annotations
 
+import ast
 from fnmatch import fnmatchcase
 from pathlib import Path
 import re
@@ -123,13 +124,23 @@ def lean_inputs(root: Path, workflow: str) -> set[str]:
 
 
 def _python_imports(path: Path) -> set[str]:
-    modules = set()
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^(?:from\s+([a-zA-Z_][\w.]*)\s+import|import\s+([a-zA-Z_][\w.]*))", line)
-        if match:
-            modules.add(match.group(1) or match.group(2))
-    return modules
+    """Collect static imports even when nested in a function or conditional.
 
+    This is syntax discovery, not execution or dynamic-import resolution.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                modules.add(node.module)
+                if node.module == "eth.tools":
+                    modules.update("eth.tools." + alias.name for alias in node.names)
+            elif node.level:
+                modules.update(alias.name for alias in node.names)
+    return modules
 
 def python_inputs(root: Path, workflow: str) -> set[str]:
     """Follow local imports of actually executed Python tools and test fixtures."""

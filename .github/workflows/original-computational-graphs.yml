@@ -1,0 +1,97 @@
+name: Original Lean computational structure
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  computation:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'run-original-compute-graphs'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: openai
+            repo: openai/math
+            source_sha: 7ef5c0cc5ca4b0e072b7a050fca09ab24bc6fa3a
+            sparse_path: lean/OAI/Algorithms/SubexponentialSAT
+            lake_root: instrumentation/lean-env
+          - flavor: anthropic
+            repo: anthropics/formal-math
+            source_sha: 16a5ce41304fcdaea4e0be7c132e1c361dc26da5
+            sparse_path: eth
+            lake_root: original/eth
+
+    steps:
+      - name: Checkout computational extractor
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate protocol before upstream work
+        run: |
+          python3 -m unittest discover -s eth/tools/lean-proof-graph \
+            -p 'test_validate*.py' -v
+          bash eth/tools/lean-proof-graph/test_run_pinned.sh
+
+      - name: Fetch exact original source
+        shell: bash
+        env:
+          UPSTREAM: ${{ matrix.repo }}
+          UPSTREAM_SHA: ${{ matrix.source_sha }}
+          SPARSE: ${{ matrix.sparse_path }}
+        run: |
+          set -euo pipefail
+          git init -q original
+          git -C original remote add origin "https://github.com/$UPSTREAM.git"
+          git -C original sparse-checkout init --cone
+          git -C original sparse-checkout set "$SPARSE"
+          git -C original fetch --depth 1 --filter=blob:none origin "$UPSTREAM_SHA"
+          git -C original checkout -q --detach FETCH_HEAD
+          test "$(git -C original rev-parse HEAD)" = "$UPSTREAM_SHA"
+
+      - name: Link original OpenAI Lean sources
+        if: matrix.flavor == 'openai'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ln -s "$GITHUB_WORKSPACE/original/lean/OAI" instrumentation/lean-env/OAI
+
+      - name: Install original Lean and pinned Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: ${{ matrix.lake_root }}
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Extract the original computational source closure
+        shell: bash
+        env:
+          SOURCE: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/computation-graph"
+          bash eth/tools/lean-proof-graph/run_pinned.sh \
+            "$SOURCE" "$GITHUB_WORKSPACE/original" "$RUNNER_TEMP/computation-graph" computation
+          ls -lh "$RUNNER_TEMP/computation-graph"
+
+      - name: Upload only validated computational graphs
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-${{ matrix.flavor }}-computation-${{ github.sha }}
+          path: ${{ runner.temp }}/computation-graph/
+          if-no-files-found: error
+          retention-days: 30

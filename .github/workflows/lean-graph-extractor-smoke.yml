@@ -1,0 +1,66 @@
+name: Lean graph extractors smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  formats:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'run-lean-graph-smoke'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify closed-output format and refusal behavior
+        run: |
+          python3 -m unittest discover -s eth/tools/lean-proof-graph -p 'test_validate*.py' -v
+          bash eth/tools/lean-proof-graph/test_run_pinned.sh
+
+  lean-extractors:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'run-lean-graph-smoke'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        lean: ['4.33.1', '4.34.1']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Select original toolchain
+        env:
+          LEAN_VERSION: ${{ matrix.lean }}
+        run: |
+          mkdir -p .graph-smoke
+          printf 'leanprover/lean4:v%s\n' "$LEAN_VERSION" > .graph-smoke/lean-toolchain
+          printf '[package]\nname = "graph-smoke"\nversion = "0.1.0"\n' > .graph-smoke/lakefile.toml
+          printf '{"version": "1.1.0", "packages": []}\n' > .graph-smoke/lake-manifest.json
+      - name: Install exact original Lean
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: .graph-smoke
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: false
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Typecheck both exporters against Lean itself
+        working-directory: .graph-smoke
+        run: |
+          set -euo pipefail
+          lean --version
+          lean ../eth/tools/lean-proof-graph/Extract.lean
+          lean ../eth/tools/lean-proof-graph/ComputeExtract.lean

@@ -55,15 +55,15 @@ class VerificationSelectionTests(unittest.TestCase):
                 "      - 'instrumentation/lean-env/lean-toolchain'\n"
                 "      - 'instrumentation/lean-env/lakefile.lean'\n"
                 "      - 'instrumentation/lean-env/lake-manifest.json'\n"
-                "      - '.github/workflows/lean-source-refinement.yml'\n"
+                "      - '.github/workflows/lean-independent-formulations.yml'\n"
                 "jobs:\n  lean:\n    steps:\n"
                 "      - run: lake env lean \"$GITHUB_WORKSPACE/eth/proofs/Example.lean\"\n"
             )
             with self.assertRaisesRegex(ValueError, "NewLemma"):
-                verify_selection(root, "lean-source-refinement.yml", workflow)
+                verify_selection(root, "lean-independent-formulations.yml", workflow)
             trigger = "      - 'instrumentation/lean-env/ACC/NewLemma.lean'\n"
             fixed = workflow.replace("    paths:\n", "    paths:\n" + trigger)
-            required = verify_selection(root, "lean-source-refinement.yml", fixed)
+            required = verify_selection(root, "lean-independent-formulations.yml", fixed)
             self.assertIn("instrumentation/lean-env/ACC/NewLemma.lean", required)
 
     def test_new_python_import_must_have_a_selector(self):

@@ -55,20 +55,20 @@ class SourceModuleContractTests(unittest.TestCase):
             source=root/stage.relative_path
             source.parent.mkdir(parents=True)
             source.write_bytes(
-                b"namespace SubexponentialSAT.SqrtLog.MomentsReadoutProgram\\n"
-                b"abbrev accumulateProgram : Program 8 27 (size accumulate+1) := compiled accumulate 15 17\\n"
-                b"end SubexponentialSAT.SqrtLog.MomentsReadoutProgram\\n"
+                b"namespace SubexponentialSAT.SqrtLog.MomentsReadoutProgram\n"
+                b"abbrev accumulateProgram : Program 8 27 (size accumulate+1) := compiled accumulate 15 17\n"
+                b"end SubexponentialSAT.SqrtLog.MomentsReadoutProgram\n"
             )
             record=q.pinned_record(stage,root)
             self.assertEqual(record["fqn"],stage.declaration)
             self.assertEqual(record["git_blob"],q.blob_hash(source.read_bytes()))
             self.assertIn("Accumulate",record["module"])
             for bad in (
-                b"abbrev accumulateProgram := oracle\\n",
-                b"abbrev anotherProgram := compiled accumulate 15 17\\n",
-                b"-- abbrev accumulateProgram := compiled accumulate 15 17\\n",
-                b"abbrev accumulateProgram :=\n  compiled accumulate 15 17\\n",
-                b"abbrev accumulateProgram := compiledButNotTheSource accumulate 15 17\\n",
+                b"abbrev accumulateProgram := oracle\n",
+                b"abbrev anotherProgram := compiled accumulate 15 17\n",
+                b"-- abbrev accumulateProgram := compiled accumulate 15 17\n",
+                b"abbrev accumulateProgram :=\n  compiled accumulate 15 17\n",
+                b"abbrev accumulateProgram := compiledButNotTheSource accumulate 15 17\n",
             ):
                 with self.subTest(bad=bad):
                     source.write_bytes(bad)
@@ -78,7 +78,7 @@ class SourceModuleContractTests(unittest.TestCase):
     def test_strict_abi_refuses_accumulator_port_aliases(self):
         stage=q.STAGE_BY_ID["moments_accumulate"]
         with patch.object(q,"read_source_graph",return_value=(
-            b"test\\n",{},object(),(8,27,1024,1,15,0)
+            b"test\n",{},object(),(8,27,1024,1,15,0)
         )):
             with self.assertRaisesRegex(ValueError,"original ABI mismatch"):
                 q.validate_stage_graph(Path("unused"),stage,{"id":"test"})

@@ -40,6 +40,7 @@ class Stage:
     stacks: int
     input: int
     output: int
+    symbol: str = "program"
 
     @property
     def module(self) -> str:
@@ -47,7 +48,7 @@ class Stage:
 
     @property
     def declaration(self) -> str:
-        return "OAI.Algorithms.SubexponentialSAT." + self.declaration_suffix + ".program"
+        return "OAI.Algorithms.SubexponentialSAT." + self.declaration_suffix + "." + self.symbol
 
     @property
     def relative_path(self) -> Path:
@@ -57,6 +58,11 @@ class Stage:
 # Ordered from the local numerical readout outward. No synthetically
 # reconstructed full QueryStream root is admitted by this stage list.
 STAGES = (
+    # Genuine 8×27 numerical callee. The original calls this
+    # `accumulateProgram`, not `program`, and declares it as an abbrev.
+    Stage("moments_accumulate", "SqrtLog.MomentsReadoutProgramAccumulate",
+          "SqrtLog.MomentsReadoutProgram", 8, 27, 15, 17,
+          symbol="accumulateProgram"),
     Stage("moments_readout", "SqrtLog.MomentsReadoutProgramNative",
           "SqrtLog.MomentsReadoutProgram", 8, 40, 15, 0),
     Stage("node_readout", "SqrtLogSpace.NodeReadoutSpace",
@@ -75,9 +81,15 @@ def pinned_record(stage: Stage, upstream: Path) -> dict[str, str]:
     """Bind module and symbol to actual source bytes, not a hand-entered hash."""
     path = upstream / stage.relative_path
     raw = path.read_bytes()
-    # A lexical sanity check, not proof of the declaration's elaboration.
-    if not re.search(rb"(?m)^def program\s*:=\s*compiled\b", raw):
-        raise ValueError(f"missing expected source compiled program in {stage.relative_path}")
+    # Check the specifically admitted compiled declaration, not an unrelated
+    # `program` elsewhere in the module. Only this pinned, source-scoped
+    # one-line `def`/`abbrev` shape is accepted here. Lean later elaborates
+    # the actual declaration and the independent certificate must agree.
+    symbol = stage.symbol.encode("ascii")
+    declaration = (rb"(?m)^(?:def|abbrev)\s+" + re.escape(symbol) +
+                   rb"(?:\s*:[^\n]*)?\s*:=\s*compiled\b")
+    if not re.search(declaration, raw):
+        raise ValueError(f"missing expected source compiled {stage.symbol} in {stage.relative_path}")
     return {
         "id": "query_module_" + stage.id,
         "module": stage.module,

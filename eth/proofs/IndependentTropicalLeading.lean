@@ -158,6 +158,25 @@ theorem plus_comm (a b : Leading) : plus a b = plus b a := by
               · exact heq
               · exact Nat.add_comm _ _
 
+theorem plus_assoc (a b c : Leading) :
+    plus (plus a b) c = plus a (plus b c) := by
+  cases a with
+  | none => rfl
+  | some a =>
+      cases b with
+      | none => rfl
+      | some b =>
+          cases c with
+          | none => simp [plus]
+          | some c =>
+              simp only [plus]
+              split_ifs <;> try omega
+              all_goals
+                first
+                | rfl
+                | omega
+                | (apply congrArg Option.some; apply term_ext <;> omega)
+
 theorem plus_zero (x : Leading) : plus x none = x := by
   cases x <;> rfl
 
@@ -190,6 +209,7 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.coeff_generating
 #print axioms IndependentETH.Tropical.energy_eq_zero_iff
 #print axioms IndependentETH.Tropical.count_satisfying
+#print axioms IndependentETH.Tropical.plus_assoc
 #print axioms IndependentETH.Tropical.plus_comm
 #print axioms IndependentETH.Tropical.times_assoc
 #print axioms IndependentETH.Tropical.monomial_times

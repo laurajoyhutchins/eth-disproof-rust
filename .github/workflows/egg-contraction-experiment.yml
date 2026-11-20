@@ -126,6 +126,18 @@ jobs:
           test "$(grep -c '"mode":"memo-forbidden-only"' /tmp/frontier-decision-memo-receipts.jsonl)" -eq 104
           test "$(grep -c '"mode":"memo-both-decisions"' /tmp/frontier-decision-memo-receipts.jsonl)" -eq 104
 
+      - name: Compare source-certified guard bitsets and structural admission on 16 fresh cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin direct-bitset-guard-study | tee /tmp/direct-bitset-guard.jsonl
+          test "$(wc -l < /tmp/direct-bitset-guard.jsonl)" -eq 360
+          test "$(grep -c '"oracle":"checked"' /tmp/direct-bitset-guard.jsonl)" -eq 360
+          test "$(grep -c '"cohort":"fresh-validation"' /tmp/direct-bitset-guard.jsonl)" -eq 48
+          test "$(grep -c '"policy":"bitset-all-small"' /tmp/direct-bitset-guard.jsonl)" -eq 120
+          test "$(grep -c '"policy":"bitset-predicted-fiber"' /tmp/direct-bitset-guard.jsonl)" -eq 120
+          test "$(grep -c '"policy":"tree-complete"' /tmp/direct-bitset-guard.jsonl)" -eq 120
+
       - name: Run contraction-order study and check small-case oracle
         shell: bash
         run: |

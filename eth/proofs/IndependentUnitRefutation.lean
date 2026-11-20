@@ -225,6 +225,29 @@ theorem checked_frontier_memo_preserves_pair_sum
   intro p _hp
   rw [checked_frontier_memo_lookup_sound sourceGuard memo hchecked (outputOf p)]
 
+/-- A structurally selected cache may be enabled or bypassed without
+changing the final exact natural-number sum, provided every stored
+decision is source-guard faithful. This says nothing about whether
+the *heuristic* cost estimate correctly predicts repeat rates. -/
+theorem conditional_frontier_memo_preserves_pair_sum
+    {α β : Type} (pairs : Finset α)
+    (outputOf : α → β) (weight : α → ℕ)
+    (sourceGuard : β → Bool) (memo : β → Option Bool)
+    (enabled : Bool)
+    (hchecked : ∀ key result, memo key = some result →
+      result = sourceGuard key) :
+    (∑ p ∈ pairs,
+      if (if enabled
+          then (memo (outputOf p)).getD (sourceGuard (outputOf p))
+          else sourceGuard (outputOf p))
+      then 0 else weight p) =
+    ∑ p ∈ pairs, if sourceGuard (outputOf p) then 0 else weight p := by
+  cases enabled with
+  | false => simp
+  | true =>
+      simpa using checked_frontier_memo_preserves_pair_sum
+        pairs outputOf weight sourceGuard memo hchecked
+
 #print axioms empty_reason_sound
 #print axioms unit_reason_forces
 #print axioms two_branches_refute
@@ -235,5 +258,6 @@ theorem checked_frontier_memo_preserves_pair_sum
 #print axioms source_preproduct_pruning_commutes_with_fiber_sum
 #print axioms checked_frontier_memo_lookup_sound
 #print axioms checked_frontier_memo_preserves_pair_sum
+#print axioms conditional_frontier_memo_preserves_pair_sum
 
 end IndependentETH.UnitRefutation

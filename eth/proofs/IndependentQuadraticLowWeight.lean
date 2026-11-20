@@ -431,8 +431,8 @@ def nativeTermTail {n : ℕ} (boundary : Fin n → Bool) (term : List Nat) : Boo
 theorem nativeTerm_split {n : ℕ} (boundary : Fin n → Bool)
     (term : List Nat) (x : Bool) :
     term.all (nativeSourceBit x boundary) =
-      nativeTermTail boundary term &&
-        (if term.contains 0 then x else true) := by
+      (nativeTermTail boundary term &&
+        (if term.contains 0 then x else true)) := by
   induction term with
   | nil =>
       simp [nativeTermTail]
@@ -459,9 +459,9 @@ def nativePhaseStep {n : ℕ} (boundary : Fin n → Bool)
 private theorem nativePhaseStep_sound {n : ℕ}
     (boundary : Fin n → Bool) (term : List Nat)
     (x base mixed : Bool) :
-    (base ^^ (x && mixed)) ^^ term.all (nativeSourceBit x boundary) =
-      (nativePhaseStep boundary (base, mixed) term).1 ^^
-        (x && (nativePhaseStep boundary (base, mixed) term).2) := by
+    ((base ^^ (x && mixed)) ^^ term.all (nativeSourceBit x boundary)) =
+      ((nativePhaseStep boundary (base, mixed) term).1 ^^
+        (x && (nativePhaseStep boundary (base, mixed) term).2)) := by
   rw [nativeTerm_split]
   cases base <;> cases mixed <;> cases x <;>
     cases ht : nativeTermTail boundary term <;>
@@ -474,8 +474,8 @@ private theorem nativePhase_split_acc {n : ℕ}
     terms.foldl
       (fun parity term => parity ^^ term.all (nativeSourceBit x boundary))
       (base ^^ (x && mixed)) =
-      let state := terms.foldl (nativePhaseStep boundary) (base, mixed)
-      state.1 ^^ (x && state.2) := by
+      (let state := terms.foldl (nativePhaseStep boundary) (base, mixed)
+       state.1 ^^ (x && state.2)) := by
   induction terms generalizing base mixed with
   | nil => rfl
   | cons term rest ih =>
@@ -492,9 +492,9 @@ the present identity holds even without that restriction. -/
 theorem nativePhase_split {n : ℕ}
     (boundary : Fin n → Bool) (terms : List (List Nat)) (x : Bool) :
     nativePhase (nativeSourceBit x boundary) terms =
-      let state := terms.foldl (nativePhaseStep boundary) (false, false)
-      state.1 ^^ (x && state.2) := by
-  simpa only [nativePhase, Bool.false_xor, Bool.and_false] using
+      (let state := terms.foldl (nativePhaseStep boundary) (false, false)
+       state.1 ^^ (x && state.2)) := by
+  simpa [nativePhase] using
     nativePhase_split_acc boundary terms x false false
 
 /-- Check every raw affine parity constraint against the given coordinate interpreter. -/

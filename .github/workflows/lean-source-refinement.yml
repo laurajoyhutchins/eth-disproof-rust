@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'eth/proofs/SourceGraphRefinement.lean'
+      - 'eth/proofs/FramedRecordReaderRefinement.lean'
       - '.github/workflows/lean-source-refinement.yml'
   workflow_dispatch:
 
@@ -59,13 +60,19 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/FramedRecordReaderRefinement.lean; then
+            echo 'Framed-reader proof contains unresolved admission' >&2
+            exit 1
+          fi
           if grep -nE '\b(sorry|admit)\b' eth/proofs/SourceGraphRefinement.lean; then
             echo 'Proof contains unresolved admission' >&2
             exit 1
           fi
           (
             cd instrumentation/lean-env
-            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler OAI.Algorithms.SubexponentialSAT.RecordPrograms
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/SourceGraphRefinement.lean"
+            lake env lean "$GITHUB_WORKSPACE/eth/proofs/FramedRecordReaderRefinement.lean"
           )
           echo 'LEAN_SOURCE_GRAPH_REFINEMENT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'LEAN_FRAMED_RECORD_READER=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"

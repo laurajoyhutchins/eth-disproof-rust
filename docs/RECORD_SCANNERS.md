@@ -59,6 +59,40 @@ The **row-specific values are part of the source ABI**. Especially:
   input preconditions are **outside** this iterator and remain in their
   respective modules. Never infer them from a shared loop.
 
+## A kernel-checked source table, and its Rust witness
+
+The original Lean `RecordPrograms.Ports` requires all three registers
+`tag`, `present`, and `found` to be distinct, in addition to
+`source != payload`. Before this correspondence audit, Rust's
+`iterate_framed` enforced only the two-register and two-stack
+`Program::lift` constraints. It now also **rejects a colliding or
+out-of-range `found` register**. That closes an admission discrepancy
+without changing any of the six valid scanner mappings.
+
+[`FramedRecordReaderRefinement.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/proofs/FramedRecordReaderRefinement.lean)
+imports the **pinned original** `RecordPrograms` and independently
+spells out all seven physical `ParserProgram.frameProgram` instructions
+at arbitrary valid `Ports`. Its theorem `mappedFrameProgram_eq_source`
+proves equality of the complete Lean source program, including
+input/output ports, entry address, every instruction and final halt.
+`mappedFrame_reader_eval` derives the original exact source execution
+cost `6 * bits.length + 4`, reversed payload, unchanged found bit,
+and preserved unread suffix. Compiling a structured call adds a
+separately counted final halt.
+
+[`source_framed_reader_refinement.rs`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/tests/source_framed_reader_refinement.rs)
+independently reconstructs the same seven physical rows in Rust
+and tests the six caller mappings, all 0–5-bit payloads, an unread
+suffix, preexisting output, and the unchanged found register.
+`record_iteration.rs` separately checks the third-register refusal.
+
+**Scope:** the Lean proofs universally characterize the source table,
+but are not a verified translation of Rust source code into Lean.
+The Rust test checks this specific implementation against a manually
+written oracle; the full Rust compiler/interpreter and serialized
+source import are still independent obligations. No ETH complexity
+claim follows from this result.
+
 ## Regression obligations
 
 `eth/tests/source_record_iteration.rs` independently reconstructs the

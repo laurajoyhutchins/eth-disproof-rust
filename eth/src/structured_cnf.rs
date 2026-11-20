@@ -329,6 +329,99 @@ mod tests {
             .count() as u8
     }
 
+    /// Exercise the production recognizer and independent receipt replay on
+    /// invalid one-row representations. In particular, no usize boundary or
+    /// i8 sentinel may become a valid signed literal or trigger a panic.
+    #[test]
+    fn machine_row_boundaries_refuse_without_panicking() {
+        let good = OwnedSignedCsr::from_cnf(&source(4, &[false]));
+        let receipt = good.view().recognize_recurrence().unwrap();
+        let mut cases: Vec<(&str, OwnedSignedCsr)> = Vec::new();
+
+        for sign in [0_i8, 2, -2, i8::MIN, i8::MAX] {
+            let mut bad = good.clone();
+            bad.signs[0] = sign;
+            cases.push(("invalid signed i8", bad));
+        }
+
+        for (label, col) in [
+            ("out-of-range usize column", usize::MAX),
+            ("duplicate column", good.column_indices[1]),
+            ("reversed column order", good.column_indices[2]),
+        ] {
+            let mut bad = good.clone();
+            bad.column_indices[0] = col;
+            cases.push((label, bad));
+        }
+
+        for (label, offset) in [
+            ("empty row", 0_usize),
+            ("short row", 2),
+            ("long row", 4),
+            ("overflow-sized offset", usize::MAX),
+        ] {
+            let mut bad = good.clone();
+            bad.row_offsets[1] = offset;
+            cases.push((label, bad));
+        }
+
+        let mut nonzero_start = good.clone();
+        nonzero_start.row_offsets[0] = 1;
+        cases.push(("nonzero starting offset", nonzero_start));
+
+        let mut missing_sign = good.clone();
+        missing_sign.signs.pop();
+        cases.push(("sign array length mismatch", missing_sign));
+
+        let mut missing_column = good.clone();
+        missing_column.column_indices.pop();
+        cases.push(("column array length mismatch", missing_column));
+
+        let mut missing_row_offset = good.clone();
+        missing_row_offset.row_offsets.pop();
+        cases.push(("row-offset count mismatch", missing_row_offset));
+
+        let mut duplicate_row = good.clone();
+        duplicate_row.signs[0..3].copy_from_slice(&good.signs[3..6]);
+        cases.push(("duplicate signed row", duplicate_row));
+
+        let mut unrepresentable_count = good.clone();
+        unrepresentable_count.variables = usize::MAX;
+        cases.push(("checked row-count overflow", unrepresentable_count));
+
+        for (label, invalid) in cases {
+            let producer = std::panic::catch_unwind(|| invalid.view().recognize_recurrence())
+                .unwrap_or_else(|_| panic!("recognizer panicked on {label}"));
+            assert!(producer.is_err(), "recognizer accepted {label}");
+
+            let verifier = std::panic::catch_unwind(|| {
+                verify_recurrence_receipt(invalid.view(), &receipt)
+            })
+            .unwrap_or_else(|_| panic!("verifier panicked on {label}"));
+            assert!(verifier.is_err(), "verifier accepted {label}");
+        }
+    }
+
+    #[test]
+    fn signed_row_falsifying_bits_are_the_negated_literals() {
+        let good = OwnedSignedCsr::from_cnf(&source(4, &[false]));
+        for row in good.row_offsets.windows(2) {
+            let signs = &good.signs[row[0]..row[1]];
+            for word in 0u8..8 {
+                let bits = std::array::from_fn::<_, 3, _>(|i| word & (1 << i) != 0);
+                let clause_true = signs
+                    .iter()
+                    .enumerate()
+                    .any(|(i, sign)| bits[i] == (*sign == 1));
+                let falsifying_word = signs
+                    .iter()
+                    .enumerate()
+                    .all(|(i, sign)| bits[i] == (*sign == -1));
+                assert_eq!(clause_true, !falsifying_word);
+            }
+        }
+    }
+
     #[test]
     fn fixed_lean_csr_vector_matches_rust_encoding() {
         // The same six complete clauses and all arrays are kernel-checked

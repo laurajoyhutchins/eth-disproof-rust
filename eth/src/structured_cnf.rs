@@ -96,7 +96,38 @@ fn expected_csr_shape(n: usize) -> Result<(usize, usize), Error> {
     Ok((rows, offsets))
 }
 
+/// The complete, checked representation boundary of one signed CSR row.
+/// Consumers share only decoding, not the recurrence recognition or receipt
+/// comparison algorithms. This operation neither allocates nor panics on
+/// malformed offsets, missing elements, invalid signs or column ordering.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct CheckedCsrRow {
+    columns: [usize; 3],
+    signs: [i8; 3],
+}
+
 impl SignedCsr<'_> {
+    /// Return the exact ternary row or refuse. All indexing is checked.
+    /// In particular, start+3 and row+1 are checked before slicing; there
+    /// is no unchecked access even when called before outer-shape validation.
+    fn checked_row(&self, row: usize) -> Option<CheckedCsrRow> {
+        let start = *self.row_offsets.get(row)?;
+        let stop = *self.row_offsets.get(row.checked_add(1)?)?;
+        if start.checked_add(3)? != stop {
+            return None;
+        }
+        let columns: [usize; 3] = self.column_indices.get(start..stop)?.try_into().ok()?;
+        let signs: [i8; 3] = self.signs.get(start..stop)?.try_into().ok()?;
+        if columns[0] >= columns[1]
+            || columns[1] >= columns[2]
+            || columns[2] >= self.variables
+            || !signs.iter().all(|s| *s == -1 || *s == 1)
+        {
+            return None;
+        }
+        Some(CheckedCsrRow { columns, signs })
+    }
+
     /// Verify the complete formula, not just some matching XOR/OR subgraph.
     ///
     /// Complexity: O(n log n) comparison work for row grouping, O(n) seed
@@ -107,7 +138,7 @@ impl SignedCsr<'_> {
         if n < 4 {
             return Err(refuse("requires at least four variables"));
         }
-        let (_, expected_offsets) = expected_csr_shape(n)?;
+        let (expected_rows, expected_offsets) = expected_csr_shape(n)?;
         if self.row_offsets.len() != expected_offsets
             || self.column_indices.len() != self.signs.len()
             || self.row_offsets.first() != Some(&0)
@@ -119,19 +150,13 @@ impl SignedCsr<'_> {
         // Group exact rows by their three distinct variable indices; an
         // eight-bit value records which of the eight polarities occur.
         let mut groups: BTreeMap<[usize; 3], u8> = BTreeMap::new();
-        for row in self.row_offsets.windows(2) {
-            let (start, end) = (row[0], row[1]);
-            if end < start || end > self.column_indices.len() || end - start != 3 {
-                return Err(refuse("malformed offset or non-ternary clause"));
-            }
-            let cols = &self.column_indices[start..end];
-            let signs = &self.signs[start..end];
-            if cols[0] >= cols[1] || cols[1] >= cols[2] || cols[2] >= n {
-                return Err(refuse("columns must be strictly sorted and in range"));
-            }
-            if !signs.iter().all(|sign| *sign == 1 || *sign == -1) {
-                return Err(refuse("polarity must be +1 or -1"));
-            }
+        for row_index in 0..expected_rows {
+            let CheckedCsrRow {
+                columns: cols,
+                signs,
+            } = self
+                .checked_row(row_index)
+                .ok_or_else(|| refuse("malformed signed CSR row"))?;
             let polarity = signs.iter().enumerate().fold(0u8, |mask, (i, sign)| {
                 if *sign == -1 { mask | (1 << i) } else { mask }
             });
@@ -209,7 +234,7 @@ pub fn verify_recurrence_receipt(
         return Err(refuse("receipt has incorrect variable count or RHS length"));
     }
 
-    let (_, expected_offsets) = expected_csr_shape(n)?;
+    let (expected_rows, expected_offsets) = expected_csr_shape(n)?;
     if csr.row_offsets.len() != expected_offsets
         || csr.row_offsets.first() != Some(&0)
         || csr.row_offsets.last() != Some(&csr.column_indices.len())
@@ -219,24 +244,12 @@ pub fn verify_recurrence_receipt(
     }
 
     let mut actual = BTreeSet::new();
-    for offsets in csr.row_offsets.windows(2) {
-        let (start, end) = (offsets[0], offsets[1]);
-        if end < start || end > csr.column_indices.len() || end - start != 3 {
-            return Err(refuse("invalid source row"));
-        }
-        let columns: [usize; 3] = csr.column_indices[start..end]
-            .try_into()
-            .map_err(|_| refuse("not a ternary source row"))?;
-        let signs: [i8; 3] = csr.signs[start..end]
-            .try_into()
-            .map_err(|_| refuse("invalid source sign array"))?;
-        if columns[0] >= columns[1]
-            || columns[1] >= columns[2]
-            || columns[2] >= n
-            || !signs.iter().all(|v| *v == -1 || *v == 1)
-            || !actual.insert((columns, signs))
-        {
-            return Err(refuse("noncanonical, duplicated, or out-of-domain row"));
+    for row_index in 0..expected_rows {
+        let CheckedCsrRow { columns, signs } = csr
+            .checked_row(row_index)
+            .ok_or_else(|| refuse("invalid source CSR row"))?;
+        if !actual.insert((columns, signs)) {
+            return Err(refuse("duplicate source CSR row"));
         }
     }
     // Source shape and every row are validated before expanding the

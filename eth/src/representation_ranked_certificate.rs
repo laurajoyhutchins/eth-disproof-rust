@@ -167,70 +167,116 @@ pub fn observe_checked_arithmetic(
     }
 }
 
+// All scan, finalization, and contraction paths share the same arithmetic
+// transition function. The receipt variant observes this *one* execution
+// rather than independently re-evaluating a second implementation.
+fn checked_arithmetic(kind: ArithmeticKind, left: i128, right: i128) -> Result<i128, Error> {
+    match kind {
+        ArithmeticKind::Add => checked_i128_add(left, right),
+        ArithmeticKind::Mul => checked_i128_mul(left, right),
+    }
+}
+
+fn checked_component_product_step_with<F>(
+    products: &mut [[i128; 2]],
+    class: usize,
+    weights: [i128; 2],
+    arithmetic: &mut F,
+) -> Result<(), Error>
+where
+    F: FnMut(ArithmeticKind, i128, i128) -> Result<i128, Error>,
+{
+    let slot = products
+        .get_mut(class)
+        .ok_or_else(|| Error::Invalid("component product index outside range".into()))?;
+    let zero = arithmetic(ArithmeticKind::Mul, slot[0], weights[0])?;
+    let one = arithmetic(ArithmeticKind::Mul, slot[1], weights[1])?;
+    *slot = [zero, one];
+    Ok(())
+}
+
 /// One source-vertex update to the indexed component-product array.
 /// Both checked multiplications complete before the slot is changed.
-/// Failed operations (including invalid class indices) leave every slot
-/// unmodified, making the successful step a simple atomic refinement target.
+/// A failed update leaves this slot unchanged.
 pub fn checked_component_product_step(
     products: &mut [[i128; 2]],
     class: usize,
     weights: [i128; 2],
 ) -> Result<(), Error> {
-    let slot = products
-        .get_mut(class)
-        .ok_or_else(|| Error::Invalid("component product index outside range".into()))?;
-    let zero = checked_i128_mul(slot[0], weights[0])?;
-    let one = checked_i128_mul(slot[1], weights[1])?;
-    *slot = [zero, one];
-    Ok(())
+    checked_component_product_step_with(products, class, weights, &mut checked_arithmetic)
 }
 
-/// Scan a vertex-major stream, updating the class product table in place.
-/// Each individual update is atomic on refusal; earlier completed updates
-/// remain visible after a later failure. This is intentionally *not* a
-/// transactional whole-scan rollback. Width mismatches refuse before writes.
-pub fn checked_component_product_scan(
+fn checked_component_product_scan_with<F>(
     products: &mut [[i128; 2]],
     labels: &[usize],
     weights: &[[i128; 2]],
-) -> Result<(), Error> {
+    arithmetic: &mut F,
+) -> Result<(), Error>
+where
+    F: FnMut(ArithmeticKind, i128, i128) -> Result<i128, Error>,
+{
     if labels.len() != weights.len() {
         return Err(Error::Invalid(
             "component scan label and weight widths disagree".into(),
         ));
     }
     for (&class, &weight) in labels.iter().zip(weights.iter()) {
-        checked_component_product_step(products, class, weight)?;
+        checked_component_product_step_with(products, class, weight, arithmetic)?;
     }
     Ok(())
 }
 
-/// Finish a component-product array in dense class order. Each class's two
-/// signed products are checked-added before multiplication into the running
-/// count. Refusal is immediate, even if later classes could multiply by zero.
-/// This immutable pass never alters the component-product array.
-pub fn checked_component_product_finish(products: &[[i128; 2]]) -> Result<i128, Error> {
+/// Scan a vertex-major stream. An arithmetic refusal stops immediately;
+/// earlier completed vertices are not rolled back. Width errors refuse
+/// before any arithmetic is performed.
+pub fn checked_component_product_scan(
+    products: &mut [[i128; 2]],
+    labels: &[usize],
+    weights: &[[i128; 2]],
+) -> Result<(), Error> {
+    checked_component_product_scan_with(products, labels, weights, &mut checked_arithmetic)
+}
+
+fn checked_component_product_finish_with<F>(
+    products: &[[i128; 2]],
+    arithmetic: &mut F,
+) -> Result<i128, Error>
+where
+    F: FnMut(ArithmeticKind, i128, i128) -> Result<i128, Error>,
+{
     let mut value = 1i128;
     for &[zero, one] in products {
-        let local = checked_i128_add(zero, one)?;
-        value = checked_i128_mul(value, local)?;
+        let local = arithmetic(ArithmeticKind::Add, zero, one)?;
+        value = arithmetic(ArithmeticKind::Mul, value, local)?;
     }
     Ok(value)
 }
 
-/// Exact checked contraction from *verified labels*, not from DSU parents.
-/// Overflows refuse instead of silently truncating a signed integer count.
-pub fn contract_checked_ranked_weights(
+/// Finish the component array in class order without modifying the source.
+/// Refuse overflow immediately, even when a later class contains zero.
+pub fn checked_component_product_finish(products: &[[i128; 2]]) -> Result<i128, Error> {
+    checked_component_product_finish_with(products, &mut checked_arithmetic)
+}
+
+fn contract_checked_ranked_weights_with<F>(
     weights: &[[i128; 2]],
     source_edges: &[(usize, usize)],
     certificate: &RankedComponentCertificate,
-) -> Result<RankedCountReceipt, Error> {
-    // Always verify the exact certificate and edge list being consumed.
-    // A receipt alone is not a reusable authority for different input bytes.
+    arithmetic: &mut F,
+) -> Result<RankedCountReceipt, Error>
+where
+    F: FnMut(ArithmeticKind, i128, i128) -> Result<i128, Error>,
+{
+    // This rechecks the *supplied* graph and certificate on every execution.
     let verified = verify_ranked_component_certificate(weights.len(), source_edges, certificate)?;
     let mut products = vec![[1i128, 1i128]; verified.components];
-    checked_component_product_scan(&mut products, &certificate.labels, weights)?;
-    let value = checked_component_product_finish(&products)?;
+    checked_component_product_scan_with(
+        &mut products,
+        &certificate.labels,
+        weights,
+        arithmetic,
+    )?;
+    let value = checked_component_product_finish_with(&products, arithmetic)?;
     let multiplications = weights
         .len()
         .checked_mul(2)
@@ -243,6 +289,51 @@ pub fn contract_checked_ranked_weights(
         checked_additions: verified.components,
         checked_multiplications: multiplications,
     })
+}
+
+/// Exact contraction from source-bound, locally verified class labels.
+pub fn contract_checked_ranked_weights(
+    weights: &[[i128; 2]],
+    source_edges: &[(usize, usize)],
+    certificate: &RankedComponentCertificate,
+) -> Result<RankedCountReceipt, Error> {
+    contract_checked_ranked_weights_with(
+        weights,
+        source_edges,
+        certificate,
+        &mut checked_arithmetic,
+    )
+}
+
+/// Observe *every checked arithmetic invocation* of this particular Rust
+/// source-level contraction run, in order, including the first refusal.
+/// The same checked helper and control-flow body serve the ordinary counter.
+/// This is executable instrumentation, not a formal Rust/compiler refinement.
+///
+/// On invalid input or certificate rejection no arithmetic is invoked.
+/// The returned error and trace are both untrusted until independently checked.
+pub fn contract_checked_ranked_weights_with_trace(
+    weights: &[[i128; 2]],
+    source_edges: &[(usize, usize)],
+    certificate: &RankedComponentCertificate,
+) -> (Result<RankedCountReceipt, Error>, Vec<ArithmeticReceipt>) {
+    let mut operations = Vec::new();
+    let result = contract_checked_ranked_weights_with(
+        weights,
+        source_edges,
+        certificate,
+        &mut |kind, left, right| {
+            let outcome = checked_arithmetic(kind, left, right);
+            operations.push(ArithmeticReceipt {
+                kind,
+                left,
+                right,
+                observed: outcome.as_ref().ok().copied(),
+            });
+            outcome
+        },
+    );
+    (result, operations)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

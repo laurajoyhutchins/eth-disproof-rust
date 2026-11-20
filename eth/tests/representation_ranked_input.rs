@@ -94,10 +94,10 @@ fn malformed_indices_and_source_evidence_are_refused() {
     // Format: header (28), edge (16), labels (24), roots (16),
     // parent links (24), ranks (24), weights (96).
     for (offset, value) in [
-        (28usize, 3u64),                 // edge endpoint outside source vertices
-        (28 + 16, 2u64),                // class label outside [0, classes)
-        (28 + 16 + 24, 3u64),           // root outside source vertices
-        (28 + 16 + 24 + 16 + 8, 2u64), // parent link outside edge list
+        (28usize, 3u64),                    // edge endpoint outside source vertices
+        (28 + 16, 2u64),                    // class label outside [0, classes)
+        (28 + 16 + 24, 3u64),               // root outside source vertices
+        (28 + 16 + 24 + 16 + 8, 2u64),      // parent link outside edge list
         (28 + 16 + 24 + 16 + 24 + 8, 0u64), // nonroot rank fails decrease
     ] {
         let mut corrupt = original.clone();

@@ -297,7 +297,13 @@ mod tests {
         let value = certificate().unwrap();
         assert_eq!(value.matches("private def rust_lift_").count(), 6);
         assert_eq!(value.matches("private def rust_compiled_").count(), 6);
-        assert_eq!(value.matches("theorem rust_compiled_").count(), 6);
+        assert_eq!(
+            value
+                .lines()
+                .filter(|line| line.starts_with("theorem rust_compiled_"))
+                .count(),
+            6
+        );
         assert!(value.contains("    | _ => .goto 0"));
         assert!(value.contains("  entry := 1"));
         assert!(value.contains("  entry := 0"));

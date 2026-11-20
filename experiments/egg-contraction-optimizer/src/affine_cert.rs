@@ -117,6 +117,12 @@ impl VerificationLimits {
     /// Kept as a pure function so overflow/refusal can be tested without
     /// attempting to allocate pathological inputs.
     pub fn check(self, rows: usize, columns: usize, steps: usize) -> Result<(), String> {
+        // A product-only test would admit an empty (zero-row) matrix
+        // with arbitrarily many declared columns, even though name
+        // registration and the free-column receipt still allocate.
+        if columns > self.max_cells || rows > self.max_cells {
+            return Err("checker matrix dimension budget exceeded".into());
+        }
         let cells = rows.checked_mul(columns)
             .ok_or("checker matrix storage overflow")?;
         if cells > self.max_cells {
@@ -922,8 +928,14 @@ mod tests {
             .check(usize::MAX, 2, 0).unwrap_err().contains("overflow"));
         assert!(VerificationLimits { max_cells: usize::MAX, max_steps: 0 }
             .check(0, usize::MAX, 1).unwrap_err().contains("transcript budget"));
-        VerificationLimits { max_cells: 0, max_steps: 0 }
-            .check(0, usize::MAX, 0).unwrap();
+        assert!(VerificationLimits { max_cells: 0, max_steps: 0 }
+            .check(0, usize::MAX, 0).unwrap_err()
+            .contains("dimension budget"));
+        assert!(VerificationLimits { max_cells: 4, max_steps: 0 }
+            .check(0, 5, 0).unwrap_err()
+            .contains("dimension budget"));
+        VerificationLimits { max_cells: 4, max_steps: 0 }
+            .check(0, 4, 0).unwrap();
     }
 
 

@@ -21,6 +21,7 @@ pub enum StudyFamily {
     CirculantXor3,
     FreeAmplifier,
     Overlapping3Cnf,
+    FrustratedXor3Cnf,
 }
 
 impl StudyFamily {
@@ -30,6 +31,7 @@ impl StudyFamily {
             Self::CirculantXor3 => "circulant-xor3",
             Self::FreeAmplifier => "free-amplifier",
             Self::Overlapping3Cnf => "overlapping-3cnf",
+            Self::FrustratedXor3Cnf => "frustrated-xor3-cnf",
         }
     }
 }
@@ -92,7 +94,7 @@ fn generate(family: StudyFamily, size: usize) -> Result<Vec<Factor>, String> {
                 StudyFamily::EqualityChain => Family::Chain,
                 StudyFamily::CirculantXor3 => Family::CirculantXor3,
                 StudyFamily::FreeAmplifier => Family::FreeAmplifiers,
-                StudyFamily::Overlapping3Cnf => unreachable!(),
+                StudyFamily::Overlapping3Cnf | StudyFamily::FrustratedXor3Cnf => unreachable!(),
             };
             affine_orders::generate(kind, size)?.into_iter().map(|region| {
                 let ports = region.internal.iter().chain(&region.boundary)
@@ -114,6 +116,33 @@ fn generate(family: StudyFamily, size: usize) -> Result<Vec<Factor>, String> {
             }).collect();
             Factor { ports, constraints: vec![Constraint::Clause(literals)] }
         }).collect(),
+        StudyFamily::FrustratedXor3Cnf => {
+            if size < 4 || size % 2 != 0 {
+                return Err("frustrated XOR3-CNF requires even size at least four".into());
+            }
+            (0..size).map(|i| {
+                // Summing the n parity equations cancels each cycle variable
+                // twice and the hub n times. The one odd charge is impossible.
+                let vars = [
+                    format!("x{i}"), format!("x{}", (i + 1) % size), "h".into(),
+                ];
+                let ports = vars.iter().cloned().collect::<BTreeSet<_>>()
+                    .into_iter().collect();
+                let rhs = i == 0;
+                let constraints = (0..8usize).filter_map(|mask| {
+                    let assignment = [mask & 1 != 0, mask & 2 != 0, mask & 4 != 0];
+                    if assignment.iter().fold(false, |p, bit| p ^ *bit) == rhs {
+                        None
+                    } else {
+                        // A canonical three-literal clause forbids exactly
+                        // the given assignment. Four clauses encode XOR3.
+                        Some(Constraint::Clause(vars.iter().cloned()
+                            .zip(assignment.iter().map(|bit| !*bit)).collect()))
+                    }
+                }).collect();
+                Factor { ports, constraints }
+            }).collect()
+        }
     };
     let factors: Vec<Factor> = factors;
     for factor in &factors { factor.validate()?; }
@@ -388,6 +417,8 @@ pub struct Receipt {
     pub exact_work: Work,
     pub tropical_work: Work,
     pub tropical_positive_energy_cells: usize,
+    pub staged_tropical_cells: usize,
+    pub staged_positive_energy_cells: usize,
     pub symbolic_nodes: usize,
     pub symbolic_eliminated_binders: usize,
     pub forced_cache_entries: usize,
@@ -425,6 +456,9 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
     let mut peak_exact_coefficient_slots: usize = stage.exact.iter().map(|p| p.0.len()).sum();
     let mut peak_exact_nonzero_coefficients: usize = stage.exact.iter()
         .map(Polynomial::nonzero_terms).sum();
+    let mut staged_tropical_cells = stage.tropical.len();
+    let mut staged_positive_energy_cells = stage.tropical.iter().flatten()
+        .filter(|c| c.energy > 0).count();
     let mut exact_work = Work::default();
     let mut tropical_work = Work::default();
     let output_set = output.iter().cloned().collect::<BTreeSet<_>>();
@@ -447,6 +481,9 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
         root = nodes.len() - 1;
         stage = stage.merge(&leaves[index], &kept, &mut exact_work, &mut tropical_work)?;
         stage.verify_shadow()?;
+        staged_tropical_cells += stage.tropical.len();
+        staged_positive_energy_cells += stage.tropical.iter().flatten()
+            .filter(|c| c.energy > 0).count();
         peak_boundary_ports = peak_boundary_ports.max(stage.ports.len());
         peak_table_cells = peak_table_cells.max(stage.exact.len());
         peak_exact_coefficient_slots = peak_exact_coefficient_slots.max(
@@ -484,7 +521,8 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
         family: family.name(), size, schedule: schedule.name(),
         peak_boundary_ports, peak_table_cells, peak_exact_coefficient_slots,
         peak_exact_nonzero_coefficients, exact_work, tropical_work,
-        tropical_positive_energy_cells, symbolic_nodes: nodes.len(),
+        tropical_positive_energy_cells, staged_tropical_cells,
+        staged_positive_energy_cells, symbolic_nodes: nodes.len(),
         symbolic_eliminated_binders, forced_cache_entries: evaluator.cache.len(),
         forced_cache_coefficient_slots: evaluator.cached_coefficient_slots,
         symbolic_work: evaluator.work, minimum_energy: leading.energy,
@@ -531,6 +569,22 @@ mod tests {
         assert!(run(StudyFamily::EqualityChain, 17, Schedule::EvenFirst, &[]).is_err());
         assert!(run(StudyFamily::EqualityChain, 3, Schedule::Sequential,
             &["unknown".into()]).is_err());
+    }
+
+    #[test]
+    fn contradictory_cnf_has_exact_positive_minimum_and_no_solutions() {
+        for size in [4, 6, 8] {
+            for schedule in [
+                Schedule::Sequential, Schedule::Reverse, Schedule::EvenFirst,
+            ] {
+                let r = run(StudyFamily::FrustratedXor3Cnf, size, schedule, &[])
+                    .unwrap();
+                assert_eq!(r.minimum_energy, 1);
+                assert_eq!(r.satisfying_count, BigUint::default());
+                assert_eq!(r.minimum_count, BigUint::from(4 * size));
+                assert!(r.staged_positive_energy_cells > 0);
+            }
+        }
     }
 
     #[test]

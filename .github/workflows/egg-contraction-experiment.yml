@@ -10,6 +10,7 @@ on:
       - "eth/proofs/IndependentAffinePackedRows.lean"
       - "eth/proofs/IndependentAffineTerminal.lean"
       - "eth/proofs/IndependentAffineSourceRows.lean"
+      - "eth/proofs/IndependentAffineNativeAudit.lean"
       - ".github/workflows/egg-contraction-experiment.yml"
   workflow_dispatch:
 
@@ -49,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean eth/proofs/IndependentAffineNativeAudit.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
@@ -61,11 +62,33 @@ jobs:
             IndependentAffineRowOps \
             IndependentAffinePackedRows \
             IndependentAffineTerminal \
-            IndependentAffineSourceRows; do
+            IndependentAffineSourceRows \
+            IndependentAffineNativeAudit; do
             echo "::group::Lean proof: $proof"
             if ! lake env lean "$GITHUB_WORKSPACE/eth/proofs/${proof}.lean"; then
               failures=1
             fi
             echo "::endgroup::"
           done
+          # Compile an independent Lean reference against the actual source,
+          # raw transcript and interface emitted by the native Rust binary.
+          # Generated data is a fixed grammar of decimal byte lists, not
+          # arbitrary user-controlled Lean syntax.
+          generated="$RUNNER_TEMP/affine-native-generated.lean"
+          combined="$RUNNER_TEMP/affine-native-audited.lean"
+          if ! cargo run --quiet \
+            --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
+            -- --emit-lean-certificates > "$generated"; then
+            failures=1
+          elif grep -nE '\\b(sorry|admit|axiom|unsafe)\\b' "$generated"; then
+            echo "Unsafe generated Lean witness" >&2
+            failures=1
+          else
+            cat "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineNativeAudit.lean" "$generated" > "$combined"
+            echo "::group::Kernel-check actual Rust-emitted receipt corpus"
+            if ! lake env lean "$combined"; then
+              failures=1
+            fi
+            echo "::endgroup::"
+          fi
           exit "$failures"

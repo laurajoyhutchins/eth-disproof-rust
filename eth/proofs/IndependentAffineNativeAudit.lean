@@ -19,7 +19,7 @@ namespace IndependentETH.AffineNativeAudit
 abbrev Name := List Nat
 
 structure SourceEquation where
-  variables : List Name
+  occurrences : List Name
   rhs : Bool
   deriving Repr, DecidableEq
 
@@ -66,15 +66,15 @@ def sourceOK (s : Source) : Bool :=
   let ns := names s
   decide ns.Nodup &&
     ns.all (fun n => !n.isEmpty) &&
-    s.equations.all (fun e => e.variables.all (fun n => ns.contains n))
+    s.equations.all (fun e => e.occurrences.all (fun n => ns.contains n))
 
 /-- Each occurrence toggles the source coefficient, including repeats. -/
-def occurrenceBit (variables : List Name) (name : Name) : Bool :=
-  variables.foldl (fun parity v => parity ^^ (v == name)) false
+def occurrenceBit (occurrences : List Name) (name : Name) : Bool :=
+  occurrences.foldl (fun parity v => parity ^^ (v == name)) false
 
 def sourceRows (s : Source) : List (List Bool) :=
   s.equations.map (fun e =>
-    (names s).map (occurrenceBit e.variables) ++ [e.rhs])
+    (names s).map (occurrenceBit e.occurrences) ++ [e.rhs])
 
 def bitAt (row : List Bool) (index : Nat) : Bool :=
   (row[index]?).getD false
@@ -152,7 +152,7 @@ def satisfiesSource (s : Source) (internal boundary : List Bool) : Bool :=
   let ns := names s
   let bits := internal ++ boundary
   s.equations.all (fun e =>
-    (e.variables.foldl
+    (e.occurrences.foldl
       (fun parity name => parity ^^ namedBit ns bits name) false) == e.rhs)
 
 def allBits : Nat → List (List Bool)

@@ -754,21 +754,9 @@ def indexedRowWordsEquiv (ds : List Bool) :
     apply Subtype.ext
     rfl
 
-/-- This is the final mathematical counting statement for all length-exact
-words satisfying the *decoded indexed signed rows*, not a separate
-seed-only or trace-only surrogate. -/
-theorem verifiedCsr_indexedWordCount
-    (csr : SignedCsrInput) (ds : List Bool)
-    (mask : Finset State) (out : Nat)
-    (h : verifyCsrCount csr ds mask = some out) :
-    Nat.card (IndexedRowWords ds) = out := by
-  rw [Nat.card_congr (indexedRowWordsEquiv ds)]
-  exact verifyCsrCount_sound csr ds mask out h
-
 #print axioms IndependentETH.NonAffine.indexedRows_sourceCNFWord
 #print axioms IndependentETH.NonAffine.sourceCNFWord_iff_indexedRows
 #print axioms IndependentETH.NonAffine.indexedRowWordsEquiv
-#print axioms IndependentETH.NonAffine.verifiedCsr_indexedWordCount
 
 #print axioms IndependentETH.NonAffine.wordAssignment_shift
 #print axioms IndependentETH.NonAffine.sourceCNFWord_rows
@@ -945,6 +933,19 @@ example : verifyCsrCount
 #print axioms IndependentETH.NonAffine.wordSolutions_card
 #print axioms IndependentETH.NonAffine.acceptedCsr_count_correct
 #print axioms IndependentETH.NonAffine.verifyCsrCount_sound
+
+/-- This is the final mathematical counting statement for all length-exact
+words satisfying the *decoded indexed signed rows*, not a separate
+seed-only or trace-only surrogate. -/
+theorem verifiedCsr_indexedWordCount
+    (csr : SignedCsrInput) (ds : List Bool)
+    (mask : Finset State) (out : Nat)
+    (h : verifyCsrCount csr ds mask = some out) :
+    Nat.card (IndexedRowWords ds) = out := by
+  rw [Nat.card_congr (indexedRowWordsEquiv ds)]
+  exact verifyCsrCount_sound csr ds mask out h
+
+#print axioms IndependentETH.NonAffine.verifiedCsr_indexedWordCount
 
 #print axioms IndependentETH.NonAffine.sourceCNFWord_prefix
 #print axioms IndependentETH.NonAffine.sourceCNFWord_seed

@@ -143,20 +143,20 @@ fn fallible_vec<T>(capacity: usize) -> Result<Vec<T>, Error> {
     Ok(output)
 }
 
-// The cursor operations may refuse, but only the outer reader returns its
-// first stored failure. The loop *breaks* rather than returning from inside
-// a loop body, which is unsupported by the pinned Aeneas translation.
+// Cursor operations refuse at the first malformed field. Each reader uses a
+// failure-guarded loop, not a break/return inside the loop body: the pinned
+// Aeneas translator rejects early loop exits. Incremental reads, their order,
+// first-error precedence and the cursor position remain unchanged.
 fn read_edges(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<(usize, usize)>, Error> {
     let mut source_edges = fallible_vec(count)?;
     let mut failure = None;
-    for _ in 0..count {
+    let mut remaining = count;
+    while remaining > 0 && failure.is_none() {
         match cursor.edge() {
             Ok(edge) => source_edges.push(edge),
-            Err(error) => {
-                failure = Some(error);
-                break;
-            }
+            Err(error) => failure = Some(error),
         }
+        remaining -= 1;
     }
     match failure {
         Some(error) => Err(error),
@@ -167,14 +167,13 @@ fn read_edges(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<(usize, usize
 fn read_words(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<usize>, Error> {
     let mut words = fallible_vec(count)?;
     let mut failure = None;
-    for _ in 0..count {
+    let mut remaining = count;
+    while remaining > 0 && failure.is_none() {
         match cursor.word() {
             Ok(word) => words.push(word),
-            Err(error) => {
-                failure = Some(error);
-                break;
-            }
+            Err(error) => failure = Some(error),
         }
+        remaining -= 1;
     }
     match failure {
         Some(error) => Err(error),
@@ -185,14 +184,13 @@ fn read_words(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<usize>, Error
 fn read_parents(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<Option<usize>>, Error> {
     let mut parents = fallible_vec(count)?;
     let mut failure = None;
-    for _ in 0..count {
+    let mut remaining = count;
+    while remaining > 0 && failure.is_none() {
         match cursor.parent() {
             Ok(parent) => parents.push(parent),
-            Err(error) => {
-                failure = Some(error);
-                break;
-            }
+            Err(error) => failure = Some(error),
         }
+        remaining -= 1;
     }
     match failure {
         Some(error) => Err(error),
@@ -203,14 +201,13 @@ fn read_parents(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<Option<usiz
 fn read_weights(cursor: &mut Cursor<'_>, count: usize) -> Result<Vec<[i128; 2]>, Error> {
     let mut weights = fallible_vec(count)?;
     let mut failure = None;
-    for _ in 0..count {
+    let mut remaining = count;
+    while remaining > 0 && failure.is_none() {
         match cursor.weight_pair() {
             Ok(weight) => weights.push(weight),
-            Err(error) => {
-                failure = Some(error);
-                break;
-            }
+            Err(error) => failure = Some(error),
         }
+        remaining -= 1;
     }
     match failure {
         Some(error) => Err(error),

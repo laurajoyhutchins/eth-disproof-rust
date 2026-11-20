@@ -5,7 +5,9 @@
 //! is permitted. This is useful for Charon to select a library-only entrypoint.
 //! A Rust proof about this crate still requires translating the source itself
 //! and auditing external library models. Ordinary unit tests are not proofs.
-pub use lean_eth_reference::Error;
+#[path = "../../../eth/src/error.rs"]
+pub mod error;
+pub use error::Error;
 
 #[path = "../../../eth/src/representation_ranked_certificate.rs"]
 pub mod representation_ranked_certificate;
@@ -37,10 +39,12 @@ mod tests {
             assert_eq!(
                 actual
                     .0
-                    .map(|r| (r.value, r.component_count, r.checked_multiplications)),
+                    .map(|r| (r.value, r.component_count, r.checked_multiplications))
+                    .map_err(|error| format!("{error:?}")),
                 expected
                     .0
                     .map(|r| (r.value, r.component_count, r.checked_multiplications))
+                    .map_err(|error| format!("{error:?}"))
             );
             let normalize_a = actual
                 .1

@@ -107,7 +107,10 @@ fn prepare_fill(is_e: bool) -> Result<Cmd<16, 896>, Error> {
         clear_many(&[329])?,
         Cmd::seq(
             clear_many(&SCRATCH)?,
-            Cmd::seq(reset_false(0..9), Cmd::seq(copy(338, 325)?, copy(input, 327)?)),
+            Cmd::seq(
+                reset_false(0..9),
+                Cmd::seq(copy(338, 325)?, copy(input, 327)?),
+            ),
         ),
     ))
 }

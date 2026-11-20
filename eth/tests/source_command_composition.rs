@@ -6,9 +6,7 @@ use lean_eth_reference::bit_program::{Atom, Cmd};
 use lean_eth_reference::native_high::{self, clear_program, copy_program};
 use lean_eth_reference::native_nodes;
 
-fn source_clear<const R: usize, const S: usize>(
-    port: usize,
-) -> Result<Cmd<R, S>, Error> {
+fn source_clear<const R: usize, const S: usize>(port: usize) -> Result<Cmd<R, S>, Error> {
     Ok(Cmd::Call(clear_program(port, 0, 1)?))
 }
 
@@ -22,10 +20,7 @@ fn previous_node_clear(ports: &[usize]) -> Result<Cmd<40, 896>, Error> {
 }
 
 // BankRoutines.clearCmd does NOT append Skip after the last temporary clear.
-fn previous_bank_clear(
-    tmp: usize,
-    changed: &[usize],
-) -> Result<Cmd<40, 896>, Error> {
+fn previous_bank_clear(tmp: usize, changed: &[usize]) -> Result<Cmd<40, 896>, Error> {
     let mut command = source_clear(tmp)?;
     for &port in changed.iter().rev() {
         command = Cmd::seq(source_clear(port)?, command);
@@ -35,12 +30,7 @@ fn previous_bank_clear(
 
 #[test]
 fn node_clear_many_keeps_order_duplicate_clears_and_skip_leaf() {
-    for ports in [
-        vec![],
-        vec![301],
-        vec![301, 302, 301],
-        vec![0, 895],
-    ] {
+    for ports in [vec![], vec![301], vec![301, 302, 301], vec![0, 895]] {
         let actual = native_nodes::clear_many(&ports).unwrap();
         let expected = previous_node_clear(&ports).unwrap();
         assert_eq!(actual, expected);

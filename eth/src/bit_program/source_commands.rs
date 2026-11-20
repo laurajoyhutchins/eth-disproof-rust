@@ -36,10 +36,7 @@ pub(crate) fn clear_many_then<const R: usize, const S: usize>(
     mut tail: Cmd<R, S>,
 ) -> Result<Cmd<R, S>, Error> {
     for &port in ports.iter().rev() {
-        tail = Cmd::seq(
-            Cmd::Call(clear_program(port, value, present)?),
-            tail,
-        );
+        tail = Cmd::seq(Cmd::Call(clear_program(port, value, present)?), tail);
     }
     Ok(tail)
 }
@@ -56,9 +53,7 @@ pub(crate) fn clear_many<const R: usize, const S: usize>(
 
 /// Original source work-register resets in ascending register order.
 /// The reverse fold is deliberate; it preserves `Seq(Set, ..., Skip)`.
-pub(crate) fn reset_false<const R: usize, const S: usize>(
-    registers: Range<usize>,
-) -> Cmd<R, S> {
+pub(crate) fn reset_false<const R: usize, const S: usize>(registers: Range<usize>) -> Cmd<R, S> {
     registers.rev().fold(Cmd::Skip, |tail, dst| {
         Cmd::seq(Cmd::Atom(Atom::Set { dst, value: false }), tail)
     })
@@ -86,30 +81,23 @@ mod tests {
             value: true,
         });
         let second = Cmd::Atom(Atom::Push { stack: 3, src: 2 });
-        let expected = Cmd::seq(
-            first.clone(),
-            Cmd::seq(second.clone(), Cmd::Skip),
-        );
+        let expected = Cmd::seq(first.clone(), Cmd::seq(second.clone(), Cmd::Skip));
         assert_eq!(seq([first.clone(), second.clone()]), expected);
         assert_eq!(seq(std::iter::empty::<Cmd<4, 8>>()), Cmd::Skip);
         assert_eq!(seq([first.clone()]), Cmd::seq(first.clone(), Cmd::Skip));
-        assert_ne!(expected, Cmd::seq(Cmd::seq(first, second), Cmd::Skip));
+        assert_ne!(
+            expected,
+            Cmd::seq(Cmd::seq(first.clone(), second.clone()), Cmd::Skip)
+        );
         assert_eq!(
-            seq([Cmd::Atom(Atom::Set { dst: 2, value: true }), Cmd::Atom(Atom::Push { stack: 3, src: 2 })])
-                .compiled(0, 3)
-                .unwrap(),
+            seq([first, second]).compiled(0, 3).unwrap(),
             expected.compiled(0, 3).unwrap()
         );
     }
 
     #[test]
     fn canonical_clears_match_both_previous_source_suffix_conventions() {
-        for ports in [
-            vec![],
-            vec![3],
-            vec![1, 3, 1],
-            vec![7, 0, 7, 2],
-        ] {
+        for ports in [vec![], vec![3], vec![1, 3, 1], vec![7, 0, 7, 2]] {
             let old = old_clear_many::<4, 8>(&ports, Cmd::Skip).unwrap();
             let new = clear_many::<4, 8>(&ports, 0, 1).unwrap();
             assert_eq!(new, old);

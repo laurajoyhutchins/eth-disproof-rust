@@ -91,6 +91,7 @@ jobs:
               'probe-p9:ProbeP9:p9_option_payload' \
               'probe-p10:ProbeP10:p10_checked_scalar_sink' \
               'probe-p11:ProbeP11:p11_checked_option_sink' \
+              'probe-p12:ProbeP12:p12_option_then_result' \
               'ranked-source:RankedSource:execute_ranked_wire'; do
             IFS=: read -r scenario dir function <<< "$spec"
             extracted=blocked

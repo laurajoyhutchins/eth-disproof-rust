@@ -59,19 +59,22 @@ jobs:
           "$lean_binary" compiler/proofs/ReaderCReleaseSemantics.lean \
             | tee c-release-proof-kernel-receipt.txt
           python3 - <<'PY'
-          import re
           from pathlib import Path
           raw = Path("c-release-proof-kernel-receipt.txt").read_text()
           allowed = {"propext", "Quot.sound", "Classical.choice"}
           for name in ("cStep_represent", "runC_represent"):
-              m = re.search(
-                  re.escape(f"'ReaderCReleaseSemantics.{name}'") +
-                  r" (does not depend on any axioms|depends on axioms: \\[([^\\]]*)\\])",
-                  raw,
-              )
-              if m is None:
+              prefix = f"'ReaderCReleaseSemantics.{name}' "
+              line = next((x.strip() for x in raw.splitlines()
+                           if x.strip().startswith(prefix)), None)
+              if line is None:
                   raise SystemExit(f"Missing Lean theorem receipt: {name}")
-              used = set((m.group(2) or "").split(", ")) - {""}
+              status = line[len(prefix):]
+              if status == "does not depend on any axioms":
+                  used = set()
+              elif status.startswith("depends on axioms: [") and status.endswith("]"):
+                  used = set(status[19:-1].split(", ")) - {""}
+              else:
+                  raise SystemExit(f"Malformed axiom receipt for {name}: {status}")
               if not used <= allowed:
                   raise SystemExit(f"Unreviewed axioms for {name}: {used - allowed}")
           if "sorryAx" in raw or "error:" in raw:

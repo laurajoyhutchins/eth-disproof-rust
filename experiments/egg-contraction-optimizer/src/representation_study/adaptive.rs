@@ -62,6 +62,16 @@ impl Case {
         format!("{}-v{}-c{}-s{}", self.kind.name(),
             self.variables, self.clauses, self.seed)
     }
+
+    /// The frustrated-ring generator adds one shared hub to its named
+    /// cycle-length parameter; every random CNF uses exactly `variables`.
+    pub fn declared_variables(self) -> usize {
+        if self.kind == CaseKind::FrustratedXor3Cnf {
+            self.variables + 1
+        } else {
+            self.variables
+        }
+    }
 }
 
 /// Fixed split, committed before viewing benchmark outcomes. No heuristic
@@ -461,6 +471,8 @@ mod tests {
         assert_eq!(cases.iter().map(|c| c.label()).collect::<BTreeSet<_>>().len(), 24);
         assert!(cases.iter().filter(|c| c.kind != CaseKind::FrustratedXor3Cnf)
             .all(|c| c.seed >= 1000));
+        assert!(cases.iter().filter(|c| c.kind == CaseKind::FrustratedXor3Cnf)
+            .all(|c| c.declared_variables() == c.variables + 1));
     }
 
     #[test]

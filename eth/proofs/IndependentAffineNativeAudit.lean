@@ -361,6 +361,10 @@ No exhaustive assignment enumeration or native producer assumptions.
 private def xorAll (xs : List Bool) : Bool :=
   xs.foldr (fun x total => x ^^ total) false
 
+private theorem xor_rearrange (a b c d : Bool) :
+    ((a ^^ b) ^^ (c ^^ d)) = ((a ^^ c) ^^ (b ^^ d)) := by
+  cases a <;> cases b <;> cases c <;> cases d <;> decide
+
 private theorem xorAll_map_xor {α : Type*}
     (xs : List α) (f g : α → Bool) :
     xorAll (xs.map (fun x => f x ^^ g x)) =
@@ -376,9 +380,8 @@ private theorem xorAll_map_xor {α : Type*}
               (xorAll (xs.map f) ^^ xorAll (xs.map g))) := by rw [ih]
         _ = (xorAll ((x :: xs).map f) ^^
               xorAll ((x :: xs).map g)) := by
-              cases f x <;> cases g x <;>
-                cases xorAll (xs.map f) <;>
-                cases xorAll (xs.map g) <;> decide
+              exact xor_rearrange (f x) (g x)
+                (xorAll (xs.map f)) (xorAll (xs.map g))
 
 private theorem occurrenceFold_acc
     (xs : List Name) (target : Name) (acc : Bool) :
@@ -389,8 +392,7 @@ private theorem occurrenceFold_acc
   | cons x xs ih =>
       simp only [List.foldl_cons]
       rw [ih (acc ^^ (x == target)), ih (false ^^ (x == target))]
-      cases acc <;> cases x == target <;>
-        cases xs.foldl (fun p name => p ^^ (name == target)) false <;> decide
+      simp [Bool.xor_assoc]
 
 private theorem occurrenceBit_cons (x : Name) (xs : List Name)
     (target : Name) :
@@ -434,9 +436,18 @@ private theorem xorAll_delta (ns : List Name)
       by_cases hx : target = x
       · subst target
         have htail := xorAll_delta_none xs x assignment hn'.1
-        simp [xorAll, htail]
+        change (assignment x ^^
+          xorAll (xs.map (fun name => (x == name) && assignment name))) =
+          (if x ∈ x :: xs then assignment x else false)
+        rw [htail]
+        simp
       · have hrest := ih hn'.2
-        simp [xorAll, hx, hrest]
+        have hfalse : (target == x) = false := by simp [hx]
+        change (((target == x) && assignment x) ^^
+          xorAll (xs.map (fun name => (target == name) && assignment name))) =
+          (if target ∈ x :: xs then assignment target else false)
+        rw [hfalse, hrest]
+        simp [hx]
 
 private def coefficientEval
     (ns occ : List Name) (assignment : Name → Bool) : Bool :=
@@ -481,15 +492,14 @@ private theorem occurrenceEval_acc (xs : List Name)
   | cons x xs ih =>
       simp only [List.foldl_cons, occurrenceEval]
       rw [ih (acc ^^ assignment x), ih (false ^^ assignment x)]
-      cases acc <;> cases assignment x <;>
-        cases xs.foldl (fun parity n => parity ^^ assignment n) false <;> decide
+      simp [Bool.xor_assoc]
 
 private theorem occurrenceEval_cons (x : Name) (xs : List Name)
     (assignment : Name → Bool) :
     occurrenceEval (x :: xs) assignment =
       (assignment x ^^ occurrenceEval xs assignment) := by
-  simp only [occurrenceEval, List.foldl_cons]
-  simpa using occurrenceEval_acc xs assignment (assignment x)
+  simpa [occurrenceEval, List.foldl_cons] using
+    occurrenceEval_acc xs assignment (assignment x)
 
 /-- Every repeated source occurrence toggles exactly its corresponding
 matrix coefficient. In particular two occurrences cancel. The statement

@@ -822,6 +822,117 @@ mod tests {
     }
 
     #[test]
+    fn raw_quadratic_phase_splits_at_internal_bit_for_every_boundary() {
+        // Independent truth-table interpretation of the native remove_first
+        // result. Include repeated/diagonal/unsorted input monomials to
+        // exercise the actual constructor's canonical XOR normalization.
+        // Both pairs cancel after the constructor's squarefree and XOR rules.
+        let normalized = QuadraticPhase::new(
+            2,
+            vec![vec![0, 0], vec![0], vec![1, 0], vec![0, 1]],
+        )
+        .unwrap();
+        assert!(normalized.terms().is_empty());
+
+        let mut seed = 0x5eed_2026_1120_u64;
+        for n in 0..=8 {
+            let width = n + 1;
+            for _case in 0..32 {
+                let mut raw = Vec::new();
+                if next(&mut seed) & 1 != 0 {
+                    raw.push(vec![]);
+                }
+                for i in 0..width {
+                    if next(&mut seed) & 1 != 0 {
+                        raw.push(vec![i]);
+                    }
+                    if next(&mut seed) & 1 != 0 {
+                        raw.push(vec![i, i]);
+                    }
+                    for j in (i + 1)..width {
+                        if next(&mut seed) & 1 != 0 {
+                            raw.push(vec![j, i]); // unsorted input
+                        }
+                        if next(&mut seed) & 1 != 0 {
+                            raw.push(vec![i, j]); // duplicate pair may cancel
+                        }
+                    }
+                }
+                let original_terms = raw.clone();
+                let source = QuadraticPhase::new(width, raw).unwrap();
+                let (base, mixed_constraint) = source.remove_first(None).unwrap();
+                let mixed = mixed_constraint.unwrap();
+                let replacement_constant = next(&mut seed) & 1 != 0;
+                let replacement_linear = (0..n)
+                    .map(|_| next(&mut seed) & 1 != 0)
+                    .collect::<Vec<_>>();
+                let (forced, forced_constraint) = source
+                    .remove_first(Some(&(replacement_constant, replacement_linear.clone())))
+                    .unwrap();
+                assert!(forced_constraint.is_none());
+                for word in 0..(1usize << n) {
+                    let boundary = bits(n, word);
+                    let mixed_bit = mixed.boundary_indices.iter().fold(
+                        mixed.rhs,
+                        |parity, &index| parity ^ boundary[index],
+                    );
+                    for x in [false, true] {
+                        let assigned = assignment(&boundary, x);
+                        let original = source.eval(&assigned);
+                        // This oracle uses the unnormalized input monomials,
+                        // not the constructor's BTreeSet or split evaluator.
+                        let raw_value = original_terms.iter().fold(false, |parity, term| {
+                            parity ^ term.iter().all(|&index| assigned[index])
+                        });
+                        assert_eq!(
+                            original, raw_value,
+                            "quadratic constructor changed raw phase: n={n}, word={word}, x={x}",
+                        );
+                        let split = base.eval(&boundary) ^ (x && mixed_bit);
+                        assert_eq!(
+                            original, split,
+                            "internal-bit phase split failed: n={n}, word={word}, x={x}",
+                        );
+                    }
+                    let forced_x = replacement_linear.iter().zip(&boundary).fold(
+                        replacement_constant,
+                        |parity, (&coefficient, &bit)| parity ^ (coefficient && bit),
+                    );
+                    assert_eq!(
+                        source.eval(&assignment(&boundary, forced_x)),
+                        forced.eval(&boundary),
+                        "forced affine source substitution failed: n={n}, word={word}",
+                    );
+                }
+            }
+        }
+
+        // The algebraic identity is independent of small truth-table widths.
+        let source = QuadraticPhase::new(
+            131,
+            vec![vec![], vec![0, 0], vec![0, 127], vec![0, 129], vec![130]],
+        )
+        .unwrap();
+        let (base, mixed) = source.remove_first(None).unwrap();
+        let mixed = mixed.unwrap();
+        for word in 0..16 {
+            let mut boundary = vec![false; 130];
+            for i in 0..4 {
+                boundary[125 + i] = word & (1 << i) != 0;
+            }
+            let mixed_bit = mixed.boundary_indices.iter().fold(
+                mixed.rhs, |parity, &index| parity ^ boundary[index],
+            );
+            for x in [false, true] {
+                assert_eq!(
+                    source.eval(&assignment(&boundary, x)),
+                    base.eval(&boundary) ^ (x && mixed_bit),
+                );
+            }
+        }
+    }
+
+    #[test]
     fn native_lean_oracle_emits_source_semantics_not_an_opaque_success_bit() {
         let input = source(1, vec![], phase(2, &[&[0, 1]]), 0);
         let (out, certificate) = input.eliminate_with_certificate().unwrap();

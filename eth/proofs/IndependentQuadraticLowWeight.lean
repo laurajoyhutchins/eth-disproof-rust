@@ -412,6 +412,106 @@ def nativeOutputBit {n : ℕ} (boundary : Fin n → Bool)
     (index : Nat) : Bool :=
   ((List.ofFn boundary)[index]?).getD false
 
+/-!
+## Source-derived internal-bit phase splitting
+
+This models the Boolean multiplication/XOR behavior of the native
+`QuadraticPhase::remove_first` operation before interpolation. The
+definition works even for repeated or malformed raw monomials, so the
+algebraic identity does not rely on normalization or bounded width.
+It is a specification-level theorem, not Rust execution refinement.
+-/
+
+/-- Evaluate a source monomial with coordinate zero omitted from the product. -/
+def nativeTermTail {n : ℕ} (boundary : Fin n → Bool) (term : List Nat) : Bool :=
+  term.all (fun index =>
+    if index == 0 then true else nativeOutputBit boundary (index - 1))
+
+/-- Each raw source monomial is a boundary product times its optional internal bit. -/
+theorem nativeTerm_split {n : ℕ} (boundary : Fin n → Bool)
+    (term : List Nat) (x : Bool) :
+    term.all (nativeSourceBit x boundary) =
+      (nativeTermTail boundary term &&
+        (if term.contains 0 then x else true)) := by
+  induction term with
+  | nil =>
+      simp [nativeTermTail]
+  | cons index rest ih =>
+      cases index with
+      | zero =>
+          cases x <;>
+            simp [nativeTermTail, nativeSourceBit, ih, Bool.and_assoc,
+              Bool.and_comm, Bool.and_left_comm]
+      | succ index =>
+          simp [nativeTermTail, nativeSourceBit, nativeOutputBit, ih,
+            Bool.and_assoc, Bool.and_comm] <;>
+            ac_rfl
+
+/-- Incremental Boolean phase split: base parity and mixed internal-bit parity. -/
+def nativePhaseStep {n : ℕ} (boundary : Fin n → Bool)
+    (state : Bool × Bool) (term : List Nat) : Bool × Bool :=
+  let tail := nativeTermTail boundary term
+  if term.contains 0 then
+    (state.1, state.2 ^^ tail)
+  else
+    (state.1 ^^ tail, state.2)
+
+/-- The phase split preserves every intermediate XOR accumulator. -/
+private theorem nativePhaseStep_sound {n : ℕ}
+    (boundary : Fin n → Bool) (term : List Nat)
+    (x base mixed : Bool) :
+    ((base ^^ (x && mixed)) ^^ term.all (nativeSourceBit x boundary)) =
+      ((nativePhaseStep boundary (base, mixed) term).1 ^^
+        (x && (nativePhaseStep boundary (base, mixed) term).2)) := by
+  rw [nativeTerm_split]
+  cases base <;> cases mixed <;> cases x <;>
+    cases ht : nativeTermTail boundary term <;>
+    cases hz : term.contains 0 <;>
+    simp only [nativePhaseStep, ht, hz] <;>
+    decide
+
+private theorem nativePhase_split_acc {n : ℕ}
+    (boundary : Fin n → Bool) (terms : List (List Nat))
+    (x base mixed : Bool) :
+    terms.foldl
+      (fun parity term => parity ^^ term.all (nativeSourceBit x boundary))
+      (base ^^ (x && mixed)) =
+      (let state := terms.foldl (nativePhaseStep boundary) (base, mixed)
+       state.1 ^^ (x && state.2)) := by
+  induction terms generalizing base mixed with
+  | nil => rfl
+  | cons term rest ih =>
+      simp only [List.foldl_cons]
+      rw [nativePhaseStep_sound boundary term x base mixed]
+      exact ih (nativePhaseStep boundary (base, mixed) term).1
+        (nativePhaseStep boundary (base, mixed) term).2
+
+/-- Source-derived quadratic phases split exactly at the internal bit,
+for every exterior setting, with no separate source-phase hypothesis.
+
+The mixed part is affine when nativeSourceShape accepts a quadratic source;
+the present identity holds even without that restriction. -/
+theorem nativePhase_split {n : ℕ}
+    (boundary : Fin n → Bool) (terms : List (List Nat)) (x : Bool) :
+    nativePhase (nativeSourceBit x boundary) terms =
+      (let state := terms.foldl (nativePhaseStep boundary) (false, false)
+       state.1 ^^ (x && state.2)) := by
+  simpa [nativePhase] using
+    nativePhase_split_acc boundary terms x false false
+
+/-- The signed sum is computed directly from the raw source phase,
+without separately assuming the polynomial split is correct. For a free
+internal bit, a nonzero mixed phase cancels both signed contributions. -/
+theorem nativePhase_signed_fiber {n : ℕ}
+    (boundary : Fin n → Bool) (terms : List (List Nat)) :
+    (∑ x : Bool, signedBit (nativePhase (nativeSourceBit x boundary) terms)) =
+      (let state := terms.foldl (nativePhaseStep boundary) (false, false)
+       if state.2 = true then 0 else 2 * signedBit state.1) := by
+  simp_rw [nativePhase_split]
+  exact signedBoolFiber
+    (terms.foldl (nativePhaseStep boundary) (false, false)).1
+    (terms.foldl (nativePhaseStep boundary) (false, false)).2
+
 /-- Check every raw affine parity constraint against the given coordinate interpreter. -/
 def nativeRowsHold (bits : Nat → Bool)
     (rows : List (List Nat × Bool)) : Bool :=
@@ -583,6 +683,10 @@ example : checkNativeInstance (n := 1)
 /-- A forged exponent must be rejected. -/
 example : checkNativeInstance (n := 1) freeOracleSource
     { freeOracleOutput with exponent := 0 } = false := by decide
+
+#print axioms IndependentETH.QuadraticLowWeight.nativeTerm_split
+#print axioms IndependentETH.QuadraticLowWeight.nativePhase_split
+#print axioms IndependentETH.QuadraticLowWeight.nativePhase_signed_fiber
 
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_sound
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_receipt_sound

@@ -1,3 +1,5 @@
+import ProbeP2.Extraction.Funs
+
 /-!
 # P2: source-derived mutable-vector effect and returned Result
 
@@ -9,7 +11,6 @@ the return/refusal value and post-state of the extracted P2 body, but does
 NOT prove Rust allocator capacity, Aeneas model adequacy, or the production
 ranked tracer (which is blocked separately).
 -/
-import ProbeP2.Extraction.Funs
 
 open Aeneas Aeneas.Std
 open RustM

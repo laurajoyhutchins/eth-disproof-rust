@@ -202,12 +202,14 @@ leanc -O2 -o "$out/source-del-execute" \
   "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \
   runtime/lean-c/source_shell_step_oracle.c \
   runtime/lean-c/source_release_oracle.c \
+  runtime/lean-c/destructor_worklist_oracle.c \
   runtime/lean-c/source_del_event_trace.c \
   "$out/abi-traced.c" "$out/libsource_del_generated.a"
 # The physically observed trace comes from actual pinned Lean C calls,
 # not a Rust or Lean reimplementation of those primitive operations.
 LR_SOURCE_TRACE="$out/source-shell-physical.tsv" \
 LR_RELEASE_TRACE="$out/source-release-physical.tsv" \
+LR_DESTRUCTOR_WITNESSES="$out/destructor-worklist-witnesses.tsv" \
 LR_SOURCE_DEL_EVENTS="$out/source-del-events.tsv" \
   "$out/source-del-execute" | tee "$out/source-del-trace.txt"
 # Fail on missing/extra events, cross-backend differences, invalid physical
@@ -221,6 +223,15 @@ grep -Fq 'source_del_original_C_vs_exact_Reader_event_parity=PASS cases=8 lanes=
   "$out/source-del-events-audit.txt"
 grep -Fx 'reader-source-shell-physical-checkpoints=RECORDED' "$out/source-del-trace.txt"
 grep -Fx 'reader-c-release-heap-stamp-checkpoints=RECORDED' "$out/source-del-trace.txt"
+grep -Fx 'reader-c-destructor-worklist-witnesses=RECORDED' "$out/source-del-trace.txt"
+test -s "$out/destructor-worklist-witnesses.tsv"
+python3 scripts/check-destructor-witnesses.py \
+  "$out/destructor-worklist-witnesses.tsv" --self-test \
+  | tee "$out/destructor-worklist-witness-audit.txt"
+grep -Fq 'destructor_worklist_witnesses=PASS cases=8 rows=81 physical_refcount_effects_only' \
+  "$out/destructor-worklist-witness-audit.txt"
+grep -Fq 'destructor_witness_mutations=9/9_REFUSED' \
+  "$out/destructor-worklist-witness-audit.txt"
 test -s "$out/source-shell-physical.tsv"
 test -s "$out/source-release-physical.tsv"
 lean proofs/ReaderCReleaseAudit.lean | tee "$out/source-release-trace-audit.txt"
@@ -388,6 +399,14 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
   echo 'shell_del_shared_parent=REFUSED'
   echo 'source_del_ownership_event_trace=8_CASES_EXACT_EMITTED_C_AND_RUST_PRIMITIVE_CALLS'
   echo 'source_del_recursive_destructor_internals=NOT_INSTRUMENTED'
+  echo 'physical_destructor_worklist=8_CASES_81_REAL_C_RC_WITNESSES'
+  echo 'physical_destructor_free_timestamps=NOT_OBSERVED'
+  echo 'physical_destructor_order=NOT_OBSERVED'
+  echo 'physical_destructor_witness_graphs=CHAINS_AND_FORKS_WITH_INDEPENDENT_RETAINS'
+  sha256sum runtime/lean-c/destructor_worklist_oracle.c \
+    scripts/check-destructor-witnesses.py \
+    "$out/destructor-worklist-witnesses.tsv" \
+    "$out/destructor-worklist-witness-audit.txt"
   sha256sum runtime/lean-c/source_del_event_hooks.h \
     runtime/lean-c/source_del_event_trace.c \
     runtime/lean-c/abi.c \

@@ -421,6 +421,63 @@ mod tests {
         }
     }
 
+    /// Row-set semantics must not accidentally depend on the canonical
+    /// serialization order. Conversely, a duplicate signed row must refuse
+    /// even when the number of CSR entries and row widths are unchanged.
+    #[test]
+    fn row_permutations_preserve_receipts_and_duplicates_refuse() {
+        for n in [4_usize, 5, 8, 12] {
+            let rhs = (0..n - 3).map(|i| i % 2 != 0).collect::<Vec<_>>();
+            let base = OwnedSignedCsr::from_cnf(&source(n, &rhs));
+            let expected = base.view().recognize_recurrence().unwrap();
+            let rows = base
+                .row_offsets
+                .windows(2)
+                .map(|span| {
+                    (
+                        base.column_indices[span[0]..span[1]].to_vec(),
+                        base.signs[span[0]..span[1]].to_vec(),
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            for shift in [0, 1, rows.len() / 2, rows.len() - 1] {
+                let mut reordered = rows.clone();
+                reordered.rotate_left(shift);
+                if shift % 2 != 0 {
+                    reordered.reverse();
+                }
+                let mut csr = OwnedSignedCsr {
+                    variables: n,
+                    row_offsets: vec![0],
+                    column_indices: Vec::new(),
+                    signs: Vec::new(),
+                };
+                for (columns, signs) in reordered {
+                    csr.column_indices.extend(columns);
+                    csr.signs.extend(signs);
+                    csr.row_offsets.push(csr.column_indices.len());
+                }
+                assert_eq!(csr.view().recognize_recurrence(), Ok(expected.clone()));
+                assert_eq!(
+                    verify_recurrence_receipt(csr.view(), &expected),
+                    Ok(expected.count())
+                );
+            }
+
+            let mut duplicate = base.clone();
+            let a = duplicate.row_offsets[0];
+            let b = duplicate.row_offsets[1];
+            let c = duplicate.row_offsets[2];
+            assert_eq!(b - a, 3);
+            assert_eq!(c - b, 3);
+            duplicate.column_indices[b..c].copy_from_slice(&base.column_indices[a..b]);
+            duplicate.signs[b..c].copy_from_slice(&base.signs[a..b]);
+            assert!(duplicate.view().recognize_recurrence().is_err());
+            assert!(verify_recurrence_receipt(duplicate.view(), &expected).is_err());
+        }
+    }
+
     #[test]
     fn fixed_lean_csr_vector_matches_rust_encoding() {
         // The same six complete clauses and all arrays are kernel-checked

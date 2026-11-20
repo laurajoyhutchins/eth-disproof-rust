@@ -86,10 +86,10 @@ class ModuleReceiptContractTests(unittest.TestCase):
             "git_blob":"a"*40
         }
 
-    def probe(self):
+    def probe(self, require_cached=False):
         return q.probe_one(self.stage,self.out,self.out,self.out,
                            60,30,30,4096,q.MAX_PEAK_RSS_BYTES,
-                           "Lean (version 4.34.1, x)")
+                           "Lean (version 4.34.1, x)", require_cached)
 
     def simulated_run(self,_argv,_cwd,log,_timeout,_rss,env=None):
         if log.name=="graph":
@@ -130,6 +130,40 @@ class ModuleReceiptContractTests(unittest.TestCase):
         self.assertNotIn("certificate_sha256",result)
         self.assertFalse((stage_dir/"receipt.json").exists())
         self.assertFalse((stage_dir/"source.json").exists())
+
+    def test_cache_only_refuses_without_rebuilding_original_dependency_closure(self):
+        with (patch.object(q,"pinned_record",return_value=self.record),
+              patch.object(q,"run_stage_process") as process):
+            result=self.probe(require_cached=True)
+        self.assertEqual(result["status"],"REFUSED")
+        self.assertIn("compiled module missing",result["reason"])
+        self.assertFalse((self.out/self.stage.id/"receipt.json").exists())
+        process.assert_not_called()
+
+    def test_cached_module_is_freshly_imported_and_never_rebuilt(self):
+        module_path=(self.out/".lake/build/lib/lean"/
+                     (self.stage.module.replace(".","/")+".olean"))
+        module_path.parent.mkdir(parents=True,exist_ok=True)
+        module_path.write_bytes(b"source-bound cached module probe")
+        commands=[]
+        def record(argv,cwd,log,timeout,rss,env=None):
+            commands.append(argv)
+            return self.simulated_run(argv,cwd,log,timeout,rss,env)
+        with (patch.object(q,"pinned_record",return_value=self.record),
+              patch.object(q,"source",return_value="import Fake\\n"),
+              patch.object(q,"run_stage_process",side_effect=record),
+              patch.object(q,"validate_stage_graph",return_value=(3,"b"*64)),
+              patch.object(q,"certificate_source",
+                           return_value=("theorem fixture : True := trivial\\n",
+                                         {"certificate_sha256":"c"*64}))):
+            result=self.probe(require_cached=True)
+        self.assertEqual(result["status"],"ORIGINAL_MODULE_GRAPH_KERNEL_CERTIFIED")
+        self.assertEqual(result["build_mode"],"cached_module_fresh_import")
+        self.assertEqual(result["cached_olean_sha256"],
+                         q.hashlib.sha256(module_path.read_bytes()).hexdigest())
+        self.assertTrue(commands)
+        self.assertTrue(all(argv[:2] != ["lake","-K"] for argv in commands))
+        self.assertEqual(commands[0][:3],["lake","env","lean"])
 
     def test_large_graph_is_unverified_without_unbounded_certificate(self):
         with (patch.object(q,"pinned_record",return_value=self.record),

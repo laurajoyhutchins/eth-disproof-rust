@@ -14,6 +14,11 @@ This is finite cross-implementation evidence, NOT an all-input
 Rust-to-Lean refinement theorem.
 -/
 
+-- Concrete source-byte lists may contain more than 128 variables; these
+-- limits apply to fixture checking, not to native algorithm resources.
+set_option maxRecDepth 8192
+set_option maxHeartbeats 8000000
+
 namespace IndependentETH.AffineNativeAudit
 
 abbrev Name := List Nat

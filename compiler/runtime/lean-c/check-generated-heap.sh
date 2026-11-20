@@ -237,9 +237,9 @@ grep -Fq 'destructor_witness_mutations=13/13_REFUSED' \
 # separate pinned-source diagnostic executable with internal event hooks.
 # The original build and its emitted Reader/C outputs remain unchanged.
 bash scripts/check-internal-worklist.sh
-grep -Fq 'worklist_internal_trace=PASS cases=8' \
+grep -Fq 'worklist_internal_trace=PASS cases=11' \
   "$out/internal-worklist-audit.txt"
-grep -Fxq 'worklist_stock_vs_diagnostic_physical_effects=PASS rows=81' \
+grep -Fxq 'worklist_stock_vs_diagnostic_physical_effects=PASS rows=90' \
   "$out/stock-diagnostic-comparison.txt"
 test -s "$out/source-shell-physical.tsv"
 test -s "$out/source-release-physical.tsv"
@@ -409,7 +409,7 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
   echo 'source_del_ownership_event_trace=8_CASES_EXACT_EMITTED_C_AND_RUST_PRIMITIVE_CALLS'
   echo 'source_del_recursive_destructor_internals=NOT_INSTRUMENTED'
   echo 'internal_destructor_worklist=PINNED_SOURCE_DIAGNOSTIC_INDEPENDENT_EXECUTABLE'
-  echo 'internal_destructor_stock_effect_equivalence=81_LIVE_WITNESS_ROWS'
+  echo 'internal_destructor_stock_effect_equivalence=90_LIVE_WITNESS_ROWS'
   echo 'internal_destructor_unmodified_runtime_trace=NOT_OBSERVED'
   sha256sum scripts/check-internal-worklist.sh scripts/instrument-pinned-worklist.py \
     scripts/check-internal-worklist.py runtime/lean-c/worklist_internal_trace.c \

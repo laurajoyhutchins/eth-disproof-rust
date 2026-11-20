@@ -132,6 +132,129 @@ theorem homogeneous_count_seven (k : Nat) :
   rw [h]
   decide
 
+/-! ## Signed clause-row semantics and a complete source certificate
+
+A three-literal signed row is represented by its *unique falsifying*
+assignment on three ordered variable columns. For a DIMACS literal, the
+falsifying bit is false for a positive literal and true for a negative
+literal. This model retains all three columns and every row; it does not
+rely on SAT-equivalence-preserving preprocessing or a guessed subgraph.
+-/
+
+structure SignedRow where
+  first : Nat
+  second : Nat
+  third : Nat
+  falsifiesAt : State
+deriving DecidableEq
+
+def row (i j k : Nat) (p : State) : SignedRow :=
+  ⟨i, j, k, p⟩
+
+def at (x : Nat → Bool) (i j k : Nat) : State :=
+  (x i, x j, x k)
+
+def rowHolds (x : Nat → Bool) (r : SignedRow) : Prop :=
+  at x r.first r.second r.third ≠ r.falsifiesAt
+
+def allRowsHold (x : Nat → Bool) (rows : Finset SignedRow) : Prop :=
+  ∀ r ∈ rows, rowHolds x r
+
+def parityState : State → Bool
+  | (a, b, c) => Bool.xor (Bool.xor a b) c
+
+def parityMask (d : Bool) : Finset State :=
+  Finset.univ.filter (fun p => parityState p ≠ d)
+
+theorem avoid_mask_iff_not_mem (mask : Finset State) (s : State) :
+    (∀ p ∈ mask, s ≠ p) ↔ s ∉ mask := by
+  constructor
+  · intro h hs
+    exact (h s hs) rfl
+  · intro h p hp heq
+    apply h
+    simpa [heq] using hp
+
+theorem parityMask_exact (d : Bool) (s : State) :
+    (∀ p ∈ parityMask d, s ≠ p) ↔ parityState s = d := by
+  rw [avoid_mask_iff_not_mem]
+  simp [parityMask]
+
+def parityRows (i : Nat) (d : Bool) : Finset SignedRow :=
+  (parityMask d).image (fun p => row i (i + 1) (i + 3) p)
+
+def windowRow (i : Nat) : SignedRow :=
+  row i (i + 1) (i + 2) zeroState
+
+theorem parityRows_exact (x : Nat → Bool) (i : Nat) (d : Bool) :
+    (∀ r ∈ parityRows i d, rowHolds x r) ↔
+      parityState (at x i (i + 1) (i + 3)) = d := by
+  constructor
+  · intro h
+    apply (parityMask_exact d (at x i (i + 1) (i + 3))).mp
+    intro p hp
+    exact h (row i (i + 1) (i + 3) p)
+      (Finset.mem_image.mpr ⟨p, hp, rfl⟩)
+  · intro h r hr
+    obtain ⟨p, hp, rfl⟩ := Finset.mem_image.mp hr
+    exact (parityMask_exact d (at x i (i + 1) (i + 3))).mpr h p hp
+
+/-- Exactly the signed rows of the recurrence family, as a finite set.
+No row order is imposed, but duplicate rows are irrelevant to CNF semantics.
+The associated Rust CSR reader enforces nonduplication independently. -/
+def sourceRows (ds : List Bool) : Finset SignedRow :=
+  (Finset.range ds.length).biUnion (fun i => parityRows i (ds[i]!)) ∪
+    (Finset.range (ds.length + 1)).image windowRow
+
+/-- An independent, all-assignment description of the *whole* signed source.
+Unlike a seed-only theorem, this states exactly what a certified row set
+means for any valuation of the declared variables. -/
+theorem sourceRows_exact (ds : List Bool) (x : Nat → Bool) :
+    allRowsHold x (sourceRows ds) ↔
+      (∀ i, i < ds.length →
+        parityState (at x i (i + 1) (i + 3)) = ds[i]!) ∧
+      (∀ i, i < ds.length + 1 →
+        at x i (i + 1) (i + 2) ≠ zeroState) := by
+  constructor
+  · intro h
+    constructor
+    · intro i hi
+      apply (parityRows_exact x i (ds[i]!)).mp
+      intro r hr
+      exact h r (Finset.mem_union.mpr
+        (Or.inl (Finset.mem_biUnion.mpr
+          ⟨i, Finset.mem_range.mpr hi, hr⟩)))
+    · intro i hi
+      exact h (windowRow i) (Finset.mem_union.mpr
+        (Or.inr (Finset.mem_image.mpr
+          ⟨i, Finset.mem_range.mpr hi, rfl⟩)))
+  · rintro ⟨hp, ho⟩ r hr
+    rcases Finset.mem_union.mp hr with parity | window
+    · obtain ⟨i, hi, hrow⟩ := Finset.mem_biUnion.mp parity
+      exact (parityRows_exact x i (ds[i]!)).mpr
+        (hp i (Finset.mem_range.mp hi)) r hrow
+    · obtain ⟨i, hi, rfl⟩ := Finset.mem_image.mp window
+      exact ho i (Finset.mem_range.mp hi)
+
+/-- Executable semantic acceptance predicate for the complete row source,
+rather than a sampled valuation or an inferred partial gadget. -/
+def checkSourceRows (actual : Finset SignedRow) (ds : List Bool) : Bool :=
+  decide (actual = sourceRows ds)
+
+/-- A positive source-row equality check certifies the interpretation
+of *all* rows, for *all* Boolean valuations. -/
+theorem checked_source_rows_exact
+    (actual : Finset SignedRow) (ds : List Bool) (x : Nat → Bool)
+    (h : checkSourceRows actual ds = true) :
+    allRowsHold x actual ↔
+      (∀ i, i < ds.length →
+        parityState (at x i (i + 1) (i + 3)) = ds[i]!) ∧
+      (∀ i, i < ds.length + 1 →
+        at x i (i + 1) (i + 2) ≠ zeroState) := by
+  have hrows : actual = sourceRows ds := of_decide_eq_true h
+  rw [hrows]
+  exact sourceRows_exact ds x
+
 #print axioms IndependentETH.NonAffine.previous_next
 #print axioms IndependentETH.NonAffine.next_previous
 #print axioms IndependentETH.NonAffine.gadget_exact

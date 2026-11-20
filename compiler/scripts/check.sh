@@ -84,6 +84,19 @@ for theorem in retain_requires_live release_requires_live release_last_leaf rele
     exit 2
   fi
 done
+# This is a mathematical tree-order theorem, NOT a C++ refinement claim.
+# The separate diagnostic executable checks physical worklist events.
+lean proofs/ReaderWorklistOrder.lean | tee artifacts/reader-worklist-order-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-worklist-order-axioms.txt; then
+  echo 'Worklist order theorem contains sorryAx' >&2
+  exit 2
+fi
+for theorem in same_visited_identities same_number_of_visits retained_subtree_is_a_frontier fork_lifo_visitation same_released_nodes_but_different_order retained_right_branch_stops; do
+  if ! grep -Fq "'ReaderWorklistOrder.${theorem}' " artifacts/reader-worklist-order-axioms.txt; then
+    echo "Missing kernel worklist order theorem receipt: ${theorem}" >&2
+    exit 2
+  fi
+done
 lean proofs/ReaderObjectCredits.lean | tee artifacts/reader-object-credits-axioms.txt
 if grep -Fq 'sorryAx' artifacts/reader-object-credits-axioms.txt; then
   echo 'Multi-allocation ownership theorem contains sorryAx' >&2

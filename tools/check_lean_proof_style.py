@@ -11,11 +11,24 @@ import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROOFS = ROOT / "eth" / "proofs"
+PROOF_DIRECTORIES = (
+    Path("eth/proofs"),
+    Path("instrumentation/lean-env/ACC"),
+)
 DECLARATION = re.compile(
-    r"^(?:(?:private|protected|noncomputable|partial|unsafe)\s+)*"
+    r"^(?:@\[[^\]]+\]\s*)*"
+    r"(?:(?:private|protected|noncomputable|partial|unsafe)\s+)*"
     r"(?:def|theorem|lemma|structure|inductive|class|abbrev|instance|opaque)\b"
 )
+
+
+def discover_proof_modules(root: Path = ROOT) -> list[Path]:
+    """Only repository-authored proofs; exclude pinned or generated upstream Lean."""
+    return sorted(
+        path
+        for relative in PROOF_DIRECTORIES
+        for path in (root / relative).glob("*.lean")
+    )
 
 
 def preceding_doc(lines: list[str], index: int) -> bool:
@@ -23,6 +36,11 @@ def preceding_doc(lines: list[str], index: int) -> bool:
     pos = index - 1
     while pos >= 0 and not lines[pos].strip():
         pos -= 1
+    # An attribute on its own line belongs to the following declaration.
+    while pos >= 0 and lines[pos].strip().startswith("@[") and lines[pos].strip().endswith("]"):
+        pos -= 1
+        while pos >= 0 and not lines[pos].strip():
+            pos -= 1
     if pos < 0 or not lines[pos].rstrip().endswith("-/"):
         return False
     while pos >= 0:
@@ -76,7 +94,7 @@ def main() -> int:
         help="also fail on undocumented top-level declarations",
     )
     args = parser.parse_args()
-    paths = args.paths or sorted(PROOFS.glob("*.lean"))
+    paths = args.paths or discover_proof_modules()
     if not paths:
         parser.error("no Lean proof modules found")
     failed = False

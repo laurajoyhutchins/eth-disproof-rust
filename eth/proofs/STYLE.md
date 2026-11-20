@@ -1,6 +1,8 @@
 # Lean proof style
 
-These conventions apply to repository-authored `eth/proofs/*.lean` modules.
+These conventions apply to repository-authored `eth/proofs/*.lean` and
+`instrumentation/lean-env/ACC/*.lean` modules. These are our own proof
+obligations, not the source-pinned upstream modules.
 They do not authorize editing the pinned upstream Lean sources or changing
 an established theorem statement merely for appearance.
 
@@ -42,8 +44,8 @@ documentation, and reports undocumented declarations as advisories by default
 so already-open research branches are not blocked by a new editorial policy.
 Use `--strict-docs` when deliberately auditing a fully documented module.
 It checks **neither** elaboration, mathematical correctness, absence of
-hidden axioms, nor source-to-Rust refinement. The original source-pinned Lean workflows remain
-authoritative. Never replace a hard proof with `sorry`, `admit`, or an
+hidden axioms, nor source-to-Rust refinement. The original source-pinned
+Lean workflows remain authoritative. Never replace a hard proof with `sorry`, `admit`, or an
 unexamined axiom to make a style pass succeed.
 
 Run the fast local check:

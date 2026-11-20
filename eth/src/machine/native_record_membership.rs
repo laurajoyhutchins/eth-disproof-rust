@@ -4,6 +4,7 @@
 //! No host-side record decoding, classification or SAT oracle is used.
 
 use crate::Error;
+use crate::bit_program::record_iteration::{RecordPorts, iterate};
 use crate::bit_program::{Atom, Cmd, Instr, Program};
 use crate::native_high::clear_program;
 use crate::native_membership::membership_callback_command;
@@ -58,33 +59,15 @@ pub fn frame_program() -> Result<Program<2, 2>, Error> {
 /// Requires canonical framed input, clean work stacks 1/3/4, query on 2.
 pub fn iterate_command() -> Result<Cmd<7, 5>, Error> {
     let reader = Cmd::Call(frame_program()?.lift::<7, 5>([5, 6], [0, 1])?);
-    let callback = membership_callback_command()?;
-    let advance = Cmd::ite(
-        4,
-        Cmd::Atom(Atom::Set {
-            dst: 5,
-            value: false,
-        }),
-        Cmd::Atom(Atom::Pop {
-            stack: 0,
-            value: 5,
+    Ok(iterate(
+        RecordPorts {
+            tag: 5,
             present: 6,
-        }),
-    );
-    let body = Cmd::seq(reader, Cmd::seq(callback, advance));
-    Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set {
-            dst: 4,
-            value: false,
-        }),
-        Cmd::seq(
-            Cmd::Atom(Atom::Pop {
-                stack: 0,
-                value: 5,
-                present: 6,
-            }),
-            Cmd::while_(5, body),
-        ),
+            found: 4,
+            source: 0,
+        },
+        reader,
+        membership_callback_command()?,
     ))
 }
 

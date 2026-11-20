@@ -1,6 +1,7 @@
 //! Original SubexpTautologyFilterProgram: process each CNF clause through the
 //! actual 10x8 tautology machine, retain only nontautologies, restore order.
 use crate::Error;
+use crate::bit_program::record_iteration::{RecordPorts, iterate};
 use crate::bit_program::stack_routines::transfer_program;
 use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_high::clear_program;
@@ -45,31 +46,15 @@ pub fn callback_command() -> Result<Cmd<13, 11>, Error> {
 }
 pub fn scan_command() -> Result<Cmd<13, 11>, Error> {
     let reader = Cmd::Call(frame_program()?.lift::<13, 11>([10, 11], [0, 1])?);
-    let advance = Cmd::ite(
-        12,
-        Cmd::Atom(Atom::Set {
-            dst: 10,
-            value: false,
-        }),
-        Cmd::Atom(Atom::Pop {
-            stack: 0,
-            value: 10,
+    Ok(iterate(
+        RecordPorts {
+            tag: 10,
             present: 11,
-        }),
-    );
-    Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set {
-            dst: 12,
-            value: false,
-        }),
-        Cmd::seq(
-            Cmd::Atom(Atom::Pop {
-                stack: 0,
-                value: 10,
-                present: 11,
-            }),
-            Cmd::while_(10, Cmd::seq(reader, Cmd::seq(callback_command()?, advance))),
-        ),
+            found: 12,
+            source: 0,
+        },
+        reader,
+        callback_command()?,
     ))
 }
 fn push_false(stack: usize) -> Cmd<13, 11> {

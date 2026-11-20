@@ -62,4 +62,4 @@ cargo test --locked --offline --all-targets
 
 The first two checks are standard-library Python tests. The Rust gate is part of the repository's existing acceptance procedure. Run in the actual checkout with the pinned toolchain. **Do not treat an unexecuted CI job or an absent local Rust toolchain as a passing result.**
 
-See [the executable source boundary](../eth/docs/m2-runnable-frontend.md), [the repository's ETH evidence](../eth/docs/evidence.md), and the [technical notebook's GSS model-bijection study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/gss-sudoku-cnf-encoding.md).
+See [the executable source boundary](eth/docs/m2-runnable-frontend.md), [the repository's ETH evidence](eth/docs/evidence.md), and the [technical notebook's GSS model-bijection study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/gss-sudoku-cnf-encoding.md).

@@ -138,8 +138,8 @@ def run_stage_process(argv: list[str], cwd: Path, log: Path, timeout: int,
         try:
             while child.poll() is None:
                 peak = max(peak, rss_bytes(child.pid))
-                if os.fstat(out.fileno()).st_size > MAX_OUTPUT_BYTES or
-                    os.fstat(err.fileno()).st_size > MAX_OUTPUT_BYTES:
+                if (os.fstat(out.fileno()).st_size > MAX_OUTPUT_BYTES
+                        or os.fstat(err.fileno()).st_size > MAX_OUTPUT_BYTES):
                     raise Refusal("original Lean output exceeds bounded log budget")
                 if peak > rss_limit:
                     raise Refusal(f"original Lean process group exceeded {rss_limit} RSS bytes")
@@ -148,8 +148,8 @@ def run_stage_process(argv: list[str], cwd: Path, log: Path, timeout: int,
                 time.sleep(0.2)
             if child.returncode != 0:
                 raise Refusal(f"original Lean exit {child.returncode}")
-            if os.fstat(out.fileno()).st_size > MAX_OUTPUT_BYTES or
-                    os.fstat(err.fileno()).st_size > MAX_OUTPUT_BYTES:
+            if (os.fstat(out.fileno()).st_size > MAX_OUTPUT_BYTES
+                        or os.fstat(err.fileno()).st_size > MAX_OUTPUT_BYTES):
                 raise Refusal("original Lean output exceeds bounded log budget")
         except BaseException:
             if child.poll() is None:

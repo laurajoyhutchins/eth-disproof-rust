@@ -11,6 +11,7 @@ on:
       - "eth/proofs/IndependentAffineNativeAudit.lean"
       - "eth/proofs/IndependentAffineMultiplicity.lean"
       - "eth/proofs/IndependentAffineRankNullity.lean"
+      - "eth/proofs/IndependentAffineTerminalSoundness.lean"
       - "eth/proofs/IndependentAffineRowOps.lean"
       - "eth/proofs/IndependentAffinePackedRows.lean"
       - ".github/workflows/egg-contraction-experiment.yml"
@@ -65,13 +66,14 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean eth/proofs/IndependentAffineNativeAudit.lean eth/proofs/IndependentAffineMultiplicity.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineTerminalSoundness.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean eth/proofs/IndependentAffineNativeAudit.lean eth/proofs/IndependentAffineMultiplicity.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
           cd instrumentation/lean-env
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineBoundary.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRankNullity.lean"
+          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineTerminalSoundness.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRowOps.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffinePackedRows.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentLivePortComposition.lean"

@@ -342,6 +342,67 @@ mod tests {
     }
 
     #[test]
+    fn direct_address_declines_nine_port_boundary() {
+        let ports = (0..9).map(|i| format!("x{i}")).collect::<Vec<_>>();
+        let stage = Stage {
+            ports: ports.clone(),
+            values: Values::Sparse(BTreeMap::new()),
+        };
+        let mut work = Work::default();
+        let result = DecisionBits::prepare(
+            &stage, &stage, &ports, &patterns(),
+            Policy::AlwaysSmallBitset, &mut work,
+        );
+        assert!(result.is_none());
+        assert_eq!(work.bitset_declined_width, 1);
+        assert_eq!(work.bitset_admitted_frontiers, 0);
+    }
+
+    #[test]
+    fn structural_pair_estimate_is_not_a_sound_repeat_certificate() {
+        // The gate assumes roughly uniform shared-port occupancy,
+        // but the actual positive supports may be anticorrelated.
+        // It is allowed to spend time on a bad prediction; it must
+        // never use this estimate to reject source assignments.
+        let mut a = BTreeMap::new();
+        for m in 0..16usize {
+            if m & 2 == 0 { a.insert(m, BigUint::from(1u8)); }
+        }
+        let mut b = BTreeMap::new();
+        for m in 0..8usize {
+            if m & 2 != 0 { b.insert(m, BigUint::from(1u8)); }
+        }
+        let left = Stage {
+            ports: vec!["p".into(), "s".into(), "x".into(), "z".into()],
+            values: Values::Sparse(a),
+        };
+        let right = Stage {
+            ports: vec!["q".into(), "s".into(), "x".into()],
+            values: Values::Sparse(b),
+        };
+        let kept = vec!["p".into(), "q".into()];
+        let mut work = Work::default();
+        assert!(DecisionBits::prepare(
+            &left, &right, &kept, &patterns(),
+            Policy::PredictedRepeatedFiber, &mut work,
+        ).is_some());
+        // Structural estimate: 8*4 / 2^2 = 8 pairs.
+        assert_eq!(work.bitset_estimated_compatible_pairs, 8);
+        // Actual compatible pairs: 0, because left always has
+        // s=0 while right always has s=1.
+        let shared = vec!["s".to_owned(), "x".to_owned()];
+        let Values::Sparse(a) = &left.values else { unreachable!() };
+        let Values::Sparse(b) = &right.values else { unreachable!() };
+        let matched = a.keys().flat_map(|&m| {
+            b.keys().filter(move |&&n| {
+                project(m, &left.ports, &shared) ==
+                    project(n, &right.ports, &shared)
+            })
+        }).count();
+        assert_eq!(matched, 0);
+    }
+
+    #[test]
     fn interrupted_scan_cannot_become_cached_negative() {
         let left = Stage {
             ports: vec!["p".into()],

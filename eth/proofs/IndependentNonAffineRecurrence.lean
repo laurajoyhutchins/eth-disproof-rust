@@ -1451,6 +1451,90 @@ theorem rustScanSignedCsr_refusal_iff
     rustScanSignedCsr csr = none ↔ decodeSignedCsr csr = none := by
   rw [rustScanSignedCsr_eq_decodeSignedCsr csr h]
 
+/-! ## Transfer accepted counts through the Rust-shaped scanner
+
+These declarations are about the independently defined *mathematical* CSR
+scanner, not about the execution semantics of compiled Rust. They use the
+total array-refinement theorem above to connect checked certificates to
+complete satisfying Boolean words viewed through that scanner.
+-/
+
+/-- A certificate accepted by the independent Lean checker binds the exact
+row set of the separate Rust-shaped scanner, not merely its shape. -/
+theorem rustScanSignedCsr_certificate_rows
+    (csr : SignedCsrInput) (ds : List Bool) (mask : Finset State)
+    (h : checkCsrReceipt csr ds mask = true) :
+    rustScanSignedCsr csr = some (sourceRows ds) := by
+  rw [rustScanSignedCsr_total_refinement]
+  exact (checkCsrReceipt_fields csr ds mask h).2.1
+
+/-- The independent Rust-shaped scanner's decoded clauses have the same
+all-assignment semantics as the certified connected recurrence. -/
+theorem rustScanSignedCsr_certificate_allAssignments
+    (csr : SignedCsrInput) (ds : List Bool) (mask : Finset State)
+    (h : checkCsrReceipt csr ds mask = true) :
+    ∃ rows, rustScanSignedCsr csr = some rows ∧
+      ∀ x : Nat → Bool,
+      (∀ r ∈ rows,
+        signedClauseEval (tripleAt x r.first r.second r.third)
+          r.falsifiesAt = true) ↔
+      (∀ i, i < ds.length →
+        parityState (tripleAt x i (i + 1) (i + 3)) = ds[i]!) ∧
+      (∀ i, i < ds.length + 1 →
+        tripleAt x i (i + 1) (i + 2) ≠ zeroState) := by
+  obtain ⟨rows, hd, hs⟩ := checkedCsr_allAssignments csr ds mask h
+  refine ⟨rows, ?_, hs⟩
+  rw [rustScanSignedCsr_total_refinement]
+  exact hd
+
+/-- Actual finite words, evaluated against the Rust-shaped mathematical
+scanner rather than against a separately reconstructed canonical recurrence.
+Malformed inputs have no witnesses. -/
+def RustScannedCsrWords (csr : SignedCsrInput) (ds : List Bool) :=
+  { w : List Bool // w.length = ds.length + 3 ∧
+    ∃ rows : Finset SignedRow,
+      rustScanSignedCsr csr = some rows ∧
+      allRowsHold (wordAssignment w) rows }
+
+/-- The two modeled decoders select the same finite Boolean words, including
+for malformed inputs. The equivalence preserves the word unchanged. -/
+def rustScannedWordsEquiv (csr : SignedCsrInput) (ds : List Bool) :
+    RustScannedCsrWords csr ds ≃ DecodedCsrWords csr ds where
+  toFun := by
+    intro w
+    rcases w with ⟨word, hlen, rows, hscan, hholds⟩
+    refine ⟨word, hlen, rows, ?_, hholds⟩
+    simpa only [rustScanSignedCsr_total_refinement] using hscan
+  invFun := by
+    intro w
+    rcases w with ⟨word, hlen, rows, hdecoded, hholds⟩
+    refine ⟨word, hlen, rows, ?_, hholds⟩
+    simpa only [rustScanSignedCsr_total_refinement] using hdecoded
+  left_inv := by
+    intro w
+    apply Subtype.ext
+    rfl
+  right_inv := by
+    intro w
+    apply Subtype.ext
+    rfl
+
+/-- An accepted exact count also counts the full finite words satisfying
+the independent Rust-shaped CSR *semantic model*. The actual compiled
+Rust recognizer-to-model refinement remains a separate obligation. -/
+theorem verifiedCsr_rustScannedWordCount
+    (csr : SignedCsrInput) (ds : List Bool)
+    (mask : Finset State) (out : Nat)
+    (h : verifyCsrCount csr ds mask = some out) :
+    Nat.card (RustScannedCsrWords csr ds) = out := by
+  rw [Nat.card_congr (rustScannedWordsEquiv csr ds)]
+  exact verifiedCsr_decodedWordCount csr ds mask out h
+
+#print axioms IndependentETH.NonAffine.rustScanSignedCsr_certificate_rows
+#print axioms IndependentETH.NonAffine.rustScanSignedCsr_certificate_allAssignments
+#print axioms IndependentETH.NonAffine.rustScannedWordsEquiv
+#print axioms IndependentETH.NonAffine.verifiedCsr_rustScannedWordCount
+
 #print axioms IndependentETH.NonAffine.rustPolarityIndex_injective
 #print axioms IndependentETH.NonAffine.rustGroupingKey_injective
 #print axioms IndependentETH.NonAffine.rustGroupingKey_nodup_iff

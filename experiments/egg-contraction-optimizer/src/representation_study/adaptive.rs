@@ -143,7 +143,7 @@ impl Lcg {
     fn bit(&mut self) -> bool { self.next() & 1 != 0 }
 }
 
-fn source_case(case: Case) -> Result<Vec<Factor>, String> {
+pub(super) fn source_case(case: Case) -> Result<Vec<Factor>, String> {
     if case.kind == CaseKind::FrustratedXor3Cnf {
         if case.clauses != case.variables * 4 || case.seed != 0 {
             return Err("invalid frustrated-ring case specification".into());

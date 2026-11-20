@@ -420,6 +420,7 @@ pub struct Receipt {
     pub staged_tropical_cells: usize,
     pub staged_positive_energy_cells: usize,
     pub symbolic_nodes: usize,
+    pub symbolic_port_name_occurrences: usize,
     pub symbolic_eliminated_binders: usize,
     pub forced_cache_entries: usize,
     pub forced_cache_coefficient_slots: usize,
@@ -494,6 +495,15 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
     if stage.ports != output {
         return Err("computed output differs from requested output".into());
     }
+    // Nodes alone undercount the factored representation: merge nodes retain
+    // explicit sorted union/retained/eliminated port lists.
+    let symbolic_port_name_occurrences = nodes.iter().map(|node| {
+        node.ports.len() + match &node.kind {
+            NodeKind::Leaf(_) => 0,
+            NodeKind::Merge { union, eliminated, .. } =>
+                union.len() + eliminated.len(),
+        }
+    }).sum();
     let mut evaluator = Evaluator {
         nodes: &nodes, factors: &factors, cache: BTreeMap::new(),
         cached_coefficient_slots: 0, work: Work::default(),
@@ -523,6 +533,7 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
         peak_exact_nonzero_coefficients, exact_work, tropical_work,
         tropical_positive_energy_cells, staged_tropical_cells,
         staged_positive_energy_cells, symbolic_nodes: nodes.len(),
+        symbolic_port_name_occurrences,
         symbolic_eliminated_binders, forced_cache_entries: evaluator.cache.len(),
         forced_cache_coefficient_slots: evaluator.cached_coefficient_slots,
         symbolic_work: evaluator.work, minimum_energy: leading.energy,

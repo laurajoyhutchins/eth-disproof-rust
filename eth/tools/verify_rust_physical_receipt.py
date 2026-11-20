@@ -8,6 +8,7 @@ source is the authority for every equality below.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,52 @@ CASES = {
     'reversal': (3, 4, 0, 1, 2, 0, 3, 0, 2),
 }
 PORT_FIELDS = ('tag', 'present', 'found', 'source', 'payload', 'input', 'output')
+
+
+# Resolve actual local Lean proof dependencies before generating a certificate.
+# This is a narrow source contract, not an alternative proof checker.
+ROOT = Path(__file__).resolve().parents[2]
+FRAMED_PROOF = ROOT / 'eth/proofs/FramedRecordReaderRefinement.lean'
+FIELD_PROOF = ROOT / 'instrumentation/lean-env/ACC/BitProgramFields.lean'
+FIELD_LEMMA = 'ACC.BitProgramFields.eq_of_fields'
+SOURCE_LEMMAS = ('mappedFrameProgram_eq_source', 'mappedCompiledFrameProgram_eq_source')
+
+
+def _theorem_body(source: str, name: str) -> str:
+    declarations = list(re.finditer(rf'(?m)^theorem {re.escape(name)}(?=\s)', source))
+    insist(len(declarations) == 1, f'missing or ambiguous source theorem: {name}')
+    tail = source[declarations[0].end():]
+    following = re.search(r'(?m)^(?:theorem|def|end|namespace|section)\b', tail)
+    return tail[:following.start()] if following else tail
+
+
+def preflight_proof_dependencies(
+    rendered: str, framed_proof: str, field_proof: str,
+) -> None:
+    """Catch stale generated Lean references; Lean remains the final authority."""
+    insist(bool(re.search(r'(?m)^import ACC\.BitProgramFields\s*$', framed_proof)),
+           'framed reader has lost field-extensionality import')
+    insist(bool(re.search(r'(?m)^namespace ACC\.BitProgramFields\s*$', field_proof)),
+           'field-extensionality namespace changed')
+    insist(bool(re.search(r'(?m)^theorem eq_of_fields(?=\s)', field_proof)),
+           'field-extensionality declaration missing')
+    for name in SOURCE_LEMMAS:
+        applications = re.findall(
+            r'(?m)^  apply ([A-Za-z_][\w.]*)\s*$', _theorem_body(framed_proof, name))
+        insist(applications == [FIELD_LEMMA],
+               f'framed reader theorem {name} no longer applies {FIELD_LEMMA}')
+        insist(rendered.count(f', {name}]') == len(CASES),
+               f'generated certificate lost source theorem: {name}')
+    applications = re.findall(r'(?m)^  apply ([A-Za-z_][\w.]*)\s*$', rendered)
+    insist(applications == [FIELD_LEMMA] * (2 * len(CASES)),
+           'generated certificate has stale or missing field-extensionality applications')
+
+
+def _read_proof(path: Path) -> str:
+    try:
+        return path.read_text(encoding='utf-8')
+    except (OSError, UnicodeError) as error:
+        raise ValueError(f'Lean proof dependency unavailable: {path}') from error
 
 
 def certificate_source(raw: bytes) -> str:
@@ -122,7 +169,7 @@ def certificate_source(raw: bytes) -> str:
                 program.input, program.output, list(program.rows)))
             lines.extend([
                 f'private theorem {binding}_eq : {binding} = {target} {rhs} := by',
-                '  apply ACC.BitProgramFields.eq_of_fields',
+                f'  apply {FIELD_LEMMA}',
                 '  · rfl',
                 '  · rfl',
                 '  · rfl',
@@ -145,7 +192,10 @@ def certificate_source(raw: bytes) -> str:
         'end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement',
         '',
     ])
-    return '\n'.join(lines)
+    rendered = '\n'.join(lines)
+    preflight_proof_dependencies(
+        rendered, _read_proof(FRAMED_PROOF), _read_proof(FIELD_PROOF))
+    return rendered
 
 
 def main() -> None:

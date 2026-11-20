@@ -336,9 +336,6 @@ mod tests {
             .count() as u8
     }
 
-    /// Exercise the production recognizer and independent receipt replay on
-    /// invalid one-row representations. In particular, no usize boundary or
-    /// i8 sentinel may become a valid signed literal or trigger a panic.
     /// Test the shared usize computation independently of CSR allocation.
     /// A successful row shape must equal both unbounded integer formulas;
     /// overflow must refuse rather than wrap or saturate.
@@ -373,6 +370,9 @@ mod tests {
         }
     }
 
+    /// Exercise the production recognizer and independent receipt replay on
+    /// invalid one-row representations. In particular, no usize boundary or
+    /// i8 sentinel may become a valid signed literal or trigger a panic.
     #[test]
     fn machine_row_boundaries_refuse_without_panicking() {
         let good = OwnedSignedCsr::from_cnf(&source(4, &[false]));

@@ -23,6 +23,8 @@ namespace TwoAdicMatchingGraph
 
 open scoped BigOperators
 
+/-! ## Unconditional matching fibers -/
+
 /--
 For a matching's injective endpoint map, choices at a matched
 vertex are the one prescribed label; unmatched vertices are free.
@@ -125,6 +127,7 @@ def bipartiteMatchingFiber
   (assignmentFiber left (fun e => (target e).1)).product
     (assignmentFiber right (fun e => (target e).2))
 
+/-- Any two prescribed matching edge-label assignments have equally many completions. -/
 theorem bipartiteMatchingFiber_equidistributed
     {E L R A : Type*}
     [Fintype E] [Fintype L] [Fintype R] [Fintype A]
@@ -252,6 +255,8 @@ theorem matchingEndpointLabels_weighted_sum
     _ = ((bipartiteMatchingFiber left right reference).card : ℚ) *
         (∑ pairs : E → A × A, weight pairs) := by
         rw [Finset.mul_sum]
+
+/-! ## Fibers conditioned on prescribed vertex labels -/
 
 /--
 Cross-multiplied equality of the **uniform** mean over all graph
@@ -621,6 +626,8 @@ theorem matchingEndpointLabels_conditional_class_moment
         (∏ e : E, ∑ pair ∈ matchingPairChoices left right allowedL allowedR e,
           if pair = target then (2 : ℚ) else 1) := by
       rw [Finset.prod_univ_sum]
+
+/-! ## Vertex choices and conditional means -/
 
 /-- The uniform conditional mean over the **actual source graph
 vertex** completions agrees exactly with the uniform conditional mean

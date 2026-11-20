@@ -1,0 +1,27 @@
+name: Lean proof style
+
+on:
+  pull_request:
+    paths:
+      - 'eth/proofs/**'
+      - 'eth/AGENTS.md'
+      - 'tools/check_lean_proof_style.py'
+      - 'tools/test_lean_proof_style.py'
+      - '.github/workflows/lean-proof-style.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  proof-style:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check Lean proof style
+        run: python3 tools/check_lean_proof_style.py
+      - name: Test positive and negative controls
+        run: python3 -m unittest discover -s tools -p 'test_lean_proof_style.py'

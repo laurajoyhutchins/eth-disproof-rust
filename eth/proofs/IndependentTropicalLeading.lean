@@ -190,6 +190,11 @@ theorem plus_assoc (a b c : Leading) :
                   | (apply congrArg Option.some
                      apply term_ext <;> omega)
 
+theorem times_zero (x : Leading) : times x none = none := by
+  cases x <;> rfl
+
+theorem zero_times (x : Leading) : times none x = none := rfl
+
 /-- Distributivity, including equal minimum degrees and multiplicity ties. -/
 theorem times_plus (a b c : Leading) :
     times (plus a b) c = plus (times a c) (times b c) := by
@@ -201,8 +206,7 @@ theorem times_plus (a b c : Leading) :
       | none => cases c <;> rfl
       | some b =>
           cases c with
-          | none =>
-              cases h : plus (some a) (some b) <;> rfl
+          | none => simp only [times_zero, plus]
           | some c =>
               by_cases hab : a.degree < b.degree
               · have hba : ¬ b.degree < a.degree := by omega
@@ -219,11 +223,6 @@ theorem times_plus (a b c : Leading) :
 theorem plus_times (a b c : Leading) :
     times a (plus b c) = plus (times a b) (times a c) := by
   rw [times_comm a (plus b c), times_plus, times_comm b a, times_comm c a]
-
-theorem times_zero (x : Leading) : times x none = none := by
-  cases x <;> rfl
-
-theorem zero_times (x : Leading) : times none x = none := rfl
 
 theorem monomial_times (d e a b : ℕ) (ha : 0 < a) (hb : 0 < b) :
     times (monomial d a ha) (monomial e b hb) =

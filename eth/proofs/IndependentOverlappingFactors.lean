@@ -293,8 +293,6 @@ theorem generated_plan_correct
 #print axioms IndependentETH.OverlappingFactors.makePlan_safe
 #print axioms IndependentETH.OverlappingFactors.generated_plan_correct
 
-
-
 /-! ## Exactly-once elimination and the declared-variable universe
 
 The generated plan's prior safety theorem did not establish that

@@ -209,7 +209,7 @@ def audit(payload: object, root: Path, fetcher=None) -> list[dict]:
                 if file_ref["path"].endswith(".lean")
             ]
             if not any(
-                re.search(r"\\btheorem\\s+" + re.escape(local_name) + r"\\b", source)
+                re.search(r"\btheorem\s+" + re.escape(local_name) + r"\b", source)
                 and f"#print axioms {theorem_name}" in source
                 for source in lean_sources
             ):

@@ -662,7 +662,9 @@ mod tests {
 
             for index in 0..source.row_offsets.len() {
                 for value in [
-                    0, source.column_indices.len(), usize::MAX,
+                    0,
+                    source.column_indices.len(),
+                    usize::MAX,
                     source.row_offsets[index].saturating_sub(1),
                     source.row_offsets[index].saturating_add(1),
                 ] {

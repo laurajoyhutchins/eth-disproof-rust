@@ -20,6 +20,7 @@ pub mod sat;
 pub mod affine;
 pub mod affine_cert;
 pub mod affine_wire;
+pub mod affine_native_lean;
 pub mod signed_affine;
 
 pub use arith::{exact_polynomial_equivalent, Evaluation, Plan};

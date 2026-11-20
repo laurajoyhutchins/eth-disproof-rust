@@ -10,6 +10,8 @@ on:
       - "eth/proofs/IndependentAffinePackedRows.lean"
       - "eth/proofs/IndependentAffineTerminal.lean"
       - "eth/proofs/IndependentAffineSourceRows.lean"
+      - "eth/proofs/IndependentAffineNativeAudit.lean"
+      - "eth/proofs/IndependentAffineIndexToggle.lean"
       - "eth/proofs/IndependentQuadraticLowWeight.lean"
       - "eth/proofs/IndependentSignedComposition.lean"
       - ".github/workflows/egg-contraction-experiment.yml"
@@ -51,7 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean eth/proofs/IndependentQuadraticLowWeight.lean eth/proofs/IndependentSignedComposition.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean eth/proofs/IndependentAffineNativeAudit.lean eth/proofs/IndependentAffineIndexToggle.lean eth/proofs/IndependentQuadraticLowWeight.lean eth/proofs/IndependentSignedComposition.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
@@ -64,6 +66,8 @@ jobs:
             IndependentAffinePackedRows \
             IndependentAffineTerminal \
             IndependentAffineSourceRows \
+            IndependentAffineNativeAudit \
+            IndependentAffineIndexToggle \
             IndependentQuadraticLowWeight \
             IndependentSignedComposition; do
             echo "::group::Lean proof: $proof"
@@ -72,16 +76,47 @@ jobs:
             fi
             echo "::endgroup::"
           done
-          if [ "$failures" -eq 0 ]; then
-            # Feed Rust's *actual* indexed source and output records to the
-            # independent Lean integer semantics, not an opaque success flag.
-            cargo run --quiet --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
-              --bin emit_signed_native_oracles > "$RUNNER_TEMP/signed-native-fixtures.lean"
-            cat "$GITHUB_WORKSPACE/eth/proofs/IndependentQuadraticLowWeight.lean" \
-              "$RUNNER_TEMP/signed-native-fixtures.lean" \
-              > "$RUNNER_TEMP/signed-native-replay.lean"
-            if ! lake env lean "$RUNNER_TEMP/signed-native-replay.lean"; then
+          # Compile an independent Lean reference against the actual source,
+          # raw transcript and interface emitted by the native Rust binary.
+          # Generated data is a fixed grammar of decimal byte lists, not
+          # arbitrary user-controlled Lean syntax.
+          generated="$RUNNER_TEMP/affine-native-generated.lean"
+          combined="$RUNNER_TEMP/affine-native-audited.lean"
+          if ! cargo run --quiet \
+            --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
+            -- --emit-lean-certificates > "$generated"; then
+            failures=1
+          elif grep -nE '\b(sorry|admit|axiom|unsafe)\b' "$generated"; then
+            echo "Unsafe generated Lean witness" >&2
+            failures=1
+          else
+            cat "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineNativeAudit.lean" "$generated" > "$combined"
+            echo "::group::Kernel-check actual Rust-emitted receipt corpus"
+            if ! lake env lean "$combined"; then
               failures=1
+            fi
+            echo "::endgroup::"
+          fi
+          # Independently check the indexed monomials and equations emitted
+          # from native signed elimination; Lean checks full integer semantics.
+          if [ "$failures" -eq 0 ]; then
+            signed_generated="$RUNNER_TEMP/signed-native-generated.lean"
+            signed_combined="$RUNNER_TEMP/signed-native-audited.lean"
+            if ! cargo run --quiet \
+              --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
+              --bin emit_signed_native_oracles > "$signed_generated"; then
+              failures=1
+            elif grep -nE '\b(sorry|admit|axiom|unsafe)\b' "$signed_generated"; then
+              echo "Unsafe generated signed Lean fixture" >&2
+              failures=1
+            else
+              cat "$GITHUB_WORKSPACE/eth/proofs/IndependentQuadraticLowWeight.lean" \
+                "$signed_generated" > "$signed_combined"
+              echo "::group::Kernel-check native signed source semantics"
+              if ! lake env lean "$signed_combined"; then
+                failures=1
+              fi
+              echo "::endgroup::"
             fi
           fi
           exit "$failures"

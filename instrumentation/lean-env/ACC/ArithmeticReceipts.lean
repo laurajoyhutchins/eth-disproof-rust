@@ -63,13 +63,11 @@ theorem checkTrace_sound (receipts : List Receipt)
       simp at hmem
   | cons head tail ih =>
       have hhead : checkReceipt head = true := by
-        have hall : checkReceipt head && tail.all checkReceipt = true := by
-          simpa [checkTrace] using h
-        exact (Bool.and_eq_true.mp hall).1
+        cases hh : checkReceipt head with
+        | true => exact hh
+        | false => simp [checkTrace, hh] at h
       have htail : checkTrace tail = true := by
-        have hall : checkReceipt head && tail.all checkReceipt = true := by
-          simpa [checkTrace] using h
-        exact (Bool.and_eq_true.mp hall).2
+        simpa [checkTrace, hhead] using h
       intro receipt hmem
       rcases List.mem_cons.mp hmem with heq | hrest
       · subst receipt

@@ -183,17 +183,37 @@ grep -Fq 'lean_del_object(' "$out/RuntimeHeapDelKernels.c" || {
   exit 2
 }
 lean -c "$out/SourceDelDriver.c" runtime/lean-c/SourceDelDriver.lean
+# The original Lean compiler C output is included BYTE-FOR-BYTE in separate
+# tracing translation units. The compiled Reader-generated Rust stays unchanged.
+# Only the two source C units and the existing Rust/C adapter get call-site
+# ownership hooks; test-host operations and runtime internals do not.
+for unit in RuntimeHeapKernels RuntimeHeapDelKernels; do
+  printf '#include "%s/runtime/lean-c/source_del_event_hooks.h"\\n#include "%s/%s.c"\\n' \
+    "$(pwd)" "$out" "$unit" > "$out/${unit}-traced.c"
+done
+printf '#define LR_TRACE_SOURCE_DEL 1\\n#include "%s/runtime/lean-c/abi.c"\\n' \
+  "$(pwd)" > "$out/abi-traced.c"
 leanc -O2 -o "$out/source-del-execute" \
-  "$out/RuntimeHeapKernels.c" "$out/RuntimeHeapDelKernels.c" \
+  "$out/RuntimeHeapKernels-traced.c" "$out/RuntimeHeapDelKernels-traced.c" \
   "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \
   runtime/lean-c/source_shell_step_oracle.c \
   runtime/lean-c/source_release_oracle.c \
-  runtime/lean-c/abi.c "$out/libsource_del_generated.a"
+  runtime/lean-c/source_del_event_trace.c \
+  "$out/abi-traced.c" "$out/libsource_del_generated.a"
 # The physically observed trace comes from actual pinned Lean C calls,
 # not a Rust or Lean reimplementation of those primitive operations.
 LR_SOURCE_TRACE="$out/source-shell-physical.tsv" \
 LR_RELEASE_TRACE="$out/source-release-physical.tsv" \
+LR_SOURCE_DEL_EVENTS="$out/source-del-events.tsv" \
   "$out/source-del-execute" | tee "$out/source-del-trace.txt"
+# Fail on missing/extra events, cross-backend differences, invalid physical
+# increments/decrements or forged object identities. The event scope is the
+# compiler-visible primitive calls, not recursive worklist suboperations.
+test -s "$out/source-del-events.tsv"
+python3 scripts/check-source-del-events.py "$out/source-del-events.tsv" --self-test \
+  | tee "$out/source-del-events-audit.txt"
+grep -Fq 'source_del_original_C_vs_exact_Reader_event_parity=PASS cases=8 lanes=16' \
+  "$out/source-del-events-audit.txt"
 grep -Fx 'reader-source-shell-physical-checkpoints=RECORDED' "$out/source-del-trace.txt"
 grep -Fx 'reader-c-release-heap-stamp-checkpoints=RECORDED' "$out/source-del-trace.txt"
 test -s "$out/source-shell-physical.tsv"
@@ -361,6 +381,15 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
   echo 'shell_only_child_transfer=ONE_CREDIT_NO_INC'
   echo 'shell_del_no_projection=REFUSED'
   echo 'shell_del_shared_parent=REFUSED'
+  echo 'source_del_ownership_event_trace=8_CASES_EXACT_EMITTED_C_AND_RUST_PRIMITIVE_CALLS'
+  echo 'source_del_recursive_destructor_internals=NOT_INSTRUMENTED'
+  sha256sum runtime/lean-c/source_del_event_hooks.h \
+    runtime/lean-c/source_del_event_trace.c \
+    runtime/lean-c/abi.c \
+    scripts/check-source-del-events.py \
+    "$out/source-del-events.tsv" "$out/source-del-events-audit.txt" \
+    "$out/RuntimeHeapKernels.c" "$out/RuntimeHeapDelKernels.c" \
+    "$out/source-del-exact-reader.rs"
   echo 'emitted_ir_source_del=PASS_BOUNDED_720_PHYSICAL_FINAL_STATES'
   echo 'source_del_full_traces_and_general_equivalence=NOT_ESTABLISHED'
   cat "$out/source-del-execution-status.txt"

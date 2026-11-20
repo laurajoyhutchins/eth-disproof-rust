@@ -1279,8 +1279,14 @@ theorem rustGroupingKey_injective : Function.Injective rustGroupingKey := by
 is exactly a duplicate full SignedRow. Distinct polarity clauses on the
 same triple remain distinct, as required by a four-clause parity gadget. -/
 theorem rustGroupingKey_nodup_iff (rows : List SignedRow) :
-    (rows.map rustGroupingKey).Nodup ↔ rows.Nodup :=
-  List.nodup_map_iff rustGroupingKey_injective
+    (rows.map rustGroupingKey).Nodup ↔ rows.Nodup := by
+  constructor
+  · intro h
+    exact List.Pairwise.of_map rustGroupingKey
+      (fun a b hne heq => hne (congrArg rustGroupingKey heq)) h
+  · intro h
+    exact List.Pairwise.map rustGroupingKey
+      (fun a b hne heq => hne (rustGroupingKey_injective heq)) h
 
 /-- The entire *mathematical* CSR collection, with all row scans and duplicate
 checks. The Rust recognizer's later gadget grouping and receipt logic are not

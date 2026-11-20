@@ -108,6 +108,7 @@ prefix's boundary contribution only when its *future* count is certified
 zero. The pruned prefix alone is NOT generally equal to the original. -/
 theorem contextual_zero_count_preserved {α : Type} (s : Finset α)
     (prefixCount future : α → ℕ) (cachedMatch : α → Prop)
+    [DecidablePred cachedMatch]
     (hsound : ∀ i ∈ s, cachedMatch i → future i = 0) :
     (∑ i ∈ s, prefixCount i * future i) =
       ∑ i ∈ s, if cachedMatch i then 0 else prefixCount i * future i := by

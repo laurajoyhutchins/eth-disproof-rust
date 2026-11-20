@@ -126,6 +126,8 @@ class RepositoryLayoutTests(unittest.TestCase):
         self.assertIn('grep -nE "$placeholder_pattern"', workflow)
         self.assertIn('[ ! -f "$generated/Funs.lean" ]', workflow)
         self.assertIn('[ ! -f "$generated/Types.lean" ]', workflow)
+        self.assertIn('PLACEHOLDER_SCAN_ERROR=$scenario:', workflow)
+        self.assertIn('NO_LOCAL_PLACEHOLDERS', workflow)
 
 
 if __name__ == "__main__":

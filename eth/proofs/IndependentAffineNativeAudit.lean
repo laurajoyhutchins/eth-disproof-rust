@@ -283,7 +283,15 @@ theorem audit_implies_replayed_residual (snapshot : Snapshot)
       (replayedResidual snapshot.source snapshot.cert ==
         snapshot.claim.residual) = false := by
     simp [hneq]
-  simp [audit, replayedResidual, hb] at h
+  have hfinal :
+      (List.drop snapshot.cert.pivots.length
+        (List.map
+          (fun row => expectedResidual row snapshot.source.internal.length
+            snapshot.source.boundary.length)
+          (replay snapshot.source snapshot.cert)) ==
+        snapshot.claim.residual) = false := by
+    exact hb
+  simp [audit, hfinal] at h
 
 #print axioms IndependentETH.AffineNativeAudit.audit_implies_pivot_identity
 #print axioms IndependentETH.AffineNativeAudit.audit_implies_residual_internal_zero

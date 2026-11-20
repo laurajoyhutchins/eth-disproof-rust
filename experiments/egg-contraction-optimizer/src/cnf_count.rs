@@ -308,8 +308,14 @@ pub fn count_dimacs(input: &str, limits: &Limits) -> Result<Report, Refusal> {
     let eliminate_ns = start.elapsed().as_nanos();
 
     let start = Instant::now();
-    let verified = certificate.verify(&region, &interface)
-        .map_err(|e| Refusal::new("verification", "verify", e))?;
+    // Use the same strict raw-value boundary as every staged affine merge:
+    // typed producer -> versioned u8/u64 receipt -> independent dense replay.
+    // A raw receipt is a value object, not an untrusted byte-stream parser.
+    let raw = crate::affine_wire::RawCertificate::from_typed(&certificate)
+        .map_err(|e| Refusal::new("resource", "certify", e))?;
+    let verified = raw.verify(
+        &region, &interface, crate::affine_cert::VerificationLimits::default(),
+    ).map_err(|e| Refusal::new("verification", "verify", e))?;
     let verify_ns = start.elapsed().as_nanos();
 
     let start = Instant::now();

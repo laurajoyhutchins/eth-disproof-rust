@@ -56,8 +56,8 @@ impl Stage {
         if hidden.len() != region.internal.len() {
             return Err("duplicate hidden variable".into());
         }
-        let (interface, certificate) = region.eliminate_with_certificate()?;
-        let checked = certificate.verify(region, &interface)?;
+        let (interface, _raw, checked) =
+            region.eliminate_with_verified_raw_certificate()?;
         let metrics = measure(&interface, checked.operations_checked)?;
         Ok(Self { interface, hidden, metrics })
     }
@@ -80,7 +80,7 @@ impl Stage {
     pub fn merge_with_receipt(
         &self, other: &Self, retained: &[String],
     ) -> Result<(
-        Self, AffineRegion, crate::affine_cert::EliminationCertificate,
+        Self, AffineRegion, crate::affine_wire::RawCertificate,
         AffineInterface,
     ), String> {
         if !self.hidden.is_disjoint(&other.hidden) {
@@ -109,8 +109,8 @@ impl Stage {
             }
         }
         let region = AffineRegion { internal, boundary, equations };
-        let (mut interface, certificate) = region.eliminate_with_certificate()?;
-        let checked = certificate.verify(&region, &interface)?;
+        let (mut interface, raw, checked) =
+            region.eliminate_with_verified_raw_certificate()?;
         let local_claim = interface.clone();
         interface.free_internal = interface.free_internal
             .checked_add(self.interface.free_internal)
@@ -119,7 +119,7 @@ impl Stage {
         let metrics = measure(&interface, checked.operations_checked)?;
         let hidden = self.hidden.union(&other.hidden)
             .cloned().chain(region.internal.iter().cloned()).collect();
-        Ok((Self { interface, hidden, metrics }, region, certificate, local_claim))
+        Ok((Self { interface, hidden, metrics }, region, raw, local_claim))
     }
 
     pub fn count_at(&self, boundary: &BTreeMap<String, bool>) -> Result<BigUint, String> {

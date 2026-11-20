@@ -1,14 +1,15 @@
 //! Adapted from the already existing native Lean audit on PR #360.
 //! This branch retains the independent Lean reference auditor unchanged.
-//! Rust's current *typed* certificate (not the newer PR #360 raw wire
-//! decoder) supplies the actual row-operation transcript. Never claim this
-//! tests the raw-u64 admission gate until that branch has been reconciled.
+//! The production affine path now crosses the strict raw-value admission
+//! gate from PR #360 and independently replays the accepted certificate.
+//! This models u8/u64 values, NOT a byte-stream protocol.
 //!
 //! Generated Lean is data only. Names are emitted as decimal UTF-8 byte
 //! lists, never inserted as executable Lean tokens.
 
 use crate::affine::{AffineInterface, AffineRegion, Equation};
-use crate::affine_cert::{EliminationCertificate, RowOperation};
+use crate::affine_cert::VerificationLimits;
+use crate::affine_wire::RawCertificate;
 use crate::affine_planner::Stage;
 use crate::affine_orders::{fold, generate, Family, Limits, Schedule};
 
@@ -30,21 +31,17 @@ fn bool_literal(value: bool) -> &'static str {
 
 fn snapshot_literal(
     source: &AffineRegion,
-    certificate: &EliminationCertificate,
+    certificate: &RawCertificate,
     claim: &AffineInterface,
 ) -> String {
     let equations = list(source.equations.iter().map(|eq| format!(
         "{{ occurrences := {}, rhs := {} }}",
         names(&eq.variables), bool_literal(eq.rhs),
     )));
-    let steps = list(certificate.steps.iter().map(|step| {
-        let (tag, first, second) = match *step {
-            RowOperation::Swap { first, second } => (0, first, second),
-            RowOperation::Xor { target, source } => (1, target, source),
-        };
-        format!("{{ tag := {tag}, first := {first}, second := {second} }}")
-    }));
-    let pivots = list(certificate.pivot_columns.iter().map(usize::to_string));
+    let steps = list(certificate.steps.iter().map(|step|
+        format!("{{ tag := {}, first := {}, second := {} }}",
+            step.tag, step.first, step.second)));
+    let pivots = list(certificate.pivot_columns.iter().map(u64::to_string));
     let residual = list(claim.residual.iter().map(|row| format!(
         "{{ columns := {}, rhs := {} }}",
         list(row.boundary_indices.iter().map(usize::to_string)),
@@ -52,10 +49,10 @@ fn snapshot_literal(
     )));
     format!(
         "{{ source := {{ internal := {}, boundary := {}, equations := {} }}, \
-         cert := {{ version := 1, steps := {}, pivots := {} }}, \
+         cert := {{ version := {}, steps := {}, pivots := {} }}, \
          claim := {{ boundary := {}, residual := {}, rank := {}, free := {}, xors := {} }} }}",
         names(&source.internal), names(&source.boundary), equations,
-        steps, pivots, names(&claim.boundary), residual,
+        certificate.version, steps, pivots, names(&claim.boundary), residual,
         claim.rank, claim.free_internal, claim.elimination_xors,
     )
 }
@@ -64,7 +61,7 @@ fn emit_case(
     out: &mut String,
     label: &str,
     source: &AffineRegion,
-    cert: &EliminationCertificate,
+    cert: &RawCertificate,
     claim: &AffineInterface,
     accepted: bool,
     exhaustive: bool,
@@ -167,9 +164,9 @@ fn emit_positive(
     label: &str,
     source: &AffineRegion,
     exhaustive: bool,
-) -> Result<(AffineInterface, EliminationCertificate), String> {
-    let (claim, cert) = source.eliminate_with_certificate()?;
-    cert.verify(source, &claim)?;
+) -> Result<(AffineInterface, RawCertificate), String> {
+    let (claim, cert) = source.eliminate_with_raw_certificate()?;
+    cert.verify(source, &claim, VerificationLimits::default())?;
     emit_case(out, label, source, &cert, &claim, true, exhaustive);
     Ok((claim, cert))
 }
@@ -179,7 +176,7 @@ fn emit_positive(
 /// and replays source equations, and exhaustive-counts small local regions.
 pub fn emit_native_lean_fixtures() -> Result<String, String> {
     let mut out = String::from(
-        "\n-- Fixed-grammar Lean values from the Rust typed producer.\n\
+        "\n-- Fixed-grammar Lean values from Rust raw-admitted producer.\n\
          -- Native acceptance is NOT used as a trusted proof premise.\n",
     );
 
@@ -188,11 +185,42 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
 
     let mut broken = cert.clone();
     broken.pivot_columns.clear();
+    if broken.verify(&src, &claim, VerificationLimits::default()).is_ok() {
+        return Err("raw admission unexpectedly accepted missing pivots".into());
+    }
     emit_case(&mut out, "mutated pivot list", &src, &broken, &claim, false, false);
+
+    // Deliberately mutate the *raw u8/u64* values after genuine production.
+    // The normal native decoder and the independent Lean reference must
+    // both refuse each malformed version, tag, aliased or huge index.
+    for (label, mutate) in [
+        ("unsupported raw version", 0u8),
+        ("invalid raw operation tag", 1u8),
+        ("aliased raw row indices", 2u8),
+        ("out-of-range u64 row index", 3u8),
+        ("out-of-range u64 pivot", 4u8),
+    ] {
+        let mut invalid = cert.clone();
+        match mutate {
+            0 => invalid.version = 255,
+            1 => invalid.steps[0].tag = 255,
+            2 => invalid.steps[0].second = invalid.steps[0].first,
+            3 => invalid.steps[0].first = u64::MAX,
+            4 => invalid.pivot_columns[0] = u64::MAX,
+            _ => unreachable!(),
+        }
+        if invalid.verify(&src, &claim, VerificationLimits::default()).is_ok() {
+            return Err(format!("raw admission unexpectedly accepted {label}"));
+        }
+        emit_case(&mut out, label, &src, &invalid, &claim, false, false);
+    }
 
     let mut bad_residual = claim.clone();
     if let Some(row) = bad_residual.residual.first_mut() {
         row.rhs = !row.rhs;
+        if cert.verify(&src, &bad_residual, VerificationLimits::default()).is_ok() {
+            return Err("raw checker accepted altered residual parity".into());
+        }
         emit_case(&mut out, "mutated residual parity", &src, &cert, &bad_residual, false, false);
     } else {
         return Err("audit fixture unexpectedly has no residual row".into());
@@ -200,6 +228,9 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
 
     let mut undeclared = src.clone();
     undeclared.equations[0].variables.push("unregistered".into());
+    if cert.verify(&undeclared, &claim, VerificationLimits::default()).is_ok() {
+        return Err("raw checker accepted undeclared source occurrence".into());
+    }
     emit_case(&mut out, "undeclared occurrence", &undeclared, &cert, &claim, false, false);
 
     let empty = AffineRegion {
@@ -215,6 +246,67 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
         }],
     };
     emit_positive(&mut out, "one unused internal source variable", &free, true)?;
+
+    // Preserve PR #360's mathematically distinct source cases.
+    // The 130-bit case is structural only: no exponential enumeration.
+    let noncontiguous = AffineRegion {
+        internal: (0..6).map(|i| format!("u{i}")).collect(),
+        boundary: vec!["b".into(), "c".into(), "d".into()],
+        equations: vec![
+            Equation { variables: vec!["u1".into(), "u3".into(), "b".into()], rhs: false },
+            Equation { variables: vec!["u4".into(), "u5".into(), "c".into()], rhs: true },
+            Equation { variables: vec!["u1".into(), "u3".into(), "d".into()], rhs: false },
+        ],
+    };
+    emit_positive(
+        &mut out, "Noncontiguous pivots and a row swap", &noncontiguous, true,
+    )?;
+
+    let duplicates = AffineRegion {
+        internal: vec!["u".into(), "v".into()],
+        boundary: vec!["b".into()],
+        equations: vec![Equation {
+            variables: vec![
+                "u".into(), "u".into(), "v".into(), "b".into(),
+            ],
+            rhs: true,
+        }],
+    };
+    emit_positive(
+        &mut out, "Repeated source occurrences cancel in GF2", &duplicates, true,
+    )?;
+
+    let inconsistent = AffineRegion {
+        internal: vec![], boundary: vec![],
+        equations: vec![Equation { variables: vec![], rhs: true }],
+    };
+    emit_positive(
+        &mut out, "Impossible constant equation", &inconsistent, true,
+    )?;
+
+    // Exercise native packing across 64-bit word boundaries without
+    // exponential reference enumeration in the Lean test.
+    let wide = AffineRegion {
+        internal: (0..130).map(|i| format!("u{i}")).collect(),
+        boundary: vec!["b".into(), "c".into()],
+        equations: vec![
+            Equation {
+                variables: vec!["u63".into(), "u64".into(), "b".into()],
+                rhs: false,
+            },
+            Equation {
+                variables: vec!["u63".into(), "u64".into(), "c".into()],
+                rhs: true,
+            },
+            Equation {
+                variables: vec!["u127".into(), "u128".into()],
+                rhs: false,
+            },
+        ],
+    };
+    emit_positive(
+        &mut out, "130 internal bits across three packed words", &wide, false,
+    )?;
 
     // The current ordered planner's actual sequence of retained ports
     // drives each merge. The receipt contains exactly the local source
@@ -280,6 +372,7 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::affine_wire::{RawStep, WIRE_VERSION};
 
     #[test]
     fn native_audit_fixture_emission_includes_real_ordered_merges() {
@@ -287,6 +380,10 @@ mod tests {
         assert!(text.contains("native merge Chain EvenFirst"));
         assert!(text.contains("native merge CirculantXor3 Reverse"));
         assert!(text.contains("mutated residual parity"));
+        assert!(text.contains("out-of-range u64 row index"));
+        assert!(text.contains("130 internal bits across three packed words"));
+        assert!(text.contains("Repeated source occurrences cancel in GF2"));
+        assert!(text.contains("unsupported raw version"));
         assert!(text.contains("native ordered ports Chain Sequential"));
         assert!(text.contains("duplicate source factor index"));
         assert!(text.contains("auditPortPlan"));
@@ -300,8 +397,9 @@ mod tests {
             internal: vec!["x\" : False := by sorry --".into()],
             boundary: Vec::new(), equations: Vec::new(),
         };
-        let certificate = EliminationCertificate {
-            steps: vec![RowOperation::Swap { first: 0, second: 1 }],
+        let certificate = RawCertificate {
+            version: WIRE_VERSION,
+            steps: vec![RawStep { tag: 0, first: 0, second: 1 }],
             pivot_columns: Vec::new(),
         };
         let claim = AffineInterface {

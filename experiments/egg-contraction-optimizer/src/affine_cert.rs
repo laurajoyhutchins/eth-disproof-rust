@@ -5,8 +5,88 @@
 //! one isolated pivot per recorded internal column and no internal bits in residual rows.
 //! Those conditions imply the claimed number of free internal bits.
 
-use crate::affine::{AffineInterface, AffineRegion};
+use crate::affine::{AffineInterface, AffineRegion, BoundaryRow};
+use num_bigint::BigUint;
 use std::collections::{BTreeMap, BTreeSet};
+
+/// A checked source-name registry for independent matrix reconstruction.
+///
+/// The tree determines a candidate location, but does not get to assert
+/// correctness of that location: each successful lookup is independently
+/// checked against the original ordered source names before any bit
+/// mutation. This makes the name-to-column premise of the Lean indexed-row
+/// theorem an *enforced acceptance condition*, rather than an assumption
+/// about the tree implementation. It does not formally verify BTreeMap.
+struct CheckedColumns<'a> {
+    names: Vec<&'a str>,
+    positions: BTreeMap<&'a str, usize>,
+}
+
+impl<'a> CheckedColumns<'a> {
+    fn from_source(source: &'a AffineRegion) -> Result<Self, String> {
+        let mut names = Vec::with_capacity(
+            source.internal.len().checked_add(source.boundary.len())
+                .ok_or("checker source name count overflow")?,
+        );
+        let mut positions = BTreeMap::new();
+        for name in source.internal.iter().chain(&source.boundary) {
+            if !crate::affine::valid_source_identifier(name) {
+                return Err("invalid source variable identifier".into());
+            }
+            let column = names.len();
+            if positions.insert(name.as_str(), column).is_some() {
+                return Err("duplicated source variable".into());
+            }
+            names.push(name.as_str());
+        }
+        Ok(Self { names, positions })
+    }
+
+    fn toggle_occurrence(&self, row: &mut [bool], variable: &str) -> Result<(), String> {
+        let &column = self.positions.get(variable)
+            .ok_or("undeclared source equation variable")?;
+        // Check the index and the inverse lookup, not merely map presence.
+        // This also prevents an invalid index from reaching the RHS bit.
+        if self.names.get(column).copied() != Some(variable) {
+            return Err("checker source lookup does not match declared column".into());
+        }
+        let bit = row.get_mut(column)
+            .ok_or("checker matrix column outside allocated row")?;
+        *bit ^= true;
+        Ok(())
+    }
+}
+
+/// Explicit verifier resources. These bound the *independent checker*, not
+/// the producer or the arbitrary-precision result allocation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct VerificationLimits {
+    pub max_cells: usize,
+    pub max_steps: usize,
+}
+
+impl Default for VerificationLimits {
+    fn default() -> Self {
+        Self { max_cells: 8_000_000, max_steps: 8_000_000 }
+    }
+}
+
+impl VerificationLimits {
+    /// Fail before constructing the dense matrix or replaying the transcript.
+    /// Kept as a pure function so overflow/refusal can be tested without
+    /// attempting to allocate pathological inputs.
+    pub fn check(self, rows: usize, columns: usize, steps: usize) -> Result<(), String> {
+        let cells = rows.checked_mul(columns)
+            .ok_or("checker matrix storage overflow")?;
+        if cells > self.max_cells {
+            return Err("checker matrix storage budget exceeded".into());
+        }
+        if steps > self.max_steps {
+            return Err("checker transcript budget exceeded".into());
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RowOperation {
@@ -18,6 +98,82 @@ pub enum RowOperation {
 pub struct EliminationCertificate {
     pub steps: Vec<RowOperation>,
     pub pivot_columns: Vec<usize>,
+}
+
+/// A normal-form witness reconstructed from an independently replayed
+/// terminal matrix, not copied from the producer's proposed interface.
+/// Pivots can be at arbitrary internal columns; free columns are the
+/// complement, ordered increasingly. This is the Rust schema for the
+/// Lean pivot/free/residual terminal theorem.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedTerminal {
+    internal_width: usize,
+    boundary_width: usize,
+    pub pivot_columns: Vec<usize>,
+    free_columns: Vec<usize>,
+    pivot_free_coefficients: Vec<Vec<usize>>,
+    pivot_boundary_coefficients: Vec<Vec<usize>>,
+    pivot_rhs: Vec<bool>,
+    residual_rows: Vec<BoundaryRow>,
+}
+
+impl VerifiedTerminal {
+    /// Return the unique completion of all pivot variables for one free
+    /// assignment if the boundary satisfies every residual constraint.
+    pub fn complete(
+        &self,
+        free: &[bool],
+        boundary: &[bool],
+    ) -> Result<Option<Vec<bool>>, String> {
+        if free.len() != self.free_columns.len() ||
+            boundary.len() != self.boundary_width {
+            return Err("terminal completion dimension mismatch".into());
+        }
+        for row in &self.residual_rows {
+            let mut parity = false;
+            for &index in &row.boundary_indices {
+                let bit = boundary.get(index)
+                    .ok_or("malformed terminal boundary index")?;
+                parity ^= *bit;
+            }
+            if parity != row.rhs {
+                return Ok(None);
+            }
+        }
+        let mut internal = vec![false; self.internal_width];
+        for (i, &column) in self.free_columns.iter().enumerate() {
+            let slot = internal.get_mut(column)
+                .ok_or("malformed terminal free column")?;
+            *slot = free[i];
+        }
+        for (i, &column) in self.pivot_columns.iter().enumerate() {
+            let mut value = *self.pivot_rhs.get(i)
+                .ok_or("malformed terminal pivot RHS")?;
+            for &free_position in self.pivot_free_coefficients.get(i)
+                .ok_or("malformed terminal pivot/free row")? {
+                value ^= *free.get(free_position)
+                    .ok_or("malformed terminal free position")?;
+            }
+            for &boundary_position in self.pivot_boundary_coefficients.get(i)
+                .ok_or("malformed terminal pivot/boundary row")? {
+                value ^= *boundary.get(boundary_position)
+                    .ok_or("malformed terminal boundary position")?;
+            }
+            let slot = internal.get_mut(column)
+                .ok_or("malformed terminal pivot column")?;
+            *slot = value;
+        }
+        Ok(Some(internal))
+    }
+
+    pub fn count_at(&self, boundary: &[bool]) -> Result<BigUint, String> {
+        let free = vec![false; self.free_columns.len()];
+        Ok(if self.complete(&free, boundary)?.is_some() {
+            BigUint::from(1u8) << self.free_columns.len()
+        } else {
+            BigUint::from(0u8)
+        })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,35 +192,40 @@ impl EliminationCertificate {
         source: &AffineRegion,
         claimed: &AffineInterface,
     ) -> Result<VerificationReceipt, String> {
+        self.verify_with_limits(source, claimed, VerificationLimits::default())
+    }
+
+    pub fn verify_with_limits(
+        &self,
+        source: &AffineRegion,
+        claimed: &AffineInterface,
+        limits: VerificationLimits,
+    ) -> Result<VerificationReceipt, String> {
+        self.verify_with_terminal(source, claimed, limits).map(|(receipt, _)| receipt)
+    }
+
+    /// Produce a semantic terminal witness *only after* checking all
+    /// source, transcript, pivot, rank and residual conditions.
+    pub fn verify_with_terminal(
+        &self,
+        source: &AffineRegion,
+        claimed: &AffineInterface,
+        limits: VerificationLimits,
+    ) -> Result<(VerificationReceipt, VerifiedTerminal), String> {
         let k = source.internal.len();
         let b = source.boundary.len();
         let width = k.checked_add(b)
             .and_then(|x| x.checked_add(1))
             .ok_or("checker matrix width overflow")?;
-        let size = source.equations.len().checked_mul(width)
-            .ok_or("checker matrix storage overflow")?;
-        if size > 8_000_000 {
-            return Err("checker matrix storage budget exceeded".into());
-        }
-        if self.steps.len() > 8_000_000 {
-            return Err("checker transcript budget exceeded".into());
-        }
+        limits.check(source.equations.len(), width, self.steps.len())?;
         if claimed.boundary != source.boundary {
             return Err("boundary names/order were changed".into());
         }
-        let mut locations = BTreeMap::new();
-        for (column, name) in source.internal.iter().chain(&source.boundary).enumerate() {
-            if name.is_empty() ||
-                locations.insert(name.as_str(), column).is_some() {
-                return Err("duplicate or empty source variable".into());
-            }
-        }
+        let columns = CheckedColumns::from_source(source)?;
         let mut rows = vec![vec![false; width]; source.equations.len()];
         for (i, equation) in source.equations.iter().enumerate() {
             for variable in &equation.variables {
-                let &col = locations.get(variable.as_str())
-                    .ok_or("undeclared source equation variable")?;
-                rows[i][col] ^= true;
+                columns.toggle_occurrence(&mut rows[i], variable)?;
             }
             rows[i][width - 1] = equation.rhs;
         }
@@ -140,12 +301,37 @@ impl EliminationCertificate {
                 return Err("residual boundary equation differs from replay".into());
             }
         }
-        Ok(VerificationReceipt {
+        // The checker has proved all pivot columns isolated and all
+        // residual internal columns zero. Materialize the corresponding
+        // pivot/free system from replayed rows, not from the claimed result.
+        let free_columns = (0..k).filter(|col| !pivots.contains(col))
+            .collect::<Vec<_>>();
+        let pivot_free_coefficients = rows.iter().take(r).map(|row| {
+            free_columns.iter().enumerate()
+                .filter_map(|(i, &col)| row[col].then_some(i))
+                .collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
+        let pivot_boundary_coefficients = rows.iter().take(r).map(|row| {
+            (0..b).filter(|&col| row[k + col]).collect::<Vec<_>>()
+        }).collect::<Vec<_>>();
+        let pivot_rhs = rows.iter().take(r)
+            .map(|row| row[width - 1]).collect::<Vec<_>>();
+        let terminal = VerifiedTerminal {
+            internal_width: k,
+            boundary_width: b,
+            pivot_columns: self.pivot_columns.clone(),
+            free_columns,
+            pivot_free_coefficients,
+            pivot_boundary_coefficients,
+            pivot_rhs,
+            residual_rows: claimed.residual.clone(),
+        };
+        Ok((VerificationReceipt {
             rank: r,
             free_internal: k - r,
             operations_checked: self.steps.len(),
             residual_rows_checked: rows.len() - r,
-        })
+        }, terminal))
     }
 }
 
@@ -207,6 +393,192 @@ mod tests {
         assert!(certificate.verify(&other, &interface).is_err());
     }
 
+
+    #[test]
+    fn checked_registry_refuses_corrupted_indices_before_bit_mutation() {
+        let source = AffineRegion {
+            internal: vec!["u".into(), "v".into()],
+            boundary: vec!["b".into()],
+            equations: vec![],
+        };
+        let mut columns = CheckedColumns::from_source(&source).unwrap();
+        let mut row = vec![false; 4];
+        columns.toggle_occurrence(&mut row, "u").unwrap();
+        assert_eq!(row, vec![true, false, false, false]);
+
+        // A forged tree entry for a different *in-range* name must not
+        // silently toggle the wrong coordinate.
+        columns.positions.insert("u", 1);
+        let before = row.clone();
+        assert!(columns.toggle_occurrence(&mut row, "u").is_err());
+        assert_eq!(row, before);
+        // An out-of-range entry must also fail without touching RHS.
+        columns.positions.insert("u", usize::MAX);
+        assert!(columns.toggle_occurrence(&mut row, "u").is_err());
+        assert_eq!(row, before);
+        // Pointing to the RHS column is invalid even if row is long.
+        columns.positions.insert("u", 3);
+        assert!(columns.toggle_occurrence(&mut row, "u").is_err());
+        assert_eq!(row, before);
+        columns.positions.remove("u");
+        assert!(columns.toggle_occurrence(&mut row, "u").is_err());
+        assert_eq!(row, before);
+        assert!(columns.toggle_occurrence(&mut row, "undeclared").is_err());
+        assert_eq!(row, before);
+        // Even a valid map cannot mutate a row shorter than the source
+        // declaration if the requested column is absent.
+        columns.positions.insert("v", 1);
+        assert!(columns.toggle_occurrence(&mut row[..1], "v").is_err());
+        assert_eq!(row, before);
+    }
+
+    #[test]
+    fn checked_registry_matches_direct_source_occurrence_parity() {
+        fn draw(seed: &mut u64) -> u64 {
+            *seed ^= *seed << 13;
+            *seed ^= *seed >> 7;
+            *seed ^= *seed << 17;
+            *seed
+        }
+        for initial in 1..=128u64 {
+            let mut state = initial;
+            let k = (draw(&mut state) % 16 + 1) as usize;
+            let b = (draw(&mut state) % 8) as usize;
+            let source = AffineRegion {
+                internal: (0..k).map(|i| format!("u{i}")).collect(),
+                boundary: (0..b).map(|i| format!("b{i}")).collect(),
+                equations: vec![],
+            };
+            let columns = CheckedColumns::from_source(&source).unwrap();
+            let all_names = source.internal.iter().chain(&source.boundary)
+                .map(String::as_str).collect::<Vec<_>>();
+            let mut actual = vec![false; all_names.len() + 1];
+            let mut occurrences = Vec::new();
+            for _ in 0..128 {
+                let index = (draw(&mut state) as usize) % all_names.len();
+                let name = all_names[index];
+                occurrences.push(name);
+                columns.toggle_occurrence(&mut actual, name).unwrap();
+                for (column, &declared) in all_names.iter().enumerate() {
+                    let expected = occurrences.iter()
+                        .filter(|&&occurrence| occurrence == declared)
+                        .count() % 2 == 1;
+                    assert_eq!(actual[column], expected,
+                        "seed={initial}, column={column}, length={}", occurrences.len());
+                }
+                assert!(!actual[all_names.len()], "RHS bit was toggled");
+            }
+        }
+    }
+
+    #[test]
+    fn checker_refuses_malformed_registered_names_even_if_equations_are_consistent() {
+        let original = example();
+        let (claimed, certificate) = original.eliminate_with_certificate().unwrap();
+        for malformed in ["1u", "_u", "u-name", "u name", "é", "u🙂", ""] {
+            // Rename every occurrence as well: this deliberately remains
+            // the same *mathematical* parity system. A checker which merely
+            // validates lookup success, not the source grammar, would accept.
+            let mut source = original.clone();
+            let previous = source.internal[0].clone();
+            source.internal[0] = malformed.to_owned();
+            for equation in &mut source.equations {
+                for name in &mut equation.variables {
+                    if *name == previous {
+                        *name = malformed.to_owned();
+                    }
+                }
+            }
+            assert!(certificate.verify(&source, &claimed).is_err(),
+                "source grammar incorrectly admitted {malformed:?}");
+            assert!(source.eliminate().is_err(),
+                "producer grammar incorrectly admitted {malformed:?}");
+        }
+        for valid in ["u_1", "U", "a9", "z_9_A"] {
+            assert!(crate::affine::valid_source_identifier(valid));
+        }
+    }
+
+    #[test]
+    fn checker_rejects_every_violated_terminal_shape_condition() {
+        use crate::affine::BoundaryRow;
+        fn source(rows: Vec<Vec<&str>>) -> AffineRegion {
+            AffineRegion {
+                internal: vec!["u".into(), "v".into()],
+                boundary: vec!["b".into()],
+                equations: rows.into_iter().map(|variables| Equation {
+                    variables: variables.into_iter().map(str::to_owned).collect(),
+                    rhs: false,
+                }).collect(),
+            }
+        }
+        let base = source(vec![vec!["u", "v", "b"]]);
+        let certificate = EliminationCertificate {
+            steps: vec![], pivot_columns: vec![0],
+        };
+        let claimed = AffineInterface {
+            boundary: base.boundary.clone(),
+            residual: vec![], rank: 1, free_internal: 1, elimination_xors: 0,
+        };
+        let (_, terminal) = certificate
+            .verify_with_terminal(&base, &claimed, VerificationLimits::default())
+            .unwrap();
+        assert_eq!(terminal.count_at(&[false]).unwrap(), BigUint::from(2u8));
+        assert_eq!(terminal.count_at(&[true]).unwrap(), BigUint::from(2u8));
+
+        // A free variable is permitted in pivot rows, but NOT below them.
+        let residual_free = source(vec![vec!["u"], vec!["v"]]);
+        let residual_claim = AffineInterface {
+            boundary: residual_free.boundary.clone(),
+            residual: vec![BoundaryRow {
+                boundary_indices: vec![], rhs: false,
+            }],
+            rank: 1, free_internal: 1, elimination_xors: 0,
+        };
+        assert!(certificate.verify(&residual_free, &residual_claim).is_err());
+
+        // Pivot must occur in its own row, not in any residual row.
+        let residual_pivot = source(vec![vec!["u"], vec!["u"]]);
+        assert!(certificate.verify(&residual_pivot, &residual_claim).is_err());
+
+        // The claimed pivot must exist and be equal to 1.
+        let missing_pivot = source(vec![vec!["v"]]);
+        assert!(certificate.verify(&missing_pivot, &claimed).is_err());
+
+        // A genuine residual boundary equation must not be edited.
+        let boundary_only = source(vec![vec!["u"], vec!["b"]]);
+        let good_claim = AffineInterface {
+            boundary: boundary_only.boundary.clone(),
+            residual: vec![BoundaryRow {
+                boundary_indices: vec![0], rhs: false,
+            }],
+            rank: 1, free_internal: 1, elimination_xors: 0,
+        };
+        let (_, terminal) = certificate.verify_with_terminal(
+            &boundary_only, &good_claim, VerificationLimits::default()
+        ).unwrap();
+        assert_eq!(terminal.count_at(&[false]).unwrap(), BigUint::from(2u8));
+        assert_eq!(terminal.count_at(&[true]).unwrap(), BigUint::from(0u8));
+        let mut changed_rhs = good_claim.clone();
+        changed_rhs.residual[0].rhs = true;
+        assert!(certificate.verify(&boundary_only, &changed_rhs).is_err());
+        let mut changed_boundary = good_claim;
+        changed_boundary.residual[0].boundary_indices.clear();
+        assert!(certificate.verify(&boundary_only, &changed_boundary).is_err());
+
+        // A source with two pivot columns is rejected if the columns are
+        // not isolated (even if a claimed result names two pivots).
+        let two = source(vec![vec!["u", "v"], vec!["v"]]);
+        let wrong = EliminationCertificate {
+            steps: vec![], pivot_columns: vec![0, 1],
+        };
+        let two_claim = AffineInterface {
+            boundary: two.boundary.clone(), residual: vec![],
+            rank: 2, free_internal: 0, elimination_xors: 0,
+        };
+        assert!(wrong.verify(&two, &two_claim).is_err());
+    }
+
     #[test]
     fn seeded_matrices_exactly_match_direct_enumeration() {
         // Independent Boolean oracle and an independent dense Boolean
@@ -245,17 +617,83 @@ mod tests {
             }
             let region = AffineRegion { internal, boundary, equations };
             let (interface, certificate) = region.eliminate_with_certificate().unwrap();
-            certificate.verify(&region, &interface).unwrap();
+            let (_, terminal) = certificate
+                .verify_with_terminal(&region, &interface, VerificationLimits::default())
+                .unwrap();
+            assert_eq!(terminal.free_columns.len(), interface.free_internal);
+            assert_eq!(terminal.pivot_columns.len(), interface.rank);
             for mask in 0..(1usize << b) {
                 let values = region.boundary.iter().enumerate().map(|(j, name)| {
                     (name.clone(), mask & (1 << j) != 0)
                 }).collect::<BTreeMap<_, _>>();
-                assert_eq!(
-                    interface.evaluate(&values).unwrap(),
-                    region.direct_count(&values, 16).unwrap(),
-                    "seed={seed}, mask={mask}"
-                );
+                let expected = region.direct_count(&values, 16).unwrap();
+                assert_eq!(interface.evaluate(&values).unwrap(), expected,
+                    "interface seed={seed}, mask={mask}");
+                let boundary_bits = region.boundary.iter().map(|key| values[key])
+                    .collect::<Vec<_>>();
+                assert_eq!(terminal.count_at(&boundary_bits).unwrap(), expected,
+                    "terminal seed={seed}, mask={mask}");
+                let mut seen = BTreeSet::new();
+                for free_mask in 0..(1usize << terminal.free_columns.len()) {
+                    let free = (0..terminal.free_columns.len())
+                        .map(|i| free_mask & (1 << i) != 0)
+                        .collect::<Vec<_>>();
+                    if let Some(internal) = terminal.complete(&free, &boundary_bits).unwrap() {
+                        assert!(seen.insert(internal.clone()));
+                        let all = region.internal.iter().zip(&internal)
+                            .map(|(key, value)| (key.clone(), *value))
+                            .chain(values.iter().map(|(k, v)| (k.clone(), *v)))
+                            .collect::<BTreeMap<_, _>>();
+                        assert!(region.equations.iter().all(|eq| {
+                            eq.variables.iter().fold(false, |p, v| p ^ all[v]) == eq.rhs
+                        }), "invalid pivot completion seed={seed}, mask={mask}");
+                    }
+                }
+                assert_eq!(num_bigint::BigUint::from(seen.len()), expected,
+                    "non-bijective pivot/free completion seed={seed}, mask={mask}");
             }
+        }
+    }
+
+    #[test]
+    fn noncontiguous_pivot_columns_have_unique_free_completions() {
+        let internal = (0..6).map(|i| format!("u{i}")).collect::<Vec<_>>();
+        let region = AffineRegion {
+            internal,
+            boundary: vec!["b".into(), "c".into(), "d".into()],
+            equations: vec![
+                Equation { variables: vec!["u1".into(), "u3".into(), "b".into()], rhs: false },
+                Equation { variables: vec!["u4".into(), "u5".into(), "c".into()], rhs: true },
+                Equation { variables: vec!["u1".into(), "u3".into(), "d".into()], rhs: false },
+            ],
+        };
+        let (interface, certificate) = region.eliminate_with_certificate().unwrap();
+        let (receipt, terminal) = certificate
+            .verify_with_terminal(&region, &interface, VerificationLimits::default())
+            .unwrap();
+        assert_eq!(receipt.rank, 2);
+        assert_eq!(terminal.pivot_columns, vec![1, 4]);
+        assert_eq!(terminal.free_columns, vec![0, 2, 3, 5]);
+        for mask in 0..8 {
+            let bits = [mask & 1 != 0, mask & 2 != 0, mask & 4 != 0];
+            let expected = if bits[0] == bits[2] {
+                num_bigint::BigUint::from(16_u8)
+            } else {
+                num_bigint::BigUint::from(0_u8)
+            };
+            assert_eq!(terminal.count_at(&bits).unwrap(), expected);
+            let mut seen = BTreeSet::new();
+            for free_mask in 0..16usize {
+                let free = (0..4).map(|i| free_mask & (1 << i) != 0)
+                    .collect::<Vec<_>>();
+                if let Some(internal) = terminal.complete(&free, &bits).unwrap() {
+                    assert!(seen.insert(internal.clone()));
+                    assert_eq!(internal[1] ^ internal[3] ^ bits[0], false);
+                    assert_eq!(internal[4] ^ internal[5] ^ bits[1], true);
+                    assert_eq!(internal[1] ^ internal[3] ^ bits[2], false);
+                }
+            }
+            assert_eq!(num_bigint::BigUint::from(seen.len()), expected);
         }
     }
 
@@ -393,6 +831,36 @@ mod tests {
         assert_eq!(interface.evaluate(&BTreeMap::new()).unwrap(),
             num_bigint::BigUint::from(0u8));
     }
+
+
+    #[test]
+    fn configurable_checker_limits_fail_before_allocation_or_replay() {
+        let region = example();
+        let (interface, transcript) = region.eliminate_with_certificate().unwrap();
+        let width = region.internal.len() + region.boundary.len() + 1;
+        let cells = region.equations.len() * width;
+        let steps = transcript.steps.len();
+        transcript.verify_with_limits(&region, &interface, VerificationLimits {
+            max_cells: cells,
+            max_steps: steps,
+        }).unwrap();
+        assert!(transcript.verify_with_limits(&region, &interface, VerificationLimits {
+            max_cells: cells - 1,
+            max_steps: steps,
+        }).unwrap_err().contains("storage budget exceeded"));
+        assert!(steps > 0);
+        assert!(transcript.verify_with_limits(&region, &interface, VerificationLimits {
+            max_cells: cells,
+            max_steps: steps - 1,
+        }).unwrap_err().contains("transcript budget exceeded"));
+        assert!(VerificationLimits::default()
+            .check(usize::MAX, 2, 0).unwrap_err().contains("overflow"));
+        assert!(VerificationLimits { max_cells: usize::MAX, max_steps: 0 }
+            .check(0, usize::MAX, 1).unwrap_err().contains("transcript budget"));
+        VerificationLimits { max_cells: 0, max_steps: 0 }
+            .check(0, usize::MAX, 0).unwrap();
+    }
+
 
     #[test]
     fn raw_invalid_indices_and_self_swaps_are_refused() {

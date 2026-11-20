@@ -60,11 +60,11 @@ theorem count_satisfying {n : ℕ} (φ : CNF n) :
   intro a _
   by_cases h : energy φ a = 0
   · have hs := (energy_eq_zero_iff φ a).mp h
-    simp [h, hs]
+    simp only [if_pos h, if_pos hs]
   · have hs : ¬ (∀ clause ∈ φ, clauseTrue a clause = true) := by
       intro hc
       exact h ((energy_eq_zero_iff φ a).mpr hc)
-    simp [h, hs]
+    simp only [if_neg h, if_neg hs]
 
 /-- The nonzero leading pair stores a degree and a strictly positive count. -/
 structure Term where

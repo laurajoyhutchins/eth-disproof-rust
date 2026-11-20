@@ -94,8 +94,16 @@ mod tests {
         let receipts = observations();
         assert_eq!(receipts.len(), 54);
         for kind in [ArithmeticKind::Add, ArithmeticKind::Mul] {
-            assert!(receipts.iter().any(|r| r.kind == kind && r.observed.is_none()));
-            assert!(receipts.iter().any(|r| r.kind == kind && r.observed.is_some()));
+            assert!(
+                receipts
+                    .iter()
+                    .any(|r| r.kind == kind && r.observed.is_none())
+            );
+            assert!(
+                receipts
+                    .iter()
+                    .any(|r| r.kind == kind && r.observed.is_some())
+            );
         }
         assert!(receipts.iter().any(|r| {
             r.kind == ArithmeticKind::Mul

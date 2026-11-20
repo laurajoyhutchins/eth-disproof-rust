@@ -102,6 +102,8 @@ pub struct Receipt {
     pub direct_preproduct_elapsed_ns: u128,
     pub sparse_elapsed_ns: u128,
     pub direct_multiplications: u64,
+    pub direct_mask_tests: u64,
+    pub direct_candidate_products_refused: u64,
     pub sparse_multiplications: u64,
     pub work: Work,
     pub oracle: &'static str,
@@ -145,6 +147,8 @@ pub fn run_modes(case: Case) -> Result<Vec<Receipt>, String> {
             direct_preproduct_elapsed_ns: direct.elapsed_ns,
             sparse_elapsed_ns: direct.same_case_unpruned_sparse_ns,
             direct_multiplications: direct.work.exact.multiplications,
+            direct_mask_tests: direct.work.mask_tests_before_product,
+            direct_candidate_products_refused: direct.work.candidate_products_refused,
             sparse_multiplications: direct.same_case_unpruned_mult,
             work, oracle: "checked",
         })

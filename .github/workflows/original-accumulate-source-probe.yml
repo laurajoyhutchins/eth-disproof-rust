@@ -1,0 +1,100 @@
+name: Original 27-stack numerical accumulator extraction probe
+
+on:
+  pull_request:
+    branches:
+      - feat/query-aot-source-20261113
+    paths:
+      - '.github/workflows/original-accumulate-source-probe.yml'
+
+permissions:
+  contents: read
+
+# Transient cache-scoped experiment; do not merge this expensive workflow into main.
+jobs:
+  original-accumulate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 23
+    env:
+      PINNED_EXTRACTOR_SHA: 4f3063fe6e1fe05770ea180d2bd22b28995bc661
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      LEAN_ROOT: instrumentation/lean-env
+      PINNED_ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Test the exact new canonical main-targeted extractor, not a stale
+          # copy left on this original-source branch.
+          ref: 4f3063fe6e1fe05770ea180d2bd22b28995bc661
+          persist-credentials: false
+      - name: Verify exact tested extractor revision and offline contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PINNED_EXTRACTOR_SHA"
+          python3 -m unittest discover -s eth/tools -p 'test_query_modular_extract.py' -v
+
+      - name: Checkout pinned original OpenAI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth=1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test "$(git -C upstream/openai-math hash-object lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.lean)" = '3e1664be261748c6e12a2d1cafb033dc26131bf9'
+          test "$(git -C upstream/openai-math hash-object lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramFetch.lean)" = '3396b529f3c4be8d3f04e03e08c95a00b0af82f9'
+          ln -s "$PINNED_ORIGINAL_SOURCE/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Restore pinned Lean 4.34.1 and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Check pinned toolchain and Mathlib
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$LEAN_ROOT/lean-toolchain")" = 'leanprover/lean4:v4.34.1'
+          test "$(git -C "$LEAN_ROOT/.lake/packages/mathlib" rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+
+      - name: Restore original source-import branch cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-accumulator-probe-${{ github.run_id }}
+          restore-keys: |
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-
+
+      - name: Export and kernel-certify the genuine numerical accumulator or refuse
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 eth/tools/query_modular_extract.py \
+            --upstream "$PINNED_ORIGINAL_SOURCE" \
+            --lake-root "$LEAN_ROOT" \
+            --output-dir "$RUNNER_TEMP/source-accumulator" \
+            --stages moments_accumulate \
+            --build-timeout 300 --export-timeout 300 --cert-timeout 240 \
+            --max-source-labels 1000000000 --rss-limit-gib 12
+
+      - name: Preserve exact source graph, kernel certificate, or typed refusal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-accumulate-probe-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/source-accumulator/
+          if-no-files-found: warn
+          retention-days: 14

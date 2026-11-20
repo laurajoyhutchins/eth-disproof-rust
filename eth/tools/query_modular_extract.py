@@ -124,20 +124,22 @@ class Refusal(RuntimeError):
 
 
 def run_stage_process(argv: list[str], cwd: Path, log: Path, timeout: int,
-                      rss_limit: int = MAX_PEAK_RSS_BYTES) -> dict[str, int]:
+                      rss_limit: int = MAX_PEAK_RSS_BYTES,
+                      env: dict[str, str] | None = None) -> dict[str, int]:
     """Bound wall time, output and process-group RSS, including child cleanup."""
     stdout = log.with_suffix(".stdout.log")
     stderr = log.with_suffix(".stderr.log")
     log.parent.mkdir(parents=True, exist_ok=True)
     with stdout.open("wb") as out, stderr.open("wb") as err:
         child = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL,
-                                 stdout=out, stderr=err, start_new_session=True)
+                                 stdout=out, stderr=err, start_new_session=True, env=env)
         start = time.monotonic()
         peak = 0
         try:
             while child.poll() is None:
                 peak = max(peak, rss_bytes(child.pid))
-                if out.tell() > MAX_OUTPUT_BYTES or err.tell() > MAX_OUTPUT_BYTES:
+                if os.fstat(out.fileno()).st_size > MAX_OUTPUT_BYTES or
+                    os.fstat(err.fileno()).st_size > MAX_OUTPUT_BYTES:
                     raise Refusal("original Lean output exceeds bounded log budget")
                 if peak > rss_limit:
                     raise Refusal(f"original Lean process group exceeded {rss_limit} RSS bytes")
@@ -146,7 +148,8 @@ def run_stage_process(argv: list[str], cwd: Path, log: Path, timeout: int,
                 time.sleep(0.2)
             if child.returncode != 0:
                 raise Refusal(f"original Lean exit {child.returncode}")
-            if out.tell() > MAX_OUTPUT_BYTES or err.tell() > MAX_OUTPUT_BYTES:
+            if os.fstat(out.fileno()).st_size > MAX_OUTPUT_BYTES or
+                    os.fstat(err.fileno()).st_size > MAX_OUTPUT_BYTES:
                 raise Refusal("original Lean output exceeds bounded log budget")
         except BaseException:
             if child.poll() is None:
@@ -178,7 +181,10 @@ def probe_one(stage: Stage, upstream: Path, lake: Path, output: Path,
     directory = output / stage.id
     directory.mkdir(parents=True, exist_ok=True)
     # Never accidentally inherit a previous successful receipt.
-    for name in ("source.json", "kernel-certificate.lean", "receipt.json"):
+    for name in ("source.json", "kernel-certificate.lean", "receipt.json",
+                 "report.json", "build.stdout.log", "build.stderr.log",
+                 "graph.stdout.log", "graph.stderr.log",
+                 "certificate.stdout.log", "certificate.stderr.log"):
         (directory / name).unlink(missing_ok=True)
     result = {"stage": stage.id, "module": stage.module,
               "declaration": stage.declaration, "source_commit": SOURCE_SHA,
@@ -197,7 +203,9 @@ def probe_one(stage: Stage, upstream: Path, lake: Path, output: Path,
             probe.write_text(source(record), encoding="utf-8")
             result["export"] = run_stage_process(
                 ["lake", "env", "lean", "-j", "1", "-M", "9216", str(probe)],
-                lake, directory / "graph", export_timeout, rss_limit
+                lake, directory / "graph", export_timeout, rss_limit,
+                env={**os.environ, "ORIGINAL_MAX_LABELS": str(max_labels),
+                     "ORIGINAL_SOURCE_GRAPH_TRACE": "1"},
             )
             raw = (directory / "graph.stdout.log").read_bytes()
             graph = Path(tmp) / "source.json"

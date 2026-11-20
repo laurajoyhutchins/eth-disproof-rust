@@ -430,12 +430,27 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
             emit_multiplicity_case(
                 &mut out, "corrupted leaf fiber multiplicity", &altered, false,
             );
+            // This is a stronger negative than an invalid matrix: the
+            // forged local certificate is *valid* for its own altered
+            // source, but that source cannot be reconstructed from the
+            // previously verified child residuals.
             let mut altered = multiplicity.clone();
+            let changed_variable = altered.merges[0].0.internal.first()
+                .or_else(|| altered.merges[0].0.boundary.first())
+                .cloned().ok_or("adversarial merge has no available port")?;
             altered.merges[0].0.equations.push(Equation {
-                variables: vec!["bogus".to_owned()], rhs: false,
+                variables: vec![changed_variable], rhs: false,
             });
+            let (forged_claim, forged_raw) =
+                altered.merges[0].0.eliminate_with_raw_certificate()?;
+            forged_raw.verify(
+                &altered.merges[0].0, &forged_claim,
+                VerificationLimits::default(),
+            )?;
+            altered.merges[0].1 = forged_raw;
+            altered.merges[0].2 = forged_claim;
             emit_multiplicity_case(
-                &mut out, "merge equations do not match child residuals",
+                &mut out, "locally valid certificate for wrong merge equations",
                 &altered, false,
             );
             let mut altered = multiplicity.clone();
@@ -488,7 +503,7 @@ mod tests {
         assert!(text.contains("auditPortPlan"));
         assert!(text.contains("auditMultiplicityTrace"));
         assert!(text.contains("inflated inherited free exponent"));
-        assert!(text.contains("merge equations do not match child residuals"));
+        assert!(text.contains("locally valid certificate for wrong merge equations"));
         assert!(text.contains("FreeAmplifiers EvenFirst"));
         assert!(text.matches("= true := by decide").count() >= 12);
         assert!(text.matches("= false := by decide").count() >= 3);

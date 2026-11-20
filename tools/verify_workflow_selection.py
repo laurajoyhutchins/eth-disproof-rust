@@ -199,6 +199,10 @@ def _rust_external_modules(root: Path, module: str) -> set[str]:
             raise ValueError(f"missing Rust certificate module: {current}")
         found.add(current)
         source = path.read_text(encoding="utf-8")
+        # Macro-supplied source has no statically discovered file edge here.
+        # Refuse instead of falsely reporting complete module coverage.
+        if re.search(r"\binclude!\s*\(", source):
+            raise ValueError(f"unmodeled Rust include! source: {current}")
         # The admitted certificate subtree currently uses direct file-backed
         # module declarations. Refuse path overrides until their resolution
         # is explicitly modeled; silently ignoring one is unsound.

@@ -5,8 +5,9 @@ import Mathlib
 
 The coefficient theorem uses the full finite polynomial as a specification.
 It is independent of optimized contraction and includes unused declared
-variables. The leading pair below is a partial algebraic interface;
-its full semiring laws and polynomial homomorphism remain proof obligations.
+variables. The leading pair below has a checked semiring structure, polynomial
+homomorphism, and nonzero-polynomial normal form. This is independent of
+optimized contraction complexity.
 -/
 
 namespace IndependentETH.Tropical
@@ -367,6 +368,107 @@ theorem polynomialToLeading_monomial_pos
   have hn0 : n ≠ 0 := Nat.ne_of_gt hn
   simp [natLeading, hn0, times, monomial]
 
+/-- Every term present in this optional leading pair has degree greater
+than the stated lower bound. The zero element satisfies this vacuously. -/
+private def strictlyAbove (d : ℕ) : Leading → Prop
+  | none => True
+  | some term => d < term.degree
+
+private theorem strictlyAbove_plus (d : ℕ) {a b : Leading}
+    (ha : strictlyAbove d a) (hb : strictlyAbove d b) :
+    strictlyAbove d (plus a b) := by
+  cases a with
+  | none => simpa only [plus] using hb
+  | some a =>
+      cases b with
+      | none => simpa only [plus] using ha
+      | some b =>
+          by_cases hab : a.degree < b.degree
+          · simpa [plus, hab, strictlyAbove] using ha
+          · by_cases hba : b.degree < a.degree
+            · simpa [plus, hab, hba, strictlyAbove] using hb
+            · simpa [plus, hab, hba, strictlyAbove] using ha
+
+private theorem strictlyAbove_sum (d : ℕ) (s : Finset ℕ) (f : ℕ → Leading) :
+    (∀ k ∈ s, strictlyAbove d (f k)) →
+      strictlyAbove d (∑ k ∈ s, f k) := by
+  classical
+  induction s using Finset.induction_on with
+  | empty =>
+      intro _
+      simp [strictlyAbove]
+  | @insert k s hk ih =>
+      intro h
+      rw [Finset.sum_insert hk]
+      apply strictlyAbove_plus
+      · exact h k (Finset.mem_insert_self k s)
+      · apply ih
+        intro j hj
+        exact h j (Finset.mem_insert_of_mem hj)
+
+/-- A least-degree positive term absorbs any exact sum whose terms all
+have strictly greater degree. -/
+private theorem minimum_absorbs_higher (d c : ℕ) (hc : 0 < c)
+    (a : Leading) (ha : strictlyAbove d a) :
+    plus (monomial d c hc) a = monomial d c hc := by
+  cases a with
+  | none => rfl
+  | some a =>
+      simp only [strictlyAbove] at ha
+      simp [plus, monomial, ha]
+
+/-- Universal normal form: evaluation of a nonzero natural polynomial in
+the exact tropical semiring extracts *precisely* the least supported degree
+and its positive coefficient. It does not enumerate absent degrees. -/
+theorem polynomialToLeading_normal_form (p : Polynomial ℕ) (hp : p ≠ 0) :
+    polynomialToLeading p =
+      monomial p.natTrailingDegree p.trailingCoeff
+        (Nat.pos_of_ne_zero ((Polynomial.trailingCoeff_ne_zero).mpr hp)) := by
+  classical
+  let d := p.natTrailingDegree
+  have hd : d ∈ p.support :=
+    Polynomial.natTrailingDegree_mem_support_of_ne_zero hp
+  have hc : 0 < p.coeff d := by
+    exact Nat.pos_of_ne_zero
+      (by simpa [d, Polynomial.trailingCoeff] using
+        ((Polynomial.trailingCoeff_ne_zero).mpr hp))
+  have hsplit :
+      polynomialToLeading p =
+        ∑ k ∈ p.support,
+          polynomialToLeading (Polynomial.monomial k (p.coeff k)) := by
+    conv_lhs => rw [Polynomial.as_sum_support p]
+    simp only [map_sum]
+  have hhigh :
+      strictlyAbove d
+        (∑ k ∈ p.support.erase d,
+          polynomialToLeading (Polynomial.monomial k (p.coeff k))) := by
+    apply strictlyAbove_sum
+    intro k hk
+    have hkSupport : k ∈ p.support := Finset.mem_of_mem_erase hk
+    have hkNe : k ≠ d := (Finset.mem_erase.mp hk).1
+    have hkPos : 0 < p.coeff k :=
+      Nat.pos_of_ne_zero (Polynomial.mem_support_iff.mp hkSupport)
+    have hkGt : d < k := by
+      have hle := Polynomial.natTrailingDegree_le_of_mem_supp (p := p) k hkSupport
+      dsimp [d] at *
+      omega
+    rw [polynomialToLeading_monomial_pos k (p.coeff k) hkPos]
+    exact hkGt
+  calc
+    polynomialToLeading p =
+        ∑ k ∈ p.support,
+          polynomialToLeading (Polynomial.monomial k (p.coeff k)) := hsplit
+    _ = ∑ k ∈ insert d (p.support.erase d),
+          polynomialToLeading (Polynomial.monomial k (p.coeff k)) := by
+            rw [Finset.insert_erase hd]
+    _ = monomial d (p.coeff d) hc := by
+          rw [Finset.sum_insert (by simp)]
+          rw [polynomialToLeading_monomial_pos d (p.coeff d) hc]
+          exact minimum_absorbs_higher d (p.coeff d) hc _ hhigh
+    _ = monomial p.natTrailingDegree p.trailingCoeff
+        (Nat.pos_of_ne_zero ((Polynomial.trailingCoeff_ne_zero).mpr hp)) := by
+          rfl
+
 /-- The CNF violation polynomial maps to the tropical sum over precisely
 all declared-variable assignments, one monomial per assignment. -/
 theorem generating_to_tropical {n : ℕ} (φ : CNF n) :
@@ -407,6 +509,7 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.polynomialToLeading_monomial
 #print axioms IndependentETH.Tropical.polynomialToLeading_as_sum
 #print axioms IndependentETH.Tropical.polynomialToLeading_monomial_pos
+#print axioms IndependentETH.Tropical.polynomialToLeading_normal_form
 #print axioms IndependentETH.Tropical.generating_to_tropical
 #print axioms IndependentETH.Tropical.modular_prune
 

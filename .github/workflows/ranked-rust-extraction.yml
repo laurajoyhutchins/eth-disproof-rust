@@ -27,21 +27,40 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
-      - name: Install pinned hax frontend
+      - name: Reuse pinned hax frontend executable
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-hax
+          key: pinned-cargo-hax-v0.4.2-ubuntu24-rust199
+
+      - name: Install and verify pinned hax frontend
         shell: bash
         run: |
           set -euo pipefail
-          cargo install --version 0.4.2 --locked cargo-hax
-          cargo hax --version
+          if ! command -v cargo-hax >/dev/null 2>&1; then
+            cargo install --version 0.4.2 --locked cargo-hax
+          fi
+          cargo hax --version | tee "$RUNNER_TEMP/hax-version.txt"
+          grep -Fx 'version=0.4.2' "$RUNNER_TEMP/hax-version.txt"
 
-      - name: Extract actual production Rust source through Charon/Aeneas
+      - name: Extract actual guard, decoder and complete execution source
         shell: bash
         run: |
           set -euo pipefail
           cd verification/ranked-source
-          # Aeneas's translation is source-derived. Building a generated Lean
-          # package alone does not prove its postconditions or external models.
-          cargo hax extract ranked-source --locked 2>&1 | tee "$RUNNER_TEMP/ranked-source-extraction.log"
+          # Each target imports the same production source files. A passing
+          # extraction is still not a Lean theorem. Run every target even
+          # when another fails, preserving the exact unsupported closure.
+          status=0
+          for scenario in ranked-guard ranked-decoder ranked-source; do
+            if cargo hax extract "$scenario" --locked 2>&1 | tee "$RUNNER_TEMP/$scenario-extraction.log"; then
+              echo "EXTRACTION_$scenario=PASS" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "EXTRACTION_$scenario=BLOCKED" >> "$GITHUB_STEP_SUMMARY"
+              status=1
+            fi
+          done
+          exit "$status"
 
       - name: Preserve extraction receipts and source-derived Lean
         if: always()
@@ -49,6 +68,8 @@ jobs:
         with:
           name: ranked-rust-lean-source-extraction
           path: |
+            verification/ranked-source/proofs/ranked-guard/lean/
+            verification/ranked-source/proofs/ranked-decoder/lean/
             verification/ranked-source/proofs/ranked-source/lean/
           if-no-files-found: warn
           retention-days: 7

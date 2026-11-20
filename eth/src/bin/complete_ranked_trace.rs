@@ -10,7 +10,6 @@ use lean_eth_reference::representation_ranked_input::{
 
 use lean_eth_reference::representation_ranked_certificate::{
     ArithmeticKind, ArithmeticReceipt, RankedComponentCertificate, contract_checked_ranked_weights,
-    contract_checked_ranked_weights_with_trace,
 };
 
 struct Fixture {

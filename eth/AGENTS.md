@@ -5,6 +5,8 @@ not the general Lean compiler.
 
 - `src/bit_program/` and `src/machine/`: source-defined finite
   register/stack machine fragments and normalization.
+  Source `StackRoutines` tables have one canonical implementation in
+  `src/bit_program/stack_routines.rs`; keep former import paths as aliases.
 - `src/query/`: original query, pair, node, cache and signature stages.
 - `src/counting/`: terminal/high/leaf results and two-adic cost audits.
   The `#[path]` declarations in `src/lib.rs` preserve all existing
@@ -28,3 +30,6 @@ The machine/query/counting files have been relocated without changing
 their Rust module identities. Do not silently turn this directory
 split into a semantics change; preserve exact source bindings and
 independent physical traces.
+
+Proof authors should follow `proofs/STYLE.md`; its fast style checker is
+textual and does not replace the pinned Lean kernel gates.

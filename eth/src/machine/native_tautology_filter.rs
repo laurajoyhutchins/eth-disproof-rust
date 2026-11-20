@@ -1,7 +1,9 @@
 //! Original SubexpTautologyFilterProgram: process each CNF clause through the
 //! actual 10x8 tautology machine, retain only nontautologies, restore order.
 use crate::Error;
-use crate::bit_program::{Atom, Cmd, Instr, Program};
+use crate::bit_program::record_iteration::{RecordPorts, iterate};
+use crate::bit_program::stack_routines::transfer_program;
+use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_high::clear_program;
 use crate::native_normalization_primitives::{
     emit_if_selected_command, tautology_filter_reverse_program,
@@ -13,30 +15,7 @@ fn transfer(src: usize, dst: usize) -> Result<Program<13, 11>, Error> {
     if src == dst {
         return Err(Error::Invalid("transfer ports must differ".into()));
     }
-    Program::new(
-        src,
-        dst,
-        0,
-        vec![
-            Instr::Pop {
-                stack: src,
-                value: 0,
-                present: 1,
-                next: 1,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 2,
-                no: 3,
-            },
-            Instr::Push {
-                stack: dst,
-                src: 0,
-                next: 0,
-            },
-            Instr::Halt,
-        ],
-    )
+    transfer_program(src, dst, 0, 1)
 }
 pub fn core_program() -> Result<Program<13, 11>, Error> {
     native_tautology_core::program()?
@@ -67,31 +46,15 @@ pub fn callback_command() -> Result<Cmd<13, 11>, Error> {
 }
 pub fn scan_command() -> Result<Cmd<13, 11>, Error> {
     let reader = Cmd::Call(frame_program()?.lift::<13, 11>([10, 11], [0, 1])?);
-    let advance = Cmd::ite(
-        12,
-        Cmd::Atom(Atom::Set {
-            dst: 10,
-            value: false,
-        }),
-        Cmd::Atom(Atom::Pop {
-            stack: 0,
-            value: 10,
+    Ok(iterate(
+        RecordPorts {
+            tag: 10,
             present: 11,
-        }),
-    );
-    Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set {
-            dst: 12,
-            value: false,
-        }),
-        Cmd::seq(
-            Cmd::Atom(Atom::Pop {
-                stack: 0,
-                value: 10,
-                present: 11,
-            }),
-            Cmd::while_(10, Cmd::seq(reader, Cmd::seq(callback_command()?, advance))),
-        ),
+            found: 12,
+            source: 0,
+        },
+        reader,
+        callback_command()?,
     ))
 }
 fn push_false(stack: usize) -> Cmd<13, 11> {

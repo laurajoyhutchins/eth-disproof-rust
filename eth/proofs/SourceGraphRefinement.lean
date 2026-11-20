@@ -23,6 +23,7 @@ def SiteAgreement {r s l : ℕ} (c : StructuredCalls.Cmd r s)
     (exit : Fin l) : Prop :=
   ∀ site, p.code (embed site) = StructuredCalls.code c embed exit site
 
+/-- Base commands inherit the original compiler's instruction agreement. -/
 theorem site_base {r s l : ℕ} (c : StructuredProgram.Cmd r s)
     (p : Program r s l) (embed : StructuredProgram.Site c → Fin l)
     (exit : Fin l)
@@ -210,6 +211,7 @@ theorem runsIn_iff_of_code {r s l : ℕ} {p q : Program r s l}
   · rintro ⟨n, hn, ht⟩
     exact ⟨n, hn, (trace_iff_of_code hcode).mpr ht⟩
 
+/-- Whole-program agreement preserves each physical machine transition. -/
 theorem WholeAgreement.step_eq {r s : ℕ} {c : StructuredCalls.Cmd r s}
     {p : Program r s (StructuredCalls.size c + 1)}
     {input output : Fin s} (h : WholeAgreement c p input output)
@@ -218,6 +220,7 @@ theorem WholeAgreement.step_eq {r s : ℕ} {c : StructuredCalls.Cmd r s}
       BitProgram.step (StructuredCalls.compiled c input output) cfg :=
   step_eq_of_code h.code_eq cfg
 
+/-- Whole-program agreement preserves arbitrary finite execution traces. -/
 theorem WholeAgreement.trace_iff {r s : ℕ} {c : StructuredCalls.Cmd r s}
     {p : Program r s (StructuredCalls.size c + 1)}
     {input output : Fin s} (h : WholeAgreement c p input output)
@@ -240,7 +243,6 @@ theorem WholeAgreement.eval_halt_trace {r s : ℕ} {c : StructuredCalls.Cmd r s}
   exact targetTrace
 
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement
-
 
 /-!
 ## Proof-producing structural source-graph lowering
@@ -430,6 +432,7 @@ def SourceGraph.physical {r s : ℕ} {c : StructuredCalls.Cmd r s}
     | some q => code g (StructuredCalls.siteAddress c)
         (StructuredCalls.exitAddress c) q
 
+/-- Physical lowering emits the certified instruction at every source site. -/
 theorem SourceGraph.physical_site {r s : ℕ}
     {c : StructuredCalls.Cmd r s} (g : SourceGraph c)
     (input output : Fin s) (q : StructuredCalls.Site c) :
@@ -443,6 +446,7 @@ theorem SourceGraph.physical_site {r s : ℕ}
           (StructuredCalls.exitAddress c) q) = _
   rw [Equiv.symm_apply_apply]
 
+/-- Physical lowering emits a halt instruction at the designated exit. -/
 theorem SourceGraph.physical_exit {r s : ℕ}
     {c : StructuredCalls.Cmd r s} (g : SourceGraph c)
     (input output : Fin s) :

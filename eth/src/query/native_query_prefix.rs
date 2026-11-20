@@ -8,7 +8,7 @@
 //! nor `QueryReconstruction.command` is implemented by this module.
 
 use crate::Error;
-use crate::bit_program::{Atom, Cmd, Instr, Program};
+use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_high::{clear_program, copy_program};
 
 fn pop<const R: usize, const S: usize>(stack: usize, value: usize, present: usize) -> Cmd<R, S> {
@@ -22,88 +22,13 @@ fn push<const R: usize, const S: usize>(stack: usize, src: usize) -> Cmd<R, S> {
     Cmd::Atom(Atom::Push { stack, src })
 }
 
-/// Source `StackRoutines.transferProgram`: four labels, including the halt.
-/// Its preconditions require different source/destination stacks and read
-/// registers. The word is reversed as it is transferred.
-pub fn transfer_program<const R: usize, const S: usize>(
-    src: usize,
-    dst: usize,
-    value: usize,
-    present: usize,
-) -> Result<Program<R, S>, Error> {
-    if src == dst || value == present {
-        return Err(Error::Invalid("transfer requires disjoint ports".into()));
-    }
-    Program::new(
-        src,
-        dst,
-        0,
-        vec![
-            Instr::Pop {
-                stack: src,
-                value,
-                present,
-                next: 1,
-            },
-            Instr::Branch {
-                test: present,
-                yes: 2,
-                no: 3,
-            },
-            Instr::Push {
-                stack: dst,
-                src: value,
-                next: 0,
-            },
-            Instr::Halt,
-        ],
-    )
-}
+/// Stable QueryStream import path for the canonical StackRoutines table.
+pub use crate::bit_program::stack_routines::transfer_program;
 
 /// The exact seven-label source `ParserProgram.frameProgram`.
 /// Input: `Encoding.frame bits ++ rest`; output is `bits.reverse ++ out`.
-pub fn frame_program() -> Result<Program<2, 2>, Error> {
-    Program::new(
-        0,
-        1,
-        0,
-        vec![
-            Instr::Pop {
-                stack: 0,
-                value: 0,
-                present: 1,
-                next: 1,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 2,
-                no: 6,
-            },
-            Instr::Branch {
-                test: 0,
-                yes: 3,
-                no: 6,
-            },
-            Instr::Pop {
-                stack: 0,
-                value: 0,
-                present: 1,
-                next: 4,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 5,
-                no: 6,
-            },
-            Instr::Push {
-                stack: 1,
-                src: 0,
-                next: 0,
-            },
-            Instr::Halt,
-        ],
-    )
-}
+/// Compatibility path for the pinned source frame parser.
+pub use crate::bit_program::frame_programs::frame_program;
 
 /// Source `Subexp.AssignmentRecordViews.flatten` and its full compiled table.
 /// The parser is a physically lifted call on registers [0,1], stacks [0,1].

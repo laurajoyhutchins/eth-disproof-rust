@@ -309,7 +309,6 @@ theorem matching_ordered_pair_moment
 #print axioms TwoAdicIndependentMoments.matching_class_exponential_moment
 #print axioms TwoAdicIndependentMoments.matching_two_exponential_moment
 #print axioms TwoAdicIndependentMoments.degree_weighted_symbol_port_moment
-#print axioms TwoAdicIndependentMoments.matching_ordered_pair_moment
 #print axioms TwoAdicIndependentMoments.product_of_powers_is_power_of_sum
 #print axioms TwoAdicIndependentMoments.port_power_equals_local_product
 #print axioms TwoAdicIndependentMoments.matching_count_power_moment
@@ -317,6 +316,6 @@ theorem matching_ordered_pair_moment
 #print axioms TwoAdicIndependentMoments.normalized_matching_count_moment
 #print axioms TwoAdicIndependentMoments.normalized_degree_weighted_port_moment
 #print axioms TwoAdicIndependentMoments.normalized_degree_weighted_port_source_factor
-
+#print axioms TwoAdicIndependentMoments.matching_ordered_pair_moment
 
 end TwoAdicIndependentMoments

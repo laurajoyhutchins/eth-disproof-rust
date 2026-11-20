@@ -1,6 +1,7 @@
 //! Complete source `ExecClauseFiltersProgram.selfFilterProgram mode` on 15x16.
 //! Uses preserving real relation scanner and original emit + reverse routines.
 use crate::Error;
+use crate::bit_program::record_iteration::{RecordPorts, iterate};
 use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_clause_dedup::filter_callback;
 use crate::native_clause_relation_scan::Mode;
@@ -10,34 +11,15 @@ use crate::native_query_prefix::frame_program;
 
 pub fn filter_scan(mode: Mode) -> Result<Cmd<15, 16>, Error> {
     let reader = Cmd::Call(frame_program()?.lift::<15, 16>([0, 1], [13, 15])?);
-    let advance = Cmd::ite(
-        14,
-        Cmd::Atom(Atom::Set {
-            dst: 0,
-            value: false,
-        }),
-        Cmd::Atom(Atom::Pop {
-            stack: 13,
-            value: 0,
+    Ok(iterate(
+        RecordPorts {
+            tag: 0,
             present: 1,
-        }),
-    );
-    Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set {
-            dst: 14,
-            value: false,
-        }),
-        Cmd::seq(
-            Cmd::Atom(Atom::Pop {
-                stack: 13,
-                value: 0,
-                present: 1,
-            }),
-            Cmd::while_(
-                0,
-                Cmd::seq(reader, Cmd::seq(filter_callback(mode)?, advance)),
-            ),
-        ),
+            found: 14,
+            source: 13,
+        },
+        reader,
+        filter_callback(mode)?,
     ))
 }
 fn push_false(stack: usize) -> Cmd<15, 16> {

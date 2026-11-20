@@ -33,6 +33,7 @@ def toClause {n : ℕ} (C : List (MainResults.Lit n)) : SAT.Clause (Fin n) :=
 def toCNF {n : ℕ} (φ : MainResults.CNF n) : SAT.CNF (Fin n) :=
   (φ.map toClause).toFinset
 
+/-- Translating one clause preserves its evaluation for every assignment. -/
 theorem clause_eval_iff {n : ℕ} (a : Fin n → Bool) (C : List (MainResults.Lit n)) :
     (toClause C).eval a = true ↔ ∃ l ∈ C, a l.1 = l.2 := by
   rw [SAT.Clause.eval_eq_true]
@@ -46,6 +47,7 @@ theorem clause_eval_iff {n : ℕ} (a : Fin n → Bool) (C : List (MainResults.Li
     apply (SAT.Literal.eval_eq_true a (toLiteral l)).mpr
     simpa [toLiteral] using he
 
+/-- Translating every clause preserves CNF evaluation. -/
 theorem cnf_eval_iff {n : ℕ} (a : Fin n → Bool) (φ : MainResults.CNF n) :
     (toCNF φ).eval a = true ↔
       ∀ C ∈ φ, ∃ l ∈ C, a l.1 = l.2 := by

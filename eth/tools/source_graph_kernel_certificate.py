@@ -41,6 +41,33 @@ def instruction_lean(op: tuple[str, tuple[int, ...]], r: int, s: int, labels: in
     return 'Instr.' + name + ((' ' + ' '.join(vals)) if vals else '')
 
 
+def physical_program_definition(
+    name: str, r: int, s: int, l: int, entry: int,
+    inp: int, out: int, rows: list[tuple[str, tuple[int, ...]]]
+) -> list[str]:
+    """One physical-table Lean serializer, shared by original-graph and Rust receipts.
+
+    All numeric operands pass the original source-graph decoder and renderer;
+    this function does not confer source provenance or certify its own output.
+    """
+    insist(0 < r <= 256 and 0 < s <= 4096 and 0 < l <= 4096,
+           'finite physical certificate dimensions')
+    insist(0 <= entry < l and 0 <= inp < s and 0 <= out < s,
+           'invalid physical certificate ports')
+    insist(len(rows) == l, 'incomplete physical certificate code')
+    insist(bool(re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', name)),
+           'invalid certificate identifier')
+    return [
+        f'private def {name} : Program {r} {s} {l} where',
+        f'  inputStack := ({inp} : Fin {s})',
+        f'  outputStack := ({out} : Fin {s})',
+        f'  entry := ({entry} : Fin {l})',
+        f'  code := fun pc => (#[',
+        *(f'    {instruction_lean(row, r, s, l)},' for row in rows),
+        f'  ] : Array (Instr {r} {s} {l}))[pc.val]\' (by simpa using pc.isLt)',
+    ]
+
+
 def read_source_graph(path: Path, record: dict[str, str]):
     for key in ('id', 'fqn', 'module', 'git_blob'):
         insist(isinstance(record.get(key), str), f'missing pinned declaration field {key}')
@@ -100,13 +127,7 @@ def certificate_source(path: Path, record: dict[str, str]) -> tuple[str, dict[st
         'set_option linter.unnecessarySimpa false',
         'namespace OriginalSourceGraphKernelCertificate',
         'open OAI.Algorithms.SubexponentialSAT.BitProgram',
-        f'private def candidate : Program {r} {s} {l} where',
-        f'  inputStack := ({inp} : Fin {s})',
-        f'  outputStack := ({out} : Fin {s})',
-        f'  entry := ({entry} : Fin {l})',
-        f'  code := fun pc => (#[',
-        *(f'    {instruction_lean(row, r, s, l)},' for row in rows),
-        f'  ] : Array (Instr {r} {s} {l}))[pc.val]\' (by simpa using pc.isLt)',
+        *physical_program_definition('candidate', r, s, l, entry, inp, out, rows),
         f'private theorem input_eq : candidate.inputStack = {record["fqn"]}.inputStack := by decide',
         f'private theorem output_eq : candidate.outputStack = {record["fqn"]}.outputStack := by decide',
         f'private theorem entry_eq : candidate.entry = {record["fqn"]}.entry := by rfl',

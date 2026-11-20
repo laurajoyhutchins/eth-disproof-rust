@@ -6,6 +6,10 @@ on:
       - 'eth/proofs/SourceGraphRefinement.lean'
       - 'eth/proofs/FramedRecordReaderRefinement.lean'
       - 'eth/src/bin/framed-reader-certificate.rs'
+      - 'eth/tools/verify_rust_physical_receipt.py'
+      - 'eth/tools/test_verify_rust_physical_receipt.py'
+      - 'eth/tools/source_graph_kernel_certificate.py'
+      - 'eth/tools/verify_source_graph.py'
       - 'eth/src/bit_program.rs'
       - 'eth/src/bit_program/structured.rs'
       - 'eth/src/bit_program/frame_programs.rs'
@@ -80,37 +84,43 @@ jobs:
           )
           echo 'LEAN_SOURCE_GRAPH_REFINEMENT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'LEAN_FRAMED_RECORD_READER=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
-      - name: Kernel-validate tables emitted by actual Rust lift and structured compiler
+      - name: Kernel-validate actual Rust tables through canonical source-graph certificate renderer
         shell: bash
         run: |
           set -euo pipefail
           cargo fetch --locked
+          python3 -m unittest discover -s eth/tools -p 'test_source_graph_kernel_certificate.py' -v
+          python3 -m unittest discover -s eth/tools -p 'test_verify_rust_physical_receipt.py' -v
+          data="$RUNNER_TEMP/framed-reader-physical-programs.json"
           cert="$RUNNER_TEMP/framed-reader-rust-certificate.lean"
+          cargo run --quiet --locked --offline -p lean-eth-reference --bin framed-reader-certificate > "$data"
           cat eth/proofs/FramedRecordReaderRefinement.lean > "$cert"
-          cargo run --quiet --locked --offline -p lean-eth-reference --bin framed-reader-certificate >> "$cert"
+          python3 eth/tools/verify_rust_physical_receipt.py "$data" >> "$cert"
           (
             cd instrumentation/lean-env
             lake env lean "$cert"
           )
-          # A one-row mutation of the Rust-emitted compiled table must be
-          # rejected by the *same* source-imported Lean kernel check.
-          python3 - "$cert" "$RUNNER_TEMP/framed-reader-mutated.lean" <<'PY'
+          # Mutate the canonical *data*, not generated Lean source; the same
+          # shared parser/renderer must accept the well-typed physical mutant
+          # and the pinned Lean kernel must reject its source comparison.
+          python3 - "$data" "$RUNNER_TEMP/framed-reader-mutated.json" <<'PY'
+          import json
           from pathlib import Path
           import sys
-          source = Path(sys.argv[1]).read_text()
-          original = "    | 1 => .pop 13 0 1 2"
-          altered = "    | 1 => .pop 13 1 0 2"
-          if source.count(original) < 1:
-              raise SystemExit("missing expected compiled-source mutation target")
-          Path(sys.argv[2]).write_text(source.replace(original, altered, 1))
+          source = json.loads(Path(sys.argv[1]).read_text())
+          compiled = source["cases"][0]["compiled"]["code"]
+          assert compiled[1] == "pop:13:0:1:2"
+          compiled[1] = "pop:13:1:0:2"
+          Path(sys.argv[2]).write_text(json.dumps(source, separators=(',', ':')) + "\n")
           PY
+          cat eth/proofs/FramedRecordReaderRefinement.lean > "$RUNNER_TEMP/framed-reader-mutated.lean"
+          python3 eth/tools/verify_rust_physical_receipt.py "$RUNNER_TEMP/framed-reader-mutated.json" >> "$RUNNER_TEMP/framed-reader-mutated.lean"
           (
             cd instrumentation/lean-env
             if lake env lean "$RUNNER_TEMP/framed-reader-mutated.lean" > "$RUNNER_TEMP/framed-reader-mutation.log" 2>&1; then
-              echo 'mutated Rust output unexpectedly accepted by Lean' >&2
+              echo 'mutated physical Rust data unexpectedly accepted by Lean' >&2
               exit 1
             fi
           )
           echo 'RUST_EMITTED_FRAMED_READER_LEAN_KERNEL=ACCEPTED' >> "$GITHUB_STEP_SUMMARY"
           echo 'RUST_EMITTED_FRAMED_READER_MUTANT=REJECTED' >> "$GITHUB_STEP_SUMMARY"
-

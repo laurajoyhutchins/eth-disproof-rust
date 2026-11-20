@@ -93,40 +93,57 @@ written oracle; the full Rust compiler/interpreter and serialized
 source import are still independent obligations. No ETH complexity
 claim follows from this result.
 
-## Rust-emitted Lean translation validation (lift and compiled Call)
+## Shared physical-program verification contract
 
-The previous independent Rust table witness was limited to comparing
-handwritten Rust instructions. The more consequential cross-language
-receipt now comes from an **actual Rust executable**, not from a second
-Rust implementation of the expected frame table:
+The six framed readers are checked through the **existing** original
+source-graph finite-program vocabulary and Lean certificate renderer.
 
-[`framed-reader-certificate.rs`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/src/bin/framed-reader-certificate.rs)
-calls the production `frame_program()`, `Program::lift`, and
-`Cmd::Call(...).compiled(...)`. It emits every resulting instruction,
-real entry label, and I/O port as Lean `Program` definitions, then
-appends equality obligations against the original pinned source.
-
-The [source-refinement workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/.github/workflows/lean-source-refinement.yml)
-checks that emitted Lean file **using the pinned Lean 4.34.1 kernel**.
-It compares both the seven-label mapped reader and the eight-label
-compiled source `Call` on all six scanner ABIs. The latter must have
-an outer halt at physical label 0; its relocated source halt at
-label 7 must be `goto 0`. A second check mutates one emitted compiled
-instruction; the kernel must reject the altered receipt.
+1. [`framed-reader-certificate.rs`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/src/bin/framed-reader-certificate.rs)
+   invokes production `frame_program()`, `Program::lift`, and
+   `Cmd::Call(...).compiled(...)`. It emits **data only**, as one
+   `rust-physical-programs-v1` JSON line. Each physical program is
+   the established source-graph table object
+   `(r,s,labels,entry,input,output,code)`; each `code` entry is a
+   canonical opcode and its numeric operands, not generated Lean syntax.
+2. [`verify_rust_physical_receipt.py`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/tools/verify_rust_physical_receipt.py)
+   strictly checks the receipt and six caller ABIs with the **existing**
+   `verify_source_graph.parse_source_graph_json` and `parse_program`
+   functions. It then invokes
+   `source_graph_kernel_certificate.physical_program_definition`,
+   also used by original source-graph certificates. This is the
+   **single finite-table-to-Lean renderer**, including the original
+   `instruction_lean` opcode mapper.
+3. The pinned [source-refinement workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/.github/workflows/lean-source-refinement.yml)
+   appends that rendered data to the independent mathematical
+   `FramedRecordReaderRefinement.lean` and asks Lean 4.34.1 to check
+   full equality with the original source at every label. It also
+   mutates a **canonical physical data row**, runs it through the same
+   parser and renderer, and requires the Lean kernel to reject it.
 
 A universal Lean theorem,
-`mappedCompiledFrameProgram_eq_source`, independently states the
-complete eight-label compilation identity for arbitrary valid Lean
-port maps, not merely the six exercised instances.
+`mappedCompiledFrameProgram_eq_source`, separately proves the
+eight-label compilation identity for *arbitrary valid Lean ports*:
+outer halt at physical label 0, parser instructions at labels 1–6,
+and the relocated source halt `goto 0` at label 7.
 
-**Boundary:** the kernel validates the *Lean representation of the bytes
-that the Rust executable prints*. The serializer that maps Rust `Instr`
-to Lean text and the compiler that produced those `Instr` values are
-still Rust code, not mechanically extracted Lean functions. Source
-binding, exact instruction emission, mutation rejection, and
-independent Rust tests strengthen the implementation evidence; they
-do not constitute a general Rust-to-Lean proof, and cannot establish
-the claimed ETH complexity bound.
+### Retained independent evidence
+
+`source_framed_reader_refinement.rs` retains an independent seven-label
+test oracle and frame execution cases. `source_record_iteration.rs`
+retains independently reconstructed **full scanner** command trees.
+Neither oracle is replaced by the JSON receipt, which validates
+actual Rust-produced instruction tables rather than independent
+runtime behavior.
+
+**Boundary:** the shared Python validation and Lean kernel only
+establish the identity of the program *represented by data printed
+by Rust*. They cannot universally prove that the Rust serializer
+truthfully reports memory contents or that `Program::lift`,
+`Cmd::compiled`, and the Rust interpreter implement the source for
+all inputs. There is one canonical Lean opcode renderer, but two
+different trusted language runtimes remain. Source counting
+correctness, actual CPU/heap complexity and ETH conclusions
+remain separate obligations.
 
 ## Regression obligations
 

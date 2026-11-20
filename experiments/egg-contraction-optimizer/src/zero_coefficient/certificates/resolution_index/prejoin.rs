@@ -18,6 +18,8 @@ use std::time::Instant;
 
 #[path = "prejoin/memo.rs"]
 pub mod memo;
+#[path = "prejoin/bitset.rs"]
+pub mod bitset;
 
 const MIN_LEFT_SUPPORT: usize = 8;
 const MAX_SOURCE_NODES: usize = 64;
@@ -65,6 +67,15 @@ pub struct Work {
     pub memo_incomplete_refusals: u64,
     pub memo_peak_entries: usize,
     pub memo_peak_payload_bytes_lower_bound: usize,
+    pub bitset_gate_calls: u64,
+    pub bitset_gate_port_reads: u64,
+    pub bitset_admitted_frontiers: u64,
+    pub bitset_declined_width: u64,
+    pub bitset_declined_estimate: u64,
+    pub bitset_fallback_out_of_range: u64,
+    pub bitset_estimated_compatible_pairs: u128,
+    pub bitset_estimated_excess_pairs: u128,
+    pub bitset_peak_state_bytes: usize,
 }
 
 #[derive(Debug)]
@@ -184,6 +195,21 @@ fn merge_preproduct_with_memo(
     patterns: &[ForbiddenPattern], work: &mut Work,
     mut memo: Option<&mut memo::DecisionCache>,
 ) -> Result<Stage, String> {
+    merge_preproduct_with_guard(left, right, kept, patterns, work,
+        |output, rules, work| match memo.as_deref_mut() {
+            Some(cache) => cache.check(output, rules, work),
+            None => rejected(output, rules, true, work),
+        })
+}
+
+fn merge_preproduct_with_guard<F>(
+    left: &Stage, right: &Stage, kept: &[String],
+    patterns: &[ForbiddenPattern], work: &mut Work,
+    mut guard: F,
+) -> Result<Stage, String>
+where
+    F: FnMut(usize, &[ForbiddenPattern], &mut Work) -> bool,
+{
     let (Values::Sparse(a), Values::Sparse(b)) = (&left.values, &right.values)
     else { return Err("pre-product source check requires sparse inputs".into()); };
     let union = union_ports(&left.ports, &right.ports);
@@ -211,10 +237,7 @@ fn merge_preproduct_with_memo(
             let union_mask = embed(left_mask, &left.ports, &union)
                 | embed(right_mask, &right.ports, &union);
             let output = project(union_mask, &union, kept);
-            let forbidden = match memo.as_deref_mut() {
-                Some(cache) => cache.check(output, patterns, work),
-                None => rejected(output, patterns, true, work),
-            };
+            let forbidden = guard(output, patterns, work);
             if forbidden {
                 work.candidate_products_refused += 1;
                 continue;
@@ -236,6 +259,20 @@ fn fold(
 fn fold_with_memo(
     source: &[Factor], order: &[usize], placement: Placement,
     memo_mode: Option<memo::MemoMode>,
+) -> Result<(BigUint, Work, u128), String> {
+    fold_with_guard_config(source, order, placement, memo_mode, None)
+}
+
+fn fold_with_bitset(
+    source: &[Factor], order: &[usize], policy: bitset::Policy,
+) -> Result<(BigUint, Work, u128), String> {
+    fold_with_guard_config(source, order, Placement::BeforeProduct, None, Some(policy))
+}
+
+fn fold_with_guard_config(
+    source: &[Factor], order: &[usize], placement: Placement,
+    memo_mode: Option<memo::MemoMode>,
+    bitset_policy: Option<bitset::Policy>,
 ) -> Result<(BigUint, Work, u128), String> {
     validate_order(source, order)?;
     let start = Instant::now();
@@ -270,9 +307,22 @@ fn fold_with_memo(
                 // A fresh cache belongs to exactly one checked future
                 // clause set; never carry decisions to the next frontier.
                 let mut cache = memo_mode.map(memo::DecisionCache::new);
-                merge_preproduct_with_memo(
+                let mut bits = bitset_policy.and_then(|policy|
+                    bitset::DecisionBits::prepare(
+                        &stage, &leaves[factor], &kept,
+                        &constraints, policy, &mut work,
+                    ));
+                merge_preproduct_with_guard(
                     &stage, &leaves[factor], &kept, &constraints,
-                    &mut work, cache.as_mut(),
+                    &mut work, |output, rules, work| {
+                        if let Some(bits) = bits.as_mut() {
+                            bits.check(output, rules, work)
+                        } else if let Some(tree) = cache.as_mut() {
+                            tree.check(output, rules, work)
+                        } else {
+                            rejected(output, rules, true, work)
+                        }
+                    },
                 )?
             },
         };

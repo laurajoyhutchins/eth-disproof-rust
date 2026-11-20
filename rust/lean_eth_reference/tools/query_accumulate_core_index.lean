@@ -4,10 +4,11 @@ import OAI.Algorithms.SubexponentialSAT.SqrtLog.MomentsReadoutProgramAccumulate
 Bounded executable lookup probe against the *genuine original* numerical
 accumulator's compiled instruction function.
 
-This does not use Lean.Meta, emit a graph, synthesize a substitute callee or
-claim a theorem about actual Rust. A successful #eval is an original Lean
-execution observation, not a kernel certificate. We intentionally query only
-a few physical addresses: the full table may be enormous.
+This does not use Lean.Meta, synthesize a substitute callee or claim a theorem
+about Rust. A successful #eval is an original Lean execution observation,
+not a kernel certificate. The table is enumerated only when its *original*
+static label count is at most 4096; a separate Lean kernel certificate must
+check every emitted instruction before accepting the table.
 -/
 
 namespace OriginalAccumulatorIndexedProbe

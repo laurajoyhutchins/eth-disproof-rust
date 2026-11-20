@@ -25,7 +25,7 @@ fn clear_call<const R: usize, const S: usize>(stack: usize) -> Result<Cmd<R, S>,
 /// The exact recursive `NodeReadoutSpace.clearMany` command. An empty set of
 /// ports becomes `skip`, and duplicate ports still execute duplicate clears.
 pub fn clear_many(ports: &[usize]) -> Result<Cmd<40, 896>, Error> {
-    source_commands::clear_many(ports, 0, 1)
+    source_commands::clear_many(ports)
 }
 
 /// The 40-register/768-stack `RingNodeSetup.initNodes`. The copy's temporary

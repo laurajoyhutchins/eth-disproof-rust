@@ -27,16 +27,15 @@ pub(crate) fn seq<const R: usize, const S: usize>(
 }
 
 /// Clear the given source stacks in order, including duplicates, before
-/// executing `tail`. Unlike `clear_many`, this does not append `Skip`
+/// executing `tail`, using the source's read registers 0 and 1.
+/// Unlike `clear_many`, this does not append `Skip`
 /// after the final command. The source cost of each clear is retained.
 pub(crate) fn clear_many_then<const R: usize, const S: usize>(
     ports: &[usize],
-    value: usize,
-    present: usize,
     mut tail: Cmd<R, S>,
 ) -> Result<Cmd<R, S>, Error> {
     for &port in ports.iter().rev() {
-        tail = Cmd::seq(Cmd::Call(clear_program(port, value, present)?), tail);
+        tail = Cmd::seq(Cmd::Call(clear_program(port, 0, 1)?), tail);
     }
     Ok(tail)
 }
@@ -45,10 +44,8 @@ pub(crate) fn clear_many_then<const R: usize, const S: usize>(
 /// Even an empty port list yields `Skip`, not a host-level no-op.
 pub(crate) fn clear_many<const R: usize, const S: usize>(
     ports: &[usize],
-    value: usize,
-    present: usize,
 ) -> Result<Cmd<R, S>, Error> {
-    clear_many_then(ports, value, present, Cmd::Skip)
+    clear_many_then(ports, Cmd::Skip)
 }
 
 /// Original source work-register resets in ascending register order.
@@ -99,7 +96,7 @@ mod tests {
     fn canonical_clears_match_both_previous_source_suffix_conventions() {
         for ports in [vec![], vec![3], vec![1, 3, 1], vec![7, 0, 7, 2]] {
             let old = old_clear_many::<4, 8>(&ports, Cmd::Skip).unwrap();
-            let new = clear_many::<4, 8>(&ports, 0, 1).unwrap();
+            let new = clear_many::<4, 8>(&ports).unwrap();
             assert_eq!(new, old);
             assert_eq!(new.compiled(0, 0).unwrap(), old.compiled(0, 0).unwrap());
 
@@ -108,7 +105,7 @@ mod tests {
                 value: true,
             });
             let old = old_clear_many::<4, 8>(&ports, terminal.clone()).unwrap();
-            let new = clear_many_then(&ports, 0, 1, terminal).unwrap();
+            let new = clear_many_then(&ports, terminal).unwrap();
             assert_eq!(new, old);
             assert_eq!(new.compiled(0, 0).unwrap(), old.compiled(0, 0).unwrap());
         }
@@ -129,7 +126,7 @@ mod tests {
     #[test]
     fn invalid_clear_port_refuses_in_the_same_reverse_order() {
         let old = old_clear_many::<4, 8>(&[99, 8], Cmd::Skip).unwrap_err();
-        let new = clear_many::<4, 8>(&[99, 8], 0, 1).unwrap_err();
+        let new = clear_many::<4, 8>(&[99, 8]).unwrap_err();
         assert_eq!(format!("{old:?}"), format!("{new:?}"));
     }
 }

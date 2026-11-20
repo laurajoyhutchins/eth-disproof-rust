@@ -28,7 +28,7 @@ fn clear_bank<const R: usize, const S: usize>(
     tmp: usize,
     changed: &[usize],
 ) -> Result<Cmd<R, S>, Error> {
-    clear_many_then(changed, 0, 1, clear_call(tmp)?)
+    clear_many_then(changed, clear_call(tmp)?)
 }
 
 fn set<const R: usize, const S: usize>(dst: usize, value: bool) -> Cmd<R, S> {

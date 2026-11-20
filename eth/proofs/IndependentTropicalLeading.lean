@@ -259,6 +259,16 @@ instance : CommSemiring Leading where
   natCast := natLeading
   nsmul := nsmulRec
   npow := npowRec
+  nsmul_zero := by intro _; rfl
+  nsmul_succ := by
+    intro n x
+    dsimp [nsmulRec]
+    exact plus_comm _ _
+  npow_zero := by intro _; rfl
+  npow_succ := by
+    intro n x
+    dsimp [npowRec]
+    exact times_comm _ _
   add_assoc := plus_assoc
   zero_add := zero_plus
   add_zero := plus_zero
@@ -303,7 +313,11 @@ theorem polynomialToLeading_mul (p q : Polynomial ℕ) :
 theorem polynomialToLeading_monomial (d n : ℕ) :
     polynomialToLeading (Polynomial.monomial d n) =
       times (natLeading n) ((monomial 1 1 (by omega)) ^ d) := by
-  simp [polynomialToLeading, Polynomial.eval₂_monomial, natLeading]
+  change Polynomial.eval₂ (Nat.castRingHom Leading) (monomial 1 1 (by omega))
+    (Polynomial.monomial d n) =
+      times (natLeading n) ((monomial 1 1 (by omega)) ^ d)
+  rw [Polynomial.eval₂_monomial]
+  rfl
 
 /-- The universal homomorphism evaluates precisely the finite source
 coefficient support, without inventing terms or treating absent coefficients

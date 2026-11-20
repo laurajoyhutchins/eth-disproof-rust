@@ -147,6 +147,10 @@ impl Reader {
             write!(result, "x_{var}: {}", rust_type(ty)).unwrap();
         }
         writeln!(result, ") -> {} {{", rust_type(ret)).unwrap();
+        // Read the ordered effects independently from the *same pinned source
+        // IR*. Only the literal/isShared/inc/dec/del straight-line fragment
+        // receives this receipt. Branches, joins and calls have no claim.
+        let source_events = Self::linear_source_effects(body)?;
         Self::body(
             body,
             &mut result,
@@ -160,6 +164,13 @@ impl Reader {
                 features,
             },
         )?;
+        if let Some(expected) = source_events {
+            if !expected.is_empty() {
+                effect_order::verify_emitted_order(&expected, &result).map_err(|reason| {
+                    CompilerError::new(RefusalKind::FnBody, reason)
+                })?;
+            }
+        }
         result.push_str("}\n");
         Ok(result)
     }

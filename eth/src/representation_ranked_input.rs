@@ -41,6 +41,26 @@ impl RankedContractionInput {
     }
 }
 
+/// Execute the production checked counter from *the exact supplied bytes*.
+/// A malformed source refuses with no arithmetic observations; accepted
+/// inputs are decoded and source-edge-certified before any multiplication.
+/// The returned trace is still an untrusted report until independently
+/// checked against the same raw byte sequence.
+pub fn execute_ranked_wire(
+    bytes: &[u8],
+) -> (Result<crate::representation_ranked_certificate::RankedCountReceipt, Error>,
+      Vec<crate::representation_ranked_certificate::ArithmeticReceipt>) {
+    use crate::representation_ranked_certificate::contract_checked_ranked_weights_with_trace;
+    match decode_ranked_input(bytes) {
+        Err(error) => (Err(error), Vec::new()),
+        Ok(source) => contract_checked_ranked_weights_with_trace(
+            &source.weights,
+            &source.source_edges,
+            &source.certificate,
+        ),
+    }
+}
+
 fn bad(reason: &str) -> Error {
     Error::Invalid(format!("ranked input v1: {reason}"))
 }

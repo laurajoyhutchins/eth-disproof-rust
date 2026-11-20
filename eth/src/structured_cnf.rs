@@ -161,13 +161,15 @@ impl SignedCsr<'_> {
         let mut forbidden = 0u8;
         for seed in 0..8u8 {
             let mut state = [seed & 1 != 0, seed & 2 != 0, seed & 4 != 0];
-            for i in 0..n - 2 {
+            for &bit in &rhs {
                 if !state[0] && !state[1] && !state[2] {
                     forbidden |= 1 << seed;
                 }
-                if i < n - 3 {
-                    state = [state[1], state[2], state[0] ^ state[1] ^ rhs[i]];
-                }
+                state = [state[1], state[2], state[0] ^ state[1] ^ bit];
+            }
+            // The final sliding OR has no following parity transition.
+            if !state[0] && !state[1] && !state[2] {
+                forbidden |= 1 << seed;
             }
         }
         Ok(RecurrenceReceipt {

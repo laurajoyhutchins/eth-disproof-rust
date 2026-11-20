@@ -122,7 +122,10 @@ impl VerificationLimits {
         // registration and the free-column receipt still allocate.
         let cells = rows.checked_mul(columns)
             .ok_or("checker matrix storage overflow")?;
-        if columns > self.max_cells || rows > self.max_cells {
+        // The appended RHS is not a source variable. In the empty
+        // 0-by-0 system the augmented width is one but no matrix cells
+        // or variable registry entries are allocated.
+        if columns.saturating_sub(1) > self.max_cells || rows > self.max_cells {
             return Err("checker matrix dimension budget exceeded".into());
         }
         if cells > self.max_cells {
@@ -932,10 +935,13 @@ mod tests {
             .check(0, usize::MAX, 0).unwrap_err()
             .contains("dimension budget"));
         assert!(VerificationLimits { max_cells: 4, max_steps: 0 }
-            .check(0, 5, 0).unwrap_err()
+            .check(0, 6, 0).unwrap_err()
             .contains("dimension budget"));
         VerificationLimits { max_cells: 4, max_steps: 0 }
-            .check(0, 4, 0).unwrap();
+            .check(0, 5, 0).unwrap();
+        // Zero equations and zero declared variables allocate no cells.
+        VerificationLimits { max_cells: 0, max_steps: 0 }
+            .check(0, 1, 0).unwrap();
     }
 
 

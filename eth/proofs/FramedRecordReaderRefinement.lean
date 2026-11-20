@@ -1,4 +1,5 @@
 import OAI.Algorithms.SubexponentialSAT.RecordPrograms
+import ACC.BitProgramFields
 
 /-!
 # Exact framed-reader boundary from the pinned original source
@@ -35,30 +36,13 @@ def mappedFrameProgram {r s : ℕ} (p : RecordPrograms.Ports r s) :
     | 5 => .push p.payload p.tag 0
     | _ => .halt
 
-private theorem program_eq_of_fields {r s l : ℕ} (a b : Program r s l)
-    (hi : a.inputStack = b.inputStack)
-    (ho : a.outputStack = b.outputStack)
-    (he : a.entry = b.entry)
-    (hc : ∀ pc, a.code pc = b.code pc) : a = b := by
-  cases a with
-  | mk ai ao ae ac =>
-    cases b with
-    | mk bi bo be bc =>
-      dsimp at hi ho he hc
-      cases hi
-      cases ho
-      cases he
-      have htable : ac = bc := funext hc
-      cases htable
-      rfl
-
 /-- A single Lean theorem covers arbitrary valid source port mappings and
 every instruction, including previously unexecuted labels and the halt. -/
 theorem mappedFrameProgram_eq_source {r s : ℕ} (p : RecordPrograms.Ports r s) :
     mappedFrameProgram p =
       ProgramLinking.liftProgram ParserProgram.frameProgram
         (RecordPrograms.registerMap p) (RecordPrograms.stackMap p) := by
-  apply program_eq_of_fields
+  apply ACC.BitProgramFields.eq_of_fields
   · rfl
   · rfl
   · rfl
@@ -128,7 +112,7 @@ theorem mappedCompiledFrameProgram_eq_source {r s : ℕ}
     (p : RecordPrograms.Ports r s) (input output : Fin s) :
     mappedCompiledFrameProgram p input output =
       StructuredCalls.compiled (.call (mappedFrameProgram p)) input output := by
-  apply program_eq_of_fields
+  apply ACC.BitProgramFields.eq_of_fields
   · rfl
   · rfl
   · rfl

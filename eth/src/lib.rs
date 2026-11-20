@@ -421,6 +421,7 @@ pub mod representation_component_certificate;
 pub mod representation_equality_components;
 pub mod representation_matching;
 pub mod representation_ranked_certificate;
+pub mod representation_ranked_input;
 
 #[path = "counting/finite_fallback.rs"]
 pub mod finite_fallback;

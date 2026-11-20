@@ -320,8 +320,7 @@ fn native_deque_front_push_pop_match_independent_lists_even_when_wrapped() {
             // Also assert the logical list directly; VecDeque's equality
             // should not be our only observation of stack ordering.
             for port in 0..2 {
-                let expected_list: Vec<_> =
-                    expected.stacks[port].iter().copied().collect();
+                let expected_list: Vec<_> = expected.stacks[port].iter().copied().collect();
                 assert_eq!(
                     actual.stacks[port].iter().copied().collect::<Vec<_>>(),
                     expected_list,
@@ -334,7 +333,10 @@ fn native_deque_front_push_pop_match_independent_lists_even_when_wrapped() {
         }
     }
     assert!(wrapped > 0, "must exercise physically split ring storage");
-    assert!(empty_reads > 0 && present_reads > 0, "must observe both read states");
+    assert!(
+        empty_reads > 0 && present_reads > 0,
+        "must observe both read states"
+    );
     assert!(aliased_reads > 0, "must exercise ordered alias writes");
 }
 

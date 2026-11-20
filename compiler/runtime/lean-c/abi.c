@@ -6,6 +6,12 @@
 #include <stdint.h>
 #include <stddef.h>
 
+/* Opt-in observation of the *same* adapter calls used by the exact
+ * Reader-generated Rust. Ordinary production builds remain uninstrumented. */
+#ifdef LR_TRACE_SOURCE_DEL
+#include "source_del_event_hooks.h"
+#endif
+
 lean_obj_res lr_exec_box_small(size_t n) { return lean_box(n); }
 lean_obj_res lr_exec_ctor2(uint8_t tag, lean_obj_arg a, lean_obj_arg b) {
     lean_object *node = lean_alloc_ctor(tag, 2, 0);

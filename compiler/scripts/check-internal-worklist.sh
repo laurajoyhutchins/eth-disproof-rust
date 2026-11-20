@@ -76,8 +76,8 @@ grep -Fxq 'reader-generated-source-del-lean-c=PASS cases=720' \
 python3 scripts/check-internal-worklist.py \
   "$out/internal-worklist-events.tsv" --self-test \
   | tee "$out/internal-worklist-audit.txt"
-grep -Fq 'worklist_internal_trace=PASS cases=8' "$out/internal-worklist-audit.txt"
-grep -Fq 'worklist_internal_mutations=9/9_REFUSED' "$out/internal-worklist-audit.txt"
+grep -Fq 'worklist_internal_trace=PASS cases=11' "$out/internal-worklist-audit.txt"
+grep -Fq 'worklist_internal_mutations=12/12_REFUSED' "$out/internal-worklist-audit.txt"
 python3 scripts/check-destructor-witnesses.py "$out/internal-witnesses.tsv" \
   | tee "$out/internal-witness-audit.txt"
 python3 - "$out/destructor-worklist-witnesses.tsv" "$out/internal-witnesses.tsv" <<'PY'
@@ -91,7 +91,7 @@ if a!=b: raise SystemExit("stock and instrumented C++ runtime physical witness d
 print("worklist_stock_vs_diagnostic_physical_effects=PASS rows="+str(len(a)))
 PY
 # Keep an explicit CI receipt for the independent comparison.
-echo 'worklist_stock_vs_diagnostic_physical_effects=PASS rows=81' \
+echo 'worklist_stock_vs_diagnostic_physical_effects=PASS rows=90' \
   | tee "$out/stock-diagnostic-comparison.txt"
 echo 'worklist_diagnostic_original_cpp=EXACT_UPSTREAM_BLOB_GUARDED'
 echo 'worklist_internal_events=SAMPLED_EAGER_SINGLE_THREADED_CONSTRUCTORS'

@@ -254,7 +254,7 @@ def pairBefore (a b : Nat × Nat) : Prop :=
 The latter excludes duplicate entries as well as reordered pairs. -/
 def SparseCoefficientRecord.wellFormed (r : SparseCoefficientRecord) (n : ℕ) : Prop :=
   r.linear.length = n ∧
-  (∀ p ∈ r.orderedPairs, p.1 < p.2 ∧ p.2 < n) ∧
+  r.orderedPairs.Forall (fun p => p.1 < p.2 ∧ p.2 < n) ∧
   r.orderedPairs.Pairwise pairBefore
 
 def SparseCoefficientRecord.checkShape (r : SparseCoefficientRecord) (n : ℕ) : Bool :=

@@ -188,6 +188,9 @@ pub struct Work {
     pub additions: u64,
     pub multiplications: u64,
     pub max_coefficient_bits: u64,
+    /// Conservative bit-arithmetic proxy: operands' bit lengths for addition,
+    /// their product for multiplication. Not a machine-operation count.
+    pub bit_work_proxy: u128,
 }
 
 #[derive(Clone, Default, Debug, Eq, PartialEq)]
@@ -203,8 +206,16 @@ impl Polynomial {
     fn add(&self, other: &Self, work: &mut Work) -> Self {
         let mut out = vec![BigUint::default(); self.0.len().max(other.0.len())];
         for (i, c) in out.iter_mut().enumerate() {
-            if let Some(x) = self.0.get(i) { *c += x; work.additions += 1; }
-            if let Some(y) = other.0.get(i) { *c += y; work.additions += 1; }
+            if let Some(x) = self.0.get(i) {
+                work.bit_work_proxy += u128::from(c.bits().max(x.bits()).max(1));
+                *c += x;
+                work.additions += 1;
+            }
+            if let Some(y) = other.0.get(i) {
+                work.bit_work_proxy += u128::from(c.bits().max(y.bits()).max(1));
+                *c += y;
+                work.additions += 1;
+            }
             work.max_coefficient_bits = work.max_coefficient_bits.max(c.bits());
         }
         while out.last().is_some_and(|c| *c == BigUint::default()) {
@@ -220,6 +231,10 @@ impl Polynomial {
             if *x == BigUint::default() { continue; }
             for (j, y) in other.0.iter().enumerate() {
                 if *y == BigUint::default() { continue; }
+                work.bit_work_proxy += u128::from(x.bits().max(1))
+                    * u128::from(y.bits().max(1));
+                work.bit_work_proxy += u128::from(out[i + j].bits()
+                    .max(x.bits() + y.bits()).max(1));
                 out[i + j] += x * y;
                 work.additions += 1;
                 work.multiplications += 1;
@@ -277,6 +292,24 @@ fn tropical_mul(a: &Option<Leading>, b: &Option<Leading>, work: &mut Work)
         }
         _ => Ok(None),
     }
+}
+
+/// Capacity-sensitive footprint of *encoded* full-polynomial tables.
+/// BigUint digit-buffer spare capacity is not exposed, so this is a lower
+/// proxy rather than a claim about the Rust allocator or process RSS.
+fn table_encoded_bytes(t: &Tables) -> usize {
+    std::mem::size_of::<Tables>()
+        + t.ports.capacity() * std::mem::size_of::<String>()
+        + t.ports.iter().map(String::len).sum::<usize>()
+        + t.exact.capacity() * std::mem::size_of::<Polynomial>()
+        + t.tropical.capacity() * std::mem::size_of::<Option<Leading>>()
+        + t.exact.iter().map(|poly| {
+            poly.0.capacity() * std::mem::size_of::<BigUint>()
+                + poly.0.iter().map(|coefficient| coefficient.bits().div_ceil(8) as usize)
+                    .sum::<usize>()
+        }).sum::<usize>()
+        + t.tropical.iter().flatten()
+            .map(|value| value.count.bits().div_ceil(8) as usize).sum::<usize>()
 }
 
 #[derive(Clone, Debug)]
@@ -429,6 +462,10 @@ pub struct Receipt {
     pub peak_table_cells: usize,
     pub peak_exact_coefficient_slots: usize,
     pub peak_exact_nonzero_coefficients: usize,
+    /// Explicit leaf tables plus live old/new stage, using BigUint headers,
+    /// coefficient vector capacities and minimal encoded coefficient bytes.
+    /// A logical footprint proxy, NOT measured RSS or allocator high-water.
+    pub peak_live_encoded_bytes: usize,
     pub exact_work: Work,
     pub tropical_work: Work,
     pub tropical_positive_energy_cells: usize,
@@ -449,6 +486,24 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
     output: &[String]) -> Result<Receipt, String>
 {
     let factors = generate(family, size)?;
+    execute_order(&factors, family.name(), size, schedule.name(),
+        &schedule.indices(factors.len()), output)
+}
+
+/// Exact evaluator shared by the fixed-order study and adaptive planners.
+fn execute_order(factors: &[Factor], family: &'static str, size: usize,
+    schedule: &'static str, order: &[usize], output: &[String]) -> Result<Receipt, String>
+{
+    if factors.len() < 2 || order.len() != factors.len() {
+        return Err("order must cover at least two source factors".into());
+    }
+    let mut seen = vec![false; factors.len()];
+    for &idx in order {
+        if idx >= seen.len() || seen[idx] {
+            return Err("invalid or repeated factor index".into());
+        }
+        seen[idx] = true;
+    }
     if output.iter().collect::<BTreeSet<_>>().len() != output.len()
         || output.windows(2).any(|w| w[0] >= w[1])
     {
@@ -464,7 +519,6 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
     let mut nodes = factors.iter().enumerate().map(|(i, f)| Node {
         ports: f.ports.clone(), kind: NodeKind::Leaf(i),
     }).collect::<Vec<_>>();
-    let order = schedule.indices(factors.len());
     let mut stage = leaves[order[0]].clone();
     let mut root = order[0];
     let mut peak_boundary_ports = stage.ports.len();
@@ -472,6 +526,8 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
     let mut peak_exact_coefficient_slots: usize = stage.exact.iter().map(|p| p.0.len()).sum();
     let mut peak_exact_nonzero_coefficients: usize = stage.exact.iter()
         .map(Polynomial::nonzero_terms).sum();
+    let leaf_bytes: usize = leaves.iter().map(table_encoded_bytes).sum();
+    let mut peak_live_encoded_bytes = leaf_bytes + table_encoded_bytes(&stage);
     let mut staged_tropical_cells = stage.tropical.len();
     let mut staged_positive_energy_cells = stage.tropical.iter().flatten()
         .filter(|c| c.energy > 0).count();
@@ -495,7 +551,11 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
             kind: NodeKind::Merge { left: root, right: index, union, eliminated },
         });
         root = nodes.len() - 1;
-        stage = stage.merge(&leaves[index], &kept, &mut exact_work, &mut tropical_work)?;
+        let merged = stage.merge(&leaves[index], &kept,
+            &mut exact_work, &mut tropical_work)?;
+        peak_live_encoded_bytes = peak_live_encoded_bytes.max(
+            leaf_bytes + table_encoded_bytes(&stage) + table_encoded_bytes(&merged));
+        stage = merged;
         stage.verify_shadow()?;
         staged_tropical_cells += stage.tropical.len();
         staged_positive_energy_cells += stage.tropical.iter().flatten()
@@ -543,9 +603,10 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
     tropical_work.max_coefficient_bits = tropical_work.max_coefficient_bits.max(
         stage.tropical.iter().flatten().map(|c| c.count.bits()).max().unwrap_or(0));
     Ok(Receipt {
-        family: family.name(), size, schedule: schedule.name(),
+        family, size, schedule,
         peak_boundary_ports, peak_table_cells, peak_exact_coefficient_slots,
-        peak_exact_nonzero_coefficients, exact_work, tropical_work,
+        peak_exact_nonzero_coefficients, peak_live_encoded_bytes,
+        exact_work, tropical_work,
         tropical_positive_energy_cells, staged_tropical_cells,
         staged_positive_energy_cells, symbolic_nodes: nodes.len(),
         symbolic_port_name_occurrences,

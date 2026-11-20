@@ -27,8 +27,8 @@ theorem CheckedCsrSource.generated_checked_row_missing_start_refuses
     CheckedCsrSource.checked_csr_row.checked_row
       offsets columns signs variableCount row = Aeneas.Std.Result.ok none := by
   simp [CheckedCsrSource.checked_csr_row.checked_row, h,
-    Aeneas.Std.core.option.Option.Insts.CoreOpsTry_traitTry.branch,
-    Aeneas.Std.core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residual]
+    core.option.Option.Insts.CoreOpsTry_traitTry.branch,
+    core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residual]
 
 #print axioms CheckedCsrSource.generated_checked_row_missing_start_refuses
 

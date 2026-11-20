@@ -151,11 +151,11 @@ deriving DecidableEq
 def row (i j k : Nat) (p : State) : SignedRow :=
   ⟨i, j, k, p⟩
 
-def at (x : Nat → Bool) (i j k : Nat) : State :=
+def tripleAt (x : Nat → Bool) (i j k : Nat) : State :=
   (x i, x j, x k)
 
 def rowHolds (x : Nat → Bool) (r : SignedRow) : Prop :=
-  at x r.first r.second r.third ≠ r.falsifiesAt
+  tripleAt x r.first r.second r.third ≠ r.falsifiesAt
 
 def allRowsHold (x : Nat → Bool) (rows : Finset SignedRow) : Prop :=
   ∀ r ∈ rows, rowHolds x r
@@ -188,16 +188,16 @@ def windowRow (i : Nat) : SignedRow :=
 
 theorem parityRows_exact (x : Nat → Bool) (i : Nat) (d : Bool) :
     (∀ r ∈ parityRows i d, rowHolds x r) ↔
-      parityState (at x i (i + 1) (i + 3)) = d := by
+      parityState (tripleAt x i (i + 1) (i + 3)) = d := by
   constructor
   · intro h
-    apply (parityMask_exact d (at x i (i + 1) (i + 3))).mp
+    apply (parityMask_exact d (tripleAt x i (i + 1) (i + 3))).mp
     intro p hp
     exact h (row i (i + 1) (i + 3) p)
       (Finset.mem_image.mpr ⟨p, hp, rfl⟩)
   · intro h r hr
     obtain ⟨p, hp, rfl⟩ := Finset.mem_image.mp hr
-    exact (parityMask_exact d (at x i (i + 1) (i + 3))).mpr h p hp
+    exact (parityMask_exact d (tripleAt x i (i + 1) (i + 3))).mpr h p hp
 
 /-- Exactly the signed rows of the recurrence family, as a finite set.
 No row order is imposed, but duplicate rows are irrelevant to CNF semantics.
@@ -212,9 +212,9 @@ means for any valuation of the declared variables. -/
 theorem sourceRows_exact (ds : List Bool) (x : Nat → Bool) :
     allRowsHold x (sourceRows ds) ↔
       (∀ i, i < ds.length →
-        parityState (at x i (i + 1) (i + 3)) = ds[i]!) ∧
+        parityState (tripleAt x i (i + 1) (i + 3)) = ds[i]!) ∧
       (∀ i, i < ds.length + 1 →
-        at x i (i + 1) (i + 2) ≠ zeroState) := by
+        tripleAt x i (i + 1) (i + 2) ≠ zeroState) := by
   constructor
   · intro h
     constructor
@@ -248,9 +248,9 @@ theorem checked_source_rows_exact
     (h : checkSourceRows actual ds = true) :
     allRowsHold x actual ↔
       (∀ i, i < ds.length →
-        parityState (at x i (i + 1) (i + 3)) = ds[i]!) ∧
+        parityState (tripleAt x i (i + 1) (i + 3)) = ds[i]!) ∧
       (∀ i, i < ds.length + 1 →
-        at x i (i + 1) (i + 2) ≠ zeroState) := by
+        tripleAt x i (i + 1) (i + 2) ≠ zeroState) := by
   have hrows : actual = sourceRows ds := of_decide_eq_true h
   rw [hrows]
   exact sourceRows_exact ds x

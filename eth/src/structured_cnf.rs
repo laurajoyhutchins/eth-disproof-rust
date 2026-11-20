@@ -237,7 +237,9 @@ pub fn verify_recurrence_receipt(
         let signs: [i8; 3] = csr.signs[start..end]
             .try_into()
             .map_err(|_| refuse("invalid source sign array"))?;
-        if columns[0] >= columns[1] || columns[1] >= columns[2] || columns[2] >= n
+        if columns[0] >= columns[1]
+            || columns[1] >= columns[2]
+            || columns[2] >= n
             || !signs.iter().all(|v| *v == -1 || *v == 1)
             || !actual.insert((columns, signs))
         {
@@ -259,9 +261,7 @@ pub fn verify_recurrence_receipt(
         // Evaluate the signed CSR directly; parity and OR logic are not
         // reused from the receipt producer.
         let is_satisfied = csr.row_offsets.windows(2).all(|offsets| {
-            (offsets[0]..offsets[1]).any(|p| {
-                x[csr.column_indices[p]] == (csr.signs[p] == 1)
-            })
+            (offsets[0]..offsets[1]).any(|p| x[csr.column_indices[p]] == (csr.signs[p] == 1))
         });
         if !is_satisfied {
             observed_mask |= 1 << seed;
@@ -468,11 +468,13 @@ mod tests {
             reversed_rows.signs.extend(signs);
             reversed_rows.row_offsets.push(reversed_rows.signs.len());
         }
-        assert_eq!(verify_recurrence_receipt(reversed_rows.view(), &receipt), Ok(receipt.count()));
+        assert_eq!(
+            verify_recurrence_receipt(reversed_rows.view(), &receipt),
+            Ok(receipt.count())
+        );
 
         let mut bad_offset = original.clone();
         bad_offset.row_offsets[1] = usize::MAX;
         assert!(verify_recurrence_receipt(bad_offset.view(), &receipt).is_err());
     }
-
 }

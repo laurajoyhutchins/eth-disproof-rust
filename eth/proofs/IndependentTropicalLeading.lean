@@ -96,6 +96,68 @@ def times : Leading → Leading → Leading
 def monomial (degree count : ℕ) (positive : 0 < count) : Leading :=
   some ⟨degree, count, positive⟩
 
+/-- Equality of leading terms is determined by the two data fields;
+    positivity evidence is propositionally irrelevant. -/
+private theorem term_ext {a b : Term}
+    (hd : a.degree = b.degree) (hc : a.count = b.count) : a = b := by
+  cases a with
+  | mk da ca ha =>
+    cases b with
+    | mk db cb hb =>
+      dsimp at hd hc
+      subst db
+      subst cb
+      rfl
+
+theorem times_comm (a b : Leading) : times a b = times b a := by
+  cases a with
+  | none => cases b <;> rfl
+  | some a =>
+      cases b with
+      | none => rfl
+      | some b =>
+          simp only [times]
+          apply congrArg Option.some
+          apply term_ext
+          · exact Nat.add_comm _ _
+          · exact Nat.mul_comm _ _
+
+theorem times_assoc (a b c : Leading) :
+    times (times a b) c = times a (times b c) := by
+  cases a with
+  | none => rfl
+  | some a =>
+      cases b with
+      | none => rfl
+      | some b =>
+          cases c with
+          | none => rfl
+          | some c =>
+              simp only [times]
+              apply congrArg Option.some
+              apply term_ext
+              · exact Nat.add_assoc _ _ _
+              · exact Nat.mul_assoc _ _ _
+
+theorem plus_comm (a b : Leading) : plus a b = plus b a := by
+  cases a with
+  | none => cases b <;> rfl
+  | some a =>
+      cases b with
+      | none => rfl
+      | some b =>
+          by_cases hab : a.degree < b.degree
+          · have hba : ¬ b.degree < a.degree := by omega
+            simp [plus, hab, hba]
+          · by_cases hba : b.degree < a.degree
+            · simp [plus, hab, hba]
+            · have heq : a.degree = b.degree := by omega
+              simp only [plus, if_neg hab, if_neg hba]
+              apply congrArg Option.some
+              apply term_ext
+              · exact heq
+              · exact Nat.add_comm _ _
+
 theorem plus_zero (x : Leading) : plus x none = x := by
   cases x <;> rfl
 
@@ -128,6 +190,8 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.coeff_generating
 #print axioms IndependentETH.Tropical.energy_eq_zero_iff
 #print axioms IndependentETH.Tropical.count_satisfying
+#print axioms IndependentETH.Tropical.plus_comm
+#print axioms IndependentETH.Tropical.times_assoc
 #print axioms IndependentETH.Tropical.monomial_times
 #print axioms IndependentETH.Tropical.monomial_plus_equal
 #print axioms IndependentETH.Tropical.signed_cancellation

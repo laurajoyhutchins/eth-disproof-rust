@@ -72,4 +72,16 @@ jobs:
             fi
             echo "::endgroup::"
           done
+          if [ "$failures" -eq 0 ]; then
+            # Feed Rust's *actual* indexed source and output records to the
+            # independent Lean integer semantics, not an opaque success flag.
+            cargo run --quiet --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
+              --bin emit_signed_native_oracles > "$RUNNER_TEMP/signed-native-fixtures.lean"
+            cat "$GITHUB_WORKSPACE/eth/proofs/IndependentQuadraticLowWeight.lean" \
+              "$RUNNER_TEMP/signed-native-fixtures.lean" \
+              > "$RUNNER_TEMP/signed-native-replay.lean"
+            if ! lake env lean "$RUNNER_TEMP/signed-native-replay.lean"; then
+              failures=1
+            fi
+          fi
           exit "$failures"

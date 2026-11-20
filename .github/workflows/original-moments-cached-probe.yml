@@ -1,0 +1,97 @@
+name: Original moments readout from pinned OAI cache
+
+on:
+  pull_request:
+    branches:
+      - feat/query-aot-source-20261113
+    paths:
+      - '.github/workflows/original-moments-cached-probe.yml'
+      - 'rust/lean_eth_reference/tools/probe_original_moments_cached.py'
+
+permissions:
+  contents: read
+
+# A deliberately short-lived research probe, stacked on the long-lived pinned
+# import branch. That base branch owns the original compiled-module cache.
+# Do not create a new cache or rebuild OAI from untrusted PR content.
+jobs:
+  verify-cached-original-readout:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Check probe syntax without a Lean environment
+        run: python3 -m compileall -q rust/lean_eth_reference/tools/probe_original_moments_cached.py
+
+      - name: Checkout exact original OpenAI SAT source
+        shell: bash
+        env:
+          ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+          ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth=1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test -z "$(git -C upstream/openai-math status --porcelain --untracked-files=no)"
+          ln -s "$ORIGINAL_SOURCE/lean/OAI" instrumentation/lean-env/OAI
+
+      - name: Restore pinned Lean 4.34.1 and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Restore original OAI cache from the PR base branch
+        id: original-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-probe-${{ github.run_id }}
+          restore-keys: |
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-
+
+      - name: Report actual cached original module presence
+        shell: bash
+        env:
+          CACHE_MATCH: ${{ steps.original-cache.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          echo "ORIGINAL_OAI_CACHE_MATCH=$CACHE_MATCH"
+          root=instrumentation/lean-env/.lake/build/lib/lean/OAI
+          echo "ORIGINAL_OAI_CACHED_OLEANS=$(find "$root" -name '*.olean' -type f 2>/dev/null | wc -l)"
+          # Never synthesize a replacement from a missing cache. Probe refuses.
+
+      - name: Probe actual pinned original readout; never rebuild missing OAI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 rust/lean_eth_reference/tools/probe_original_moments_cached.py \
+            --upstream "$GITHUB_WORKSPACE/upstream/openai-math" \
+            --lake-root "$GITHUB_WORKSPACE/instrumentation/lean-env" \
+            --output-dir "$RUNNER_TEMP/original-cached-readout" \
+            --timeout 180
+
+      - name: Preserve genuine source graph, kernel proof, or exact refusal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-cached-moments-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/original-cached-readout/
+          if-no-files-found: warn
+          retention-days: 14

@@ -175,3 +175,21 @@ fn tautology_membership_and_reversal_keep_their_exact_source_syntax() {
         2,
     );
 }
+
+#[test]
+fn different_scanner_callbacks_are_not_an_interchangeable_policy() {
+    let dedup = native_clause_dedup::scan_command().unwrap();
+    let equivalent_filter = native_clause_filter::filter_scan(Mode::Equivalent).unwrap();
+    assert_ne!(dedup, equivalent_filter);
+    assert_ne!(
+        dedup.compiled(13, 13).unwrap(),
+        equivalent_filter.compiled(13, 13).unwrap()
+    );
+
+    let equivalent = native_clause_relation_scan::scan_command(Mode::Equivalent).unwrap();
+    let subset = native_clause_relation_scan::scan_command(Mode::StrictSubset).unwrap();
+    let missing = native_clause_relation_scan::scan_command(Mode::MissingCore).unwrap();
+    assert_ne!(equivalent, subset);
+    assert_ne!(subset, missing);
+    assert_ne!(equivalent, missing);
+}

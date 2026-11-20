@@ -30,10 +30,12 @@ not proof of behavioral equivalence.
   `transferProgram` label tables in `bit_program/stack_routines.rs`. Use
   compatibility re-exports rather than copying instruction tables into
   normalization, query, or counting modules.
-- Preserve the common `RecordPrograms.iterate` command shape in
-  `bit_program/record_iteration.rs`; each of the six callers supplies its
-  original frame reader, callback, and physical port map. Compare the entire
-  command syntax, including nested calls, before accepting edits.
+- Preserve `RecordPrograms.iterate` and its six identical framed-reader
+  lifts in `bit_program/record_iteration.rs`. Callers supply the original
+  tag/present/found/source registers, payload stack and source-specific
+  callback. Keep callback policies and output-suffix logic separate.
+  Compare complete command syntax, including nested calls, before
+  accepting edits; invalid physical reader maps must refuse.
 - Use `bit_program/source_commands.rs` for the identical right-associated
   source `Seq` constructors, ordered clear lists, and register resets
   shared by query and counting. `clear_many` ends in `Skip`, while

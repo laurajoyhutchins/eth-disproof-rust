@@ -1,12 +1,11 @@
 //! Actual source `ExecClauseRelationScan.command mode`, not host set logic.
 //! Source has 15 one-bit registers and 12 Boolean stacks.
 use crate::Error;
-use crate::bit_program::record_iteration::{RecordPorts, iterate};
+use crate::bit_program::record_iteration::{RecordPorts, iterate_framed};
 use crate::bit_program::stack_routines::transfer_program;
 use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_clause_relations::relation_program;
 use crate::native_high::clear_program;
-use crate::native_query_prefix::frame_program;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -54,17 +53,16 @@ pub fn callback(mode: Mode) -> Result<Cmd<15, 12>, Error> {
 /// Original RecordPrograms ports: tag 12, present 13, found 14,
 /// unread input stack 10, reversed payload stack 11.
 pub fn scan_command(mode: Mode) -> Result<Cmd<15, 12>, Error> {
-    let reader = Cmd::Call(frame_program()?.lift::<15, 12>([12, 13], [10, 11])?);
-    Ok(iterate(
+    iterate_framed(
         RecordPorts {
             tag: 12,
             present: 13,
             found: 14,
             source: 10,
         },
-        reader,
+        11,
         callback(mode)?,
-    ))
+    )
 }
 
 pub fn command(mode: Mode) -> Result<Cmd<15, 12>, Error> {

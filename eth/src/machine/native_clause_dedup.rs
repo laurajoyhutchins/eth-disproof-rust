@@ -2,7 +2,7 @@
 //! Uses the preserving three-mode scanner to remove equivalent clauses while
 //! retaining only the *last* occurrence and original order of surviving clauses.
 use crate::Error;
-use crate::bit_program::record_iteration::{RecordPorts, iterate};
+use crate::bit_program::record_iteration::{RecordPorts, iterate_framed};
 use crate::bit_program::stack_routines::transfer_program;
 use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_clause_relation_scan::{self, Mode};
@@ -10,7 +10,6 @@ use crate::native_high::{clear_program, copy_program};
 use crate::native_normalization_primitives::{
     clause_filter_reverse_program, emit_if_selected_command,
 };
-use crate::native_query_prefix::frame_program;
 
 pub fn transfer(src: usize, dst: usize) -> Result<Program<15, 16>, Error> {
     if src == dst {
@@ -77,17 +76,16 @@ pub fn dedup_callback() -> Result<Cmd<15, 16>, Error> {
 
 /// Original outer record ports: tag0, present1, found14, source13, payload15.
 pub fn scan_command() -> Result<Cmd<15, 16>, Error> {
-    let reader = Cmd::Call(frame_program()?.lift::<15, 16>([0, 1], [13, 15])?);
-    Ok(iterate(
+    iterate_framed(
         RecordPorts {
             tag: 0,
             present: 1,
             found: 14,
             source: 13,
         },
-        reader,
+        15,
         dedup_callback()?,
-    ))
+    )
 }
 
 fn push_false(stack: usize) -> Cmd<15, 16> {

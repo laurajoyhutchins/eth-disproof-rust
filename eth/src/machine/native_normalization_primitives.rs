@@ -5,10 +5,9 @@
 //! These components are not a complete CNF normalization program.
 
 use crate::Error;
-use crate::bit_program::record_iteration::{RecordPorts, iterate};
+use crate::bit_program::record_iteration::{RecordPorts, iterate_framed};
 use crate::bit_program::{Atom, Cmd, Instr, Program};
 use crate::native_high::clear_program;
-use crate::native_record_membership::frame_program;
 
 /// SubexpNormalizeProgram.negateProgram, the original 15-label 2x2 table.
 /// On canonical unary code c, emits unary (c xor 1) in precisely
@@ -135,7 +134,6 @@ pub fn emit_if_selected_command() -> Result<Cmd<3, 4>, Error> {
 /// with filterPorts=(tag0,present1,found2,source0,payload3), physically
 /// constructing records.reverse in the output stack's encoded list.
 pub fn reverse_records_command() -> Result<Cmd<3, 4>, Error> {
-    let reader = Cmd::Call(frame_program()?.lift::<3, 4>([0, 1], [0, 3])?);
     let emit_every = Cmd::seq(
         Cmd::Atom(Atom::Set {
             dst: 2,
@@ -143,16 +141,16 @@ pub fn reverse_records_command() -> Result<Cmd<3, 4>, Error> {
         }),
         emit_if_selected_command()?,
     );
-    Ok(iterate(
+    iterate_framed(
         RecordPorts {
             tag: 0,
             present: 1,
             found: 2,
             source: 0,
         },
-        reader,
+        3,
         emit_every,
-    ))
+    )
 }
 
 pub fn reverse_records_program() -> Result<Program<3, 4>, Error> {

@@ -4,7 +4,7 @@
 //! No host-side record decoding, classification or SAT oracle is used.
 
 use crate::Error;
-use crate::bit_program::record_iteration::{RecordPorts, iterate};
+use crate::bit_program::record_iteration::{RecordPorts, iterate_framed};
 use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_high::clear_program;
 use crate::native_membership::membership_callback_command;
@@ -18,17 +18,16 @@ pub use crate::bit_program::frame_programs::frame_program;
 /// tag=5, present=6, found=4, source=0, payload=1.
 /// Requires canonical framed input, clean work stacks 1/3/4, query on 2.
 pub fn iterate_command() -> Result<Cmd<7, 5>, Error> {
-    let reader = Cmd::Call(frame_program()?.lift::<7, 5>([5, 6], [0, 1])?);
-    Ok(iterate(
+    iterate_framed(
         RecordPorts {
             tag: 5,
             present: 6,
             found: 4,
             source: 0,
         },
-        reader,
+        1,
         membership_callback_command()?,
-    ))
+    )
 }
 
 /// Exact ExecCNFMembership.membership: run the iterator and push the found bit.

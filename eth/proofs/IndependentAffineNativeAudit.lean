@@ -667,6 +667,190 @@ theorem rowAt_applyStep (rows : List (List Bool)) (step : Step)
       else rowAt rows i) := by
   simp [rowAt, applyStep, hi, List.getElem?_map, List.getElem?_range]
 
+/-! ## All-input semantic preservation by the literal List-based replay
+
+A concrete source matrix is rectangular: each augmented row has the
+same number of coefficient/RHS bits. Under valid row indices and
+distinct XOR operands, swapping rows or XORing one with another
+preserves the set of assignments for which every row evaluates to zero.
+
+Unlike the earlier abstract RowOps theorem, this theorem directly
+analyzes the List.range/map and List.zipWith instructions in applyStep.
+-/
+
+private def rectangular (rows : List (List Bool)) (width : Nat) : Prop :=
+  ∀ i, i < rows.length → (rowAt rows i).length = width
+
+private def allRowsZero (rows : List (List Bool))
+    (input : List Bool) : Prop :=
+  ∀ i, i < rows.length → rowValue (rowAt rows i) input = false
+
+private theorem rectangular_applyStep
+    (rows : List (List Bool)) (step : Step) (width : Nat)
+    (hrect : rectangular rows width)
+    (hfirst : step.first < rows.length)
+    (hsecond : step.second < rows.length) :
+    rectangular (applyStep rows step) width := by
+  intro i hi'
+  have hi : i < rows.length := by
+    simpa [applyStep_length] using hi'
+  rw [rowAt_applyStep rows step i hi]
+  by_cases htag : step.tag = 0
+  · by_cases hfirstIdx : i = step.first
+    · simpa [htag, hfirstIdx] using hrect step.second hsecond
+    · by_cases hsecondIdx : i = step.second
+      · simpa [htag, hfirstIdx, hsecondIdx] using hrect step.first hfirst
+      · simpa [htag, hfirstIdx, hsecondIdx] using hrect i hi
+  · by_cases hfirstIdx : i = step.first
+    · have hlength :
+          (List.zipWith (· ^^ ·)
+            (rowAt rows step.first) (rowAt rows step.second)).length =
+          width := by
+        simp [hrect step.first hfirst, hrect step.second hsecond]
+      simpa [htag, hfirstIdx] using hlength
+    · simpa [htag, hfirstIdx] using hrect i hi
+
+/-- Every concrete List-based row swap or row XOR with valid, distinct
+indices preserves *all* row equations, in both directions. Equal row
+width is essential because zipWith truncates mismatched lengths. -/
+theorem allRowsZero_applyStep_iff
+    (rows : List (List Bool)) (step : Step) (input : List Bool)
+    (hfirst : step.first < rows.length)
+    (hsecond : step.second < rows.length)
+    (hdistinct : step.first ≠ step.second)
+    (hwidth : (rowAt rows step.first).length =
+      (rowAt rows step.second).length) :
+    allRowsZero rows input ↔
+      allRowsZero (applyStep rows step) input := by
+  constructor
+  · intro hold i hi'
+    have hi : i < rows.length := by
+      simpa [applyStep_length] using hi'
+    rw [rowAt_applyStep rows step i hi]
+    by_cases htag : step.tag = 0
+    · by_cases hfirstIdx : i = step.first
+      · simpa [htag, hfirstIdx] using hold step.second hsecond
+      · by_cases hsecondIdx : i = step.second
+        · simpa [htag, hfirstIdx, hsecondIdx] using hold step.first hfirst
+        · simpa [htag, hfirstIdx, hsecondIdx] using hold i hi
+    · by_cases hfirstIdx : i = step.first
+      · subst i
+        simpa [htag, rowValue_zipWith_xor _ _ input hwidth,
+          hold step.first hfirst, hold step.second hsecond]
+      · simpa [htag, hfirstIdx] using hold i hi
+  · intro hout i hi
+    by_cases htag : step.tag = 0
+    · by_cases hfirstIdx : i = step.first
+      · subst i
+        have houtput := hout step.second (by
+          simpa [applyStep_length] using hsecond)
+        rw [rowAt_applyStep rows step step.second hsecond] at houtput
+        simpa [htag, hdistinct.symm] using houtput
+      · by_cases hsecondIdx : i = step.second
+        · subst i
+          have houtput := hout step.first (by
+            simpa [applyStep_length] using hfirst)
+          rw [rowAt_applyStep rows step step.first hfirst] at houtput
+          simpa [htag] using houtput
+        · have houtput := hout i (by
+            simpa [applyStep_length] using hi)
+          rw [rowAt_applyStep rows step i hi] at houtput
+          simpa [htag, hfirstIdx, hsecondIdx] using houtput
+    · by_cases hfirstIdx : i = step.first
+      · subst i
+        have htarget := hout step.first (by
+          simpa [applyStep_length] using hfirst)
+        have hsource := hout step.second (by
+          simpa [applyStep_length] using hsecond)
+        rw [rowAt_applyStep rows step step.first hfirst] at htarget
+        rw [rowAt_applyStep rows step step.second hsecond] at hsource
+        have hs : rowValue (rowAt rows step.second) input = false := by
+          simpa [htag, hdistinct.symm] using hsource
+        have ht :
+            (rowValue (rowAt rows step.first) input ^^
+              rowValue (rowAt rows step.second) input) = false := by
+          simpa [htag, rowValue_zipWith_xor _ _ input hwidth] using htarget
+        simpa [hs] using ht
+      · have houtput := hout i (by
+          simpa [applyStep_length] using hi)
+        rw [rowAt_applyStep rows step i hi] at houtput
+        simpa [htag, hfirstIdx] using houtput
+
+/-- A valid source matrix always has uniform augmented-row width. -/
+private theorem sourceRows_rectangular (s : Source) :
+    rectangular (sourceRows s) ((names s).length + 1) := by
+  intro i hi
+  have hindex : i < s.equations.length := by
+    simpa [sourceRows] using hi
+  simp [rowAt, sourceRows, hindex, List.length_append]
+
+private theorem validStep_indices (m : Nat) (step : Step)
+    (h : validStep m step = true) :
+    step.first < m ∧ step.second < m ∧ step.first ≠ step.second := by
+  simp [validStep] at h
+  aesop
+
+/-- A complete, arbitrarily long List replay preserves all source-row
+solutions. Each intermediate width and row count is carried through
+the induction and checked against the same source dimensions. -/
+private theorem foldl_applyStep_preserves (steps : List Step) :
+    ∀ (rows : List (List Bool)) (width : Nat) (input : List Bool),
+      rectangular rows width →
+      (∀ step ∈ steps,
+        step.first < rows.length ∧
+        step.second < rows.length ∧
+        step.first ≠ step.second) →
+      (allRowsZero rows input ↔
+        allRowsZero (steps.foldl applyStep rows) input) := by
+  induction steps with
+  | nil =>
+      intro rows width input _ _
+      rfl
+  | cons step tail ih =>
+      intro rows width input hrect hsteps
+      have hv := hsteps step (by simp)
+      have hwidth :
+          (rowAt rows step.first).length =
+            (rowAt rows step.second).length := by
+        rw [hrect step.first hv.1, hrect step.second hv.2.1]
+      have hrect' :=
+        rectangular_applyStep rows step width hrect hv.1 hv.2.1
+      have htail : ∀ next ∈ tail,
+          next.first < (applyStep rows step).length ∧
+          next.second < (applyStep rows step).length ∧
+          next.first ≠ next.second := by
+        intro next hnext
+        have h := hsteps next (List.mem_cons_of_mem _ hnext)
+        simpa [applyStep_length] using h
+      have hstep :=
+        allRowsZero_applyStep_iff rows step input
+          hv.1 hv.2.1 hv.2.2 hwidth
+      have hrest := ih (applyStep rows step) width input hrect' htail
+      simpa only [List.foldl_cons] using hstep.trans hrest
+
+/-- The *actual* replay in IndependentAffineNativeAudit, not the
+abstract RowOps model, preserves the complete Boolean row system for
+every accepted source-level list transcript and every assignment. -/
+theorem concrete_list_replay_preserves_matrix_solutions
+    (s : Source) (c : Certificate) (input : List Bool)
+    (hsteps : c.steps.all (validStep s.equations.length) = true) :
+    allRowsZero (sourceRows s) input ↔
+      allRowsZero (replay s c) input := by
+  have hvalid : ∀ step ∈ c.steps,
+      step.first < (sourceRows s).length ∧
+      step.second < (sourceRows s).length ∧
+      step.first ≠ step.second := by
+    intro step hmem
+    have hc := (List.all_eq_true.mp hsteps) step hmem
+    have hv := validStep_indices s.equations.length step hc
+    simpa [sourceRows] using hv
+  exact foldl_applyStep_preserves c.steps
+    (sourceRows s) ((names s).length + 1) input
+    (sourceRows_rectangular s) hvalid
+
+#print axioms IndependentETH.AffineNativeAudit.allRowsZero_applyStep_iff
+#print axioms IndependentETH.AffineNativeAudit.concrete_list_replay_preserves_matrix_solutions
+
 #print axioms IndependentETH.AffineNativeAudit.admitted_source_occurrence_parity
 #print axioms IndependentETH.AffineNativeAudit.rowValue_zipWith_xor
 #print axioms IndependentETH.AffineNativeAudit.applyStep_length

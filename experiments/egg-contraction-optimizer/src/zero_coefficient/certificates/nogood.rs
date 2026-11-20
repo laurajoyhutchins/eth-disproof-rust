@@ -448,8 +448,10 @@ mod tests {
     fn no_source_certificate_means_no_pruning() {
         let factors = vec![
             factor(&["p", "q"], &[]),
-            factor(&["p", "q"], &[&[
-                ("p", true), ("q", true),
+            // Under p=false,q=false, x is forced true, but no
+            // contradiction exists. Open is not a pruning witness.
+            factor(&["p", "q", "x"], &[&[
+                ("p", true), ("q", true), ("x", true),
             ]]),
         ];
         let mut metrics = Metrics::default();

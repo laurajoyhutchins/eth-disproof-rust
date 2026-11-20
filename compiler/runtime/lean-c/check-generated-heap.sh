@@ -239,8 +239,8 @@ grep -Fq 'destructor_witness_mutations=9/9_REFUSED' \
 bash scripts/check-internal-worklist.sh
 grep -Fq 'worklist_internal_trace=PASS cases=8' \
   "$out/internal-worklist-audit.txt"
-grep -Fq 'worklist_stock_vs_diagnostic_physical_effects=PASS' \
-  "$out/internal-driver-output.txt" || test -s "$out/internal-witness-audit.txt"
+grep -Fxq 'worklist_stock_vs_diagnostic_physical_effects=PASS rows=81' \
+  "$out/stock-diagnostic-comparison.txt"
 test -s "$out/source-shell-physical.tsv"
 test -s "$out/source-release-physical.tsv"
 lean proofs/ReaderCReleaseAudit.lean | tee "$out/source-release-trace-audit.txt"

@@ -292,8 +292,10 @@ theorem expectedExecution_refines {n c : ℕ}
                 ((1 : Word), (1 : Word)))
                 (wordItems label weight)).2 = none := by
             simpa [initial, items, one] using congrArg Prod.snd hp
-          simp [expectedExecution, hstopped,
-            checkedArrayContraction, hsnone]
+          unfold expectedExecution
+          dsimp only
+          rw [hstopped]
+          simp [checkedArrayContraction, hsnone]
       | some products =>
           have hssome :
               checkedArrayScanFrom (Array.replicate c (1, 1))
@@ -312,8 +314,10 @@ theorem expectedExecution_refines {n c : ℕ}
                 ((1 : Word), (1 : Word)))
                 (wordItems label weight)).2 = some products := by
             simpa [initial, items, one] using congrArg Prod.snd hp
-          simpa [expectedExecution, hcontinued,
-            checkedArrayContraction, hssome] using hf
+          unfold expectedExecution
+          dsimp only
+          rw [hcontinued]
+          simpa [checkedArrayContraction, hssome] using hf
 
 
 /-- The finite checker validates the source-edge certificate, every reported

@@ -339,11 +339,11 @@ mod tests {
         assert_eq!(csr.row_offsets, [0, 3, 6, 9, 12, 15, 18]);
         assert_eq!(
             csr.column_indices,
-            [0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 2, 1, 2, 3]
+            [0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 2, 0, 1, 3, 1, 2, 3]
         );
         assert_eq!(
             csr.signs,
-            [-1, 1, 1, 1, -1, 1, 1, 1, -1, -1, -1, -1, 1, 1, 1, 1, 1, 1]
+            [-1, 1, 1, 1, -1, 1, 1, 1, -1, 1, 1, 1, -1, -1, -1, 1, 1, 1]
         );
         assert_eq!(count_recognized_cnf(&cnf), Ok(7));
         assert_eq!(oracle(4, &cnf), 7);

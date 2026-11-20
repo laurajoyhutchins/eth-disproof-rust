@@ -693,8 +693,8 @@ and demonstrate exact acceptance, corruption refusal, and output seven.
 def smallHomogeneousCsr : SignedCsrInput where
   variableCount := 4
   offsets := [0, 3, 6, 9, 12, 15, 18]
-  columns := [0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 2, 1, 2, 3]
-  signs := [-1, 1, 1, 1, -1, 1, 1, 1, -1, -1, -1, -1, 1, 1, 1, 1, 1, 1]
+  columns := [0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 2, 0, 1, 3, 1, 2, 3]
+  signs := [-1, 1, 1, 1, -1, 1, 1, 1, -1, 1, 1, 1, -1, -1, -1, 1, 1, 1]
 
 def smallForbiddenMask : Finset State := {zeroState}
 

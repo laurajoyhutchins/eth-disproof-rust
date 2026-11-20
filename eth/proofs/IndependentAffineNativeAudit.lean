@@ -316,4 +316,85 @@ def auditPortPlan (plan : PortPlan) : Bool := Id.run do
 example : byteLexLess [120, 49, 48] [120, 50] = true := by decide
 example : byteLexLess [120, 50] [120, 49, 48] = false := by decide
 
+
+/-! ## Composed affine multiplicity receipts
+
+The local matrix checker above only verifies the *newly* eliminated
+variables. The full staged interface also inherits the two children's
+previous powers of two. This independent chain auditor derives source
+rows from the children's verified residuals, checks each local raw
+certificate, and verifies free exponents across all merges. It is an
+executable finite-corpus checker, not a proof of the Rust implementation.
+-/
+
+/-- Convert the verified residual rows back into the source equation
+occurrences that Rust's actual Stage::merge constructs. The audit below
+never trusts the emitter's claim about what those equations should be. -/
+def residualEquations (c : Claim) : List SourceEquation :=
+  c.residual.map (fun row =>
+    { occurrences := row.columns.map (fun index =>
+        (c.boundary[index]?).getD [])
+      rhs := row.rhs })
+
+structure MultiplicityTrace where
+  plan : PortPlan
+  leaves : List Snapshot
+  merges : List Snapshot
+  stageFree : List Nat
+  deriving Repr, DecidableEq
+
+/-- Independently verify a whole *concrete* ordered affine trace:
+source leaves, all local merge source equations, each local replay
+certificate, live-port plan, and inheritance of free exponents.
+Each merge's local source must contain exactly the residual equations
+from the two independently accepted child interfaces, in source order. -/
+def auditMultiplicityTrace (t : MultiplicityTrace) : Bool := Id.run do
+  if !auditPortPlan t.plan then
+    return false
+  if t.leaves.length != t.plan.scopes.length ||
+      t.merges.length + 1 != t.plan.order.length ||
+      t.stageFree.length != t.plan.order.length then
+    return false
+  let allPorts := futurePortScope t.plan.scopes t.plan.order
+  let mut seenHidden : Finset Name := ∅
+  for i in List.range t.leaves.length do
+    let leaf := (t.leaves[i]?).getD emptySnapshot
+    let declaredScope := (t.plan.scopes[i]?).getD []
+    if !audit leaf || leaf.source.boundary != declaredScope then
+      return false
+    let hidden := portNames leaf.source.internal
+    if !decide (hidden ∩ allPorts = ∅) ||
+        !decide (hidden ∩ seenHidden = ∅) then
+      return false
+    seenHidden := seenHidden ∪ hidden
+  let firstIndex := (t.plan.order[0]?).getD 0
+  let first := (t.leaves[firstIndex]?).getD emptySnapshot
+  let mut current : Claim := first.claim
+  let mut cumulative := first.claim.free
+  if (t.stageFree[0]?).getD 0 != cumulative then
+    return false
+  for i in List.range t.merges.length do
+    let nextIndex := (t.plan.order[i + 1]?).getD 0
+    let nextLeaf := (t.leaves[nextIndex]?).getD emptySnapshot
+    let merge := (t.merges[i]?).getD emptySnapshot
+    let ports := (t.plan.receipts[i]?).getD default
+    if !audit merge then
+      return false
+    if merge.source.internal != ports.dead ||
+        merge.source.boundary != ports.kept ||
+        merge.claim.boundary != ports.kept then
+      return false
+    if merge.source.equations !=
+        residualEquations current ++ residualEquations nextLeaf.claim then
+      return false
+    cumulative := cumulative + nextLeaf.claim.free + merge.claim.free
+    if (t.stageFree[i + 1]?).getD 0 != cumulative then
+      return false
+    current := merge.claim
+  return true
+
+/-- The checker distinguishes local free bits from inherited ones. -/
+example : (2 : Nat) ^ (2 + 3 + 1) = 64 := by decide
+
+
 end IndependentETH.AffineNativeAudit

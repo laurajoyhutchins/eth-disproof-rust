@@ -109,6 +109,20 @@ pub fn held_out_cases() -> Vec<Case> {
             }
         }
     }
+    // A genuinely new validation cohort for the conditional policy:
+    // source seeds unseen in either preceding planner study. The decision
+    // rule, shortlist size, and preview budget are frozen before inspection.
+    for variables in [8, 10] {
+        for seed in [13_007, 13_009] {
+            for density in [2, 4] {
+                for kind in [CaseKind::Random3Cnf, CaseKind::Planted3Cnf] {
+                    cases.push(Case {
+                        kind, variables, clauses: variables * density, seed,
+                    });
+                }
+            }
+        }
+    }
     cases
 }
 
@@ -482,8 +496,8 @@ mod tests {
     #[test]
     fn held_out_split_is_fixed_and_distinct() {
         let cases = held_out_cases();
-        assert_eq!(cases.len(), 24);
-        assert_eq!(cases.iter().map(|c| c.label()).collect::<BTreeSet<_>>().len(), 24);
+        assert_eq!(cases.len(), 40);
+        assert_eq!(cases.iter().map(|c| c.label()).collect::<BTreeSet<_>>().len(), 40);
         assert!(cases.iter().filter(|c| c.kind != CaseKind::FrustratedXor3Cnf)
             .all(|c| c.seed >= 1000));
         assert!(cases.iter().filter(|c| c.kind == CaseKind::FrustratedXor3Cnf)

@@ -679,10 +679,10 @@ impl SignedOneBitRegion {
             linear,
             pairs,
         );
+        // Keep the proposition on one line: Lean treats a continued line
+        // starting at column zero as a new declaration, not as application.
         Ok(format!(
-            "example : IndependentETH.QuadraticLowWeight.checkNativeInstance (n := {width})\n\
-             ({source} : IndependentETH.QuadraticLowWeight.NativeSourceRecord)\n\
-             ({output} : IndependentETH.QuadraticLowWeight.NativeOutputRecord) = true := by decide\n"
+            "example : IndependentETH.QuadraticLowWeight.checkNativeInstance (n := {width}) ({source} : IndependentETH.QuadraticLowWeight.NativeSourceRecord) ({output} : IndependentETH.QuadraticLowWeight.NativeOutputRecord) = true := by decide\n"
         ))
     }
 }

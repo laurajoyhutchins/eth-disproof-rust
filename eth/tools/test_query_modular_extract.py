@@ -148,13 +148,18 @@ class ModuleReceiptContractTests(unittest.TestCase):
         commands=[]
         def record(argv,cwd,log,timeout,rss,env=None):
             commands.append(argv)
+            if log.name=="fresh-import":
+                self.assertEqual(
+                    Path(argv[-1]).read_text(),
+                    f"import {self.stage.module}"+"\n",
+                )
             return self.simulated_run(argv,cwd,log,timeout,rss,env)
         with (patch.object(q,"pinned_record",return_value=self.record),
-              patch.object(q,"source",return_value="import Fake\\n"),
+              patch.object(q,"source",return_value="import Fake\n"),
               patch.object(q,"run_stage_process",side_effect=record),
               patch.object(q,"validate_stage_graph",return_value=(3,"b"*64)),
               patch.object(q,"certificate_source",
-                           return_value=("theorem fixture : True := trivial\\n",
+                           return_value=("theorem fixture : True := trivial\n",
                                          {"certificate_sha256":"c"*64}))):
             result=self.probe(require_cached=True)
         self.assertEqual(result["status"],"ORIGINAL_MODULE_GRAPH_KERNEL_CERTIFIED")

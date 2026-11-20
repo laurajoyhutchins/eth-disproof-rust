@@ -2,7 +2,8 @@
 //! arrays. Exercise canonicality, indexed guard rejection, and deterministic
 //! full-width signed weights against the *production* Rust parser.
 use lean_eth_reference::representation_ranked_certificate::{
-    RankedComponentCertificate, contract_checked_ranked_weights_with_trace,
+    ArithmeticKind, RankedComponentCertificate, contract_checked_ranked_weights,
+    contract_checked_ranked_weights_with_trace,
 };
 use lean_eth_reference::representation_ranked_input::{
     RankedContractionInput, decode_ranked_input, encode_ranked_input, execute_ranked_wire,
@@ -139,6 +140,86 @@ fn malformed_source_refuses_before_any_arithmetic_and_preserves_guard_precedence
     let (result, trace) = execute_ranked_wire(&good);
     assert_eq!(result.unwrap().value, -42);
     assert_eq!(trace.len(), 10);
+}
+
+
+#[test]
+fn trace_records_exact_arithmetic_sequence_from_one_source_execution() {
+    let input = fixture();
+    let (traced, events) = contract_checked_ranked_weights_with_trace(
+        &input.weights,
+        &input.source_edges,
+        &input.certificate,
+    );
+    let ordinary = contract_checked_ranked_weights(
+        &input.weights,
+        &input.source_edges,
+        &input.certificate,
+    );
+    assert_eq!(traced, ordinary);
+    let actual = events
+        .iter()
+        .map(|event| (event.kind, event.left, event.right, event.observed))
+        .collect::<Vec<_>>();
+    use ArithmeticKind::{Add, Mul};
+    assert_eq!(
+        actual,
+        vec![
+            (Mul, 1, 2, Some(2)),
+            (Mul, 1, -3, Some(-3)),
+            (Mul, 2, -1, Some(-2)),
+            (Mul, -3, 4, Some(-12)),
+            (Mul, 1, 5, Some(5)),
+            (Mul, 1, -2, Some(-2)),
+            (Add, -2, -12, Some(-14)),
+            (Mul, 1, -14, Some(-14)),
+            (Add, 5, -2, Some(3)),
+            (Mul, -14, 3, Some(-42)),
+        ]
+    );
+    let bytes = encode_ranked_input(&input).unwrap();
+    assert_eq!(execute_ranked_wire(&bytes).1, events);
+}
+
+#[test]
+fn trace_includes_first_overflow_and_stops_before_other_operations() {
+    let input = RankedContractionInput {
+        weights: vec![[i128::MAX, 0], [2, 3]],
+        source_edges: vec![(0, 1)],
+        certificate: RankedComponentCertificate {
+            labels: vec![0, 0],
+            roots: vec![0],
+            parent_edge_indices: vec![None, Some(0)],
+            rank: vec![0, 1],
+        },
+    };
+    let (result, events) = contract_checked_ranked_weights_with_trace(
+        &input.weights,
+        &input.source_edges,
+        &input.certificate,
+    );
+    assert_eq!(result.unwrap_err(), lean_eth_reference::Error::Overflow);
+    assert_eq!(
+        contract_checked_ranked_weights(&input.weights, &input.source_edges, &input.certificate)
+            .unwrap_err(),
+        lean_eth_reference::Error::Overflow,
+    );
+    use ArithmeticKind::Mul;
+    assert_eq!(
+        events
+            .iter()
+            .map(|event| (event.kind, event.left, event.right, event.observed))
+            .collect::<Vec<_>>(),
+        vec![
+            (Mul, 1, i128::MAX, Some(i128::MAX)),
+            (Mul, 1, 0, Some(0)),
+            (Mul, i128::MAX, 2, None),
+        ]
+    );
+    let bytes = encode_ranked_input(&input).unwrap();
+    let (wire_result, wire_events) = execute_ranked_wire(&bytes);
+    assert_eq!(wire_result.unwrap_err(), lean_eth_reference::Error::Overflow);
+    assert_eq!(wire_events, events);
 }
 
 fn next(seed: &mut u64) -> u64 {

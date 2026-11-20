@@ -8,12 +8,16 @@
 use super::*;
 use std::time::Instant;
 
+mod selective;
+pub use selective::Stats as SelectiveStats;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Policy {
     Sequential,
     MinFillAdmission,
     TropicalZeroSupport,
     ExactPreview,
+    SelectiveTropical,
 }
 
 impl Policy {
@@ -23,12 +27,14 @@ impl Policy {
             Self::MinFillAdmission => "min-fill-admission",
             Self::TropicalZeroSupport => "tropical-zero-support",
             Self::ExactPreview => "exact-preview",
+            Self::SelectiveTropical => "selective-tropical",
         }
     }
 
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Sequential, Self::MinFillAdmission,
         Self::TropicalZeroSupport, Self::ExactPreview,
+        Self::SelectiveTropical,
     ];
 }
 
@@ -100,6 +106,20 @@ pub fn held_out_cases() -> Vec<Case> {
         for seed in [4099, 5003] {
             for kind in [CaseKind::Random3Cnf, CaseKind::Planted3Cnf] {
                 cases.push(Case { kind, variables, clauses: variables * 4, seed });
+            }
+        }
+    }
+    // A genuinely new validation cohort for the conditional policy:
+    // source seeds unseen in either preceding planner study. The decision
+    // rule, shortlist size, and preview budget are frozen before inspection.
+    for variables in [8, 10] {
+        for seed in [13_007, 13_009] {
+            for density in [2, 4] {
+                for kind in [CaseKind::Random3Cnf, CaseKind::Planted3Cnf] {
+                    cases.push(Case {
+                        kind, variables, clauses: variables * density, seed,
+                    });
+                }
             }
         }
     }
@@ -314,6 +334,7 @@ struct Plan {
     candidates_examined: usize,
     planned_ns: u128,
     peak_preview_payload_bytes: usize,
+    selective_stats: Option<SelectiveStats>,
 }
 
 fn make_plan(factors: &[Factor], policy: Policy) -> Result<Plan, String> {
@@ -321,11 +342,15 @@ fn make_plan(factors: &[Factor], policy: Policy) -> Result<Plan, String> {
     if factors.len() < 2 {
         return Err("a study requires at least two factors".into());
     }
+    if policy == Policy::SelectiveTropical {
+        return selective::make_plan(factors);
+    }
     if policy == Policy::Sequential {
         return Ok(Plan {
             order: (0..factors.len()).collect(), work: Work::default(),
             candidates_examined: 0, planned_ns: clock.elapsed().as_nanos(),
             peak_preview_payload_bytes: 0,
+            selective_stats: None,
         });
     }
 
@@ -369,7 +394,8 @@ fn make_plan(factors: &[Factor], policy: Policy) -> Result<Plan, String> {
             let mut candidate_exact = None;
             let mut candidate_tropical = None;
             let score = match policy {
-                Policy::Sequential => unreachable!("handled without previews"),
+                Policy::Sequential | Policy::SelectiveTropical =>
+                    unreachable!("handled before general candidate loop"),
                 Policy::MinFillAdmission => (
                     fill_edges(&ports, &remaining, &scopes, &kept, index) as u128,
                     kept_cells, union_cells, index,
@@ -427,6 +453,7 @@ fn make_plan(factors: &[Factor], policy: Policy) -> Result<Plan, String> {
         order, work, candidates_examined,
         planned_ns: clock.elapsed().as_nanos(),
         peak_preview_payload_bytes,
+        selective_stats: None,
     })
 }
 
@@ -439,6 +466,7 @@ pub struct AdaptiveReceipt {
     pub planning_elapsed_ns: u128,
     pub planning_work: Work,
     pub peak_preview_coefficient_payload_bytes: usize,
+    pub selective_stats: Option<SelectiveStats>,
     pub exact_elapsed_ns: u128,
     pub exact: Receipt,
 }
@@ -456,6 +484,7 @@ pub fn evaluate(case: Case, policy: Policy) -> Result<AdaptiveReceipt, String> {
         planning_elapsed_ns: plan.planned_ns,
         planning_work: plan.work,
         peak_preview_coefficient_payload_bytes: plan.peak_preview_payload_bytes,
+        selective_stats: plan.selective_stats,
         exact_elapsed_ns, exact,
     })
 }
@@ -467,8 +496,8 @@ mod tests {
     #[test]
     fn held_out_split_is_fixed_and_distinct() {
         let cases = held_out_cases();
-        assert_eq!(cases.len(), 24);
-        assert_eq!(cases.iter().map(|c| c.label()).collect::<BTreeSet<_>>().len(), 24);
+        assert_eq!(cases.len(), 40);
+        assert_eq!(cases.iter().map(|c| c.label()).collect::<BTreeSet<_>>().len(), 40);
         assert!(cases.iter().filter(|c| c.kind != CaseKind::FrustratedXor3Cnf)
             .all(|c| c.seed >= 1000));
         assert!(cases.iter().filter(|c| c.kind == CaseKind::FrustratedXor3Cnf)
@@ -495,6 +524,8 @@ mod tests {
             assert!(values[3].planning_work.multiplications > 0);
             assert_eq!(values[1].planning_work.multiplications, 0);
             assert_eq!(values[0].candidates_examined, 0);
+            assert!(values[4].selective_stats.is_some());
+            assert!(values[4].planning_work.multiplications <= 1_024);
         }
     }
 }

@@ -54,9 +54,10 @@ jobs:
         run: |
           set -euo pipefail
           cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin adaptive-order-study | tee /tmp/adaptive-order-receipts.jsonl
-          test "$(wc -l < /tmp/adaptive-order-receipts.jsonl)" -eq 96
-          test "$(grep -c '"oracle":"checked"' /tmp/adaptive-order-receipts.jsonl)" -eq 96
-          test "$(grep -c '"policy":"tropical-zero-support"' /tmp/adaptive-order-receipts.jsonl)" -eq 24
+          test "$(wc -l < /tmp/adaptive-order-receipts.jsonl)" -eq 200
+          test "$(grep -c '"oracle":"checked"' /tmp/adaptive-order-receipts.jsonl)" -eq 200
+          test "$(grep -c '"policy":"tropical-zero-support"' /tmp/adaptive-order-receipts.jsonl)" -eq 40
+          test "$(grep -c '"policy":"selective-tropical"' /tmp/adaptive-order-receipts.jsonl)" -eq 40
           grep -F '"kind":"frustrated-xor3-cnf"' /tmp/adaptive-order-receipts.jsonl | grep -F '"satisfying_count":"0"' >/dev/null
 
       - name: Run contraction-order study and check small-case oracle

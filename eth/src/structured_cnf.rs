@@ -606,6 +606,96 @@ mod tests {
         }
     }
 
+    /// Independent per-row oracle: checked *individual* array lookups,
+    /// not the production decoder's range slicing and array conversions.
+    /// It is deliberately callable on malformed and truncated CSR arrays.
+    fn reference_checked_row(csr: SignedCsr<'_>, row: usize) -> Option<CheckedCsrRow> {
+        let start = *csr.row_offsets.get(row)?;
+        let stop = *csr.row_offsets.get(row.checked_add(1)?)?;
+        if stop != start.checked_add(3)? {
+            return None;
+        }
+
+        let mut columns = [0; 3];
+        let mut signs = [0; 3];
+        for i in 0..3 {
+            let at = start.checked_add(i)?;
+            columns[i] = *csr.column_indices.get(at)?;
+            signs[i] = *csr.signs.get(at)?;
+        }
+        if columns[0] >= columns[1]
+            || columns[1] >= columns[2]
+            || columns[2] >= csr.variables
+            || signs.iter().any(|s| *s != -1 && *s != 1)
+        {
+            None
+        } else {
+            Some(CheckedCsrRow { columns, signs })
+        }
+    }
+
+    /// The concrete shared row reader has no dependence on outer CSR shape:
+    /// every checked slice access agrees with independent checked element
+    /// reads, including malformed offsets and extreme machine integers.
+    #[test]
+    fn checked_row_matches_independent_indexed_model() {
+        let cases = [4_usize, 5, 8];
+        for n in cases {
+            let rhs = vec![false; n - 3];
+            let source = OwnedSignedCsr::from_cnf(&source(n, &rhs));
+
+            let check = |csr: &OwnedSignedCsr| {
+                for row in 0..=csr.row_offsets.len() {
+                    assert_eq!(
+                        csr.view().checked_row(row),
+                        reference_checked_row(csr.view(), row),
+                        "row={row}, csr={csr:?}"
+                    );
+                }
+                assert_eq!(
+                    csr.view().checked_row(usize::MAX),
+                    reference_checked_row(csr.view(), usize::MAX)
+                );
+            };
+            check(&source);
+
+            for index in 0..source.row_offsets.len() {
+                for value in [
+                    0, source.column_indices.len(), usize::MAX,
+                    source.row_offsets[index].saturating_sub(1),
+                    source.row_offsets[index].saturating_add(1),
+                ] {
+                    let mut changed = source.clone();
+                    changed.row_offsets[index] = value;
+                    check(&changed);
+                }
+            }
+            for index in 0..source.column_indices.len() {
+                for value in [0, 1, n - 1, n, usize::MAX] {
+                    let mut changed = source.clone();
+                    changed.column_indices[index] = value;
+                    check(&changed);
+                }
+            }
+            for index in 0..source.signs.len() {
+                for value in [-2, -1, 0, 1, 2, i8::MIN, i8::MAX] {
+                    let mut changed = source.clone();
+                    changed.signs[index] = value;
+                    check(&changed);
+                }
+            }
+            let mut shortened = source.clone();
+            shortened.signs.pop();
+            check(&shortened);
+            let mut shortened = source.clone();
+            shortened.column_indices.pop();
+            check(&shortened);
+            let mut shortened = source.clone();
+            shortened.row_offsets.pop();
+            check(&shortened);
+        }
+    }
+
     /// A second, test-only decoder of Lean's signed-CSR *input* semantics.
     /// This deliberately does not call either the Rust recognizer or receipt
     /// verifier. It keeps duplicate rows, malformed widths, missing elements,

@@ -11,6 +11,14 @@ on:
       - 'instrumentation/lean-env/lean-toolchain'
       - 'instrumentation/lean-env/lakefile.lean'
       - 'instrumentation/lean-env/lake-manifest.json'
+      # Cargo and crate-root inputs can change the program that emits
+      # the physical certificate even when the table modules do not change.
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - 'eth/Cargo.toml'
+      - 'compiler/cli/Cargo.toml'
+      - 'eth/src/lib.rs'
       - 'eth/src/bin/framed-reader-certificate.rs'
       - 'eth/tools/verify_rust_physical_receipt.py'
       - 'eth/tools/test_verify_rust_physical_receipt.py'

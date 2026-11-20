@@ -181,6 +181,69 @@ def python_inputs(root: Path, workflow: str) -> set[str]:
     return seen
 
 
+def _rust_external_modules(root: Path, module: str) -> set[str]:
+    """Follow only file-backed Rust modules in the physical BitProgram subtree.
+
+    An inline module's body (including test-only modules) belongs to its
+    containing file. This is not a Rust resolver and does not infer Cargo
+    features, macro expansion, or module aliases.
+    """
+    pending = [module]
+    found: set[str] = set()
+    while pending:
+        current = pending.pop()
+        if current in found:
+            continue
+        path = root / current
+        if not path.is_file():
+            raise ValueError(f"missing Rust certificate module: {current}")
+        found.add(current)
+        source = path.read_text(encoding="utf-8")
+        # The admitted certificate subtree currently uses direct file-backed
+        # module declarations. Refuse path overrides until their resolution
+        # is explicitly modeled; silently ignoring one is unsound.
+        if re.search(r"(?m)^\s*#\[path\s*=", source):
+            raise ValueError(f"unmodeled Rust module path override: {current}")
+        for name in re.findall(
+            r"(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+([A-Za-z_]\w*)\s*;",
+            source,
+        ):
+            if current.endswith("/mod.rs"):
+                parent = current.removesuffix("/mod.rs")
+            else:
+                parent = current.removesuffix(".rs")
+            candidates = [parent + "/" + name + ".rs",
+                          parent + "/" + name + "/mod.rs"]
+            existing = [candidate for candidate in candidates if (root / candidate).is_file()]
+            if len(existing) != 1:
+                raise ValueError(
+                    f"Rust module {name} in {current} has {len(existing)} source files")
+            pending.append(existing[0])
+    return found
+
+
+def rust_certificate_inputs(root: Path, source: str) -> set[str]:
+    """Find source and build inputs of the actual framed-reader Rust producer."""
+    if not re.search(r"cargo\s+run\b", source) or \
+            "--bin framed-reader-certificate" not in source:
+        raise ValueError("physical certificate Rust producer is not invoked")
+    lib = root / "eth/src/lib.rs"
+    if not lib.is_file() or not re.search(r"(?m)^pub mod bit_program;\s*$",
+                                           lib.read_text(encoding="utf-8")):
+        raise ValueError("physical certificate no longer uses admitted BitProgram crate root")
+    inputs = {
+        "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
+        "eth/Cargo.toml", "eth/src/lib.rs",
+        "eth/src/bin/framed-reader-certificate.rs",
+        "compiler/cli/Cargo.toml",  # direct local path dependency
+    }
+    inputs.update(_rust_external_modules(root, "eth/src/bit_program.rs"))
+    for name in inputs:
+        if not (root / name).is_file():
+            raise ValueError(f"missing Rust certificate build input: {name}")
+    return inputs
+
+
 def verify_selection(root: Path, workflow_name: str, source: str | None = None) -> set[str]:
     path = ".github/workflows/" + workflow_name
     source = source if source is not None else (root / path).read_text(encoding="utf-8")
@@ -189,6 +252,8 @@ def verify_selection(root: Path, workflow_name: str, source: str | None = None) 
         required.update(lean_inputs(root, source))
     if workflow_name in PYTHON_JOBS:
         required.update(python_inputs(root, source))
+    if workflow_name == "lean-source-refinement.yml":
+        required.update(rust_certificate_inputs(root, source))
     if workflow_name == "original-source-graph.yml":
         required.update(PINNED_ENV)
     if workflow_name in COMPILER_JOBS:

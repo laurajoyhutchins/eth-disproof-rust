@@ -304,11 +304,11 @@ theorem expectedExecution_refines {n c : ℕ}
             simpa using hs.symm
           have hf :
               Option.map BitVec.toInt
-                  (finishTrace products one (List.finRange c)).2 =
+                  (finishTrace products (1 : Word) (List.finRange c)).2 =
                 checkedArrayFinishFrom (decodeArray products)
                   1 (List.finRange c) := by
-            simpa [one] using
-              finishTrace_refines products one (List.finRange c)
+            simpa using
+              finishTrace_refines products (1 : Word) (List.finRange c)
           have hcontinued :
               (scanTrace (Array.replicate c
                 (BitVec.ofInt 128 1, BitVec.ofInt 128 1))

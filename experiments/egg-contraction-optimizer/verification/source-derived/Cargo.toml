@@ -1,0 +1,14 @@
+[package]
+name = "affine-checked-toggle-source"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+resolver = "2"
+
+[lib]
+path = "src/lib.rs"
+
+# This crate must use the actual production implementation by path.
+# Never copy its body into an independently edited verification stub.

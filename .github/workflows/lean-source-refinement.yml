@@ -4,6 +4,16 @@ on:
   pull_request:
     paths:
       - 'eth/proofs/SourceGraphRefinement.lean'
+      - 'eth/proofs/FramedRecordReaderRefinement.lean'
+      - 'instrumentation/lean-env/ACC/BitProgramFields.lean'
+      - 'eth/src/bin/framed-reader-certificate.rs'
+      - 'eth/tools/verify_rust_physical_receipt.py'
+      - 'eth/tools/test_verify_rust_physical_receipt.py'
+      - 'eth/tools/source_graph_kernel_certificate.py'
+      - 'eth/tools/verify_source_graph.py'
+      - 'eth/src/bit_program.rs'
+      # All physical-program helpers, encoders, and generated source dependencies.
+      - 'eth/src/bit_program/**'
       - '.github/workflows/lean-source-refinement.yml'
   workflow_dispatch:
 
@@ -59,13 +69,82 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = d13f23b723b8a846827a245b89c10fc7d3f11612
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/SourceGraphRefinement.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/FramedRecordReaderRefinement.lean; then
+            echo 'Framed-reader proof contains unresolved admission' >&2
+            exit 1
+          fi
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/SourceGraphRefinement.lean instrumentation/lean-env/ACC/BitProgramFields.lean; then
             echo 'Proof contains unresolved admission' >&2
             exit 1
           fi
           (
             cd instrumentation/lean-env
-            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler OAI.Algorithms.SubexponentialSAT.RecordPrograms ACC.BitProgramFields
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/SourceGraphRefinement.lean"
+            lake env lean "$GITHUB_WORKSPACE/eth/proofs/FramedRecordReaderRefinement.lean"
           )
           echo 'LEAN_SOURCE_GRAPH_REFINEMENT=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'LEAN_FRAMED_RECORD_READER=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+      - name: Kernel-validate actual Rust tables through canonical source-graph certificate renderer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fetch --locked
+          python3 -m unittest discover -s eth/tools -p 'test_source_graph_kernel_certificate.py' -v
+          python3 -m unittest discover -s eth/tools -p 'test_verify_rust_physical_receipt.py' -v
+          data="$RUNNER_TEMP/framed-reader-physical-programs.json"
+          cert="$RUNNER_TEMP/framed-reader-rust-certificate.lean"
+          cargo run --quiet --locked --offline -p lean-eth-reference --bin framed-reader-certificate > "$data"
+          cat eth/proofs/FramedRecordReaderRefinement.lean > "$cert"
+          python3 eth/tools/verify_rust_physical_receipt.py "$data" >> "$cert"
+          (
+            cd instrumentation/lean-env
+            lake env lean "$cert"
+          )
+          # First change only the manually formatted row. The independent
+          # Serde-derived Rust-structure witness must reject this lie *before*
+          # any Lean source comparison is attempted.
+          python3 - "$data" "$RUNNER_TEMP/framed-reader-row-lie.json" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          source = json.loads(Path(sys.argv[1]).read_text())
+          compiled = source["cases"][0]["compiled"]["code"]
+          assert compiled[1] == "pop:13:0:1:2"
+          compiled[1] = "pop:13:1:0:2"
+          Path(sys.argv[2]).write_text(json.dumps(source, separators=(',', ':')) + "\n")
+          PY
+          if python3 eth/tools/verify_rust_physical_receipt.py "$RUNNER_TEMP/framed-reader-row-lie.json" > "$RUNNER_TEMP/framed-reader-row-lie.log" 2>&1; then
+            echo 'inconsistent physical row and Rust structure unexpectedly accepted' >&2
+            exit 1
+          fi
+
+          # Now mutate both independent representations coherently. The
+          # adapter should accept the well-formed data, but the pinned Lean
+          # kernel must reject the *wrong* source program.
+          python3 - "$data" "$RUNNER_TEMP/framed-reader-mutated.json" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          source = json.loads(Path(sys.argv[1]).read_text())
+          compiled = source["cases"][0]["compiled"]["code"]
+          typed = source["cases"][0]["structure"]["compiled"]["code"][1]["Pop"]
+          assert compiled[1] == "pop:13:0:1:2"
+          assert typed == {"stack": 13, "value": 0, "present": 1, "next": 2}
+          compiled[1] = "pop:13:1:0:2"
+          typed["value"] = 1
+          typed["present"] = 0
+          Path(sys.argv[2]).write_text(json.dumps(source, separators=(',', ':')) + "\n")
+          PY
+          cat eth/proofs/FramedRecordReaderRefinement.lean > "$RUNNER_TEMP/framed-reader-mutated.lean"
+          python3 eth/tools/verify_rust_physical_receipt.py "$RUNNER_TEMP/framed-reader-mutated.json" >> "$RUNNER_TEMP/framed-reader-mutated.lean"
+          (
+            cd instrumentation/lean-env
+            if lake env lean "$RUNNER_TEMP/framed-reader-mutated.lean" > "$RUNNER_TEMP/framed-reader-mutation.log" 2>&1; then
+              echo 'mutated physical Rust data unexpectedly accepted by Lean' >&2
+              exit 1
+            fi
+          )
+          echo 'RUST_PHYSICAL_ROW_STRUCTURE_MUTANT=REJECTED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'RUST_EMITTED_FRAMED_READER_LEAN_KERNEL=ACCEPTED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'RUST_EMITTED_FRAMED_READER_MUTANT=REJECTED' >> "$GITHUB_STEP_SUMMARY"

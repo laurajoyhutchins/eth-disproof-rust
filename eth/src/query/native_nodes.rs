@@ -13,6 +13,7 @@
 //! jet, and reconstruction code, which is deliberately not substituted here.
 
 use crate::Error;
+use crate::bit_program::source_commands;
 use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_high::{clear_program, copy_program};
 use crate::native_query_prefix::{frame_program, transfer_program};
@@ -24,11 +25,7 @@ fn clear_call<const R: usize, const S: usize>(stack: usize) -> Result<Cmd<R, S>,
 /// The exact recursive `NodeReadoutSpace.clearMany` command. An empty set of
 /// ports becomes `skip`, and duplicate ports still execute duplicate clears.
 pub fn clear_many(ports: &[usize]) -> Result<Cmd<40, 896>, Error> {
-    let mut cmd = Cmd::Skip;
-    for &stack in ports.iter().rev() {
-        cmd = Cmd::seq(clear_call(stack)?, cmd);
-    }
-    Ok(cmd)
+    source_commands::clear_many(ports)
 }
 
 /// The 40-register/768-stack `RingNodeSetup.initNodes`. The copy's temporary

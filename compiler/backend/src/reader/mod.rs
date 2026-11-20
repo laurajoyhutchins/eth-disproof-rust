@@ -13,6 +13,8 @@ mod body;
 mod borrow;
 mod cases;
 mod decode;
+mod effect_order;
+mod effect_source;
 mod expr;
 mod expr_call;
 mod expr_value;

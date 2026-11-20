@@ -13,3 +13,6 @@ resolver = "2"
 [dependencies]
 egg = "=0.9.5"
 num-bigint = "=0.4.6"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

@@ -32,8 +32,8 @@ def core.option.Option.Insts.CoreOpsTry_traitFromResidualOptionNever.from_residu
 def core.result.Result.ok {T : Type _} {E : Type _}
     (value : core.result.Result T E) : Result (Option T) :=
   match value with
-  | .Ok x => ok (some x)
-  | .Err _ => ok none
+  | .Ok x => Aeneas.Std.Result.ok (some x)
+  | .Err _ => Aeneas.Std.Result.ok none
 
 /-- Model Iterator::all over the actual Aeneas slice iterator state.
 Each visited item calls the supplied FnMut closure exactly once.

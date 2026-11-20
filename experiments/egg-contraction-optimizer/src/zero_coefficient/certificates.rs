@@ -17,6 +17,8 @@ use std::time::Instant;
 
 #[path = "certificates/nogood.rs"]
 pub mod nogood;
+#[path = "certificates/resolution_index.rs"]
+pub mod resolution_index;
 
 const MAX_CLAUSE_VISITS: u64 = 100_000;
 const MAX_QUERIES: u64 = 4_096;

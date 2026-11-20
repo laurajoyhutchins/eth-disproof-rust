@@ -62,10 +62,7 @@ pub(crate) fn iterate_framed<const R: usize, const S: usize>(
     callback: Cmd<R, S>,
 ) -> Result<Cmd<R, S>, Error> {
     let reader = Cmd::Call(
-        frame_program()?.lift::<R, S>(
-            [ports.tag, ports.present],
-            [ports.source, payload],
-        )?,
+        frame_program()?.lift::<R, S>([ports.tag, ports.present], [ports.source, payload])?,
     );
     Ok(iterate(ports, reader, callback))
 }
@@ -87,7 +84,13 @@ mod tests {
     #[test]
     fn invalid_framed_reader_maps_refuse_instead_of_aliasing() {
         let invalid = [
-            (RecordPorts { present: 0, ..PORTS }, 1),
+            (
+                RecordPorts {
+                    present: 0,
+                    ..PORTS
+                },
+                1,
+            ),
             (PORTS, 0),
             (RecordPorts { tag: 3, ..PORTS }, 1),
             (PORTS, 3),
@@ -108,7 +111,10 @@ mod tests {
         let command = iterate_framed::<3, 3>(
             PORTS,
             1,
-            Cmd::Atom(Atom::Set { dst: 2, value: true }),
+            Cmd::Atom(Atom::Set {
+                dst: 2,
+                value: true,
+            }),
         )
         .unwrap();
         let program = command.compiled(0, 0).unwrap();
@@ -130,7 +136,10 @@ mod tests {
         let command = iterate_framed::<3, 3>(
             PORTS,
             1,
-            Cmd::Atom(Atom::Set { dst: 2, value: false }),
+            Cmd::Atom(Atom::Set {
+                dst: 2,
+                value: false,
+            }),
         )
         .unwrap();
         let program = command.compiled(0, 0).unwrap();

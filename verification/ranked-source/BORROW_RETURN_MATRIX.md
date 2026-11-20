@@ -41,6 +41,16 @@ translation failures stays **red**, not magically green because failures
 were expected. A failure to produce `Funs.lean` is reported as missing,
 not as a clean source translation.
 
+A separate [Lean proof candidate](proofs/BorrowReturnP2.lean) is copied into
+the **actual** generated `ProbeP2` package and typechecked by Lean 4.31.0.
+The theorem states that if the Aeneas `Vec.push` model succeeds with
+`events'`, the extracted `p2_direct_result` returns the independently
+specified `Result` and the exact `events'` post-state. This is a scoped,
+conditional source-derived theorem and is *not* a model of allocation
+failure, actual CPU/Rust semantics, or the full ranked production recorder.
+Its kernel verdict must be checked on the exact head before reporting it
+as proved.
+
 Even a green row is **only source-extraction evidence**. No row establishes
 Lean kernel typechecking, absence of placeholders in transitive dependencies,
 soundness of library or allocation models, or semantic equivalence to Rust.

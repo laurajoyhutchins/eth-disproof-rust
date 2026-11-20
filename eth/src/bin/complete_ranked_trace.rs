@@ -4,6 +4,10 @@
 //! made by the ranked-certificate counter. The generated Lean checker
 //! independently replays the full schedule, including early overflow.
 use lean_eth_reference::Error;
+use lean_eth_reference::representation_ranked_input::{
+    RankedContractionInput, decode_ranked_input, encode_ranked_input, execute_ranked_wire,
+};
+
 use lean_eth_reference::representation_ranked_certificate::{
     ArithmeticKind, ArithmeticReceipt, RankedComponentCertificate, contract_checked_ranked_weights,
     contract_checked_ranked_weights_with_trace,
@@ -156,6 +160,16 @@ fn emit_source(fixture: &Fixture) {
     );
 }
 
+fn emit_wire_bytes(name: &str, bytes: &[u8]) {
+    println!("def {name}Bytes : List UInt8 := [");
+    for (index, chunk) in bytes.chunks(16).enumerate() {
+        let row = chunk.iter().map(u8::to_string).collect::<Vec<_>>().join(", ");
+        let suffix = if (index + 1) * 16 < bytes.len() { "," } else { "" };
+        println!("  {row}{suffix}");
+    }
+    println!("]");
+}
+
 fn emit_receipts(name: &str, receipts: &[ArithmeticReceipt], observed: Option<i128>) {
     println!("def {name}Trace : List Receipt := [");
     for (index, receipt) in receipts.iter().enumerate() {
@@ -186,6 +200,9 @@ fn emit_checks(name: &str, successful: bool) {
     let args =
         format!("{name}Edges {name}Labels {name}Roots {name}Parents {name}Rank {name}Weights");
     println!("example : checkComplete {args} {name}Trace {name}Result = true := by decide");
+    println!("example : checkWireClaim {name}Bytes {args} {name}Trace {name}Result = true := by decide");
+    println!("example : checkWireClaim ({name}Bytes ++ [0]) {args} {name}Trace {name}Result = false := by decide");
+    println!("example : checkWireClaim ({name}Bytes.drop 1) {args} {name}Trace {name}Result = false := by decide");
     println!(
         "example : checkComplete {args} ({name}Trace.drop 1) {name}Result = false := by decide"
     );
@@ -222,19 +239,24 @@ fn emit_checks(name: &str, successful: bool) {
 }
 
 fn main() {
-    println!("import ACC.CompleteExecutionTrace");
+    println!("import ACC.RankedWireBinding");
     println!("open ACC.CompleteExecutionTrace");
+    println!("open ACC.RankedWireBinding");
     println!("open ACC.ArithmeticReceipts");
     println!("open ACC.CheckedI128BitVec");
     println!("set_option maxRecDepth 4096");
     println!("set_option maxHeartbeats 2000000");
 
     for fixture in fixtures() {
-        let (result, trace) = contract_checked_ranked_weights_with_trace(
-            &fixture.weights,
-            &fixture.edges,
-            &fixture.certificate,
-        );
+        let input = RankedContractionInput {
+            weights: fixture.weights.clone(),
+            source_edges: fixture.edges.clone(),
+            certificate: fixture.certificate.clone(),
+        };
+        let bytes = encode_ranked_input(&input).expect("fixture must encode");
+        let parsed = decode_ranked_input(&bytes).expect("fixture must decode");
+        assert_eq!(parsed, input, "byte input changed before Rust counting");
+        let (result, trace) = execute_ranked_wire(&bytes);
         let ordinary =
             contract_checked_ranked_weights(&fixture.weights, &fixture.edges, &fixture.certificate);
         assert_eq!(result, ordinary, "traced path changed the counter");
@@ -248,6 +270,7 @@ fn main() {
             assert!(trace.last().is_some_and(|last| last.observed.is_none()));
         }
         emit_source(&fixture);
+        emit_wire_bytes(fixture.name, &bytes);
         emit_receipts(fixture.name, &trace, observed);
         emit_checks(fixture.name, observed.is_some());
     }

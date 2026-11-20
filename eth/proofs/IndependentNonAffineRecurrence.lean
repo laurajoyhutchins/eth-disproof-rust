@@ -478,6 +478,79 @@ def sourceWitnessSeedEquiv (ds : List Bool) :
     SourceWitnesses ds ≃ AcceptedSeeds ds :=
   (sourceWitnessTraceEquiv ds).trans (fullWitnessSeedEquiv ds)
 
+
+/-! ## Remove the redundant seed: actual full Boolean words
+
+The prefix of any source word is the purported starting seed, so the
+witness does not actually need to *store* the seed. This gives a
+bijection whose source type contains only a satisfying Boolean word
+with its checked full-length CNF predicate.
+-/
+
+def statePrefix : State → List Bool
+  | (a, b, c) => [a, b, c]
+
+theorem sourceCNFWord_prefix {s : State} {ds w : List Bool}
+    (h : SourceCNFWord s ds w) :
+    ∃ suffix : List Bool, w = statePrefix s ++ suffix := by
+  induction h with
+  | last a b c h =>
+      exact ⟨[], rfl⟩
+  | step a b c d e ds tail hOr hParity hTail ih =>
+      obtain ⟨suffix, hw⟩ := ih
+      refine ⟨e :: suffix, ?_⟩
+      simp [statePrefix, hw]
+
+/-- Extract the actual initial three bits, not a seed attached by a
+certificate producer. Short or malformed words return zero, but cannot
+satisfy the SourceCNFWord predicate. -/
+def wordSeed : List Bool → State
+  | a :: b :: c :: _ => (a, b, c)
+  | _ => zeroState
+
+theorem sourceCNFWord_seed {s : State} {ds w : List Bool}
+    (h : SourceCNFWord s ds w) : wordSeed w = s := by
+  obtain ⟨suffix, hw⟩ := sourceCNFWord_prefix h
+  rcases s with ⟨a, b, c⟩
+  simp [statePrefix, wordSeed, hw]
+
+/-- The element is only the full length-exact word. Its proof is erased,
+and there is no independently supplied or trusted starting seed. -/
+def WordSolutions (ds : List Bool) :=
+  { w : List Bool // ∃ s, SourceCNFWord s ds w }
+
+theorem wordSolutions_length (ds : List Bool) (w : WordSolutions ds) :
+    w.1.length = ds.length + 3 := by
+  obtain ⟨s, hw⟩ := w.2
+  exact sourceCNFWord_length hw
+
+def wordSolutionsSeedEquiv (ds : List Bool) :
+    WordSolutions ds ≃ AcceptedSeeds ds where
+  toFun p := ⟨wordSeed p.1, by
+    obtain ⟨s, hs⟩ := p.2
+    rw [sourceCNFWord_seed hs]
+    exact fullTrace_accepts (sourceCNFWord_to_trace hs)⟩
+  invFun p := ⟨fullWord p.1 ds,
+    ⟨p.1, fullTrace_to_sourceCNFWord
+      (accepted_fullTrace p.1 ds p.2)⟩⟩
+  left_inv := by
+    rintro ⟨w, ⟨s, h⟩⟩
+    apply Subtype.ext
+    change fullWord (wordSeed w) ds = w
+    rw [sourceCNFWord_seed h]
+    exact (fullTrace_word (sourceCNFWord_to_trace h)).symm
+  right_inv := by
+    intro s
+    apply Subtype.ext
+    change wordSeed (fullWord s.1 ds) = s.1
+    exact sourceCNFWord_seed
+      (fullTrace_to_sourceCNFWord (accepted_fullTrace s.1 ds s.2))
+
+#print axioms IndependentETH.NonAffine.sourceCNFWord_prefix
+#print axioms IndependentETH.NonAffine.sourceCNFWord_seed
+#print axioms IndependentETH.NonAffine.wordSolutions_length
+#print axioms IndependentETH.NonAffine.wordSolutionsSeedEquiv
+
 #print axioms IndependentETH.NonAffine.gadget_forces_next
 #print axioms IndependentETH.NonAffine.sourceCNFWord_to_trace
 #print axioms IndependentETH.NonAffine.fullTrace_to_sourceCNFWord

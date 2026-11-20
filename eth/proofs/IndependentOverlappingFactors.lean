@@ -22,13 +22,16 @@ open scoped BigOperators
 
 variable {V R : Type*} [DecidableEq V] [CommSemiring R]
 
+/-- A Boolean value for every globally named variable. -/
 abbrev Assignment (V : Type*) := V → Bool
+/-- A semiring-valued function on complete Boolean assignments. -/
 abbrev Weight (V R : Type*) := Assignment V → R
 
 /-- Pointwise multiplication of functions on the same global assignment. -/
 def times (f g : Weight V R) : Weight V R :=
   fun x => f x * g x
 
+/-- Pointwise multiplication inherits associativity from the semiring. -/
 theorem times_assoc (f g h : Weight V R) :
     times (times f g) h = times f (times g h) := by
   funext x
@@ -43,6 +46,7 @@ def eliminateAt (v : V) (f : Weight V R) : Weight V R :=
 def eliminateList (xs : List V) (f : Weight V R) : Weight V R :=
   xs.foldl (fun acc v => eliminateAt v acc) f
 
+/-- Consecutive elimination lists compose in their stated order. -/
 theorem eliminateList_append (xs ys : List V) (f : Weight V R) :
     eliminateList (xs ++ ys) f =
       eliminateList ys (eliminateList xs f) := by
@@ -101,6 +105,7 @@ structure Step (V R : Type*) [DecidableEq V] where
   factor : ScopedFactor V R
   dead : List V
 
+/-- Concatenate the variables removed by each contraction stage. -/
 def eliminated : List (Step V R) → List V
   | [] => []
   | s :: rest => s.dead ++ eliminated rest
@@ -551,6 +556,7 @@ def sortedUnusedDeclared (declared output : Finset V)
     (factors : List (ScopedFactor V R)) : List V :=
   (declared \ (scopeUnion factors ∪ output)).sort (· ≤ ·)
 
+/-- The ordered plan includes unused declared variables before staged elimination. -/
 def sortedSourceEliminated (declared output : Finset V)
     (factors : List (ScopedFactor V R)) : List V :=
   sortedUnusedDeclared declared output factors ++

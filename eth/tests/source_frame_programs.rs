@@ -4,8 +4,8 @@
 use std::collections::VecDeque;
 
 use lean_eth_reference::Error;
-use lean_eth_reference::bit_program::{Instr, Program, RunLimits};
 use lean_eth_reference::bit_program::frame_programs::{emit_record_program, frame_program};
+use lean_eth_reference::bit_program::{Instr, Program, RunLimits};
 use lean_eth_reference::{
     native_cache_iteration, native_normalization_primitives, native_query_prefix,
     native_record_membership,
@@ -154,7 +154,11 @@ fn both_old_parser_entry_points_retain_exact_source_program() {
     assert_eq!(native_record_membership::frame_program().unwrap(), expected);
     assert_eq!(expected.code().len(), 7);
     assert_eq!(
-        (expected.input_stack(), expected.output_stack(), expected.entry()),
+        (
+            expected.input_stack(),
+            expected.output_stack(),
+            expected.entry()
+        ),
         (0, 1, 0)
     );
 }
@@ -163,7 +167,10 @@ fn both_old_parser_entry_points_retain_exact_source_program() {
 fn both_old_emitter_entry_points_retain_all_seventeen_source_labels() {
     let expected = baseline_record_emitter().unwrap();
     assert_eq!(emit_record_program().unwrap(), expected);
-    assert_eq!(native_cache_iteration::emit_record_program().unwrap(), expected);
+    assert_eq!(
+        native_cache_iteration::emit_record_program().unwrap(),
+        expected
+    );
     assert_eq!(
         native_normalization_primitives::emit_record_program().unwrap(),
         expected
@@ -171,7 +178,11 @@ fn both_old_emitter_entry_points_retain_all_seventeen_source_labels() {
     assert_eq!(expected.code().len(), 17);
     assert_eq!(expected.code()[6], Instr::Goto { next: 7 });
     assert_eq!(
-        (expected.input_stack(), expected.output_stack(), expected.entry()),
+        (
+            expected.input_stack(),
+            expected.output_stack(),
+            expected.entry()
+        ),
         (3, 2, 7)
     );
 }

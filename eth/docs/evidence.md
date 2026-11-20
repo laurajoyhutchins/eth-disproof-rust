@@ -2,6 +2,8 @@
 
 This page distinguishes source-defined executable paths, generated artifacts, and the independent verification still required.
 
+The [read-only source-stage evidence graph](stage-evidence.md) lists the existing registry's pinned Lean symbols, source-blob entries, prerequisite stages and unfinished paths. It reports all cross-language and resource correspondence as unassessed unless separately established; implementation status is not proof status.
+
 ## Implemented execution paths
 
 | Runs or exists on main | What that establishes |

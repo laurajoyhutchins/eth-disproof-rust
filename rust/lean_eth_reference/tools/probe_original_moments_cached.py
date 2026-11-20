@@ -66,13 +66,21 @@ def execute(lake: Path, upstream: Path, output: Path, timeout: int) -> dict:
             module_name = "OriginalSourceGraphExporter"
             exporter_olean = lake / ".lake/build/lib/lean" / (module_name + ".olean")
             exporter_olean.parent.mkdir(parents=True, exist_ok=True)
-            src = tmp / (module_name + ".lean")
-            src.write_bytes(SOURCE_GRAPH_EXPORTER.read_bytes())
-            compiled = run_bounded(
-                ["lake", "env", "lean", "-o", str(exporter_olean), str(src)],
-                lake, timeout, log_base=output / "exporter-compile",
-                rss_limit_bytes=MAX_EXPORT_RSS_BYTES)
-            if compiled.returncode != 0:
+            # Lean's -o module placement requires a source inside Lake root.
+            src = lake / (module_name + ".lean")
+            if src.exists() or src.is_symlink():
+                raise ValueError("original exporter module file collision")
+            exporter_olean.unlink(missing_ok=True)
+            try:
+                with src.open("xb") as stream:
+                    stream.write(SOURCE_GRAPH_EXPORTER.read_bytes())
+                compiled = run_bounded(
+                    ["lake", "env", "lean", "-o", str(exporter_olean), str(src)],
+                    lake, timeout, log_base=output / "exporter-compile",
+                    rss_limit_bytes=MAX_EXPORT_RSS_BYTES)
+            finally:
+                src.unlink(missing_ok=True)
+            if compiled.returncode != 0 or not exporter_olean.is_file():
                 raise ValueError("source graph exporter compilation failed: " +
                                  (compiled.stdout + compiled.stderr)[-1600:])
             probe = tmp / "Probe.lean"

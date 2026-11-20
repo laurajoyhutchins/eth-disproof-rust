@@ -37,7 +37,7 @@ impl<'a> CheckedColumns<'a> {
             if positions.insert(name.as_str(), column).is_some() {
                 return Err("duplicated source variable".into());
             }
-            names.push(name);
+            names.push(name.as_str());
         }
         Ok(Self { names, positions })
     }

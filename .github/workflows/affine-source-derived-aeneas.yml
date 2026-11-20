@@ -73,7 +73,7 @@ jobs:
           set -euo pipefail
           generated="$RUNNER_TEMP/affine-source-derived/generated/AffineCheckedToggle/Code"
           sha256sum "$generated/Funs.lean" "$generated/Types.lean"
-          echo "17fd66c7369904e569fc0fa1742392003ecb44532abab8174fe25d9626e27062  $generated/Funs.lean" | sha256sum --check
+          echo "0a9c30a917061ad9de3e0c7b007a9efb16559d3018d94e7071086911579f5742  $generated/Funs.lean" | sha256sum --check
           echo "71d655a4d081c5f962336cb0a409ea6ad47cb42fd505fcdaf765eba7418002c1  $generated/Types.lean" | sha256sum --check
           proof="experiments/egg-contraction-optimizer/verification/source-derived/proofs"
           mkdir -p "$proof/AffineCheckedToggle/Code"
@@ -101,6 +101,13 @@ jobs:
           test: false
           lint: false
           mk_all-check: false
+
+      - name: Cache compiled Aeneas Lean dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            experiments/egg-contraction-optimizer/verification/source-derived/proofs/.lake/packages/aeneas/backends/lean/.lake/build
+          key: aeneas-lean-backend-v4.36.0-2e3d4488-v1
 
       - name: Kernel-check proof against generated Rust functions
         shell: bash

@@ -9,7 +9,7 @@
 
 use crate::affine::{AffineInterface, AffineRegion, Equation};
 use crate::affine_cert::VerificationLimits;
-use crate::affine_wire::{RawCertificate, RawStep, WIRE_VERSION};
+use crate::affine_wire::RawCertificate;
 use crate::affine_planner::Stage;
 use crate::affine_orders::{fold, generate, Family, Limits, Schedule};
 
@@ -61,7 +61,7 @@ fn emit_case(
     out: &mut String,
     label: &str,
     source: &AffineRegion,
-    cert: &EliminationCertificate,
+    cert: &RawCertificate,
     claim: &AffineInterface,
     accepted: bool,
     exhaustive: bool,
@@ -311,6 +311,7 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::affine_wire::{RawStep, WIRE_VERSION};
 
     #[test]
     fn native_audit_fixture_emission_includes_real_ordered_merges() {

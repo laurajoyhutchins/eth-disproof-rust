@@ -430,6 +430,97 @@ mod tests {
     }
 
     #[test]
+    fn overlapping_scopes_match_original_equations_at_each_partial_network() {
+        // Unlike equality chains and a fixed circulant family, these
+        // deterministic bounded networks share variables across arbitrary
+        // overlapping factor scopes, with unique private interiors.
+        // The oracle enumerates ORIGINAL equations, including every hidden
+        // variable, and never calls the affine interface implementation.
+        for seed in 1u64..=16 {
+            let mut state = seed;
+            let mut random = || {
+                state = state.wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                state >> 32
+            };
+            let mut factors = Vec::new();
+            for i in 0..5 {
+                let mut boundary = (0..5).filter_map(|j| {
+                    if (i == 0 && j < 2) || random() % 3 == 0 {
+                        Some(format!("x{j}"))
+                    } else {
+                        None
+                    }
+                }).collect::<Vec<_>>();
+                if boundary.is_empty() {
+                    boundary.push(format!("x{}", i % 5));
+                }
+                let rhs = random() & 1 != 0;
+                let mut rows = vec![Equation {
+                    variables: boundary.clone(),
+                    rhs,
+                }];
+                if i % 3 == 0 {
+                    rows.push(Equation {
+                        variables: vec![boundary[0].clone()],
+                        rhs: random() & 1 != 0,
+                    });
+                }
+                let internal = if i % 2 == 0 {
+                    let u = format!("u{i}");
+                    rows.push(Equation {
+                        variables: vec![u.clone(), boundary[0].clone()],
+                        rhs: random() & 1 != 0,
+                    });
+                    vec![u]
+                } else {
+                    Vec::new()
+                };
+                factors.push(AffineRegion { internal, boundary, equations: rows });
+            }
+
+            for schedule in [
+                Schedule::Sequential, Schedule::Reverse, Schedule::EvenFirst,
+            ] {
+                let order = schedule.indices(factors.len());
+                for output in [Vec::<String>::new(), vec!["x0".into(), "x1".into()]] {
+                    let trace = fold(&factors, &order, &output, &Limits::default()).unwrap();
+                    // Every prefix after the raw first leaf is independently
+                    // reconstructed with the *actual retained ports* as its
+                    // exterior. Compare its full boundary function against
+                    // direct source-equation enumeration, not just final Z.
+                    for size in 2..=factors.len() {
+                        let prefix = order[..size].iter().map(|&i| factors[i].clone())
+                            .collect::<Vec<_>>();
+                        let retained = &trace.steps[size - 1].retained_ports;
+                        let shorter = fold(
+                            &prefix, &Schedule::Sequential.indices(size),
+                            retained, &Limits::default(),
+                        ).unwrap();
+                        assert_eq!(
+                            shorter.stage.metrics.d, trace.steps[size - 1].metrics.d,
+                            "seed={seed} order={schedule:?} prefix={size}"
+                        );
+                        assert!(retained.len() <= 5);
+                        for mask in 0..(1usize << retained.len()) {
+                            let bits = retained.iter().enumerate().map(|(j, name)| {
+                                (name.clone(), (mask & (1 << j)) != 0)
+                            }).collect::<BTreeMap<_, _>>();
+                            let expected = oracle(
+                                &prefix, &bits, 11,
+                            ).unwrap();
+                            assert_eq!(
+                                shorter.stage.count_at(&bits).unwrap(), expected,
+                                "source mismatch seed={seed} order={schedule:?} prefix={size} mask={mask}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn invalid_orders_outputs_and_budgets_refuse() {
         let factors = generate(Family::Chain, 6).unwrap();
         let limits = Limits::default();

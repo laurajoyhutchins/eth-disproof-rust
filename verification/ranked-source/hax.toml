@@ -15,6 +15,12 @@ include = ["ranked_source_proof_harness::representation_ranked_certificate::veri
 backend = "lean"
 include = ["ranked_source_proof_harness::representation_ranked_input::decode_ranked_input"]
 
+# Isolate the exact production arithmetic transition and mutable receipt
+# append. A green recorder extraction is not a full traced-executor proof.
+[scenario.ranked-recorder]
+backend = "lean"
+include = ["ranked_source_proof_harness::representation_ranked_certificate::checked_arithmetic_and_record"]
+
 # Full source closure now uses an explicit optional arithmetic-recording
 # sink instead of the production FnMut callback. This is still required to
 # translate and kernel-check the exact implementation, including Vec effects.

@@ -1,0 +1,110 @@
+{
+  "schema": "eth-scoped-receipts/v1",
+  "claims": [
+    {
+      "id": "reader-abstract-effect-order",
+      "statement": "In the restricted Lean Counts/Event model, retaining allocation a and observing distinct allocation b commute, and equal event lists replay identically.",
+      "kind": "abstract_lean_model",
+      "quantifier": "all_admitted_model_states",
+      "domain": "Total, single-threaded Nat-indexed abstract reference counts; proved distinct allocation identities, retain and shared observations only.",
+      "observation": "Abstract reference-count state and ordered sharing observations.",
+      "theorem": "ReaderEffectOrder.independent_retain_observe",
+      "excluded": [
+        "No claim about actual Lean C sharing topologies or destructor worklists.",
+        "No source-derived Rust interpreter refinement; variable IDs are not allocation identities."
+      ],
+      "receipt": {
+        "repository": "laurajoyhutchins/eth-disproof-rust",
+        "checked_head": "6ba9e4b4c4bba7f65fffbfe599c6d064080009dc",
+        "workflow": ".github/workflows/native-lean-rust.yml",
+        "run_id": 44763595544,
+        "job": "native-ffi-smoke",
+        "step": "Run in-process Lean ABI, Rust codegen and executable conformance"
+      },
+      "files": [
+        {
+          "path": "compiler/proofs/ReaderEffectOrder.lean",
+          "blob_sha": "34fb6f89985d12e41e2c99c6831c9da060e3e9af"
+        },
+        {
+          "path": "instrumentation/lean-env/lean-toolchain",
+          "blob_sha": "ba8ebf2dbaf6a668cd2a0e086186d6d569b69ff5"
+        },
+        {
+          "path": "instrumentation/lean-env/lake-manifest.json",
+          "blob_sha": "62669730d6a16d88f4f669026f078ef7802ef6a4"
+        }
+      ]
+    },
+    {
+      "id": "reader-bounded-source-event-guard",
+      "statement": "The canonical Reader checks order and operands of recognized isShared/inc/dec/del events in the supported straight-line borrowed-IR fragment before emitting a Rust function.",
+      "kind": "bounded_compiler_guard",
+      "quantifier": "finite_fixtures",
+      "domain": "Straight-line Lean IR literal/observer/retain/release forms tested in the #404 integration; other IR forms are outside this checker.",
+      "observation": "Syntactically decoded source and emitted Rust ownership-event sequences.",
+      "theorem": null,
+      "excluded": [
+        "Neither general source-to-Rust operational simulation nor actual Lean C reference-count correctness.",
+        "Constructor, call, join, arbitrary aliases and unrecognized instructions do not receive this receipt."
+      ],
+      "receipt": {
+        "repository": "laurajoyhutchins/eth-disproof-rust",
+        "checked_head": "6ba9e4b4c4bba7f65fffbfe599c6d064080009dc",
+        "workflow": ".github/workflows/native-lean-rust.yml",
+        "run_id": 44763595544,
+        "job": "native-ffi-smoke",
+        "step": "Run in-process Lean ABI, Rust codegen and executable conformance"
+      },
+      "files": [
+        {
+          "path": "compiler/backend/src/reader/effect_source.rs",
+          "blob_sha": "2f6ee501bbb696cdf8bb3478fe1567f570073722"
+        },
+        {
+          "path": "compiler/backend/src/reader/effect_order.rs",
+          "blob_sha": "a25ac251fa2661b4823af230dcd8c2e44bb54631"
+        },
+        {
+          "path": "compiler/backend/src/reader/mod.rs",
+          "blob_sha": "1f97401ac987ae7f768fc15fb39692800a85cd39"
+        }
+      ]
+    },
+    {
+      "id": "reader-bounded-c-rust-event-parity",
+      "statement": "A bounded original generated Lean C versus Reader-generated Rust comparison checks source-visible ownership event order for eight branching cases; the independent physical-state suite comprises 720 cases.",
+      "kind": "bounded_compiler_guard",
+      "quantifier": "finite_fixtures",
+      "domain": "RuntimeHeapDel.rebuildOrExtractByPayload, eight source-visible event branches and 720 previously established differential cases under pinned Lean C runtime.",
+      "observation": "Selected call-boundary ownership events and separately observed physical final states.",
+      "theorem": null,
+      "excluded": [
+        "No universal Lean C++ destructor worklist correspondence or arbitrary heap topology.",
+        "Selected observable C calls and 720 states do not justify every possible runtime trace."
+      ],
+      "receipt": {
+        "repository": "laurajoyhutchins/eth-disproof-rust",
+        "checked_head": "f213973ad20f1ec9143ca0c3bd8ca3034e43bc0f",
+        "workflow": ".github/workflows/native-lean-rust.yml",
+        "run_id": 44765716262,
+        "job": "native-ffi-smoke",
+        "step": "Run in-process Lean ABI, Rust codegen and executable conformance"
+      },
+      "files": [
+        {
+          "path": "compiler/scripts/check-source-del-events.py",
+          "blob_sha": "916f07d94fdd35babf9157a70d5f7bba4f2669d3"
+        },
+        {
+          "path": "compiler/runtime/lean-c/source_del_event_trace.c",
+          "blob_sha": "0e0eb89c4c4cac7a7131ec8dfd4d5741d0bc0d4e"
+        },
+        {
+          "path": "compiler/runtime/lean-c/source_del_event_hooks.h",
+          "blob_sha": "8e03a187cb4f3d11e71ae9896c5208dc21b4fd5d"
+        }
+      ]
+    }
+  ]
+}

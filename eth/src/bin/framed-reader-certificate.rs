@@ -21,21 +21,46 @@ fn instruction_record(instr: &Instr) -> String {
         }
         Instr::Copy { dst, src, next } => format!("copy:{dst}:{src}:{next}"),
         Instr::Not { dst, src, next } => format!("not:{dst}:{src}:{next}"),
-        Instr::And { dst, left, right, next } => {
+        Instr::And {
+            dst,
+            left,
+            right,
+            next,
+        } => {
             format!("and:{dst}:{left}:{right}:{next}")
         }
-        Instr::Or { dst, left, right, next } => {
+        Instr::Or {
+            dst,
+            left,
+            right,
+            next,
+        } => {
             format!("or:{dst}:{left}:{right}:{next}")
         }
-        Instr::Xor { dst, left, right, next } => {
+        Instr::Xor {
+            dst,
+            left,
+            right,
+            next,
+        } => {
             format!("xor:{dst}:{left}:{right}:{next}")
         }
         Instr::Branch { test, yes, no } => format!("branch:{test}:{yes}:{no}"),
         Instr::Push { stack, src, next } => format!("push:{stack}:{src}:{next}"),
-        Instr::Peek { stack, value, present, next } => {
+        Instr::Peek {
+            stack,
+            value,
+            present,
+            next,
+        } => {
             format!("peek:{stack}:{value}:{present}:{next}")
         }
-        Instr::Pop { stack, value, present, next } => {
+        Instr::Pop {
+            stack,
+            value,
+            present,
+            next,
+        } => {
             format!("pop:{stack}:{value}:{present}:{next}")
         }
     }
@@ -174,10 +199,21 @@ mod tests {
 
     #[test]
     fn source_forbidden_found_alias_is_refused_before_receipt_output() {
-        assert!(case::<3, 3>("invalid", Ports {
-            tag: 0, present: 1, found: 0, source: 0,
-            payload: 1, input: 0, output: 1,
-        }).is_err());
+        assert!(
+            case::<3, 3>(
+                "invalid",
+                Ports {
+                    tag: 0,
+                    present: 1,
+                    found: 0,
+                    source: 0,
+                    payload: 1,
+                    input: 0,
+                    output: 1,
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -185,17 +221,99 @@ mod tests {
         let rows = [
             (Instr::Halt, "halt"),
             (Instr::Goto { next: 0 }, "goto:0"),
-            (Instr::Set { dst: 0, value: true, next: 1 }, "set:0:1:1"),
-            (Instr::Set { dst: 0, value: false, next: 1 }, "set:0:0:1"),
-            (Instr::Copy { dst: 0, src: 1, next: 2 }, "copy:0:1:2"),
-            (Instr::Not { dst: 0, src: 1, next: 2 }, "not:0:1:2"),
-            (Instr::And { dst: 0, left: 1, right: 2, next: 3 }, "and:0:1:2:3"),
-            (Instr::Or { dst: 0, left: 1, right: 2, next: 3 }, "or:0:1:2:3"),
-            (Instr::Xor { dst: 0, left: 1, right: 2, next: 3 }, "xor:0:1:2:3"),
-            (Instr::Branch { test: 0, yes: 1, no: 2 }, "branch:0:1:2"),
-            (Instr::Push { stack: 0, src: 1, next: 2 }, "push:0:1:2"),
-            (Instr::Peek { stack: 0, value: 1, present: 2, next: 3 }, "peek:0:1:2:3"),
-            (Instr::Pop { stack: 0, value: 1, present: 2, next: 3 }, "pop:0:1:2:3"),
+            (
+                Instr::Set {
+                    dst: 0,
+                    value: true,
+                    next: 1,
+                },
+                "set:0:1:1",
+            ),
+            (
+                Instr::Set {
+                    dst: 0,
+                    value: false,
+                    next: 1,
+                },
+                "set:0:0:1",
+            ),
+            (
+                Instr::Copy {
+                    dst: 0,
+                    src: 1,
+                    next: 2,
+                },
+                "copy:0:1:2",
+            ),
+            (
+                Instr::Not {
+                    dst: 0,
+                    src: 1,
+                    next: 2,
+                },
+                "not:0:1:2",
+            ),
+            (
+                Instr::And {
+                    dst: 0,
+                    left: 1,
+                    right: 2,
+                    next: 3,
+                },
+                "and:0:1:2:3",
+            ),
+            (
+                Instr::Or {
+                    dst: 0,
+                    left: 1,
+                    right: 2,
+                    next: 3,
+                },
+                "or:0:1:2:3",
+            ),
+            (
+                Instr::Xor {
+                    dst: 0,
+                    left: 1,
+                    right: 2,
+                    next: 3,
+                },
+                "xor:0:1:2:3",
+            ),
+            (
+                Instr::Branch {
+                    test: 0,
+                    yes: 1,
+                    no: 2,
+                },
+                "branch:0:1:2",
+            ),
+            (
+                Instr::Push {
+                    stack: 0,
+                    src: 1,
+                    next: 2,
+                },
+                "push:0:1:2",
+            ),
+            (
+                Instr::Peek {
+                    stack: 0,
+                    value: 1,
+                    present: 2,
+                    next: 3,
+                },
+                "peek:0:1:2:3",
+            ),
+            (
+                Instr::Pop {
+                    stack: 0,
+                    value: 1,
+                    present: 2,
+                    next: 3,
+                },
+                "pop:0:1:2:3",
+            ),
         ];
         for (instruction, expected) in rows {
             assert_eq!(instruction_record(&instruction), expected);

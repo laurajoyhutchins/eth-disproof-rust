@@ -20,7 +20,16 @@ For this fragment only, the checker scans the already emitted function's
 canonical Rust statements and demands exact equality of the sequence:
 `is_shared`, `source_inc`, `source_dec`, and `source_del` events, including
 operands, destinations, counts and flags. A change, omission, insertion,
-reordering, or malformed recognized operation refuses output.
+reordering, or malformed recognized operation refuses output. **An empty source
+event sequence is also checked:** it forbids any emitted ownership or
+sharedness event. The Reader performs this comparison before returning a
+generated function, so the caller cannot publish an accepted function after
+the local receipt refuses. A focused Rust mutant test inserts each class of
+unexpected operation into a source-pure function.
+
+This checks the admitted straight-line *syntax and ordering*, not Lean C
+reference counts, aliases, allocation, destructor behavior or whole-program
+physical correspondence.
 
 `jdecl` / `jmp`, `case`, calls, mutation, constructor/projection expressions,
 unknown tags, and any other non-literal expression receive **no receipt**

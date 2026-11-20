@@ -348,6 +348,520 @@ example : exhaustiveAgreement emptySnapshot = true := by decide
 #print axioms IndependentETH.AffineNativeAudit.sourceOK_names_valid
 
 
+
+/-! ## Universal occurrence-to-coefficient parity
+
+The next lemmas use the *actual* occurrenceBit function in sourceRows.
+They establish parity correspondence for every finite occurrence list,
+including repeated names, under the independent source admission
+condition of unique declared names and complete occurrence coverage.
+No exhaustive assignment enumeration or native producer assumptions.
+-/
+
+private def xorAll (xs : List Bool) : Bool :=
+  xs.foldr (fun x total => x ^^ total) false
+
+private theorem xor_rearrange (a b c d : Bool) :
+    ((a ^^ b) ^^ (c ^^ d)) = ((a ^^ c) ^^ (b ^^ d)) := by
+  cases a <;> cases b <;> cases c <;> cases d <;> decide
+
+private theorem xorAll_map_xor {α : Type*}
+    (xs : List α) (f g : α → Bool) :
+    xorAll (xs.map (fun x => f x ^^ g x)) =
+      (xorAll (xs.map f) ^^ xorAll (xs.map g)) := by
+  induction xs with
+  | nil => rfl
+  | cons x xs ih =>
+      calc
+        xorAll ((x :: xs).map (fun a => f a ^^ g a)) =
+            ((f x ^^ g x) ^^
+              xorAll (xs.map (fun a => f a ^^ g a))) := rfl
+        _ = ((f x ^^ g x) ^^
+              (xorAll (xs.map f) ^^ xorAll (xs.map g))) := by rw [ih]
+        _ = (xorAll ((x :: xs).map f) ^^
+              xorAll ((x :: xs).map g)) := by
+              exact xor_rearrange (f x) (g x)
+                (xorAll (xs.map f)) (xorAll (xs.map g))
+
+private theorem occurrenceFold_acc
+    (xs : List Name) (target : Name) (acc : Bool) :
+    xs.foldl (fun p name => p ^^ (name == target)) acc =
+      (acc ^^ xs.foldl (fun p name => p ^^ (name == target)) false) := by
+  induction xs generalizing acc with
+  | nil => simp
+  | cons x xs ih =>
+      simp only [List.foldl_cons]
+      rw [ih (acc ^^ (x == target)), ih (false ^^ (x == target))]
+      simp [Bool.xor_assoc]
+
+private theorem occurrenceBit_cons (x : Name) (xs : List Name)
+    (target : Name) :
+    occurrenceBit (x :: xs) target =
+      ((x == target) ^^ occurrenceBit xs target) := by
+  simp only [occurrenceBit, List.foldl_cons]
+  simpa using occurrenceFold_acc xs target (x == target)
+
+private theorem xorAll_delta_none (ns : List Name)
+    (target : Name) (assignment : Name → Bool)
+    (h : target ∉ ns) :
+    xorAll (ns.map (fun name => (target == name) && assignment name)) =
+      false := by
+  induction ns with
+  | nil => rfl
+  | cons x xs ih =>
+      have hx : target ≠ x := by
+        intro heq
+        apply h
+        exact List.mem_cons.mpr (Or.inl heq)
+      have ht : target ∉ xs := by
+        intro hmem
+        exact h (List.mem_cons_of_mem _ hmem)
+      calc
+        xorAll ((x :: xs).map
+          (fun name => (target == name) && assignment name)) =
+            (((target == x) && assignment x) ^^
+            xorAll (xs.map
+              (fun name => (target == name) && assignment name))) := rfl
+        _ = false := by simp [hx, ih ht]
+
+private theorem xorAll_delta (ns : List Name)
+    (target : Name) (assignment : Name → Bool)
+    (hn : ns.Nodup) :
+    xorAll (ns.map (fun name => (target == name) && assignment name)) =
+      if target ∈ ns then assignment target else false := by
+  induction ns with
+  | nil => rfl
+  | cons x xs ih =>
+      have hn' := (List.nodup_cons.mp hn)
+      by_cases hx : target = x
+      · subst target
+        have htail := xorAll_delta_none xs x assignment hn'.1
+        change (((x == x) && assignment x) ^^
+          xorAll (xs.map (fun name => (x == name) && assignment name))) =
+          (if x ∈ x :: xs then assignment x else false)
+        simp [htail]
+      · have hrest := ih hn'.2
+        have hfalse : (target == x) = false := by simp [hx]
+        change (((target == x) && assignment x) ^^
+          xorAll (xs.map (fun name => (target == name) && assignment name))) =
+          (if target ∈ x :: xs then assignment target else false)
+        rw [hfalse, hrest]
+        simp [hx]
+
+private def coefficientEval
+    (ns occ : List Name) (assignment : Name → Bool) : Bool :=
+  xorAll (ns.map (fun n => occurrenceBit occ n && assignment n))
+
+private theorem coefficientEval_nil (ns : List Name)
+    (assignment : Name → Bool) :
+    coefficientEval ns [] assignment = false := by
+  induction ns with
+  | nil => rfl
+  | cons x xs ih =>
+      simpa [coefficientEval, xorAll, occurrenceBit] using ih
+
+private theorem coefficientEval_cons (ns : List Name)
+    (x : Name) (xs : List Name) (assignment : Name → Bool)
+    (hn : ns.Nodup) :
+    coefficientEval ns (x :: xs) assignment =
+      ((if x ∈ ns then assignment x else false) ^^
+        coefficientEval ns xs assignment) := by
+  have hpoint (n : Name) :
+      (occurrenceBit (x :: xs) n && assignment n) =
+        (((x == n) && assignment n) ^^
+          (occurrenceBit xs n && assignment n)) := by
+    rw [occurrenceBit_cons]
+    cases x == n <;> cases occurrenceBit xs n <;>
+      cases assignment n <;> decide
+  unfold coefficientEval
+  simp_rw [hpoint]
+  rw [xorAll_map_xor]
+  rw [xorAll_delta ns x assignment hn]
+
+private def occurrenceEval (xs : List Name)
+    (assignment : Name → Bool) : Bool :=
+  xs.foldl (fun parity n => parity ^^ assignment n) false
+
+private theorem occurrenceEval_acc (xs : List Name)
+    (assignment : Name → Bool) (acc : Bool) :
+    xs.foldl (fun parity n => parity ^^ assignment n) acc =
+      (acc ^^ occurrenceEval xs assignment) := by
+  induction xs generalizing acc with
+  | nil => simp [occurrenceEval]
+  | cons x xs ih =>
+      simp only [List.foldl_cons, occurrenceEval]
+      rw [ih (acc ^^ assignment x), ih (false ^^ assignment x)]
+      simp [Bool.xor_assoc]
+
+private theorem occurrenceEval_cons (x : Name) (xs : List Name)
+    (assignment : Name → Bool) :
+    occurrenceEval (x :: xs) assignment =
+      (assignment x ^^ occurrenceEval xs assignment) := by
+  simpa [occurrenceEval, List.foldl_cons] using
+    occurrenceEval_acc xs assignment (assignment x)
+
+/-- Every repeated source occurrence toggles exactly its corresponding
+matrix coefficient. In particular two occurrences cancel. The statement
+quantifies over *all* assignments and arbitrarily long source lists. -/
+theorem occurrence_parity_eq_source_coefficients
+    (ns occ : List Name) (assignment : Name → Bool)
+    (hn : ns.Nodup) (hcoverage : ∀ x ∈ occ, x ∈ ns) :
+    occurrenceEval occ assignment = coefficientEval ns occ assignment := by
+  induction occ with
+  | nil =>
+      simp [occurrenceEval, coefficientEval_nil]
+  | cons x xs ih =>
+      have hx : x ∈ ns := hcoverage x (by simp)
+      have hxs : ∀ y ∈ xs, y ∈ ns := by
+        intro y hy
+        exact hcoverage y (List.mem_cons_of_mem _ hy)
+      rw [occurrenceEval_cons, ih hxs, coefficientEval_cons ns x xs assignment hn]
+      simp [hx]
+
+/-- The coefficient vector used in the parity theorem is *literally*
+the prefix of the row constructed by the independent audit. -/
+theorem occurrence_matrix_row_is_sourceRow (s : Source)
+    (e : SourceEquation) (he : e ∈ s.equations) :
+    ((names s).map (occurrenceBit e.occurrences) ++ [e.rhs]) ∈
+      sourceRows s := by
+  exact List.mem_map.mpr ⟨e, he, rfl⟩
+
+/-! ## Universal pivot/free reindexing for arbitrary column sets
+
+The pivot positions need not be consecutive or start at zero.
+Functions on all internal coordinates are in bijection with
+functions on the declared pivot coordinates and their complement.
+This is a constructive exact coordinate split, not a count oracle.
+-/
+
+private def splitCoordinates {k : Nat} (pivots : Finset (Fin k))
+    (values : Fin k → Bool) :
+    (↥pivots → Bool) × (↥(Finset.univ \ pivots) → Bool) :=
+  (fun i => values i.val, fun i => values i.val)
+
+private def joinCoordinates {k : Nat} (pivots : Finset (Fin k))
+    (parts : (↥pivots → Bool) ×
+      (↥(Finset.univ \ pivots) → Bool)) :
+    Fin k → Bool :=
+  fun i =>
+    if h : i ∈ pivots then parts.1 ⟨i, h⟩
+    else parts.2 ⟨i, by simp [h]⟩
+
+/-- An arbitrary noncontiguous set of pivot columns can be reindexed
+with its full complement, without losing or duplicating assignments. -/
+def pivotFreeCoordinates {k : Nat} (pivots : Finset (Fin k)) :
+    (Fin k → Bool) ≃
+      ((↥pivots → Bool) × (↥(Finset.univ \ pivots) → Bool)) where
+  toFun := splitCoordinates pivots
+  invFun := joinCoordinates pivots
+  left_inv := by
+    intro values
+    funext i
+    by_cases hi : i ∈ pivots
+    · simp [splitCoordinates, joinCoordinates, hi]
+    · simp [splitCoordinates, joinCoordinates, hi]
+  right_inv := by
+    intro parts
+    apply Prod.ext
+    · funext i
+      simp [splitCoordinates, joinCoordinates, i.property]
+    · funext i
+      have hi : i.val ∉ pivots := (Finset.mem_sdiff.mp i.property).2
+      simp [splitCoordinates, joinCoordinates, hi]
+
+/-- Exactly k - r coordinates remain free when r distinct pivot
+columns are selected, for every k and every pivot subset. -/
+theorem pivotFree_card {k : Nat} (pivots : Finset (Fin k)) :
+    Fintype.card ↥(Finset.univ \ pivots) = k - pivots.card := by
+  classical
+  rw [Fintype.card_coe]
+  rw [Finset.card_sdiff_of_subset (Finset.subset_univ pivots)]
+  simp
+
+/-- Source admission supplies precisely the no-duplicate/coverage
+premises used by the universal occurrence-to-matrix theorem. -/
+theorem admitted_source_occurrence_parity
+    (s : Source) (e : SourceEquation) (assignment : Name → Bool)
+    (hsource : sourceOK s = true) (he : e ∈ s.equations) :
+    occurrenceEval e.occurrences assignment =
+      coefficientEval (names s) e.occurrences assignment := by
+  have hs := hsource
+  simp only [sourceOK, Bool.and_eq_true] at hs
+  rcases hs with ⟨⟨hunique, _⟩, hall⟩
+  have hnodup : (names s).Nodup := by simpa using hunique
+  have hcoverage : ∀ name ∈ e.occurrences, name ∈ names s := by
+    intro name hname
+    have heq := (List.all_eq_true.mp hall) e he
+    have hcontains := (List.all_eq_true.mp heq) name hname
+    simpa using hcontains
+  exact occurrence_parity_eq_source_coefficients
+    (names s) e.occurrences assignment hnodup hcoverage
+
+/-! ## The concrete List.zipWith row-evaluation law
+
+A raw row is a list of augmented Boolean coefficients. Evaluating it
+against an assignment is XOR of its coefficient/bit conjunctions.
+The actual list XOR implementation uses zipWith, so the row-width
+premise is necessary to avoid truncating a nonzero tail.
+-/
+
+private def rowValue (row input : List Bool) : Bool :=
+  xorAll (List.zipWith (fun coeff value => coeff && value) row input)
+
+private theorem and_xor_right (a b c : Bool) :
+    (((a ^^ b) && c) = ((a && c) ^^ (b && c))) := by
+  cases a <;> cases b <;> cases c <;> decide
+
+/-- The literal zipWith XOR expression used by applyStep is linear
+under any fixed assignment when both input rows have equal lengths. -/
+theorem rowValue_zipWith_xor (lhs rhs input : List Bool)
+    (hwidth : lhs.length = rhs.length) :
+    rowValue (List.zipWith (· ^^ ·) lhs rhs) input =
+      (rowValue lhs input ^^ rowValue rhs input) := by
+  induction lhs generalizing rhs input with
+  | nil =>
+      cases rhs with
+      | nil => rfl
+      | cons _ _ => simp at hwidth
+  | cons x xs ih =>
+      cases rhs with
+      | nil => simp at hwidth
+      | cons y ys =>
+          have htail : xs.length = ys.length :=
+            Nat.succ.inj hwidth
+          cases input with
+          | nil => rfl
+          | cons z zs =>
+              calc
+                rowValue (List.zipWith (· ^^ ·) (x :: xs) (y :: ys))
+                    (z :: zs) =
+                  (((x ^^ y) && z) ^^
+                    rowValue (List.zipWith (· ^^ ·) xs ys) zs) := rfl
+                _ = (((x && z) ^^ (y && z)) ^^
+                    (rowValue xs zs ^^ rowValue ys zs)) := by
+                  rw [and_xor_right, ih ys zs htail]
+                _ = (((x && z) ^^ rowValue xs zs) ^^
+                    ((y && z) ^^ rowValue ys zs)) :=
+                  xor_rearrange (x && z) (y && z)
+                    (rowValue xs zs) (rowValue ys zs)
+                _ = (rowValue (x :: xs) (z :: zs) ^^
+                    rowValue (y :: ys) (z :: zs)) := rfl
+
+/-- The actual List map over range preserves the matrix row count. -/
+theorem applyStep_length (rows : List (List Bool)) (step : Step) :
+    (applyStep rows step).length = rows.length := by
+  simp [applyStep]
+
+/-- At any valid row index, the literal List-based applyStep picks
+exactly the swap/XOR/source row described by the native checker. -/
+theorem rowAt_applyStep (rows : List (List Bool)) (step : Step)
+    (i : Nat) (hi : i < rows.length) :
+    rowAt (applyStep rows step) i =
+      (if step.tag == 0 then
+        if i == step.first then rowAt rows step.second
+        else if i == step.second then rowAt rows step.first
+        else rowAt rows i
+      else if i == step.first then
+        List.zipWith (· ^^ ·)
+          (rowAt rows step.first) (rowAt rows step.second)
+      else rowAt rows i) := by
+  simp [rowAt, applyStep, hi, List.getElem?_map, List.getElem?_range]
+
+/-! ## All-input semantic preservation by the literal List-based replay
+
+A concrete source matrix is rectangular: each augmented row has the
+same number of coefficient/RHS bits. Under valid row indices and
+distinct XOR operands, swapping rows or XORing one with another
+preserves the set of assignments for which every row evaluates to zero.
+
+Unlike the earlier abstract RowOps theorem, this theorem directly
+analyzes the List.range/map and List.zipWith instructions in applyStep.
+-/
+
+private def rectangular (rows : List (List Bool)) (width : Nat) : Prop :=
+  ∀ i, i < rows.length → (rowAt rows i).length = width
+
+private def allRowsZero (rows : List (List Bool))
+    (input : List Bool) : Prop :=
+  ∀ i, i < rows.length → rowValue (rowAt rows i) input = false
+
+private theorem rectangular_applyStep
+    (rows : List (List Bool)) (step : Step) (width : Nat)
+    (hrect : rectangular rows width)
+    (hfirst : step.first < rows.length)
+    (hsecond : step.second < rows.length) :
+    rectangular (applyStep rows step) width := by
+  intro i hi'
+  have hi : i < rows.length := by
+    simpa [applyStep_length] using hi'
+  rw [rowAt_applyStep rows step i hi]
+  by_cases htag : step.tag = 0
+  · by_cases hfirstIdx : i = step.first
+    · simpa [htag, hfirstIdx] using hrect step.second hsecond
+    · by_cases hsecondIdx : i = step.second
+      · simpa [htag, hfirstIdx, hsecondIdx] using hrect step.first hfirst
+      · simpa [htag, hfirstIdx, hsecondIdx] using hrect i hi
+  · by_cases hfirstIdx : i = step.first
+    · have hlength :
+          (List.zipWith (· ^^ ·)
+            (rowAt rows step.first) (rowAt rows step.second)).length =
+          width := by
+        simp [hrect step.first hfirst, hrect step.second hsecond]
+      simpa [htag, hfirstIdx] using hlength
+    · simpa [htag, hfirstIdx] using hrect i hi
+
+/-- Every concrete List-based row swap or row XOR with valid, distinct
+indices preserves *all* row equations, in both directions. Equal row
+width is essential because zipWith truncates mismatched lengths. -/
+theorem allRowsZero_applyStep_iff
+    (rows : List (List Bool)) (step : Step) (input : List Bool)
+    (hfirst : step.first < rows.length)
+    (hsecond : step.second < rows.length)
+    (hdistinct : step.first ≠ step.second)
+    (hwidth : (rowAt rows step.first).length =
+      (rowAt rows step.second).length) :
+    allRowsZero rows input ↔
+      allRowsZero (applyStep rows step) input := by
+  constructor
+  · intro hold i hi'
+    have hi : i < rows.length := by
+      simpa [applyStep_length] using hi'
+    rw [rowAt_applyStep rows step i hi]
+    by_cases htag : step.tag = 0
+    · by_cases hfirstIdx : i = step.first
+      · simpa [htag, hfirstIdx] using hold step.second hsecond
+      · by_cases hsecondIdx : i = step.second
+        · simpa [htag, hfirstIdx, hsecondIdx] using hold step.first hfirst
+        · simpa [htag, hfirstIdx, hsecondIdx] using hold i hi
+    · by_cases hfirstIdx : i = step.first
+      · subst i
+        simpa [htag, rowValue_zipWith_xor _ _ input hwidth,
+          hold step.first hfirst, hold step.second hsecond]
+      · simpa [htag, hfirstIdx] using hold i hi
+  · intro hout i hi
+    by_cases htag : step.tag = 0
+    · by_cases hfirstIdx : i = step.first
+      · subst i
+        have houtput := hout step.second (by
+          simpa [applyStep_length] using hsecond)
+        rw [rowAt_applyStep rows step step.second hsecond] at houtput
+        simpa [htag, hdistinct.symm] using houtput
+      · by_cases hsecondIdx : i = step.second
+        · subst i
+          have houtput := hout step.first (by
+            simpa [applyStep_length] using hfirst)
+          rw [rowAt_applyStep rows step step.first hfirst] at houtput
+          simpa [htag] using houtput
+        · have houtput := hout i (by
+            simpa [applyStep_length] using hi)
+          rw [rowAt_applyStep rows step i hi] at houtput
+          simpa [htag, hfirstIdx, hsecondIdx] using houtput
+    · by_cases hfirstIdx : i = step.first
+      · subst i
+        have htarget := hout step.first (by
+          simpa [applyStep_length] using hfirst)
+        have hsource := hout step.second (by
+          simpa [applyStep_length] using hsecond)
+        rw [rowAt_applyStep rows step step.first hfirst] at htarget
+        rw [rowAt_applyStep rows step step.second hsecond] at hsource
+        have hs : rowValue (rowAt rows step.second) input = false := by
+          simpa [htag, hdistinct.symm] using hsource
+        have ht :
+            (rowValue (rowAt rows step.first) input ^^
+              rowValue (rowAt rows step.second) input) = false := by
+          simpa [htag, rowValue_zipWith_xor _ _ input hwidth] using htarget
+        simpa [hs] using ht
+      · have houtput := hout i (by
+          simpa [applyStep_length] using hi)
+        rw [rowAt_applyStep rows step i hi] at houtput
+        simpa [htag, hfirstIdx] using houtput
+
+/-- A valid source matrix always has uniform augmented-row width. -/
+private theorem sourceRows_rectangular (s : Source) :
+    rectangular (sourceRows s) ((names s).length + 1) := by
+  intro i hi
+  have hindex : i < s.equations.length := by
+    simpa [sourceRows] using hi
+  simp [rowAt, sourceRows, hindex, List.length_append]
+
+private theorem validStep_indices (m : Nat) (step : Step)
+    (h : validStep m step = true) :
+    step.first < m ∧ step.second < m ∧ step.first ≠ step.second := by
+  simp [validStep] at h
+  aesop
+
+/-- A complete, arbitrarily long List replay preserves all source-row
+solutions. Each intermediate width and row count is carried through
+the induction and checked against the same source dimensions. -/
+private theorem foldl_applyStep_preserves (steps : List Step) :
+    ∀ (rows : List (List Bool)) (width : Nat) (input : List Bool),
+      rectangular rows width →
+      (∀ step ∈ steps,
+        step.first < rows.length ∧
+        step.second < rows.length ∧
+        step.first ≠ step.second) →
+      (allRowsZero rows input ↔
+        allRowsZero (steps.foldl applyStep rows) input) := by
+  induction steps with
+  | nil =>
+      intro rows width input _ _
+      rfl
+  | cons step tail ih =>
+      intro rows width input hrect hsteps
+      have hv := hsteps step (by simp)
+      have hwidth :
+          (rowAt rows step.first).length =
+            (rowAt rows step.second).length := by
+        rw [hrect step.first hv.1, hrect step.second hv.2.1]
+      have hrect' :=
+        rectangular_applyStep rows step width hrect hv.1 hv.2.1
+      have htail : ∀ next ∈ tail,
+          next.first < (applyStep rows step).length ∧
+          next.second < (applyStep rows step).length ∧
+          next.first ≠ next.second := by
+        intro next hnext
+        have h := hsteps next (List.mem_cons_of_mem _ hnext)
+        simpa [applyStep_length] using h
+      have hstep :=
+        allRowsZero_applyStep_iff rows step input
+          hv.1 hv.2.1 hv.2.2 hwidth
+      have hrest := ih (applyStep rows step) width input hrect' htail
+      simpa only [List.foldl_cons] using hstep.trans hrest
+
+/-- The *actual* replay in IndependentAffineNativeAudit, not the
+abstract RowOps model, preserves the complete Boolean row system for
+every accepted source-level list transcript and every assignment. -/
+theorem concrete_list_replay_preserves_matrix_solutions
+    (s : Source) (c : Certificate) (input : List Bool)
+    (hsteps : c.steps.all (validStep s.equations.length) = true) :
+    allRowsZero (sourceRows s) input ↔
+      allRowsZero (replay s c) input := by
+  have hvalid : ∀ step ∈ c.steps,
+      step.first < (sourceRows s).length ∧
+      step.second < (sourceRows s).length ∧
+      step.first ≠ step.second := by
+    intro step hmem
+    have hc := (List.all_eq_true.mp hsteps) step hmem
+    have hv := validStep_indices s.equations.length step hc
+    simpa [sourceRows] using hv
+  exact foldl_applyStep_preserves c.steps
+    (sourceRows s) ((names s).length + 1) input
+    (sourceRows_rectangular s) hvalid
+
+#print axioms IndependentETH.AffineNativeAudit.allRowsZero_applyStep_iff
+#print axioms IndependentETH.AffineNativeAudit.concrete_list_replay_preserves_matrix_solutions
+
+#print axioms IndependentETH.AffineNativeAudit.admitted_source_occurrence_parity
+#print axioms IndependentETH.AffineNativeAudit.rowValue_zipWith_xor
+#print axioms IndependentETH.AffineNativeAudit.applyStep_length
+#print axioms IndependentETH.AffineNativeAudit.rowAt_applyStep
+
+#print axioms IndependentETH.AffineNativeAudit.occurrence_parity_eq_source_coefficients
+#print axioms IndependentETH.AffineNativeAudit.occurrence_matrix_row_is_sourceRow
+#print axioms IndependentETH.AffineNativeAudit.pivotFreeCoordinates
+#print axioms IndependentETH.AffineNativeAudit.pivotFree_card
+
+
 /-! ## Independent, source-derived ordered-port receipt checks
 
 The accepted port witness must refer to exactly the factor scopes and

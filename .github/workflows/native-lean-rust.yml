@@ -177,6 +177,11 @@ jobs:
             compiler/artifacts/lean-c-generated-heap/source-del-combined.rs
             compiler/artifacts/lean-c-generated-heap/source-del-execution-status.txt
             compiler/artifacts/lean-c-generated-heap/source-del-trace.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-events.tsv
+            compiler/artifacts/lean-c-generated-heap/source-del-events-audit.txt
+            compiler/artifacts/lean-c-generated-heap/RuntimeHeapKernels-traced.c
+            compiler/artifacts/lean-c-generated-heap/RuntimeHeapDelKernels-traced.c
+            compiler/artifacts/lean-c-generated-heap/abi-traced.c
             compiler/artifacts/lean-c-generated-heap/source-shell-physical.tsv
             compiler/artifacts/lean-c-generated-heap/source-shell-trace-audit.txt
             compiler/artifacts/lean-c-generated-heap/source-release-physical.tsv

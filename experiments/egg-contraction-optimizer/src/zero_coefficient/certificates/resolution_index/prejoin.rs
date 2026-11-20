@@ -374,9 +374,9 @@ mod tests {
     fn postjoin_and_preproduct_agree_on_generated_source() {
         for case in [
             Case { kind: adaptive::CaseKind::Random3Cnf,
-                variables: 8, clauses: 16, seed: 23_039 },
+                variables: 8, clauses: 16, seed: 21_101 },
             Case { kind: adaptive::CaseKind::Planted3Cnf,
-                variables: 8, clauses: 32, seed: 23_053 },
+                variables: 8, clauses: 32, seed: 21_113 },
             Case { kind: adaptive::CaseKind::FrustratedXor3Cnf,
                 variables: 6, clauses: 24, seed: 0 },
         ] {

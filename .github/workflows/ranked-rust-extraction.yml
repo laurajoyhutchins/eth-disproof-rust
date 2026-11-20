@@ -3,7 +3,10 @@ name: Experimental ranked Rust-to-Lean extraction
 on:
   pull_request:
     paths:
-      - 'eth/hax.toml'
+      - 'verification/ranked-source/hax.toml'
+      - 'verification/ranked-source/src/lib.rs'
+      - 'eth/src/representation_ranked_input.rs'
+      - 'eth/src/representation_ranked_certificate.rs'
       - '.github/workflows/ranked-rust-extraction.yml'
   workflow_dispatch:
 
@@ -35,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd eth
+          cd verification/ranked-source
           # Aeneas's translation is source-derived. Building a generated Lean
           # package alone does not prove its postconditions or external models.
           cargo hax extract ranked-source --locked 2>&1 | tee "$RUNNER_TEMP/ranked-source-extraction.log"
@@ -46,6 +49,6 @@ jobs:
         with:
           name: ranked-rust-lean-source-extraction
           path: |
-            eth/proofs/ranked-source/lean/
+            verification/ranked-source/proofs/ranked-source/lean/
           if-no-files-found: warn
           retention-days: 7

@@ -649,6 +649,127 @@ theorem sourceCNFWord_rows {s : State} {ds w : List Bool}
       · rw [wordAssignment_shift]
         exact ih
 
+/-- Every length-exact Boolean word satisfying *all* indexed signed rows
+also admits a source-gadget CNF derivation. The proof recursively peels the
+leading parity gadget and positive OR row using sourceRows_step; it does not
+assume that the word originated from the recurrence constructor. -/
+theorem indexedRows_sourceCNFWord (ds w : List Bool)
+    (hlen : w.length = ds.length + 3)
+    (hrows : allRowsHold (wordAssignment w) (sourceRows ds)) :
+    ∃ s, SourceCNFWord s ds w := by
+  induction ds generalizing w with
+  | nil =>
+      cases w with
+      | nil => simp at hlen
+      | cons a t1 =>
+          cases t1 with
+          | nil => simp at hlen
+          | cons b t2 =>
+              cases t2 with
+              | nil => simp at hlen
+              | cons c t3 =>
+                  cases t3 with
+                  | cons e rest => simp at hlen
+                  | nil =>
+                      have hdecoded :=
+                        (sourceRows_exact [] (wordAssignment [a, b, c])).mp hrows
+                      have hz : (a, b, c) ≠ zeroState := by
+                        have h0 := hdecoded.2 0 (by simp)
+                        simpa [tripleAt, wordAssignment] using h0
+                      have hn : nonzero (a, b, c) = true := by
+                        simp [nonzero, hz]
+                      have ho : orWindow (a, b, c) = true := by
+                        simpa only [orWindow_exact] using hn
+                      exact ⟨(a, b, c), SourceCNFWord.last a b c ho⟩
+  | cons d ds ih =>
+      cases w with
+      | nil => simp at hlen
+      | cons a t1 =>
+          cases t1 with
+          | nil => simp at hlen
+          | cons b t2 =>
+              cases t2 with
+              | nil => simp at hlen
+              | cons c t3 =>
+                  cases t3 with
+                  | nil => simp at hlen
+                  | cons e rest =>
+                      have htailLength :
+                          (b :: c :: e :: rest).length = ds.length + 3 := by
+                        simp at hlen ⊢
+                        omega
+                      have hsplit :=
+                        (sourceRows_step d ds
+                          (wordAssignment (a :: b :: c :: e :: rest))).mp hrows
+                      have hp : parityState (a, b, e) = d := by
+                        simpa [wordAssignment, tripleAt] using hsplit.1
+                      have hz : (a, b, c) ≠ zeroState := by
+                        simpa [wordAssignment, tripleAt] using hsplit.2.1
+                      have htailRows :
+                          allRowsHold (wordAssignment (b :: c :: e :: rest))
+                            (sourceRows ds) := by
+                        simpa only [wordAssignment_shift] using hsplit.2.2
+                      obtain ⟨s, hs⟩ := ih (b :: c :: e :: rest) htailLength htailRows
+                      have hseed : s = (b, c, e) := by
+                        simpa [wordSeed] using (sourceCNFWord_seed hs).symm
+                      subst s
+                      have hn : nonzero (a, b, c) = true := by
+                        simp [nonzero, hz]
+                      have ho : orWindow (a, b, c) = true := by
+                        simpa only [orWindow_exact] using hn
+                      have hg : parityGadget d a b e = true := by
+                        rw [gadget_exact]
+                        have hx : Bool.xor (Bool.xor a b) e = d := hp
+                        simp [hx]
+                      exact ⟨(a, b, c),
+                        SourceCNFWord.step a b c d e ds (b :: c :: e :: rest)
+                          ho hg hs⟩
+
+/-- The exact indexed signed-row semantics and the independent
+clause-by-clause full-word semantics coincide at every complete word. -/
+theorem sourceCNFWord_iff_indexedRows (ds w : List Bool) :
+    (∃ s, SourceCNFWord s ds w) ↔
+      w.length = ds.length + 3 ∧
+      allRowsHold (wordAssignment w) (sourceRows ds) := by
+  constructor
+  · rintro ⟨s, h⟩
+    exact ⟨sourceCNFWord_length h, sourceCNFWord_rows h⟩
+  · rintro ⟨hlen, hrows⟩
+    exact indexedRows_sourceCNFWord ds w hlen hrows
+
+def IndexedRowWords (ds : List Bool) :=
+  { w : List Bool // w.length = ds.length + 3 ∧
+    allRowsHold (wordAssignment w) (sourceRows ds) }
+
+def indexedRowWordsEquiv (ds : List Bool) :
+    IndexedRowWords ds ≃ WordSolutions ds where
+  toFun w := ⟨w.1, (sourceCNFWord_iff_indexedRows ds w.1).mpr w.2⟩
+  invFun w := ⟨w.1, (sourceCNFWord_iff_indexedRows ds w.1).mp w.2⟩
+  left_inv := by
+    intro w
+    apply Subtype.ext
+    rfl
+  right_inv := by
+    intro w
+    apply Subtype.ext
+    rfl
+
+/-- This is the final mathematical counting statement for all length-exact
+words satisfying the *decoded indexed signed rows*, not a separate
+seed-only or trace-only surrogate. -/
+theorem verifiedCsr_indexedWordCount
+    (csr : SignedCsrInput) (ds : List Bool)
+    (mask : Finset State) (out : Nat)
+    (h : verifyCsrCount csr ds mask = some out) :
+    Nat.card (IndexedRowWords ds) = out := by
+  rw [Nat.card_congr (indexedRowWordsEquiv ds)]
+  exact verifyCsrCount_sound csr ds mask out h
+
+#print axioms IndependentETH.NonAffine.indexedRows_sourceCNFWord
+#print axioms IndependentETH.NonAffine.sourceCNFWord_iff_indexedRows
+#print axioms IndependentETH.NonAffine.indexedRowWordsEquiv
+#print axioms IndependentETH.NonAffine.verifiedCsr_indexedWordCount
+
 #print axioms IndependentETH.NonAffine.wordAssignment_shift
 #print axioms IndependentETH.NonAffine.sourceCNFWord_rows
 

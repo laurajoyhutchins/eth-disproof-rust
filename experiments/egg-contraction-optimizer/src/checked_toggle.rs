@@ -13,10 +13,17 @@ pub(crate) fn flip_checked(
     row: &mut [bool],
     proposed: usize,
 ) -> Result<(), &'static str> {
-    let bit = row.get_mut(proposed)
-        .ok_or("checker matrix column outside allocated row")?;
-    *bit = !*bit;
-    Ok(())
+    // Keep the two result cases explicit. Besides making the refusal
+    // branch auditable, this avoids synthesizing a mutable-borrow
+    // continuation through Option::ok_or/?, which the pinned Aeneas
+    // translator cannot currently typecheck against its std models.
+    match row.get_mut(proposed) {
+        Some(bit) => {
+            *bit = !*bit;
+            Ok(())
+        }
+        None => Err("checker matrix column outside allocated row"),
+    }
 }
 
 #[cfg(kani)]

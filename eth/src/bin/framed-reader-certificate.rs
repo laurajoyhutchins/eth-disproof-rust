@@ -127,14 +127,15 @@ fn case<const R: usize, const S: usize>(
     ports: Ports,
 ) -> Result<String, Box<dyn std::error::Error>> {
     checked_ports::<R, S>(ports)?;
-    let lifted = frame_program()?.lift::<R, S>(
-        [ports.tag, ports.present],
-        [ports.source, ports.payload],
-    )?;
+    let lifted =
+        frame_program()?.lift::<R, S>([ports.tag, ports.present], [ports.source, ports.payload])?;
     let compiled = Cmd::Call(lifted.clone()).compiled(ports.input, ports.output)?;
 
     let mut out = String::new();
-    writeln!(out, "private def ports_{name} : RecordPrograms.Ports {R} {S} where")?;
+    writeln!(
+        out,
+        "private def ports_{name} : RecordPrograms.Ports {R} {S} where"
+    )?;
     writeln!(out, "  tag := {}", ports.tag)?;
     writeln!(out, "  present := {}", ports.present)?;
     writeln!(out, "  found := {}", ports.found)?;
@@ -172,7 +173,10 @@ fn case<const R: usize, const S: usize>(
         out,
         "theorem rust_lift_{name}_source : rust_lift_{name} = ProgramLinking.liftProgram ParserProgram.frameProgram (RecordPrograms.registerMap ports_{name}) (RecordPrograms.stackMap ports_{name}) := by"
     )?;
-    writeln!(out, "  rw [rust_lift_{name}_eq, mappedFrameProgram_eq_source]")?;
+    writeln!(
+        out,
+        "  rw [rust_lift_{name}_eq, mappedFrameProgram_eq_source]"
+    )?;
     writeln!(
         out,
         "theorem rust_compiled_{name}_source : rust_compiled_{name} = StructuredCalls.compiled (.call (mappedFrameProgram ports_{name})) {} {} := by",
@@ -270,9 +274,7 @@ fn certificate() -> Result<String, Box<dyn std::error::Error>> {
         result.push_str(&example);
         result.push('\n');
     }
-    result.push_str(
-        "end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement\n",
-    );
+    result.push_str("end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement\n");
     Ok(result)
 }
 
@@ -308,22 +310,28 @@ mod tests {
             0,
             1,
             0,
-            vec![Instr::Set {
-                dst: 2,
-                value: true,
-                next: 1,
-            }, Instr::Halt],
+            vec![
+                Instr::Set {
+                    dst: 2,
+                    value: true,
+                    next: 1,
+                },
+                Instr::Halt,
+            ],
         )
         .unwrap();
         let changed = Program::<3, 4>::new(
             0,
             1,
             0,
-            vec![Instr::Set {
-                dst: 2,
-                value: false,
-                next: 1,
-            }, Instr::Halt],
+            vec![
+                Instr::Set {
+                    dst: 2,
+                    value: false,
+                    next: 1,
+                },
+                Instr::Halt,
+            ],
         )
         .unwrap();
         let mut a = String::new();

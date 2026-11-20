@@ -231,7 +231,11 @@ fn all_twelve_opcodes_preserve_physical_state_invariants_under_seeded_adversaria
             }
             if actual.pc.is_none() {
                 assert!(!program.step(&mut actual).unwrap());
-                assert_native_represents_list(&actual, &expected, "halted machine must be idempotent");
+                assert_native_represents_list(
+                    &actual,
+                    &expected,
+                    "halted machine must be idempotent",
+                );
             }
         }
     }

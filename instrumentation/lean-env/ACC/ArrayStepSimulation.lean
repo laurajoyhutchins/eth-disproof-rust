@@ -35,7 +35,7 @@ def checkedArrayStep {c : ℕ}
   let old ← array[item.1.val]?
   let zero ← checkedMul old.1 item.2.1
   let one ← checkedMul old.2 item.2.2
-  some (array.set item.1.val (zero, one))
+  some (array.setIfInBounds item.1.val (zero, one))
 
 /-- A single successful array update simulates the mathematical checked
     update, with all unaffected slots preserved. This is a theorem about
@@ -57,7 +57,7 @@ theorem checkedArrayStep_refines {c : ℕ}
       (do
         let zero ← checkedMul (state item.1).1 item.2.1
         let one ← checkedMul (state item.1).2 item.2.2
-        some (array.set item.1.val (zero, one))) = some next := by
+        some (array.setIfInBounds item.1.val (zero, one))) = some next := by
     simpa [checkedArrayStep, hread] using hstep
   cases hz : checkedMul (state item.1).1 item.2.1 with
   | none =>
@@ -67,7 +67,7 @@ theorem checkedArrayStep_refines {c : ℕ}
       | none =>
           simp [hz, ho] at hrun
       | some one =>
-          have harray : array.set item.1.val (zero, one) = next := by
+          have harray : array.setIfInBounds item.1.val (zero, one) = next := by
             simpa [hz, ho] using hrun
           let nextState : Products c :=
             fun k => if item.1 = k then (zero, one) else state k
@@ -80,13 +80,13 @@ theorem checkedArrayStep_refines {c : ℕ}
               by_cases hk : item.1 = k
               · subst k
                 simpa [nextState] using
-                  (Array.getElem?_set_self (xs := array)
-                    (i := item.1.val) (v := (zero, one)) hin)
+                  (Array.getElem?_setIfInBounds_self_of_lt (xs := array)
+                    (i := item.1.val) (a := (zero, one)) hin)
               · have hne : item.1.val ≠ k.val := by
                   intro h
                   apply hk
                   exact Fin.ext h
-                rw [Array.getElem?_set_ne hin hne]
+                rw [Array.getElem?_setIfInBounds_ne hne]
                 simpa [nextState, hk] using hslots k
 
 /-- A checked array update cannot succeed for a truly absent source slot. -/

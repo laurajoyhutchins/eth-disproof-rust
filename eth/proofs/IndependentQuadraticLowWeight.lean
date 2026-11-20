@@ -466,16 +466,41 @@ def nativeReceiptMatches {n : ℕ} (out : NativeOutputRecord) :
     nativePhase (nativeOutputBit boundary) out.phaseTerms =
       phaseBit (out.receipt.decode n) (nativeSupport boundary)
 
-/-- Reference acceptance over the *actual* raw source and output
-interpretations. Deliberately finite/exhaustive, suitable for small oracles
-and semantic debugging. -/
+/-- Enumerate all Boolean boundary contexts in an *executable* list.
+This list is exponential; it is only the independent finite-instance oracle. -/
+def nativeBoundaries (n : ℕ) : List (Fin n → Bool) :=
+  (Finset.univ : Finset (Fin n → Bool)).toList
+
+/-- For one explicit boundary, independently check the claimed output's
+phase record and the exact signed sum over the internal Boolean bit. -/
+def nativeBoundaryCheck {n : ℕ}
+    (src : NativeSourceRecord) (out : NativeOutputRecord)
+    (boundary : Fin n → Bool) : Bool :=
+  decide (nativePhase (nativeOutputBit boundary) out.phaseTerms =
+    phaseBit (out.receipt.decode n) (nativeSupport boundary)) &&
+  decide (nativeSignedOutput out boundary =
+    ∑ x : Bool, nativeSignedSource src x boundary)
+
+/-- Executable reference acceptance over raw source and output data.
+No native success flag is trusted and no unbounded Prop decision is used. -/
 def checkNativeInstance {n : ℕ}
     (src : NativeSourceRecord) (out : NativeOutputRecord) : Bool :=
-  decide (nativeSourceShape n src ∧ nativeOutputShape n out ∧
-    nativeReceiptMatches (n := n) out ∧
-    (∀ boundary : Fin n → Bool,
-      nativeSignedOutput out boundary =
-        ∑ x : Bool, nativeSignedSource src x boundary))
+  decide (nativeSourceShape n src ∧ nativeOutputShape n out) &&
+    (nativeBoundaries n).all (nativeBoundaryCheck src out)
+
+/-- Every context is included in the finite executable oracle. -/
+theorem nativeBoundary_mem {n : ℕ} (boundary : Fin n → Bool) :
+    boundary ∈ nativeBoundaries n := by
+  simp [nativeBoundaries]
+
+theorem checkNativeInstance_boundary {n : ℕ}
+    (src : NativeSourceRecord) (out : NativeOutputRecord)
+    (accepted : checkNativeInstance (n := n) src out = true)
+    (boundary : Fin n → Bool) :
+    nativeBoundaryCheck src out boundary = true := by
+  have h : (nativeBoundaries n).all (nativeBoundaryCheck src out) = true := by
+    exact (Bool.and_eq_true.mp accepted).2
+  exact (List.all_eq_true.mp h) boundary (nativeBoundary_mem boundary)
 
 /-- Exhaustive instance acceptance implies exact source-to-output signed projection. -/
 theorem checkNativeInstance_sound {n : ℕ}
@@ -484,13 +509,8 @@ theorem checkNativeInstance_sound {n : ℕ}
     (boundary : Fin n → Bool) :
     nativeSignedOutput out boundary =
       ∑ x : Bool, nativeSignedSource src x boundary := by
-  have h : nativeSourceShape n src ∧ nativeOutputShape n out ∧
-      nativeReceiptMatches (n := n) out ∧
-      (∀ boundary : Fin n → Bool,
-        nativeSignedOutput out boundary =
-          ∑ x : Bool, nativeSignedSource src x boundary) := by
-    simpa only [checkNativeInstance, decide_eq_true_eq] using accepted
-  exact h.2.2.2 boundary
+  have h := checkNativeInstance_boundary src out accepted boundary
+  exact of_decide_true (Bool.and_eq_true.mp h).2
 
 /-- Exhaustive acceptance also validates the output coefficient receipt. -/
 theorem checkNativeInstance_receipt_sound {n : ℕ}
@@ -499,13 +519,8 @@ theorem checkNativeInstance_receipt_sound {n : ℕ}
     (boundary : Fin n → Bool) :
     nativePhase (nativeOutputBit boundary) out.phaseTerms =
       phaseBit (out.receipt.decode n) (nativeSupport boundary) := by
-  have h : nativeSourceShape n src ∧ nativeOutputShape n out ∧
-      nativeReceiptMatches (n := n) out ∧
-      (∀ boundary : Fin n → Bool,
-        nativeSignedOutput out boundary =
-          ∑ x : Bool, nativeSignedSource src x boundary) := by
-    simpa only [checkNativeInstance, decide_eq_true_eq] using accepted
-  exact h.2.2.1 boundary
+  have h := checkNativeInstance_boundary src out accepted boundary
+  exact of_decide_true (Bool.and_eq_true.mp h).1
 
 private def freeOracleSource : NativeSourceRecord :=
   { phaseTerms := [[0, 1]], rows := [], exponent := 0 }

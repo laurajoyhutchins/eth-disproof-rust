@@ -137,7 +137,7 @@ example :
     would later be multiplied by zero. Refusal is not a wrong count. -/
 example :
     checkedArrayFinishFrom
-      (#[(2 ^ 127 - 1 : ℤ, 1), (0, 0)])
+      (#[(2 ^ 127 - 1, 1), (0, 0)] : Array (ℤ × ℤ))
       1 ([⟨0, by decide⟩, ⟨1, by decide⟩] : List (Fin 2)) = none := by decide
 
 #print axioms ACC.ArrayFinishSimulation.checkedArrayFinishFrom_eq

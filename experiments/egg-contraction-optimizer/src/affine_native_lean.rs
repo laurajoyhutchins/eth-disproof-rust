@@ -35,7 +35,7 @@ fn snapshot_literal(
 ) -> String {
     let equations = list(source.equations.iter().map(|eq| format!(
         "{{ occurrences := {}, rhs := {} }}",
-        names(&eq.occurrences),
+        names(&eq.variables),
         bool_literal(eq.rhs),
     )));
     let steps = list(certificate.steps.iter().map(|step| format!(
@@ -141,16 +141,16 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
     emit_case(&mut output, "Duplicate source variable name", &duplicated, &raw, &interface, false, false);
 
     let mut undeclared = eqs.clone();
-    undeclared.equations[0].occurrences.push("undeclared".into());
+    undeclared.equations[0].variables.push("undeclared".into());
     emit_case(&mut output, "Undeclared occurrence in source row", &undeclared, &raw, &interface, false, false);
 
     let noncontiguous = AffineRegion {
         internal: (0..6).map(|i| format!("u{i}")).collect(),
         boundary: vec!["b".into(), "c".into(), "d".into()],
         equations: vec![
-            Equation { occurrences: vec!["u1".into(), "u3".into(), "b".into()], rhs: false },
-            Equation { occurrences: vec!["u4".into(), "u5".into(), "c".into()], rhs: true },
-            Equation { occurrences: vec!["u1".into(), "u3".into(), "d".into()], rhs: false },
+            Equation { variables: vec!["u1".into(), "u3".into(), "b".into()], rhs: false },
+            Equation { variables: vec!["u4".into(), "u5".into(), "c".into()], rhs: true },
+            Equation { variables: vec!["u1".into(), "u3".into(), "d".into()], rhs: false },
         ],
     };
     emit_positive(
@@ -161,7 +161,7 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
         internal: vec!["u".into(), "v".into()],
         boundary: vec!["b".into()],
         equations: vec![Equation {
-            occurrences: vec![
+            variables: vec!
                 "u".into(), "u".into(), "v".into(), "b".into(),
             ],
             rhs: true,
@@ -178,7 +178,7 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
 
     let inconsistent = AffineRegion {
         internal: vec![], boundary: vec![],
-        equations: vec![Equation { occurrences: vec![], rhs: true }],
+        equations: vec![Equation { variables: vec![], rhs: true }],
     };
     emit_positive(
         &mut output, "Impossible constant equation", &inconsistent, true,
@@ -191,15 +191,15 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
         boundary: vec!["b".into(), "c".into()],
         equations: vec![
             Equation {
-                occurrences: vec!["u63".into(), "u64".into(), "b".into()],
+                variables: vec!"u63".into(), "u64".into(), "b".into()],
                 rhs: false,
             },
             Equation {
-                occurrences: vec!["u63".into(), "u64".into(), "c".into()],
+                variables: vec!"u63".into(), "u64".into(), "c".into()],
                 rhs: true,
             },
             Equation {
-                occurrences: vec!["u127".into(), "u128".into()],
+                variables: vec!"u127".into(), "u128".into()],
                 rhs: false,
             },
         ],

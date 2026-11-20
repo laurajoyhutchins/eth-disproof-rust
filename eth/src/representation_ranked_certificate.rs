@@ -135,6 +135,26 @@ pub fn checked_component_product_step(
     Ok(())
 }
 
+/// Scan a vertex-major stream, updating the class product table in place.
+/// Each individual update is atomic on refusal; earlier completed updates
+/// remain visible after a later failure. This is intentionally *not* a
+/// transactional whole-scan rollback. Width mismatches refuse before writes.
+pub fn checked_component_product_scan(
+    products: &mut [[i128; 2]],
+    labels: &[usize],
+    weights: &[[i128; 2]],
+) -> Result<(), Error> {
+    if labels.len() != weights.len() {
+        return Err(Error::Invalid(
+            "component scan label and weight widths disagree".into(),
+        ));
+    }
+    for (&class, &weight) in labels.iter().zip(weights.iter()) {
+        checked_component_product_step(products, class, weight)?;
+    }
+    Ok(())
+}
+
 /// Exact checked contraction from *verified labels*, not from DSU parents.
 /// Overflows refuse instead of silently truncating a signed integer count.
 pub fn contract_checked_ranked_weights(
@@ -146,11 +166,8 @@ pub fn contract_checked_ranked_weights(
     // A receipt alone is not a reusable authority for different input bytes.
     let verified = verify_ranked_component_certificate(weights.len(), source_edges, certificate)?;
     let mut products = vec![[1i128, 1i128]; verified.components];
-    let mut multiplications = 0usize;
-    for (&weights, &class) in weights.iter().zip(certificate.labels.iter()) {
-        checked_component_product_step(&mut products, class, weights)?;
-        multiplications += 2;
-    }
+    checked_component_product_scan(&mut products, &certificate.labels, weights)?;
+    let mut multiplications = weights.len().checked_mul(2).ok_or(Error::Overflow)?;
     let mut value = 1i128;
     for terms in &products {
         let local = terms[0].checked_add(terms[1]).ok_or(Error::Overflow)?;

@@ -1,9 +1,11 @@
 //! Fail-closed simultaneous port + orbit-label balancing receipt.
 //! No SAT count, field tensors, or source recursion is executed.
+
+use std::process::ExitCode;
+
 use lean_eth_reference::two_adic_joint_balance::construct_joint_balanced_bounded;
 use lean_eth_reference::two_adic_packet_layout::BipartiteEdge;
 use serde_json::json;
-use std::process::ExitCode;
 
 fn run() -> Result<(), String> {
     let args = std::env::args().collect::<Vec<_>>();
@@ -96,11 +98,9 @@ fn run() -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::from(2),
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::from(2)
-        }
+    if let Err(error) = run() {
+        eprintln!("{error}");
     }
+    // An arithmetic receipt is not an execution of the original algorithm.
+    ExitCode::from(2)
 }

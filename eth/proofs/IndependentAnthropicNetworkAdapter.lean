@@ -80,7 +80,6 @@ theorem anthropic_instance_preserves_contraction
     _ = contraction N.S N.W N.Θ N.f :=
       anthropic_value_eq_contraction N
 
-
 /--
 The source's node grouping followed by its finite-alphabet instance
 construction preserves its *original* network value in one statement.

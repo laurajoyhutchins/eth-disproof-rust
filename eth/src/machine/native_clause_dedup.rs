@@ -2,42 +2,20 @@
 //! Uses the preserving three-mode scanner to remove equivalent clauses while
 //! retaining only the *last* occurrence and original order of surviving clauses.
 use crate::Error;
-use crate::bit_program::{Atom, Cmd, Instr, Program};
+use crate::bit_program::record_iteration::{RecordPorts, iterate_framed};
+use crate::bit_program::stack_routines::transfer_program;
+use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_clause_relation_scan::{self, Mode};
 use crate::native_high::{clear_program, copy_program};
 use crate::native_normalization_primitives::{
     clause_filter_reverse_program, emit_if_selected_command,
 };
-use crate::native_query_prefix::frame_program;
 
 pub fn transfer(src: usize, dst: usize) -> Result<Program<15, 16>, Error> {
     if src == dst {
         return Err(Error::Invalid("transfer ports must differ".into()));
     }
-    Program::new(
-        src,
-        dst,
-        0,
-        vec![
-            Instr::Pop {
-                stack: src,
-                value: 0,
-                present: 1,
-                next: 1,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 2,
-                no: 3,
-            },
-            Instr::Push {
-                stack: dst,
-                src: 0,
-                next: 0,
-            },
-            Instr::Halt,
-        ],
-    )
+    transfer_program(src, dst, 0, 1)
 }
 
 /// Original `ExecClauseRelationScan.Preserving.command` 15x13:
@@ -98,33 +76,16 @@ pub fn dedup_callback() -> Result<Cmd<15, 16>, Error> {
 
 /// Original outer record ports: tag0, present1, found14, source13, payload15.
 pub fn scan_command() -> Result<Cmd<15, 16>, Error> {
-    let reader = Cmd::Call(frame_program()?.lift::<15, 16>([0, 1], [13, 15])?);
-    let advance = Cmd::ite(
-        14,
-        Cmd::Atom(Atom::Set {
-            dst: 0,
-            value: false,
-        }),
-        Cmd::Atom(Atom::Pop {
-            stack: 13,
-            value: 0,
+    iterate_framed(
+        RecordPorts {
+            tag: 0,
             present: 1,
-        }),
-    );
-    Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set {
-            dst: 14,
-            value: false,
-        }),
-        Cmd::seq(
-            Cmd::Atom(Atom::Pop {
-                stack: 13,
-                value: 0,
-                present: 1,
-            }),
-            Cmd::while_(0, Cmd::seq(reader, Cmd::seq(dedup_callback()?, advance))),
-        ),
-    ))
+            found: 14,
+            source: 13,
+        },
+        15,
+        dedup_callback()?,
+    )
 }
 
 fn push_false(stack: usize) -> Cmd<15, 16> {

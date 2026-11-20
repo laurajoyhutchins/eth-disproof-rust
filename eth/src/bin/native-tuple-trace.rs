@@ -1,23 +1,17 @@
 //! Machine-readable trace from the source-pinned Rust odometer and enumerator.
 //! Compare against the imported upstream Lean implementation, not a generated
 //! or Python-translated substitute.
+
+#[path = "trace/format.rs"]
+mod trace_format;
+
 use lean_eth_reference::bit_program::{Atom, Cmd, Config};
 use lean_eth_reference::native_tuple::{
     CounterPorts, encode_words, enumerate_command, odometer_program,
 };
 
-fn bits(xs: &[bool]) -> String {
-    xs.iter().map(|&b| if b { '1' } else { '0' }).collect()
-}
-fn word<const R: usize, const S: usize>(cfg: &Config<R, S>, port: usize) -> String {
-    cfg.stacks[port]
-        .iter()
-        .map(|&b| if b { '1' } else { '0' })
-        .collect()
-}
-fn bit(b: bool) -> char {
-    if b { '1' } else { '0' }
-}
+use trace_format::{bit_char, bits, stack_bits};
+
 fn cases() -> Vec<(&'static str, Vec<Vec<bool>>)> {
     vec![
         ("empty", vec![]),
@@ -76,11 +70,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (steps, cfg, _) = run(&odo, &input, None, 0)?;
         println!(
             "odometer|{name}|{steps}|{}|{}|{}|{}|{}",
-            word(&cfg, 0),
-            word(&cfg, 1),
-            bit(cfg.regs[0]),
-            bit(cfg.regs[1]),
-            bit(cfg.regs[2])
+            stack_bits(&cfg, 0),
+            stack_bits(&cfg, 1),
+            bit_char(cfg.regs[0]),
+            bit_char(cfg.regs[1]),
+            bit_char(cfg.regs[2])
         );
     }
     for (name, words) in cases() {
@@ -89,12 +83,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let visit_bits = encode_words(&visits)?;
         println!(
             "enumerate|{name}|{steps}|{}|{}|{}|{}|{}|{}",
-            word(&cfg, 0),
-            word(&cfg, 1),
-            word(&cfg, 2),
-            bit(cfg.regs[2]),
-            bit(cfg.regs[3]),
-            bits(&visit_bits)
+            stack_bits(&cfg, 0),
+            stack_bits(&cfg, 1),
+            stack_bits(&cfg, 2),
+            bit_char(cfg.regs[2]),
+            bit_char(cfg.regs[3]),
+            bits(visit_bits.iter().copied())
         );
     }
     Ok(())

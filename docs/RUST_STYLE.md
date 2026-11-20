@@ -1,0 +1,116 @@
+# Rust code conventions
+
+These conventions apply to locally maintained Rust in `eth/` and
+`compiler/`. The original pinned Lean sources and recorded source identities
+are not style-refactoring targets. Formatting and Clippy are necessary checks,
+not proof of behavioral equivalence.
+
+## Organization
+
+- Organize by responsibility: `bit_program` is the finite machine,
+  `machine` is normalization, `query` is source query execution,
+  `counting` is counting and resource audits, and `compiler` is the
+  independent Lean-IR backend. Do not create another code-generation path.
+- Order imports in separate standard-library, external-crate, and local-module
+  groups. Prefer explicit imports to glob imports except for stable compatibility
+  re-exports.
+- Use `snake_case` for functions, fields, and modules; `CamelCase` for types.
+  Preserve public/source-linked names where changing them would invalidate
+  evidence or compatibility. Prefer descriptive locals such as `audit`,
+  `state`, `program`, and `limits` over context-free single letters.
+- Put a short `//!` header on each source-translation module identifying what
+  it implements and what remains outside its execution boundary. Use `///`
+  for public contracts and `//` for local invariants. State facts once;
+  avoid repeating a paragraph of qualifications on every function.
+- Keep the seven-label `ParserProgram.frameProgram` and seventeen-label
+  `SubexpPostfixControl.literalService` tables in
+  `bit_program/frame_programs.rs`. Normalize their import locations with
+  compatibility re-exports, not new host-level parsing or framing.
+- Keep the source `StackRoutines.clearProgram`, `copyProgram`, and
+  `transferProgram` label tables in `bit_program/stack_routines.rs`. Use
+  compatibility re-exports rather than copying instruction tables into
+  normalization, query, or counting modules.
+- Preserve `RecordPrograms.iterate` and its six identical framed-reader
+  lifts in `bit_program/record_iteration.rs`. Callers supply the original
+  tag/present/found/source registers, payload stack and source-specific
+  callback. Keep callback policies and output-suffix logic separate.
+  Compare complete command syntax, including nested calls, before
+  accepting edits; invalid physical reader maps must refuse.
+- Use `bit_program/source_commands.rs` for the identical right-associated
+  source `Seq` constructors, ordered clear lists, and register resets
+  shared by query and counting. `clear_many` ends in `Skip`, while
+  `clear_many_then` keeps the supplied terminal command with **no**
+  additional `Skip` node. Do not flatten or rebalance a source command tree
+  unless its complete compiled instruction identity is independently checked.
+- Extract a helper when distinct callers share a genuine representation
+  contract. Keep diagnostic-only helpers in the diagnostic surface, rather
+  than exposing them as library APIs or duplicating them in each binary.
+
+## Verification infrastructure
+
+- Own the hand-coded Rust `Instr -> opcode:operand...` physical-row
+  encoding in `bit_program/physical_encoding.rs` rather than in a
+  source-specific diagnostic binary. Keep the independently Serde-derived
+  structural representation, because agreement between two distinct
+  implementations detects different errors.
+- Keep `verify_source_graph.KINDS` authoritative for the physical
+  operand-kind schema. The Lean certificate renderer must import that
+  same table, not redefine a subtly divergent twelve-opcode vocabulary.
+- Represent finite physical `BitProgram` tables with the already established
+  source-graph tuple `(r,s,labels,entry,input,output,code)` and canonical
+  `opcode:operand...` row syntax. Do not emit a second independent Lean
+  instruction syntax from an individual Rust diagnostic.
+- Reuse `verify_source_graph.parse_program` for strict table decoding and
+  `source_graph_kernel_certificate.physical_program_definition` for the
+  unique Lean finite-program renderer. New source-specific receipts should
+  supply *data plus source-bound equality obligations*, never new opcode
+  serializers, proof libraries, or an inferred source identity.
+- For each Rust physical program receipt, require a second, independently
+  derived `serde::Serialize` structure of the **same** Rust `Program`
+  value. `verify_source_graph.check_rust_serde_program` must compare
+  exact variant and field identities with canonical row data before Lean
+  proof generation; maintain all-opcode coverage and both `Set` bits.
+  A mismatch must refuse, not be normalized or silently repaired.
+- Keep source-aware Lean kernel equality, independent Rust execution tests,
+  and two distinct mutation controls: one representation changed (serializer
+  inconsistency), then both changed coherently (source-mathematics failure).
+  Neither a successful JSON parse nor a kernel-checked printed table proves
+  that all Rust memory and executions are faithfully represented.
+
+## Source and execution boundaries
+
+- Refer to a pinned Lean declaration precisely; distinguish source commands,
+  Rust adapters, tests, and independent mathematical statements.
+- Use `Result` and checked arithmetic for untrusted input and bounded
+  resources. Do not convert unsupported stages into zero counts or successful
+  halts. Keep `Error::Invalid`, `Error::Capacity`, `Error::Overflow`,
+  and `Error::NotImplemented` semantically distinct.
+- Keep serialized field names, bit ordering, physical register/stack indices,
+  refusal statuses, and CLI exit codes stable unless a separately tested
+  protocol change is intended. In particular, the `appendix-*` programs
+  print arithmetic receipts but always exit **2**, including when an audit
+  finishes normally. Their common convention is `run() -> Result<(), String>`
+  followed by one small refusal-printing `main()`.
+- Build JSON receipts with unique keys. A repeated key in a `json!({ ... })`
+  expression is especially easy to overlook in review.
+- Keep format-only changes and helper extraction separate from math,
+  performance, and semantics changes. A rustfmt-clean diff is not a Rust/Lean
+  correspondence theorem.
+
+## Evidence for a refactor
+
+1. Identify the observable contract: field names and JSON values, exact trace
+   bytes, exit code and stderr, machine steps, and resource refusals.
+2. Compare before and after on the same fixtures; add an independent test for a
+   shared helper or a nontrivial transformation. Do not bless a rewritten
+   producer as its own oracle.
+3. Run `cargo fmt --all -- --check`,
+   `cargo test --locked --offline --all-targets`, and
+   `cargo clippy --locked --offline --all-targets -- -D warnings` at
+   the repository root. Compiler CLI gates are separate and documented in
+   `CONTRIBUTING.md`.
+4. Record checks against the exact changed head. A passing Rust test does not
+   verify the original Lean program or the complexity theorem.
+
+See [the contribution contract](CONTRIBUTING.md) and
+[the evidence stages](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/AGENTS.md).

@@ -10,6 +10,10 @@ The appendix is a recursive **2-adic tensor contraction**, not the body’s glob
 
 [Independent ETH formulations and comparison levels](independent-formulations.md) records the Anthropic reference encoding, bounded cross-model tests, and the mathematical/physical-machine boundary.
 
+## Certified arithmetic circuit development
+
+[ACC typed circuit IR and annotated proof DAG](circuit-ir-proof-dag.md) describes the shared source-factor semantics, the first boundary-composition theorem, the Anthropic grouping adapter, and the still-open shared-DAG and asymptotic obligations.
+
 ## Spectral compression and arithmetic
 
 Pair swaps give a natural joint spectrum. Krawtchouk/Walsh methods compress symmetric coordinates. Neither observation is a counting algorithm until the source incidence, integer measurements, denominators and exact recovery survive the change of basis.
@@ -31,6 +35,12 @@ A program that produces the same answer on five tiny examples is not necessarily
 - **Paper-admissible parameters may never activate at realistic sizes.** Record that rather than invent a substitute schedule.
 
 The [dated ledger](2026-10-31-to-2026-11-14-ledger.md) gives the experiments and associated PRs. [Peer-reviewed references](literature.md) and the [LaTeX-to-Lean benchmark](formalization-evaluation.md) are indexed separately.
+
+## Proof-to-implementation handoff
+
+Use **Lean** to establish the exact mathematical contract (including ring, phase, truncation and boundary semantics), **Rust** to implement serious reusable execution and costed infrastructure, and **Python** only for bounded exploration and independent test oracles. Never upgrade a promising paper derivation or exhaustive Python fixture to a kernel-checked theorem. Likewise, neither a Lean theorem nor a correct Rust test establishes a full bit-operation or space bound without the corresponding refinement.
+
+For the quadratic signed-interface investigation, the next research checkpoint is a pinned Lean proof of product/project closure and stitching, with an explicit refusal for cases that escape the quadratic fragment. Only then should a Rust interface kernel become a maintained algorithmic component.
 
 ## Evidence categories
 

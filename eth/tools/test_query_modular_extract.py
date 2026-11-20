@@ -18,6 +18,16 @@ class SourceModuleContractTests(unittest.TestCase):
         self.assertEqual(len(q.STAGE_BY_ID), len(q.STAGES))
         self.assertEqual(q.STAGE_BY_ID["moments_readout"].input, 15)
         self.assertEqual(q.STAGE_BY_ID["moments_readout"].output, 0)
+        accumulator=q.STAGE_BY_ID["moments_accumulate"]
+        self.assertEqual((accumulator.registers,accumulator.stacks,
+                          accumulator.input,accumulator.output),(8,27,15,17))
+        self.assertEqual(accumulator.symbol,"accumulateProgram")
+        self.assertEqual(
+            accumulator.declaration,
+            "OAI.Algorithms.SubexponentialSAT.SqrtLog.MomentsReadoutProgram.accumulateProgram"
+        )
+        self.assertEqual(accumulator.relative_path.name,
+                         "MomentsReadoutProgramAccumulate.lean")
         self.assertNotIn("QueryStreamProgram", " ".join(s.module for s in q.STAGES))
         self.assertEqual(q.STAGE_BY_ID["reconstruction"].output, 323)
         for stage in q.STAGES:
@@ -37,6 +47,41 @@ class SourceModuleContractTests(unittest.TestCase):
             source.write_bytes(b"def program := oracle\n")
             with self.assertRaisesRegex(ValueError, "missing expected source"):
                 q.pinned_record(stage,root)
+
+    def test_accumulator_abbrev_source_pin_is_exact_and_rejects_lookalikes(self):
+        stage=q.STAGE_BY_ID["moments_accumulate"]
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            source=root/stage.relative_path
+            source.parent.mkdir(parents=True)
+            source.write_bytes(
+                b"namespace SubexponentialSAT.SqrtLog.MomentsReadoutProgram\n"
+                b"abbrev accumulateProgram : Program 8 27 (size accumulate+1) := compiled accumulate 15 17\n"
+                b"end SubexponentialSAT.SqrtLog.MomentsReadoutProgram\n"
+            )
+            record=q.pinned_record(stage,root)
+            self.assertEqual(record["fqn"],stage.declaration)
+            self.assertEqual(record["git_blob"],q.blob_hash(source.read_bytes()))
+            self.assertIn("Accumulate",record["module"])
+            for bad in (
+                b"abbrev accumulateProgram := oracle\n",
+                b"abbrev anotherProgram := compiled accumulate 15 17\n",
+                b"-- abbrev accumulateProgram := compiled accumulate 15 17\n",
+                b"abbrev accumulateProgram :=\n  compiled accumulate 15 17\n",
+                b"abbrev accumulateProgram := compiledButNotTheSource accumulate 15 17\n",
+            ):
+                with self.subTest(bad=bad):
+                    source.write_bytes(bad)
+                    with self.assertRaisesRegex(ValueError,"missing expected source compiled accumulateProgram"):
+                        q.pinned_record(stage,root)
+
+    def test_strict_abi_refuses_accumulator_port_aliases(self):
+        stage=q.STAGE_BY_ID["moments_accumulate"]
+        with patch.object(q,"read_source_graph",return_value=(
+            b"test\n",{},object(),(8,27,1024,1,15,0)
+        )):
+            with self.assertRaisesRegex(ValueError,"original ABI mismatch"):
+                q.validate_stage_graph(Path("unused"),stage,{"id":"test"})
 
     def test_strict_abi_refuses_a_valid_graph_with_wrong_ports(self):
         stage=q.STAGE_BY_ID["moments_readout"]

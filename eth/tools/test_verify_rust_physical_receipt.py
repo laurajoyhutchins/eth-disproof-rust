@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
 from verify_rust_physical_receipt import (
     CASES, FIELD_PROOF, FRAMED_PROOF, certificate_source,
@@ -129,6 +132,20 @@ class RustPhysicalReceiptTests(unittest.TestCase):
         for name, code, source, lemma in mutants:
             with self.subTest(name=name), self.assertRaises(ValueError):
                 preflight_proof_dependencies(code, source, lemma)
+
+    def test_certificate_construction_refuses_stale_proof_from_disk(self):
+        # Exercise the production certificate_source entrypoint, not only
+        # the preflight helper: changing a source theorem must stop emission.
+        source = FRAMED_PROOF.read_text(encoding='utf-8')
+        stale = source.replace('  apply ACC.BitProgramFields.eq_of_fields',
+                               '  apply program_eq_of_fields', 1)
+        self.assertNotEqual(source, stale)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'FramedRecordReaderRefinement.lean'
+            path.write_text(stale, encoding='utf-8')
+            with patch('verify_rust_physical_receipt.FRAMED_PROOF', path):
+                with self.assertRaisesRegex(ValueError, 'no longer applies'):
+                    certificate_source(encode(sample()))
 
     def test_invalid_source_pin_and_duplicate_receipts_refuse(self):
         for mutate in (

@@ -5,10 +5,12 @@ The Lungo experiment lives in
 compiles a bounded subset of original Lean compiler declarations
 to Rust and records independent Lean-oracle results.
 
-It is not the canonical Lean compiler IR emitter. Missing original
-runtime externs remain refused, and neither stage-zero compilation
-nor a self-hosted compiler would by itself establish backend
-ownership semantics or the ETH #SAT execution theorem.
+The [egg contraction optimizer](egg-contraction-optimizer/README.md)
+is a separately pinned Rust equality-saturation experiment over exact
+integer polynomial DAGs. It cannot yet optimize the source ETH
+contraction or certify an original Lean theorem.
 
-Experiment code must not become a fallback from `compiler/`. Keep
-its pinned dependencies and CI separate.
+Experiments are not the canonical Lean compiler IR emitter, and
+experiment code must never silently become a fallback from `compiler/`
+or the source-pinned ETH counting implementation. Keep their pinned
+dependencies and CI separate.

@@ -86,6 +86,82 @@ fn emit_case(
     }
 }
 
+#[derive(Clone)]
+struct PortDatum {
+    before: Vec<String>,
+    next: Vec<String>,
+    future: Vec<String>,
+    kept: Vec<String>,
+    dead: Vec<String>,
+}
+
+#[derive(Clone)]
+struct OrderedPortDatum {
+    scopes: Vec<Vec<String>>,
+    order: Vec<usize>,
+    output: Vec<String>,
+    receipts: Vec<PortDatum>,
+}
+
+fn port_plan_literal(w: &OrderedPortDatum) -> String {
+    let scopes = list(w.scopes.iter().map(|xs| names(xs)));
+    let order = list(w.order.iter().map(usize::to_string));
+    let receipts = list(w.receipts.iter().map(|r| format!(
+        "{{ before := {}, next := {}, future := {}, kept := {}, dead := {} }}",
+        names(&r.before), names(&r.next), names(&r.future),
+        names(&r.kept), names(&r.dead),
+    )));
+    format!(
+        "{{ scopes := {scopes}, order := {order}, output := {}, receipts := {receipts} }}",
+        names(&w.output),
+    )
+}
+
+fn emit_plan_case(
+    out: &mut String,
+    description: &str,
+    receipt: &OrderedPortDatum,
+    accepted: bool,
+) {
+    let idx = out.matches("def native_port_plan_").count();
+    let name = format!("native_port_plan_{idx}");
+    out.push_str(&format!(
+        "\n-- {description}\ndef {name} : IndependentETH.AffineNativeAudit.PortPlan :=\n  {}\n",
+        port_plan_literal(receipt),
+    ));
+    out.push_str(&format!(
+        "example : IndependentETH.AffineNativeAudit.auditPortPlan {name} = {} := by decide\n",
+        bool_literal(accepted),
+    ));
+}
+
+fn plan_datum(
+    factors: &[AffineRegion],
+    order: &[usize],
+    output: &[String],
+    trace: &crate::affine_orders::Trace,
+) -> OrderedPortDatum {
+    use std::collections::BTreeSet;
+    let receipts = (1..order.len()).map(|i| {
+        let future = order[i + 1..].iter()
+            .flat_map(|&j| factors[j].boundary.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        PortDatum {
+            before: trace.steps[i - 1].retained_ports.clone(),
+            next: factors[order[i]].boundary.clone(),
+            future: future.into_iter().collect(),
+            kept: trace.steps[i].retained_ports.clone(),
+            dead: trace.steps[i].newly_dead_ports.clone(),
+        }
+    }).collect();
+    OrderedPortDatum {
+        scopes: factors.iter().map(|f| f.boundary.clone()).collect(),
+        order: order.to_vec(),
+        output: output.to_vec(),
+        receipts,
+    }
+}
+
 fn emit_positive(
     out: &mut String,
     label: &str,
@@ -173,6 +249,24 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
             );
             accumulated = merged;
         }
+        let order_receipt = plan_datum(&factors, &order, &output, &trace);
+        emit_plan_case(&mut out,
+            &format!("native ordered ports {family:?} {order_kind:?}"),
+            &order_receipt, true);
+        if family == Family::Chain && order_kind == Schedule::Sequential {
+            let mut altered = order_receipt.clone();
+            altered.receipts[0].dead.push("invalid".into());
+            emit_plan_case(&mut out, "port removal record falsely includes invalid",
+                &altered, false);
+            let mut altered = order_receipt.clone();
+            altered.order[1] = altered.order[0];
+            emit_plan_case(&mut out, "duplicate source factor index",
+                &altered, false);
+            let mut altered = order_receipt.clone();
+            altered.receipts[0].future.clear();
+            emit_plan_case(&mut out, "omitted future variable support",
+                &altered, false);
+        }
         if accumulated.interface.boundary != trace.stage.interface.boundary
             || accumulated.interface.free_internal != trace.stage.interface.free_internal
             || accumulated.interface.residual != trace.stage.interface.residual
@@ -193,6 +287,9 @@ mod tests {
         assert!(text.contains("native merge Chain EvenFirst"));
         assert!(text.contains("native merge CirculantXor3 Reverse"));
         assert!(text.contains("mutated residual parity"));
+        assert!(text.contains("native ordered ports Chain Sequential"));
+        assert!(text.contains("duplicate source factor index"));
+        assert!(text.contains("auditPortPlan"));
         assert!(text.matches("= true := by decide").count() >= 12);
         assert!(text.matches("= false := by decide").count() >= 3);
     }

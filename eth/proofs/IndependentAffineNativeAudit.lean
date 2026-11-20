@@ -220,4 +220,100 @@ example : exhaustiveAgreement emptySnapshot = true := by decide
 
 #print axioms IndependentETH.AffineNativeAudit.sourceOK_names_valid
 
+
+/-! ## Independent, source-derived ordered-port receipt checks
+
+The accepted port witness must refer to exactly the factor scopes and
+order supplied in its data. The independent reference re-derives the
+future support from *source scopes*, not from an asserted "future" field.
+Names are decimal UTF-8 bytes, and lexicographic byte ordering matches
+Rust String/BTreeSet order for the admitted ASCII identifier domain.
+
+This is a concrete native-receipt audit, not a compiler refinement.
+-/
+
+structure PortReceipt where
+  before : List Name
+  next : List Name
+  future : List Name
+  kept : List Name
+  dead : List Name
+  deriving Repr, Inhabited, DecidableEq
+
+structure PortPlan where
+  scopes : List (List Name)
+  order : List Nat
+  output : List Name
+  receipts : List PortReceipt
+  deriving Repr, Inhabited, DecidableEq
+
+def byteLexLess : Name → Name → Bool
+  | [], [] => false
+  | [], _ :: _ => true
+  | _ :: _, [] => false
+  | a :: as, b :: bs =>
+      if a == b then byteLexLess as bs else a < b
+
+def strictlyByteSorted : List Name → Bool
+  | [] => true
+  | [_] => true
+  | a :: b :: rest => byteLexLess a b && strictlyByteSorted (b :: rest)
+
+def portNames (xs : List Name) : Finset Name := xs.toFinset
+
+def futurePortScope (scopes : List (List Name))
+    (indices : List Nat) : Finset Name :=
+  indices.foldl (fun acc i =>
+    acc ∪ portNames ((scopes[i]?).getD [])) ∅
+
+/-- Check *actual* Rust-retired boundary ports against independent
+source/future liveness. It also checks that the supplied order visits
+every source factor once and that each recorded stage matches the
+previous retained interface. -/
+def auditPortPlan (plan : PortPlan) : Bool := Id.run do
+  if plan.order.isEmpty || plan.order.length != plan.scopes.length then
+    return false
+  if !decide plan.order.Nodup ||
+      !(plan.order.all (fun i => i < plan.scopes.length)) then
+    return false
+  if !(plan.scopes.all (fun names =>
+        decide names.Nodup && names.all validName)) then
+    return false
+  if !decide plan.output.Nodup ||
+      !(plan.output.all validName) then
+    return false
+  let allNames := futurePortScope plan.scopes plan.order
+  if !(portNames plan.output ⊆ allNames) then
+    return false
+  if plan.receipts.length != plan.order.length - 1 then
+    return false
+  let firstIndex := (plan.order[0]?).getD 0
+  let mut current := portNames ((plan.scopes[firstIndex]?).getD [])
+  for i in List.range plan.receipts.length do
+    let receipt := (plan.receipts[i]?).getD default
+    let nextIndex := (plan.order[i + 1]?).getD 0
+    let next := portNames ((plan.scopes[nextIndex]?).getD [])
+    let future := futurePortScope plan.scopes (plan.order.drop (i + 2))
+    let needed := future ∪ portNames plan.output
+    let expectedKept := (current ∪ next) ∩ needed
+    let expectedDead := (current ∪ next) \ expectedKept
+    if portNames receipt.before != current ||
+        portNames receipt.next != next ||
+        portNames receipt.future != future then
+      return false
+    if !decide receipt.kept.Nodup ||
+        !decide receipt.dead.Nodup then
+      return false
+    if portNames receipt.kept != expectedKept ||
+        portNames receipt.dead != expectedDead then
+      return false
+    if !strictlyByteSorted receipt.kept ||
+        !strictlyByteSorted receipt.dead then
+      return false
+    current := portNames receipt.kept
+  return current == portNames plan.output
+
+example : byteLexLess [120, 49, 48] [120, 50] = true := by decide
+example : byteLexLess [120, 50] [120, 49, 48] = false := by decide
+
 end IndependentETH.AffineNativeAudit

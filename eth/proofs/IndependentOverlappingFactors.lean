@@ -146,12 +146,20 @@ noncomputable def nextDead (active : Finset V) (f : ScopedFactor V R)
     List V :=
   ((active ∪ f.scope) \ (scopeUnion rest ∪ output)).toList
 
-/-- A complete order-respecting plan. Source factors may share ports
+/-- A complete order-respecting plan, with a terminal identity factor
+that explicitly closes any active ports not requested as output.
+This matters when the source factor list is empty. Source factors may share ports
 with preceding and following factors; only actual future dependencies
 prevent elimination. -/
 noncomputable def makePlan (active output : Finset V) :
     List (ScopedFactor V R) → List (Step V R)
-  | [] => []
+  | [] =>
+      [{ factor := {
+           scope := ∅,
+           value := fun _ => 1,
+           local_update := by intros; rfl
+         },
+         dead := (active \ output).toList }]
   | f :: rest =>
       { factor := f, dead := nextDead active f rest output } ::
       makePlan (nextKept active f rest output) output rest
@@ -167,7 +175,11 @@ theorem makePlan_safe
   induction factors generalizing active with
   | nil =>
       intro hidden _
-      trivial
+      change (∀ v ∈ hidden, v ∉ (∅ : Finset V)) ∧ True
+      constructor
+      · intro v hv
+        simp
+      · trivial
   | cons f rest ih =>
       intro hidden hhidden
       change (∀ v ∈ hidden, v ∉ f.scope) ∧
@@ -276,3 +288,139 @@ theorem generated_plan_correct
 #print axioms IndependentETH.OverlappingFactors.makePlan_safe
 #print axioms IndependentETH.OverlappingFactors.generated_plan_correct
 
+
+
+/-! ## Exactly-once elimination and the declared-variable universe
+
+The generated plan's prior safety theorem did not establish that
+the elimination list contains each intended source variable precisely once.
+The following results distinguish the source-declared universe from variables
+actually mentioned in any factor scope. In particular, a never-mentioned
+Boolean variable must contribute a factor two to a *closed* model count.
+-/
+
+/-- At any point, the generated plan eventually eliminates exactly the
+active or future-scope variables not requested as external output. -/
+theorem makePlan_mem_iff
+    (active output : Finset V) (factors : List (ScopedFactor V R))
+    (v : V) :
+    v ∈ eliminated (makePlan active output factors) ↔
+      v ∈ (active ∪ scopeUnion factors) \ output := by
+  induction factors generalizing active with
+  | nil =>
+      simp [makePlan, eliminated, scopeUnion, Finset.mem_sdiff]
+  | cons f rest ih =>
+      simp only [makePlan, eliminated, List.mem_append, scopeUnion]
+      rw [ih (nextKept active f rest output)]
+      simp only [nextDead, Finset.mem_toList,
+        Finset.mem_sdiff, nextKept, Finset.mem_inter,
+        Finset.mem_union]
+      tauto
+
+/-- No variable is ever summed twice by the generated live-scope plan. -/
+theorem makePlan_nodup
+    (active output : Finset V) (factors : List (ScopedFactor V R)) :
+    (eliminated (makePlan active output factors)).Nodup := by
+  induction factors generalizing active with
+  | nil =>
+      simpa [makePlan, eliminated] using
+        (Finset.nodup_toList (active \ output))
+  | cons f rest ih =>
+      change
+        (nextDead active f rest output ++
+          eliminated (makePlan
+            (nextKept active f rest output) output rest)).Nodup
+      apply List.Nodup.append
+      · exact Finset.nodup_toList _
+      · exact ih (nextKept active f rest output)
+      · intro v hdead hlater
+        have hnew : v ∈ (active ∪ f.scope) \
+            (scopeUnion rest ∪ output) := by
+          simpa only [nextDead, Finset.mem_toList] using hdead
+        have hremain :
+            v ∈ (nextKept active f rest output ∪ scopeUnion rest) \
+              output :=
+          (makePlan_mem_iff
+            (nextKept active f rest output) output rest v).mp hlater
+        simp only [Finset.mem_sdiff, Finset.mem_union,
+          Finset.mem_inter, nextKept] at *
+        tauto
+
+/-- Source-declared variables invisible to every factor must still be
+counted unless explicitly retained as external outputs. -/
+noncomputable def unusedDeclared (declared output : Finset V)
+    (factors : List (ScopedFactor V R)) : List V :=
+  (declared \ (scopeUnion factors ∪ output)).toList
+
+/-- The complete closed-source elimination list includes both
+unused declared variables and all factor-associated hidden variables. -/
+noncomputable def allSourceEliminated
+    (declared output : Finset V)
+    (factors : List (ScopedFactor V R)) : List V :=
+  unusedDeclared declared output factors ++
+    eliminated (makePlan ∅ output factors)
+
+/-- The complete elimination list includes precisely the declared
+non-output variable names, including names absent from all factors. -/
+theorem allSourceEliminated_mem_iff
+    (declared output : Finset V)
+    (factors : List (ScopedFactor V R))
+    (hscopes : scopeUnion factors ⊆ declared)
+    (v : V) :
+    v ∈ allSourceEliminated declared output factors ↔
+      v ∈ declared \ output := by
+  simp only [allSourceEliminated, List.mem_append]
+  rw [makePlan_mem_iff]
+  simp only [unusedDeclared, Finset.mem_toList,
+    Finset.mem_sdiff, Finset.mem_union]
+  have hs : v ∈ scopeUnion factors → v ∈ declared :=
+    fun hv => hscopes hv
+  tauto
+
+/-- All eliminated source variables are unique, not merely members
+of the correct set. Therefore each declared, non-output Boolean
+variable is summed *exactly once*. -/
+theorem allSourceEliminated_nodup
+    (declared output : Finset V)
+    (factors : List (ScopedFactor V R)) :
+    (allSourceEliminated declared output factors).Nodup := by
+  change
+    (unusedDeclared declared output factors ++
+      eliminated (makePlan ∅ output factors)).Nodup
+  apply List.Nodup.append
+  · exact Finset.nodup_toList _
+  · exact makePlan_nodup ∅ output factors
+  · intro v hunused hplan
+    have hu : v ∈ declared \ (scopeUnion factors ∪ output) := by
+      simpa only [unusedDeclared, Finset.mem_toList] using hunused
+    have hp : v ∈ (∅ ∪ scopeUnion factors) \ output :=
+      (makePlan_mem_iff ∅ output factors v).mp hplan
+    simp only [Finset.mem_sdiff, Finset.mem_union] at *
+    simp at hp
+    tauto
+
+/-- The generated plan also remains safe when the source universe has
+extra, unused variables already eliminated from the starting unit weight. -/
+theorem declared_plan_correct
+    (declared output : Finset V)
+    (factors : List (ScopedFactor V R))
+    (base : Weight V R) :
+    contract
+      (eliminateList (unusedDeclared declared output factors) base)
+      (makePlan ∅ output factors) =
+    eliminateList (allSourceEliminated declared output factors)
+      (times base (factorProduct (makePlan ∅ output factors))) := by
+  apply contract_correct
+  apply makePlan_safe
+  intro v hv
+  have hu : v ∈ declared \ (scopeUnion factors ∪ output) := by
+    simpa only [unusedDeclared, Finset.mem_toList] using hv
+  have hn := (Finset.mem_sdiff.mp hu).2
+  simp only [Finset.mem_union, not_or] at hn
+  exact hn.1
+
+#print axioms IndependentETH.OverlappingFactors.makePlan_mem_iff
+#print axioms IndependentETH.OverlappingFactors.makePlan_nodup
+#print axioms IndependentETH.OverlappingFactors.allSourceEliminated_mem_iff
+#print axioms IndependentETH.OverlappingFactors.allSourceEliminated_nodup
+#print axioms IndependentETH.OverlappingFactors.declared_plan_correct

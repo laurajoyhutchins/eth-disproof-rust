@@ -249,6 +249,63 @@ pub fn fold(
     })
 }
 
+/// Compose a source-declared Boolean universe without dropping variables
+/// invisible to every factor. Source scopes may overlap on boundary ports.
+///
+/// The final neutral factor assigns every unused declared non-output bit to
+/// its private interior, so its two choices contribute to exact counting.
+/// Unused declared *output* bits become unconstrained exterior ports.
+/// This representation preserves the existing certificate-checking pathway.
+pub fn fold_declared(
+    factors: &[AffineRegion],
+    order: &[usize],
+    declared: &BTreeSet<String>,
+    output: &[String],
+    limits: &Limits,
+) -> Result<Trace, String> {
+    if order.len() != factors.len() {
+        return Err("source order does not cover all source factors".into());
+    }
+    let outputs = output.iter().cloned().collect::<BTreeSet<_>>();
+    if outputs.len() != output.len() || !outputs.is_subset(declared) {
+        return Err("outputs must be distinct declared source variables".into());
+    }
+    let mut used = BTreeSet::new();
+    for factor in factors {
+        used.extend(factor.internal.iter().cloned());
+        used.extend(factor.boundary.iter().cloned());
+        if factor.internal.iter().any(|v| outputs.contains(v)) {
+            return Err("source output is already hidden within a factor".into());
+        }
+    }
+    if !used.is_subset(declared) {
+        return Err("factor refers to a variable outside the declared universe".into());
+    }
+    let absent = declared.difference(&used).cloned().collect::<BTreeSet<_>>();
+    let missing_outputs = absent.intersection(&outputs).cloned().collect::<Vec<_>>();
+    let missing_internals = absent.difference(&outputs).cloned().collect::<Vec<_>>();
+
+    let mut augmented = factors.to_vec();
+    let mut augmented_order = order.to_vec();
+    if augmented.is_empty() {
+        // The primitive fold intentionally requires at least two stages.
+        // A closed or boundary-only zero-factor source still counts as 1
+        // before the final unused-variable closure.
+        augmented.push(AffineRegion {
+            internal: Vec::new(), boundary: Vec::new(), equations: Vec::new(),
+        });
+        augmented_order.push(0);
+    }
+    let last = augmented.len();
+    augmented.push(AffineRegion {
+        internal: missing_internals,
+        boundary: missing_outputs,
+        equations: Vec::new(),
+    });
+    augmented_order.push(last);
+    fold(&augmented, &augmented_order, output, limits)
+}
+
 /// Independent Boolean enumeration of the *original* input equations.
 /// Explicitly bounded to small examples, never a hidden execution fallback.
 pub fn oracle(
@@ -518,6 +575,94 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn declared_unmentioned_variables_are_quantified_exactly_once() {
+        for n in 0..=9 {
+            let declared = (0..n).map(|i| format!("x{i}"))
+                .collect::<BTreeSet<_>>();
+            let out = if n >= 2 {
+                vec!["x0".into(), format!("x{}", n - 1)]
+            } else { Vec::new() };
+            let trace = fold_declared(&[], &[], &declared, &out, &Limits::default()).unwrap();
+            let expected = BigUint::from(1u8) << (n - out.len());
+            assert_eq!(trace.stage.metrics.ports, out.len());
+            assert_eq!(trace.stage.metrics.free_internal, n - out.len());
+            for mask in 0..(1usize << out.len()) {
+                let bits = out.iter().enumerate().map(|(i, name)| {
+                    (name.clone(), mask & (1 << i) != 0)
+                }).collect::<BTreeMap<_, _>>();
+                assert_eq!(trace.stage.count_at(&bits).unwrap(), expected);
+            }
+        }
+    }
+
+    #[test]
+    fn mixed_declared_and_active_scope_respects_external_count() {
+        // x0 xor x1 = 1 on 8 declared variables, with six never mentioned.
+        let source = AffineRegion {
+            internal: Vec::new(),
+            boundary: vec!["x0".into(), "x1".into()],
+            equations: vec![Equation {
+                variables: vec!["x0".into(), "x1".into()], rhs: true,
+            }],
+        };
+        let declared = (0..8).map(|i| format!("x{i}"))
+            .collect::<BTreeSet<_>>();
+        let closed = fold_declared(
+            &[source.clone()], &[0], &declared, &[], &Limits::default(),
+        ).unwrap();
+        assert_eq!(closed.stage.count_at(&BTreeMap::new()).unwrap(),
+            BigUint::from(1u8) << 7);
+        let exterior = fold_declared(
+            &[source], &[0], &declared, &["x0".into(), "x7".into()],
+            &Limits::default(),
+        ).unwrap();
+        assert_eq!(exterior.stage.metrics.ports, 2);
+        for a in [false, true] {
+            for b in [false, true] {
+                let bits = BTreeMap::from([
+                    ("x0".to_string(), a), ("x7".to_string(), b),
+                ]);
+                assert_eq!(exterior.stage.count_at(&bits).unwrap(),
+                    BigUint::from(1u8) << 5);
+            }
+        }
+    }
+
+    #[test]
+    fn source_universe_enforces_scope_and_output_admission() {
+        let declared = ["x0".into(), "x1".into()].into_iter()
+            .collect::<BTreeSet<String>>();
+        let outside = AffineRegion {
+            internal: Vec::new(), boundary: vec!["x2".into()],
+            equations: Vec::new(),
+        };
+        assert!(fold_declared(&[outside], &[0], &declared, &[],
+            &Limits::default()).unwrap_err().contains("outside"));
+        let hidden = AffineRegion {
+            internal: vec!["x0".into()], boundary: Vec::new(),
+            equations: Vec::new(),
+        };
+        assert!(fold_declared(&[hidden], &[0], &declared, &["x0".into()],
+            &Limits::default()).unwrap_err().contains("hidden"));
+        assert!(fold_declared(&[], &[], &declared, &["missing".into()],
+            &Limits::default()).unwrap_err().contains("declared"));
+        assert!(fold_declared(&[], &[], &declared,
+            &["x0".into(), "x0".into()], &Limits::default()).is_err());
+        assert!(fold_declared(&[], &[0], &declared, &[],
+            &Limits::default()).is_err());
+    }
+
+    #[test]
+    fn wide_source_universe_needs_no_truth_table() {
+        let declared = (0..130).map(|i| format!("x{i}"))
+            .collect::<BTreeSet<_>>();
+        let trace = fold_declared(&[], &[], &declared, &[], &Limits::default()).unwrap();
+        assert_eq!(trace.stage.count_at(&BTreeMap::new()).unwrap(),
+            BigUint::from(1u8) << 130);
+        assert_eq!(trace.stage.metrics.b, 131);
     }
 
     #[test]

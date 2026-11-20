@@ -117,6 +117,24 @@ pub fn verify_ranked_component_certificate(
     })
 }
 
+/// One source-vertex update to the indexed component-product array.
+/// Both checked multiplications complete before the slot is changed.
+/// Failed operations (including invalid class indices) leave every slot
+/// unmodified, making the successful step a simple atomic refinement target.
+pub fn checked_component_product_step(
+    products: &mut [[i128; 2]],
+    class: usize,
+    weights: [i128; 2],
+) -> Result<(), Error> {
+    let slot = products
+        .get_mut(class)
+        .ok_or_else(|| Error::Invalid("component product index outside range".into()))?;
+    let zero = slot[0].checked_mul(weights[0]).ok_or(Error::Overflow)?;
+    let one = slot[1].checked_mul(weights[1]).ok_or(Error::Overflow)?;
+    *slot = [zero, one];
+    Ok(())
+}
+
 /// Exact checked contraction from *verified labels*, not from DSU parents.
 /// Overflows refuse instead of silently truncating a signed integer count.
 pub fn contract_checked_ranked_weights(
@@ -129,11 +147,9 @@ pub fn contract_checked_ranked_weights(
     let verified = verify_ranked_component_certificate(weights.len(), source_edges, certificate)?;
     let mut products = vec![[1i128, 1i128]; verified.components];
     let mut multiplications = 0usize;
-    for (weights, &class) in weights.iter().zip(certificate.labels.iter()) {
-        for (term, &weight) in products[class].iter_mut().zip(weights.iter()) {
-            *term = term.checked_mul(weight).ok_or(Error::Overflow)?;
-            multiplications += 1;
-        }
+    for (&weights, &class) in weights.iter().zip(certificate.labels.iter()) {
+        checked_component_product_step(&mut products, class, weights)?;
+        multiplications += 2;
     }
     let mut value = 1i128;
     for terms in &products {

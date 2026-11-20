@@ -69,7 +69,7 @@ The original Lean `RecordPrograms.Ports` requires all three registers
 out-of-range `found` register**. That closes an admission discrepancy
 without changing any of the six valid scanner mappings.
 
-[`FramedRecordReaderRefinement.lean`](../eth/proofs/FramedRecordReaderRefinement.lean)
+[`FramedRecordReaderRefinement.lean`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/proofs/FramedRecordReaderRefinement.lean)
 imports the **pinned original** `RecordPrograms` and independently
 spells out all seven physical `ParserProgram.frameProgram` instructions
 at arbitrary valid `Ports`. Its theorem `mappedFrameProgram_eq_source`
@@ -80,7 +80,7 @@ cost `6 * bits.length + 4`, reversed payload, unchanged found bit,
 and preserved unread suffix. Compiling a structured call adds a
 separately counted final halt.
 
-[`source_framed_reader_refinement.rs`](../eth/tests/source_framed_reader_refinement.rs)
+[`source_framed_reader_refinement.rs`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/tests/source_framed_reader_refinement.rs)
 independently reconstructs the same seven physical rows in Rust
 and tests the six caller mappings, all 0–5-bit payloads, an unread
 suffix, preexisting output, and the unchanged found register.

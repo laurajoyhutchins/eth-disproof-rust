@@ -444,7 +444,8 @@ theorem nativeTerm_split {n : ℕ} (boundary : Fin n → Bool)
               Bool.and_comm, Bool.and_left_comm]
       | succ index =>
           simp [nativeTermTail, nativeSourceBit, nativeOutputBit, ih,
-            Bool.and_assoc, Bool.and_comm, Bool.and_left_comm]
+            Bool.and_assoc, Bool.and_comm] <;>
+            ac_rfl
 
 /-- Incremental Boolean phase split: base parity and mixed internal-bit parity. -/
 def nativePhaseStep {n : ℕ} (boundary : Fin n → Bool)
@@ -466,7 +467,8 @@ private theorem nativePhaseStep_sound {n : ℕ}
   cases base <;> cases mixed <;> cases x <;>
     cases ht : nativeTermTail boundary term <;>
     cases hz : term.contains 0 <;>
-    simp [nativePhaseStep, ht, hz]
+    simp only [nativePhaseStep, ht, hz] <;>
+    decide
 
 private theorem nativePhase_split_acc {n : ℕ}
     (boundary : Fin n → Bool) (terms : List (List Nat))

@@ -160,6 +160,33 @@ theorem source_resolution_sound
       refine ⟨lit, ?_, htrue⟩
       simp [sourceResolvent, withoutVar, haway, hmem]
 
+/-- A source rule determined solely by the retained output key
+commutes with summing the contributions of all compatible support
+pairs in that fiber. In particular, dropping individually forbidden
+products before addition has the same final count as dropping their
+aggregate output coefficient after addition.
+
+This does not show that the Rust \`project\` or \`embed\` functions
+compute the claimed fiber. The experimental Rust correspondence is
+checked separately against name-based source enumeration. -/
+theorem source_preproduct_pruning_commutes_with_fiber_sum
+    {α β : Type} (pairs : Finset α) (outputOf : α → β)
+    (output : β) (forbidden : β → Prop)
+    [DecidablePred forbidden] (weight : α → ℕ)
+    (hprojection : ∀ p ∈ pairs, outputOf p = output) :
+    (∑ p ∈ pairs, if forbidden (outputOf p) then 0 else weight p)
+      = (if forbidden output then 0 else ∑ p ∈ pairs, weight p) := by
+  have hsum :
+      (∑ p ∈ pairs, if forbidden (outputOf p) then 0 else weight p) =
+        ∑ p ∈ pairs, if forbidden output then 0 else weight p := by
+    apply Finset.sum_congr rfl
+    intro p hp
+    rw [hprojection p hp]
+  rw [hsum]
+  by_cases h : forbidden output
+  · simp [h]
+  · simp [h]
+
 #print axioms empty_reason_sound
 #print axioms unit_reason_forces
 #print axioms two_branches_refute
@@ -167,5 +194,6 @@ theorem source_resolution_sound
 #print axioms cached_refutation_monotone
 #print axioms contextual_zero_count_preserved
 #print axioms source_resolution_sound
+#print axioms source_preproduct_pruning_commutes_with_fiber_sum
 
 end IndependentETH.UnitRefutation

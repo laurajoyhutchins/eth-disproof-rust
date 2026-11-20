@@ -104,6 +104,17 @@ jobs:
           test "$(grep -c '"mode":"indexed-source-clauses"' /tmp/frontier-resolution-receipts.jsonl)" -eq 72
           test "$(grep -c '"mode":"indexed-checked-resolution"' /tmp/frontier-resolution-receipts.jsonl)" -eq 72
 
+      - name: Check original source clauses before BigUint products against exact enumeration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin preproduct-source-study | tee /tmp/preproduct-source-receipts.jsonl
+          test "$(wc -l < /tmp/preproduct-source-receipts.jsonl)" -eq 176
+          test "$(grep -c '"oracle":"checked"' /tmp/preproduct-source-receipts.jsonl)" -eq 176
+          test "$(grep -c '"cohort":"fresh-validation"' /tmp/preproduct-source-receipts.jsonl)" -eq 32
+          test "$(grep -c '"placement":"postjoin-source-mask"' /tmp/preproduct-source-receipts.jsonl)" -eq 88
+          test "$(grep -c '"placement":"preproduct-source-mask"' /tmp/preproduct-source-receipts.jsonl)" -eq 88
+
       - name: Run contraction-order study and check small-case oracle
         shell: bash
         run: |

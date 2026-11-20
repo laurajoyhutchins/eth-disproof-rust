@@ -572,6 +572,103 @@ theorem nativeConstructorOK_sound (width : ℕ) (raw : List (List ℕ))
     exact ht.1 i himem
   · exact ht.2
 
+/-!
+### Degree preservation through native monomial cancellation
+
+A canonicalized set cannot gain a new monomial: every surviving key
+was introduced by a valid raw monomial. This matters for the native
+`remove_first` refusal guards; its mixed terms lose coordinate zero,
+so their remaining supports have degree at most one.
+-/
+
+private theorem normalizedFoldShape (raw : List (List ℕ)) :
+    ∀ (initial : Finset (Finset ℕ)),
+      (∀ key ∈ initial, key.card ≤ 2) →
+      (∀ term ∈ raw, (canonicalTerm term).card ≤ 2) →
+      ∀ key ∈ raw.foldl
+        (fun state term => toggleCanonical state (canonicalTerm term)) initial,
+        key.card ≤ 2 := by
+  induction raw with
+  | nil =>
+      intro initial hinit _ key hkey
+      exact hinit key (by simpa using hkey)
+  | cons term rest ih =>
+      intro initial hinit hraw key hkey
+      have hnext :
+          ∀ q ∈ toggleCanonical initial (canonicalTerm term), q.card ≤ 2 := by
+        intro q hq
+        by_cases hfound : canonicalTerm term ∈ initial
+        · have hmem : q ∈ initial.erase (canonicalTerm term) := by
+            simpa [toggleCanonical, hfound] using hq
+          exact hinit q (Finset.mem_erase.mp hmem).2
+        · have hmem : q ∈ insert (canonicalTerm term) initial := by
+            simpa [toggleCanonical, hfound] using hq
+          rcases Finset.mem_insert.mp hmem with heq | hold
+          · subst q
+            exact hraw term (by simp)
+          · exact hinit q hold
+      have htail : ∀ t ∈ rest, (canonicalTerm t).card ≤ 2 := by
+        intro t ht
+        exact hraw t (by simp [ht])
+      have hrest : key ∈ rest.foldl
+          (fun state t => toggleCanonical state (canonicalTerm t))
+          (toggleCanonical initial (canonicalTerm term)) := by
+        simpa only [List.foldl_cons] using hkey
+      exact ih (toggleCanonical initial (canonicalTerm term))
+        hnext htail key hrest
+
+/-- Each surviving normalized monomial retains the constructor's degree bound. -/
+theorem nativeConstruct_keys_bounded (width : ℕ) (raw : List (List ℕ))
+    (accepted : nativeConstructorOK width raw = true)
+    (key : Finset ℕ) (hkey : key ∈ canonicalizeTerms raw) :
+    key.card ≤ 2 := by
+  have hraw : ∀ term ∈ raw, (canonicalTerm term).card ≤ 2 := by
+    intro term hterm
+    exact (nativeConstructorOK_sound width raw accepted term hterm).2
+  exact normalizedFoldShape raw (∅ : Finset (Finset ℕ))
+    (by simp) hraw key (by simpa [canonicalizeTerms] using hkey)
+
+/-- Any normalized monomial involving the internal coordinate has at
+most one exterior coordinate after that coordinate is removed. -/
+theorem nativeConstruct_mixed_degree (width : ℕ) (raw : List (List ℕ))
+    (accepted : nativeConstructorOK width raw = true)
+    (key : Finset ℕ) (hkey : key ∈ canonicalizeTerms raw)
+    (internal : 0 ∈ key) :
+    (key.erase 0).card ≤ 1 := by
+  have hbound := nativeConstruct_keys_bounded width raw accepted key hkey
+  have hcard := Finset.card_erase_add_one internal
+  omega
+
+/-- Multiplying a mixed term by one affine replacement variable can
+never raise the degree above two when the original constructor accepted. -/
+theorem nativeConstruct_forced_degree (width : ℕ) (raw : List (List ℕ))
+    (accepted : nativeConstructorOK width raw = true)
+    (key : Finset ℕ) (hkey : key ∈ canonicalizeTerms raw)
+    (internal : 0 ∈ key) (index : ℕ) :
+    (insert index (key.erase 0)).card ≤ 2 := by
+  have hbound := nativeConstruct_mixed_degree width raw accepted key hkey internal
+  by_cases hindex : index ∈ key.erase 0
+  · rw [Finset.insert_eq_of_mem hindex]
+    omega
+  · rw [Finset.card_insert_of_not_mem hindex]
+    omega
+
+/-- Explicit mathematical shape gate for eliminating coordinate zero.
+The native executable also checks monomial degree while operating on
+the canonical set; the two degree theorems above justify that the
+degree refusals cannot trigger for a valid quadratic constructor. -/
+def nativeRemovalShape (width : ℕ)
+    (replacement : Option (Bool × List Bool)) : Bool :=
+  decide (0 < width) &&
+    (match replacement with
+     | none => true
+     | some (_, linear) => decide (linear.length = width - 1))
+
+example : nativeRemovalShape 0 none = false := by decide
+example : nativeRemovalShape 1 none = true := by decide
+example : nativeRemovalShape 3 (some (true, [false])) = false := by decide
+example : nativeRemovalShape 3 (some (true, [false, true])) = true := by decide
+
 /-- Mathematical accepted-or-refused constructor, with no partial state exposed. -/
 def nativeConstruct (width : ℕ) (raw : List (List ℕ)) :
     Option (Finset (Finset ℕ)) :=
@@ -712,6 +809,18 @@ theorem nativePhase_signed_fiber {n : ℕ}
   exact signedBoolFiber
     (terms.foldl (nativePhaseStep boundary) (false, false)).1
     (terms.foldl (nativePhaseStep boundary) (false, false)).2
+
+/-- The abstract, normalized constructor and source-derived internal-bit
+split agree for every raw monomial list and boundary assignment.
+This is the semantic core of the free and forced `remove_first`
+operations before their returned data structures are refined. -/
+theorem canonicalizedPhase_split {n : ℕ}
+    (boundary : Fin n → Bool) (raw : List (List ℕ)) (x : Bool) :
+    canonicalPhaseValue (nativeSourceBit x boundary) (canonicalizeTerms raw) =
+      boolZMod
+        (let state := raw.foldl (nativePhaseStep boundary) (false, false)
+         state.1 ^^ (x && state.2)) := by
+  rw [canonicalization_value, nativePhase_split]
 
 /-- Check every raw affine parity constraint against the given coordinate interpreter. -/
 def nativeRowsHold (bits : Nat → Bool)
@@ -890,11 +999,15 @@ example : checkNativeInstance (n := 1) freeOracleSource
 #print axioms IndependentETH.QuadraticLowWeight.canonicalization_value
 #print axioms IndependentETH.QuadraticLowWeight.nativeConstructorOK_sound
 #print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_sound
+#print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_keys_bounded
+#print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_mixed_degree
+#print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_forced_degree
 #print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_refuses
 
 #print axioms IndependentETH.QuadraticLowWeight.nativeTerm_split
 #print axioms IndependentETH.QuadraticLowWeight.nativePhase_split
 #print axioms IndependentETH.QuadraticLowWeight.nativePhase_signed_fiber
+#print axioms IndependentETH.QuadraticLowWeight.canonicalizedPhase_split
 
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_sound
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_receipt_sound

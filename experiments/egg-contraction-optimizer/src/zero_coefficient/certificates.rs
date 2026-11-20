@@ -344,7 +344,7 @@ fn run_with_baseline(
     let start = Instant::now();
     let mut m = CertificateWork::default();
     let mut leaves = Vec::new();
-    for factor in &original {
+    for factor in original {
         leaves.push(Stage::leaf(
             factor, Strategy::IndexedSupport, &mut m.exact_arithmetic,
         )?);

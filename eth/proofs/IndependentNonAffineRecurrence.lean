@@ -255,6 +255,55 @@ theorem checked_source_rows_exact
   rw [hrows]
   exact sourceRows_exact ds x
 
+/-! ## Signed literal polarity is exactly the unique falsifying tuple. -/
+
+/-- Interpret a three-literal signed clause: true means its literal is
+negated. This is the same polarity convention used by signed CSR, where
+a negative literal is stored as -1. -/
+def signedClauseEval : State → State → Bool
+  | (a, b, c), (negativeA, negativeB, negativeC) =>
+      (if negativeA then !a else a) ||
+      (if negativeB then !b else b) ||
+      (if negativeC then !c else c)
+
+/-- Every signed three-literal clause fails at exactly one local tuple:
+the tuple of its three negative-literal flags. -/
+theorem signedClause_exact (s polarity : State) :
+    signedClauseEval s polarity = true ↔ s ≠ polarity := by
+  rcases s with ⟨a, b, c⟩
+  rcases polarity with ⟨p, q, r⟩
+  cases a <;> cases b <;> cases c <;>
+    cases p <;> cases q <;> cases r <;> decide
+
+theorem rawRows_equiv_rowHolds (x : Nat → Bool) (rows : Finset SignedRow) :
+    (∀ r ∈ rows,
+      signedClauseEval (tripleAt x r.first r.second r.third)
+        r.falsifiesAt = true) ↔ allRowsHold x rows := by
+  constructor
+  · intro h r hr
+    exact (signedClause_exact _ _).mp (h r hr)
+  · intro h r hr
+    exact (signedClause_exact _ _).mpr (h r hr)
+
+/-- Acceptance implies that evaluating every actual signed row is exactly
+the full recurrence constraint semantics, for every source assignment.
+The raw CSR byte-to-row decoding is not proved by this theorem. -/
+theorem checked_signed_cnf_exact
+    (actual : Finset SignedRow) (ds : List Bool) (x : Nat → Bool)
+    (h : checkSourceRows actual ds = true) :
+    (∀ r ∈ actual,
+      signedClauseEval (tripleAt x r.first r.second r.third)
+        r.falsifiesAt = true) ↔
+      (∀ i, i < ds.length →
+        parityState (tripleAt x i (i + 1) (i + 3)) = ds[i]!) ∧
+      (∀ i, i < ds.length + 1 →
+        tripleAt x i (i + 1) (i + 2) ≠ zeroState) := by
+  rw [rawRows_equiv_rowHolds]
+  exact checked_source_rows_exact actual ds x h
+
+#print axioms IndependentETH.NonAffine.signedClause_exact
+#print axioms IndependentETH.NonAffine.rawRows_equiv_rowHolds
+#print axioms IndependentETH.NonAffine.checked_signed_cnf_exact
 #print axioms IndependentETH.NonAffine.parityMask_exact
 #print axioms IndependentETH.NonAffine.parityRows_exact
 #print axioms IndependentETH.NonAffine.sourceRows_exact

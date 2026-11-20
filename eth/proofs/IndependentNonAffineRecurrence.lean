@@ -255,6 +255,10 @@ theorem checked_source_rows_exact
   rw [hrows]
   exact sourceRows_exact ds x
 
+#print axioms IndependentETH.NonAffine.parityMask_exact
+#print axioms IndependentETH.NonAffine.parityRows_exact
+#print axioms IndependentETH.NonAffine.sourceRows_exact
+#print axioms IndependentETH.NonAffine.checked_source_rows_exact
 #print axioms IndependentETH.NonAffine.previous_next
 #print axioms IndependentETH.NonAffine.next_previous
 #print axioms IndependentETH.NonAffine.gadget_exact

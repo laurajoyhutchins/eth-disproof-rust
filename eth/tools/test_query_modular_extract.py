@@ -77,7 +77,8 @@ class ModuleReceiptContractTests(unittest.TestCase):
 
     def probe(self):
         return q.probe_one(self.stage,self.out,self.out,self.out,
-                           60,30,30,4096,q.MAX_PEAK_RSS_BYTES)
+                           60,30,30,4096,q.MAX_PEAK_RSS_BYTES,
+                           "Lean (version 4.34.1, x)")
 
     def simulated_run(self,_argv,_cwd,log,_timeout,_rss,env=None):
         if log.name=="graph":
@@ -103,7 +104,8 @@ class ModuleReceiptContractTests(unittest.TestCase):
         self.assertEqual(report["lean_rust_refinement"],"unassessed")
         receipt=json.loads((self.out/self.stage.id/"receipt.json").read_text())
         self.assertFalse(receipt["native_executable"])
-        self.assertEqual(receipt["status"],"ORIGINAL_MODULE_GRAPH_KERNEL_CERTIFIED")
+        self.assertEqual(receipt["status"],"LEAN_KERNEL_CERTIFIED_PHYSICAL_PROGRAM")
+        self.assertTrue(receipt["lean_version"].startswith("Lean (version 4.34.1,"))
 
     def test_missing_certificate_refuses_and_clears_stale_success(self):
         stage_dir=self.out/self.stage.id

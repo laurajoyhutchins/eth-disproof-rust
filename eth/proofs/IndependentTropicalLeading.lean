@@ -423,15 +423,15 @@ and its positive coefficient. It does not enumerate absent degrees. -/
 theorem polynomialToLeading_normal_form (p : Polynomial ℕ) (hp : p ≠ 0) :
     polynomialToLeading p =
       monomial p.natTrailingDegree p.trailingCoeff
-        (Nat.pos_of_ne_zero ((Polynomial.trailingCoeff_ne_zero).mpr hp)) := by
+        (Nat.pos_of_ne_zero ((Polynomial.trailingCoeff_nonzero_iff_nonzero).mpr hp)) := by
   classical
   let d := p.natTrailingDegree
   have hd : d ∈ p.support :=
-    Polynomial.natTrailingDegree_mem_support_of_ne_zero hp
+    Polynomial.natTrailingDegree_mem_support_of_nonzero hp
   have hc : 0 < p.coeff d := by
     exact Nat.pos_of_ne_zero
       (by simpa [d, Polynomial.trailingCoeff] using
-        ((Polynomial.trailingCoeff_ne_zero).mpr hp))
+        ((Polynomial.trailingCoeff_nonzero_iff_nonzero).mpr hp))
   have hsplit :
       polynomialToLeading p =
         ∑ k ∈ p.support,
@@ -466,7 +466,7 @@ theorem polynomialToLeading_normal_form (p : Polynomial ℕ) (hp : p ≠ 0) :
           rw [polynomialToLeading_monomial_pos d (p.coeff d) hc]
           exact minimum_absorbs_higher d (p.coeff d) hc _ hhigh
     _ = monomial p.natTrailingDegree p.trailingCoeff
-        (Nat.pos_of_ne_zero ((Polynomial.trailingCoeff_ne_zero).mpr hp)) := by
+        (Nat.pos_of_ne_zero ((Polynomial.trailingCoeff_nonzero_iff_nonzero).mpr hp)) := by
           rfl
 
 /-- The CNF violation polynomial maps to the tropical sum over precisely

@@ -217,6 +217,67 @@ theorem audit_implies_free_dimension (snapshot : Snapshot)
     simp [hf]
   simp [audit, hg] at h
 
+/-- The actual pivot-identity test used inside audit, factored only for
+stating its universal acceptance consequence. -/
+def pivotIdentityOK (s : Source) (c : Certificate) : Bool :=
+  (List.range c.pivots.length).all (fun i =>
+    (List.range s.equations.length).all (fun j =>
+      bitAt (rowAt (replay s c) j) ((c.pivots[i]?).getD 0) == (i == j)))
+
+/-- All nonpivot rows in the independently replayed matrix contain
+no internal coefficients. This prevents hidden equations from being
+mistaken for external-only residual constraints. -/
+def residualInternalZero (s : Source) (c : Certificate) : Bool :=
+  ((replay s c).drop c.pivots.length).all (fun row =>
+    (List.range s.internal.length).all (fun j => !(bitAt row j)))
+
+/-- Reconstruct the boundary-only residual directly from independently
+replayed rows, not from the producer's proposed claim. -/
+def replayedResidual (s : Source) (c : Certificate) : List Residual :=
+  ((replay s c).drop c.pivots.length).map
+    (fun row => expectedResidual row s.internal.length s.boundary.length)
+
+/-- Actual auditor acceptance implies the complete pivot identity
+condition for every row and admitted pivot column. -/
+theorem audit_implies_pivot_identity (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    pivotIdentityOK snapshot.source snapshot.cert = true := by
+  cases hp : pivotIdentityOK snapshot.source snapshot.cert with
+  | true => rfl
+  | false =>
+      simp [audit, pivotIdentityOK, hp] at h
+
+/-- Actual auditor acceptance implies every residual row is independent
+of all internal variables, not merely that its claimed format is valid. -/
+theorem audit_implies_residual_internal_zero (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    residualInternalZero snapshot.source snapshot.cert = true := by
+  cases hz : residualInternalZero snapshot.source snapshot.cert with
+  | true => rfl
+  | false =>
+      simp [audit, residualInternalZero, hz] at h
+
+/-- Acceptance forces exactly the independently reconstructed residual
+equations, including each coefficient column and right-hand side.
+No source-dependent equality is taken as an axiom. -/
+theorem audit_implies_replayed_residual (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    replayedResidual snapshot.source snapshot.cert =
+      snapshot.claim.residual := by
+  by_contra hneq
+  have hb :
+      (replayedResidual snapshot.source snapshot.cert ==
+        snapshot.claim.residual) = false := by
+    simp [hneq]
+  simp [audit, replayedResidual, hb] at h
+
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_pivot_identity
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_residual_internal_zero
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_replayed_residual
+
 #print axioms IndependentETH.AffineNativeAudit.audit_implies_sourceOK
 #print axioms IndependentETH.AffineNativeAudit.audit_implies_version
 #print axioms IndependentETH.AffineNativeAudit.audit_implies_free_dimension

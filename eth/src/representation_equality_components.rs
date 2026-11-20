@@ -15,6 +15,9 @@
 //! argument, not a certified Rust bit-level or peak-allocator bound.
 
 use crate::Error;
+use crate::representation_component_certificate::{
+    ComponentCertificate, verify_component_certificate,
+};
 use std::mem::size_of;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,6 +26,7 @@ pub struct EqualityComponentRegion {
     parent: Vec<usize>,
     size: Vec<usize>,
     edges: Vec<(usize, usize)>,
+    forest_edge_indices: Vec<usize>,
     component_count: usize,
     successful_unions: usize,
     parent_hops_during_build: u64,
@@ -54,6 +58,7 @@ impl EqualityComponentRegion {
             parent: (0..n).collect(),
             size: vec![1; n],
             edges: Vec::new(),
+            forest_edge_indices: Vec::new(),
             component_count: n,
             successful_unions: 0,
             parent_hops_during_build: 0,
@@ -120,6 +125,7 @@ impl EqualityComponentRegion {
         }
         // The counter can be bounded in advance: at most 2*(n-1) traversals
         // per find due to the finite parent forest, with checked accounting.
+        let source_edge_index = self.edges.len();
         let ra = self.find_compress(a)?;
         let rb = self.find_compress(b)?;
         if ra != rb {
@@ -134,6 +140,7 @@ impl EqualityComponentRegion {
                 .ok_or(Error::Overflow)?;
             self.component_count -= 1;
             self.successful_unions += 1;
+            self.forest_edge_indices.push(source_edge_index);
         }
         self.edges.push((a, b));
         Ok(())
@@ -167,6 +174,36 @@ impl EqualityComponentRegion {
             ));
         }
         Ok(labels)
+    }
+
+    /// Export the source-edge indices used to join distinct components.
+    /// This is a witness the independent verifier may accept or refuse;
+    /// it is never trusted merely because the DSU produced it.
+    pub fn component_certificate(&self) -> Result<ComponentCertificate, Error> {
+        Ok(ComponentCertificate {
+            labels: self.component_labels()?,
+            forest_edge_indices: self.forest_edge_indices.clone(),
+        })
+    }
+
+    /// Independently validate the emitted certificate against the stored
+    /// original edge list before returning the exact checked contraction.
+    ///
+    /// The verifier proves the *partition claim conditional on its own
+    /// implementation correctness*. It does not verify arbitrary arithmetic
+    /// operations, nor does it constitute formal Lean-to-Rust refinement.
+    pub fn contract_with_certificate(
+        &self,
+    ) -> Result<(EqualityComponentReceipt, ComponentCertificate), Error> {
+        let certificate = self.component_certificate()?;
+        verify_component_certificate(self.len(), &self.edges, &certificate)?;
+        Ok((self.contract()?, certificate))
+    }
+
+    /// Original edge list in insertion order, required to independently
+    /// verify a certificate obtained from this region.
+    pub fn source_edges(&self) -> &[(usize, usize)] {
+        &self.edges
     }
 
     /// Exact pointwise semantics; useful as an independent finite oracle.
@@ -240,9 +277,15 @@ impl EqualityComponentRegion {
         let temporary = n
             .checked_mul(size_of::<[i128; 2]>())
             .ok_or(Error::Overflow)?;
+        let forest = self
+            .forest_edge_indices
+            .len()
+            .checked_mul(size_of::<usize>())
+            .ok_or(Error::Overflow)?;
         let logical_payload_bytes = stored
             .checked_add(edges)
             .and_then(|x| x.checked_add(temporary))
+            .and_then(|x| x.checked_add(forest))
             .ok_or(Error::Overflow)?;
 
         Ok(EqualityComponentReceipt {

@@ -14,6 +14,9 @@ pub mod representation_ranked_certificate;
 #[path = "../../../eth/src/representation_ranked_input.rs"]
 pub mod representation_ranked_input;
 
+// Source-derived diagnostic controls only, not substituted production code.
+pub mod borrow_return_probe;
+
 #[cfg(test)]
 mod tests {
     use super::representation_ranked_input as source;

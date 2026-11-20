@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn arbitrary_length_slice_boundaries_preserve_other_bits() {
-        for len in [0, 1, 2, 3, 4, 63, 64, 65, 127, 128, 129, 1025] {
+        for len in [0usize, 1, 2, 3, 4, 63, 64, 65, 127, 128, 129, 1025] {
             let candidates = [0, len / 2, len.saturating_sub(1), len, usize::MAX];
             for seed in 0..8usize {
                 let before = (0..len).map(|i| ((i ^ seed) % 3) == 0)

@@ -83,6 +83,16 @@ pub fn held_out_cases() -> Vec<Case> {
             seed: 0,
         });
     }
+    // A separately reported density-stress cohort. Its seeds are distinct
+    // from the original twelve sparse cases, and its 4:1 ratio is not a
+    // certificate of computational hardness.
+    for variables in [8, 10] {
+        for seed in [4099, 5003] {
+            for kind in [CaseKind::Random3Cnf, CaseKind::Planted3Cnf] {
+                cases.push(Case { kind, variables, clauses: variables * 4, seed });
+            }
+        }
+    }
     cases
 }
 
@@ -447,8 +457,8 @@ mod tests {
     #[test]
     fn held_out_split_is_fixed_and_distinct() {
         let cases = held_out_cases();
-        assert_eq!(cases.len(), 16);
-        assert_eq!(cases.iter().map(|c| c.label()).collect::<BTreeSet<_>>().len(), 16);
+        assert_eq!(cases.len(), 24);
+        assert_eq!(cases.iter().map(|c| c.label()).collect::<BTreeSet<_>>().len(), 24);
         assert!(cases.iter().filter(|c| c.kind != CaseKind::FrustratedXor3Cnf)
             .all(|c| c.seed >= 1000));
     }

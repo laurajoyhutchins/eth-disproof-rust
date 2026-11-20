@@ -650,6 +650,69 @@ mod tests {
     }
 
     #[test]
+    fn sparse_coefficient_witness_matches_source_and_refuses_invalid_pairs() {
+        // Cover empty, linear and mixed quadratic records. The reference
+        // interpreter is the original ANF term evaluator, not the witness
+        // evaluator or its low-weight interpolation procedure.
+        let mut seed = 20261120_u64;
+        for width in 0..=9 {
+            for _case in 0..16 {
+                let mut terms = vec![];
+                if next(&mut seed) & 1 != 0 {
+                    terms.push(vec![]);
+                }
+                for i in 0..width {
+                    if next(&mut seed) & 1 != 0 {
+                        terms.push(vec![i]);
+                    }
+                    for j in (i + 1)..width {
+                        if next(&mut seed) & 1 != 0 {
+                            terms.push(vec![i, j]);
+                        }
+                    }
+                }
+                let source = QuadraticPhase::new(width, terms).unwrap();
+                let witness = source.coefficient_witness().unwrap();
+                assert_eq!(witness.linear.len(), width);
+                for word in 0..(1usize << width) {
+                    let bits = bits(width, word);
+                    assert_eq!(
+                        witness.evaluate(&bits).unwrap(),
+                        source.eval(&bits),
+                        "coefficient witness disagreed at width {width}, word {word}"
+                    );
+                }
+                if width > 0 {
+                    let mut wrong_width = witness.clone();
+                    wrong_width.linear.pop();
+                    assert!(wrong_width.evaluate(&vec![false; width]).is_err());
+                }
+            }
+        }
+
+        let canonical = QuadraticCoefficientWitness {
+            constant: false,
+            linear: vec![true, false, false],
+            ordered_pairs: vec![(0, 1), (0, 2), (1, 2)],
+        };
+        assert!(canonical.evaluate(&[true, true, false]).is_ok());
+        for pairs in [
+            vec![(1, 0)],                 // reversed endpoints
+            vec![(0, 3)],                 // index out of range
+            vec![(1, 1)],                 // diagonal pair
+            vec![(0, 1), (0, 1)],         // duplicate
+            vec![(0, 2), (0, 1)],         // unsorted
+            vec![(1, 2), (0, 1)],         // reordered
+        ] {
+            let bad = QuadraticCoefficientWitness {
+                ordered_pairs: pairs,
+                ..canonical.clone()
+            };
+            assert!(bad.evaluate(&[true, true, false]).is_err());
+        }
+    }
+
+    #[test]
     fn exact_forced_projection_and_tampering_are_detected() {
         let input = source(
             2,

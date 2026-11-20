@@ -108,6 +108,28 @@ theorem release_last_leaf (fuel : Nat) (h : Heap) (id : Nat)
     release (fuel + 1) h id = some (put h id none) := by
   simp [release, hnode]
 
+/-- An independently retained subtree root stops recursive destruction at
+that node. Its child edges are *not visited* by the specified release step.
+This is a theorem of the source machine, not Lean C++ correspondence. -/
+theorem release_shared_stops_at_node (fuel : Nat) (h : Heap)
+    (id : Nat) (n : Node) (hnode : h id = some n)
+    (hshared : n.refs > 1) :
+    release (fuel + 1) h id =
+      some (put h id (some { n with refs := n.refs - 1 })) := by
+  have hpositive : n.refs ≠ 0 := by omega
+  simp [release, hnode, hpositive, hshared]
+
+/-- A shared-node release leaves every distinct allocation unchanged,
+including all descendants reachable only through the retained node. -/
+theorem release_shared_preserves_other (fuel : Nat) (h : Heap)
+    (id other : Nat) (n : Node) (hnode : h id = some n)
+    (hshared : n.refs > 1) (hdifferent : other ≠ id) :
+    (release (fuel + 1) h id).map (fun h' => h' other) =
+      some (h other) := by
+  rw [release_shared_stops_at_node fuel h id n hnode hshared]
+  simp [put_other, hdifferent]
+
+
 theorem retain_changes_only_named_object (h h' : Heap) (id other : Nat)
     (ok : retain h id = some h') (different : other ≠ id) :
     h' other = h other := by
@@ -199,6 +221,8 @@ end ReaderHeapEvents
 #print axioms ReaderHeapEvents.retain_requires_live
 #print axioms ReaderHeapEvents.release_requires_live
 #print axioms ReaderHeapEvents.release_last_leaf
+#print axioms ReaderHeapEvents.release_shared_stops_at_node
+#print axioms ReaderHeapEvents.release_shared_preserves_other
 #print axioms ReaderHeapEvents.retain_changes_only_named_object
 #print axioms ReaderHeapEvents.seed_changes_only_named_object
 #print axioms ReaderHeapEvents.observation_preserves_heap

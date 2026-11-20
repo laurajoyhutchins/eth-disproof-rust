@@ -103,12 +103,7 @@ theorem conditional_port_power_factorization
         ∏ v, (if labels v = target then z ^ degree v else (1 : ℚ))) := by
       apply Finset.sum_congr rfl
       intro labels _
-      have h : (∏ v : V,
-          z ^ (if labels v = target then degree v else 0)) =
-          z ^ (∑ v : V,
-            if labels v = target then degree v else 0) := by
-        rw [← Finset.prod_pow_eq_pow_sum]
-      rw [← h]
+      rw [← Finset.prod_pow_eq_pow_sum]
       apply Finset.prod_congr rfl
       intro v _
       by_cases hv : labels v = target <;> simp [hv]

@@ -1,9 +1,6 @@
 # Lean compiler IR to Rust: current status
 
-Snapshot: **November 16, 2026**. This page distinguishes accepted
-repository behavior from proposed architecture and open draft work.
-Recheck the exact default branch and PR head before treating a later
-result as accepted.
+Reviewed against `main` at **November 20, 2026** (`b8c2956`). This is a scoped status snapshot, not an evergreen proof claim. Recheck exact source blobs, CI heads and independent evidence after subsequent changes. The [machine-checkable scoped receipt ledger](../../eth/docs/stage-evidence.md) checks selected unchanged files and historical workflow identities; it does not certify all compiler modules.
 
 | Component | Status | Evidence or next requirement |
 | --- | --- | --- |
@@ -11,11 +8,12 @@ result as accepted.
 | In-process compiler IR reader | Implemented for a pinned subset | Borrowed `Lean.IR.Decl` through native ABI; [coverage](../COVERAGE.md) |
 | Canonical Rust emitter | Implemented for an explicit subset | [Reader structure](reader-architecture.md); [compiler CLI](../../eth/docs/compiler-ir-backend.md) |
 | Rust-emitted object/value runtime | Implemented for bounded subsets | GMP/`Rc` value runtime, [semantic limitations](../SEMANTICS.md) |
-| Physical source RC fidelity | Incomplete | Source RC ledger proposed in [PR #283](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/283); no general heap simulation |
+| Physical source RC fidelity | Restricted source-credit checks and bounded runtime comparisons | Actual [source lifetime ledger](../backend/src/reader/lifetime.rs) and [source-owned field checks](source-del-final-ir.md) exist; general heap simulation remains open |
 | Reader-emitted scalar Rust executed in Lean C host | Implemented for `ScalarFixture.plus` | [Lean C runtime check](../runtime/lean-c/README.md); 100 original-Lean comparisons, scalar only |
 | Rust/C ownership boundary witness | Implemented as a bounded integration test | [Lean C runtime bridge](../runtime/lean-c/README.md); not an emitted-Rust runtime |
-| Reader-generated heap constructor/projection via Lean C | **Bounded IR subset, undergoing exact-head verification** | [Heap executable comparison](../runtime/lean-c/README.md); nested Pair-in-Box heap child with actual owned transfer and retained projection; general graph/joins unsupported |\n| Generated Rust using Lean C runtime generally | **Not implemented** | Physical ownership parity for remaining IR operations is open |
-| Rust-native runtime replacement | **Not established** | Migrate only after C-backed comparison under the [runtime contract](execution-runtime-contract.md) |
+| Reader-generated heap constructor/projection via Lean C | **Bounded, executed** | [Source-derived IR del](source-del-final-ir.md) with original C/Reader-Rust 720-case comparison; [PR #407](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/407) adds eight source-visible ownership event branches; arbitrary graph/joins remain open |
+| Generated Rust using Lean C runtime generally | **Not established** | Restricted generated-Rust/C adapter exists, but no general supported-operation or whole-program refinement theorem |
+| Rust-native runtime replacement | **Not established** | Retain the C-backed comparison as an oracle; general alias/destructor behavior under native Rust remains open |
 | General G1 compiler release | **Open** | [Issue #193](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/193): original project coverage, ownership, ABI, integration |
 | Original noncomputable QueryStream (G2) | **Open** | Source-derived residualization, complete execution and resource correspondence |
 | Lungo Rust-hosted compiler | Separate optional experiment | [PR #331](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/331) and [bootstrap note](../../docs/lean-rust-replacement.md) |
@@ -37,23 +35,25 @@ returned values alone do not certify physical ownership behavior.
 
 ## Next implementation gate
 
-Generate a Rust program from the actual pinned compiler IR and execute
-it against an audited Lean C execution-runtime adapter. Begin with a
-constructor, a borrowed projection, explicit reference operations,
-`isShared`, a unique/shared update and release, then extend across a
-call and a join. Compare original Lean/C and generated Rust/C for:
+Extend the **existing actual generated-Rust-to-Lean-C path**, not another
+handwritten test-host simulation. Source-native compiler IR already produces
+an executable restricted heap `FnBody.del` with two joins and nested owned
+field transfers; the original compiled Lean C function and Reader-generated
+Rust/C agree on 720 selected physical-output cases. [PR #407](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/407)
+also compared source-visible ownership event sequences for eight branches,
+and [PR #419](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/419)
+added a source-pinned diagnostic for the actual C++ destructor worklist.
 
-1. Returned values, errors, side effects and halting.
-2. Ownership-sensitive observations: borrowed versus owned references,
-   logical count changes, sharing decisions, identity/reuse and
-   destruction at specified checkpoints.
-3. Reproducible source, IR, runtime ABI, generated Rust and build
-   identities, with explicit refusals outside the admitted subset.
+These observations do **not** universally characterize general object
+layouts, arbitrary aliases, every compiler control-flow path, all internal
+destructor steps, or Rust-native ownership semantics.
 
-Only then substitute Rust-native runtime operations behind the same
-emitter/runtime contract. A semantic optimization may change internal
-allocation counts, but it must preserve all supported observables under
-an independently justified correspondence argument.
+The next acceptance gate is a nontrivial extension of admitted `FnBody`
+operations and control-flow/alias shapes, compared across original source
+and generated Rust/C for **values, ordered effects, identity and sharing**.
+A Lean refinement theorem connecting real C++ runtime transitions to the
+abstract ownership models is a separate unproved obligation.
+
 
 See [architecture](backend-first-architecture.md), [runtime contract](execution-runtime-contract.md)
 and [G1/G2 acceptance](../../research/lean-rust-acceptance.md).

@@ -25,6 +25,8 @@ typedef struct {
     lean_object *parent, *child, *old, *fresh;
     int parentLive, childLive, childField, freshPending, borrowed;
     const char *slot;
+    /* Captured while live. Never evaluate a dangling pointer for identity. */
+    uintptr_t parentId, childId, oldId, freshId;
 } episode;
 
 static int live_rc(lean_object *o) {
@@ -35,9 +37,9 @@ static int live_rc(lean_object *o) {
 }
 
 static void record(episode *e, const char *event) {
-    REQUIRE(e->parent != e->child && e->parent != e->old &&
-            e->parent != e->fresh && e->child != e->old &&
-            e->child != e->fresh && e->old != e->fresh);
+    REQUIRE(e->parentId != e->childId && e->parentId != e->oldId &&
+            e->parentId != e->freshId && e->childId != e->oldId &&
+            e->childId != e->freshId && e->oldId != e->freshId);
     REQUIRE(e->childField == e->parentLive);
     if (e->parentLive) {
         REQUIRE(lean_is_ctor(e->parent));
@@ -53,10 +55,10 @@ static void record(episode *e, const char *event) {
       e->childLive ? live_rc(e->child) : 0,
       live_rc(e->old), live_rc(e->fresh),
       e->childField, e->freshPending, e->borrowed, e->slot,
-      (unsigned long long)(uintptr_t)e->parent,
-      (unsigned long long)(uintptr_t)e->child,
-      (unsigned long long)(uintptr_t)e->old,
-      (unsigned long long)(uintptr_t)e->fresh);
+      (unsigned long long)e->parentId,
+      (unsigned long long)e->childId,
+      (unsigned long long)e->oldId,
+      (unsigned long long)e->freshId);
 }
 
 static episode begin(FILE *f, const char *name, lean_object *old, lean_object *fresh) {
@@ -69,7 +71,9 @@ static episode begin(FILE *f, const char *name, lean_object *old, lean_object *f
     lean_object *parent = lean_alloc_ctor(1, 2, 0);
     lean_ctor_set(parent, 0, child);
     lean_ctor_set(parent, 1, old);
-    episode e = {name, f, parent, child, old, fresh, 1, 1, 1, 0, 0, "old"};
+    episode e = {name, f, parent, child, old, fresh, 1, 1, 1, 0, 0, "old",
+                 (uintptr_t)parent, (uintptr_t)child,
+                 (uintptr_t)old, (uintptr_t)fresh};
     REQUIRE(live_rc(parent) == 1 && live_rc(child) == 1);
     record(&e, "initial");
     return e;

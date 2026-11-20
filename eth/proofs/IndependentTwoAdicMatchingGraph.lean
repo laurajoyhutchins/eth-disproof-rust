@@ -23,6 +23,8 @@ namespace TwoAdicMatchingGraph
 
 open scoped BigOperators
 
+/-! ## Unconditional matching fibers -/
+
 /--
 For a matching's injective endpoint map, choices at a matched
 vertex are the one prescribed label; unmatched vertices are free.
@@ -125,6 +127,7 @@ def bipartiteMatchingFiber
   (assignmentFiber left (fun e => (target e).1)).product
     (assignmentFiber right (fun e => (target e).2))
 
+/-- Any two prescribed matching edge-label assignments have equally many completions. -/
 theorem bipartiteMatchingFiber_equidistributed
     {E L R A : Type*}
     [Fintype E] [Fintype L] [Fintype R] [Fintype A]
@@ -287,6 +290,8 @@ theorem matchingEndpointLabels_uniform_mean_cross_mul
     simpa using hone
   rw [htotal, hcard]
   ring
+
+/-! ## Fibers conditioned on prescribed vertex labels -/
 
 /-
 The following partial-assignment lemmas use vertex-specific *finite*
@@ -662,6 +667,8 @@ theorem matchingEndpointLabels_conditional_uniform_mean_cross_mul
   rw [hweight, hcard]
   ring
 
+/-! ## Vertex choices and conditional means -/
+
 /-
 Sequential selection on actual graph-vertex labelings. The score can
 be any exact rational combination of matching-class and real-port
@@ -677,7 +684,24 @@ noncomputable def otherVertexCount
     [DecidableEq V] [DecidableEq A]
     (allowed : V → Finset A) (v : V) : ℕ := by
   classical
-  exact ∏ other : V, if other = v then 1 else (allowed other).card
+  exact ∏ other ∈ (Finset.univ : Finset V).erase v, (allowed other).card
+
+/-- The erased product agrees with the original piecewise definition,
+including empty allowed sets at unrelated vertices. -/
+theorem otherVertexCount_eq_piecewise
+    {V A : Type*} [Fintype V] [Fintype A]
+    [DecidableEq V] [DecidableEq A]
+    (allowed : V → Finset A) (v : V) :
+    otherVertexCount allowed v =
+      ∏ u : V, if u = v then 1 else (allowed u).card := by
+  classical
+  rw [← Finset.prod_erase_mul (Finset.univ : Finset V)
+    (fun u => if u = v then 1 else (allowed u).card) (Finset.mem_univ v)]
+  simp only [if_pos, mul_one]
+  unfold otherVertexCount
+  apply Finset.prod_congr rfl
+  intro u hu
+  simp [Finset.ne_of_mem_erase hu]
 
 /-- The compatible complete graph-label assignments with the selected
 vertex restricted to one candidate symbol. -/
@@ -745,16 +769,7 @@ theorem vertexChoiceFiber_card
     (vertexChoiceFiber allowed v symbol).card =
       otherVertexCount allowed v := by
   classical
-  rw [vertexChoiceFiber_eq_piFinset allowed v symbol hsymbol,
-    Fintype.card_piFinset]
-  unfold otherVertexCount
-  apply Finset.prod_congr rfl
-  intro u _
-  by_cases hu : u = v
-  · subst u
-    simp [vertexChoiceAllowed]
-  · simp [vertexChoiceAllowed, hu]
-
+  exact Fintype.card_filter_piFinset_eq_of_mem allowed v hsymbol
 /-- Sum over possible next labels is exactly the sum over all
 compatible complete graph assignments, with no double counting.
 This holds for any rational observable, even a signed tensor weight. -/
@@ -815,26 +830,10 @@ theorem vertexChoice_total_card
       (allowed v).card *
         otherVertexCount allowed v := by
   classical
-  have hsum := sum_by_vertex_choice allowed v (fun _ => (1 : ℚ))
-  have hcard :
-      ((Fintype.piFinset allowed).card : ℚ) =
-      ∑ symbol ∈ allowed v,
-        ((vertexChoiceFiber allowed v symbol).card : ℚ) := by
-    simpa using hsum.symm
-  have hconstant :
-      (∑ symbol ∈ allowed v,
-        ((vertexChoiceFiber allowed v symbol).card : ℚ)) =
-      ((allowed v).card : ℚ) *
-        (otherVertexCount allowed v : ℚ) := by
-    calc
-      _ = ∑ _symbol ∈ allowed v,
-          (otherVertexCount allowed v : ℚ) := by
-        apply Finset.sum_congr rfl
-        intro symbol hs
-        exact_mod_cast vertexChoiceFiber_card allowed v symbol hs
-      _ = _ := by simp only [Finset.sum_const, nsmul_eq_mul]
-  exact_mod_cast hcard.trans hconstant
-
+  rw [Fintype.card_piFinset]
+  unfold otherVertexCount
+  exact (Finset.mul_prod_erase (Finset.univ : Finset V)
+    (fun u => (allowed u).card) (Finset.mem_univ v)).symm
 /-- One actual candidate next vertex label has combined conditional
 mean no greater than the previous conditional mean. The only
 admission conditions are a nonempty candidate-symbol set and a
@@ -944,6 +943,7 @@ theorem exists_nonincreasing_combined_vertex_potential
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_class_moment
 #print axioms TwoAdicMatchingGraph.matchingEndpointLabels_conditional_uniform_mean_cross_mul
 #print axioms TwoAdicMatchingGraph.vertexChoiceFiber_eq_piFinset
+#print axioms TwoAdicMatchingGraph.otherVertexCount_eq_piecewise
 #print axioms TwoAdicMatchingGraph.vertexChoiceFiber_card
 #print axioms TwoAdicMatchingGraph.sum_by_vertex_choice
 #print axioms TwoAdicMatchingGraph.vertexChoice_total_card

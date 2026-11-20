@@ -359,7 +359,6 @@ fn encode_list(items: impl IntoIterator<Item = String>) -> String {
 #[path = "counting/semantic_count.rs"]
 mod semantic_count;
 pub mod structured_cnf;
-
 pub use semantic_count::{
     CountState, CountStats, Entry, EnumeratingLeaf, LeafCounter, Limits, count_cnf, count_step,
     disjoint_children, priority_select, selected,
@@ -419,6 +418,10 @@ pub mod lean_codegen;
 pub mod native_high;
 #[path = "query/native_tuple.rs"]
 pub mod native_tuple;
+pub mod representation_component_certificate;
+pub mod representation_equality_components;
+pub mod representation_matching;
+pub mod representation_ranked_certificate;
 
 #[path = "counting/finite_fallback.rs"]
 pub mod finite_fallback;

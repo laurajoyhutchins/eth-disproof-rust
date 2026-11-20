@@ -55,13 +55,18 @@ structure Physical where
 
 def credit (b : Bool) : Nat := if b then 1 else 0
 
+/-- Dead constructors no longer own stamp-field credits. A slot tag on a
+tombstone is historical bookkeeping, not a live reference. -/
+def liveFieldCredit (s : Source) (slot : StampSlot) : Nat :=
+  credit (s.parentCredits != 0 && s.stampSlot == slot)
+
 def freshCredit (s : Source) : Nat :=
-  credit (s.stampSlot == .fresh) + credit s.freshPending
+  liveFieldCredit s .fresh + credit s.freshPending
 
 def represent (s : Source) : Physical :=
   { parentRC := s.parentCredits
     childRC := s.extraChild + credit s.childField
-    oldRC := s.oldExternal + credit (s.stampSlot == .old)
+    oldRC := s.oldExternal + liveFieldCredit s .old
     freshRC := s.freshExternal + freshCredit s
     childField := s.childField
     stampSlot := s.stampSlot
@@ -143,10 +148,25 @@ def cStep (p : Physical) : Op → Option Physical
 
 theorem old_stamp_credit_identity (s : Source) :
     (represent s).oldRC =
-      s.oldExternal + credit (s.stampSlot == .old) := rfl
+      s.oldExternal + liveFieldCredit s .old := rfl
 
 theorem fresh_stamp_credit_identity (s : Source) :
     (represent s).freshRC = s.freshExternal + freshCredit s := rfl
+
+set_option maxHeartbeats 2000000
+
+/-- All eight modeled operations commute with the source-credit representation,
+including refused steps. This is about two explicit Lean models, not the C++
+runtime implementation. -/
+theorem cStep_represent (s : Source) (op : Op) :
+    cStep (represent s) op = (sourceStep s op).map represent := by
+  cases s with
+  | mk parentCredits childField extraChild oldExternal freshExternal stampSlot freshPending childBorrowed =>
+    cases op <;> cases stampSlot <;> cases childField <;>
+      cases freshPending <;> cases childBorrowed <;>
+      simp [sourceStep, cStep, represent, liveFieldCredit, freshCredit, credit] <;>
+      (repeat (split <;> simp_all [represent, liveFieldCredit, freshCredit, credit])) <;>
+      omega
 
 /-- The C branch for field replacement changes NO physical RC.
 The incoming owned credit was already acquired in incFresh. -/
@@ -210,11 +230,44 @@ def heldTrace : List Op :=
 
 def oldTrace : List Op := [.decParent]
 
+def runSource : List Op → Source → Option Source
+  | [], s => some s
+  | op :: ops, s => do
+      let next ← sourceStep s op
+      runSource ops next
+
 def runC : List Op → Physical → Option Physical
   | [], p => some p
   | x :: xs, p => do
       let after ← cStep p x
       runC xs after
+
+/-- An old stamp has no field owner after last-parent release. -/
+example :
+    ((sourceStep (initial 1 1) .decParent).map
+      (fun s => (represent s).oldRC)) = some 1 := by decide
+
+/-- A fresh heap stamp similarly loses its field credit on final release. -/
+example :
+    ((runSource freshTrace (initial 1 1)).map
+      (fun s => (represent s).freshRC)) = some 1 := by decide
+
+/-- All admitted finite traces commute; the proof is by induction over steps,
+not enumeration of a fixed set of examples. -/
+theorem runC_represent (ops : List Op) (s : Source) :
+    runC ops (represent s) = (runSource ops s).map represent := by
+  induction ops generalizing s with
+  | nil => rfl
+  | cons op ops ih =>
+      cases h : sourceStep s op with
+      | none =>
+          have hc : cStep (represent s) op = none := by
+            simpa [h] using cStep_represent s op
+          simp [runC, runSource, h, hc]
+      | some next =>
+          have hc : cStep (represent s) op = some (represent next) := by
+            simpa [h] using cStep_represent s op
+          simp [runC, runSource, h, hc, ih]
 
 example :
     (runC freshTrace (represent (initial 1 1))).map Physical.freshRC =
@@ -230,6 +283,8 @@ example :
 
 end ReaderCReleaseSemantics
 
+#print axioms ReaderCReleaseSemantics.cStep_represent
+#print axioms ReaderCReleaseSemantics.runC_represent
 #print axioms ReaderCReleaseSemantics.store_fresh_does_not_increment
 #print axioms ReaderCReleaseSemantics.shell_del_preserves_child_rc
 #print axioms ReaderCReleaseSemantics.last_parent_release_drops_unretained_child

@@ -23,7 +23,8 @@ documented extraction seam, not authorization for a second backend.
 original Lean compiler declarations. It is neither a production backend
 nor a G1/G2 gate. Do not route unsupported Lean IR through Lungo.
 
-**Math and proofs:** `research/` and `eth/proofs/` contain mathematical
+**Math and proofs:** `research/`, `eth/proofs/`, and
+`instrumentation/lean-env/ACC/` contain authored mathematical
 analysis and Lean proof obligations; `instrumentation/lean-env/` pins
 the Lean/Mathlib acceptance environment. A successful compiler
 integration does not prove the ETH counting theorem.
@@ -32,6 +33,10 @@ integration does not prove the ETH counting theorem.
 planned seams. `compiler/docs/backend-first-architecture.md` defines the
 execution/runtime order. Do not claim that the future C execution adapter
 or Rust-native runtime is already implemented.
+
+Rust conventions for new or edited source and diagnostic tools are in
+[`docs/RUST_STYLE.md`](docs/RUST_STYLE.md). Preserve established public names
+and source-reference identities when applying them.
 
 ## Proof and implementation language boundary
 

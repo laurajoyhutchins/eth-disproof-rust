@@ -22,7 +22,9 @@ import re, sys
 from pathlib import Path
 raw=Path(sys.argv[1]).read_text()
 allowed={"propext","Quot.sound","Classical.choice"}
-for name in ("store_fresh_does_not_increment",
+for name in ("cStep_represent",
+             "runC_represent",
+             "store_fresh_does_not_increment",
              "shell_del_preserves_child_rc",
              "last_parent_release_drops_unretained_child",
              "last_parent_release_preserves_retained_child",
@@ -181,24 +183,87 @@ grep -Fq 'lean_del_object(' "$out/RuntimeHeapDelKernels.c" || {
   exit 2
 }
 lean -c "$out/SourceDelDriver.c" runtime/lean-c/SourceDelDriver.lean
+# The original Lean compiler C output is included BYTE-FOR-BYTE in separate
+# tracing translation units. The compiled Reader-generated Rust stays unchanged.
+# Only the two source C units and the existing Rust/C adapter get call-site
+# ownership hooks; test-host operations and runtime internals do not.
+for unit in RuntimeHeapKernels RuntimeHeapDelKernels; do
+  cat > "$out/${unit}-traced.c" <<EOF
+#include "$(pwd)/runtime/lean-c/source_del_event_hooks.h"
+#include "$out/${unit}.c"
+EOF
+done
+cat > "$out/abi-traced.c" <<EOF
+#define LR_TRACE_SOURCE_DEL 1
+#include "$(pwd)/runtime/lean-c/abi.c"
+EOF
 leanc -O2 -o "$out/source-del-execute" \
-  "$out/RuntimeHeapKernels.c" "$out/RuntimeHeapDelKernels.c" \
+  "$out/RuntimeHeapKernels-traced.c" "$out/RuntimeHeapDelKernels-traced.c" \
   "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \
   runtime/lean-c/source_shell_step_oracle.c \
   runtime/lean-c/source_release_oracle.c \
-  runtime/lean-c/abi.c "$out/libsource_del_generated.a"
+  runtime/lean-c/destructor_worklist_oracle.c \
+  runtime/lean-c/source_del_event_trace.c \
+  runtime/lean-c/worklist_internal_trace.c \
+  "$out/abi-traced.c" "$out/libsource_del_generated.a"
 # The physically observed trace comes from actual pinned Lean C calls,
 # not a Rust or Lean reimplementation of those primitive operations.
 LR_SOURCE_TRACE="$out/source-shell-physical.tsv" \
 LR_RELEASE_TRACE="$out/source-release-physical.tsv" \
+LR_DESTRUCTOR_WITNESSES="$out/destructor-worklist-witnesses.tsv" \
+LR_SOURCE_DEL_EVENTS="$out/source-del-events.tsv" \
   "$out/source-del-execute" | tee "$out/source-del-trace.txt"
+# Fail on missing/extra events, cross-backend differences, invalid physical
+# increments/decrements or forged object identities. The event scope is the
+# compiler-visible primitive calls, not recursive worklist suboperations.
+test -s "$out/source-del-events.tsv"
+python3 scripts/check-source-del-events.py "$out/source-del-events.tsv" \
+  artifacts/source-del-final-ir.txt --self-test \
+  | tee "$out/source-del-events-audit.txt"
+grep -Fq 'source_del_original_C_vs_exact_Reader_event_parity=PASS cases=8 lanes=16' \
+  "$out/source-del-events-audit.txt"
 grep -Fx 'reader-source-shell-physical-checkpoints=RECORDED' "$out/source-del-trace.txt"
 grep -Fx 'reader-c-release-heap-stamp-checkpoints=RECORDED' "$out/source-del-trace.txt"
+grep -Fx 'reader-c-destructor-worklist-witnesses=RECORDED' "$out/source-del-trace.txt"
+test -s "$out/destructor-worklist-witnesses.tsv"
+python3 scripts/check-destructor-witnesses.py \
+  "$out/destructor-worklist-witnesses.tsv" --self-test \
+  | tee "$out/destructor-worklist-witness-audit.txt"
+grep -Fq 'destructor_worklist_witnesses=PASS cases=11 rows=90 physical_refcount_effects_only' \
+  "$out/destructor-worklist-witness-audit.txt"
+grep -Fq 'destructor_witness_mutations=13/13_REFUSED' \
+  "$out/destructor-worklist-witness-audit.txt"
+# Only after the STOCK Lean runtime's reference effects pass, run the
+# separate pinned-source diagnostic executable with internal event hooks.
+# The original build and its emitted Reader/C outputs remain unchanged.
+bash scripts/check-internal-worklist.sh
+grep -Fq 'worklist_internal_trace=PASS cases=11' \
+  "$out/internal-worklist-audit.txt"
+grep -Fxq 'worklist_stock_vs_diagnostic_physical_effects=PASS rows=90' \
+  "$out/stock-diagnostic-comparison.txt"
 test -s "$out/source-shell-physical.tsv"
 test -s "$out/source-release-physical.tsv"
 lean proofs/ReaderCReleaseAudit.lean | tee "$out/source-release-trace-audit.txt"
 grep -Fq 'c_release_trace=PASS cases=3 rows=16 identities_and_last_ref_tombstones' \
   "$out/source-release-trace-audit.txt"
+grep -Fq 'c_release_source_ledger=PASS cases=3 rows=16 per_checkpoint' \
+  "$out/source-release-trace-audit.txt"
+python3 - "$out/source-release-trace-audit.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+raw = Path(sys.argv[1]).read_text()
+name = "'ReaderCReleaseAudit.modeled_c_step_has_source'"
+pattern = re.escape(name) + r" (does not depend on any axioms|depends on axioms: \[([^\]]*)\])"
+match = re.search(pattern, raw)
+if match is None:
+    raise SystemExit("missing kernel axiom receipt for C/source conditional bridge")
+used = set((match.group(2) or "").split(", ")) - {""}
+allowed = {"propext", "Quot.sound", "Classical.choice"}
+if not used <= allowed or "sorryAx" in raw:
+    raise SystemExit(f"unapproved C/source bridge axioms: {used - allowed}")
+print("c_release_source_bridge=KERNEL_STANDARD_AXIOMS_ONLY")
+PY
 python3 - "$out/source-release-physical.tsv" "$out" <<'PY'
 from pathlib import Path
 import sys
@@ -212,8 +277,23 @@ corrupted[2]="\t".join(fields)
 (out/"source-release-mutated-count.tsv").write_text("\n".join(corrupted)+"\n")
 missing=src[:2]+src[3:]
 (out/"source-release-mutated-missing.tsv").write_text("\n".join(missing)+"\n")
+# The former representation bug incorrectly preserved a dead parent's
+# stamp-field credit. Force precisely that error into the real C trace.
+for case, column, kind in (("oldStampFinal", 5, "dead-old"),
+                           ("heapFreshFinal", 6, "dead-fresh")):
+    mutant = src.copy()
+    positions = [i for i, row in enumerate(mutant[1:], 1)
+                 if row.split("\t")[:2] == [case, "decParent"]]
+    if len(positions) != 1:
+        raise SystemExit(f"missing unique final-release checkpoint: {case}")
+    i = positions[0]
+    fields = mutant[i].split("\t")
+    fields[column] = str(int(fields[column]) + 1)
+    mutant[i] = "\t".join(fields)
+    (out/f"source-release-mutated-{kind}.tsv").write_text(
+        "\n".join(mutant) + "\n")
 PY
-for variant in count missing; do
+for variant in count missing dead-old dead-fresh; do
   file="$out/source-release-mutated-$variant.tsv"
   log="$out/source-release-rejected-$variant.txt"
   if LR_RELEASE_AUDIT="$file" lean proofs/ReaderCReleaseAudit.lean >"$log" 2>&1; then
@@ -226,7 +306,7 @@ for variant in count missing; do
     exit 2
   }
 done
-echo 'c_release_trace_mutations=COUNT_AND_OMISSION_REFUSED'
+echo 'c_release_trace_mutations=COUNT_OMISSION_AND_DEAD_FIELD_CREDITS_REFUSED'
 # Kernel's already-proved physicalStep checks the *independently measured*
 # C rows and refuses omissions, reordering, illegal transitions and ID drift.
 lean proofs/ReaderShellTraceAudit.lean | tee "$out/source-shell-trace-audit.txt"
@@ -296,6 +376,8 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
   echo 'physical_trace=28_observations_in_4_allocation_episodes'
   echo 'source_shell_c_semantics_proof=NOT_ESTABLISHED'
   echo 'c_release_branch_model=KERNEL_PROVED_SELECTED_BRANCHES'
+  echo 'c_release_source_credit_bridge=16_REAL_C_CHECKPOINTS_REPLAYED_AGAINST_SOURCE_AND_PHYSICAL_MODELS'
+  echo 'c_release_source_trace_theorem=CONDITIONAL_ON_DEFINED_MODEL_TRANSITIONS'
   echo 'c_release_traces=16_REAL_LEAN_C_CHECKPOINTS_IN_THREE_EPISODES'
   echo 'c_release_tombstone=NOT_AN_ACTUAL_READ_FROM_FREED_MEMORY'
   echo 'c_release_universal_c_semantics=NOT_ESTABLISHED'
@@ -324,6 +406,30 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
   echo 'shell_only_child_transfer=ONE_CREDIT_NO_INC'
   echo 'shell_del_no_projection=REFUSED'
   echo 'shell_del_shared_parent=REFUSED'
+  echo 'source_del_ownership_event_trace=8_CASES_EXACT_EMITTED_C_AND_RUST_PRIMITIVE_CALLS'
+  echo 'source_del_recursive_destructor_internals=NOT_INSTRUMENTED'
+  echo 'internal_destructor_worklist=PINNED_SOURCE_DIAGNOSTIC_INDEPENDENT_EXECUTABLE'
+  echo 'internal_destructor_stock_effect_equivalence=90_LIVE_WITNESS_ROWS'
+  echo 'internal_destructor_unmodified_runtime_trace=NOT_OBSERVED'
+  sha256sum scripts/check-internal-worklist.sh scripts/instrument-pinned-worklist.py \
+    scripts/check-internal-worklist.py runtime/lean-c/worklist_internal_trace.c \
+    "$out/internal-worklist-events.tsv" "$out/internal-worklist-audit.txt" \
+    "$out/internal-witnesses.tsv" "$out/worklist-source-audit.txt"
+  echo 'physical_destructor_worklist=11_CASES_90_REAL_C_RC_WITNESSES'
+  echo 'physical_destructor_free_timestamps=NOT_OBSERVED'
+  echo 'physical_destructor_order=NOT_OBSERVED'
+  echo 'physical_destructor_witness_graphs=CHAINS_AND_FORKS_WITH_INDEPENDENT_RETAINS'
+  sha256sum runtime/lean-c/destructor_worklist_oracle.c \
+    scripts/check-destructor-witnesses.py \
+    "$out/destructor-worklist-witnesses.tsv" \
+    "$out/destructor-worklist-witness-audit.txt"
+  sha256sum runtime/lean-c/source_del_event_hooks.h \
+    runtime/lean-c/source_del_event_trace.c \
+    runtime/lean-c/abi.c \
+    scripts/check-source-del-events.py \
+    "$out/source-del-events.tsv" "$out/source-del-events-audit.txt" \
+    "$out/RuntimeHeapKernels.c" "$out/RuntimeHeapDelKernels.c" \
+    "$out/source-del-exact-reader.rs"
   echo 'emitted_ir_source_del=PASS_BOUNDED_720_PHYSICAL_FINAL_STATES'
   echo 'source_del_full_traces_and_general_equivalence=NOT_ESTABLISHED'
   cat "$out/source-del-execution-status.txt"

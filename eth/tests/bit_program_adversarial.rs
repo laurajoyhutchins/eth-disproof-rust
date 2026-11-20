@@ -11,7 +11,44 @@ fn random(seed: &mut u64) -> u64 {
     *seed
 }
 
-fn model(op: &Instr, before: &Config<3, 2>) -> Config<3, 2> {
+/// Independent Lean-style state: the stack top is index zero of a Vec.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ListConfig {
+    pc: Option<usize>,
+    regs: [bool; 3],
+    stacks: [Vec<bool>; 2],
+}
+
+impl ListConfig {
+    fn from_native(native: &Config<3, 2>) -> Self {
+        Self {
+            pc: native.pc,
+            regs: native.regs,
+            stacks: std::array::from_fn(|s| native.stacks[s].iter().copied().collect()),
+        }
+    }
+}
+
+fn assert_native_represents_list(native: &Config<3, 2>, expected: &ListConfig, context: &str) {
+    assert_eq!(native.pc, expected.pc, "{context}: program counter");
+    assert_eq!(native.regs, expected.regs, "{context}: registers");
+    for s in 0..2 {
+        let observed: Vec<_> = native.stacks[s].iter().copied().collect();
+        assert_eq!(
+            observed, expected.stacks[s],
+            "{context}: logical stack {s} (head at index zero)"
+        );
+        // Check the actual host primitive independently of deque iteration:
+        // Peek/Pop depend on front(), while the oracle uses Vec::first().
+        assert_eq!(
+            native.stacks[s].front().copied(),
+            expected.stacks[s].first().copied(),
+            "{context}: physical top of stack {s}"
+        );
+    }
+}
+
+fn model(op: &Instr, before: &ListConfig) -> ListConfig {
     let mut after = before.clone();
     let next = match *op {
         Instr::Halt => None,
@@ -57,7 +94,9 @@ fn model(op: &Instr, before: &Config<3, 2>) -> Config<3, 2> {
         }
         Instr::Branch { test, yes, no } => Some(if before.regs[test] { yes } else { no }),
         Instr::Push { stack, src, next } => {
-            after.stacks[stack].push_front(before.regs[src]);
+            // This model uses Vec list semantics, not the production
+            // VecDeque::push_front. Lean's stack head is index zero.
+            after.stacks[stack].insert(0, before.regs[src]);
             Some(next)
         }
         Instr::Peek {
@@ -66,7 +105,7 @@ fn model(op: &Instr, before: &Config<3, 2>) -> Config<3, 2> {
             present,
             next,
         } => {
-            let top = before.stacks[stack].front().copied();
+            let top = before.stacks[stack].first().copied();
             // A shared value/present register means the LAST write wins.
             after.regs[value] = top.unwrap_or(false);
             after.regs[present] = top.is_some();
@@ -78,7 +117,11 @@ fn model(op: &Instr, before: &Config<3, 2>) -> Config<3, 2> {
             present,
             next,
         } => {
-            let top = after.stacks[stack].pop_front();
+            let top = if after.stacks[stack].is_empty() {
+                None
+            } else {
+                Some(after.stacks[stack].remove(0))
+            };
             after.regs[value] = top.unwrap_or(false);
             after.regs[present] = top.is_some();
             Some(next)
@@ -176,28 +219,237 @@ fn all_twelve_opcodes_preserve_physical_state_invariants_under_seeded_adversaria
                     .map(|_| random(&mut seed) & 1 != 0)
                     .collect::<VecDeque<_>>();
             }
-            let before = actual.clone();
+            let before = ListConfig::from_native(&actual);
             let expected = model(&instr, &before);
             assert!(program.step(&mut actual).unwrap());
-            assert_eq!(
-                actual, expected,
-                "opcode={opcode}, trial={trial}, instruction={instr:?}"
+            assert_native_represents_list(
+                &actual,
+                &expected,
+                &format!("opcode={opcode}, trial={trial}, instruction={instr:?}"),
             );
             let mutated_stacks: Vec<_> = (0..2)
-                .filter(|&s| before.stacks[s] != actual.stacks[s])
+                .filter(|&s| before.stacks[s] != expected.stacks[s])
                 .collect();
             assert!(mutated_stacks.len() <= 1);
             for s in mutated_stacks {
                 let prev = &before.stacks[s];
-                let now = &actual.stacks[s];
+                let now = &expected.stacks[s];
                 assert!(now.iter().skip(1).eq(prev.iter()) || prev.iter().skip(1).eq(now.iter()));
             }
             if actual.pc.is_none() {
                 assert!(!program.step(&mut actual).unwrap());
-                assert_eq!(actual, expected, "halted machine must be idempotent");
+                assert_native_represents_list(
+                    &actual,
+                    &expected,
+                    "halted machine must be idempotent",
+                );
             }
         }
     }
+}
+
+/// Force a non-contiguous backing ring before executing actual production
+/// instructions. Ordinary short stack tests often exercise only contiguous
+/// VecDeque storage and can miss an incorrect head/front interpretation.
+fn physically_wrapped_word(epoch: usize) -> (VecDeque<bool>, Vec<bool>) {
+    let mut word = VecDeque::with_capacity(8);
+    // Build the expected list independently, even during fixture setup.
+    let mut list = Vec::new();
+    let capacity = word.capacity();
+    for i in 0..capacity {
+        let bit = (i + epoch).is_multiple_of(3);
+        word.push_back(bit);
+        list.push(bit);
+    }
+    for _ in 0..capacity - 2 {
+        assert_eq!(word.pop_front(), Some(list.remove(0)));
+    }
+    for i in 0..capacity - 2 {
+        let bit = (i + epoch).is_multiple_of(2);
+        word.push_back(bit);
+        list.push(bit);
+    }
+    assert!(
+        !word.as_slices().1.is_empty(),
+        "the wraparound fixture must really have two physical slices"
+    );
+    assert_eq!(word.iter().copied().collect::<Vec<_>>(), list);
+    (word, list)
+}
+
+/// Exhaustively check the four primitive operations (push false/true,
+/// peek, pop) for all six-operation traces against a carried list-state
+/// oracle. This checks the exact host assumptions of DequeContract in Lean;
+/// it does not assert their universal validity for all native allocations.
+#[test]
+fn native_deque_contract_covers_all_short_action_traces() {
+    const ALPHABET: usize = 4;
+    const STEPS: usize = 6;
+    let mut split_samples = 0usize;
+    let mut capacity_growth = 0usize;
+    let mut empty_removals = 0usize;
+    for layout in 0..3 {
+        for trace in 0..ALPHABET.pow(STEPS as u32) {
+            let (mut actual, mut expected) = match layout {
+                0 => (VecDeque::new(), Vec::new()),
+                1 => (VecDeque::from([true, false]), vec![true, false]),
+                _ => physically_wrapped_word(7),
+            };
+            let mut code = trace;
+            for step in 0..STEPS {
+                let action = code % ALPHABET;
+                code /= ALPHABET;
+                let old_capacity = actual.capacity();
+                match action {
+                    0 | 1 => {
+                        let bit = action == 1;
+                        actual.push_front(bit);
+                        expected.insert(0, bit);
+                    }
+                    2 => assert_eq!(
+                        actual.front().copied(),
+                        expected.first().copied(),
+                        "layout={layout} trace={trace} step={step} peek"
+                    ),
+                    _ => {
+                        let wanted = if expected.is_empty() {
+                            empty_removals += 1;
+                            None
+                        } else {
+                            Some(expected.remove(0))
+                        };
+                        assert_eq!(
+                            actual.pop_front(),
+                            wanted,
+                            "layout={layout} trace={trace} step={step} pop"
+                        );
+                    }
+                }
+                split_samples += usize::from(!actual.as_slices().1.is_empty());
+                capacity_growth += usize::from(actual.capacity() > old_capacity);
+                assert_eq!(actual.len(), expected.len());
+                assert_eq!(
+                    actual.front().copied(),
+                    expected.first().copied(),
+                    "layout={layout} trace={trace} step={step} head"
+                );
+                assert_eq!(
+                    actual.iter().copied().collect::<Vec<_>>(),
+                    expected,
+                    "layout={layout} trace={trace} step={step} full list"
+                );
+            }
+        }
+    }
+    assert!(split_samples > 0, "wrapped ring states must be exercised");
+    assert!(capacity_growth > 0, "heap growth must be exercised");
+    assert!(empty_removals > 0, "empty pop must be exercised");
+}
+
+#[test]
+fn native_deque_front_push_pop_match_independent_lists_even_when_wrapped() {
+    let mut seed = 0x8c71_ef92_4bad_0315_u64;
+    let mut wrapped = 0usize;
+    let mut empty_reads = 0usize;
+    let mut present_reads = 0usize;
+    let mut aliased_reads = 0usize;
+
+    for epoch in 0..12 {
+        let (wrapped_word, wrapped_list) = physically_wrapped_word(epoch);
+        let registers = [epoch & 1 != 0, epoch & 2 != 0, epoch & 4 != 0];
+        let second_list = vec![epoch & 1 == 0, true, false];
+        let mut actual = Config::<3, 2> {
+            pc: Some(0),
+            regs: registers,
+            stacks: [wrapped_word, second_list.iter().copied().collect()],
+        };
+        let mut expected = ListConfig {
+            pc: Some(0),
+            regs: registers,
+            stacks: [wrapped_list, second_list],
+        };
+        assert_native_represents_list(&actual, &expected, "initial wrapped state");
+        // Drain the wrapped word past empty, then refill before mixing
+        // arbitrary operations. This forces empty/singleton/deep states.
+        let phase = expected.stacks[0].len() + 3;
+        for step in 0..2 * phase + 400 {
+            let sample = random(&mut seed);
+            let stack = if step < 2 * phase {
+                0
+            } else {
+                (sample as usize >> 5) % 2
+            };
+            let src = ((sample >> 13) % 3) as usize;
+            let value = ((sample >> 21) % 3) as usize;
+            let present = if (step + epoch) & 1 == 0 {
+                value
+            } else {
+                (value + 1) % 3
+            };
+            let opcode = if step < phase {
+                2 // Pop until the original deque is empty, then pop empty.
+            } else if step < 2 * phase {
+                0 // Push values back into the same deque.
+            } else {
+                (sample % 3) as usize
+            };
+            let instruction = match opcode {
+                0 => Instr::Push {
+                    stack,
+                    src,
+                    next: 0,
+                },
+                1 => Instr::Peek {
+                    stack,
+                    value,
+                    present,
+                    next: 0,
+                },
+                _ => Instr::Pop {
+                    stack,
+                    value,
+                    present,
+                    next: 0,
+                },
+            };
+            let program = Program::<3, 2>::new(0, 1, 0, vec![instruction.clone()])
+                .expect("valid one-instruction program");
+
+            if !actual.stacks[stack].as_slices().1.is_empty() {
+                wrapped += 1;
+            }
+            if opcode != 0 {
+                if expected.stacks[stack].is_empty() {
+                    empty_reads += 1;
+                } else {
+                    present_reads += 1;
+                }
+                if value == present {
+                    aliased_reads += 1;
+                }
+            }
+            // Carry the independent list-state oracle across the entire
+            // trace. Never reconstruct it from the native deque after a step:
+            // that could hide a common head/iteration indexing error.
+            expected = model(&instruction, &expected);
+            assert!(program.step(&mut actual).unwrap());
+            assert_native_represents_list(
+                &actual,
+                &expected,
+                &format!("epoch={epoch} step={step} stack={stack} instruction={instruction:?}"),
+            );
+            if step + 1 == phase {
+                assert!(expected.stacks[0].is_empty());
+                assert!(actual.stacks[0].is_empty());
+            }
+        }
+    }
+    assert!(wrapped > 0, "must exercise physically split ring storage");
+    assert!(
+        empty_reads > 0 && present_reads > 0,
+        "must observe both read states"
+    );
+    assert!(aliased_reads > 0, "must exercise ordered alias writes");
 }
 
 #[test]

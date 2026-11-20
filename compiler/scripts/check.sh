@@ -97,6 +97,19 @@ for theorem in same_visited_identities same_number_of_visits retained_subtree_is
     exit 2
   fi
 done
+# Alias edges require an ownership-count theorem independent of tree identity.
+# Refusals here are a model property, not evidence of C++ use-after-free safety.
+lean proofs/ReaderWorklistAliases.lean | tee artifacts/reader-worklist-aliases-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-worklist-aliases-axioms.txt; then
+  echo 'Aliased worklist proof contains sorryAx' >&2
+  exit 2
+fi
+for theorem in alias_fields_spend_exactly_their_credits aliased_fields_preserve_external_owner alias_last_owner_enqueues_once duplicate_field_last_credit retained_diamond_stops spent_alias_cannot_release_again; do
+  grep -Fq "'ReaderWorklistAliases.${theorem}' " artifacts/reader-worklist-aliases-axioms.txt || {
+    echo "Missing aliased worklist kernel receipt: ${theorem}" >&2
+    exit 2
+  }
+done
 lean proofs/ReaderObjectCredits.lean | tee artifacts/reader-object-credits-axioms.txt
 if grep -Fq 'sorryAx' artifacts/reader-object-credits-axioms.txt; then
   echo 'Multi-allocation ownership theorem contains sorryAx' >&2

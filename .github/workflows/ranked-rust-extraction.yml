@@ -28,6 +28,17 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      # This deliberately runs the production Rust paths directly. The
+      # root CI receipt test on a stale parent PR can fail before Cargo tests;
+      # extraction experiments must not inherit a false green from that.
+      - name: Test original ranked source and first-refusal trace
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo test --locked -p lean-eth-reference --test representation_ranked_certificate --test representation_ranked_input
+          cargo test --locked -p ranked-source-proof-harness --lib
+
       # Cache immediately after installation: the research extraction stage
       # is deliberately fail-closed, and a post-job cache/save on failure does
       # not persist the verified cargo-hax binary.

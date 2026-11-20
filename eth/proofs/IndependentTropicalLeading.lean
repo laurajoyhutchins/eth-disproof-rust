@@ -27,7 +27,7 @@ def energy {n : ℕ} : CNF n → (Fin n → Bool) → ℕ
       (if clauseTrue a clause then 0 else 1) + energy rest a
 
 /-- Every declared variable belongs to the enumeration, even if unused. -/
-def generating {n : ℕ} (φ : CNF n) : Polynomial ℕ :=
+noncomputable def generating {n : ℕ} (φ : CNF n) : Polynomial ℕ :=
   ∑ a : Fin n → Bool, Polynomial.monomial (energy φ a) 1
 
 /-- The independently defined coefficient histogram. -/
@@ -58,7 +58,13 @@ theorem count_satisfying {n : ℕ} (φ : CNF n) :
   simp only [multiplicity]
   apply Finset.sum_congr rfl
   intro a _
-  rw [energy_eq_zero_iff]
+  by_cases h : energy φ a = 0
+  · have hs := (energy_eq_zero_iff φ a).mp h
+    simp [h, hs]
+  · have hs : ¬ (∀ clause ∈ φ, clauseTrue a clause = true) := by
+      intro hc
+      exact h ((energy_eq_zero_iff φ a).mpr hc)
+    simp [h, hs]
 
 /-- The nonzero leading pair stores a degree and a strictly positive count. -/
 structure Term where
@@ -75,7 +81,10 @@ def plus : Leading → Leading → Leading
   | some a, some b =>
       if a.degree < b.degree then some a
       else if b.degree < a.degree then some b
-      else some ⟨a.degree, a.count + b.count, by omega⟩
+      else some ⟨a.degree, a.count + b.count, by
+        have ha := a.count_pos
+        have hb := b.count_pos
+        omega⟩
 
 def times : Leading → Leading → Leading
   | none, _ => none

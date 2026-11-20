@@ -155,6 +155,19 @@ pub fn checked_component_product_scan(
     Ok(())
 }
 
+/// Finish a component-product array in dense class order. Each class's two
+/// signed products are checked-added before multiplication into the running
+/// count. Refusal is immediate, even if later classes could multiply by zero.
+/// This immutable pass never alters the component-product array.
+pub fn checked_component_product_finish(products: &[[i128; 2]]) -> Result<i128, Error> {
+    let mut value = 1i128;
+    for &[zero, one] in products {
+        let local = zero.checked_add(one).ok_or(Error::Overflow)?;
+        value = value.checked_mul(local).ok_or(Error::Overflow)?;
+    }
+    Ok(value)
+}
+
 /// Exact checked contraction from *verified labels*, not from DSU parents.
 /// Overflows refuse instead of silently truncating a signed integer count.
 pub fn contract_checked_ranked_weights(
@@ -167,13 +180,12 @@ pub fn contract_checked_ranked_weights(
     let verified = verify_ranked_component_certificate(weights.len(), source_edges, certificate)?;
     let mut products = vec![[1i128, 1i128]; verified.components];
     checked_component_product_scan(&mut products, &certificate.labels, weights)?;
-    let mut multiplications = weights.len().checked_mul(2).ok_or(Error::Overflow)?;
-    let mut value = 1i128;
-    for terms in &products {
-        let local = terms[0].checked_add(terms[1]).ok_or(Error::Overflow)?;
-        value = value.checked_mul(local).ok_or(Error::Overflow)?;
-        multiplications += 1;
-    }
+    let value = checked_component_product_finish(&products)?;
+    let multiplications = weights
+        .len()
+        .checked_mul(2)
+        .and_then(|count| count.checked_add(verified.components))
+        .ok_or(Error::Overflow)?;
     Ok(RankedCountReceipt {
         value,
         variable_count: verified.variables,

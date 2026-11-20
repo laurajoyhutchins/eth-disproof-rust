@@ -27,6 +27,7 @@ class RepositoryLayoutTests(unittest.TestCase):
             "compiler/examples/RuntimeHeapKernels.lean",
             "compiler/examples/RuntimeHeapFixture.lean",
             "eth/Cargo.toml",
+            "eth/src/error.rs",
             "verification/ranked-source/Cargo.toml",
             "verification/ranked-source/src/lib.rs",
             "verification/ranked-source/hax.toml",
@@ -50,6 +51,7 @@ class RepositoryLayoutTests(unittest.TestCase):
         )
         harness = (ROOT / "verification/ranked-source/src/lib.rs").read_text()
         for source in (
+            "error.rs",
             "representation_ranked_certificate.rs",
             "representation_ranked_input.rs",
         ):

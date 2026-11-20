@@ -79,6 +79,61 @@ jobs:
           echo 'CHARON_LLBC_AND_AENEAS_LEAN_EMITTED=true' >> "$GITHUB_STEP_SUMMARY"
           echo 'NOTE=Source extraction is not a compiler refinement theorem.' >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Bind regenerated Aeneas bytes to the reviewed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated="$RUNNER_TEMP/checked-csr/generated/CheckedCsrSource/Code"
+          proof="eth/verification/checked-csr-source/proofs"
+          echo "89617b945282b3554e316ca084b56faeed086b7bb43af106c8fff4908a4386b8  $generated/Funs.lean" | sha256sum --check
+          echo "23e222503a45152c00824e4c0f41c5d39fd70e84b457091aa9675c1b9a120c7f  $generated/Types.lean" | sha256sum --check
+          echo "2bd62d5857798a0c6dbc9f927cda29589eed8dbc35b52653419393193f2108b5  $generated/FunsExternal_Template.lean" | sha256sum --check
+          test "$(cat "$proof/lean-toolchain")" = "leanprover/lean4:v4.36.0"
+          ! grep -nE '^[[:space:]]*(axiom|sorry|admit|unsafe)[[:space:]]' "$proof/CheckedCsrSource/Code/FunsExternal.lean"
+          cp "$generated/Funs.lean" "$generated/Types.lean" "$proof/CheckedCsrSource/Code/"
+
+      - name: Bootstrap pinned Lean dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --no-modify-path --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          cd eth/verification/checked-csr-source/proofs
+          "$HOME/.elan/bin/lake" update
+          test -f lake-manifest.json
+
+      - name: Set up pinned Aeneas Lean 4.36
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: eth/verification/checked-csr-source/proofs
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Cache pinned Aeneas Lean backend dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            eth/verification/checked-csr-source/proofs/.lake/packages/aeneas/backends/lean/.lake/build
+          key: checked-csr-aeneas-v4.36.0-2e3d4488-v1
+
+      - name: Kernel typecheck source-derived functions under explicit models
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="eth/verification/checked-csr-source/proofs"
+          cd "$proof"
+          lake update
+          lake exe cache get
+          lake -K maxJobs=2 build CheckedCsrSource
+          echo 'SOURCE_DERIVED_CSR_LEAN_WITH_EXPLICIT_LIBRARY_MODELS=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOTE=Not yet a universal source-to-independent-model refinement theorem.' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Retain successful and failed extraction evidence
         if: always()
         uses: actions/upload-artifact@v4

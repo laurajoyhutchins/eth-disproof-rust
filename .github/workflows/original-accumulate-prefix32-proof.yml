@@ -1,0 +1,120 @@
+name: Original accumulator first 32 instructions kernel proof
+
+on:
+  pull_request:
+    branches:
+      - feat/query-aot-source-20261113
+    paths:
+      - '.github/workflows/original-accumulate-prefix32-proof.yml'
+      - 'rust/lean_eth_reference/tools/query_accumulate_prefix32_kernel.lean'
+
+permissions:
+  contents: read
+
+jobs:
+  original-prefix32:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      LEAN_ROOT: instrumentation/lean-env
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      PINNED_ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Checkout immutable original OAI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth=1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test "$(git -C upstream/openai-math hash-object lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.lean)" = 3e1664be261748c6e12a2d1cafb033dc26131bf9
+          ln -s "$PINNED_ORIGINAL_SOURCE/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Restore Lean 4.34.1 and pinned Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Check exact original toolchain and dependency pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$LEAN_ROOT/lean-toolchain")" = leanprover/lean4:v4.34.1
+          test "$(git -C "$LEAN_ROOT/.lake/packages/mathlib" rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+
+      - name: Restore trusted original source cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-prefix32-${{ github.run_id }}
+          restore-keys: |
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-
+
+      - name: Kernel-check exact source equality for first 32 labels or refuse
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PREFIX32_OUT="$RUNNER_TEMP/prefix32"
+          mkdir -p "$PREFIX32_OUT"
+          python3 - <<'PY'
+          import hashlib,json,os,sys
+          from pathlib import Path
+          sys.path.insert(0,"rust/lean_eth_reference/tools")
+          from query_stream_aot import MAX_EXPORT_RSS_BYTES,run_bounded
+          repo=Path(os.environ["GITHUB_WORKSPACE"])
+          lake=repo/"instrumentation/lean-env"
+          proof=repo/"rust/lean_eth_reference/tools/query_accumulate_prefix32_kernel.lean"
+          olean=lake/".lake/build/lib/lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.olean"
+          out=Path(os.environ["PREFIX32_OUT"])
+          receipt={"status":"REFUSED","claim":"original source instruction equality at labels 0..31 only",
+                   "original_commit":os.environ["ORIGINAL_SOURCE_SHA"],
+                   "original_source_blob":"3e1664be261748c6e12a2d1cafb033dc26131bf9",
+                   "whole_program_certificate":False,
+                   "rust_correspondence":False,"asymptotic_bound":False}
+          try:
+            if not olean.is_file() or olean.is_symlink():
+              raise ValueError("original 8x27 cached OAI module missing; no build")
+            receipt["original_olean_sha256"]=hashlib.sha256(olean.read_bytes()).hexdigest()
+            receipt["proof_sha256"]=hashlib.sha256(proof.read_bytes()).hexdigest()
+            checked=run_bounded(["lake","env","lean","-j","1","-M","9216",str(proof)],
+                                lake,300,log_base=out/"kernel",
+                                rss_limit_bytes=MAX_EXPORT_RSS_BYTES)
+            if checked.returncode or checked.stdout.strip() or checked.stderr.strip():
+              raise ValueError("prefix32 kernel proof refused: exit="+str(checked.returncode)+
+                               "; stdout_tail="+checked.stdout[-1500:]+
+                               "; stderr_tail="+checked.stderr[-1800:])
+            receipt["status"]="ORIGINAL_PREFIX32_LEAN_KERNEL_CHECKED"
+          except Exception as e:
+            receipt["reason"]=str(e)[-3500:]
+          (out/"receipt.json").write_text(json.dumps(receipt,sort_keys=True,indent=2)+"\n")
+          print("ACCUMULATOR_PREFIX32="+json.dumps(receipt,sort_keys=True))
+          if receipt["status"]!="ORIGINAL_PREFIX32_LEAN_KERNEL_CHECKED":
+            raise SystemExit(2)
+          PY
+
+      - name: Preserve prefix proof or exact refusal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-accumulator-prefix32-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/prefix32/
+          if-no-files-found: warn
+          retention-days: 14

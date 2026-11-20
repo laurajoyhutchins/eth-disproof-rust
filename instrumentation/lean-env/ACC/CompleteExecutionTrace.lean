@@ -88,18 +88,24 @@ def finishTrace {c : ℕ} (products : Array WordPair)
                   (addition :: multiplication :: later, result)
 
 /-- The complete deterministic arithmetic schedule, including refusal.
-    This reconstructs the expected trace independently of Rust's emitter. -/
+    Recording and computation remain separate projections of the *same*
+    source-ordered scan and finalization. The independent result projection
+    makes the total word-to-integer simulation compositional. -/
 def expectedExecution {n c : ℕ}
     (label : Fin n → Fin c) (weight : Fin n → Bool → Word) :
     List Receipt × Option Word :=
   let one : Word := BitVec.ofInt 128 1
-  let (scan, finalProducts) :=
-    scanTrace (Array.replicate c (one, one)) (wordItems label weight)
-  match finalProducts with
-  | none => (scan, none)
-  | some products =>
-      let (finish, result) := finishTrace products one (List.finRange c)
-      (scan ++ finish, result)
+  let scanned := scanTrace (Array.replicate c (one, one)) (wordItems label weight)
+  let result :=
+    match scanned.2 with
+    | none => none
+    | some products => (finishTrace products one (List.finRange c)).2
+  let trace :=
+    match scanned.2 with
+    | none => scanned.1
+    | some products =>
+        scanned.1 ++ (finishTrace products one (List.finRange c)).1
+  (trace, result)
 
 
 /-- Decode an entire concrete word-array state, preserving slot order. -/
@@ -288,7 +294,7 @@ theorem expectedExecution_refines {n c : ℕ}
             simpa using hs.symm
           have hstopped :
               (scanTrace (Array.replicate c
-                (BitVec.ofInt 128 1, BitVec.ofInt 128 1))
+                ((1 : Word), (1 : Word)))
                 (wordItems label weight)).2 = none := by
             simpa [initial, items, one] using congrArg Prod.snd hp
           simp [expectedExecution, hstopped,
@@ -308,7 +314,7 @@ theorem expectedExecution_refines {n c : ℕ}
               finishTrace_refines products one (List.finRange c)
           have hcontinued :
               (scanTrace (Array.replicate c
-                (BitVec.ofInt 128 1, BitVec.ofInt 128 1))
+                ((1 : Word), (1 : Word)))
                 (wordItems label weight)).2 = some products := by
             simpa [initial, items, one] using congrArg Prod.snd hp
           simpa [expectedExecution, hcontinued,

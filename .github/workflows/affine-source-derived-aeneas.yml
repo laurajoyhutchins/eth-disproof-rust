@@ -67,6 +67,42 @@ jobs:
             '
           echo "Aeneas emitted source-derived Lean data. No correspondence theorem has been proved yet."
 
+      - name: Pin exact source-derived Lean content
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated="$RUNNER_TEMP/affine-source-derived/generated/AffineCheckedToggle/Code"
+          echo "17fd66c7369904e569fc0fa1742392003ecb44532abab8174fe25d9626e27062  $generated/Funs.lean" | sha256sum --check
+          echo "71d655a4d081c5f962336cb0a409ea6ad47cb42fd505fcdaf765eba7418002c1  $generated/Types.lean" | sha256sum --check
+          proof="experiments/egg-contraction-optimizer/verification/source-derived/proofs"
+          mkdir -p "$proof/AffineCheckedToggle/Code"
+          cp "$generated/Funs.lean" "$generated/Types.lean" "$proof/AffineCheckedToggle/Code/"
+
+      - name: Set up independently pinned Lean 4.36 for extracted Rust
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: experiments/egg-contraction-optimizer/verification/source-derived/proofs
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Kernel-check proof against generated Rust functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="experiments/egg-contraction-optimizer/verification/source-derived/proofs"
+          test "$(cat "$proof/lean-toolchain")" = "leanprover/lean4:v4.36.0"
+          ! grep -nE '\\b(sorry|admit|axiom|unsafe)\\b' "$proof/AffineCheckedToggle/Properties/CheckedFlip.lean"
+          cd "$proof"
+          lake update
+          lake exe cache get
+          lake build AffineCheckedToggle
+          echo "Verified the source-derived Lean theorem against regenerated functions"
+
       - name: Preserve LLBC and generated Lean for inspection
         if: always()
         uses: actions/upload-artifact@v4

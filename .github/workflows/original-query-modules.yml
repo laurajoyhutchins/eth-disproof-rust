@@ -88,6 +88,9 @@ jobs:
             original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-
             original-oai-v1-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}
 
+      # Symbolic graph extraction permits large source label spaces; the
+      # certificate generator remains capped at 4096 actual physical labels.
+      # This single experimental-branch push is the original-source probe.
       - name: Independently export and certify one original source module
         shell: bash
         run: |
@@ -98,7 +101,7 @@ jobs:
             --output-dir "$RUNNER_TEMP/query-modular-source" \
             --stages "$QUERY_MODULE_STAGE" \
             --build-timeout 900 --export-timeout 300 \
-            --cert-timeout 300 --max-source-labels 4096 \
+            --cert-timeout 300 --max-source-labels 1000000000 \
             --rss-limit-gib 12
 
       - name: Preserve exact module graph, certificate or typed refusal

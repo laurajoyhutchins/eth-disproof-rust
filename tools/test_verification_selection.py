@@ -54,6 +54,11 @@ class VerificationSelectionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "unmodeled Rust module path override"):
                 _rust_external_modules(root, "eth/src/bit_program.rs")
 
+            put(root, "eth/src/bit_program/child.rs",
+                'include!("generated.rs");\n')
+            with self.assertRaisesRegex(ValueError, "unmodeled Rust include! source"):
+                _rust_external_modules(root, "eth/src/bit_program.rs")
+
     def test_github_globs_do_not_allow_a_single_star_to_cross_directory(self):
         self.assertFalse(covered("eth/proofs/nested/Example.lean", ("eth/proofs/*.lean",)))
         self.assertTrue(covered("eth/proofs/nested/Example.lean", ("eth/proofs/**",)))

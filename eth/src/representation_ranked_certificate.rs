@@ -299,8 +299,7 @@ fn checked_component_product_step_with(
     class: usize,
     weights: [i128; 2],
     arithmetic: &mut ArithmeticObserver<'_>,
-) -> Result<(), Error>
-{
+) -> Result<(), Error> {
     let slot = products
         .get_mut(class)
         .ok_or_else(|| Error::Invalid("component product index outside range".into()))?;
@@ -318,7 +317,12 @@ pub fn checked_component_product_step(
     class: usize,
     weights: [i128; 2],
 ) -> Result<(), Error> {
-    checked_component_product_step_with(products, class, weights, &mut ArithmeticObserver { receipts: None })
+    checked_component_product_step_with(
+        products,
+        class,
+        weights,
+        &mut ArithmeticObserver { receipts: None },
+    )
 }
 
 fn checked_component_product_scan_with(
@@ -326,8 +330,7 @@ fn checked_component_product_scan_with(
     labels: &[usize],
     weights: &[[i128; 2]],
     arithmetic: &mut ArithmeticObserver<'_>,
-) -> Result<(), Error>
-{
+) -> Result<(), Error> {
     if labels.len() != weights.len() {
         return Err(Error::Invalid(
             "component scan label and weight widths disagree".into(),
@@ -347,14 +350,18 @@ pub fn checked_component_product_scan(
     labels: &[usize],
     weights: &[[i128; 2]],
 ) -> Result<(), Error> {
-    checked_component_product_scan_with(products, labels, weights, &mut ArithmeticObserver { receipts: None })
+    checked_component_product_scan_with(
+        products,
+        labels,
+        weights,
+        &mut ArithmeticObserver { receipts: None },
+    )
 }
 
 fn checked_component_product_finish_with(
     products: &[[i128; 2]],
     arithmetic: &mut ArithmeticObserver<'_>,
-) -> Result<i128, Error>
-{
+) -> Result<i128, Error> {
     let mut value = 1i128;
     for &[zero, one] in products {
         let local = arithmetic.call(ArithmeticKind::Add, zero, one)?;
@@ -374,8 +381,7 @@ fn contract_checked_ranked_weights_with(
     source_edges: &[(usize, usize)],
     certificate: &RankedComponentCertificate,
     arithmetic: &mut ArithmeticObserver<'_>,
-) -> Result<RankedCountReceipt, Error>
-{
+) -> Result<RankedCountReceipt, Error> {
     // This rechecks the *supplied* graph and certificate on every execution.
     let verified = verify_ranked_component_certificate(weights.len(), source_edges, certificate)?;
     let mut products = vec![[1i128, 1i128]; verified.components];

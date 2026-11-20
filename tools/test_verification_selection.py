@@ -41,13 +41,14 @@ class VerificationSelectionTests(unittest.TestCase):
 
     def test_compiler_proof_pin_must_select_on_pr_and_push(self):
         workflow = (ROOT / ".github/workflows/native-scalar-proof.yml").read_text()
-        pin = "      - 'instrumentation/lean-env/lean-toolchain'\\n"
-        self.assertEqual(workflow.count(pin), 2)
+        pin = "      - 'instrumentation/lean-env/lean-toolchain'\n"
+        pieces = workflow.split(pin)
+        self.assertEqual(len(pieces), 3)
         for position in (0, 1):
-            pieces = workflow.split(pin)
-            pieces[position] += ""
-            # Remove the selector from either the PR or the push list.
-            mutated = pin.join(pieces[:position + 1]) + "".join(pieces[position + 1:])
+            # Remove one selector while leaving the other event unchanged.
+            mutated = (pieces[0] + ("" if position == 0 else pin)
+                       + pieces[1] + ("" if position == 1 else pin)
+                       + pieces[2])
             with self.subTest(event=("pull_request", "push")[position]):
                 with self.assertRaisesRegex(ValueError, "skips actual verification dependencies"):
                     verify_selection(ROOT, "native-scalar-proof.yml", mutated)

@@ -27,10 +27,14 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       # rust-toolchain.toml pins Rust 1.99.1, rustfmt and Clippy.
+      # These source-only checks run before crate/network restoration and
+      # cannot be skipped by the expensive proof workflows' path filters.
+      - name: Verification selection and repository layout (offline)
+        run: |
+          python3 -m unittest discover -s tools -p 'test_verification_selection.py' -v
+          python3 -m unittest discover -s tools -p 'test_repository_layout.py' -v
       - name: Restore locked crate dependencies
         run: cargo fetch --locked
-      - name: Repository layout contract
-        run: python3 -m unittest discover -s tools -p 'test_repository_layout.py'
       - name: Scoped evidence source freshness (offline)
         run: |
           python3 -m unittest discover -s tools -p 'test_evidence_claims.py' -v

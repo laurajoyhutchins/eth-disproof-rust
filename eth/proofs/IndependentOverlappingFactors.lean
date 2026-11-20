@@ -310,11 +310,7 @@ theorem makePlan_mem_iff
   | nil =>
       simp [makePlan, eliminated, scopeUnion, Finset.mem_sdiff]
   | cons f rest ih =>
-      change
-        (v ∈ nextDead active f rest output ∨
-          v ∈ eliminated
-            (makePlan (nextKept active f rest output) output rest)) ↔
-          v ∈ (active ∪ (f.scope ∪ scopeUnion rest)) \ output
+      simp only [makePlan, eliminated, List.mem_append, scopeUnion]
       rw [ih (nextKept active f rest output)]
       simp only [nextDead, Finset.mem_toList,
         Finset.mem_sdiff, nextKept, Finset.mem_inter,
@@ -373,14 +369,11 @@ theorem allSourceEliminated_mem_iff
     (v : V) :
     v ∈ allSourceEliminated declared output factors ↔
       v ∈ declared \ output := by
-  change
-    (v ∈ unusedDeclared declared output factors ∨
-      v ∈ eliminated (makePlan ∅ output factors)) ↔
-      v ∈ declared \ output
+  simp only [allSourceEliminated, List.mem_append]
   rw [makePlan_mem_iff]
   simp only [unusedDeclared, Finset.mem_toList,
-    Finset.mem_sdiff, Finset.mem_union,
-    Finset.mem_empty, false_or]
+    Finset.mem_sdiff, Finset.mem_union]
+  simp only [Finset.empty_union]
   have hs : v ∈ scopeUnion factors → v ∈ declared :=
     fun hv => hscopes hv
   tauto
@@ -403,8 +396,8 @@ theorem allSourceEliminated_nodup
       simpa only [unusedDeclared, Finset.mem_toList] using hunused
     have hp : v ∈ (∅ ∪ scopeUnion factors) \ output :=
       (makePlan_mem_iff ∅ output factors v).mp hplan
-    simp only [Finset.mem_sdiff, Finset.mem_union,
-      Finset.mem_empty, false_or] at *
+    simp only [Finset.mem_sdiff, Finset.mem_union] at *
+    simp at hp
     tauto
 
 /-- The generated plan also remains safe when the source universe has

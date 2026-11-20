@@ -88,7 +88,7 @@ def accepted (ds : List Bool) : Finset State :=
 theorem accepted_iff_not_forbidden (ds : List Bool) (s : State) :
     accepts s ds = true ↔ s ∉ forbidden ds := by
   simp only [forbidden, Finset.mem_filter, Finset.mem_univ, true_and]
-  cases h : accepts s ds <;> simp [h]
+  cases accepts s ds <;> simp
 
 theorem accepted_complement (ds : List Bool) :
     accepted ds = (forbidden ds)ᶜ := by
@@ -116,7 +116,7 @@ theorem accepts_zeros (k : Nat) (s : State) :
   induction k generalizing s with
   | zero => rfl
   | succ k ih =>
-      change nonzero s && accepts (next false s) (zeros k) = nonzero s
+      change (nonzero s && accepts (next false s) (zeros k)) = nonzero s
       rw [ih, nonzero_next_false]
       cases nonzero s <;> rfl
 

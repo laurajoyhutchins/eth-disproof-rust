@@ -33,6 +33,15 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # Cheap artifact/renderer failures should be reported before pinned
+      # upstream checkout, Mathlib restoration, or full Lean elaboration.
+      - name: Preflight generated Lean certificate contracts (offline)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m compileall -q eth/tools
+          python3 -m unittest discover -s eth/tools -p 'test_source_graph_kernel_certificate.py' -v
+          python3 -m unittest discover -s eth/tools -p 'test_verify_rust_physical_receipt.py' -v
       - name: Checkout pinned original OpenAI Lean source
         shell: bash
         run: |
@@ -90,8 +99,6 @@ jobs:
         run: |
           set -euo pipefail
           cargo fetch --locked
-          python3 -m unittest discover -s eth/tools -p 'test_source_graph_kernel_certificate.py' -v
-          python3 -m unittest discover -s eth/tools -p 'test_verify_rust_physical_receipt.py' -v
           data="$RUNNER_TEMP/framed-reader-physical-programs.json"
           cert="$RUNNER_TEMP/framed-reader-rust-certificate.lean"
           cargo run --quiet --locked --offline -p lean-eth-reference --bin framed-reader-certificate > "$data"

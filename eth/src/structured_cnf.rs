@@ -928,8 +928,7 @@ mod tests {
             for mask in 0..(1_usize << n) {
                 let x = (0..n).map(|i| mask & (1 << i) != 0).collect::<Vec<_>>();
                 let direct = csr.row_offsets.windows(2).all(|bounds| {
-                    (bounds[0]..bounds[1])
-                        .any(|p| x[csr.column_indices[p]] == (csr.signs[p] == 1))
+                    (bounds[0]..bounds[1]).any(|p| x[csr.column_indices[p]] == (csr.signs[p] == 1))
                 });
                 let decoded = rows.iter().all(|(columns, signs)| {
                     columns

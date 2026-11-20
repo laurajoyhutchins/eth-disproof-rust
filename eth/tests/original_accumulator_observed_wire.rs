@@ -37,21 +37,46 @@ fn wire(instr: &Instr) -> String {
         }
         Instr::Copy { dst, src, next } => format!("copy:{dst}:{src}:{next}"),
         Instr::Not { dst, src, next } => format!("not:{dst}:{src}:{next}"),
-        Instr::And { dst, left, right, next } => {
+        Instr::And {
+            dst,
+            left,
+            right,
+            next,
+        } => {
             format!("and:{dst}:{left}:{right}:{next}")
         }
-        Instr::Or { dst, left, right, next } => {
+        Instr::Or {
+            dst,
+            left,
+            right,
+            next,
+        } => {
             format!("or:{dst}:{left}:{right}:{next}")
         }
-        Instr::Xor { dst, left, right, next } => {
+        Instr::Xor {
+            dst,
+            left,
+            right,
+            next,
+        } => {
             format!("xor:{dst}:{left}:{right}:{next}")
         }
         Instr::Branch { test, yes, no } => format!("branch:{test}:{yes}:{no}"),
         Instr::Push { stack, src, next } => format!("push:{stack}:{src}:{next}"),
-        Instr::Peek { stack, value, present, next } => {
+        Instr::Peek {
+            stack,
+            value,
+            present,
+            next,
+        } => {
             format!("peek:{stack}:{value}:{present}:{next}")
         }
-        Instr::Pop { stack, value, present, next } => {
+        Instr::Pop {
+            stack,
+            value,
+            present,
+            next,
+        } => {
             format!("pop:{stack}:{value}:{present}:{next}")
         }
     }
@@ -65,11 +90,8 @@ fn observed_lean_accumulator_round_trips_all_309_physical_labels_in_rust() {
     let graph: serde_json::Value = serde_json::from_slice(GRAPH).unwrap();
     let rows = graph["program"]["code"].as_array().unwrap();
     assert_eq!(rows.len(), 309);
-    let machine = DeferredProgram::<8, 27>::from_original_source_json(
-        GRAPH,
-        binding(GRAPH_SHA256),
-    )
-    .unwrap();
+    let machine =
+        DeferredProgram::<8, 27>::from_original_source_json(GRAPH, binding(GRAPH_SHA256)).unwrap();
     assert_eq!(machine.labels(), 309);
     assert_eq!(machine.entry(), 1);
     assert_eq!(machine.input_stack(), 15);
@@ -92,11 +114,9 @@ fn observed_lean_accumulator_round_trips_all_309_physical_labels_in_rust() {
 #[test]
 fn uncertified_observation_cannot_be_rebound_to_another_graph() {
     let bad_sha = "f".repeat(64);
-    assert!(DeferredProgram::<8, 27>::from_original_source_json(
-        GRAPH,
-        binding(&bad_sha),
-    )
-    .is_err());
+    assert!(
+        DeferredProgram::<8, 27>::from_original_source_json(GRAPH, binding(&bad_sha),).is_err()
+    );
 
     let mut changed = GRAPH.to_vec();
     let index = changed
@@ -104,9 +124,8 @@ fn uncertified_observation_cannot_be_rebound_to_another_graph() {
         .position(|&byte| byte == b'h')
         .expect("source graph contains a halt opcode");
     changed[index] = b'x';
-    assert!(DeferredProgram::<8, 27>::from_original_source_json(
-        &changed,
-        binding(GRAPH_SHA256),
-    )
-    .is_err());
+    assert!(
+        DeferredProgram::<8, 27>::from_original_source_json(&changed, binding(GRAPH_SHA256),)
+            .is_err()
+    );
 }

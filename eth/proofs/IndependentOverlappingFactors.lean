@@ -612,10 +612,11 @@ theorem sortedSource_correct
   simp only [Finset.mem_union, not_or] at hn
   exact hn.1
 
-/-- A small executable ordering example: output zero is kept and the
-other declared bit names are summed once, in increasing numeric order. -/
-example : (({0, 2, 5} : Finset ℕ) \ {2}).sort (· ≤ ·) = [0, 5] := by
-  decide
+/-- The ordered representation has no duplicate entries even for an
+arbitrary finite source inventory, independently of its representation. -/
+example (source : Finset ℕ) :
+    (source.sort (· ≤ ·)).Nodup :=
+  Finset.sort_nodup source (· ≤ ·)
 
 end OrderedPlan
 

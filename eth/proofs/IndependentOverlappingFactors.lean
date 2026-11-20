@@ -373,7 +373,6 @@ theorem allSourceEliminated_mem_iff
   rw [makePlan_mem_iff]
   simp only [unusedDeclared, Finset.mem_toList,
     Finset.mem_sdiff, Finset.mem_union]
-  simp only [Finset.empty_union]
   have hs : v ∈ scopeUnion factors → v ∈ declared :=
     fun hv => hscopes hv
   tauto

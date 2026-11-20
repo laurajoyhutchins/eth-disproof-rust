@@ -15,6 +15,10 @@ import RuntimeHeapDelKernels
 -- acquisition, storage, and recursive release of a *heap-valued* Nat stamp.
 @[extern "lr_heap_trace_final_releases"] opaque traceFinalReleases
   (oldStamp freshStamp : @& Nat) : Nat
+-- Separately observe the *real* C++ destructor worklist through externally
+-- protected heap witnesses. The dummy argument is borrowed and scalar.
+@[extern "lr_heap_trace_destructor_worklist"] opaque traceDestructorWorklist
+  (dummy : @& Nat) : Nat
 
 def main : IO Unit := do
   let values : Array Nat := #[0, 1, 2, 7, 17, 901, 2^16, 2^32, 2^40, 2^60]
@@ -58,3 +62,7 @@ def main : IO Unit := do
   if releaseResult != 0 then
     throw <| IO.userError s!"Lean C final-reference release oracle refused: {releaseResult}"
   IO.println "reader-c-release-heap-stamp-checkpoints=RECORDED"
+  let worklistResult := traceDestructorWorklist 0
+  if worklistResult != 0 then
+    throw <| IO.userError s!"Lean C destructor worklist witness refused: {worklistResult}"
+  IO.println "reader-c-destructor-worklist-witnesses=RECORDED"

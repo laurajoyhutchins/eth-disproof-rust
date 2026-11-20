@@ -19,6 +19,7 @@ mod search;
 pub mod sat;
 pub mod affine;
 pub mod affine_cert;
+mod checked_toggle;
 pub mod affine_wire;
 pub mod affine_native_lean;
 

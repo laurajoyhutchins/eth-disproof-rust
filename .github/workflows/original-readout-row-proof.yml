@@ -1,0 +1,143 @@
+name: Original moments-readout row kernel
+
+on:
+  pull_request:
+    branches:
+      - feat/query-aot-source-20261113
+    paths:
+      - '.github/workflows/original-readout-row-proof.yml'
+      - 'rust/lean_eth_reference/tools/query_readout_row_kernel.lean'
+
+permissions:
+  contents: read
+
+# Deliberately stacked on the original source-import branch. Its cache is
+# inaccessible to unrelated PR refs; never silently recompile absent OAI.
+jobs:
+  readout-row-kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      LEAN_ROOT: instrumentation/lean-env
+      ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Checkout exact pinned original OpenAI SAT source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth=1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test "$(git -C upstream/openai-math hash-object lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramNative.lean)" = '6791097230d8b1bad5c83d37975628b88fadc32c'
+          test "$(git -C upstream/openai-math hash-object lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramState.lean)" = '738882aca4fbfbb3e167d018025290eeda88eaf2'
+          ln -s "$ORIGINAL_SOURCE/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Restore pinned Lean 4.34.1 and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Verify Mathlib and toolchain pins before original proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$LEAN_ROOT/lean-toolchain")" = leanprover/lean4:v4.34.1
+          test "$(git -C "$LEAN_ROOT/.lake/packages/mathlib" rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+          (cd "$LEAN_ROOT" && lake env lean --version | grep -F 'Lean (version 4.34.1,')
+
+      - name: Restore original OAI cache from source-import base
+        id: original-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-shell-${{ github.run_id }}
+          restore-keys: |
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-4eaee87548250b2682affda7d05d947c05554bae-
+
+      - name: Check exact original source-specific shell theorems in Lean
+        shell: bash
+        env:
+          RESTORED_KEY: ${{ steps.original-cache.outputs.cache-matched-key }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/readout-row"
+          export READOUT_ROW_OUTPUT="$RUNNER_TEMP/readout-row"
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          sys.path.insert(0, "rust/lean_eth_reference/tools")
+          from export_compiled_batch import atomic_write
+          from query_stream_aot import run_bounded, MAX_EXPORT_RSS_BYTES
+
+          dest = Path(os.environ["READOUT_ROW_OUTPUT"])
+          lake = Path(os.environ["GITHUB_WORKSPACE"]) / "instrumentation/lean-env"
+          original = lake / ".lake/build/lib/lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramNative.olean"
+          proof = Path(os.environ["GITHUB_WORKSPACE"]) / "rust/lean_eth_reference/tools/query_readout_row_kernel.lean"
+          result = {
+              "status": "REFUSED",
+              "source_commit": os.environ["ORIGINAL_SOURCE_SHA"],
+              "original_module": "OAI.Algorithms.SubexponentialSAT.SqrtLog.MomentsReadoutProgramNative",
+              "original_module_git_blob": "6791097230d8b1bad5c83d37975628b88fadc32c",
+              "cache_key": os.environ.get("RESTORED_KEY", ""),
+              "full_readout_graph": False,
+              "native_rust_correspondence": False,
+              "counting_correctness": False,
+              "asymptotic_cost_bound": False,
+              "numerical_row_executable": False,
+          }
+          try:
+              if not result["cache_key"] or not original.is_file() or original.is_symlink():
+                  raise ValueError("pinned original OAI readout cache is absent; no build allowed")
+              result["original_olean_sha256"] = hashlib.sha256(original.read_bytes()).hexdigest()
+              result["lean_proof_sha256"] = hashlib.sha256(proof.read_bytes()).hexdigest()
+              checked = run_bounded(
+                  ["lake", "env", "lean", "-j", "1", "-M", "9216", str(proof)],
+                  lake, 240, log_base=dest / "lean-shell",
+                  rss_limit_bytes=MAX_EXPORT_RSS_BYTES,
+              )
+              if checked.returncode:
+                  raise ValueError(f"original readout row kernel compilation refused: exit={checked.returncode}; "
+                                   f"stdout_tail={checked.stdout[-3000:]}; stderr_tail={checked.stderr[-1000:]}")
+              if checked.stdout.strip() or checked.stderr.strip():
+                  raise ValueError("readout row Lean checker emitted unexpected diagnostic output")
+              result["status"] = "ORIGINAL_READOUT_ROW_LEAN_CHECKED"
+          except Exception as exc:
+              result["status"] = "REFUSED"
+              result["reason"] = str(exc)[-4000:]
+          atomic_write(dest / "report.json", json.dumps(result, sort_keys=True, indent=2) + "\n")
+          print("ORIGINAL_READOUT_ROW=" + json.dumps(result, sort_keys=True))
+          if result["status"] != "ORIGINAL_READOUT_ROW_LEAN_CHECKED":
+              raise SystemExit(2)
+          PY
+
+      - name: Preserve kernel receipt or exact refusal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-readout-row-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/readout-row/
+          if-no-files-found: warn
+          retention-days: 14

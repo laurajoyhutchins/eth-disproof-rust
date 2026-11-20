@@ -95,7 +95,10 @@ mod tests {
 
         let mut optional = vec![5];
         assert_eq!(p3_optional_scalar(&mut Some(&mut optional), 11), Ok(11));
-        assert_eq!(p4_optional_result(&mut Some(&mut optional), 13, true), Err(7));
+        assert_eq!(
+            p4_optional_result(&mut Some(&mut optional), 13, true),
+            Err(7)
+        );
         assert_eq!(optional, vec![5, 11, 13]);
 
         let mut absent = None;
@@ -113,7 +116,10 @@ mod tests {
 
         let mut optional = Vec::new();
         assert_eq!(p6_checked_optional(&mut Some(&mut optional), 2, 3), Ok(5));
-        assert_eq!(p6_checked_optional(&mut Some(&mut optional), i128::MAX, 1), Err(9));
+        assert_eq!(
+            p6_checked_optional(&mut Some(&mut optional), i128::MAX, 1),
+            Err(9)
+        );
         assert_eq!(optional, direct);
 
         let mut absent = None;

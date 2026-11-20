@@ -201,6 +201,24 @@ test -s "$out/source-release-physical.tsv"
 lean proofs/ReaderCReleaseAudit.lean | tee "$out/source-release-trace-audit.txt"
 grep -Fq 'c_release_trace=PASS cases=3 rows=16 identities_and_last_ref_tombstones' \
   "$out/source-release-trace-audit.txt"
+grep -Fq 'c_release_source_ledger=PASS cases=3 rows=16 per_checkpoint' \
+  "$out/source-release-trace-audit.txt"
+python3 - "$out/source-release-trace-audit.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+raw = Path(sys.argv[1]).read_text()
+name = "'ReaderCReleaseAudit.modeled_c_step_has_source'"
+pattern = re.escape(name) + r" (does not depend on any axioms|depends on axioms: \[([^\]]*)\])"
+match = re.search(pattern, raw)
+if match is None:
+    raise SystemExit("missing kernel axiom receipt for C/source conditional bridge")
+used = set((match.group(2) or "").split(", ")) - {""}
+allowed = {"propext", "Quot.sound", "Classical.choice"}
+if not used <= allowed or "sorryAx" in raw:
+    raise SystemExit(f"unapproved C/source bridge axioms: {used - allowed}")
+print("c_release_source_bridge=KERNEL_STANDARD_AXIOMS_ONLY")
+PY
 python3 - "$out/source-release-physical.tsv" "$out" <<'PY'
 from pathlib import Path
 import sys
@@ -214,8 +232,23 @@ corrupted[2]="\t".join(fields)
 (out/"source-release-mutated-count.tsv").write_text("\n".join(corrupted)+"\n")
 missing=src[:2]+src[3:]
 (out/"source-release-mutated-missing.tsv").write_text("\n".join(missing)+"\n")
+# The former representation bug incorrectly preserved a dead parent's
+# stamp-field credit. Force precisely that error into the real C trace.
+for case, column, kind in (("oldStampFinal", 5, "dead-old"),
+                           ("heapFreshFinal", 6, "dead-fresh")):
+    mutant = src.copy()
+    positions = [i for i, row in enumerate(mutant[1:], 1)
+                 if row.split("\t")[:2] == [case, "decParent"]]
+    if len(positions) != 1:
+        raise SystemExit(f"missing unique final-release checkpoint: {case}")
+    i = positions[0]
+    fields = mutant[i].split("\t")
+    fields[column] = str(int(fields[column]) + 1)
+    mutant[i] = "\t".join(fields)
+    (out/f"source-release-mutated-{kind}.tsv").write_text(
+        "\n".join(mutant) + "\n")
 PY
-for variant in count missing; do
+for variant in count missing dead-old dead-fresh; do
   file="$out/source-release-mutated-$variant.tsv"
   log="$out/source-release-rejected-$variant.txt"
   if LR_RELEASE_AUDIT="$file" lean proofs/ReaderCReleaseAudit.lean >"$log" 2>&1; then
@@ -228,7 +261,7 @@ for variant in count missing; do
     exit 2
   }
 done
-echo 'c_release_trace_mutations=COUNT_AND_OMISSION_REFUSED'
+echo 'c_release_trace_mutations=COUNT_OMISSION_AND_DEAD_FIELD_CREDITS_REFUSED'
 # Kernel's already-proved physicalStep checks the *independently measured*
 # C rows and refuses omissions, reordering, illegal transitions and ID drift.
 lean proofs/ReaderShellTraceAudit.lean | tee "$out/source-shell-trace-audit.txt"
@@ -298,6 +331,8 @@ echo 'source_del_reader=EXECUTED_BOUNDED_720' > "$out/source-del-reader-status.t
   echo 'physical_trace=28_observations_in_4_allocation_episodes'
   echo 'source_shell_c_semantics_proof=NOT_ESTABLISHED'
   echo 'c_release_branch_model=KERNEL_PROVED_SELECTED_BRANCHES'
+  echo 'c_release_source_credit_bridge=16_REAL_C_CHECKPOINTS_REPLAYED_AGAINST_SOURCE_AND_PHYSICAL_MODELS'
+  echo 'c_release_source_trace_theorem=CONDITIONAL_ON_DEFINED_MODEL_TRANSITIONS'
   echo 'c_release_traces=16_REAL_LEAN_C_CHECKPOINTS_IN_THREE_EPISODES'
   echo 'c_release_tombstone=NOT_AN_ACTUAL_READ_FROM_FREED_MEMORY'
   echo 'c_release_universal_c_semantics=NOT_ESTABLISHED'

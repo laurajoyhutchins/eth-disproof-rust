@@ -86,7 +86,7 @@ def fetch_github(url: str) -> dict:
         raise ReceiptError(f"remote receipt lookup failed: {exc}") from exc
 
 
-def verify_remote(receipt: dict, fetcher=fetch_github) -> None:
+def verify_remote(receipt: dict, pinned_files: list[dict], fetcher=fetch_github) -> None:
     run_id = receipt["run_id"]
     base = f"https://api.github.com/repos/{REPO}/actions/runs/{run_id}"
     run = fetcher(base)
@@ -98,6 +98,26 @@ def verify_remote(receipt: dict, fetcher=fetch_github) -> None:
         or run.get("repository", {}).get("full_name") != REPO
     ):
         raise ReceiptError(f"run {run_id}: wrong repository/head/workflow or not successful")
+    # The workflow run SHA alone does not establish that the claimed files
+    # were present at that revision. Check GitHub's original Git tree too.
+    historical_tree = fetcher(
+        f"https://api.github.com/repos/{REPO}/git/trees/{receipt['checked_head']}?recursive=1"
+    )
+    if (not isinstance(historical_tree, dict)
+            or historical_tree.get("truncated") is not False
+            or not isinstance(historical_tree.get("tree"), list)):
+        raise ReceiptError(f"run {run_id}: incomplete historical source tree")
+    tree_blobs = {}
+    for entry in historical_tree["tree"]:
+        if isinstance(entry, dict) and entry.get("type") == "blob":
+            if entry.get("path") in tree_blobs:
+                raise ReceiptError(f"run {run_id}: duplicate historical Git path")
+            tree_blobs[entry.get("path")] = entry.get("sha")
+    for file_ref in pinned_files:
+        if tree_blobs.get(file_ref["path"]) != file_ref["blob_sha"]:
+            raise ReceiptError(
+                f"run {run_id}: claimed blob not present at checked head: {file_ref['path']}"
+            )
     jobs = fetcher(base + "/jobs?per_page=100")
     if not isinstance(jobs, dict) or not isinstance(jobs.get("jobs"), list):
         raise ReceiptError(f"run {run_id}: missing job evidence")
@@ -195,7 +215,7 @@ def audit(payload: object, root: Path, fetcher=None) -> list[dict]:
             ):
                 raise ReceiptError(f"{name}: pinned Lean theorem/axiom audit not present")
         if fetcher is not None:
-            verify_remote(receipt, fetcher)
+            verify_remote(receipt, claim["files"], fetcher)
         observations.append({
             "id": name,
             "kind": kind,

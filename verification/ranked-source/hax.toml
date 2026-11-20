@@ -1,7 +1,16 @@
-# The very same production Rust files are imported via #[path] in src/lib.rs.
-# Extract only the actual library entrypoint, with no binary target collection.
-# Successful translation is NOT semantic correctness: the generated Lean
-# closure still needs kernel-checked correspondence and audited assumptions.
+# These scenarios import the production module files *by path*. Isolating
+# guard and byte decoder exposes which source dependency actually translates
+# without substituting a proof-friendly implementation.
+[scenario.ranked-guard]
+backend = "lean"
+include = ["ranked_source_proof_harness::representation_ranked_certificate::verify_ranked_component_certificate"]
+
+[scenario.ranked-decoder]
+backend = "lean"
+include = ["ranked_source_proof_harness::representation_ranked_input::decode_ranked_input"]
+
+# Full source closure includes callback-parametric arithmetic recording;
+# this must stay red until genuine source-derived Lean is generated.
 [scenario.ranked-source]
 backend = "lean"
 include = ["ranked_source_proof_harness::representation_ranked_input::execute_ranked_wire"]

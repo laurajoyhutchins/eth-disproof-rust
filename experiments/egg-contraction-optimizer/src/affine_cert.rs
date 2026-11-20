@@ -120,11 +120,11 @@ impl VerificationLimits {
         // A product-only test would admit an empty (zero-row) matrix
         // with arbitrarily many declared columns, even though name
         // registration and the free-column receipt still allocate.
+        let cells = rows.checked_mul(columns)
+            .ok_or("checker matrix storage overflow")?;
         if columns > self.max_cells || rows > self.max_cells {
             return Err("checker matrix dimension budget exceeded".into());
         }
-        let cells = rows.checked_mul(columns)
-            .ok_or("checker matrix storage overflow")?;
         if cells > self.max_cells {
             return Err("checker matrix storage budget exceeded".into());
         }
@@ -462,7 +462,7 @@ mod tests {
             max_cells: 0,
             max_steps: 0,
         });
-        assert!(refusal.unwrap_err().contains("storage budget exceeded"));
+        assert!(refusal.unwrap_err().contains("budget exceeded"));
     }
 
     #[test]

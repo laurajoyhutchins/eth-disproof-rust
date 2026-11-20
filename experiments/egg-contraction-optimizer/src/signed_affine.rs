@@ -822,6 +822,38 @@ mod tests {
     }
 
     #[test]
+    fn native_lean_oracle_emits_source_semantics_not_an_opaque_success_bit() {
+        let input = source(1, vec![], phase(2, &[&[0, 1]]), 0);
+        let (out, certificate) = input.eliminate_with_certificate().unwrap();
+        let example = input.lean_oracle_example(&out, &certificate, 1).unwrap();
+        assert!(example.contains("checkNativeInstance (n := 1)"));
+        assert!(example.contains("phaseTerms := [[0, 1]]"));
+        assert!(example.contains("added := some ([0], false)"));
+        assert!(example.contains("exponent := 1"));
+        assert!(example.contains(":= by decide"));
+        assert!(input.lean_oracle_example(&out, &certificate, 0).is_err());
+
+        // An incorrect output may not be encoded as a positive proof example.
+        let mut forged = out.clone();
+        forged.exponent = 0;
+        assert!(input.lean_oracle_example(&forged, &certificate, 1).is_err());
+
+        let forced = source(
+            1,
+            vec![Equation {
+                variables: vec!["x".into(), "b0".into()],
+                rhs: true,
+            }],
+            phase(2, &[&[0, 1]]),
+            0,
+        );
+        let (fixed, cert) = forced.eliminate_with_certificate().unwrap();
+        let example = forced.lean_oracle_example(&fixed, &cert, 1).unwrap();
+        assert!(example.contains("rows := [([0, 1], true)]"));
+        assert!(example.contains("added := none"));
+    }
+
+    #[test]
     fn exact_forced_projection_and_tampering_are_detected() {
         let input = source(
             2,

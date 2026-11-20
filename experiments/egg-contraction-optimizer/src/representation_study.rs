@@ -12,6 +12,7 @@ use num_bigint::BigUint;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub mod adaptive;
+#[path = "zero_coefficient.rs"]
 pub mod zero_coefficient;
 
 const MAX_WIDTH: usize = 16;

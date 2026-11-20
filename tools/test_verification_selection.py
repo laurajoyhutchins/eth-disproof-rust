@@ -39,6 +39,19 @@ class VerificationSelectionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported GitHub path selector"):
             pull_request_paths(invalid)
 
+    def test_compiler_proof_pin_must_select_on_pr_and_push(self):
+        workflow = (ROOT / ".github/workflows/native-scalar-proof.yml").read_text()
+        pin = "      - 'instrumentation/lean-env/lean-toolchain'\\n"
+        self.assertEqual(workflow.count(pin), 2)
+        for position in (0, 1):
+            pieces = workflow.split(pin)
+            pieces[position] += ""
+            # Remove the selector from either the PR or the push list.
+            mutated = pin.join(pieces[:position + 1]) + "".join(pieces[position + 1:])
+            with self.subTest(event=("pull_request", "push")[position]):
+                with self.assertRaisesRegex(ValueError, "skips actual verification dependencies"):
+                    verify_selection(ROOT, "native-scalar-proof.yml", mutated)
+
     def test_new_transitive_lean_import_must_have_a_selector(self):
         with TemporaryDirectory() as folder:
             root = Path(folder)

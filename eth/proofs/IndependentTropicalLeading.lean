@@ -283,6 +283,28 @@ theorem monomial_plus_equal (d a b : ℕ) (ha : 0 < a) (hb : 0 < b) :
       monomial d (a + b) (by omega) := by
   simp [plus, monomial]
 
+/-- The universal polynomial evaluation into the exact tropical-multiplicity
+semiring. All polynomial addition/multiplication laws are inherited from
+`Polynomial.eval₂RingHom`, rather than asserted by executable testing. -/
+noncomputable def polynomialToLeading : Polynomial ℕ →+* Leading :=
+  Polynomial.eval₂RingHom (Nat.castRingHom Leading) (monomial 1 1 (by omega))
+
+theorem polynomialToLeading_add (p q : Polynomial ℕ) :
+    polynomialToLeading (p + q) =
+      plus (polynomialToLeading p) (polynomialToLeading q) :=
+  polynomialToLeading.map_add p q
+
+theorem polynomialToLeading_mul (p q : Polynomial ℕ) :
+    polynomialToLeading (p * q) =
+      times (polynomialToLeading p) (polynomialToLeading q) :=
+  polynomialToLeading.map_mul p q
+
+/-- A monomial is sent to the natural coefficient times a tropical power. -/
+theorem polynomialToLeading_monomial (d n : ℕ) :
+    polynomialToLeading (Polynomial.monomial d n) =
+      times (natLeading n) ((monomial 1 1 (by omega)) ^ d) := by
+  simp [polynomialToLeading, Polynomial.eval₂_monomial, natLeading]
+
 /-- Signed coefficients can cancel the purported tropical leading term. -/
 theorem signed_cancellation :
     ((Polynomial.X ^ 2 + Polynomial.X ^ 7 : Polynomial ℤ) -
@@ -306,6 +328,9 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.monomial_times
 #print axioms IndependentETH.Tropical.monomial_plus_equal
 #print axioms IndependentETH.Tropical.signed_cancellation
+#print axioms IndependentETH.Tropical.polynomialToLeading_add
+#print axioms IndependentETH.Tropical.polynomialToLeading_mul
+#print axioms IndependentETH.Tropical.polynomialToLeading_monomial
 #print axioms IndependentETH.Tropical.modular_prune
 
 end IndependentETH.Tropical

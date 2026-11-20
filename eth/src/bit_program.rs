@@ -644,6 +644,7 @@ mod deferred;
 pub mod frame_programs;
 pub(crate) mod record_iteration;
 mod source_json;
+pub(crate) mod source_commands;
 pub mod stack_routines;
 mod structured;
 pub use deferred::{Block, DeferredProgram, relocate_ports, run_with_instruction_at};

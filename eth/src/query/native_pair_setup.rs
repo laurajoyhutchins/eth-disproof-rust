@@ -7,28 +7,14 @@
 //! execute the signed pair iterator, whose arithmetic is still unported.
 
 use crate::Error;
+use crate::bit_program::source_commands::{clear_many, reset_false};
 use crate::bit_program::{Atom, Cmd, Program};
-use crate::native_high::{clear_program, copy_program};
+use crate::native_high::copy_program;
 
 const SCRATCH: [usize; 5] = [325, 326, 327, 328, 329];
 
-fn clear<const R: usize, const S: usize>(stack: usize) -> Result<Cmd<R, S>, Error> {
-    Ok(Cmd::Call(clear_program(stack, 0, 1)?))
-}
 fn copy<const R: usize, const S: usize>(from: usize, to: usize) -> Result<Cmd<R, S>, Error> {
     Ok(Cmd::Call(copy_program(from, to, 329, 0, 1)?))
-}
-fn clear_many<const R: usize, const S: usize>(ports: &[usize]) -> Result<Cmd<R, S>, Error> {
-    let mut command = Cmd::Skip;
-    for &stack in ports.iter().rev() {
-        command = Cmd::seq(clear(stack)?, command);
-    }
-    Ok(command)
-}
-fn reset_work() -> Cmd<16, 896> {
-    (0..9).rev().fold(Cmd::Skip, |tail, dst| {
-        Cmd::seq(Cmd::Atom(Atom::Set { dst, value: false }), tail)
-    })
 }
 
 /// `PairNativeSetup.CountFalse.command`, with the original unary iterator
@@ -58,7 +44,7 @@ fn prepare_count() -> Result<Cmd<16, 896>, Error> {
         clear_many(&[329])?,
         Cmd::seq(
             clear_many(&SCRATCH)?,
-            Cmd::seq(reset_work(), copy(338, 325)?),
+            Cmd::seq(reset_false(0..9), copy(338, 325)?),
         ),
     ))
 }
@@ -69,7 +55,7 @@ fn finish_count() -> Result<Cmd<16, 896>, Error> {
         clear_many(&[832])?,
         Cmd::seq(
             copy(326, 832)?,
-            Cmd::seq(clear_many(&SCRATCH)?, reset_work()),
+            Cmd::seq(clear_many(&SCRATCH)?, reset_false(0..9)),
         ),
     ))
 }
@@ -121,7 +107,7 @@ fn prepare_fill(is_e: bool) -> Result<Cmd<16, 896>, Error> {
         clear_many(&[329])?,
         Cmd::seq(
             clear_many(&SCRATCH)?,
-            Cmd::seq(reset_work(), Cmd::seq(copy(338, 325)?, copy(input, 327)?)),
+            Cmd::seq(reset_false(0..9), Cmd::seq(copy(338, 325)?, copy(input, 327)?)),
         ),
     ))
 }
@@ -135,7 +121,7 @@ fn finish_fill(is_e: bool) -> Result<Cmd<16, 896>, Error> {
         clear_many(&[output])?,
         Cmd::seq(
             copy(328, output)?,
-            Cmd::seq(clear_many(&SCRATCH)?, reset_work()),
+            Cmd::seq(clear_many(&SCRATCH)?, reset_false(0..9)),
         ),
     ))
 }

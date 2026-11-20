@@ -163,7 +163,8 @@ static void run(FILE *f, cascade c) {
     }
 }
 
-lean_obj_res lr_heap_trace_destructor_worklist(void) {
+lean_obj_res lr_heap_trace_destructor_worklist(b_lean_obj_arg dummy) {
+    REQUIRE(dummy != NULL && lean_is_scalar((lean_object *)dummy));
     const char *path = getenv("LR_DESTRUCTOR_WITNESSES");
     if (path == NULL || *path == 0) return lean_box(1);
     FILE *f = fopen(path, "w");

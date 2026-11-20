@@ -1,13 +1,13 @@
 # Source-derived Vec borrow/return translation matrix
 
 This is a **diagnostic**, not a second implementation of ranked counting. The
-twelve small functions in [borrow_return_probe.rs](src/borrow_return_probe.rs)
+thirteen small functions in [borrow_return_probe.rs](src/borrow_return_probe.rs)
 isolate the Aeneas translation failure at the real arithmetic-recorder
 mutation/return boundary. They are compiled as a separate module by the
 existing source-linked verification harness, alongside the **unmodified**
 production ranked decoder, guard and traced executor.
 
-The thirteenth extraction target, `ranked-source`, includes the **actual production
+The fourteenth extraction target, `ranked-source`, includes the **actual production
 `execute_ranked_wire`** and must remain blocked unless *that* source closure
 is translated. The synthetic probe results never certify it.
 
@@ -25,12 +25,13 @@ is translated. The synthetic probe results never certify it.
 | p9 | `&mut Vec<Option<i128>>` | no | fresh `Ok` | borrowed |
 | p10 | `&mut Vec<i128>` | no | stored checked `Result` | borrowed |
 | p11 | `&mut Vec<Option<i128>>` | no | fresh `Ok` after checked addition | borrowed |
+| p12 | `&mut Vec<Option<i128>>` | no | stored checked `Result` after appending the computed `Option` | borrowed |
 
 **Two-phase diagnosis:** the first exact-head extraction [run #44807999037](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44807999037) translated p0–p2 with no local placeholders. Optional-nested-borrow p3/p4 failed as `Unimplemented`, while p5–p7 and the real source failed with partial `sorry` declarations. Even owned p7 failed, so neither a direct `Vec::push` nor returning a stored `Result` alone explains the recorder failure. The added p8–p11 cases distinguish whether the remaining failure needs checked-`i128`, option payloads, mutation, or their interaction. No synthetic case certifies actual production execution.
 
 **Second-stage observation:** [exact-head workflow #44809224683](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44809224683) at `23a2080` successfully extracted **all four added controls**: p8 checked arithmetic without a vector, p9 option-valued vector push without arithmetic, p10 checked arithmetic with a scalar vector, and p11 computed-option vector recording with a fresh `Ok`. No local placeholders appeared in those four generated declarations. The unchanged p3/p4 remained `Unimplemented`, p5/p6/p7 remained interpreter errors with `sorry`, and production `ranked-source` remained blocked.
 
-Thus neither checked-`i128` arithmetic, option-valued vectors, checked-result return, nor their **separately tested simpler combinations** explain the remaining interpreter error. The key additional contrast is p11 versus p5: p11 records the checked `Option` but returns a **fresh** `Ok`; p5 records `outcome.as_ref().ok().copied()` and then returns the **stored** `Result`. This implicates their precise interaction, not a mathematically invalid arithmetic operation. The observation does **not** prove a unique symbolic-execution root cause.
+Thus neither checked-`i128` arithmetic, option-valued vectors, checked-result return, nor their **separately tested simpler combinations** explain the remaining interpreter error. The final one-factor contrast p12 records `left.checked_add(right)` directly and converts it to a returned `Result` **after** the vector effect; deterministic Rust tests compare its result and recorded vector to p5 on both successful and overflowing inputs. Its source-derived translation and universal equivalence to p5 are **not** inferred from those tests. The key additional contrast is p11 versus p5: p11 records the checked `Option` but returns a **fresh** `Ok`; p5 records `outcome.as_ref().ok().copied()` and then returns the **stored** `Result`. This implicates their precise interaction, not a mathematically invalid arithmetic operation. The observation does **not** prove a unique symbolic-execution root cause.
 
 The generated `ProbeP2` Lean 4.31.0 project built successfully, but the first independent post-state theorem check stopped at a Lean **import-order syntax error** before its proof was elaborated. Its status is **unproved**, pending the corrected exact-head kernel check. This failed proof check is distinct from the successful package build and should never be reported as a theorem.
 

@@ -578,6 +578,115 @@ impl SignedCertificate {
     }
 }
 
+/// Encode only Booleans and numeric indices in the Lean bridge. No native
+/// variable-name text is copied into generated Lean source.
+fn lean_bool(value: bool) -> &'static str {
+    if value { "true" } else { "false" }
+}
+
+fn lean_indices(values: &[usize]) -> String {
+    format!(
+        "[{}]",
+        values.iter().map(usize::to_string).collect::<Vec<_>>().join(", ")
+    )
+}
+
+fn lean_terms(terms: &BTreeSet<Vec<usize>>) -> String {
+    format!(
+        "[{}]",
+        terms.iter().map(|term| lean_indices(term)).collect::<Vec<_>>().join(", ")
+    )
+}
+
+fn lean_rows(rows: &[(Vec<usize>, bool)]) -> String {
+    format!(
+        "[{}]",
+        rows.iter()
+            .map(|(indices, rhs)| format!("({}, {})", lean_indices(indices), lean_bool(*rhs)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+impl SignedOneBitRegion {
+    /// Emit a Lean proposition *about the actual raw monomial and equation
+    /// indices* for an independently verified local elimination. The resulting
+    /// example is checked by Lean's own exhaustive integer-value oracle.
+    ///
+    /// An accepted generated example establishes correctness of that explicit
+    /// finite instance; it does not prove this Rust serializer, native checker,
+    /// or arbitrary-width performance correct. A caller must bind the emitted
+    /// data to its authoritative source to rule out a lying exporter.
+    pub fn lean_oracle_example(
+        &self,
+        claimed: &SignedBoundaryInterface,
+        certificate: &SignedCertificate,
+        max_boundary_bits: usize,
+    ) -> Result<String, String> {
+        let receipt = certificate.verify(self, claimed)?;
+        let width = self.affine.boundary.len();
+        if width > max_boundary_bits {
+            return Err("Lean exhaustive receipt oracle boundary budget exceeded".into());
+        }
+
+        let mut by_name = BTreeMap::new();
+        for (index, name) in self.affine.internal.iter()
+            .chain(self.affine.boundary.iter()).enumerate()
+        {
+            if by_name.insert(name.as_str(), index).is_some() {
+                return Err("Lean receipt source has duplicate coordinate names".into());
+            }
+        }
+        let source_rows = self.affine.equations.iter().map(|row| {
+            let indices = row.variables.iter().map(|name| {
+                by_name.get(name.as_str()).copied()
+                    .ok_or_else(|| "Lean receipt source has unknown variable".to_owned())
+            }).collect::<Result<Vec<_>, _>>()?;
+            Ok((indices, row.rhs))
+        }).collect::<Result<Vec<_>, String>>()?;
+
+        let residual = claimed.affine.residual.iter().map(|row| {
+            (row.boundary_indices.clone(), row.rhs)
+        }).collect::<Vec<_>>();
+        let added = claimed.added_constraint.as_ref().map(|row| {
+            format!("some ({}, {})", lean_indices(&row.boundary_indices), lean_bool(row.rhs))
+        }).unwrap_or_else(|| "none".to_owned());
+        let checked = receipt.phase_coefficients;
+        let linear = format!(
+            "[{}]",
+            checked.linear.iter().map(|bit| lean_bool(*bit)).collect::<Vec<_>>().join(", ")
+        );
+        let pairs = format!(
+            "[{}]",
+            checked.ordered_pairs.iter()
+                .map(|(i, j)| format!("({i}, {j})"))
+                .collect::<Vec<_>>().join(", ")
+        );
+        let source = format!(
+            "{{ phaseTerms := {}, rows := {}, exponent := {} }}",
+            lean_terms(self.phase.terms()),
+            lean_rows(&source_rows),
+            self.exponent,
+        );
+        let output = format!(
+            "{{ phaseTerms := {}, rows := {}, added := {}, exponent := {}, \
+             receipt := {{ constant := {}, linear := {}, orderedPairs := {} }} }}",
+            lean_terms(claimed.phase.terms()),
+            lean_rows(&residual),
+            added,
+            claimed.exponent,
+            lean_bool(checked.constant),
+            linear,
+            pairs,
+        );
+        Ok(format!(
+            "example : IndependentETH.QuadraticLowWeight.checkNativeInstance (n := {width})\n\
+             ({source} : IndependentETH.QuadraticLowWeight.NativeSourceRecord)\n\
+             ({output} : IndependentETH.QuadraticLowWeight.NativeOutputRecord) = true := by decide\n"
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

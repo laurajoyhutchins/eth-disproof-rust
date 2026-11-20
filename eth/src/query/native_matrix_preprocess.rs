@@ -9,6 +9,7 @@
 //! shortcut executes in the production machine.
 
 use crate::Error;
+use crate::bit_program::source_commands::seq;
 use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_bootstrap::stage;
 use crate::native_head_selection::escape_program;
@@ -19,13 +20,7 @@ use crate::native_signed_arithmetic::shift_program;
 fn atom<const R: usize, const S: usize>(a: Atom) -> Cmd<R, S> {
     Cmd::Atom(a)
 }
-fn seq<const R: usize, const S: usize>(cmds: impl IntoIterator<Item = Cmd<R, S>>) -> Cmd<R, S> {
-    cmds.into_iter()
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .fold(Cmd::Skip, |tail, x| Cmd::seq(x, tail))
-}
+
 fn transfer<const S: usize>(src: usize, dst: usize) -> Result<Cmd<8, S>, Error> {
     Ok(Cmd::Call(transfer_program(src, dst, 0, 1)?))
 }

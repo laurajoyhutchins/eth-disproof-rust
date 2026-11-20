@@ -10,4 +10,4 @@
 backend = "lean"
 include = ["lean_eth_reference::representation_ranked_input::execute_ranked_wire"]
 # Do not compile bin roots when extracting a library-only function.
-charon-args = ["--", "--lib"]
+charon-args = ["--cargo-arg=--lib"]

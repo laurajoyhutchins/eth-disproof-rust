@@ -69,3 +69,7 @@ include = ["ranked_source_proof_harness::borrow_return_probe::p10_checked_scalar
 [scenario.probe-p11]
 backend = "lean"
 include = ["ranked_source_proof_harness::borrow_return_probe::p11_checked_option_sink"]
+
+[scenario.probe-p12]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p12_option_then_result"]

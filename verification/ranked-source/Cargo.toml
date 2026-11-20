@@ -1,0 +1,9 @@
+[package]
+name = "ranked-source-proof-harness"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Source-identical Rust ranked contraction verification entrypoint"
+
+[dependencies]
+lean-eth-reference = { path = "../../eth" }

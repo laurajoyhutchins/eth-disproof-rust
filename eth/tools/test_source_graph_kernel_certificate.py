@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from source_graph_kernel_certificate import certificate_source, instruction_lean
+from verify_source_graph import KINDS
 
 RECORD = {'id': 'sample_0', 'module': 'OAI.Algorithms.SubexponentialSAT.Example',
           'fqn': 'OAI.Algorithms.SubexponentialSAT.Example.target',
@@ -24,6 +25,25 @@ def graph():
 
 
 class KernelCertificateContracts(unittest.TestCase):
+
+    def test_every_opcode_uses_the_same_canonical_physical_schema(self):
+        # The Lean renderer must consume precisely the source parser's
+        # instruction vocabulary, including stack and Boolean operand kinds.
+        self.assertEqual(set(KINDS), {
+            'halt', 'goto', 'set', 'copy', 'not', 'and', 'or',
+            'xor', 'branch', 'push', 'peek', 'pop'
+        })
+        for name, kinds in KINDS.items():
+            operands = tuple(1 if kind == 'b' else 0 for kind in kinds)
+            with self.subTest(name=name):
+                rendered = instruction_lean((name, operands), 4, 3, 14)
+                self.assertTrue(rendered.startswith('Instr.'))
+                self.assertEqual(rendered.count('Fin '), len(kinds) - kinds.count('b'))
+        with self.assertRaises(ValueError):
+            instruction_lean(('set', (0, 2, 1)), 4, 3, 14)
+        with self.assertRaises(ValueError):
+            instruction_lean(('peek', (1, 0, 3, 14)), 4, 3, 14)
+
     def test_source_graph_reified_not_original_table(self):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory) / 'source.json'

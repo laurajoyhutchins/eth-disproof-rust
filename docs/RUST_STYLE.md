@@ -48,6 +48,14 @@ not proof of behavioral equivalence.
 
 ## Verification infrastructure
 
+- Own the hand-coded Rust `Instr -> opcode:operand...` physical-row
+  encoding in `bit_program/physical_encoding.rs` rather than in a
+  source-specific diagnostic binary. Keep the independently Serde-derived
+  structural representation, because agreement between two distinct
+  implementations detects different errors.
+- Keep `verify_source_graph.KINDS` authoritative for the physical
+  operand-kind schema. The Lean certificate renderer must import that
+  same table, not redefine a subtly divergent twelve-opcode vocabulary.
 - Represent finite physical `BitProgram` tables with the already established
   source-graph tuple `(r,s,labels,entry,input,output,code)` and canonical
   `opcode:operand...` row syntax. Do not emit a second independent Lean

@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from verify_source_graph import (SOURCE_SHA, MAX_NODES, MAX_SOURCE_LABELS,
+from verify_source_graph import (SOURCE_SHA, KINDS, MAX_NODES, MAX_SOURCE_LABELS,
                                  closed_keys, insist, number, parse_node,
                                  parse_program, parse_source_graph_json)
 
@@ -26,14 +26,9 @@ ID = re.compile(r'[a-z0-9_-]{1,255}')
 def instruction_lean(op: tuple[str, tuple[int, ...]], r: int, s: int, labels: int) -> str:
     """Lossless Lean constructor. All numeric operands are already range-checked."""
     name, operands = op
-    specs = {
-        'halt': '', 'goto': 'l', 'set': 'rbl', 'copy': 'rrl',
-        'not': 'rrl', 'and': 'rrrl', 'or': 'rrrl', 'xor': 'rrrl',
-        'branch': 'rll', 'push': 'srl', 'peek': 'srrl', 'pop': 'srrl',
-    }
-    insist(name in specs and len(specs[name]) == len(operands), 'invalid instruction for certificate')
+    insist(name in KINDS and len(KINDS[name]) == len(operands), 'invalid instruction for certificate')
     vals = []
-    for val, kind in zip(operands, specs[name]):
+    for val, kind in zip(operands, KINDS[name]):
         bound = {'r': r, 's': s, 'l': labels, 'b': 2}[kind]
         insist(type(val) is int and 0 <= val < bound, 'out of range certificate operand')
         vals.append(('true' if val else 'false') if kind == 'b' else f'({val} : Fin {bound})')

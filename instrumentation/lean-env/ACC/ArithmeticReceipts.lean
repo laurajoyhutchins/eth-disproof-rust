@@ -64,7 +64,7 @@ theorem checkTrace_sound (receipts : List Receipt)
   | cons head tail ih =>
       have hhead : checkReceipt head = true := by
         cases hh : checkReceipt head with
-        | true => exact hh
+        | true => rfl
         | false => simp [checkTrace, hh] at h
       have htail : checkTrace tail = true := by
         simpa [checkTrace, hhead] using h

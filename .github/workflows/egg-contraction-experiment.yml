@@ -33,6 +33,14 @@ jobs:
           set -euo pipefail
           printf 'p cnf 3 2\n1 -2 0\n-1 2 0\n' | cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin exact-cnf-count -- - | grep -F '"count":"4"'
 
+      - name: Run bounded tropical order study with independent full-polynomial oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin tropical-order-study | tee /tmp/tropical-order-receipts.jsonl
+          test "$(wc -l < /tmp/tropical-order-receipts.jsonl)" -eq 27
+          grep -F '"oracle":"checked"' /tmp/tropical-order-receipts.jsonl
+
       - name: Run contraction-order study and check small-case oracle
         shell: bash
         run: |

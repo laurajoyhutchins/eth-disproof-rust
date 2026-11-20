@@ -84,3 +84,39 @@ The new Rust tests independently enumerate up to five internal bits for small re
 - [Quadratic signed-phase Lean foundation](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/quadratic-sign-boundary-interfaces.md)
 
 The next mathematical milestone is a **representation-refinement theorem** that connects the Rust phase, row and chain receipts to Lean's verified local exactness premises. Count checker work, coefficient bits and peak memory before drawing efficiency conclusions. No general subexponential #SAT claim follows.
+
+## Independent native-to-Lean semantic oracle (November 20)
+
+The draft now includes `checkNativeInstance` in
+[`IndependentQuadraticLowWeight.lean`](../../eth/proofs/IndependentQuadraticLowWeight.lean).
+It takes **explicit** source quadratic monomial indices, original affine equation
+occurrences, an output phase and residual/cancellation rows, exponent, and the
+checked sparse coefficient witness. It evaluates the *integer-valued* signed sum
+over the one internal bit and compares it with the proposed output **at every
+boundary assignment**. `checkNativeInstance_sound` states that an accepted
+instance has that exact equality at every assignment. `checkNativeInstance_receipt_sound`
+also states the output's raw monomial evaluator agrees with its decoded
+coefficient record. These are independently specified Lean semantics, not
+premises copied from the native verifier.
+
+The Rust `SignedOneBitRegion::lean_oracle_example` emits only numeric
+coordinate indices and Boolean literals from a verified native source/output,
+never untrusted variable names as Lean syntax. The
+`emit_signed_native_oracles` binary generates free-cancellation and forced
+pivot cases. Pinned CI concatenates those generated data propositions with the
+reference Lean source and checks them using `by decide`. A native positive
+receipt cannot make a false Lean arithmetic equality true. The job retains
+the earlier independent **affine** native-audit gate on the parent branch.
+
+**Scope limitation:** This is an *independent, exhaustive cross-language
+instance check*. It is intentionally exponential in the number of boundary
+ports, and the generator has an explicit caller-supplied port budget. It
+does **not** prove that the Rust serialization faithfully reflects a separate
+authoritative input, that every native accepted result passes this Lean check,
+or that the compiled Rust program refines the Lean polynomial-time checker.
+A scalable universal native refinement, global bit cost, peak memory and any
+ETH consequence remain open. Until its exact-head workflow passes, the newly
+added Lean declarations and Rust-to-Lean integration are unverified source.
+
+The source branch is restacked on the current affine-audit parent, without
+dropping either independent proof gate.

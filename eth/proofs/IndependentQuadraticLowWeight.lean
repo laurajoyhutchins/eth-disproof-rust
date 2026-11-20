@@ -247,15 +247,15 @@ structure SparseCoefficientRecord where
 deriving Repr, DecidableEq
 
 /-- Strict lexicographic order on the pair representation used by Rust. -/
-def pairBefore (a b : Nat × Nat) : Prop :=
-  a.1 < b.1 ∨ (a.1 = b.1 ∧ a.2 < b.2)
+def pairBefore (a b : Nat × Nat) : Bool :=
+  decide (a.1 < b.1 ∨ (a.1 = b.1 ∧ a.2 < b.2))
 
 /-- Width, bounds, ascending pair entries and globally increasing pair order.
 The latter excludes duplicate entries as well as reordered pairs. -/
 def SparseCoefficientRecord.wellFormed (r : SparseCoefficientRecord) (n : ℕ) : Prop :=
   r.linear.length = n ∧
   r.orderedPairs.Forall (fun p => p.1 < p.2 ∧ p.2 < n) ∧
-  r.orderedPairs.Pairwise pairBefore
+  r.orderedPairs.Pairwise (fun a b => pairBefore a b = true)
 
 def SparseCoefficientRecord.checkShape (r : SparseCoefficientRecord) (n : ℕ) : Bool :=
   decide (r.wellFormed n)
@@ -438,7 +438,7 @@ and semantic debugging. -/
 def checkNativeInstance {n : ℕ}
     (src : NativeSourceRecord) (out : NativeOutputRecord) : Bool :=
   decide (nativeSourceShape n src ∧ nativeOutputShape n out ∧
-    nativeReceiptMatches out ∧
+    nativeReceiptMatches (n := n) out ∧
     (∀ boundary : Fin n → Bool,
       nativeSignedOutput out boundary =
         ∑ x : Bool, nativeSignedSource src x boundary))
@@ -450,7 +450,7 @@ theorem checkNativeInstance_sound {n : ℕ}
     nativeSignedOutput out boundary =
       ∑ x : Bool, nativeSignedSource src x boundary := by
   have h : nativeSourceShape n src ∧ nativeOutputShape n out ∧
-      nativeReceiptMatches out ∧
+      nativeReceiptMatches (n := n) out ∧
       (∀ boundary : Fin n → Bool,
         nativeSignedOutput out boundary =
           ∑ x : Bool, nativeSignedSource src x boundary) := by
@@ -464,7 +464,7 @@ theorem checkNativeInstance_receipt_sound {n : ℕ}
     nativePhase (nativeOutputBit boundary) out.phaseTerms =
       phaseBit (out.receipt.decode n) (nativeSupport boundary) := by
   have h : nativeSourceShape n src ∧ nativeOutputShape n out ∧
-      nativeReceiptMatches out ∧
+      nativeReceiptMatches (n := n) out ∧
       (∀ boundary : Fin n → Bool,
         nativeSignedOutput out boundary =
           ∑ x : Bool, nativeSignedSource src x boundary) := by

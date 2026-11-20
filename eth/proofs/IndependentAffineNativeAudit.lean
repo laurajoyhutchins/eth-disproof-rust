@@ -578,6 +578,100 @@ theorem pivotFree_card {k : Nat} (pivots : Finset (Fin k)) :
   rw [Finset.card_sdiff_of_subset (Finset.subset_univ pivots)]
   simp
 
+/-- Source admission supplies precisely the no-duplicate/coverage
+premises used by the universal occurrence-to-matrix theorem. -/
+theorem admitted_source_occurrence_parity
+    (s : Source) (e : SourceEquation) (assignment : Name → Bool)
+    (hsource : sourceOK s = true) (he : e ∈ s.equations) :
+    occurrenceEval e.occurrences assignment =
+      coefficientEval (names s) e.occurrences assignment := by
+  have hs := hsource
+  simp only [sourceOK, Bool.and_eq_true] at hs
+  rcases hs with ⟨⟨hunique, _⟩, hall⟩
+  have hnodup : (names s).Nodup := of_decide_true hunique
+  have hcoverage : ∀ name ∈ e.occurrences, name ∈ names s := by
+    intro name hname
+    have heq := (List.all_eq_true.mp hall) e he
+    have hcontains := (List.all_eq_true.mp heq) name hname
+    simpa using hcontains
+  exact occurrence_parity_eq_source_coefficients
+    (names s) e.occurrences assignment hnodup hcoverage
+
+/-! ## The concrete List.zipWith row-evaluation law
+
+A raw row is a list of augmented Boolean coefficients. Evaluating it
+against an assignment is XOR of its coefficient/bit conjunctions.
+The actual list XOR implementation uses zipWith, so the row-width
+premise is necessary to avoid truncating a nonzero tail.
+-/
+
+private def rowValue (row input : List Bool) : Bool :=
+  xorAll (List.zipWith (fun coeff value => coeff && value) row input)
+
+private theorem and_xor_right (a b c : Bool) :
+    (((a ^^ b) && c) = ((a && c) ^^ (b && c))) := by
+  cases a <;> cases b <;> cases c <;> decide
+
+/-- The literal zipWith XOR expression used by applyStep is linear
+under any fixed assignment when both input rows have equal lengths. -/
+theorem rowValue_zipWith_xor (lhs rhs input : List Bool)
+    (hwidth : lhs.length = rhs.length) :
+    rowValue (List.zipWith (· ^^ ·) lhs rhs) input =
+      (rowValue lhs input ^^ rowValue rhs input) := by
+  induction lhs generalizing rhs input with
+  | nil =>
+      cases rhs with
+      | nil => rfl
+      | cons _ _ => simp at hwidth
+  | cons x xs ih =>
+      cases rhs with
+      | nil => simp at hwidth
+      | cons y ys =>
+          have htail : xs.length = ys.length :=
+            Nat.succ.inj hwidth
+          cases input with
+          | nil => rfl
+          | cons z zs =>
+              calc
+                rowValue (List.zipWith (· ^^ ·) (x :: xs) (y :: ys))
+                    (z :: zs) =
+                  (((x ^^ y) && z) ^^
+                    rowValue (List.zipWith (· ^^ ·) xs ys) zs) := rfl
+                _ = (((x && z) ^^ (y && z)) ^^
+                    (rowValue xs zs ^^ rowValue ys zs)) := by
+                  rw [and_xor_right, ih ys zs htail]
+                _ = (((x && z) ^^ rowValue xs zs) ^^
+                    ((y && z) ^^ rowValue ys zs)) :=
+                  xor_rearrange (x && z) (y && z)
+                    (rowValue xs zs) (rowValue ys zs)
+                _ = (rowValue (x :: xs) (z :: zs) ^^
+                    rowValue (y :: ys) (z :: zs)) := rfl
+
+/-- The actual List map over range preserves the matrix row count. -/
+theorem applyStep_length (rows : List (List Bool)) (step : Step) :
+    (applyStep rows step).length = rows.length := by
+  simp [applyStep]
+
+/-- At any valid row index, the literal List-based applyStep picks
+exactly the swap/XOR/source row described by the native checker. -/
+theorem rowAt_applyStep (rows : List (List Bool)) (step : Step)
+    (i : Nat) (hi : i < rows.length) :
+    rowAt (applyStep rows step) i =
+      (if step.tag == 0 then
+        if i == step.first then rowAt rows step.second
+        else if i == step.second then rowAt rows step.first
+        else rowAt rows i
+      else if i == step.first then
+        List.zipWith (· ^^ ·)
+          (rowAt rows step.first) (rowAt rows step.second)
+      else rowAt rows i) := by
+  simp [rowAt, applyStep, hi, List.getElem?_map, List.getElem?_range]
+
+#print axioms IndependentETH.AffineNativeAudit.admitted_source_occurrence_parity
+#print axioms IndependentETH.AffineNativeAudit.rowValue_zipWith_xor
+#print axioms IndependentETH.AffineNativeAudit.applyStep_length
+#print axioms IndependentETH.AffineNativeAudit.rowAt_applyStep
+
 #print axioms IndependentETH.AffineNativeAudit.occurrence_parity_eq_source_coefficients
 #print axioms IndependentETH.AffineNativeAudit.occurrence_matrix_row_is_sourceRow
 #print axioms IndependentETH.AffineNativeAudit.pivotFreeCoordinates

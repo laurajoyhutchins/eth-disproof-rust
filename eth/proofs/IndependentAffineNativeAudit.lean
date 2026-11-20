@@ -67,11 +67,39 @@ structure Snapshot where
 
 def names (s : Source) : List Name := s.internal ++ s.boundary
 
+/-- The same *source-domain contract* as native Rust:
+a nonempty ASCII letter followed by ASCII letters, digits or underscore.
+The independent Lean auditor checks bytes, not Rust Unicode chars. -/
+def asciiLetter (byte : Nat) : Bool :=
+  decide ((65 ≤ byte ∧ byte ≤ 90) ∨ (97 ≤ byte ∧ byte ≤ 122))
+
+def asciiDigit (byte : Nat) : Bool :=
+  decide (48 ≤ byte ∧ byte ≤ 57)
+
+def validName : Name → Bool
+  | [] => false
+  | first :: rest =>
+      asciiLetter first &&
+        rest.all (fun byte =>
+          asciiLetter byte || asciiDigit byte || byte == 95)
+
 def sourceOK (s : Source) : Bool :=
   let ns := names s
   decide ns.Nodup &&
-    ns.all (fun n => !n.isEmpty) &&
+    ns.all validName &&
     s.equations.all (fun e => e.occurrences.all (fun n => ns.contains n))
+
+theorem sourceOK_names_valid (s : Source)
+    (h : sourceOK s = true) :
+    (names s).all validName = true := by
+  simp only [sourceOK, Bool.and_eq_true] at h
+  exact h.1.2
+
+example : validName [117, 95, 49] = true := by decide
+example : validName [95, 117] = false := by decide
+example : validName [49, 117] = false := by decide
+example : validName [117, 45, 118] = false := by decide
+example : validName [195, 169] = false := by decide
 
 /-- Each occurrence toggles the source coefficient, including repeats. -/
 def occurrenceBit (occurrences : List Name) (name : Name) : Bool :=
@@ -189,5 +217,7 @@ def emptySnapshot : Snapshot :=
 
 example : audit emptySnapshot = true := by decide
 example : exhaustiveAgreement emptySnapshot = true := by decide
+
+#print axioms IndependentETH.AffineNativeAudit.sourceOK_names_valid
 
 end IndependentETH.AffineNativeAudit

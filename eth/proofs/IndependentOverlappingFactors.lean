@@ -126,6 +126,70 @@ def Safe (hidden : List V) : List (Step V R) → Prop
       (∀ v ∈ hidden, v ∉ s.factor.scope) ∧
       Safe (hidden ++ s.dead) rest
 
+/-- Union of the declared supports of the factors still unprocessed. -/
+def scopeUnion : List (ScopedFactor V R) → Finset V
+  | [] => ∅
+  | f :: rest => f.scope ∪ scopeUnion rest
+
+/-- Actual liveness construction: keep exactly ports needed by the
+remaining source scopes or by the requested external output. -/
+def nextKept (active : Finset V) (f : ScopedFactor V R)
+    (rest : List (ScopedFactor V R)) (output : Finset V) :
+    Finset V :=
+  (active ∪ f.scope) ∩ (scopeUnion rest ∪ output)
+
+/-- Newly dead ports, deterministically converted to an elimination list. -/
+def nextDead (active : Finset V) (f : ScopedFactor V R)
+    (rest : List (ScopedFactor V R)) (output : Finset V) :
+    List V :=
+  ((active ∪ f.scope) \ (scopeUnion rest ∪ output)).toList
+
+/-- A complete order-respecting plan. Source factors may share ports
+with preceding and following factors; only actual future dependencies
+prevent elimination. -/
+def makePlan (active output : Finset V) :
+    List (ScopedFactor V R) → List (Step V R)
+  | [] => []
+  | f :: rest =>
+      { factor := f, dead := nextDead active f rest output } ::
+      makePlan (nextKept active f rest output) output rest
+
+/-- The set-based liveness constructor implies the semantic safety
+premise required for exact contraction: no already hidden variable
+ever appears in a future declared factor scope. -/
+theorem makePlan_safe
+    (active output : Finset V) (factors : List (ScopedFactor V R)) :
+    ∀ (hidden : List V),
+      (∀ v ∈ hidden, v ∉ scopeUnion factors) →
+      Safe hidden (makePlan active output factors) := by
+  induction factors generalizing active with
+  | nil =>
+      intro hidden _
+      trivial
+  | cons f rest ih =>
+      intro hidden hhidden
+      change (∀ v ∈ hidden, v ∉ f.scope) ∧
+        Safe (hidden ++ nextDead active f rest output)
+          (makePlan (nextKept active f rest output) output rest)
+      constructor
+      · intro v hv
+        have hh := hhidden v hv
+        simp only [scopeUnion, Finset.mem_union, not_or] at hh
+        exact hh.1
+      · apply ih
+        intro v hv
+        rcases List.mem_append.mp hv with hold | hnew
+        · have hh := hhidden v hold
+          simp only [scopeUnion, Finset.mem_union, not_or] at hh
+          exact hh.2
+        · have hh : v ∈ (active ∪ f.scope) \
+              (scopeUnion rest ∪ output) := by
+            simpa only [nextDead, Finset.mem_toList] using hnew
+          have hnot : v ∉ scopeUnion rest ∪ output :=
+            (Finset.mem_sdiff.mp hh).2
+          simp only [Finset.mem_union, not_or] at hnot
+          exact hnot.1
+
 /-- General overlap theorem: arbitrary scopes may share any variables
 that remain live. The recursive staged contraction equals the direct
 product of ALL factors followed by exactly the recorded eliminations.
@@ -193,3 +257,20 @@ theorem contract_from_raw
 #print axioms IndependentETH.OverlappingFactors.eliminateList_mul_of_invariant
 #print axioms IndependentETH.OverlappingFactors.contract_correct
 #print axioms IndependentETH.OverlappingFactors.contract_from_raw
+
+/-- The Rust-style future-scope planner automatically meets the safety
+precondition of the general overlapping-factor contraction theorem. -/
+theorem generated_plan_correct
+    (active output : Finset V)
+    (factors : List (ScopedFactor V R)) (base : Weight V R) :
+    contract base (makePlan active output factors) =
+      eliminateList (eliminated (makePlan active output factors))
+        (times base (factorProduct (makePlan active output factors))) := by
+  apply contract_from_raw
+  apply makePlan_safe
+  intro v hv
+  cases hv
+
+#print axioms IndependentETH.OverlappingFactors.makePlan_safe
+#print axioms IndependentETH.OverlappingFactors.generated_plan_correct
+

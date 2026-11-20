@@ -682,6 +682,35 @@ theorem verifyCsrCount_sound
     exact hcount
   · simp at h
 
+/-! ## Fixed cross-language CSR test vector
+
+These arrays are the concrete signed CSR rows for n=4, homogeneous RHS.
+They match the Rust source fixture's signed-row convention. Unlike a
+symbolic proof, these tests execute the checked decoder over literal input
+and demonstrate exact acceptance, corruption refusal, and output seven.
+-/
+
+def smallHomogeneousCsr : SignedCsrInput where
+  variableCount := 4
+  offsets := [0, 3, 6, 9, 12, 15, 18]
+  columns := [0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 3, 0, 1, 2, 1, 2, 3]
+  signs := [-1, 1, 1, 1, -1, 1, 1, 1, -1, -1, -1, -1, 1, 1, 1, 1, 1, 1]
+
+def smallForbiddenMask : Finset State := {zeroState}
+
+example : verifyCsrCount smallHomogeneousCsr [false] smallForbiddenMask = some 7 := by
+  decide
+
+example : verifyCsrCount
+    { smallHomogeneousCsr with signs := [0] ++ smallHomogeneousCsr.signs.drop 1 }
+    [false] smallForbiddenMask = none := by
+  decide
+
+example : verifyCsrCount
+    { smallHomogeneousCsr with offsets := [0, 4, 6, 9, 12, 15, 18] }
+    [false] smallForbiddenMask = none := by
+  decide
+
 #print axioms IndependentETH.NonAffine.checkCsrReceipt_fields
 #print axioms IndependentETH.NonAffine.checkedCsr_allAssignments
 #print axioms IndependentETH.NonAffine.wordSolutions_card

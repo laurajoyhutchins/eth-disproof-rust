@@ -5,6 +5,7 @@ on:
     paths:
       - 'verification/ranked-source/src/borrow_return_probe.rs'
       - 'verification/ranked-source/src/lib.rs'
+      - 'verification/ranked-source/proofs/BorrowReturnP2.lean'
       - 'verification/ranked-source/hax.toml'
       - '.github/workflows/ranked-borrow-matrix.yml'
   workflow_dispatch:
@@ -130,6 +131,27 @@ jobs:
           cat probe-logs/matrix.tsv
           echo "Probe results are extraction observations, NOT Lean typechecks or a Rust correspondence theorem." >> "$GITHUB_STEP_SUMMARY"
           exit "$result"
+
+      - name: Kernel-check conditional theorem about actual P2 extraction
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="verification/ranked-source/proofs/probe-p2/lean"
+          generated="$package/ProbeP2/Extraction/Funs.lean"
+          test -f "$generated"
+          grep -q '^def borrow_return_probe.p2_direct_result' "$generated"
+          grep -Fx 'leanprover/lean4:v4.31.0' "$package/lean-toolchain"
+          cp verification/ranked-source/proofs/BorrowReturnP2.lean "$package/BorrowReturnP2.lean"
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$RUNNER_TEMP/elan-init.sh"
+          sh "$RUNNER_TEMP/elan-init.sh" -y --no-modify-path
+          export PATH="$HOME/.elan/bin:$PATH"
+          (
+            cd "$package"
+            lake -K maxJobs=2 build
+            lake env lean BorrowReturnP2.lean
+          )
+          echo 'EXTRACTED_P2_CONDITIONAL_EFFECT=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve failed and successful LLBC/Lean evidence
         if: always()

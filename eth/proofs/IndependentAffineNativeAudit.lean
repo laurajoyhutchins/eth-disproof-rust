@@ -174,6 +174,133 @@ def audit (snapshot : Snapshot) (maxCells maxSteps : Nat := 8000000) : Bool := I
   let residual := (rows.drop r).map (fun row => expectedResidual row k b)
   return residual == claimed.residual
 
+/-! ## Universal consequences of accepting the concrete auditor
+
+These facts are about the actual executable \`audit\` predicate, not an
+abstract stand-in. They are deliberately extracted from the same guards
+that the generated native certificate corpus exercises.
+-/
+
+/-- No certificate can be accepted when its source names or occurrences
+violate the independent source admission predicate. -/
+theorem audit_implies_sourceOK (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    sourceOK snapshot.source = true := by
+  cases hs : sourceOK snapshot.source with
+  | true => rfl
+  | false =>
+      simp [audit, hs] at h
+
+/-- The raw contract refuses every certificate from an unsupported
+version, regardless of its row transcript or claimed result. -/
+theorem audit_implies_version (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    snapshot.cert.version = 1 := by
+  by_contra hv
+  simp [audit, hv] at h
+
+/-- The accepted free exponent must equal the number of original
+internal columns minus the exact admitted pivot count. This is an
+admission fact, not yet a proof that those pivots span the kernel. -/
+theorem audit_implies_free_dimension (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    snapshot.claim.free =
+      snapshot.source.internal.length - snapshot.cert.pivots.length := by
+  by_contra hf
+  have hg :
+      (snapshot.claim.rank != snapshot.cert.pivots.length ||
+       snapshot.claim.free !=
+         (snapshot.source.internal.length - snapshot.cert.pivots.length)) = true := by
+    simp [hf]
+  simp [audit, hg] at h
+
+/-- The actual pivot-identity test used inside audit, factored only for
+stating its universal acceptance consequence. -/
+def pivotIdentityOK (s : Source) (c : Certificate) : Bool :=
+  (List.range c.pivots.length).all (fun i =>
+    (List.range s.equations.length).all (fun j =>
+      bitAt (rowAt (replay s c) j) ((c.pivots[i]?).getD 0) == (i == j)))
+
+/-- All nonpivot rows in the independently replayed matrix contain
+no internal coefficients. This prevents hidden equations from being
+mistaken for external-only residual constraints. -/
+def residualInternalZero (s : Source) (c : Certificate) : Bool :=
+  ((replay s c).drop c.pivots.length).all (fun row =>
+    (List.range s.internal.length).all (fun j => !(bitAt row j)))
+
+/-- Reconstruct the boundary-only residual directly from independently
+replayed rows, not from the producer's proposed claim. -/
+def replayedResidual (s : Source) (c : Certificate) : List Residual :=
+  ((replay s c).map
+    (fun row => expectedResidual row s.internal.length s.boundary.length)).drop
+      c.pivots.length
+
+/-- Actual auditor acceptance implies the complete pivot identity
+condition for every row and admitted pivot column. -/
+theorem audit_implies_pivot_identity (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    pivotIdentityOK snapshot.source snapshot.cert = true := by
+  cases hp : pivotIdentityOK snapshot.source snapshot.cert with
+  | true => rfl
+  | false =>
+      have hbad :
+          ∃ i < snapshot.cert.pivots.length,
+            ∃ j < snapshot.source.equations.length,
+              ¬bitAt (rowAt (replay snapshot.source snapshot.cert) j)
+                ((snapshot.cert.pivots[i]?).getD 0) = (i == j) := by
+        simpa [pivotIdentityOK] using hp
+      simp [audit, hbad] at h
+
+/-- Actual auditor acceptance implies every residual row is independent
+of all internal variables, not merely that its claimed format is valid. -/
+theorem audit_implies_residual_internal_zero (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    residualInternalZero snapshot.source snapshot.cert = true := by
+  cases hz : residualInternalZero snapshot.source snapshot.cert with
+  | true => rfl
+  | false =>
+      have hbad :
+          ∃ row ∈ (replay snapshot.source snapshot.cert).drop snapshot.cert.pivots.length,
+            ∃ j < snapshot.source.internal.length, bitAt row j = true := by
+        simpa [residualInternalZero] using hz
+      simp [audit, hbad] at h
+
+/-- Acceptance forces exactly the independently reconstructed residual
+equations, including each coefficient column and right-hand side.
+No source-dependent equality is taken as an axiom. -/
+theorem audit_implies_replayed_residual (snapshot : Snapshot)
+    (maxCells maxSteps : Nat)
+    (h : audit snapshot maxCells maxSteps = true) :
+    replayedResidual snapshot.source snapshot.cert =
+      snapshot.claim.residual := by
+  by_contra hneq
+  have hb :
+      (replayedResidual snapshot.source snapshot.cert ==
+        snapshot.claim.residual) = false := by
+    simp [hneq]
+  have hfinal :
+      (List.drop snapshot.cert.pivots.length
+        (List.map
+          (fun row => expectedResidual row snapshot.source.internal.length
+            snapshot.source.boundary.length)
+          (replay snapshot.source snapshot.cert)) ==
+        snapshot.claim.residual) = false := by
+    exact hb
+  simp [audit, hfinal] at h
+
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_pivot_identity
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_residual_internal_zero
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_replayed_residual
+
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_sourceOK
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_version
+#print axioms IndependentETH.AffineNativeAudit.audit_implies_free_dimension
+
 /-- Independent source-name Boolean XOR oracle on small examples. -/
 def namedBit : List Name → List Bool → Name → Bool
   | [], _, _ => false

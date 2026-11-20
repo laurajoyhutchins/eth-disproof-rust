@@ -7,6 +7,11 @@ on:
       - feat/query-modular-source-extraction-20261120
     paths:
       - '.github/workflows/original-query-modules.yml'
+  # Bounded one-off proof probe, only when this workflow itself changes.
+  # This also provides a PR-triggered path if a connector push does not queue.
+  pull_request:
+    paths:
+      - '.github/workflows/original-query-modules.yml'
   workflow_dispatch:
     inputs:
       stage:

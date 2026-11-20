@@ -144,6 +144,29 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
     undeclared.equations[0].variables.push("undeclared".into());
     emit_case(&mut output, "Undeclared occurrence in source row", &undeclared, &raw, &interface, false, false);
 
+    // Name-domain mismatches must be caught even when both the column
+    // registry and every source occurrence are renamed consistently.
+    for (reason, renamed) in [
+        ("Leading digit violates source identifier grammar", "1u"),
+        ("Embedded hyphen violates source identifier grammar", "u-name"),
+        ("Non-ASCII Unicode violates source identifier grammar", "é"),
+    ] {
+        let mut malformed = eqs.clone();
+        let original = malformed.internal[0].clone();
+        malformed.internal[0] = renamed.into();
+        for equation in &mut malformed.equations {
+            for variable in &mut equation.variables {
+                if *variable == original {
+                    *variable = renamed.into();
+                }
+            }
+        }
+        if raw.verify(&malformed, &interface, crate::affine_cert::VerificationLimits::default()).is_ok() {
+            return Err(format!("native checker accepted malformed source: {renamed:?}"));
+        }
+        emit_case(&mut output, reason, &malformed, &raw, &interface, false, false);
+    }
+
     let noncontiguous = AffineRegion {
         internal: (0..6).map(|i| format!("u{i}")).collect(),
         boundary: vec!["b".into(), "c".into(), "d".into()],
@@ -223,7 +246,7 @@ mod tests {
         assert!(text.contains("130 internal bits"));
         assert!(text.contains("Missing pivot witness"));
         assert!(text.matches("= true := by decide").count() >= 10);
-        assert!(text.matches("= false := by decide").count() >= 6);
+        assert!(text.matches("= false := by decide").count() >= 9);
         // Only a fixed generator can emit Lean syntax. Source names are
         // represented solely by decimal UTF-8 byte lists.
         let source = AffineRegion {

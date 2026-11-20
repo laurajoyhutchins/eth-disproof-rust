@@ -339,7 +339,9 @@ theorem tropical_variable_pow (d : ℕ) :
     (monomial 1 1 (by omega) : Leading) ^ d =
       monomial d 1 (by omega) := by
   induction d with
-  | zero => rfl
+  | zero =>
+      simp only [pow_zero]
+      rfl
   | succ d ih =>
       rw [pow_succ, ih]
       change times (monomial d 1 (by omega)) (monomial 1 1 (by omega)) =

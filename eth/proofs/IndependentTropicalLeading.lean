@@ -158,29 +158,6 @@ theorem plus_comm (a b : Leading) : plus a b = plus b a := by
               · exact heq
               · exact Nat.add_comm _ _
 
-theorem plus_assoc (a b c : Leading) :
-    plus (plus a b) c = plus a (plus b c) := by
-  cases a with
-  | none => rfl
-  | some a =>
-      cases b with
-      | none => rfl
-      | some b =>
-          cases c with
-          | none =>
-              cases h : plus (some a) (some b) <;> simp [plus]
-          | some c =>
-              by_cases hab : a.degree < b.degree <;>
-              by_cases hba : b.degree < a.degree <;>
-              by_cases hac : a.degree < c.degree <;>
-              by_cases hca : c.degree < a.degree <;>
-              by_cases hbc : b.degree < c.degree <;>
-              by_cases hcb : c.degree < b.degree <;>
-              simp_all [plus, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] <;>
-              first
-              | omega
-              | (apply congrArg Option.some; apply term_ext <;> omega)
-
 theorem plus_zero (x : Leading) : plus x none = x := by
   cases x <;> rfl
 
@@ -213,7 +190,6 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.coeff_generating
 #print axioms IndependentETH.Tropical.energy_eq_zero_iff
 #print axioms IndependentETH.Tropical.count_satisfying
-#print axioms IndependentETH.Tropical.plus_assoc
 #print axioms IndependentETH.Tropical.plus_comm
 #print axioms IndependentETH.Tropical.times_assoc
 #print axioms IndependentETH.Tropical.monomial_times

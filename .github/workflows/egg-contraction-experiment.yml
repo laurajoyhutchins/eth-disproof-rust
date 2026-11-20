@@ -8,6 +8,7 @@ on:
       - "eth/proofs/IndependentLivePortComposition.lean"
       - "eth/proofs/IndependentLivePortFold.lean"
       - "eth/proofs/IndependentOverlappingFactors.lean"
+      - "eth/proofs/IndependentTropicalLeading.lean"
       - "eth/proofs/IndependentAffineRankNullity.lean"
       - "eth/proofs/IndependentAffineRowOps.lean"
       - "eth/proofs/IndependentAffinePackedRows.lean"
@@ -31,6 +32,22 @@ jobs:
         run: |
           set -euo pipefail
           printf 'p cnf 3 2\n1 -2 0\n-1 2 0\n' | cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin exact-cnf-count -- - | grep -F '"count":"4"'
+
+      - name: Run bounded tropical order study with independent full-polynomial oracle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin tropical-order-study | tee /tmp/tropical-order-receipts.jsonl
+          test "$(wc -l < /tmp/tropical-order-receipts.jsonl)" -eq 27
+          grep -F '"oracle":"checked"' /tmp/tropical-order-receipts.jsonl
+
+      - name: Compare exact polynomial tropical and factored representations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin representation-study | tee /tmp/representation-study-receipts.jsonl
+          test "$(wc -l < /tmp/representation-study-receipts.jsonl)" -eq 51
+          test "$(grep -c '"oracle":"checked"' /tmp/representation-study-receipts.jsonl)" -eq 51
 
       - name: Run contraction-order study and check small-case oracle
         shell: bash
@@ -63,7 +80,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean eth/proofs/IndependentTropicalLeading.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
@@ -75,3 +92,4 @@ jobs:
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentLivePortComposition.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentLivePortFold.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentOverlappingFactors.lean"
+          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentTropicalLeading.lean"

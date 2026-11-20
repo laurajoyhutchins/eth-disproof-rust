@@ -121,3 +121,61 @@ semantics for general cyclic graphs: it must still be composed with an
 exact theorem for elimination over overlapping scopes and with the
 Rust GF(2) certificate/refinement boundary. The existing small-instance
 CNF and affine oracles remain independent implementation evidence.
+
+
+## Bounded tropical-leading shadow (November 20, 2026)
+
+[Draft PR #395](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/395)
+adds an **opt-in explicit-table** tropical-leading contraction over the
+**original** `affine_orders::generate` factors and the same `kept_port_set`
+retention rule. Each table entry is either zero or the exact pair
+`(minimum violated-equation count, number of minimizers)`. This is
+positive arithmetic: no signed cancellation is modeled or permitted.
+
+Run:
+
+```sh
+cargo test --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
+cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml \
+  --bin tropical-order-study
+```
+
+The CLI prints 27 JSONL receipts for three families, sizes 3/5/8, and three
+schedules. Every receipt is independently checked against a **full polynomial
+histogram** computed by enumerating the original source variables; the test
+suite also compares its degree-zero coefficient to the existing separately
+implemented affine count. The oracle refuses more than 16 free variables,
+and the contraction refuses intermediate explicit tables over 16 ports.
+This cap is a bounded experimental safeguard, not an asymptotic limit.
+
+At the independently checked receipt run
+[44756975929](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44756975929),
+the eight-edge equality chain had the **same** final leading pair `(0, 2)`
+for sequential and even-first orders but very different costs:
+
+| Schedule | Peak retained ports | Peak table cells | Counted multiplications |
+|---|---:|---:|---:|
+| Sequential | 2 | 4 | 32 |
+| Even-first | 7 | 128 | 348 |
+
+These are **measured costs for one explicit-table implementation**, not
+minimal interface sizes or machine bit-operation costs. The final tropical
+summary alone cannot predict the workload of the chosen contraction plan.
+The arithmetic-operation count also excludes factor creation and the oracle.
+
+The affine energy in this Rust study counts violated equations. It agrees
+with violated **clauses** only under appropriate canonical CNF encodings:
+a failed 2-variable equality violates exactly one of its two biconditional
+clauses, and an incorrect XOR3 assignment violates exactly one of the four
+parity clauses. The Lean `IndependentTropicalLeading.lean` specification
+instead works directly with arbitrary list-of-clauses CNF and counts violated
+clauses. No Lean-to-Rust refinement proof connects the two representations.
+
+The Lean file begins the polynomial coefficient and leading-pair proof
+effort. It does **not yet** provide a completed commutative-semiring
+instance or the full `Polynomial ℕ` semiring-homomorphism theorem.
+
+Remaining separate obligations: nonlinear recurrence factors, signed
+cancellation and residuals, full resource accounting (including peak RSS,
+bit arithmetic and certificate verification), and source-specific pruning
+in the original OpenAI/Anthropic declarations.

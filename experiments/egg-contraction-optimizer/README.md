@@ -293,3 +293,21 @@ The universal [Lean checked-index theorem](../../eth/proofs/IndependentAffineInd
 Native tests corrupt the registry with wrong in-range and out-of-range indices, RHS indices and missing entries; none may mutate the row. Another test compares 128 seeded 128-occurrence sequences to direct source-name parity after every toggle. The [pinned CI run](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44748607741) passed the Lean source-parity theorem, the Rust-to-Lean receipt audit and **43 Rust tests**; [Lean proof style](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44748607611) and [original ETH Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44748607721) also passed.
 
 **Still open:** Source- or compiler-level proof of the actual Rust lookup, bounds-checked indexing, memory operations and complete verifier control flow, as well as runtime resource and generic SAT/ETH complexity claims. The [notebook study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md) explains the proof obligations and negative findings.
+
+
+## Bounded machine-level verification of the actual Rust slice update
+
+The independent affine checker validates the proposed column against the original ordered source names and then calls the **real** [checked_toggle.rs](src/checked_toggle.rs) Rust primitive. That module performs `row.get_mut(proposed)` followed by one Boolean flip, or refuses without writing. It is compiled into the running verifier, not copied into a test-only implementation.
+
+The separate [Kani workflow](../../.github/workflows/affine-checked-toggle-kani.yml) directly checks the same Rust file with **Kani 0.68.0**:
+
+```sh
+# From experiments/egg-contraction-optimizer, after installing Kani 0.68.0:
+kani src/checked_toggle.rs
+```
+
+The harnesses analyze a four-bit row with symbolic initial bits and every `u8` candidate index, plus truncated and empty rows. They assert exact single-bit framing for successful access and atomic refusal for absent positions. [Workflow #44754372798](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44754372798) passed both harnesses: **0/41** and **0/66** failed checks (one unreachable check in the latter).
+
+**Scope and negative result:** This is a bounded source-level machine check, **not** a proof of arbitrary `usize` inputs, source-name equality, `BTreeMap`, or the full compiled verifier. The initial [whole-crate Kani run #44751435855](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44751435855) verified the short-row harness but spent its remaining 15-minute limit unwinding `memcmp` in a symbolic string-comparison harness. Splitting the concrete mutation primitive from name admission eliminated that solver obstacle. The universal checked name/index semantics remain separately kernel-checked in [IndependentAffineIndexToggle.lean](../../eth/proofs/IndependentAffineIndexToggle.lean).
+
+See the [technical notebook study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-rust-slice-model-checking.md) for the precise proof and trust boundaries.

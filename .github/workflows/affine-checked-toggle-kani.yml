@@ -1,0 +1,30 @@
+name: affine checked toggle Kani verification
+
+on:
+  pull_request:
+    paths:
+      - "experiments/egg-contraction-optimizer/src/affine_cert.rs"
+      - "experiments/egg-contraction-optimizer/src/checked_toggle.rs"
+      - "experiments/egg-contraction-optimizer/Cargo.toml"
+      - ".github/workflows/affine-checked-toggle-kani.yml"
+  workflow_dispatch:
+
+# Deliberately independent of the fast Rust/Lean checkpoint workflow.
+# Single-source invocation avoids the full crate's symbolic string-compare
+# memcmp unwind explosion; still checks the exact primitive used by Rust.
+# Bounded model checking is not universal compiler verification.
+jobs:
+  checked-mutation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Model-check native Rust checked mutation (Kani 0.68.0)
+        uses: model-checking/kani-github-action@v1
+        with:
+          kani-version: "0.68.0"
+          command: kani
+          args: src/checked_toggle.rs
+          working-directory: ./experiments/egg-contraction-optimizer

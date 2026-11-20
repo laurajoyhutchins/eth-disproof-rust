@@ -106,13 +106,20 @@ pub fn recognize_strict_xor3_cnf(source: &crate::sat::Region) -> Result<AffineRe
     Ok(affine)
 }
 
+/// Authoritative source identifier grammar shared by the producer and
+/// checker. The independent Lean audit restates this rule on raw UTF-8
+/// bytes and tests malformed names, rather than trusting this function.
+pub(crate) fn valid_source_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|first| first.is_ascii_alphabetic()) &&
+        chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
 impl AffineRegion {
     fn validate(&self) -> Result<(), String> {
         let mut declared = BTreeSet::new();
         for name in self.internal.iter().chain(&self.boundary) {
-            if name.is_empty() || !name.chars().next().unwrap().is_ascii_alphabetic()
-                || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-                || !declared.insert(name.clone())
+            if !valid_source_identifier(name) || !declared.insert(name.clone())
             {
                 return Err(format!("invalid or duplicated variable {name:?}"));
             }

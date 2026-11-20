@@ -177,7 +177,8 @@ def phase_from_log(path: Path) -> str:
 
 def probe_one(stage: Stage, upstream: Path, lake: Path, output: Path,
               build_timeout: int, export_timeout: int, cert_timeout: int,
-              max_labels: int, rss_limit: int, lean_version: str) -> dict:
+              max_labels: int, rss_limit: int, lean_version: str,
+              require_cached: bool = False) -> dict:
     directory = output / stage.id
     directory.mkdir(parents=True, exist_ok=True)
     # Never accidentally inherit a previous successful receipt.
@@ -193,11 +194,29 @@ def probe_one(stage: Stage, upstream: Path, lake: Path, output: Path,
     try:
         record = pinned_record(stage, upstream)
         result["source_blob"] = record["git_blob"]
-        # Each stage gets fresh subprocesses. None imports QueryStreamProgram.
-        result["build"] = run_stage_process(
-            ["lake", "-K", "maxJobs=2", "build", stage.module],
-            lake, directory / "build", build_timeout, rss_limit
-        )
+        # Ordinary deep probes refuse an absent pinned module instead of
+        # repeating the 12 GiB original dependency build seen in run 44817854875.
+        # A prebuilt artifact is only trusted enough to attempt a fresh original
+        # Lean import, not to claim source equivalence or a kernel certificate.
+        if require_cached:
+            olean = lake / ".lake/build/lib/lean" / (stage.module.replace(".", "/") + ".olean")
+            if not olean.is_file() or olean.is_symlink():
+                raise Refusal("pinned original OAI compiled module missing; explicit build opt-in required")
+            result["cached_olean_sha256"] = hashlib.sha256(olean.read_bytes()).hexdigest()
+            with tempfile.TemporaryDirectory(prefix="query-module-import-") as scratch:
+                check = Path(scratch) / "FreshImport.lean"
+                check.write_text(f"import {stage.module}\\n", encoding="utf-8")
+                result["fresh_import"] = run_stage_process(
+                    ["lake", "env", "lean", "-j", "1", "-M", "8192", str(check)],
+                    lake, directory / "fresh-import", build_timeout, rss_limit
+                )
+            result["build_mode"] = "cached_module_fresh_import"
+        else:
+            result["build"] = run_stage_process(
+                ["lake", "-K", "maxJobs=2", "build", stage.module],
+                lake, directory / "build", build_timeout, rss_limit
+            )
+            result["build_mode"] = "explicit_source_module_build"
         with tempfile.TemporaryDirectory(prefix="query-module-") as tmp:
             probe = Path(tmp) / "Inspect.lean"
             probe.write_text(source(record), encoding="utf-8")
@@ -263,6 +282,10 @@ def main() -> None:
     parser.add_argument("--cert-timeout", type=int, default=300)
     parser.add_argument("--max-source-labels", type=int, default=4096)
     parser.add_argument("--rss-limit-gib", type=int, default=12)
+    parser.add_argument(
+        "--allow-original-build", action="store_true",
+        help="Explicitly permit a fresh original OAI build; default is cached-only refusal"
+    )
     args = parser.parse_args()
     if not (60 <= args.build_timeout <= 3600 and 30 <= args.export_timeout <= 1800
             and 30 <= args.cert_timeout <= 1800 and
@@ -279,7 +302,8 @@ def main() -> None:
         result = probe_one(stage, upstream, lake, output,
                            args.build_timeout, args.export_timeout,
                            args.cert_timeout, args.max_source_labels,
-                           args.rss_limit_gib * 1024**3, pin["lean"])
+                           args.rss_limit_gib * 1024**3, pin["lean"],
+                           require_cached=not args.allow_original_build)
         results.append(result)
         print(f"QUERY_MODULE_STAGE={stage.id} status={result['status']} "
               f"phase={result['last_graph_phase']}", flush=True)

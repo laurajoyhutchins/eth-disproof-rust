@@ -424,6 +424,53 @@ mod tests {
     /// Row-set semantics must not accidentally depend on the canonical
     /// serialization order. Conversely, a duplicate signed row must refuse
     /// even when the number of CSR entries and row widths are unchanged.
+    /// Any change to a canonical CSR row boundary must refuse, even when the
+    /// replacement remains within the flattened literal arrays. This tests
+    /// both adjacent row widths, not only the first offset or a huge sentinel.
+    #[test]
+    fn all_modified_row_offsets_refuse_without_panicking() {
+        for n in [4_usize, 6, 8] {
+            let rhs = vec![false; n - 3];
+            let good = OwnedSignedCsr::from_cnf(&source(n, &rhs));
+            let receipt = good.view().recognize_recurrence().unwrap();
+            let nnz = good.column_indices.len();
+
+            for index in 0..good.row_offsets.len() {
+                let original = good.row_offsets[index];
+                for altered in [
+                    0,
+                    nnz,
+                    usize::MAX,
+                    original.saturating_sub(1),
+                    original.saturating_add(1),
+                ] {
+                    if altered == original {
+                        continue;
+                    }
+                    let mut corrupted = good.clone();
+                    corrupted.row_offsets[index] = altered;
+
+                    let recognizer =
+                        std::panic::catch_unwind(|| corrupted.view().recognize_recurrence())
+                            .expect("recognizer panicked on an altered CSR row offset");
+                    assert!(
+                        recognizer.is_err(),
+                        "accepted n={n} offset[{index}]={altered}"
+                    );
+
+                    let replay = std::panic::catch_unwind(|| {
+                        verify_recurrence_receipt(corrupted.view(), &receipt)
+                    })
+                    .expect("receipt verifier panicked on an altered CSR row offset");
+                    assert!(
+                        replay.is_err(),
+                        "replay accepted n={n} offset[{index}]={altered}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn row_permutations_preserve_receipts_and_duplicates_refuse() {
         for n in [4_usize, 5, 8, 12] {

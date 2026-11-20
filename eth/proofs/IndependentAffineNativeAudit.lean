@@ -388,7 +388,7 @@ private theorem occurrenceFold_acc
     xs.foldl (fun p name => p ^^ (name == target)) acc =
       (acc ^^ xs.foldl (fun p name => p ^^ (name == target)) false) := by
   induction xs generalizing acc with
-  | nil => cases acc <;> decide
+  | nil => simp
   | cons x xs ih =>
       simp only [List.foldl_cons]
       rw [ih (acc ^^ (x == target)), ih (false ^^ (x == target))]
@@ -436,11 +436,10 @@ private theorem xorAll_delta (ns : List Name)
       by_cases hx : target = x
       · subst target
         have htail := xorAll_delta_none xs x assignment hn'.1
-        change (assignment x ^^
+        change (((x == x) && assignment x) ^^
           xorAll (xs.map (fun name => (x == name) && assignment name))) =
           (if x ∈ x :: xs then assignment x else false)
-        rw [htail]
-        simp
+        simp [htail]
       · have hrest := ih hn'.2
         have hfalse : (target == x) = false := by simp [hx]
         change (((target == x) && assignment x) ^^
@@ -488,7 +487,7 @@ private theorem occurrenceEval_acc (xs : List Name)
     xs.foldl (fun parity n => parity ^^ assignment n) acc =
       (acc ^^ occurrenceEval xs assignment) := by
   induction xs generalizing acc with
-  | nil => cases acc <;> decide
+  | nil => simp [occurrenceEval]
   | cons x xs ih =>
       simp only [List.foldl_cons, occurrenceEval]
       rw [ih (acc ^^ assignment x), ih (false ^^ assignment x)]

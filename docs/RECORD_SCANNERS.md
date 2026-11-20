@@ -105,6 +105,10 @@ source-graph finite-program vocabulary and Lean certificate renderer.
    the established source-graph table object
    `(r,s,labels,entry,input,output,code)`; each `code` entry is a
    canonical opcode and its numeric operands, not generated Lean syntax.
+   The shared, production `Instr` and `Program` transport encoder
+   lives in
+   [`bit_program/physical_encoding.rs`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/src/bit_program/physical_encoding.rs),
+   not in a scanner-specific exporter.
 2. [`verify_rust_physical_receipt.py`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/tools/verify_rust_physical_receipt.py)
    strictly checks the receipt and six caller ABIs with the **existing**
    `verify_source_graph.parse_source_graph_json` and `parse_program`
@@ -112,7 +116,8 @@ source-graph finite-program vocabulary and Lean certificate renderer.
    `source_graph_kernel_certificate.physical_program_definition`,
    also used by original source-graph certificates. This is the
    **single finite-table-to-Lean renderer**, including the original
-   `instruction_lean` opcode mapper.
+   `instruction_lean` opcode mapper. Its operand-kind vocabulary is
+   the imported `verify_source_graph.KINDS`, not a second copy.
 3. The pinned [source-refinement workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/.github/workflows/lean-source-refinement.yml)
    appends that rendered data to the independent mathematical
    `FramedRecordReaderRefinement.lean` and asks Lean 4.34.1 to check

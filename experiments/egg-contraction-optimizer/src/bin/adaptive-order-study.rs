@@ -44,7 +44,7 @@ fn report(case: Case, policy: Policy) -> Result<(), String> {
         .map(|v| v.to_string()).unwrap_or("null".into());
     println!(
         concat!(
-            "{{\"case\":\"{}\",\"kind\":\"{}\",\"variables\":{},\"clauses\":{},",
+            "{{\"case\":\"{}\",\"kind\":\"{}\",\"generator_size\":{},\"declared_variables\":{},\"clauses\":{},",
             "\"seed\":{},\"policy\":\"{}\",\"oracle\":\"checked\",",
             "\"order\":{:?},\"minimum_energy\":{},\"optimal_count\":\"{}\",",
             "\"satisfying_count\":\"{}\",",
@@ -60,7 +60,8 @@ fn report(case: Case, policy: Policy) -> Result<(), String> {
             "\"peak_live_encoded_bytes_proxy\":{},",
             "\"peak_process_rss_kib\":{}}}"
         ),
-        case.label(), case.kind.name(), case.variables, case.clauses,
+        case.label(), case.kind.name(), case.variables,
+        case.declared_variables(), case.clauses,
         case.seed, policy.name(),
         result.order, exact.minimum_energy, exact.minimum_count,
         exact.satisfying_count, result.candidates_examined,

@@ -596,6 +596,60 @@ theorem sourceRows_step (d : Bool) (ds : List Bool) (x : Nat → Bool) :
           simpa [shiftAssignment, tripleAt, Nat.add_assoc,
             Nat.add_left_comm, Nat.add_comm] using h
 
+/-- Interpret an entire finite Boolean word as a total assignment, using
+false outside its declared range. For any valid source witness, all checked
+rows refer only to the word's declared variable domain. -/
+def wordAssignment (w : List Bool) (i : Nat) : Bool :=
+  (w[i]?).getD false
+
+theorem wordAssignment_shift (a : Bool) (tail : List Bool) :
+    shiftAssignment (wordAssignment (a :: tail)) = wordAssignment tail := by
+  funext i
+  rfl
+
+/-- Every clause-level complete word really satisfies all of the indexed
+signed incidence rows. This is a substantive direction of the list-to-row
+semantics bridge, not merely a restatement of a definition. -/
+theorem sourceCNFWord_rows {s : State} {ds w : List Bool}
+    (h : SourceCNFWord s ds w) :
+    allRowsHold (wordAssignment w) (sourceRows ds) := by
+  induction h with
+  | last a b c h =>
+      apply (sourceRows_exact [] (wordAssignment [a, b, c])).2
+      constructor
+      · intro i hi
+        omega
+      · intro i hi
+        have hi0 : i = 0 := by omega
+        subst i
+        have hn : nonzero (a, b, c) = true := by
+          simpa only [orWindow_exact] using h
+        have hz : (a, b, c) ≠ zeroState := of_decide_eq_true hn
+        simpa [tripleAt, wordAssignment] using hz
+  | step a b c d e ds tail hOr hParity hTail ih =>
+      apply (sourceRows_step d ds (wordAssignment (a :: tail))).2
+      obtain ⟨suffix, hpref⟩ := sourceCNFWord_prefix hTail
+      have hwindow : tripleAt (wordAssignment (a :: tail)) 0 1 2 = (a, b, c) := by
+        simp [tripleAt, wordAssignment, hpref, statePrefix]
+      have hparity : tripleAt (wordAssignment (a :: tail)) 0 1 3 = (a, b, e) := by
+        simp [tripleAt, wordAssignment, hpref, statePrefix]
+      have hp : parityState (a, b, e) = d := by
+        rw [gadget_exact] at hParity
+        exact of_decide_eq_true hParity
+      have hn : nonzero (a, b, c) = true := by
+        simpa only [orWindow_exact] using hOr
+      have hz : (a, b, c) ≠ zeroState := of_decide_eq_true hn
+      refine ⟨?_, ?_, ?_⟩
+      · rw [hparity]
+        exact hp
+      · rw [hwindow]
+        exact hz
+      · rw [wordAssignment_shift]
+        exact ih
+
+#print axioms IndependentETH.NonAffine.wordAssignment_shift
+#print axioms IndependentETH.NonAffine.sourceCNFWord_rows
+
 #print axioms IndependentETH.NonAffine.sourceRows_step
 
 /-! ## Checked signed CSR input and proof-producing receipt semantics

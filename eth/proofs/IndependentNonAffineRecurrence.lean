@@ -1239,6 +1239,49 @@ def rustScanCsrRow (csr : SignedCsrInput) (i : Nat) : Option SignedRow := do
     rustTripleRow csr.variableCount a b c sa sb sc
   else none
 
+/-- The three sign bits as a Rust-compatible integer polarity, with the
+least significant bit corresponding to the first column. -/
+def rustPolarityIndex : State → Nat
+  | (p, q, r) =>
+      (if p then 1 else 0) + (if q then 2 else 0) + (if r then 4 else 0)
+
+/-- Each of the eight polarity values has a unique three-bit encoding. -/
+theorem rustPolarityIndex_injective : Function.Injective rustPolarityIndex := by
+  intro p q h
+  rcases p with ⟨a, b, c⟩
+  rcases q with ⟨d, e, f⟩
+  cases a <;> cases b <;> cases c <;>
+    cases d <;> cases e <;> cases f <;>
+    simp [rustPolarityIndex] at h ⊢
+
+/-- Semantic key used by Rust's column-triple to polarity-mask grouping.
+The implementation uses a three-usize key and an eight-bit bitset; comparing
+one key/polarity pair is equivalent to comparing this value. -/
+def rustGroupingKey (r : SignedRow) : Nat × Nat × Nat × Nat :=
+  (r.first, r.second, r.third, rustPolarityIndex r.falsifiesAt)
+
+theorem rustGroupingKey_injective : Function.Injective rustGroupingKey := by
+  intro r s h
+  cases r with
+  | mk i j k p =>
+      cases s with
+      | mk i' j' k' p' =>
+          simp only [rustGroupingKey, Prod.mk.injEq] at h
+          rcases h with ⟨hi, hj, hk, hp⟩
+          subst i'
+          subst j'
+          subst k'
+          have heq : p = p' := rustPolarityIndex_injective hp
+          subst p'
+          rfl
+
+/-- A Rust-style duplicate keyed by columns and the three-bit polarity
+is exactly a duplicate full SignedRow. Distinct polarity clauses on the
+same triple remain distinct, as required by a four-clause parity gadget. -/
+theorem rustGroupingKey_nodup_iff (rows : List SignedRow) :
+    (rows.map rustGroupingKey).Nodup ↔ rows.Nodup :=
+  List.nodup_map_iff rustGroupingKey_injective
+
 /-- The entire *mathematical* CSR collection, with all row scans and duplicate
 checks. The Rust recognizer's later gadget grouping and receipt logic are not
 represented by this function. Arithmetic overflow is outside this definition
@@ -1252,7 +1295,7 @@ def rustScanSignedCsr (csr : SignedCsrInput) : Option (Finset SignedRow) := do
         csr.offsets.head? = some 0 ∧
         csr.offsets[rowsCount]? = some csr.columns.length then
       let rows ← (List.range rowsCount).mapM (rustScanCsrRow csr)
-      if rows.Nodup then
+      if (rows.map rustGroupingKey).Nodup then
         pure rows.toFinset
       else none
     else none
@@ -1318,7 +1361,8 @@ theorem rustScanSignedCsr_eq_decodeSignedCsr_of_row_agreement
     rustScanSignedCsr csr = decodeSignedCsr csr := by
   have hmap := csrRowMapM_congr csr
     (List.range (5 * csr.variableCount - 14)) h
-  simp [rustScanSignedCsr, decodeSignedCsr, hmap]
+  simp [rustScanSignedCsr, decodeSignedCsr, hmap,
+    rustGroupingKey_nodup_iff]
 
 /-- An arbitrary collection of witnessed rows, not merely the n=4 fixture,
 satisfies the full-set representation refinement. Duplicate rows are
@@ -1341,6 +1385,9 @@ theorem rustScanSignedCsr_refusal_iff
     rustScanSignedCsr csr = none ↔ decodeSignedCsr csr = none := by
   rw [rustScanSignedCsr_eq_decodeSignedCsr csr h]
 
+#print axioms IndependentETH.NonAffine.rustPolarityIndex_injective
+#print axioms IndependentETH.NonAffine.rustGroupingKey_injective
+#print axioms IndependentETH.NonAffine.rustGroupingKey_nodup_iff
 #print axioms IndependentETH.NonAffine.rustScanCsrRow_eq_decodeCsrRow
 #print axioms IndependentETH.NonAffine.csrRowMapM_congr
 #print axioms IndependentETH.NonAffine.rustScanSignedCsr_eq_decodeSignedCsr_of_row_agreement

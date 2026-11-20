@@ -826,6 +826,14 @@ mod tests {
         // Independent truth-table interpretation of the native remove_first
         // result. Include repeated/diagonal/unsorted input monomials to
         // exercise the actual constructor's canonical XOR normalization.
+        // Both pairs cancel after the constructor's squarefree and XOR rules.
+        let normalized = QuadraticPhase::new(
+            2,
+            vec![vec![0, 0], vec![0], vec![1, 0], vec![0, 1]],
+        )
+        .unwrap();
+        assert!(normalized.terms().is_empty());
+
         let mut seed = 0x5eed_2026_1120_u64;
         for n in 0..=8 {
             let width = n + 1;
@@ -850,6 +858,7 @@ mod tests {
                         }
                     }
                 }
+                let original_terms = raw.clone();
                 let source = QuadraticPhase::new(width, raw).unwrap();
                 let (base, mixed_constraint) = source.remove_first(None).unwrap();
                 let mixed = mixed_constraint.unwrap();
@@ -868,7 +877,17 @@ mod tests {
                         |parity, &index| parity ^ boundary[index],
                     );
                     for x in [false, true] {
-                        let original = source.eval(&assignment(&boundary, x));
+                        let assigned = assignment(&boundary, x);
+                        let original = source.eval(&assigned);
+                        // This oracle uses the unnormalized input monomials,
+                        // not the constructor's BTreeSet or split evaluator.
+                        let raw_value = original_terms.iter().fold(false, |parity, term| {
+                            parity ^ term.iter().all(|&index| assigned[index])
+                        });
+                        assert_eq!(
+                            original, raw_value,
+                            "quadratic constructor changed raw phase: n={n}, word={word}, x={x}",
+                        );
                         let split = base.eval(&boundary) ^ (x && mixed_bit);
                         assert_eq!(
                             original, split,

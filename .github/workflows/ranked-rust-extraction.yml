@@ -64,7 +64,7 @@ jobs:
           # extraction is still not a Lean theorem. Run every target even
           # when another fails, preserving the exact unsupported closure.
           status=0
-          for scenario in ranked-guard ranked-decoder ranked-source; do
+          for scenario in ranked-parent ranked-guard ranked-decoder ranked-source; do
             if cargo hax extract "$scenario" --locked 2>&1 | tee "$RUNNER_TEMP/$scenario-extraction.log"; then
               echo "EXTRACTION_$scenario=PASS" >> "$GITHUB_STEP_SUMMARY"
             else
@@ -75,8 +75,12 @@ jobs:
           # Extraction exit code is not enough: never count generated stubs
           # as source-derived semantics. Both target declarations must be
           # present with no sorry/admit/axiom in their generated definitions.
-          for scenario in ranked-guard ranked-decoder; do
+          for scenario in ranked-parent ranked-guard ranked-decoder; do
             case "$scenario" in
+              ranked-parent)
+                dir=RankedParent
+                target='^def representation_ranked_certificate.parent_refusal_code'
+                ;;
               ranked-guard)
                 dir=RankedGuard
                 target='^def representation_ranked_certificate.verify_ranked_component_certificate'
@@ -107,19 +111,18 @@ jobs:
           set -euo pipefail
           # Generated Lean packages are pinned to a different toolchain than
           # ACC's independent proof project. Do not silently use Lean 4.34.1.
-          for scenario in ranked-guard ranked-decoder; do
-            grep -Fx 'leanprover/lean4:v4.31.0' "verification/ranked-source/proofs/$scenario/lean/lean-toolchain"
-          done
+          # Prove we can typecheck the pure first source boundary before
+          # attempting external Error/String/allocator models for the guard.
+          scenario=ranked-parent
+          grep -Fx 'leanprover/lean4:v4.31.0' "verification/ranked-source/proofs/$scenario/lean/lean-toolchain"
           curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$RUNNER_TEMP/elan-init.sh"
           sh "$RUNNER_TEMP/elan-init.sh" -y --no-modify-path
           export PATH="$HOME/.elan/bin:$PATH"
-          for scenario in ranked-guard ranked-decoder; do
-            (
-              cd "verification/ranked-source/proofs/$scenario/lean"
-              lake -K maxJobs=2 build
-            )
-            echo "SOURCE_DERIVED_LEAN_PACKAGE=$scenario:KERNEL_TYPECHECKED" >> "$GITHUB_STEP_SUMMARY"
-          done
+          (
+            cd "verification/ranked-source/proofs/$scenario/lean"
+            lake -K maxJobs=2 build
+          )
+          echo 'SOURCE_DERIVED_PARENT=KERNEL_TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve extraction receipts and source-derived Lean
         if: always()
@@ -127,6 +130,7 @@ jobs:
         with:
           name: ranked-rust-lean-source-extraction
           path: |
+            verification/ranked-source/proofs/ranked-parent/lean/
             verification/ranked-source/proofs/ranked-guard/lean/
             verification/ranked-source/proofs/ranked-decoder/lean/
             verification/ranked-source/proofs/ranked-source/lean/

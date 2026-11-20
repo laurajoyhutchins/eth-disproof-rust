@@ -301,8 +301,10 @@ fn checked_component_product_step_with(
     let slot = products
         .get_mut(class)
         .ok_or_else(|| Error::Invalid("component product index outside range".into()))?;
-    let zero = checked_arithmetic_and_record(ArithmeticKind::Mul, slot[0], weights[0], observations)?;
-    let one = checked_arithmetic_and_record(ArithmeticKind::Mul, slot[1], weights[1], observations)?;
+    let zero =
+        checked_arithmetic_and_record(ArithmeticKind::Mul, slot[0], weights[0], observations)?;
+    let one =
+        checked_arithmetic_and_record(ArithmeticKind::Mul, slot[1], weights[1], observations)?;
     *slot = [zero, one];
     Ok(())
 }
@@ -398,12 +400,7 @@ pub fn contract_checked_ranked_weights(
     source_edges: &[(usize, usize)],
     certificate: &RankedComponentCertificate,
 ) -> Result<RankedCountReceipt, Error> {
-    contract_checked_ranked_weights_with(
-        weights,
-        source_edges,
-        certificate,
-        &mut None,
-    )
+    contract_checked_ranked_weights_with(weights, source_edges, certificate, &mut None)
 }
 
 /// Observe *every checked arithmetic invocation* of this particular Rust

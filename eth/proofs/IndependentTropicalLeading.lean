@@ -170,12 +170,11 @@ theorem plus_assoc (a b c : Leading) :
           | none => simp [plus]
           | some c =>
               simp only [plus]
-              split_ifs <;> try omega
-              all_goals
+              split_ifs <;> simp_all [plus] <;>
                 first
                 | rfl
-                | omega
                 | (apply congrArg Option.some; apply term_ext <;> omega)
+                | omega
 
 theorem plus_zero (x : Leading) : plus x none = x := by
   cases x <;> rfl

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from fnmatch import fnmatchcase
 import tomllib
 import unittest
 
@@ -83,6 +84,38 @@ class RepositoryLayoutTests(unittest.TestCase):
                     self.assertIn("BASE_PREFIX=rust/native_lean_backend", content)
                     continue
                 self.assertNotIn(prefix, content, f"{workflow}: {prefix}")
+
+
+    def test_source_refinement_covers_physical_program_producers(self):
+        # The deep Lean certificate gate must run when the shared Rust
+        # instruction encoder changes, even if no proof file changes.
+        workflow = (ROOT / ".github/workflows/lean-source-refinement.yml").read_text()
+        self.assertEqual(workflow.count("  pull_request:\n    paths:\n"), 1)
+        body = workflow.split("  pull_request:\n    paths:\n", 1)[1]
+        patterns = []
+        for line in body.splitlines():
+            if line.startswith("      - '") and line.endswith("'"):
+                patterns.append(line.removeprefix("      - '")[:-1])
+            elif not line.strip() or line.lstrip().startswith("#"):
+                continue
+            else:
+                break
+        self.assertTrue(patterns, "source-refinement PR path filter is empty")
+        for producer in (
+            "eth/src/bit_program.rs",
+            "eth/src/bit_program/physical_encoding.rs",
+            "eth/src/bit_program/structured.rs",
+            "eth/src/bit_program/frame_programs.rs",
+            "eth/src/bit_program/record_iteration.rs",
+            "eth/src/bit_program/source_json/codegen.rs",
+            "eth/src/bin/framed-reader-certificate.rs",
+            "eth/tools/verify_rust_physical_receipt.py",
+            "eth/proofs/SourceGraphRefinement.lean",
+        ):
+            self.assertTrue(
+                any(fnmatchcase(producer, pattern) for pattern in patterns),
+                f"source-refinement workflow misses {producer}",
+            )
 
 
 if __name__ == "__main__":

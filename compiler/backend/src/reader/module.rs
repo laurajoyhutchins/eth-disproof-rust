@@ -166,9 +166,8 @@ impl Reader {
         )?;
         if let Some(expected) = source_events {
             if !expected.is_empty() {
-                effect_order::verify_emitted_order(&expected, &result).map_err(|reason| {
-                    CompilerError::new(RefusalKind::FnBody, reason)
-                })?;
+                effect_order::verify_emitted_order(&expected, &result)
+                    .map_err(|reason| CompilerError::new(RefusalKind::FnBody, reason))?;
             }
         }
         result.push_str("}\n");

@@ -68,6 +68,34 @@ mod verification {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::flip_checked;
+
+    #[test]
+    fn arbitrary_length_slice_boundaries_preserve_other_bits() {
+        for len in [0, 1, 2, 3, 4, 63, 64, 65, 127, 128, 129, 1025] {
+            let candidates = [0, len / 2, len.saturating_sub(1), len, usize::MAX];
+            for seed in 0..8usize {
+                let before = (0..len).map(|i| ((i ^ seed) % 3) == 0)
+                    .collect::<Vec<_>>();
+                for &index in &candidates {
+                    let mut after = before.clone();
+                    let accepted = flip_checked(&mut after, index).is_ok();
+                    assert_eq!(accepted, index < len, "len={len}, index={index}");
+                    for position in 0..len {
+                        assert_eq!(
+                            after[position], before[position] ^ (accepted && position == index),
+                            "len={len}, index={index}, position={position}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 // The same file is compiled directly with "kani src/checked_toggle.rs"
 // and as a module of the running verifier. The entrypoint does no work:
 // the #[kani::proof] harnesses, not main, supply symbolic executions.

@@ -119,11 +119,53 @@ theorem contextual_zero_count_preserved {α : Type} (s : Finset α)
   · simp [hc, hsound i hi hc]
   · simp [hc]
 
+/-- Removing all literals of a pivot variable from a source clause.
+The Rust resolution checker additionally requires a complementary pivot
+and checks its original-source lineage. -/
+def withoutVar (clause : Clause) (pivot : String) : Clause :=
+  clause.filter (fun lit => lit.1 != pivot)
+
+def sourceResolvent (left right : Clause) (pivot : String) : Clause :=
+  withoutVar left pivot ++ withoutVar right pivot
+
+/-- One source resolution step preserves truth: if all occurrences of the
+pivot in the left clause are positive and all on the right are negative,
+then any assignment satisfying both parents satisfies the resolvent.
+No cost or bounded-representation claim follows from resolution soundness. -/
+theorem source_resolution_sound
+    (a : String → Bool) (left right : Clause) (pivot : String)
+    (hleft : ∀ lit ∈ left, lit.1 = pivot → lit.2 = true)
+    (hright : ∀ lit ∈ right, lit.1 = pivot → lit.2 = false)
+    (hl : clauseTrue a left) (hr : clauseTrue a right) :
+    clauseTrue a (sourceResolvent left right pivot) := by
+  cases hv : a pivot with
+  | false =>
+      rcases hl with ⟨lit, hmem, htrue⟩
+      have haway : lit.1 ≠ pivot := by
+        intro heq
+        have hp := hleft lit hmem heq
+        have contra : a pivot = true := by simpa [heq, hp] using htrue
+        rw [hv] at contra
+        cases contra
+      refine ⟨lit, ?_, htrue⟩
+      simp [sourceResolvent, withoutVar, haway, hmem]
+  | true =>
+      rcases hr with ⟨lit, hmem, htrue⟩
+      have haway : lit.1 ≠ pivot := by
+        intro heq
+        have hp := hright lit hmem heq
+        have contra : a pivot = false := by simpa [heq, hp] using htrue
+        rw [hv] at contra
+        cases contra
+      refine ⟨lit, ?_, htrue⟩
+      simp [sourceResolvent, withoutVar, haway, hmem]
+
 #print axioms empty_reason_sound
 #print axioms unit_reason_forces
 #print axioms two_branches_refute
 #print axioms future_refutation_eliminates
 #print axioms cached_refutation_monotone
 #print axioms contextual_zero_count_preserved
+#print axioms source_resolution_sound
 
 end IndependentETH.UnitRefutation

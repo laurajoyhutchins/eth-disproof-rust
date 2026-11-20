@@ -87,8 +87,7 @@ jobs:
           cargo fetch --locked
           cert="$RUNNER_TEMP/framed-reader-rust-certificate.lean"
           cat eth/proofs/FramedRecordReaderRefinement.lean > "$cert"
-          cargo run --quiet --locked --offline -p lean-eth-reference \\
-            --bin framed-reader-certificate >> "$cert"
+          cargo run --quiet --locked --offline -p lean-eth-reference --bin framed-reader-certificate >> "$cert"
           (
             cd instrumentation/lean-env
             lake env lean "$cert"
@@ -107,8 +106,7 @@ jobs:
           PY
           (
             cd instrumentation/lean-env
-            if lake env lean "$RUNNER_TEMP/framed-reader-mutated.lean" \\
-              > "$RUNNER_TEMP/framed-reader-mutation.log" 2>&1; then
+            if lake env lean "$RUNNER_TEMP/framed-reader-mutated.lean" > "$RUNNER_TEMP/framed-reader-mutation.log" 2>&1; then
               echo 'mutated Rust output unexpectedly accepted by Lean' >&2
               exit 1
             fi

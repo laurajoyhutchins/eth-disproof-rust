@@ -101,7 +101,7 @@ class RustPhysicalReceiptTests(unittest.TestCase):
             lambda a: a['encoding_corpus']['physical']['code'].pop(),
             lambda a: a['encoding_corpus']['structure']['code'].__setitem__(0, 'Goto'),
             lambda a: a['cases'][0]['structure']['lifted'].update(input_stack=0),
-            lambda a: a['cases'][0]['structure']['compiled']['code'][1:2].clear(),
+            lambda a: a['cases'][0]['structure']['compiled']['code'].pop(1),
             lambda a: a['cases'][0]['structure']['compiled']['code'].__setitem__(0, 'Goto'),
         ):
             with self.subTest(mutate=mutate):

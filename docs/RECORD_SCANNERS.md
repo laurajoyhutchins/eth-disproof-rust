@@ -120,6 +120,30 @@ source-graph finite-program vocabulary and Lean certificate renderer.
    mutates a **canonical physical data row**, runs it through the same
    parser and renderer, and requires the Lean kernel to reject it.
 
+### Independent structural serialization witness
+
+The generic Rust `Instr` and `Program` types also derive
+`serde::Serialize`. For each actual lifted or compiled program, the
+receipt includes both the existing hand-formatted physical table and
+Serde's independently generated enum-variant/named-field structure.
+The **shared** `verify_source_graph.check_rust_serde_program` checks
+all ports, the exact instruction count, variant identity, every field
+and the Boolean-vs-integer distinction before the table reaches Lean.
+
+A separate non-source-attributed `encoding_corpus` exercises all twelve
+physical opcodes, both Boolean `Set` values, and deliberately
+nonuniform operands. The Python checker refuses missing coverage,
+extra/missing fields, variant switches, and row-only mutations.
+It does not add another Lean renderer or a competing runtime parser.
+
+CI has two different negative controls: changing only a formatted
+physical row must be rejected **by structural consistency**; changing
+both encodings consistently must still be rejected **by the source
+Lean kernel**. Neither control proves that Serde or the Rust execution
+engine is universally correct. It does reduce the possibility that a
+single broken hand-coded row formatter silently prints the right
+source while the actual Rust instruction differs.
+
 A universal Lean theorem,
 `mappedCompiledFrameProgram_eq_source`, separately proves the
 eight-label compilation identity for *arbitrary valid Lean ports*:

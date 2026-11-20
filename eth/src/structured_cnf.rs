@@ -274,9 +274,19 @@ pub fn verify_recurrence_receipt(
 }
 
 /// Fail-closed recognition from a canonical normalized CNF (no matching-only
-/// shortcut). Returns an error for all unsupported formula structures.
+/// shortcut). Independently replay the receipt against the entire CSR before
+/// exposing it to callers. No unsupported formula is treated as a zero count.
 pub fn recognize_cnf(cnf: &Cnf) -> Result<RecurrenceReceipt, Error> {
-    OwnedSignedCsr::from_cnf(cnf).view().recognize_recurrence()
+    let csr = OwnedSignedCsr::from_cnf(cnf);
+    let receipt = csr.view().recognize_recurrence()?;
+    verify_recurrence_receipt(csr.view(), &receipt)?;
+    Ok(receipt)
+}
+
+/// The public exact-counting path uses both the producer and the independent
+/// source-and-seed receipt checker. Restricted-family refusal is explicit.
+pub fn count_recognized_cnf(cnf: &Cnf) -> Result<u8, Error> {
+    Ok(recognize_cnf(cnf)?.count())
 }
 
 #[cfg(test)]
@@ -333,6 +343,24 @@ mod tests {
                 assert_eq!(oracle(n, &cnf), receipt.count());
             }
         }
+    }
+
+    #[test]
+    fn public_count_replays_source_certificate() {
+        for n in [4, 8, 12, 1000] {
+            let rhs = (0..n - 3).map(|i| i % 3 == 0).collect::<Vec<_>>();
+            let cnf = source(n, &rhs);
+            let expected = recognize_cnf(&cnf).unwrap().count();
+            assert_eq!(count_recognized_cnf(&cnf), Ok(expected));
+            if n <= 12 {
+                assert_eq!(expected, oracle(n, &cnf));
+            }
+        }
+
+        let rows = vec![vec![1_i64, 2, 3]];
+        let refs = rows.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let unsupported = Cnf::from_signed(4, &refs).unwrap();
+        assert!(count_recognized_cnf(&unsupported).is_err());
     }
 
     #[test]

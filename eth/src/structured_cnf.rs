@@ -906,6 +906,45 @@ mod tests {
         }
     }
 
+    /// Preserve the verifier's source-assignment semantics after changing
+    /// its traversal from raw CSR row order to a validated BTreeSet.
+    /// This compares the former literal-index implementation to the new
+    /// signed-row set evaluation on every small complete Boolean word.
+    #[test]
+    fn validated_row_set_preserves_source_clause_truth_tables() {
+        use std::collections::BTreeSet;
+
+        for n in 4_usize..=8 {
+            let rhs = (0..n - 3).map(|i| i % 2 == 0).collect::<Vec<_>>();
+            let encoded = OwnedSignedCsr::from_cnf(&source(n, &rhs));
+            let csr = encoded.view();
+            let rows = (0..csr.row_offsets.len() - 1)
+                .map(|i| {
+                    let row = csr.checked_row(i).unwrap();
+                    (row.columns, row.signs)
+                })
+                .collect::<BTreeSet<_>>();
+
+            for mask in 0..(1_usize << n) {
+                let x = (0..n).map(|i| mask & (1 << i) != 0).collect::<Vec<_>>();
+                let direct = csr.row_offsets.windows(2).all(|bounds| {
+                    (bounds[0]..bounds[1])
+                        .any(|p| x[csr.column_indices[p]] == (csr.signs[p] == 1))
+                });
+                let decoded = rows.iter().all(|(columns, signs)| {
+                    columns
+                        .iter()
+                        .zip(signs.iter())
+                        .any(|(&column, &sign)| x.get(column).copied() == Some(sign == 1))
+                });
+                assert_eq!(
+                    decoded, direct,
+                    "word mask={mask}, variable count={n}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn fixed_lean_csr_vector_matches_rust_encoding() {
         // The same six complete clauses and all arrays are kernel-checked

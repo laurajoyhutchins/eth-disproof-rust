@@ -161,7 +161,7 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
         internal: vec!["u".into(), "v".into()],
         boundary: vec!["b".into()],
         equations: vec![Equation {
-            variables: vec!
+            variables: vec![
                 "u".into(), "u".into(), "v".into(), "b".into(),
             ],
             rhs: true,

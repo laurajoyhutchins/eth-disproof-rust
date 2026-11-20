@@ -394,10 +394,9 @@ mod tests {
                 .unwrap_or_else(|_| panic!("recognizer panicked on {label}"));
             assert!(producer.is_err(), "recognizer accepted {label}");
 
-            let verifier = std::panic::catch_unwind(|| {
-                verify_recurrence_receipt(invalid.view(), &receipt)
-            })
-            .unwrap_or_else(|_| panic!("verifier panicked on {label}"));
+            let verifier =
+                std::panic::catch_unwind(|| verify_recurrence_receipt(invalid.view(), &receipt))
+                    .unwrap_or_else(|_| panic!("verifier panicked on {label}"));
             assert!(verifier.is_err(), "verifier accepted {label}");
         }
     }

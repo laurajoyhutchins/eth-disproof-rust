@@ -130,7 +130,10 @@ fn malformed_source_refuses_before_any_arithmetic_and_preserves_guard_precedence
             result.unwrap_err(),
             lean_eth_reference::Error::Invalid(reason.into())
         );
-        assert!(trace.is_empty(), "arithmetic started after malformed source");
+        assert!(
+            trace.is_empty(),
+            "arithmetic started after malformed source"
+        );
     }
 
     let (result, trace) = execute_ranked_wire(&good);

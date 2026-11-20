@@ -26,7 +26,7 @@ OPCODES = {"inc", "dec", "del", "alloc", "set"}
 # The fixture's exact source IR (Lean 4.34.1, source-del-final-ir.txt).
 # Changing the compiler's operation graph requires reviewing the branch
 # expectations below rather than silently accepting matching omissions.
-SOURCE_IR_ROOT = "=== RuntimeHeapDel.rebuildOrExtractByPayload ===\\n"
+SOURCE_IR_ROOT = "=== RuntimeHeapDel.rebuildOrExtractByPayload ===\n"
 SOURCE_IR_SHA256 = "0792bdfda06f6996932edd4dc5108604e8ba7bf2d70ed6d61ff7a928703111f6"
 
 # Complete source-visible heap ownership event sequences for the eight

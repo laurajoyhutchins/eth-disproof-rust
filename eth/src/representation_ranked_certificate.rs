@@ -55,10 +55,7 @@ fn check_label_bounds(classes: usize, labels: &[usize]) -> Result<(), Error> {
     Ok(())
 }
 
-fn check_declared_roots(
-    n: usize,
-    certificate: &RankedComponentCertificate,
-) -> Result<(), Error> {
+fn check_declared_roots(n: usize, certificate: &RankedComponentCertificate) -> Result<(), Error> {
     for (class, &root) in certificate.roots.iter().enumerate() {
         if root >= n
             || certificate.labels[root] != class

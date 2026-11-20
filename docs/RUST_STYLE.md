@@ -26,6 +26,10 @@ not proof of behavioral equivalence.
   `transferProgram` label tables in `bit_program/stack_routines.rs`. Use
   compatibility re-exports rather than copying instruction tables into
   normalization, query, or counting modules.
+- Preserve the common `RecordPrograms.iterate` command shape in
+  `bit_program/record_iteration.rs`; each of the six callers supplies its
+  original frame reader, callback, and physical port map. Compare the entire
+  command syntax, including nested calls, before accepting edits.
 - Extract a helper when distinct callers share a genuine representation
   contract. Keep diagnostic-only helpers in the diagnostic surface, rather
   than exposing them as library APIs or duplicating them in each binary.

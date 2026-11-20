@@ -5,6 +5,7 @@
 //! These components are not a complete CNF normalization program.
 
 use crate::Error;
+use crate::bit_program::record_iteration::{RecordPorts, iterate};
 use crate::bit_program::{Atom, Cmd, Instr, Program};
 use crate::native_high::clear_program;
 use crate::native_record_membership::frame_program;
@@ -218,32 +219,15 @@ pub fn reverse_records_command() -> Result<Cmd<3, 4>, Error> {
         }),
         emit_if_selected_command()?,
     );
-    let advance = Cmd::ite(
-        2,
-        Cmd::Atom(Atom::Set {
-            dst: 0,
-            value: false,
-        }),
-        Cmd::Atom(Atom::Pop {
-            stack: 0,
-            value: 0,
+    Ok(iterate(
+        RecordPorts {
+            tag: 0,
             present: 1,
-        }),
-    );
-    let body = Cmd::seq(reader, Cmd::seq(emit_every, advance));
-    Ok(Cmd::seq(
-        Cmd::Atom(Atom::Set {
-            dst: 2,
-            value: false,
-        }),
-        Cmd::seq(
-            Cmd::Atom(Atom::Pop {
-                stack: 0,
-                value: 0,
-                present: 1,
-            }),
-            Cmd::while_(0, body),
-        ),
+            found: 2,
+            source: 0,
+        },
+        reader,
+        emit_every,
     ))
 }
 

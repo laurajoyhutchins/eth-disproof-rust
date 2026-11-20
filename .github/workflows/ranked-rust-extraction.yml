@@ -1,0 +1,51 @@
+name: Experimental ranked Rust-to-Lean extraction
+
+on:
+  pull_request:
+    paths:
+      - 'eth/hax.toml'
+      - '.github/workflows/ranked-rust-extraction.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ranked-rust-extract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install pinned hax frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install --version 0.4.2 --locked cargo-hax
+          cargo hax --version
+
+      - name: Extract actual production Rust source through Charon/Aeneas
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd eth
+          # Aeneas's translation is source-derived. Building a generated Lean
+          # package alone does not prove its postconditions or external models.
+          cargo hax extract ranked-source --locked 2>&1 | tee "$RUNNER_TEMP/ranked-source-extraction.log"
+
+      - name: Preserve extraction receipts and source-derived Lean
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ranked-rust-lean-source-extraction
+          path: |
+            eth/proofs/ranked-source/lean/
+          if-no-files-found: warn
+          retention-days: 7

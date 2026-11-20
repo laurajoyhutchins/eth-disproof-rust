@@ -73,3 +73,31 @@ pub fn node_append_readout_prefix() -> Result<Cmd<40, 896>, Error> {
         clear_prefix_command()?,
     ))
 }
+/// Source-shaped `NodeAppendSpace.command` with the numerical readout supplied
+/// explicitly as a physical 8-register / 40-stack program.
+///
+/// This preserves the *original nested command tree*:
+/// `seq prepare (seq (seq (clearMany clearPorts) (call liftedReadout)) append)`.
+/// Reassociating these `seq` nodes can alter physical source-site addresses,
+/// even if the final state would be the same.
+///
+/// The argument must eventually be the exact imported
+/// `MomentsReadoutProgram.program`. Supplying a fixture or an arbitrary
+/// program is only a composition/ABI diagnostic and is NEVER evidence that
+/// the actual node result or full QueryStream is computed.
+pub fn node_append_with_readout(readout: Program<8, 40>) -> Result<Cmd<40, 896>, Error> {
+    // Original SqrtLog.MomentsReadoutProgramNative: program := compiled command 15 0.
+    // Reject a wrong caller contract before constructing any outer code.
+    if readout.input_stack() != 15 || readout.output_stack() != 0 {
+        return Err(Error::Invalid(
+            "source MomentsReadoutProgram requires local input 15 and output 0".into(),
+        ));
+    }
+    Ok(Cmd::seq(
+        crate::native_node_append::prepare_command()?,
+        Cmd::seq(
+            Cmd::seq(clear_prefix_command()?, lift_readout_program(readout)?),
+            crate::native_node_append::append_command()?,
+        ),
+    ))
+}

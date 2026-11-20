@@ -7,9 +7,15 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
+import tempfile
 import unittest
+from unittest.mock import patch
 
-from verify_rust_physical_receipt import CASES, certificate_source
+from verify_rust_physical_receipt import (
+    CASES, FIELD_PROOF, FRAMED_PROOF, certificate_source,
+    preflight_proof_dependencies,
+)
 from verify_source_graph import FIELDS, RUST_NAMES, SOURCE_SHA
 
 
@@ -86,6 +92,60 @@ class RustPhysicalReceiptTests(unittest.TestCase):
         self.assertEqual(text.count('theorem rust_compiled_'), 12)
         self.assertEqual(text.count('apply ACC.BitProgramFields.eq_of_fields'), 12)
         self.assertNotIn('apply program_eq_of_fields', text)
+
+    def test_generated_proof_dependencies_fail_before_lean(self):
+        generated = certificate_source(encode(sample()))
+        framed = FRAMED_PROOF.read_text(encoding='utf-8')
+        shared = FIELD_PROOF.read_text(encoding='utf-8')
+        preflight_proof_dependencies(generated, framed, shared)
+
+        mutants = (
+            ('deleted import',
+             generated, framed.replace('import ACC.BitProgramFields',
+                                       'import ACC.MissingFields'), shared),
+            ('renamed shared namespace',
+             generated, framed,
+             shared.replace('namespace ACC.BitProgramFields',
+                            'namespace ACC.ObsoleteFields', 1)),
+            ('deleted shared theorem',
+             generated, framed,
+             shared.replace('theorem eq_of_fields', 'theorem renamed_fields', 1)),
+            ('stale handwritten proof application',
+             generated,
+             framed.replace('  apply ACC.BitProgramFields.eq_of_fields',
+                            '  apply program_eq_of_fields', 1),
+             shared),
+            ('deleted framed source theorem',
+             generated,
+             framed.replace('theorem mappedCompiledFrameProgram_eq_source',
+                            'theorem removed_compiled_source', 1),
+             shared),
+            ('stale generated proof application',
+             generated.replace('  apply ACC.BitProgramFields.eq_of_fields',
+                               '  apply program_eq_of_fields', 1),
+             framed, shared),
+            ('stale generated rewrite consumer',
+             generated.replace(', mappedFrameProgram_eq_source]',
+                               ', removed_frame_source]', 1),
+             framed, shared),
+        )
+        for name, code, source, lemma in mutants:
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                preflight_proof_dependencies(code, source, lemma)
+
+    def test_certificate_construction_refuses_stale_proof_from_disk(self):
+        # Exercise the production certificate_source entrypoint, not only
+        # the preflight helper: changing a source theorem must stop emission.
+        source = FRAMED_PROOF.read_text(encoding='utf-8')
+        stale = source.replace('  apply ACC.BitProgramFields.eq_of_fields',
+                               '  apply program_eq_of_fields', 1)
+        self.assertNotEqual(source, stale)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'FramedRecordReaderRefinement.lean'
+            path.write_text(stale, encoding='utf-8')
+            with patch('verify_rust_physical_receipt.FRAMED_PROOF', path):
+                with self.assertRaisesRegex(ValueError, 'no longer applies'):
+                    certificate_source(encode(sample()))
 
     def test_invalid_source_pin_and_duplicate_receipts_refuse(self):
         for mutate in (

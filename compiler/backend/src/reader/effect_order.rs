@@ -218,6 +218,28 @@ mod tests {
     }
 
     #[test]
+    fn empty_source_trace_rejects_unexpected_emitted_ownership() {
+        // A valid straight-line Lean IR fragment can contain no RC events.
+        // Its empty source receipt is still a correctness obligation.
+        let pure = "pub fn pure(x_0: __LeanValue) -> __LeanValue {\n    x_0\n}\n";
+        assert!(verify_emitted_order(&[], pure).is_ok());
+
+        for unexpected in [
+            "x_0.source_inc(1, true, false);",
+            "x_0.source_dec(1, false, false);",
+            "x_0.source_del();",
+            "let x_1: u8 = x_0.is_shared();",
+            "x_0.source_reset();",
+        ] {
+            let mutant = pure.replace("    x_0\n", &format!("    {unexpected}\n    x_0\n"));
+            assert!(
+                verify_emitted_order(&[], &mutant).is_err(),
+                "unexpected operation escaped a pure-source receipt: {unexpected}"
+            );
+        }
+    }
+
+    #[test]
     fn refuses_noncanonical_ownership_syntax() {
         for extra in [
             "x_2.source_inc(unknown, true, false);",

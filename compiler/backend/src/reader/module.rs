@@ -165,10 +165,11 @@ impl Reader {
             },
         )?;
         if let Some(expected) = source_events {
-            if !expected.is_empty() {
-                effect_order::verify_emitted_order(&expected, &result)
-                    .map_err(|reason| CompilerError::new(RefusalKind::FnBody, reason))?;
-            }
+            // A supported pure source has an *empty* event trace, not an
+            // exemption from validation. An unexpected emitted inc/dec/del
+            // or isShared must refuse before the Rust function is published.
+            effect_order::verify_emitted_order(&expected, &result)
+                .map_err(|reason| CompilerError::new(RefusalKind::FnBody, reason))?;
         }
         result.push_str("}\n");
         Ok(result)

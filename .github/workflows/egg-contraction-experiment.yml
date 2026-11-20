@@ -73,14 +73,18 @@ jobs:
             fi
             echo "::endgroup::"
           done
-          # The matrix-level theorem imports the row-operation proof as
-          # a compiled, kernel-checked dependency. Do not copy its code.
-          if ! lake env lean -o "$RUNNER_TEMP/IndependentAffineRowOps.olean" \
-            "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRowOps.lean"; then
+          # The matrix-level theorem imports the independently checked
+          # row-operation module. Lake only permits olean emission for
+          # sources inside its package root, so stage a verbatim copy
+          # inside the ephemeral CI workspace; never alter the Git tree.
+          cp "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRowOps.lean" \
+            IndependentAffineRowOps.lean
+          mkdir -p .lake/build/lib/lean
+          if ! lake env lean -o "$PWD/.lake/build/lib/lean/IndependentAffineRowOps.olean" \
+            IndependentAffineRowOps.lean; then
             failures=1
-          elif ! lake env bash -c \
-            'export LEAN_PATH="$1:$LEAN_PATH"; lean "$2"' bash \
-            "$RUNNER_TEMP" "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineMatrixReplay.lean"; then
+          elif ! lake env lean \
+            "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineMatrixReplay.lean"; then
             failures=1
           fi
           # Compile an independent Lean reference against the actual source,

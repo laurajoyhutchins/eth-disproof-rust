@@ -382,7 +382,20 @@ impl<'a> Evaluator<'a> {
     }
 }
 
-/// Direct enumeration of *source factors*, independent of all three folds.
+/// Oracle predicate semantics deliberately do not call Factor::energy:
+/// they read a name-keyed Boolean environment rather than source-table masks.
+fn oracle_factor_energy(factor: &Factor, assignment: &BTreeMap<String, bool>) -> usize {
+    factor.constraints.iter().filter(|constraint| match constraint {
+        Constraint::Parity(vars, rhs) =>
+            vars.iter().fold(false, |parity, name| parity ^ assignment[name]) != *rhs,
+        Constraint::Clause(literals) =>
+            !literals.iter().any(|(name, positive)| assignment[name] == *positive),
+    }).count()
+}
+
+/// Direct source-variable enumeration with an independent predicate
+/// interpreter. It shares the generated constraint AST, but no table
+/// contraction, tropical, or factored-circuit evaluation implementation.
 fn source_oracle(factors: &[Factor], output: &[String], output_mask: usize)
     -> Result<Polynomial, String>
 {
@@ -393,10 +406,12 @@ fn source_oracle(factors: &[Factor], output: &[String], output_mask: usize)
     let mut coeff = vec![BigUint::default();
         1 + factors.iter().map(|f| f.constraints.len()).sum::<usize>()];
     for bits in 0..count_masks(hidden.len())? {
-        let assignment = expand(output_mask, output, bits, &hidden, &universe);
-        let energy: usize = factors.iter().map(|f| {
-            f.energy(project(assignment, &universe, &f.ports))
-        }).sum();
+        let combined = expand(output_mask, output, bits, &hidden, &universe);
+        let assignment = universe.iter().enumerate().map(|(i, name)| {
+            (name.clone(), combined & (1 << i) != 0)
+        }).collect::<BTreeMap<_, _>>();
+        let energy: usize = factors.iter()
+            .map(|factor| oracle_factor_energy(factor, &assignment)).sum();
         coeff[energy] += 1u8;
     }
     while coeff.last().is_some_and(|c| *c == BigUint::default()) {

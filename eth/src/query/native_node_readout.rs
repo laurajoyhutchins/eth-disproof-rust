@@ -85,9 +85,7 @@ pub fn node_append_readout_prefix() -> Result<Cmd<40, 896>, Error> {
 /// `MomentsReadoutProgram.program`. Supplying a fixture or an arbitrary
 /// program is only a composition/ABI diagnostic and is NEVER evidence that
 /// the actual node result or full QueryStream is computed.
-pub fn node_append_with_readout(
-    readout: Program<8, 40>,
-) -> Result<Cmd<40, 896>, Error> {
+pub fn node_append_with_readout(readout: Program<8, 40>) -> Result<Cmd<40, 896>, Error> {
     Ok(Cmd::seq(
         crate::native_node_append::prepare_command()?,
         Cmd::seq(
@@ -96,4 +94,3 @@ pub fn node_append_with_readout(
         ),
     ))
 }
-

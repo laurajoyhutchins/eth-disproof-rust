@@ -12,6 +12,13 @@ use std::collections::BTreeMap;
 
 use crate::{Cnf, Error};
 
+// Imported verbatim by the source-derived verification crate. The production
+// method delegates directly to this implementation; there is no second
+// handwritten executable decoder in the extraction path.
+#[path = "checked_csr_row.rs"]
+mod checked_csr_row;
+use checked_csr_row::CheckedCsrRow;
+
 /// A zero-based, row-sorted signed CSR incidence matrix.
 ///
 /// Each nonzero polarity is exactly +1 or -1; an empty row would be encoded
@@ -96,16 +103,6 @@ fn expected_csr_shape(n: usize) -> Result<(usize, usize), Error> {
     Ok((rows, offsets))
 }
 
-/// The complete, checked representation boundary of one signed CSR row.
-/// Consumers share only decoding, not the recurrence recognition or receipt
-/// comparison algorithms. This operation neither allocates nor panics on
-/// malformed offsets, missing elements, invalid signs or column ordering.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct CheckedCsrRow {
-    columns: [usize; 3],
-    signs: [i8; 3],
-}
-
 impl SignedCsr<'_> {
     /// One fail-closed outer CSR contract shared by the recognizer and
     /// independent receipt replay. This validates the declared shape,
@@ -129,21 +126,13 @@ impl SignedCsr<'_> {
     /// In particular, start+3 and row+1 are checked before slicing; there
     /// is no unchecked access even when called before outer-shape validation.
     fn checked_row(&self, row: usize) -> Option<CheckedCsrRow> {
-        let start = *self.row_offsets.get(row)?;
-        let stop = *self.row_offsets.get(row.checked_add(1)?)?;
-        if start.checked_add(3)? != stop {
-            return None;
-        }
-        let columns: [usize; 3] = self.column_indices.get(start..stop)?.try_into().ok()?;
-        let signs: [i8; 3] = self.signs.get(start..stop)?.try_into().ok()?;
-        if columns[0] >= columns[1]
-            || columns[1] >= columns[2]
-            || columns[2] >= self.variables
-            || !signs.iter().all(|s| *s == -1 || *s == 1)
-        {
-            return None;
-        }
-        Some(CheckedCsrRow { columns, signs })
+        checked_csr_row::checked_row(
+            self.row_offsets,
+            self.column_indices,
+            self.signs,
+            self.variables,
+            row,
+        )
     }
 
     /// Verify the complete formula, not just some matching XOR/OR subgraph.

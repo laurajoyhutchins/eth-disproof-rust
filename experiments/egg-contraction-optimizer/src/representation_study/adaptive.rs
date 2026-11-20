@@ -154,8 +154,14 @@ struct TropicalStage {
 }
 
 impl TropicalStage {
-    fn from_leaf(t: &Tables) -> Self {
-        Self { ports: t.ports.clone(), values: t.tropical.clone() }
+    fn from_factor(factor: &Factor) -> Result<Self, String> {
+        let values = (0..count_masks(factor.ports.len())?).map(|mask| {
+            Some(Leading {
+                energy: factor.energy(mask),
+                count: BigUint::from(1u8),
+            })
+        }).collect();
+        Ok(Self { ports: factor.ports.clone(), values })
     }
 
     fn merge(&self, other: &Self, kept: &[String], work: &mut Work)
@@ -176,6 +182,11 @@ impl TropicalStage {
     fn zero_energy_cells(&self) -> usize {
         self.values.iter().flatten().filter(|v| v.energy == 0).count()
     }
+
+    fn bit_payload_bytes(&self) -> usize {
+        self.values.iter().flatten()
+            .map(|v| v.count.bits().div_ceil(8) as usize).sum()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -185,8 +196,10 @@ struct ExactStage {
 }
 
 impl ExactStage {
-    fn from_leaf(t: &Tables) -> Self {
-        Self { ports: t.ports.clone(), values: t.exact.clone() }
+    fn from_factor(factor: &Factor) -> Result<Self, String> {
+        let values = (0..count_masks(factor.ports.len())?)
+            .map(|mask| Polynomial::monomial(factor.energy(mask))).collect();
+        Ok(Self { ports: factor.ports.clone(), values })
     }
 
     fn merge(&self, other: &Self, kept: &[String], work: &mut Work)
@@ -239,12 +252,12 @@ fn cliques(scope: &[String], graph: &mut BTreeMap<String, BTreeSet<String>>) {
 /// given the current accumulator clique and all remaining factor cliques.
 fn fill_edges(
     active: &[String], remaining: &BTreeSet<usize>,
-    leaves: &[Tables], kept: &[String], candidate: usize,
+    scopes: &[Vec<String>], kept: &[String], candidate: usize,
 ) -> usize {
     let mut graph = BTreeMap::<String, BTreeSet<String>>::new();
     cliques(active, &mut graph);
-    for &index in remaining { cliques(&leaves[index].ports, &mut graph); }
-    let union = union_ports(active, &leaves[candidate].ports);
+    for &index in remaining { cliques(&scopes[index], &mut graph); }
+    let union = union_ports(active, &scopes[candidate]);
     let dead = union.iter().filter(|v| kept.binary_search(v).is_err())
         .cloned().collect::<Vec<_>>();
     let mut fill = 0;
@@ -285,17 +298,34 @@ struct Plan {
 
 fn make_plan(factors: &[Factor], policy: Policy) -> Result<Plan, String> {
     let clock = Instant::now();
-    let leaves = factors.iter().map(Tables::from_factor)
-        .collect::<Result<Vec<_>, _>>()?;
+    if factors.len() < 2 {
+        return Err("a study requires at least two factors".into());
+    }
+    if policy == Policy::Sequential {
+        return Ok(Plan {
+            order: (0..factors.len()).collect(), work: Work::default(),
+            candidates_examined: 0, planned_ns: clock.elapsed().as_nanos(),
+            peak_preview_payload_bytes: 0,
+        });
+    }
+
+    // Every policy materializes only the *representation it actually uses*:
+    // min-fill sees scopes, tropical sees min/count cells, and exact preview
+    // sees polynomial coefficients. The exact executor is separate.
+    let scopes = factors.iter().map(|f| f.ports.clone()).collect::<Vec<_>>();
+    let tropical_leaves = if policy == Policy::TropicalZeroSupport {
+        factors.iter().map(TropicalStage::from_factor)
+            .collect::<Result<Vec<_>, _>>()?
+    } else { Vec::new() };
+    let exact_leaves = if policy == Policy::ExactPreview {
+        factors.iter().map(ExactStage::from_factor)
+            .collect::<Result<Vec<_>, _>>()?
+    } else { Vec::new() };
+    let mut tropical = tropical_leaves.first().cloned();
+    let mut exact = exact_leaves.first().cloned();
     let mut order = vec![0usize];
-    let mut remaining = (1..leaves.len()).collect::<BTreeSet<_>>();
-    let mut ports = leaves[0].ports.clone();
-    let mut tropical = TropicalStage::from_leaf(&leaves[0]);
-    let tropical_leaves = leaves.iter().map(TropicalStage::from_leaf)
-        .collect::<Vec<_>>();
-    let mut exact = ExactStage::from_leaf(&leaves[0]);
-    let exact_leaves = leaves.iter().map(ExactStage::from_leaf)
-        .collect::<Vec<_>>();
+    let mut remaining = (1..factors.len()).collect::<BTreeSet<_>>();
+    let mut ports = scopes[0].clone();
     let mut work = Work::default();
     let mut candidates_examined = 0usize;
     let mut peak_preview_payload_bytes = 0usize;
@@ -306,31 +336,34 @@ fn make_plan(factors: &[Factor], policy: Policy) -> Result<Plan, String> {
         for &index in &remaining {
             candidates_examined += 1;
             let future = remaining.iter().filter(|&&j| j != index)
-                .flat_map(|&j| leaves[j].ports.iter().cloned())
+                .flat_map(|&j| scopes[j].iter().cloned())
                 .collect::<BTreeSet<_>>();
             let active = ports.iter().cloned().collect::<BTreeSet<_>>();
-            let next = leaves[index].ports.iter().cloned().collect::<BTreeSet<_>>();
+            let next = scopes[index].iter().cloned().collect::<BTreeSet<_>>();
             let kept = affine_orders::kept_port_set(&active, &next, &future, &empty_output)
                 .into_iter().collect::<Vec<_>>();
-            let union = union_ports(&ports, &leaves[index].ports);
+            let union = union_ports(&ports, &scopes[index]);
             let union_cells = count_masks(union.len())? as u128;
             let kept_cells = count_masks(kept.len())? as u128;
 
             let mut candidate_exact = None;
             let mut candidate_tropical = None;
             let score = match policy {
-                Policy::Sequential => (index as u128, 0, 0, index),
+                Policy::Sequential => unreachable!("handled without previews"),
                 Policy::MinFillAdmission => (
-                    fill_edges(&ports, &remaining, &leaves, &kept, index) as u128,
+                    fill_edges(&ports, &remaining, &scopes, &kept, index) as u128,
                     kept_cells, union_cells, index,
                 ),
                 Policy::TropicalZeroSupport => {
+                    let current = tropical.as_ref().ok_or("missing tropical state")?;
                     let mut preview = Work::default();
-                    let next = tropical.merge(&tropical_leaves[index], &kept, &mut preview)?;
+                    let next = current.merge(&tropical_leaves[index], &kept, &mut preview)?;
                     add_work(&mut work, &preview);
-                    // The 4:1 penalty was fixed before evaluating held-out
-                    // cases. Positive minimum energy may discard ZERO-only
-                    // contributions, but not the entire exact polynomial.
+                    peak_preview_payload_bytes = peak_preview_payload_bytes.max(
+                        current.bit_payload_bytes() + next.bit_payload_bytes());
+                    // Fixed before running the held-out cases. Positive energy
+                    // is a safe ZERO-coefficient exclusion only, not a way to
+                    // reconstruct the rest of the exact polynomial.
                     let zero_cells = next.zero_energy_cells() as u128;
                     let score = (kept_cells + 4 * zero_cells, union_cells,
                         preview.multiplications as u128, index);
@@ -338,13 +371,14 @@ fn make_plan(factors: &[Factor], policy: Policy) -> Result<Plan, String> {
                     score
                 }
                 Policy::ExactPreview => {
+                    let current = exact.as_ref().ok_or("missing exact state")?;
                     let mut preview = Work::default();
-                    let next = exact.merge(&exact_leaves[index], &kept, &mut preview)?;
+                    let next = current.merge(&exact_leaves[index], &kept, &mut preview)?;
                     add_work(&mut work, &preview);
                     peak_preview_payload_bytes = peak_preview_payload_bytes.max(
-                        exact.bit_payload_bytes() + next.bit_payload_bytes());
-                    // Exact-only baseline pays for every discarded candidate
-                    // full-polynomial preview and does not use tropical data.
+                        current.bit_payload_bytes() + next.bit_payload_bytes());
+                    // Includes every discarded full-polynomial candidate, not
+                    // just the winning schedule's execution.
                     let score = (
                         preview.bit_work_proxy,
                         next.coefficient_slots() as u128,
@@ -354,8 +388,7 @@ fn make_plan(factors: &[Factor], policy: Policy) -> Result<Plan, String> {
                     score
                 }
             };
-            let replacement = best.as_ref().is_none_or(|previous| score < previous.score);
-            if replacement {
+            if best.as_ref().is_none_or(|previous| score < previous.score) {
                 best = Some(Candidate {
                     factor: index, kept, score,
                     exact: candidate_exact, tropical: candidate_tropical,
@@ -366,8 +399,8 @@ fn make_plan(factors: &[Factor], policy: Policy) -> Result<Plan, String> {
         remaining.remove(&winner.factor);
         order.push(winner.factor);
         ports = winner.kept;
-        if let Some(stage) = winner.exact { exact = stage; }
-        if let Some(stage) = winner.tropical { tropical = stage; }
+        if let Some(stage) = winner.exact { exact = Some(stage); }
+        if let Some(stage) = winner.tropical { tropical = Some(stage); }
     }
 
     Ok(Plan {
@@ -439,6 +472,7 @@ mod tests {
             assert!(values[2].planning_work.multiplications > 0);
             assert!(values[3].planning_work.multiplications > 0);
             assert_eq!(values[1].planning_work.multiplications, 0);
+            assert_eq!(values[0].candidates_examined, 0);
         }
     }
 }

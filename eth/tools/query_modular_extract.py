@@ -86,8 +86,8 @@ def pinned_record(stage: Stage, upstream: Path) -> dict[str, str]:
     # one-line `def`/`abbrev` shape is accepted here. Lean later elaborates
     # the actual declaration and the independent certificate must agree.
     symbol = stage.symbol.encode("ascii")
-    declaration = (rb"(?m)^(?:def|abbrev)\s+" + re.escape(symbol) +
-                   rb"(?:\s*:[^\n]*)?\s*:=\s*compiled\b")
+    declaration = (rb"(?m)^(?:def|abbrev)[ \t]+" + re.escape(symbol) +
+                   rb"(?:[ \t]*:[^\n]*)?[ \t]*:=[ \t]*compiled\b")
     if not re.search(declaration, raw):
         raise ValueError(f"missing expected source compiled {stage.symbol} in {stage.relative_path}")
     return {

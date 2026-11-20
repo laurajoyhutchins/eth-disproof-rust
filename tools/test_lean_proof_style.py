@@ -29,7 +29,7 @@ class ProofStyleTests(unittest.TestCase):
         self.assertTrue(any("needs /--" in e for e in check_text(source, strict_docs=True)))
 
     def test_advisory_does_not_block_existing_helpers(self):
-        source = GOOD.replace("/-- An elementary proposition. -/\\n", "")
+        source = GOOD.replace("/-- An elementary proposition. -/\n", "")
         self.assertEqual(check_text(source), [])
         self.assertEqual(len(undocumented_declarations(source)), 1)
 

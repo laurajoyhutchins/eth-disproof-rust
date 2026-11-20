@@ -12,6 +12,7 @@ on:
       - "eth/proofs/IndependentAffineSourceRows.lean"
       - "eth/proofs/IndependentAffineNativeAudit.lean"
       - "eth/proofs/IndependentAffineIndexToggle.lean"
+      - "eth/proofs/IndependentAffineMatrixReplay.lean"
       - ".github/workflows/egg-contraction-experiment.yml"
   workflow_dispatch:
 
@@ -51,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean eth/proofs/IndependentAffineNativeAudit.lean eth/proofs/IndependentAffineIndexToggle.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean eth/proofs/IndependentAffineNativeAudit.lean eth/proofs/IndependentAffineIndexToggle.lean eth/proofs/IndependentAffineMatrixReplay.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
@@ -72,6 +73,16 @@ jobs:
             fi
             echo "::endgroup::"
           done
+          # The matrix-level theorem imports the row-operation proof as
+          # a compiled, kernel-checked dependency. Do not copy its code.
+          if ! lake env lean -o "$RUNNER_TEMP/IndependentAffineRowOps.olean" \
+            "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRowOps.lean"; then
+            failures=1
+          elif ! lake env bash -c \
+            'export LEAN_PATH="$1:$LEAN_PATH"; lean "$2"' bash \
+            "$RUNNER_TEMP" "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineMatrixReplay.lean"; then
+            failures=1
+          fi
           # Compile an independent Lean reference against the actual source,
           # raw transcript and interface emitted by the native Rust binary.
           # Generated data is a fixed grammar of decimal byte lists, not

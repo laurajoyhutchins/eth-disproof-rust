@@ -546,6 +546,148 @@ def wordSolutionsSeedEquiv (ds : List Bool) :
     exact sourceCNFWord_seed
       (fullTrace_to_sourceCNFWord (accepted_fullTrace s.1 ds s.2))
 
+/-! ## Checked signed CSR input and proof-producing receipt semantics
+
+This is an executable Lean reference decoder for Rust-shaped offsets,
+zero-based column indices, and signed polarities. Every row uses checked
+indices, demands exactly three sorted distinct columns, and signs in {-1,+1}.
+The complete decoder checks declared shape and absence of duplicate rows.
+It returns none on malformed input rather than inventing a formula.
+
+Natural-number offsets and integer signs model the mathematical values of
+Rust usize and i8; this is NOT a machine-integer refinement theorem.
+-/
+
+structure SignedCsrInput where
+  variables : Nat
+  offsets : List Nat
+  columns : List Nat
+  signs : List Int
+deriving Repr, DecidableEq
+
+def polarityFromSign (z : Int) : Option Bool :=
+  if z = -1 then some true
+  else if z = 1 then some false
+  else none
+
+def decodeCsrRow (csr : SignedCsrInput) (i : Nat) : Option SignedRow := do
+  let start ← csr.offsets[i]?
+  let stop ← csr.offsets[i + 1]?
+  if stop ≠ start + 3 then none
+  else
+    let a ← csr.columns[start]?
+    let b ← csr.columns[start + 1]?
+    let c ← csr.columns[start + 2]?
+    let sa ← csr.signs[start]?
+    let sb ← csr.signs[start + 1]?
+    let sc ← csr.signs[start + 2]?
+    let pa ← polarityFromSign sa
+    let pb ← polarityFromSign sb
+    let pc ← polarityFromSign sc
+    if a < b ∧ b < c ∧ c < csr.variables then
+      pure (row a b c (pa, pb, pc))
+    else none
+
+/-- Decode the complete row multiset, refusing shape mismatches, malformed
+rows, and duplicates before converting it to a finite set. No row is dropped. -/
+def decodeSignedCsr (csr : SignedCsrInput) : Option (Finset SignedRow) := do
+  if csr.variables < 4 then none
+  else
+    let rowsCount := 5 * csr.variables - 14
+    if csr.offsets.length = rowsCount + 1 ∧
+        csr.columns.length = csr.signs.length ∧
+        csr.offsets.head? = some 0 ∧
+        csr.offsets[rowsCount]? = some csr.columns.length then
+      let rows ← (List.range rowsCount).mapM (decodeCsrRow csr)
+      if rows.Nodup then
+        pure rows.toFinset
+      else none
+    else none
+
+/-- The entire decoded CSR must match the canonical row set for the claimed
+recurrence RHS, and every forbidden seed must match the independently
+defined Boolean recurrence specification. -/
+def checkCsrReceipt (csr : SignedCsrInput)
+    (ds : List Bool) (mask : Finset State) : Bool :=
+  decide (csr.variables = ds.length + 3 ∧
+    decodeSignedCsr csr = some (sourceRows ds) ∧
+    mask = forbidden ds)
+
+theorem checkCsrReceipt_fields
+    (csr : SignedCsrInput) (ds : List Bool) (mask : Finset State)
+    (h : checkCsrReceipt csr ds mask = true) :
+    csr.variables = ds.length + 3 ∧
+    decodeSignedCsr csr = some (sourceRows ds) ∧
+    mask = forbidden ds := by
+  exact of_decide_eq_true h
+
+/-- Acceptance of a checked signed CSR certificate entails exact
+signed-literal equivalence for every total source assignment. -/
+theorem checkedCsr_allAssignments
+    (csr : SignedCsrInput) (ds : List Bool) (mask : Finset State)
+    (h : checkCsrReceipt csr ds mask = true) :
+    ∃ rows, decodeSignedCsr csr = some rows ∧
+      ∀ x : Nat → Bool,
+      (∀ r ∈ rows,
+        signedClauseEval (tripleAt x r.first r.second r.third)
+          r.falsifiesAt = true) ↔
+      (∀ i, i < ds.length →
+        parityState (tripleAt x i (i + 1) (i + 3)) = ds[i]!) ∧
+      (∀ i, i < ds.length + 1 →
+        tripleAt x i (i + 1) (i + 2) ≠ zeroState) := by
+  have hc := checkCsrReceipt_fields csr ds mask h
+  refine ⟨sourceRows ds, hc.2.1, ?_⟩
+  intro x
+  have hs : checkSourceRows (sourceRows ds) ds = true := by
+    simp [checkSourceRows]
+  exact checked_signed_cnf_exact (sourceRows ds) ds x hs
+
+/-- The semantic count of this accepted certificate is the number of
+complete satisfying Boolean words, not just a trace count. -/
+theorem wordSolutions_card (ds : List Bool) :
+    Nat.card (WordSolutions ds) = (accepted ds).card := by
+  classical
+  calc
+    Nat.card (WordSolutions ds) =
+        Nat.card (AcceptedSeeds ds) :=
+      Nat.card_congr (wordSolutionsSeedEquiv ds)
+    _ = (accepted ds).card := by
+      simp [AcceptedSeeds, accepted, Nat.card_eq_fintype_card,
+        Fintype.card_subtype]
+
+theorem acceptedCsr_count_correct
+    (csr : SignedCsrInput) (ds : List Bool) (mask : Finset State)
+    (h : checkCsrReceipt csr ds mask = true) :
+    Nat.card (WordSolutions ds) = 8 - mask.card := by
+  have hm : mask = forbidden ds := (checkCsrReceipt_fields csr ds mask h).2.2
+  rw [hm, wordSolutions_card, count_eq_eight_sub_forbidden]
+
+/-- Optional verifier result: malformed and unsupported CSR sources return
+none. This is a proved Lean specification, not a claim that the separately
+compiled Rust program is formally refined to it. -/
+def verifyCsrCount (csr : SignedCsrInput)
+    (ds : List Bool) (mask : Finset State) : Option Nat :=
+  if checkCsrReceipt csr ds mask = true then some (8 - mask.card) else none
+
+theorem verifyCsrCount_sound
+    (csr : SignedCsrInput) (ds : List Bool)
+    (mask : Finset State) (out : Nat)
+    (h : verifyCsrCount csr ds mask = some out) :
+    Nat.card (WordSolutions ds) = out := by
+  unfold verifyCsrCount at h
+  split at h
+  · rename_i hc
+    have hcount := acceptedCsr_count_correct csr ds mask hc
+    cases h
+    exact hcount
+  · simp at h
+
+#print axioms IndependentETH.NonAffine.checkCsrReceipt_fields
+#print axioms IndependentETH.NonAffine.checkedCsr_allAssignments
+#print axioms IndependentETH.NonAffine.wordSolutions_card
+#print axioms IndependentETH.NonAffine.acceptedCsr_count_correct
+#print axioms IndependentETH.NonAffine.verifyCsrCount_sound
+
 #print axioms IndependentETH.NonAffine.sourceCNFWord_prefix
 #print axioms IndependentETH.NonAffine.sourceCNFWord_seed
 #print axioms IndependentETH.NonAffine.wordSolutions_length

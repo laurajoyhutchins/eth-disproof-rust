@@ -68,16 +68,14 @@ fn check_label_bounds(classes: usize, labels: &[usize]) -> Result<(), Error> {
 
 fn check_declared_roots(n: usize, certificate: &RankedComponentCertificate) -> Result<(), Error> {
     let mut invalid = false;
-    for class in 0..certificate.roots.len() {
+    let mut class = 0;
+    while class < certificate.roots.len() && !invalid {
         let root = certificate.roots[class];
-        if root >= n
+        invalid = root >= n
             || certificate.labels[root] != class
             || certificate.parent_edge_indices[root].is_some()
-            || certificate.rank[root] != 0
-        {
-            invalid = true;
-            break;
-        }
+            || certificate.rank[root] != 0;
+        class += 1;
     }
     if invalid {
         Err(Error::Invalid("invalid ranked component root".into()))
@@ -110,13 +108,13 @@ fn check_ranked_parents(
 ) -> Result<usize, Error> {
     let mut parent_links = 0usize;
     let mut failure = None;
-    for vertex in 0..certificate.parent_edge_indices.len() {
+    let mut vertex = 0;
+    while vertex < certificate.parent_edge_indices.len() && failure.is_none() {
         let class = certificate.labels[vertex];
         match certificate.parent_edge_indices[vertex] {
             None => {
                 if vertex != certificate.roots[class] || certificate.rank[vertex] != 0 {
                     failure = Some(Error::Invalid("unjustified ranked component root".into()));
-                    break;
                 }
             }
             Some(index) => {
@@ -124,28 +122,37 @@ fn check_ranked_parents(
                     failure = Some(Error::Invalid(
                         "ranked parent edge absent from source".into(),
                     ));
-                    break;
-                }
-                let (a, b) = source_edges[index];
-                let parent = if a == vertex {
-                    b
-                } else if b == vertex {
-                    a
                 } else {
-                    failure = Some(Error::Invalid("ranked parent edge misses vertex".into()));
-                    break;
-                };
-                if certificate.labels[parent] != class
-                    || certificate.rank[parent] >= certificate.rank[vertex]
-                {
-                    failure = Some(Error::Invalid(
-                        "ranked parent does not preserve label and decrease rank".into(),
-                    ));
-                    break;
+                    let (a, b) = source_edges[index];
+                    let parent = if a == vertex {
+                        Some(b)
+                    } else if b == vertex {
+                        Some(a)
+                    } else {
+                        None
+                    };
+                    match parent {
+                        None => {
+                            failure = Some(Error::Invalid(
+                                "ranked parent edge misses vertex".into(),
+                            ));
+                        }
+                        Some(parent) => {
+                            if certificate.labels[parent] != class
+                                || certificate.rank[parent] >= certificate.rank[vertex]
+                            {
+                                failure = Some(Error::Invalid(
+                                    "ranked parent does not preserve label and decrease rank".into(),
+                                ));
+                            } else {
+                                parent_links += 1;
+                            }
+                        }
+                    }
                 }
-                parent_links += 1;
             }
         }
+        vertex += 1;
     }
     match failure {
         Some(error) => Err(error),

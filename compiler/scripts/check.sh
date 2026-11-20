@@ -104,7 +104,7 @@ if grep -Fq 'sorryAx' artifacts/reader-worklist-aliases-axioms.txt; then
   echo 'Aliased worklist proof contains sorryAx' >&2
   exit 2
 fi
-for theorem in alias_fields_spend_exactly_their_credits aliased_fields_preserve_external_owner alias_last_owner_enqueues_once duplicate_field_last_credit retained_diamond_stops spent_alias_cannot_release_again; do
+for theorem in alias_fields_spend_exactly_their_credits aliased_fields_preserve_external_owner alias_last_owner_enqueues_once duplicate_field_last_credit retained_diamond_stops spent_alias_cannot_release_again physical_drop_simulates_source physical_trace_simulates_source queued_last_owner_has_physical_rc_one alias_physical_counter_at_queue_boundary; do
   grep -Fq "'ReaderWorklistAliases.${theorem}' " artifacts/reader-worklist-aliases-axioms.txt || {
     echo "Missing aliased worklist kernel receipt: ${theorem}" >&2
     exit 2

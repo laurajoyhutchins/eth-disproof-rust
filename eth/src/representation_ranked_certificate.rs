@@ -117,6 +117,18 @@ pub fn verify_ranked_component_certificate(
     })
 }
 
+/// Central signed 128-bit arithmetic boundary used by the certified
+/// component-counter helpers. Refusal is explicit; overflow never wraps.
+pub fn checked_i128_add(a: i128, b: i128) -> Result<i128, Error> {
+    a.checked_add(b).ok_or(Error::Overflow)
+}
+
+/// See `checked_i128_add`. The mathematical model is the signed
+/// two's-complement BitVec 128 signed-overflow gate, not modular arithmetic.
+pub fn checked_i128_mul(a: i128, b: i128) -> Result<i128, Error> {
+    a.checked_mul(b).ok_or(Error::Overflow)
+}
+
 /// One source-vertex update to the indexed component-product array.
 /// Both checked multiplications complete before the slot is changed.
 /// Failed operations (including invalid class indices) leave every slot
@@ -129,8 +141,8 @@ pub fn checked_component_product_step(
     let slot = products
         .get_mut(class)
         .ok_or_else(|| Error::Invalid("component product index outside range".into()))?;
-    let zero = slot[0].checked_mul(weights[0]).ok_or(Error::Overflow)?;
-    let one = slot[1].checked_mul(weights[1]).ok_or(Error::Overflow)?;
+    let zero = checked_i128_mul(slot[0], weights[0])?;
+    let one = checked_i128_mul(slot[1], weights[1])?;
     *slot = [zero, one];
     Ok(())
 }
@@ -162,8 +174,8 @@ pub fn checked_component_product_scan(
 pub fn checked_component_product_finish(products: &[[i128; 2]]) -> Result<i128, Error> {
     let mut value = 1i128;
     for &[zero, one] in products {
-        let local = zero.checked_add(one).ok_or(Error::Overflow)?;
-        value = value.checked_mul(local).ok_or(Error::Overflow)?;
+        let local = checked_i128_add(zero, one)?;
+        value = checked_i128_mul(value, local)?;
     }
     Ok(value)
 }

@@ -28,6 +28,12 @@ is translated. The synthetic probe results never certify it.
 
 **Two-phase diagnosis:** the first exact-head extraction [run #44807999037](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44807999037) translated p0–p2 with no local placeholders. Optional-nested-borrow p3/p4 failed as `Unimplemented`, while p5–p7 and the real source failed with partial `sorry` declarations. Even owned p7 failed, so neither a direct `Vec::push` nor returning a stored `Result` alone explains the recorder failure. The added p8–p11 cases distinguish whether the remaining failure needs checked-`i128`, option payloads, mutation, or their interaction. No synthetic case certifies actual production execution.
 
+**Second-stage observation:** [exact-head workflow #44809224683](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44809224683) at `23a2080` successfully extracted **all four added controls**: p8 checked arithmetic without a vector, p9 option-valued vector push without arithmetic, p10 checked arithmetic with a scalar vector, and p11 computed-option vector recording with a fresh `Ok`. No local placeholders appeared in those four generated declarations. The unchanged p3/p4 remained `Unimplemented`, p5/p6/p7 remained interpreter errors with `sorry`, and production `ranked-source` remained blocked.
+
+Thus neither checked-`i128` arithmetic, option-valued vectors, checked-result return, nor their **separately tested simpler combinations** explain the remaining interpreter error. The key additional contrast is p11 versus p5: p11 records the checked `Option` but returns a **fresh** `Ok`; p5 records `outcome.as_ref().ok().copied()` and then returns the **stored** `Result`. This implicates their precise interaction, not a mathematically invalid arithmetic operation. The observation does **not** prove a unique symbolic-execution root cause.
+
+The generated `ProbeP2` Lean 4.31.0 project built successfully, but the first independent post-state theorem check stopped at a Lean **import-order syntax error** before its proof was elaborated. Its status is **unproved**, pending the corrected exact-head kernel check. This failed proof check is distinct from the successful package build and should never be reported as a theorem.
+
 The [change-scoped matrix workflow](../../.github/workflows/ranked-borrow-matrix.yml)
 runs the Rust behavioral tests and each scenario in the pinned hax 0.4.2
 backend separately. It retains **both passing and failing** full extraction

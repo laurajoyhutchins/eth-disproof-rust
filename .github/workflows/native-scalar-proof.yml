@@ -72,7 +72,7 @@ jobs:
               if status == "does not depend on any axioms":
                   used = set()
               elif status.startswith("depends on axioms: [") and status.endswith("]"):
-                  used = set(status[19:-1].split(", ")) - {""}
+                  used = set(status[len("depends on axioms: ["):-1].split(", ")) - {""}
               else:
                   raise SystemExit(f"Malformed axiom receipt for {name}: {status}")
               if not used <= allowed:

@@ -9,6 +9,54 @@ use crate::affine::{AffineInterface, AffineRegion, BoundaryRow};
 use num_bigint::BigUint;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// A checked source-name registry for independent matrix reconstruction.
+///
+/// The tree determines a candidate location, but does not get to assert
+/// correctness of that location: each successful lookup is independently
+/// checked against the original ordered source names before any bit
+/// mutation. This makes the name-to-column premise of the Lean indexed-row
+/// theorem an *enforced acceptance condition*, rather than an assumption
+/// about the tree implementation. It does not formally verify BTreeMap.
+struct CheckedColumns<'a> {
+    names: Vec<&'a str>,
+    positions: BTreeMap<&'a str, usize>,
+}
+
+impl<'a> CheckedColumns<'a> {
+    fn from_source(source: &'a AffineRegion) -> Result<Self, String> {
+        let mut names = Vec::with_capacity(
+            source.internal.len().checked_add(source.boundary.len())
+                .ok_or("checker source name count overflow")?,
+        );
+        let mut positions = BTreeMap::new();
+        for name in source.internal.iter().chain(&source.boundary) {
+            if !crate::affine::valid_source_identifier(name) {
+                return Err("invalid source variable identifier".into());
+            }
+            let column = names.len();
+            if positions.insert(name.as_str(), column).is_some() {
+                return Err("duplicated source variable".into());
+            }
+            names.push(name);
+        }
+        Ok(Self { names, positions })
+    }
+
+    fn toggle_occurrence(&self, row: &mut [bool], variable: &str) -> Result<(), String> {
+        let &column = self.positions.get(variable)
+            .ok_or("undeclared source equation variable")?;
+        // Check the index and the inverse lookup, not merely map presence.
+        // This also prevents an invalid index from reaching the RHS bit.
+        if self.names.get(column).copied() != Some(variable) {
+            return Err("checker source lookup does not match declared column".into());
+        }
+        let bit = row.get_mut(column)
+            .ok_or("checker matrix column outside allocated row")?;
+        *bit ^= true;
+        Ok(())
+    }
+}
+
 /// Explicit verifier resources. These bound the *independent checker*, not
 /// the producer or the arbitrary-precision result allocation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -173,19 +221,11 @@ impl EliminationCertificate {
         if claimed.boundary != source.boundary {
             return Err("boundary names/order were changed".into());
         }
-        let mut locations = BTreeMap::new();
-        for (column, name) in source.internal.iter().chain(&source.boundary).enumerate() {
-            if !crate::affine::valid_source_identifier(name) ||
-                locations.insert(name.as_str(), column).is_some() {
-                return Err("duplicate or empty source variable".into());
-            }
-        }
+        let columns = CheckedColumns::from_source(source)?;
         let mut rows = vec![vec![false; width]; source.equations.len()];
         for (i, equation) in source.equations.iter().enumerate() {
             for variable in &equation.variables {
-                let &col = locations.get(variable.as_str())
-                    .ok_or("undeclared source equation variable")?;
-                rows[i][col] ^= true;
+                columns.toggle_occurrence(&mut rows[i], variable)?;
             }
             rows[i][width - 1] = equation.rhs;
         }
@@ -353,6 +393,83 @@ mod tests {
         assert!(certificate.verify(&other, &interface).is_err());
     }
 
+
+    #[test]
+    fn checked_registry_refuses_corrupted_indices_before_bit_mutation() {
+        let source = AffineRegion {
+            internal: vec!["u".into(), "v".into()],
+            boundary: vec!["b".into()],
+            equations: vec![],
+        };
+        let mut columns = CheckedColumns::from_source(&source).unwrap();
+        let mut row = vec![false; 4];
+        columns.toggle_occurrence(&mut row, "u").unwrap();
+        assert_eq!(row, vec![true, false, false, false]);
+
+        // A forged tree entry for a different *in-range* name must not
+        // silently toggle the wrong coordinate.
+        columns.positions.insert("u", 1);
+        let before = row.clone();
+        assert!(columns.toggle_occurrence(&mut row, "u").is_err());
+        assert_eq!(row, before);
+        // An out-of-range entry must also fail without touching RHS.
+        columns.positions.insert("u", usize::MAX);
+        assert!(columns.toggle_occurrence(&mut row, "u").is_err());
+        assert_eq!(row, before);
+        // Pointing to the RHS column is invalid even if row is long.
+        columns.positions.insert("u", 3);
+        assert!(columns.toggle_occurrence(&mut row, "u").is_err());
+        assert_eq!(row, before);
+        columns.positions.remove("u");
+        assert!(columns.toggle_occurrence(&mut row, "u").is_err());
+        assert_eq!(row, before);
+        assert!(columns.toggle_occurrence(&mut row, "undeclared").is_err());
+        assert_eq!(row, before);
+        // Even a valid map cannot mutate a row shorter than the source
+        // declaration if the requested column is absent.
+        columns.positions.insert("v", 1);
+        assert!(columns.toggle_occurrence(&mut row[..1], "v").is_err());
+        assert_eq!(row, before);
+    }
+
+    #[test]
+    fn checked_registry_matches_direct_source_occurrence_parity() {
+        fn draw(seed: &mut u64) -> u64 {
+            *seed ^= *seed << 13;
+            *seed ^= *seed >> 7;
+            *seed ^= *seed << 17;
+            *seed
+        }
+        for initial in 1..=128u64 {
+            let mut state = initial;
+            let k = (draw(&mut state) % 16 + 1) as usize;
+            let b = (draw(&mut state) % 8) as usize;
+            let source = AffineRegion {
+                internal: (0..k).map(|i| format!("u{i}")).collect(),
+                boundary: (0..b).map(|i| format!("b{i}")).collect(),
+                equations: vec![],
+            };
+            let columns = CheckedColumns::from_source(&source).unwrap();
+            let all_names = source.internal.iter().chain(&source.boundary)
+                .map(String::as_str).collect::<Vec<_>>();
+            let mut actual = vec![false; all_names.len() + 1];
+            let mut occurrences = Vec::new();
+            for _ in 0..128 {
+                let index = (draw(&mut state) as usize) % all_names.len();
+                let name = all_names[index];
+                occurrences.push(name);
+                columns.toggle_occurrence(&mut actual, name).unwrap();
+                for (column, &declared) in all_names.iter().enumerate() {
+                    let expected = occurrences.iter()
+                        .filter(|&&occurrence| occurrence == declared)
+                        .count() % 2 == 1;
+                    assert_eq!(actual[column], expected,
+                        "seed={initial}, column={column}, length={}", occurrences.len());
+                }
+                assert!(!actual[all_names.len()], "RHS bit was toggled");
+            }
+        }
+    }
 
     #[test]
     fn checker_refuses_malformed_registered_names_even_if_equations_are_consistent() {

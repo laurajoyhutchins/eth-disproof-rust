@@ -119,7 +119,13 @@ jobs:
               echo "UNPROVED_GENERATED_DECLARATION=$scenario" >> "$GITHUB_STEP_SUMMARY"
               status=1
             else
-              echo "SOURCE_DERIVED_LEAN_DECLARATIONS=$scenario:NO_PLACEHOLDERS" >> "$GITHUB_STEP_SUMMARY"
+              scan_status=$?
+              if [ "$scan_status" -ne 1 ]; then
+                echo "PLACEHOLDER_SCAN_ERROR=$scenario:$scan_status" >> "$GITHUB_STEP_SUMMARY"
+                status=1
+              else
+                echo "SOURCE_DERIVED_LEAN_DECLARATIONS=$scenario:NO_LOCAL_PLACEHOLDERS" >> "$GITHUB_STEP_SUMMARY"
+              fi
             fi
           done
           exit "$status"

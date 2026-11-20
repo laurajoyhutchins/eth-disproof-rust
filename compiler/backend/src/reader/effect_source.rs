@@ -4,7 +4,7 @@
 //! transcript. Branches, joins, calls, and non-literal expressions have no
 //! claim in this checker. Distinct IR variables are not presumed nonaliasing.
 use super::*;
-use effect_order::Event;
+use super::effect_order::Event;
 
 impl Reader {
     pub(super) unsafe fn linear_source_effects(

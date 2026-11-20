@@ -70,7 +70,7 @@ jobs:
           fi
           (
             cd instrumentation/lean-env
-            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.StructuredCalls OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler OAI.Algorithms.SubexponentialSAT.RecordPrograms
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/SourceGraphRefinement.lean"
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/FramedRecordReaderRefinement.lean"
           )

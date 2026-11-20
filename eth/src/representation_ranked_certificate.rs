@@ -270,20 +270,39 @@ fn checked_arithmetic(kind: ArithmeticKind, left: i128, right: i128) -> Result<i
     }
 }
 
-fn checked_component_product_step_with<F>(
+// Recording is explicit, not a generic FnMut callback. Both ordinary and
+// traced paths share this exact arithmetic transition and mutation order.
+// None has no allocation and does not change the arithmetic outcome.
+// The first refused operation is recorded before its caller stops.
+fn checked_arithmetic_and_record(
+    kind: ArithmeticKind,
+    left: i128,
+    right: i128,
+    observations: &mut Option<&mut Vec<ArithmeticReceipt>>,
+) -> Result<i128, Error> {
+    let outcome = checked_arithmetic(kind, left, right);
+    if let Some(events) = observations.as_mut() {
+        events.push(ArithmeticReceipt {
+            kind,
+            left,
+            right,
+            observed: outcome.as_ref().ok().copied(),
+        });
+    }
+    outcome
+}
+
+fn checked_component_product_step_with(
     products: &mut [[i128; 2]],
     class: usize,
     weights: [i128; 2],
-    arithmetic: &mut F,
-) -> Result<(), Error>
-where
-    F: FnMut(ArithmeticKind, i128, i128) -> Result<i128, Error>,
-{
+    observations: &mut Option<&mut Vec<ArithmeticReceipt>>,
+) -> Result<(), Error> {
     let slot = products
         .get_mut(class)
         .ok_or_else(|| Error::Invalid("component product index outside range".into()))?;
-    let zero = arithmetic(ArithmeticKind::Mul, slot[0], weights[0])?;
-    let one = arithmetic(ArithmeticKind::Mul, slot[1], weights[1])?;
+    let zero = checked_arithmetic_and_record(ArithmeticKind::Mul, slot[0], weights[0], observations)?;
+    let one = checked_arithmetic_and_record(ArithmeticKind::Mul, slot[1], weights[1], observations)?;
     *slot = [zero, one];
     Ok(())
 }
@@ -296,25 +315,23 @@ pub fn checked_component_product_step(
     class: usize,
     weights: [i128; 2],
 ) -> Result<(), Error> {
-    checked_component_product_step_with(products, class, weights, &mut checked_arithmetic)
+    let mut observations = None;
+    checked_component_product_step_with(products, class, weights, &mut observations)
 }
 
-fn checked_component_product_scan_with<F>(
+fn checked_component_product_scan_with(
     products: &mut [[i128; 2]],
     labels: &[usize],
     weights: &[[i128; 2]],
-    arithmetic: &mut F,
-) -> Result<(), Error>
-where
-    F: FnMut(ArithmeticKind, i128, i128) -> Result<i128, Error>,
-{
+    observations: &mut Option<&mut Vec<ArithmeticReceipt>>,
+) -> Result<(), Error> {
     if labels.len() != weights.len() {
         return Err(Error::Invalid(
             "component scan label and weight widths disagree".into(),
         ));
     }
     for (&class, &weight) in labels.iter().zip(weights.iter()) {
-        checked_component_product_step_with(products, class, weight, arithmetic)?;
+        checked_component_product_step_with(products, class, weight, observations)?;
     }
     Ok(())
 }
@@ -327,20 +344,18 @@ pub fn checked_component_product_scan(
     labels: &[usize],
     weights: &[[i128; 2]],
 ) -> Result<(), Error> {
-    checked_component_product_scan_with(products, labels, weights, &mut checked_arithmetic)
+    let mut observations = None;
+    checked_component_product_scan_with(products, labels, weights, &mut observations)
 }
 
-fn checked_component_product_finish_with<F>(
+fn checked_component_product_finish_with(
     products: &[[i128; 2]],
-    arithmetic: &mut F,
-) -> Result<i128, Error>
-where
-    F: FnMut(ArithmeticKind, i128, i128) -> Result<i128, Error>,
-{
+    observations: &mut Option<&mut Vec<ArithmeticReceipt>>,
+) -> Result<i128, Error> {
     let mut value = 1i128;
     for &[zero, one] in products {
-        let local = arithmetic(ArithmeticKind::Add, zero, one)?;
-        value = arithmetic(ArithmeticKind::Mul, value, local)?;
+        let local = checked_arithmetic_and_record(ArithmeticKind::Add, zero, one, observations)?;
+        value = checked_arithmetic_and_record(ArithmeticKind::Mul, value, local, observations)?;
     }
     Ok(value)
 }
@@ -348,23 +363,21 @@ where
 /// Finish the component array in class order without modifying the source.
 /// Refuse overflow immediately, even when a later class contains zero.
 pub fn checked_component_product_finish(products: &[[i128; 2]]) -> Result<i128, Error> {
-    checked_component_product_finish_with(products, &mut checked_arithmetic)
+    let mut observations = None;
+    checked_component_product_finish_with(products, &mut observations)
 }
 
-fn contract_checked_ranked_weights_with<F>(
+fn contract_checked_ranked_weights_with(
     weights: &[[i128; 2]],
     source_edges: &[(usize, usize)],
     certificate: &RankedComponentCertificate,
-    arithmetic: &mut F,
-) -> Result<RankedCountReceipt, Error>
-where
-    F: FnMut(ArithmeticKind, i128, i128) -> Result<i128, Error>,
-{
-    // This rechecks the *supplied* graph and certificate on every execution.
+    observations: &mut Option<&mut Vec<ArithmeticReceipt>>,
+) -> Result<RankedCountReceipt, Error> {
+    // Recheck the supplied graph and certificate before any arithmetic.
     let verified = verify_ranked_component_certificate(weights.len(), source_edges, certificate)?;
     let mut products = vec![[1i128, 1i128]; verified.components];
-    checked_component_product_scan_with(&mut products, &certificate.labels, weights, arithmetic)?;
-    let value = checked_component_product_finish_with(&products, arithmetic)?;
+    checked_component_product_scan_with(&mut products, &certificate.labels, weights, observations)?;
+    let value = checked_component_product_finish_with(&products, observations)?;
     let multiplications = weights
         .len()
         .checked_mul(2)
@@ -389,7 +402,7 @@ pub fn contract_checked_ranked_weights(
         weights,
         source_edges,
         certificate,
-        &mut checked_arithmetic,
+        &mut None,
     )
 }
 
@@ -406,21 +419,10 @@ pub fn contract_checked_ranked_weights_with_trace(
     certificate: &RankedComponentCertificate,
 ) -> (Result<RankedCountReceipt, Error>, Vec<ArithmeticReceipt>) {
     let mut operations = Vec::new();
-    let result = contract_checked_ranked_weights_with(
-        weights,
-        source_edges,
-        certificate,
-        &mut |kind, left, right| {
-            let outcome = checked_arithmetic(kind, left, right);
-            operations.push(ArithmeticReceipt {
-                kind,
-                left,
-                right,
-                observed: outcome.as_ref().ok().copied(),
-            });
-            outcome
-        },
-    );
+    let result = {
+        let mut observations = Some(&mut operations);
+        contract_checked_ranked_weights_with(weights, source_edges, certificate, &mut observations)
+    };
     (result, operations)
 }
 

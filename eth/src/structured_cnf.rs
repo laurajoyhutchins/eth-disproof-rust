@@ -78,7 +78,9 @@ impl RecurrenceReceipt {
 }
 
 fn refuse(reason: &str) -> Error {
-    Error::Invalid(format!("unsupported signed-CSR recurrence family: {reason}"))
+    Error::Invalid(format!(
+        "unsupported signed-CSR recurrence family: {reason}"
+    ))
 }
 
 impl SignedCsr<'_> {
@@ -196,7 +198,13 @@ mod tests {
                     let row = vars
                         .iter()
                         .enumerate()
-                        .map(|(j, v)| if mask & (1 << j) == 0 { *v as i64 } else { -(*v as i64) })
+                        .map(|(j, v)| {
+                            if mask & (1 << j) == 0 {
+                                *v as i64
+                            } else {
+                                -(*v as i64)
+                            }
+                        })
                         .collect::<Vec<_>>();
                     rows.push(row);
                 }
@@ -296,7 +304,13 @@ mod tests {
             .map(|c| {
                 c.literals()
                     .iter()
-                    .map(|l| if l.positive { l.variable as i64 + 1 } else { -(l.variable as i64 + 1) })
+                    .map(|l| {
+                        if l.positive {
+                            l.variable as i64 + 1
+                        } else {
+                            -(l.variable as i64 + 1)
+                        }
+                    })
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>();

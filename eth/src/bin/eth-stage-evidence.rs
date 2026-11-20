@@ -4,7 +4,7 @@
 //! locally pinned upstream manifest. No stage status certifies Lean/Rust
 //! refinement, proof completeness, or a complexity bound.
 use lean_eth_reference::remaining::{Machine, SOURCE_COMMIT, STAGES, Status};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashSet;
 
 const SOURCE_PREFIX: &str = "lean/OAI/Algorithms/SubexponentialSAT/";
@@ -169,7 +169,9 @@ mod tests {
         let query = report["blocked_paths"]["query_stream"].as_array().unwrap();
         assert!(query.contains(&json!("signature_loader")));
         assert!(query.contains(&json!("query_stream")));
-        let count = report["blocked_paths"]["counting_program"].as_array().unwrap();
+        let count = report["blocked_paths"]["counting_program"]
+            .as_array()
+            .unwrap();
         assert!(count.contains(&json!("finite_fallback")));
         assert!(count.contains(&json!("counting_program")));
     }

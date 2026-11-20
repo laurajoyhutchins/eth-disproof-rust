@@ -287,7 +287,9 @@ def main() -> None:
               "stages": results, "complete_query_executable": False,
               "rust_correspondence": "unassessed"}
     atomic_write(output / "report.json", json.dumps(report, sort_keys=True, indent=2)+"\n")
-    if any(stage["status"] == "REFUSED" for stage in results):
+    # A graph-only observation is useful evidence, but it must not turn the
+    # deep verification workflow green without a completed kernel check.
+    if any(stage["status"] != "ORIGINAL_MODULE_GRAPH_KERNEL_CERTIFIED" for stage in results):
         raise SystemExit(2)
 
 

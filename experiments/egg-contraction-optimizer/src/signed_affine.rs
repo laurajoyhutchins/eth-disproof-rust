@@ -822,6 +822,44 @@ mod tests {
     }
 
     #[test]
+    fn constructor_refusal_is_distinct_from_normalization_and_elimination() {
+        // Out-of-range indices refuse before sorting or duplicate collapse.
+        for (width, terms) in [
+            (0, vec![vec![0]]),
+            (2, vec![vec![0, 2]]),
+            (3, vec![vec![1, 3, 1]]),
+            (usize::MAX, vec![vec![usize::MAX]]),
+            (3, vec![vec![0], vec![2, 1, 0]]),
+            (4, vec![vec![3, 2, 1, 0]]),
+        ] {
+            assert!(
+                QuadraticPhase::new(width, terms).is_err(),
+                "invalid constructor input accepted at width {width}",
+            );
+        }
+        // Degree is counted after Boolean idempotence, as in Lean's
+        // finite-set support contract.
+        let idempotent = QuadraticPhase::new(
+            3, vec![vec![2, 1, 2, 1], vec![1, 2], vec![]],
+        )
+        .unwrap();
+        assert_eq!(idempotent.terms().len(), 1);
+        assert!(idempotent.terms().contains(&Vec::new()));
+
+        // A width-zero *constant* phase is legal construction input,
+        // but there is no internal bit to eliminate.
+        let constant = QuadraticPhase::new(0, vec![vec![]]).unwrap();
+        assert!(constant.remove_first(None).is_err());
+        assert!(constant.remove_first(Some(&(false, vec![]))).is_err());
+
+        let source = QuadraticPhase::new(3, vec![vec![0, 2]]).unwrap();
+        assert!(source.remove_first(Some(&(false, vec![true]))).is_err());
+        assert!(source.remove_first(Some(&(true, vec![false; 3]))).is_err());
+        assert!(source.remove_first(Some(&(false, vec![true, false]))).is_ok());
+        assert!(source.remove_first(None).is_ok());
+    }
+
+    #[test]
     fn raw_quadratic_phase_splits_at_internal_bit_for_every_boundary() {
         // Independent truth-table interpretation of the native remove_first
         // result. Include repeated/diagonal/unsorted input monomials to

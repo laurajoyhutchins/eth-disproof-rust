@@ -119,4 +119,27 @@ jobs:
               echo "::endgroup::"
             fi
           fi
+          # Import exact Rust-emitted constructor results, including refusals,
+          # as data-only Lean propositions. The Lean normalization model
+          # reconstructs them without trusting the Rust success flag.
+          if [ "$failures" -eq 0 ]; then
+            constructor_generated="$RUNNER_TEMP/quadratic-constructor-generated.lean"
+            constructor_combined="$RUNNER_TEMP/quadratic-constructor-audited.lean"
+            if ! cargo run --quiet \
+              --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
+              --bin emit_quadratic_constructor_oracles > "$constructor_generated"; then
+              failures=1
+            elif grep -nE '\b(sorry|admit|axiom|unsafe)\b' "$constructor_generated"; then
+              echo "Unsafe constructor oracle" >&2
+              failures=1
+            else
+              cat "$GITHUB_WORKSPACE/eth/proofs/IndependentQuadraticLowWeight.lean" \
+                "$constructor_generated" > "$constructor_combined"
+              echo "::group::Kernel-check Rust-emitted quadratic constructor results"
+              if ! lake env lean "$constructor_combined"; then
+                failures=1
+              fi
+              echo "::endgroup::"
+            fi
+          fi
           exit "$failures"

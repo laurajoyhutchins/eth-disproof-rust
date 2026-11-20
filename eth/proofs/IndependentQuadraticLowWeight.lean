@@ -402,6 +402,304 @@ XOR across monomials. This remains defined even on malformed raw data. -/
 def nativePhase (bits : Nat → Bool) (terms : List (List Nat)) : Bool :=
   terms.foldl (fun parity term => parity ^^ term.all bits) false
 
+/-!
+## Abstract normalization of the native quadratic constructor
+
+The Rust constructor sorts each monomial, removes repeated coordinate
+indices, and toggles its membership in a BTreeSet. We use a finite set
+of coordinates for each monomial and a finite set of surviving
+monomials. This avoids depending on any particular sorting algorithm
+or container layout, while preserving the mathematical shape and
+toggle semantics of successful construction.
+
+A separate execution refinement is still needed for Rust collection
+methods, memory allocation, and rejection order.
+-/
+
+/-- The squarefree support of a raw monomial, retaining idempotent Boolean multiplication. -/
+def canonicalTerm (term : List ℕ) : Finset ℕ :=
+  term.toFinset
+
+/-- Abstract BTreeSet toggle: insertion creates an absent term and
+insertion of an already present term cancels it modulo two. -/
+def toggleCanonical (state : Finset (Finset ℕ)) (term : Finset ℕ) :
+    Finset (Finset ℕ) :=
+  if term ∈ state then state.erase term else insert term state
+
+/-- Normalize all raw monomials using the native XOR-cancellation rule. -/
+def canonicalizeTerms (raw : List (List ℕ)) : Finset (Finset ℕ) :=
+  raw.foldl (fun state term => toggleCanonical state (canonicalTerm term)) ∅
+
+/-- Integer-ring interpretation of a squarefree monomial's Boolean value. -/
+def canonicalTermValue (bits : ℕ → Bool) (term : Finset ℕ) : ZMod 2 :=
+  if ∀ i ∈ term, bits i = true then 1 else 0
+
+/-- Evaluate only surviving canonical monomials, once each. -/
+def canonicalPhaseValue (bits : ℕ → Bool) (state : Finset (Finset ℕ)) : ZMod 2 :=
+  state.sum (canonicalTermValue bits)
+
+/-- Sorting and deduplicating a raw monomial leaves its Boolean product unchanged. -/
+theorem canonicalTerm_value (bits : ℕ → Bool) (term : List ℕ) :
+    canonicalTermValue bits (canonicalTerm term) =
+      boolZMod (term.all bits) := by
+  classical
+  have h : (∀ i ∈ canonicalTerm term, bits i = true) ↔
+      term.all bits = true := by
+    simp [canonicalTerm, List.all_eq_true]
+  cases hv : term.all bits with
+  | false =>
+      have hn : ¬ ∀ i ∈ canonicalTerm term, bits i = true := by
+        intro ht
+        have htrue := h.mp ht
+        simp [hv] at htrue
+      simp [canonicalTermValue, boolZMod, hv, hn]
+  | true =>
+      have ht : ∀ i ∈ canonicalTerm term, bits i = true :=
+        h.mpr (by simp [hv])
+      simp [canonicalTermValue, boolZMod, hv] <;> exact ht
+
+/-- A single set toggle adds exactly one monomial contribution modulo two. -/
+theorem toggleCanonical_value (bits : ℕ → Bool)
+    (state : Finset (Finset ℕ)) (term : Finset ℕ) :
+    canonicalPhaseValue bits (toggleCanonical state term) =
+      canonicalPhaseValue bits state + canonicalTermValue bits term := by
+  classical
+  by_cases h : term ∈ state
+  · have hsum : canonicalPhaseValue bits state =
+        canonicalTermValue bits term +
+          canonicalPhaseValue bits (state.erase term) := by
+      calc
+        canonicalPhaseValue bits state =
+            canonicalPhaseValue bits (insert term (state.erase term)) := by
+              exact congrArg (canonicalPhaseValue bits) (Finset.insert_erase h).symm
+        _ = canonicalTermValue bits term +
+            canonicalPhaseValue bits (state.erase term) := by
+              change (insert term (state.erase term)).sum
+                  (canonicalTermValue bits) =
+                canonicalTermValue bits term +
+                  (state.erase term).sum (canonicalTermValue bits)
+              have hnot : term ∉ state.erase term := by simp
+              exact Finset.sum_insert hnot
+    have htwo : (2 : ZMod 2) = 0 := by decide
+    calc
+      canonicalPhaseValue bits (toggleCanonical state term) =
+          canonicalPhaseValue bits (state.erase term) := by
+            simp [toggleCanonical, h]
+      _ = (2 : ZMod 2) * canonicalTermValue bits term +
+            canonicalPhaseValue bits (state.erase term) := by simp [htwo]
+      _ = (canonicalTermValue bits term +
+            canonicalPhaseValue bits (state.erase term)) +
+            canonicalTermValue bits term := by ring
+      _ = canonicalPhaseValue bits state + canonicalTermValue bits term := by rw [hsum]
+  · calc
+      canonicalPhaseValue bits (toggleCanonical state term) =
+          canonicalTermValue bits term + canonicalPhaseValue bits state := by
+            simp [toggleCanonical, h, canonicalPhaseValue]
+      _ = canonicalPhaseValue bits state + canonicalTermValue bits term := by ring
+
+private theorem canonicalize_fold_value (bits : ℕ → Bool)
+    (raw : List (List ℕ)) (initial : Finset (Finset ℕ)) :
+    canonicalPhaseValue bits
+      (raw.foldl (fun state term =>
+        toggleCanonical state (canonicalTerm term)) initial) =
+      canonicalPhaseValue bits initial +
+        (raw.map (fun term => canonicalTermValue bits (canonicalTerm term))).sum := by
+  induction raw generalizing initial with
+  | nil =>
+      simp
+  | cons term rest ih =>
+      simp only [List.foldl_cons, List.map_cons, List.sum_cons]
+      rw [ih, toggleCanonical_value]
+      ring
+
+/-- The exact native constructor's abstract canonicalization preserves
+the raw XOR-of-products value for arbitrary monomials and assignments.
+
+This proof is independent of input order and duplicates. The ZMod 2
+interpretation is equivalent to Boolean XOR via boolZMod. -/
+theorem canonicalization_value (bits : ℕ → Bool) (raw : List (List ℕ)) :
+    canonicalPhaseValue bits (canonicalizeTerms raw) =
+      boolZMod (nativePhase bits raw) := by
+  calc
+    canonicalPhaseValue bits (canonicalizeTerms raw) =
+        (raw.map (fun term => canonicalTermValue bits (canonicalTerm term))).sum := by
+          simpa [canonicalizeTerms, canonicalPhaseValue] using
+            canonicalize_fold_value bits raw (∅ : Finset (Finset ℕ))
+    _ = (raw.map (fun term => boolZMod (term.all bits))).sum := by
+          simp only [canonicalTerm_value]
+    _ = boolZMod (nativePhase bits raw) := by
+          change (raw.map (fun term => boolZMod (term.all bits))).sum =
+            boolZMod (raw.foldl
+              (fun parity term => parity ^^ term.all bits) false)
+          have hfold : ∀ (ts : List (List ℕ)) (acc : Bool),
+              (ts.map (fun term => term.all bits)).foldl (· ^^ ·) acc =
+                ts.foldl (fun parity term => parity ^^ term.all bits) acc := by
+            intro ts
+            induction ts with
+            | nil =>
+                intro acc
+                rfl
+            | cons term rest ih =>
+                intro acc
+                simpa only [List.map_cons, List.foldl_cons] using
+                  ih (acc ^^ term.all bits)
+          have hsum :=
+            (xorFold_eq_zmod_sum false (raw.map (fun term => term.all bits))).symm
+          have hzero : boolZMod false = 0 := rfl
+          rw [hzero, zero_add] at hsum
+          simpa only [List.map_map, Function.comp_def, hfold] using hsum
+
+/-- Native constructor acceptance, stated over the mathematical width.
+Rust's usize representability and allocation are separate obligations.
+The cardinality test follows sorting and idempotent deduplication. -/
+def nativeConstructorOK (width : ℕ) (raw : List (List ℕ)) : Bool :=
+  raw.all (fun term =>
+    term.all (fun i => decide (i < width)) &&
+      decide ((canonicalTerm term).card ≤ 2))
+
+/-- Accepted constructor inputs contain only in-range coordinates and
+squarefree supports with at most two distinct indices. -/
+theorem nativeConstructorOK_sound (width : ℕ) (raw : List (List ℕ))
+    (h : nativeConstructorOK width raw = true) :
+    ∀ term ∈ raw,
+      (∀ i ∈ term, i < width) ∧ (canonicalTerm term).card ≤ 2 := by
+  simp only [nativeConstructorOK, List.all_eq_true,
+    Bool.and_eq_true, decide_eq_true_eq] at h
+  intro term hmem
+  have ht := h term hmem
+  constructor
+  · intro i himem
+    exact ht.1 i himem
+  · exact ht.2
+
+/-!
+### Degree preservation through native monomial cancellation
+
+A canonicalized set cannot gain a new monomial: every surviving key
+was introduced by a valid raw monomial. This matters for the native
+`remove_first` refusal guards; its mixed terms lose coordinate zero,
+so their remaining supports have degree at most one.
+-/
+
+private theorem normalizedFoldShape (raw : List (List ℕ)) :
+    ∀ (initial : Finset (Finset ℕ)),
+      (∀ key ∈ initial, key.card ≤ 2) →
+      (∀ term ∈ raw, (canonicalTerm term).card ≤ 2) →
+      ∀ key ∈ raw.foldl
+        (fun state term => toggleCanonical state (canonicalTerm term)) initial,
+        key.card ≤ 2 := by
+  induction raw with
+  | nil =>
+      intro initial hinit _ key hkey
+      exact hinit key (by simpa using hkey)
+  | cons term rest ih =>
+      intro initial hinit hraw key hkey
+      have hnext :
+          ∀ q ∈ toggleCanonical initial (canonicalTerm term), q.card ≤ 2 := by
+        intro q hq
+        by_cases hfound : canonicalTerm term ∈ initial
+        · have hmem : q ∈ initial.erase (canonicalTerm term) := by
+            simpa [toggleCanonical, hfound] using hq
+          exact hinit q (Finset.mem_erase.mp hmem).2
+        · have hmem : q ∈ insert (canonicalTerm term) initial := by
+            simpa [toggleCanonical, hfound] using hq
+          rcases Finset.mem_insert.mp hmem with heq | hold
+          · subst q
+            exact hraw term (by simp)
+          · exact hinit q hold
+      have htail : ∀ t ∈ rest, (canonicalTerm t).card ≤ 2 := by
+        intro t ht
+        exact hraw t (by simp [ht])
+      have hrest : key ∈ rest.foldl
+          (fun state t => toggleCanonical state (canonicalTerm t))
+          (toggleCanonical initial (canonicalTerm term)) := by
+        simpa only [List.foldl_cons] using hkey
+      exact ih (toggleCanonical initial (canonicalTerm term))
+        hnext htail key hrest
+
+/-- Each surviving normalized monomial retains the constructor's degree bound. -/
+theorem nativeConstruct_keys_bounded (width : ℕ) (raw : List (List ℕ))
+    (accepted : nativeConstructorOK width raw = true)
+    (key : Finset ℕ) (hkey : key ∈ canonicalizeTerms raw) :
+    key.card ≤ 2 := by
+  have hraw : ∀ term ∈ raw, (canonicalTerm term).card ≤ 2 := by
+    intro term hterm
+    exact (nativeConstructorOK_sound width raw accepted term hterm).2
+  exact normalizedFoldShape raw (∅ : Finset (Finset ℕ))
+    (by simp) hraw key (by simpa [canonicalizeTerms] using hkey)
+
+/-- Any normalized monomial involving the internal coordinate has at
+most one exterior coordinate after that coordinate is removed. -/
+theorem nativeConstruct_mixed_degree (width : ℕ) (raw : List (List ℕ))
+    (accepted : nativeConstructorOK width raw = true)
+    (key : Finset ℕ) (hkey : key ∈ canonicalizeTerms raw)
+    (internal : 0 ∈ key) :
+    (key.erase 0).card ≤ 1 := by
+  have hbound := nativeConstruct_keys_bounded width raw accepted key hkey
+  have hcard := Finset.card_erase_add_one internal
+  omega
+
+/-- Multiplying a mixed term by one affine replacement variable can
+never raise the degree above two when the original constructor accepted. -/
+theorem nativeConstruct_forced_degree (width : ℕ) (raw : List (List ℕ))
+    (accepted : nativeConstructorOK width raw = true)
+    (key : Finset ℕ) (hkey : key ∈ canonicalizeTerms raw)
+    (internal : 0 ∈ key) (index : ℕ) :
+    (insert index (key.erase 0)).card ≤ 2 := by
+  have hbound := nativeConstruct_mixed_degree width raw accepted key hkey internal
+  by_cases hindex : index ∈ key.erase 0
+  · rw [Finset.insert_eq_of_mem hindex]
+    omega
+  · rw [Finset.card_insert_of_notMem hindex]
+    omega
+
+/-- Explicit mathematical shape gate for eliminating coordinate zero.
+The native executable also checks monomial degree while operating on
+the canonical set; the two degree theorems above justify that the
+degree refusals cannot trigger for a valid quadratic constructor. -/
+def nativeRemovalShape (width : ℕ)
+    (replacement : Option (Bool × List Bool)) : Bool :=
+  decide (0 < width) &&
+    (match replacement with
+     | none => true
+     | some (_, linear) => decide (linear.length = width - 1))
+
+example : nativeRemovalShape 0 none = false := by decide
+example : nativeRemovalShape 1 none = true := by decide
+example : nativeRemovalShape 3 (some (true, [false])) = false := by decide
+example : nativeRemovalShape 3 (some (true, [false, true])) = true := by decide
+
+/-- Mathematical accepted-or-refused constructor, with no partial state exposed. -/
+def nativeConstruct (width : ℕ) (raw : List (List ℕ)) :
+    Option (Finset (Finset ℕ)) :=
+  if nativeConstructorOK width raw = true then
+    some (canonicalizeTerms raw)
+  else none
+
+/-- Any accepted constructor result retains the original raw phase semantics. -/
+theorem nativeConstruct_sound (width : ℕ) (raw : List (List ℕ))
+    (result : Finset (Finset ℕ))
+    (h : nativeConstruct width raw = some result)
+    (bits : ℕ → Bool) :
+    canonicalPhaseValue bits result = boolZMod (nativePhase bits raw) := by
+  by_cases hshape : nativeConstructorOK width raw = true
+  · have hr : canonicalizeTerms raw = result := by
+      simpa [nativeConstruct, hshape] using h
+    rw [← hr]
+    exact canonicalization_value bits raw
+  · simp [nativeConstruct, hshape] at h
+
+/-- Invalid monomials are refused before a result is constructed. -/
+theorem nativeConstruct_refuses (width : ℕ) (raw : List (List ℕ))
+    (h : nativeConstructorOK width raw = false) :
+    nativeConstruct width raw = none := by
+  simp [nativeConstruct, h]
+
+example : nativeConstructorOK 2 [[0, 0], [1, 0]] = true := by decide
+example : nativeConstructorOK 2 [[2]] = false := by decide
+example : nativeConstructorOK 3 [[0, 1, 2]] = false := by decide
+example : nativeConstruct 2 [[0], [0]] = some ∅ := by decide
+
 /-- Map source coordinate zero to the internal bit and later coordinates to boundary bits. -/
 def nativeSourceBit {n : ℕ} (x : Bool) (boundary : Fin n → Bool)
     (index : Nat) : Bool :=
@@ -511,6 +809,18 @@ theorem nativePhase_signed_fiber {n : ℕ}
   exact signedBoolFiber
     (terms.foldl (nativePhaseStep boundary) (false, false)).1
     (terms.foldl (nativePhaseStep boundary) (false, false)).2
+
+/-- The abstract, normalized constructor and source-derived internal-bit
+split agree for every raw monomial list and boundary assignment.
+This is the semantic core of the free and forced `remove_first`
+operations before their returned data structures are refined. -/
+theorem canonicalizedPhase_split {n : ℕ}
+    (boundary : Fin n → Bool) (raw : List (List ℕ)) (x : Bool) :
+    canonicalPhaseValue (nativeSourceBit x boundary) (canonicalizeTerms raw) =
+      boolZMod
+        (let state := raw.foldl (nativePhaseStep boundary) (false, false)
+         state.1 ^^ (x && state.2)) := by
+  rw [canonicalization_value, nativePhase_split]
 
 /-- Check every raw affine parity constraint against the given coordinate interpreter. -/
 def nativeRowsHold (bits : Nat → Bool)
@@ -684,9 +994,20 @@ example : checkNativeInstance (n := 1)
 example : checkNativeInstance (n := 1) freeOracleSource
     { freeOracleOutput with exponent := 0 } = false := by decide
 
+#print axioms IndependentETH.QuadraticLowWeight.canonicalTerm_value
+#print axioms IndependentETH.QuadraticLowWeight.toggleCanonical_value
+#print axioms IndependentETH.QuadraticLowWeight.canonicalization_value
+#print axioms IndependentETH.QuadraticLowWeight.nativeConstructorOK_sound
+#print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_sound
+#print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_keys_bounded
+#print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_mixed_degree
+#print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_forced_degree
+#print axioms IndependentETH.QuadraticLowWeight.nativeConstruct_refuses
+
 #print axioms IndependentETH.QuadraticLowWeight.nativeTerm_split
 #print axioms IndependentETH.QuadraticLowWeight.nativePhase_split
 #print axioms IndependentETH.QuadraticLowWeight.nativePhase_signed_fiber
+#print axioms IndependentETH.QuadraticLowWeight.canonicalizedPhase_split
 
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_sound
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_receipt_sound

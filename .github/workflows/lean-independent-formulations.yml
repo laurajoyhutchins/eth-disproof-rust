@@ -35,7 +35,9 @@ on:
       - 'eth/src/bin/complete_ranked_trace.rs'
       - 'eth/src/bin/checked_i128_receipts.rs'
       - 'eth/src/representation_ranked_certificate.rs'
+      - 'instrumentation/lean-env/lean-toolchain'
       - 'instrumentation/lean-env/lakefile.lean'
+      - 'instrumentation/lean-env/lake-manifest.json'
       - '.github/workflows/lean-independent-formulations.yml'
   workflow_dispatch:
 

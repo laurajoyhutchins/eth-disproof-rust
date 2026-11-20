@@ -1,0 +1,144 @@
+name: Signed CSR source-derived Rust to Lean (Aeneas probe)
+
+on:
+  pull_request:
+    paths:
+      - 'eth/src/checked_csr_row.rs'
+      - 'eth/src/structured_cnf.rs'
+      - 'eth/verification/checked-csr-source/**'
+      - '.github/workflows/signed-csr-source-derived-aeneas.yml'
+  workflow_dispatch:
+
+# Experimental extraction only. Translation output is NOT itself a theorem
+# that rustc implements the Lean model. Keep independent of required Rust CI.
+permissions:
+  contents: read
+
+concurrency:
+  group: signed-csr-aeneas-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      AENEAS_PIN: 2e3d4488280bb8a95411db81019a7854a784861f
+      CHARON_PIN: 9e193f0317dacc822cc864c1798b117c70dcf7df
+      SOURCE_CRATE: eth/verification/checked-csr-source
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify actual production source identity and Rust behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F '#[path = "checked_csr_row.rs"]' eth/src/structured_cnf.rs
+          grep -F '#[path = "../../../src/checked_csr_row.rs"]' "$SOURCE_CRATE/src/lib.rs"
+          grep -F 'checked_csr_row::checked_row(' eth/src/structured_cnf.rs
+          grep -F 'checked_csr_row::checked_row(' "$SOURCE_CRATE/src/lib.rs"
+          cargo test --offline --manifest-path "$SOURCE_CRATE/Cargo.toml"
+          cargo fmt --all --manifest-path "$SOURCE_CRATE/Cargo.toml" -- --check
+          echo 'PRODUCTION_SOURCE_IMPORTED_AND_TESTED=true' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install the existing pinned Nix environment
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            extra-substituters = https://hacl.cachix.org
+            extra-trusted-public-keys = hacl.cachix.org-1:FzsZ2xsByOwKwIWNPII7yMOelJNDZ12mDAj3d1eGX0c=
+
+      - name: Extract actual checked CSR source with Charon and Aeneas
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LLBC="$RUNNER_TEMP/checked-csr/checked_csr.llbc"
+          export GENERATED="$RUNNER_TEMP/checked-csr/generated"
+          export VERIFY_CRATE="$GITHUB_WORKSPACE/$SOURCE_CRATE"
+          mkdir -p "$(dirname "$LLBC")" "$GENERATED"
+          nix shell "github:AeneasVerif/aeneas/$AENEAS_PIN#aeneas" \
+            "github:AeneasVerif/charon/$CHARON_PIN#rustToolchain" \
+            --command bash -euo pipefail -c '
+              command -v charon
+              command -v aeneas
+              cd "$VERIFY_CRATE"
+              charon cargo --preset=aeneas --dest-file="$LLBC"
+              test -s "$LLBC"
+              grep -F "checked_row" "$LLBC" >/dev/null
+              aeneas -backend lean "$LLBC" -dest "$GENERATED" \
+                -subdir /CheckedCsrSource/Code -split-files \
+                -namespace CheckedCsrSource
+              find "$GENERATED" -type f -name "*.lean" -print
+              grep -R -F "checked_row" "$GENERATED" >/dev/null
+            '
+          sha256sum "$LLBC"
+          find "$GENERATED" -type f -name "*.lean" -exec sha256sum {} +
+          echo 'CHARON_LLBC_AND_AENEAS_LEAN_EMITTED=true' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOTE=Source extraction is not a compiler refinement theorem.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bind regenerated Aeneas bytes to the reviewed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated="$RUNNER_TEMP/checked-csr/generated/CheckedCsrSource/Code"
+          proof="eth/verification/checked-csr-source/proofs"
+          echo "89617b945282b3554e316ca084b56faeed086b7bb43af106c8fff4908a4386b8  $generated/Funs.lean" | sha256sum --check
+          echo "23e222503a45152c00824e4c0f41c5d39fd70e84b457091aa9675c1b9a120c7f  $generated/Types.lean" | sha256sum --check
+          echo "2bd62d5857798a0c6dbc9f927cda29589eed8dbc35b52653419393193f2108b5  $generated/FunsExternal_Template.lean" | sha256sum --check
+          test "$(cat "$proof/lean-toolchain")" = "leanprover/lean4:v4.36.0"
+          ! grep -nE '^[[:space:]]*(axiom|sorry|admit|unsafe)[[:space:]]' "$proof/CheckedCsrSource/Code/FunsExternal.lean"
+          cp "$generated/Funs.lean" "$generated/Types.lean" "$proof/CheckedCsrSource/Code/"
+
+      - name: Bootstrap pinned Lean dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --no-modify-path --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          cd eth/verification/checked-csr-source/proofs
+          "$HOME/.elan/bin/lake" update
+          test -f lake-manifest.json
+
+      - name: Set up pinned Aeneas Lean 4.36
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: eth/verification/checked-csr-source/proofs
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Cache pinned Aeneas Lean backend dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            eth/verification/checked-csr-source/proofs/.lake/packages/aeneas/backends/lean/.lake/build
+          key: checked-csr-aeneas-v4.36.0-2e3d4488-v1
+
+      - name: Kernel typecheck source-derived functions under explicit models
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="eth/verification/checked-csr-source/proofs"
+          cd "$proof"
+          lake update
+          lake exe cache get
+          lake -K maxJobs=2 build CheckedCsrSource
+          echo 'SOURCE_DERIVED_CSR_LEAN_WITH_EXPLICIT_LIBRARY_MODELS=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOTE=Not yet a universal source-to-independent-model refinement theorem.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Retain successful and failed extraction evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-csr-source-derived-probe
+          path: ${{ runner.temp }}/checked-csr/
+          if-no-files-found: warn
+          retention-days: 7

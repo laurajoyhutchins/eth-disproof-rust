@@ -1,0 +1,132 @@
+name: affine source-derived Rust to Lean (Aeneas probe)
+
+on:
+  pull_request:
+    paths:
+      - "experiments/egg-contraction-optimizer/src/checked_toggle.rs"
+      - "experiments/egg-contraction-optimizer/verification/source-derived/**"
+      - ".github/workflows/affine-source-derived-aeneas.yml"
+  workflow_dispatch:
+
+# This is deliberately an isolated, expensive verification experiment.
+# Do not treat successful extraction as a universal refinement theorem.
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      AENEAS_PIN: 2e3d4488280bb8a95411db81019a7854a784861f
+      CHARON_PIN: 9e193f0317dacc822cc864c1798b117c70dcf7df
+      VERIFY_CRATE: experiments/egg-contraction-optimizer/verification/source-derived
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check source identity and compile actual operational Rust
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f experiments/egg-contraction-optimizer/src/checked_toggle.rs
+          grep -F '#[path = "../../../src/checked_toggle.rs"]' "$VERIFY_CRATE/src/lib.rs"
+          cargo test --manifest-path "$VERIFY_CRATE/Cargo.toml" --offline
+          echo "The extraction wrapper compiles the operational Rust source."
+          echo "This alone does not prove Rust-to-Lean refinement."
+
+      - name: Install pinned Nix package manager
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            extra-substituters = https://hacl.cachix.org
+            extra-trusted-public-keys = hacl.cachix.org-1:FzsZ2xsByOwKwIWNPII7yMOelJNDZ12mDAj3d1eGX0c=
+
+      - name: Charon LLBC extraction and Aeneas Lean translation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/affine-source-derived"
+          export LLBC="$RUNNER_TEMP/affine-source-derived/checked_toggle.llbc"
+          export GENERATED="$RUNNER_TEMP/affine-source-derived/generated"
+          export VERIFY_CRATE="$GITHUB_WORKSPACE/$VERIFY_CRATE"
+          nix shell "github:AeneasVerif/aeneas/$AENEAS_PIN#aeneas" \
+            "github:AeneasVerif/charon/$CHARON_PIN#rustToolchain" \
+            --command bash -euo pipefail -c '
+              command -v charon
+              command -v aeneas
+              command -v cargo
+              cd "$VERIFY_CRATE"
+              charon cargo --preset=aeneas --dest-file="$LLBC"
+              test -s "$LLBC"
+              grep -F "flip_checked" "$LLBC" >/dev/null
+              echo "Source-derived LLBC contains the production function"
+              mkdir -p "$GENERATED"
+              aeneas -backend lean "$LLBC" -dest "$GENERATED" \
+                -subdir /AffineCheckedToggle/Code -split-files -namespace AffineCheckedToggle
+              find "$GENERATED" -type f -name "*.lean" -print
+              grep -R -E "checked_flip|flip_checked" "$GENERATED" >/dev/null
+            '
+          echo "Aeneas emitted source-derived Lean data. No correspondence theorem has been proved yet."
+
+      - name: Pin exact source-derived Lean content
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated="$RUNNER_TEMP/affine-source-derived/generated/AffineCheckedToggle/Code"
+          sha256sum "$generated/Funs.lean" "$generated/Types.lean"
+          echo "0a9c30a917061ad9de3e0c7b007a9efb16559d3018d94e7071086911579f5742  $generated/Funs.lean" | sha256sum --check
+          echo "71d655a4d081c5f962336cb0a409ea6ad47cb42fd505fcdaf765eba7418002c1  $generated/Types.lean" | sha256sum --check
+          proof="experiments/egg-contraction-optimizer/verification/source-derived/proofs"
+          mkdir -p "$proof/AffineCheckedToggle/Code"
+          cp "$generated/Funs.lean" "$generated/Types.lean" "$proof/AffineCheckedToggle/Code/"
+
+      - name: Generate pinned Lean dependency manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --no-modify-path --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          cd experiments/egg-contraction-optimizer/verification/source-derived/proofs
+          "$HOME/.elan/bin/lake" update
+          test -f lake-manifest.json
+
+      - name: Set up independently pinned Lean 4.36 for extracted Rust
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: experiments/egg-contraction-optimizer/verification/source-derived/proofs
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Cache compiled Aeneas Lean dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            experiments/egg-contraction-optimizer/verification/source-derived/proofs/.lake/packages/aeneas/backends/lean/.lake/build
+          key: aeneas-lean-backend-v4.36.0-2e3d4488-v1
+
+      - name: Kernel-check proof against generated Rust functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="experiments/egg-contraction-optimizer/verification/source-derived/proofs"
+          test "$(cat "$proof/lean-toolchain")" = "leanprover/lean4:v4.36.0"
+          ! grep -nE '\\b(sorry|admit|axiom|unsafe)\\b' "$proof/AffineCheckedToggle/Properties/CheckedFlip.lean"
+          cd "$proof"
+          lake update
+          lake exe cache get
+          lake build AffineCheckedToggle
+          echo "Verified the source-derived Lean theorem against regenerated functions"
+
+      - name: Preserve LLBC and generated Lean for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: affine-source-derived-aeneas
+          path: ${{ runner.temp }}/affine-source-derived/
+          if-no-files-found: warn
+          retention-days: 7

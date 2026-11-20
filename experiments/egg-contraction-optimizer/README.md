@@ -213,6 +213,116 @@ are not proved. See the
 [technical notebook](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).
 
 
+## Strict raw-value certificate admission
+
+The public affine eliminate method now routes through a **versioned raw-value certificate**, decodes that raw witness, and runs the independent dense-Boolean replay checker before returning a boundary interface. The source producer's unchecked witness function remains available for adversarial experiments.
+
+The [raw-value contract](src/affine_wire.rs) uses version 1; tag 0 is row swap, tag 1 is target-XOR-source, and row indices and pivot columns are unsigned 64-bit values. It refuses unknown versions/tags, aliases, out-of-range indices, invalid or unsorted pivot lists, and conversions to platform usize that cannot be represented. This is a **typed raw-value schema**, not a serialized byte format or parser.
+
+Explicit [VerificationLimits](src/affine_cert.rs) set max_cells and max_steps, each defaulting to 8,000,000. Checked multiplication rejects overflow and budget excess before the dense matrix is allocated; the transcript length is checked before replay. These limits do not bound the entire process, producer, or externally allocated raw input.
+
+The [Lean packed-row model](../../eth/proofs/IndependentAffinePackedRows.lean) now has 8-bit raw tags, 64-bit raw indices, a checked finite-index decoder, a version-and-budget admission predicate, and a replay theorem. The formal lemmas prove that its decoder rejects unknown, aliased and out-of-range operations, rejects exceeded budgets, and preserves exact Boolean replay for accepted transcripts. This is a kernel-checked mathematical model, **not** a Lean refinement of the compiled Rust decoder.
+
+The Rust suite additionally compares **720 tag/index cases** (5 row counts × 4 tags × 6 first indices × 6 second indices) and **3,900 pivot/dimension cases** to independently constructed acceptance predicates. The full path, corruptions, empty matrices and budget limits are also tested. See the [experiment workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/workflows/egg-contraction-experiment.yml) for exact-head CI evidence.
+
+Remaining open: formal correspondence of the entire native Rust verifier and terminal pivot/residual decisions to Lean, any canonical byte-serialization/parser proof, compiler and memory/ownership semantics, and a certified whole-pipeline cost bound.
+
+
+## Terminal pivot/free completion theorem and witness
+
+The [new Lean terminal theorem](../../eth/proofs/IndependentAffineTerminal.lean) proves, for **any finite pivot, free, boundary and residual index sets**, that a matrix with isolated pivot variables and boundary-only residual constraints has exactly **2^number_of_free_variables** internal solutions for a feasible boundary, or zero otherwise. Free columns may remain in pivot equations. An additional theorem transports the result through *any bijection* between the actual internal-column order and the pivot/free partition; pivots need not be consecutive.
+
+The independent [Rust checker](src/affine_cert.rs) now constructs a read-only **VerifiedTerminal** from independently replayed source rows, only after all earlier pivot isolation, rank, boundary-order, and residual-equality checks succeed. Its **complete** method calculates the unique pivot extension from free and boundary bits, returning None for impossible residual contexts. Its **count_at** method implements the resulting exact count. Witness fields are private to prevent accidental unchecked construction.
+
+The Rust suite checks every boundary for **200 seeded small affine systems**, enumerates every free assignment, verifies every completed internal assignment against the original equations, and confirms no duplicate completions. A noncontiguous-pivot fixture has pivot columns 1 and 4 and free columns 0, 2, 3 and 5, with exactly 16 completions in feasible contexts.
+
+[Exact-head experiment CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44614539579) passed **38 Rust tests** and the pinned Lean 4.34.1 theorem check. [Original ETH Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44614539583) passed at the same commit.
+
+**Formal boundary:** The terminal counting theorem is kernel-verified and applies to the *mathematically specified* normal form. The executable checker and terminal witness are independently tested, **not formally refined to Lean**. This does not prove the compiled Rust program correct or establish general #SAT/ETH complexity.
+
+
+## Checked full-row terminal shape and source occurrence parity
+
+The [new Lean terminal check theorem](../../eth/proofs/IndependentAffineTerminal.lean) applies to the **full replayed equations**. Its accepted block structure requires an identity pivot-by-pivot matrix and zero residual-internal blocks, while permitting unrestricted free-variable coefficients in pivot equations. It proves the full system has exactly 2^(free dimension) internal solutions at feasible boundary assignments, and none otherwise. The earlier arbitrary-column theorem handles noncontiguous pivots.
+
+[IndependentAffineSourceRows.lean](../../eth/proofs/IndependentAffineSourceRows.lean) verifies source-list-to-GF(2) row reconstruction for arbitrary finite variable sets and occurrence lists, including duplicate-name cancellation, and relates Boolean XOR folds to the reconstructed coefficient row.
+
+The Rust independent checker suite now includes falsification cases for missing or unisolated pivots, internal bits in residual rows, and changed boundary residuals. It also accepts the legitimate free-variable coefficients in pivot equations. [Pinned exact-head CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44638863761) passed **six Lean modules and 39 Rust tests** with no sorryAx, and the [original ETH Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44638863755) passed at the same commit.
+
+**Trust boundary:** The new Lean theorem validates the mathematical predicate for a replayed terminal matrix; source occurrence parity is likewise a mathematical theorem. The actual Rust string lookup, row assembly, terminal checker decisions and machine-level resources still lack a source-to-Lean implementation refinement proof. No general SAT or ETH speedup is claimed.
+
+
+## Independent Lean audit of native Rust-produced certificates
+
+The opt-in Rust CLI emits **data-only Lean fixture records**, not claims trusted by the Lean side:
+
+~~~sh
+cargo run --manifest-path experiments/egg-contraction-optimizer/Cargo.toml -- --emit-lean-certificates
+~~~
+
+The [Rust emitter](src/affine_native_lean.rs) serializes original source equation occurrence lists, raw row operations, pivot columns and the claimed boundary interface into closed Lean terms. Names are decimal UTF-8 byte lists, not executable text. It emits six valid receipts from the live producer and six fault-injected negative receipts.
+
+The [independent Lean auditor](../../eth/proofs/IndependentAffineNativeAudit.lean) reconstructs coefficient rows **from source occurrences**, replays raw swaps and XORs and checks the terminal certificate independently of the native checker. Lean proves closed receipt acceptance/refusal equalities using the kernel-checked decide tactic. Five small accepted cases are also exhaustively checked against direct Boolean source counting, for **every boundary assignment**. A 130-variable case crosses packed-word boundaries but does not use exponential direct counting.
+
+The pinned [exact-head CI run #44743370753](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44743370753) passed the generated Lean audit, seven Lean source modules and **40 Rust tests**. The [original ETH Rust CI #44743370842](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44743370842) independently passed at the same commit.
+
+**Trust boundary:** This is a finite, actual-Rust-output cross-implementation test with kernel-checked Lean propositions, not a universal formal refinement of the Rust source, compiler or binary. The fixed Lean auditor and limited fixture emitter are not an arbitrary byte protocol parser. The Rust data structures, every input/rejection path, machine memory semantics and worst-case costs remain separately unverified.
+
+Notebook: [Affine elimination certificates](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).
+
+
+## Source-name admission and indexed row construction
+
+The producer formerly enforced `[A-Za-z][A-Za-z0-9_]*`, while the independent Rust checker accepted some other nonempty names. This was a supported-input domain mismatch, not an algebraic counterexample. Producer and checker now use the same explicit Rust identifier validator; the separate Lean receipt auditor independently implements the grammar on UTF-8 byte lists.
+
+The regression test renames a **declared variable and all its equation occurrences together**. Although the mathematical affine system remains identical, malformed source names must be refused. The Rust-to-Lean emitted corpus includes leading-digit, hyphenated and non-ASCII negative controls.
+
+[IndependentAffineIndexToggle.lean](../../eth/proofs/IndependentAffineIndexToggle.lean) proves a universal correspondence for the specified row-construction algorithm: given distinct registered names and a lookup returning the registered column for each source occurrence, performing all indexed Boolean toggles produces exactly the source-occurrence parity coefficients, for any finite number of variables and occurrence-list length. Duplicate occurrences cancel. This is a **theorem with explicit lookup-correctness assumptions**, not a formal proof of the Rust `BTreeMap`, `Vec`, allocator or binary.
+
+[Pinned experiment CI #44745997859](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44745997859) passed the new Lean theorem without `sorryAx`, the Rust-to-Lean corpus and **41 Rust tests**. The [original ETH Rust workflow #44745997807](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44745997807) also passed at the same code commit.
+
+Remaining implementation gap: demonstrate that native map insertion/lookup and bit-vector indexing actually refine the specified lookup/update operations across all supported inputs, followed by the rest of the independent Rust checker. See [the notebook derivation](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).
+
+
+## Checked source-name lookup at the mutation boundary
+
+The independent Rust checker now retains the original ordered declarations beside the BTreeMap index. The map only supplies a **candidate** column: every lookup checks that the original name at that index equals the requested name, and every bit update uses bounds-checked mutable access. Wrong-but-in-range indices, missing entries, RHS-pointing indices and short rows are refused before mutation.
+
+The universal [Lean checked-index theorem](../../eth/proofs/IndependentAffineIndexToggle.lean) proves that **every accepted raw name/index transcript** has the same coefficient bits as parity over its source variable occurrences, for pairwise-distinct registered names. It no longer assumes the candidate map index is correct, because checking the original ordered names discharges that property on success. This is a mathematical proof of the **checked algorithm**, not of Rust BTreeMap or Vec internals.
+
+Native tests corrupt the registry with wrong in-range and out-of-range indices, RHS indices and missing entries; none may mutate the row. Another test compares 128 seeded 128-occurrence sequences to direct source-name parity after every toggle. The [pinned CI run](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44748607741) passed the Lean source-parity theorem, the Rust-to-Lean receipt audit and **43 Rust tests**; [Lean proof style](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44748607611) and [original ETH Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44748607721) also passed.
+
+**Still open:** Source- or compiler-level proof of the actual Rust lookup, bounds-checked indexing, memory operations and complete verifier control flow, as well as runtime resource and generic SAT/ETH complexity claims. The [notebook study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md) explains the proof obligations and negative findings.
+
+
+## Bounded machine-level verification of the actual Rust slice update
+
+The independent affine checker validates the proposed column against the original ordered source names and then calls the **real** [checked_toggle.rs](src/checked_toggle.rs) Rust primitive. That module performs `row.get_mut(proposed)` followed by one Boolean flip, or refuses without writing. It is compiled into the running verifier, not copied into a test-only implementation.
+
+The separate [Kani workflow](../../.github/workflows/affine-checked-toggle-kani.yml) directly checks the same Rust file with **Kani 0.68.0**:
+
+```sh
+# From experiments/egg-contraction-optimizer, after installing Kani 0.68.0:
+kani src/checked_toggle.rs
+```
+
+The harnesses analyze a four-bit row with symbolic initial bits and every `u8` candidate index, plus truncated and empty rows. They assert exact single-bit framing for successful access and atomic refusal for absent positions. [Workflow #44754372798](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44754372798) passed both harnesses: **0/41** and **0/66** failed checks (one unreachable check in the latter).
+
+**Scope and negative result:** This is a bounded source-level machine check, **not** a proof of arbitrary `usize` inputs, source-name equality, `BTreeMap`, or the full compiled verifier. The initial [whole-crate Kani run #44751435855](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44751435855) verified the short-row harness but spent its remaining 15-minute limit unwinding `memcmp` in a symbolic string-comparison harness. Splitting the concrete mutation primitive from name admission eliminated that solver obstacle. The universal checked name/index semantics remain separately kernel-checked in [IndependentAffineIndexToggle.lean](../../eth/proofs/IndependentAffineIndexToggle.lean).
+
+See the [technical notebook study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-rust-slice-model-checking.md) for the precise proof and trust boundaries.
+
+
+## Universal matrix semantics and outstanding Rust refinement
+
+[IndependentAffineMatrixReplay.lean](../../eth/proofs/IndependentAffineMatrixReplay.lean) imports the established row-operation theorem and proves **for every finite GF(2) coefficient matrix, every assignment and every legal transcript** that matrix transformation commutes with evaluation and preserves the exact solution predicate. It also proves that the number of satisfying assignments remains unchanged under **any additional predicate on assignments**, including arbitrary fixed boundary conditions. This is a universal mathematical theorem, not extracted Rust semantics. [Pinned Lean 4.34.1 CI #44758551434](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44758551434) passed the new cardinality proof without `sorryAx` and all **46 native Rust tests**.
+
+The verifier now uses fallible `Vec::try_reserve_exact` for its dense Boolean matrix, ordered source-name registry and row-XOR snapshot. It checks declared-variable dimension separately from the matrix-cell product so even a zero-row matrix cannot bypass variable-width budgets. A true zero-variable, zero-equation system remains valid with a zero cell budget. The validated sorted pivot list now supports binary-search membership directly, without constructing a redundant `BTreeSet`.
+
+The tests include allocation reservation refusals before returning a result, zero-dimensional and overflow boundary cases, and direct slice flips at 0, 1, 63, 64, 65, 127, 128, 129 and 1025 positions plus `usize::MAX` refusal. `try_reserve_exact` does **not** make all allocations fallible or guarantee that an overcommitting OS cannot terminate execution.
+
+**Still open:** The actual compiled Rust matrix reconstruction, row swaps/XOR, terminal accept/reject branches, BTreeMap/Vec operations, remaining `collect`/`clone`/BigUint allocations and machine resource semantics are not universally refined to the Lean model. The [universal refinement notebook study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-checker-universal-refinement.md) defines the exact source-derived proof obligations and evaluates an Aeneas Rust-to-Lean extraction path.
+
 ## Exact DIMACS counting CLI
 
 See [COUNTING.md](COUNTING.md) for the fail-closed source-to-affine counting executable, certificate replay, JSON resource receipts, and supported CNF grammar.

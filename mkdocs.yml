@@ -115,6 +115,7 @@ nav:
       - Directory layout: repository-layout.md
       - Project README: README.md
       - Contributing: CONTRIBUTING.md
+      - Rust code conventions: RUST_STYLE.md
       - Writing these notes: STYLE.md
       - Source on GitHub: https://github.com/laurajoyhutchins/eth-disproof-rust
 

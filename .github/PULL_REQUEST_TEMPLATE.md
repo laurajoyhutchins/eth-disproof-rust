@@ -15,17 +15,14 @@
 
 <!-- Do not inherit pass claims from older SHAs. -->
 
-## Equivalence and resources
+## Distinct evidence and counterexample
 
-| Claim | Verified at this head? | Evidence |
-| --- | --- | --- |
-| Rust tests/lints | Yes / No | |
-| Original pinned Lean executed independently | Yes / No | |
-| Full state, transitions, output and halting compared | Yes / No | |
-| Rust runtime/allocations measured | Yes / No | |
-| Primitive TM2 steps and tape bounds justified | Yes / No | |
-
-<!-- A source-instruction count or Rust benchmark is not a TM2 complexity proof. -->
+<!-- List only the claims actually made by this change. For each, name the
+exact-head theorem, test, independently produced output, or measurement.
+Identify a real failing mutant/counterexample when claiming detection.
+Do not copy irrelevant Yes/No boxes or count duplicate commands as extra
+confidence. A Rust-vs-Rust replay is not original-Lean differential evidence;
+source-instruction counts and benchmarks are not primitive TM2 bounds. -->
 
 ## What is still unsupported?
 

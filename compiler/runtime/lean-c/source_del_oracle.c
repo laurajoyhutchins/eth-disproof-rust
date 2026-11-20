@@ -14,6 +14,9 @@ extern lean_obj_res l_RuntimeHeapDel_rebuildOrExtractByPayload(
 extern lean_obj_res lr_heap_generated_source_del_extract(
     lean_obj_arg, lean_obj_arg, b_lean_obj_arg);
 extern uint8_t lr_heap_source_del_shell_eligible(lean_obj_arg);
+extern void lr_source_event_begin(unsigned, const char *, lean_object *,
+                                   lean_object *, lean_object *);
+extern void lr_source_event_end(void);
 
 static int physical_rc(lean_object *p) {
     return p && !lean_is_scalar(p) && lean_is_st(p)
@@ -118,16 +121,34 @@ lean_obj_res lr_heap_compare_source_del(
             return lean_box(5);
         }
     }
+    // Observe eight disjoint branches (tagged/heap old stamp, shared/
+    // unique parent, matching/mismatching payload) at their actual source
+    // function boundaries. All 720 ordinary differential cases still run.
+    // No source IR operation is performed by the host between begin/end.
+    static unsigned selected_cases;
+    const unsigned event_case = (heap_stamp ? 4u : 0u) |
+        (is_shared ? 2u : 0u) | (test == left ? 1u : 0u);
+    const unsigned event_bit = 1u << event_case;
+    const int trace_this = left == 17 && right == 901 &&
+        (heap_stamp || lean_unbox(old_stamp) == 17) &&
+        !(selected_cases & event_bit);
+    if (trace_this) selected_cases |= event_bit;
     // One owned parent reference is transferred to each original function.
     // No C host reset/reuse/del/dec acts on that reference.
+    if (trace_this) lr_source_event_begin(
+        event_case, "lean-c", original, original_child, old_stamp);
     lean_object *expected = l_RuntimeHeapDel_rebuildOrExtractByPayload(
         original, lean_box(replacement), lean_box(test));
+    if (trace_this) lr_source_event_end();
     int status = 0;
     if (heap_stamp && physical_rc(old_stamp) !=
         (stamp_entry_rc + (is_shared ? 2 : 1)))
         status = 10;
+    if (trace_this) lr_source_event_begin(
+        event_case, "reader-rust", generated, generated_child, old_stamp);
     lean_object *actual = lr_heap_generated_source_del_extract(
         generated, lean_box(replacement), lean_box(test));
+    if (trace_this) lr_source_event_end();
     if (heap_stamp && physical_rc(old_stamp) !=
         (stamp_entry_rc + (is_shared ? 2 : 0)))
         status = 11;

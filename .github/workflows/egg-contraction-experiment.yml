@@ -11,6 +11,35 @@ on:
       - "eth/proofs/IndependentAffineRankNullity.lean"
       - "eth/proofs/IndependentAffineRowOps.lean"
       - "eth/proofs/IndependentAffinePackedRows.lean"
+      - "eth/proofs/IndependentAffineTerminal.lean"
+      - "eth/proofs/IndependentAffineSourceRows.lean"
+      - "eth/proofs/IndependentAffineNativeAudit.lean"
+      - "eth/proofs/IndependentAffineIndexToggle.lean"
+      - "eth/proofs/IndependentAffineMatrixReplay.lean"
+      - "instrumentation/lean-env/lean-toolchain"
+      - "instrumentation/lean-env/lakefile.lean"
+      - "instrumentation/lean-env/lake-manifest.json"
+      - ".github/workflows/egg-contraction-experiment.yml"
+  # The independent Cargo workspace needs exact-head checks after merge.
+  push:
+    branches: [main]
+    paths:
+      - "experiments/egg-contraction-optimizer/**"
+      - "eth/proofs/IndependentAffineBoundary.lean"
+      - "eth/proofs/IndependentLivePortComposition.lean"
+      - "eth/proofs/IndependentLivePortFold.lean"
+      - "eth/proofs/IndependentOverlappingFactors.lean"
+      - "eth/proofs/IndependentAffineRankNullity.lean"
+      - "eth/proofs/IndependentAffineRowOps.lean"
+      - "eth/proofs/IndependentAffinePackedRows.lean"
+      - "eth/proofs/IndependentAffineTerminal.lean"
+      - "eth/proofs/IndependentAffineSourceRows.lean"
+      - "eth/proofs/IndependentAffineNativeAudit.lean"
+      - "eth/proofs/IndependentAffineIndexToggle.lean"
+      - "eth/proofs/IndependentAffineMatrixReplay.lean"
+      - "instrumentation/lean-env/lean-toolchain"
+      - "instrumentation/lean-env/lakefile.lean"
+      - "instrumentation/lean-env/lake-manifest.json"
       - ".github/workflows/egg-contraction-experiment.yml"
   workflow_dispatch:
 
@@ -22,15 +51,14 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Test standalone experiment
-        run: cargo test --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
-      - name: Run reproducible examples
-        run: cargo run --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
+      - name: Test standalone experiment against committed dependency lock
+        run: cargo test --locked --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
+      # CLI process invocation is a distinct observable from library tests.
       - name: Run exact counting CLI smoke case
         shell: bash
         run: |
           set -euo pipefail
-          printf 'p cnf 3 2\n1 -2 0\n-1 2 0\n' | cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin exact-cnf-count -- - | grep -F '"count":"4"'
+          printf 'p cnf 3 2\n1 -2 0\n-1 2 0\n' | cargo run --quiet --locked --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin exact-cnf-count -- - | grep -F '"count":"4"'
 
       - name: Run contraction-order study and check small-case oracle
         shell: bash
@@ -63,15 +91,63 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean eth/proofs/IndependentAffineNativeAudit.lean eth/proofs/IndependentAffineIndexToggle.lean eth/proofs/IndependentAffineMatrixReplay.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
           cd instrumentation/lean-env
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineBoundary.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRankNullity.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRowOps.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAffinePackedRows.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentLivePortComposition.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentLivePortFold.lean"
-          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentOverlappingFactors.lean"
+          failures=0
+          for proof in \
+            IndependentAffineBoundary \
+            IndependentAffineRankNullity \
+            IndependentAffineRowOps \
+            IndependentAffinePackedRows \
+            IndependentAffineTerminal \
+            IndependentAffineSourceRows \
+            IndependentAffineNativeAudit \
+            IndependentAffineIndexToggle \
+            IndependentLivePortComposition \
+            IndependentLivePortFold \
+            IndependentOverlappingFactors; do
+            echo "::group::Lean proof: $proof"
+            if ! lake env lean "$GITHUB_WORKSPACE/eth/proofs/${proof}.lean"; then
+              failures=1
+            fi
+            echo "::endgroup::"
+          done
+          # The matrix-level theorem imports the independently checked
+          # row-operation module. Lake only permits olean emission for
+          # sources inside its package root, so stage a verbatim copy
+          # inside the ephemeral CI workspace; never alter the Git tree.
+          cp "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineRowOps.lean" \
+            IndependentAffineRowOps.lean
+          mkdir -p .lake/build/lib/lean
+          if ! lake env lean -o "$PWD/.lake/build/lib/lean/IndependentAffineRowOps.olean" \
+            IndependentAffineRowOps.lean; then
+            failures=1
+          elif ! lake env lean \
+            "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineMatrixReplay.lean"; then
+            failures=1
+          fi
+          # Compile an independent Lean reference against the actual source,
+          # raw transcript and interface emitted by the native Rust binary.
+          # Generated data is a fixed grammar of decimal byte lists, not
+          # arbitrary user-controlled Lean syntax.
+          generated="$RUNNER_TEMP/affine-native-generated.lean"
+          combined="$RUNNER_TEMP/affine-native-audited.lean"
+          if ! cargo run --quiet --locked \
+            --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
+            -- --emit-lean-certificates > "$generated"; then
+            failures=1
+          elif grep -nE '\b(sorry|admit|axiom|unsafe)\b' "$generated"; then
+            echo "Unsafe generated Lean witness" >&2
+            failures=1
+          else
+            cat "$GITHUB_WORKSPACE/eth/proofs/IndependentAffineNativeAudit.lean" "$generated" > "$combined"
+            echo "::group::Kernel-check actual Rust-emitted receipt corpus"
+            if ! lake env lean "$combined"; then
+              failures=1
+            fi
+            echo "::endgroup::"
+          fi
+          exit "$failures"

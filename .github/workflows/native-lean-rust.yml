@@ -35,6 +35,12 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      - name: Fail-fast worklist diagnostic script syntax
+        run: |
+          bash -n compiler/scripts/check-internal-worklist.sh
+          python3 -m py_compile compiler/scripts/instrument-pinned-worklist.py
+          python3 -m py_compile compiler/scripts/check-internal-worklist.py
+
       - name: Restore pinned Rust 1.99.1
         run: |
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
@@ -57,10 +63,10 @@ jobs:
           lint: false
           mk_all-check: false
 
-      - name: Install GMP development library for source-refined Nat arithmetic
+      - name: Install GMP and libc++ headers for exact pinned C++ runtime checks
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libgmp-dev
+          sudo apt-get install -y --no-install-recommends libgmp-dev libc++-dev libc++abi-dev libuv1-dev
 
       - name: Run in-process Lean ABI, Rust codegen and executable conformance
         shell: bash
@@ -177,8 +183,28 @@ jobs:
             compiler/artifacts/lean-c-generated-heap/source-del-combined.rs
             compiler/artifacts/lean-c-generated-heap/source-del-execution-status.txt
             compiler/artifacts/lean-c-generated-heap/source-del-trace.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-events.tsv
+            compiler/artifacts/lean-c-generated-heap/source-del-events-audit.txt
+            compiler/artifacts/lean-c-generated-heap/destructor-worklist-witnesses.tsv
+            compiler/artifacts/lean-c-generated-heap/destructor-worklist-witness-audit.txt
+            compiler/artifacts/lean-c-generated-heap/internal-worklist-events.tsv
+            compiler/artifacts/lean-c-generated-heap/internal-worklist-audit.txt
+            compiler/artifacts/lean-c-generated-heap/internal-witnesses.tsv
+            compiler/artifacts/lean-c-generated-heap/internal-witness-audit.txt
+            compiler/artifacts/lean-c-generated-heap/internal-driver-output.txt
+            compiler/artifacts/lean-c-generated-heap/stock-diagnostic-comparison.txt
+            compiler/artifacts/lean-c-generated-heap/worklist-source-audit.txt
+            compiler/artifacts/lean-c-generated-heap/internal-worklist-sha256.txt
+            compiler/artifacts/lean-c-generated-heap/RuntimeHeapKernels-traced.c
+            compiler/artifacts/lean-c-generated-heap/RuntimeHeapDelKernels-traced.c
+            compiler/artifacts/lean-c-generated-heap/abi-traced.c
             compiler/artifacts/lean-c-generated-heap/source-shell-physical.tsv
             compiler/artifacts/lean-c-generated-heap/source-shell-trace-audit.txt
+            compiler/artifacts/lean-c-generated-heap/source-release-physical.tsv
+            compiler/artifacts/lean-c-generated-heap/source-release-trace-audit.txt
+            compiler/artifacts/lean-c-generated-heap/reader-c-release-axioms.txt
+            compiler/artifacts/lean-c-generated-heap/source-release-mutated-*.tsv
+            compiler/artifacts/lean-c-generated-heap/source-release-rejected-*.txt
             compiler/artifacts/lean-c-generated-heap/source-shell-mutated-*.tsv
             compiler/artifacts/lean-c-generated-heap/source-shell-rejected-*.txt
             compiler/artifacts/lean-c-generated-heap/source-shell-simulation-lean.txt
@@ -207,6 +233,8 @@ jobs:
             compiler/artifacts/reader-transfer-credits-axioms.txt
             compiler/artifacts/reader-object-credits-axioms.txt
             compiler/artifacts/reader-heap-events-axioms.txt
+            compiler/artifacts/reader-worklist-order-axioms.txt
+            compiler/artifacts/reader-worklist-aliases-axioms.txt
             compiler/artifacts/transfer-contract-lean-ir.log
             compiler/artifacts/ownership-object-trace/receipt.txt
             compiler/artifacts/ownership-object-trace/c-*.txt

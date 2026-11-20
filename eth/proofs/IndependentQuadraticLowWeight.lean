@@ -441,16 +441,16 @@ def nativeTermWellFormed (width : ℕ) (term : List Nat) : Bool :=
     term.all (fun i => decide (i < width))
 
 /-- Require degree-two squarefree source monomials and in-range affine row indices. -/
-def nativeSourceShape (n : ℕ) (src : NativeSourceRecord) : Prop :=
-  src.phaseTerms.all (nativeTermWellFormed (n + 1)) = true ∧
-    src.rows.all (fun row => row.1.all (fun i => decide (i < n + 1))) = true
+def nativeSourceShape (n : ℕ) (src : NativeSourceRecord) : Bool :=
+  src.phaseTerms.all (nativeTermWellFormed (n + 1)) &&
+    src.rows.all (fun row => row.1.all (fun i => decide (i < n + 1)))
 
 /-- Require in-range projected terms and rows and a well-formed coefficient receipt. -/
-def nativeOutputShape (n : ℕ) (out : NativeOutputRecord) : Prop :=
-  out.phaseTerms.all (nativeTermWellFormed n) = true ∧
-    out.rows.all (fun row => row.1.all (fun i => decide (i < n))) = true ∧
-    out.added.toList.all (fun row => row.1.all (fun i => decide (i < n))) = true ∧
-    out.receipt.checkShape n = true
+def nativeOutputShape (n : ℕ) (out : NativeOutputRecord) : Bool :=
+  out.phaseTerms.all (nativeTermWellFormed n) &&
+    out.rows.all (fun row => row.1.all (fun i => decide (i < n))) &&
+    out.added.toList.all (fun row => row.1.all (fun i => decide (i < n))) &&
+    out.receipt.checkShape n
 
 /-- The finite set of boundary coordinates assigned true. -/
 def nativeSupport {n : ℕ} (boundary : Fin n → Bool) :
@@ -511,7 +511,7 @@ def nativeBoundaryCheck {n : ℕ}
 No native success flag is trusted and no unbounded Prop decision is used. -/
 def checkNativeInstance {n : ℕ}
     (src : NativeSourceRecord) (out : NativeOutputRecord) : Bool :=
-  decide (nativeSourceShape n src ∧ nativeOutputShape n out) &&
+  nativeSourceShape n src && nativeOutputShape n out &&
     (nativeBoundaries n).all (nativeBoundaryCheck src out)
 
 /-- Every context is included in the finite executable oracle. -/

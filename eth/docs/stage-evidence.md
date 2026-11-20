@@ -31,3 +31,28 @@ The [source-refinement workflow](../../.github/workflows/lean-source-refinement.
 Root Rust CI executes the report's unit tests as part of `cargo test --locked --offline --all-targets`. The deep Lean job remains independent: a passing Rust report test does not certify a generated Lean receipt.
 
 See [existing coverage and evidence](evidence.md), [remaining source path](remaining-lean-port.md), and [cross-language acceptance](../../research/lean-rust-acceptance.md).
+
+## Scoped receipts that can actually be checked
+
+The adjacent [receipt ledger](../evidence/claims.json) describes **three specific compiler claims**: a Lean theorem in an abstract reference-count event model, a bounded source-to-emission event-order guard, and a bounded original Lean C versus generated Rust ownership-event differential. None is a theorem about the complete ETH machine, actual arbitrary Rust execution, or universal runtime equivalence.
+
+Run the source-byte check without network access:
+
+```sh
+python3 -m unittest discover -s tools -p 'test_evidence_claims.py'
+python3 tools/check_evidence_claims.py --json
+```
+
+On an authenticated machine with GitHub Actions read access, independently check the original workflow evidence:
+
+```sh
+GITHUB_TOKEN=... python3 tools/check_evidence_claims.py --verify-remote --json
+```
+
+The auditor computes the **actual Git blob SHA-1**, including Git's `blob <length>\\0` prefix, for every pinned local proof or implementation file. If any bytes change, the current claim **refuses**, rather than silently inheriting an older passing run. It also rejects duplicate claims, malformed domains, missing exclusions, path traversal, unsupported proof tiers, and a model theorem mislabeled as executable refinement. This is not a whole-repository graph or a GitHub-hosted database.
+
+Remote mode retrieves the actual Actions run and its jobs, requiring an exact matching tested commit, workflow filename, completed successful run, named successful job, and named successful gate step. A green workflow URL or a claimed commit alone is insufficient.
+
+**Semantic boundary:** this authenticates a *specific historical check over exact unchanged bytes*, not the theorem's meaning, compiler correctness, transitive dependency completeness, machine-level behavior or proof validity at a changed source. The claim's quantifier and explicit exclusions remain binding. The auditor's `semantic_promotion: none` field is intentional.
+
+The **root Rust workflow** runs the local refusal suite and content-pin check entirely offline, so ordinary edits cannot inherit stale evidence or become dependent on GitHub API availability. The [scoped evidence workflow](../../.github/workflows/evidence-receipts.yml) checks the actual historical Git trees and Actions run/job/step when the ledger, its validator or its tests change; it can also be invoked manually. Historical run metadata remains subject to GitHub retention, so this is an authenticated receipt mechanism, **not permanent theorem storage**. Adding a new evidence tier, especially an actual Rust-to-Lean universal correspondence theorem, requires a separately specified check and new test cases. The canonical `eth-stage-evidence` implementation-stage graph remains distinct from this scoped compiler receipt ledger.

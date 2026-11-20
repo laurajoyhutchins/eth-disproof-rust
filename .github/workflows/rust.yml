@@ -31,6 +31,10 @@ jobs:
         run: cargo fetch --locked
       - name: Repository layout contract
         run: python3 -m unittest discover -s tools -p 'test_repository_layout.py'
+      - name: Scoped evidence source freshness (offline)
+        run: |
+          python3 -m unittest discover -s tools -p 'test_evidence_claims.py' -v
+          python3 tools/check_evidence_claims.py --json
       - name: Formatting (workspace)
         run: cargo fmt --all -- --check
       - name: Compiler CLI independence, formatting and tests

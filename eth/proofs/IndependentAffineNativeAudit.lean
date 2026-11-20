@@ -588,7 +588,7 @@ theorem admitted_source_occurrence_parity
   have hs := hsource
   simp only [sourceOK, Bool.and_eq_true] at hs
   rcases hs with ⟨⟨hunique, _⟩, hall⟩
-  have hnodup : (names s).Nodup := of_decide_true hunique
+  have hnodup : (names s).Nodup := by simpa using hunique
   have hcoverage : ∀ name ∈ e.occurrences, name ∈ names s := by
     intro name hname
     have heq := (List.all_eq_true.mp hall) e he

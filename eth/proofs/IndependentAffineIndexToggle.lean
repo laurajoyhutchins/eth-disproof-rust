@@ -33,7 +33,7 @@ def toggleIndex {n : Nat} (index : Fin n)
 /-- Direct, name-based parity semantics, independent of indices. -/
 def toggleName {n : Nat} (names : Fin n → Name)
     (row : Fin n → Bool) (name : Name) : Fin n → Bool :=
-  fun col => row col ^^ (name == names col)
+  fun col => row col ^^ decide (name = names col)
 
 /-- A successful lookup identifying a registered name toggles exactly
 the same row coordinate as name comparison, provided column names are
@@ -84,7 +84,7 @@ theorem foldl_named_at
     (col : Fin n) :
     (occurrences.foldl (toggleName names) initial) col =
       occurrences.foldl (fun parity name =>
-        parity ^^ (name == names col)) (initial col) := by
+        parity ^^ decide (name = names col)) (initial col) := by
   induction occurrences generalizing initial with
   | nil => rfl
   | cons head tail ih =>
@@ -106,7 +106,7 @@ theorem indexed_matrix_row_correct
       (fun row name => toggleIndex (lookup name) row)
       (fun _ => false)) col =
     occurrences.foldl
-      (fun parity name => parity ^^ (name == names col))
+      (fun parity name => parity ^^ decide (name = names col))
       false := by
   rw [foldl_lookup_eq_named names hUnique lookup occurrences hDeclared]
   exact foldl_named_at names occurrences (fun _ => false) col

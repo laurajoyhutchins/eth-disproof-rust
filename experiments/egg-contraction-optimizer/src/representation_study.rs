@@ -422,8 +422,8 @@ pub fn run(family: StudyFamily, size: usize, schedule: Schedule,
     let mut root = order[0];
     let mut peak_boundary_ports = stage.ports.len();
     let mut peak_table_cells = stage.exact.len();
-    let mut peak_exact_coefficient_slots = stage.exact.iter().map(|p| p.0.len()).sum();
-    let mut peak_exact_nonzero_coefficients = stage.exact.iter()
+    let mut peak_exact_coefficient_slots: usize = stage.exact.iter().map(|p| p.0.len()).sum();
+    let mut peak_exact_nonzero_coefficients: usize = stage.exact.iter()
         .map(Polynomial::nonzero_terms).sum();
     let mut exact_work = Work::default();
     let mut tropical_work = Work::default();

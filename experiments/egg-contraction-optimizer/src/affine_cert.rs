@@ -9,13 +9,9 @@ use crate::affine::{AffineInterface, AffineRegion, BoundaryRow};
 use num_bigint::BigUint;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// This is the concrete Rust primitive used for a single checked
-/// name-to-column update. Its contract is intentionally narrower than the
-/// map implementation: an arbitrary proposed index is untrusted.
-///
-/// All refusal paths occur before mutation, and successful updates affect
-/// only the named coefficient, never a different coefficient or the RHS.
-/// Its bounded machine-level semantics are separately checked with Kani.
+/// An arbitrary BTreeMap index is treated only as a *proposal*.
+/// The original source name must match before any row mutation.
+/// The bounded machine proof targets the exact slice primitive called here.
 fn toggle_registered_bit(
     names: &[&str],
     row: &mut [bool],
@@ -25,10 +21,7 @@ fn toggle_registered_bit(
     if names.get(proposed).copied() != Some(requested) {
         return Err("checker source lookup does not match declared column");
     }
-    let bit = row.get_mut(proposed)
-        .ok_or("checker matrix column outside allocated row")?;
-    *bit = !*bit;
-    Ok(())
+    crate::checked_toggle::flip_checked(row, proposed)
 }
 
 /// A checked source-name registry for independent matrix reconstruction.
@@ -74,61 +67,6 @@ impl<'a> CheckedColumns<'a> {
     }
 }
 
-
-#[cfg(kani)]
-mod checked_mutation_proofs {
-    use super::toggle_registered_bit;
-
-    /// Bit-precise verification of actual Rust slice indexing and mutation
-    /// on a complete 3-name registry plus a separate RHS coordinate.
-    /// Every 8-bit candidate index, each requested-name case, and every
-    /// Boolean row state is considered. This is a bounded harness, not a
-    /// universal proof for arbitrary slice sizes or Rust library behavior.
-    #[kani::proof]
-    fn checked_bit_mutation_preserves_other_coordinates() {
-        let raw: u8 = kani::any();
-        let which: u8 = kani::any();
-        kani::assume(which < 4);
-        let requested = match which {
-            0 => "u",
-            1 => "v",
-            2 => "b",
-            _ => "undeclared",
-        };
-        let before = [
-            kani::any::<bool>(),
-            kani::any::<bool>(),
-            kani::any::<bool>(),
-            kani::any::<bool>(), // RHS is not a declared column
-        ];
-        let mut after = before;
-        let result = toggle_registered_bit(
-            &["u", "v", "b"], &mut after, usize::from(raw), requested,
-        );
-        let should_accept = which < 3 && raw == which;
-        assert_eq!(result.is_ok(), should_accept);
-        for col in 0..4 {
-            let expected = if should_accept && usize::from(raw) == col {
-                !before[col]
-            } else {
-                before[col]
-            };
-            assert_eq!(after[col], expected);
-        }
-        assert_eq!(after[3], before[3]);
-    }
-
-    /// Even a matching registered column cannot be written when the
-    /// corresponding row position is absent. Refusal must be atomic.
-    #[kani::proof]
-    fn too_short_row_refuses_without_mutation() {
-        let before = [kani::any::<bool>()];
-        let mut after = before;
-        let result = toggle_registered_bit(&["u", "v"], &mut after, 1, "v");
-        assert!(result.is_err());
-        assert_eq!(after, before);
-    }
-}
 
 /// Explicit verifier resources. These bound the *independent checker*, not
 /// the producer or the arbitrary-precision result allocation.

@@ -15,6 +15,7 @@ import re
 ROOT = Path(__file__).resolve().parent.parent
 LEAN_JOBS = ("lean-source-refinement.yml", "lean-independent-formulations.yml")
 PYTHON_JOBS = ("lean-source-refinement.yml", "original-source-graph.yml")
+COMPILER_JOBS = ("native-scalar-proof.yml", "native-lean-rust.yml")
 PINNED_ENV = (
     "instrumentation/lean-env/lean-toolchain",
     "instrumentation/lean-env/lakefile.lean",
@@ -22,12 +23,13 @@ PINNED_ENV = (
 )
 
 
-def pull_request_paths(workflow: str) -> tuple[str, ...]:
-    """Read only the top-level pull_request.paths list, not shell snippets."""
+def event_paths(workflow: str, event_name: str) -> tuple[str, ...]:
+    """Read only a top-level event's literal paths list, not shell snippets."""
     lines = workflow.splitlines()
-    if lines.count("  pull_request:") != 1:
-        raise ValueError("expected one path-filtered pull_request event")
-    start = lines.index("  pull_request:") + 1
+    marker = f"  {event_name}:"
+    if lines.count(marker) != 1:
+        raise ValueError(f"expected one path-filtered {event_name} event")
+    start = lines.index(marker) + 1
     event = []
     for line in lines[start:]:
         if line and not line.startswith("  ") and not line.lstrip().startswith("#"):
@@ -51,6 +53,10 @@ def pull_request_paths(workflow: str) -> tuple[str, ...]:
     if not result or len(set(result)) != len(result):
         raise ValueError("empty or duplicate paths selector")
     return tuple(result)
+
+
+def pull_request_paths(workflow: str) -> tuple[str, ...]:
+    return event_paths(workflow, "pull_request")
 
 
 def covered(path: str, patterns: tuple[str, ...]) -> bool:
@@ -167,7 +173,6 @@ def python_inputs(root: Path, workflow: str) -> set[str]:
 def verify_selection(root: Path, workflow_name: str, source: str | None = None) -> set[str]:
     path = ".github/workflows/" + workflow_name
     source = source if source is not None else (root / path).read_text(encoding="utf-8")
-    patterns = pull_request_paths(source)
     required = {path}
     if workflow_name in LEAN_JOBS:
         required.update(lean_inputs(root, source))
@@ -175,14 +180,33 @@ def verify_selection(root: Path, workflow_name: str, source: str | None = None) 
         required.update(python_inputs(root, source))
     if workflow_name == "original-source-graph.yml":
         required.update(PINNED_ENV)
-    missing = sorted(name for name in required if not covered(name, patterns))
-    if missing:
-        raise ValueError(f"{workflow_name} skips actual verification dependencies: {missing}")
+    if workflow_name in COMPILER_JOBS:
+        required.update(PINNED_ENV)
+        required.add("compiler/lean-toolchain")
+        if workflow_name == "native-scalar-proof.yml":
+            # The scalar workflow runs these source files by invoking Lean
+            # directly, not via Lake's proof-directory discovery.
+            required.update(re.findall(r"compiler/proofs/[A-Za-z0-9_-]+\.lean", source))
+        else:
+            required.update((
+                "compiler/lakefile.lean",
+                "compiler/scripts/check.sh",
+                "compiler/backend/src/reader/mod.rs",
+                "eth/src/bin/eth-compiler.rs",
+                "eth/src/lean_codegen.rs",
+            ))
+    events = ("pull_request", "push") if workflow_name in COMPILER_JOBS else ("pull_request",)
+    for event in events:
+        patterns = event_paths(source, event)
+        missing = sorted(name for name in required if not covered(name, patterns))
+        if missing:
+            raise ValueError(
+                f"{workflow_name} {event} skips actual verification dependencies: {missing}")
     return required
 
 
 def verify_all(root: Path = ROOT) -> None:
-    for name in sorted(set(LEAN_JOBS) | set(PYTHON_JOBS)):
+    for name in sorted(set(LEAN_JOBS) | set(PYTHON_JOBS) | set(COMPILER_JOBS)):
         verify_selection(root, name)
 
 

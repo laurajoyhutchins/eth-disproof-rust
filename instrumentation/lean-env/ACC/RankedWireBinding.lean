@@ -64,6 +64,7 @@ def FitsWire {n c : ℕ}
     (rank : Fin n → ℕ) : Bool :=
   decide (c ≤ n) && decide (n < 2 ^ 64) &&
     decide (c < 2 ^ 64) && decide (edges.length < 2 ^ 64) &&
+    decide (28 + 16 * edges.length + 56 * n + 8 * c < 2 ^ 64) &&
     (List.finRange n).all (fun i => decide (rank i < 2 ^ 64))
 
 /-- Claims and observed arithmetic are untrusted. The verifier compares

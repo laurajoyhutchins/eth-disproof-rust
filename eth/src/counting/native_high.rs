@@ -13,6 +13,7 @@
 //! a primitive TM2 trace, or an ETH time-bound refinement.
 
 use crate::Error;
+use crate::bit_program::source_commands::clear_many_then;
 use crate::bit_program::{Atom, Cmd, Program};
 
 /// Stable compatibility exports of the canonical source stack routines.
@@ -27,11 +28,7 @@ fn clear_bank<const R: usize, const S: usize>(
     tmp: usize,
     changed: &[usize],
 ) -> Result<Cmd<R, S>, Error> {
-    let mut cmd = clear_call(tmp)?;
-    for &port in changed.iter().rev() {
-        cmd = Cmd::seq(clear_call(port)?, cmd);
-    }
-    Ok(cmd)
+    clear_many_then(changed, clear_call(tmp)?)
 }
 
 fn set<const R: usize, const S: usize>(dst: usize, value: bool) -> Cmd<R, S> {

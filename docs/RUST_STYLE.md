@@ -34,6 +34,12 @@ not proof of behavioral equivalence.
   `bit_program/record_iteration.rs`; each of the six callers supplies its
   original frame reader, callback, and physical port map. Compare the entire
   command syntax, including nested calls, before accepting edits.
+- Use `bit_program/source_commands.rs` for the identical right-associated
+  source `Seq` constructors, ordered clear lists, and register resets
+  shared by query and counting. `clear_many` ends in `Skip`, while
+  `clear_many_then` keeps the supplied terminal command with **no**
+  additional `Skip` node. Do not flatten or rebalance a source command tree
+  unless its complete compiled instruction identity is independently checked.
 - Extract a helper when distinct callers share a genuine representation
   contract. Keep diagnostic-only helpers in the diagnostic surface, rather
   than exposing them as library APIs or duplicating them in each binary.

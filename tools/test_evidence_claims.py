@@ -18,7 +18,7 @@ class EvidenceReceiptTests(unittest.TestCase):
         self.root = Path(self.directory.name)
         path = self.root / "src/model.lean"
         path.parent.mkdir(parents=True)
-        path.write_bytes(b"theorem model : True := by trivial\n")
+        path.write_bytes(b"namespace Model\ntheorem example : True := by trivial\nend Model\n#print axioms Model.example\n")
         self.subject = path
         self.example = {
             "schema": "eth-scoped-receipts/v1",
@@ -139,6 +139,18 @@ class EvidenceReceiptTests(unittest.TestCase):
         payload = deepcopy(self.example)
         payload["claims"][0]["verified"] = True
         with self.assertRaisesRegex(ReceiptError, "expected exactly"):
+            audit(payload, self.root)
+
+    def test_empty_ledger_is_safe_and_does_not_require_a_fake_receipt(self):
+        self.assertEqual(
+            audit({"schema": "eth-scoped-receipts/v1", "claims": []}, self.root),
+            [],
+        )
+
+    def test_unsubstantiated_model_theorem_refuses(self):
+        payload = deepcopy(self.example)
+        payload["claims"][0]["theorem"] = "Model.notActuallyHere"
+        with self.assertRaisesRegex(ReceiptError, "theorem/axiom audit"):
             audit(payload, self.root)
 
     def test_real_repository_claims_have_current_byte_pins(self):

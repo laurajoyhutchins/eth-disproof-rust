@@ -121,7 +121,7 @@ theorem accepts_zeros (k : Nat) (s : State) :
       cases nonzero s <;> rfl
 
 /-- The homogeneous connected non-affine family has seven satisfying
-    three-bit seeds at *every* size n=k+4. By the recurrence, each seed
+    three-bit seeds at *every* size n=k+3 (with k>=1 for 3-CNF). By the recurrence, each seed
     has exactly one corresponding n-bit assignment. -/
 theorem homogeneous_count_seven (k : Nat) :
     (accepted (zeros k)).card = 7 := by

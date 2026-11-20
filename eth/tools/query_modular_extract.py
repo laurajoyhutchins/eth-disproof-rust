@@ -177,7 +177,7 @@ def phase_from_log(path: Path) -> str:
 
 def probe_one(stage: Stage, upstream: Path, lake: Path, output: Path,
               build_timeout: int, export_timeout: int, cert_timeout: int,
-              max_labels: int, rss_limit: int) -> dict:
+              max_labels: int, rss_limit: int, lean_version: str) -> dict:
     directory = output / stage.id
     directory.mkdir(parents=True, exist_ok=True)
     # Never accidentally inherit a previous successful receipt.
@@ -228,7 +228,8 @@ def probe_one(stage: Stage, upstream: Path, lake: Path, output: Path,
                 if (directory / "certificate.stdout.log").read_bytes().strip():
                     raise Refusal("Lean certificate emitted unexpected stdout")
                 receipt.update({
-                    "status": "ORIGINAL_MODULE_GRAPH_KERNEL_CERTIFIED",
+                    "status": "LEAN_KERNEL_CERTIFIED_PHYSICAL_PROGRAM",
+                    "lean_version": lean_version,
                     "stage": stage.id,
                     "lean_rust_refinement": "unassessed",
                     "native_executable": False,
@@ -278,7 +279,7 @@ def main() -> None:
         result = probe_one(stage, upstream, lake, output,
                            args.build_timeout, args.export_timeout,
                            args.cert_timeout, args.max_source_labels,
-                           args.rss_limit_gib * 1024**3)
+                           args.rss_limit_gib * 1024**3, pin["lean"])
         results.append(result)
         print(f"QUERY_MODULE_STAGE={stage.id} status={result['status']} "
               f"phase={result['last_graph_phase']}", flush=True)

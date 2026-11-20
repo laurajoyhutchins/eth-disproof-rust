@@ -669,6 +669,9 @@ example : checkNativeInstance (n := 1)
 example : checkNativeInstance (n := 1) freeOracleSource
     { freeOracleOutput with exponent := 0 } = false := by decide
 
+#print axioms IndependentETH.QuadraticLowWeight.nativeTerm_split
+#print axioms IndependentETH.QuadraticLowWeight.nativePhase_split
+
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_sound
 #print axioms IndependentETH.QuadraticLowWeight.checkNativeInstance_receipt_sound
 

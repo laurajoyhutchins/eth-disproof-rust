@@ -22,6 +22,7 @@ fn policy_name(s: &str) -> Result<Policy, String> {
         "min-fill-admission" => Ok(Policy::MinFillAdmission),
         "tropical-zero-support" => Ok(Policy::TropicalZeroSupport),
         "exact-preview" => Ok(Policy::ExactPreview),
+        "selective-tropical" => Ok(Policy::SelectiveTropical),
         _ => Err(format!("unknown planner policy: {s}")),
     }
 }
@@ -40,6 +41,7 @@ fn report(case: Case, policy: Policy) -> Result<(), String> {
     let exact = &result.exact;
     let total_exact_and_preview_bit_proxy =
         exact.exact_work.bit_work_proxy + result.planning_work.bit_work_proxy;
+    let selective = result.selective_stats.clone().unwrap_or_default();
     let rss = linux_peak_rss_kib()
         .map(|v| v.to_string()).unwrap_or("null".into());
     println!(
@@ -52,6 +54,10 @@ fn report(case: Case, policy: Policy) -> Result<(), String> {
             "\"planning_additions\":{},\"planning_multiplications\":{},",
             "\"planning_bit_work_proxy\":{},",
             "\"planning_peak_coefficient_payload_bytes\":{},",
+            "\"selective_ambiguity_steps\":{},\"selective_purchases\":{},",
+            "\"selective_budget_skips\":{},\"selective_changed_choices\":{},",
+            "\"selective_candidates_previewed\":{},\"selective_replay_merges\":{},",
+            "\"selective_source_leaf_cells_built\":{},",
             "\"exact_elapsed_ns\":{},\"exact_additions\":{},",
             "\"exact_multiplications\":{},\"exact_bit_work_proxy\":{},",
             "\"total_exact_plus_preview_bit_work_proxy\":{},",
@@ -68,6 +74,10 @@ fn report(case: Case, policy: Policy) -> Result<(), String> {
         result.planning_elapsed_ns, result.planning_work.additions,
         result.planning_work.multiplications, result.planning_work.bit_work_proxy,
         result.peak_preview_coefficient_payload_bytes,
+        selective.ambiguity_steps, selective.purchases,
+        selective.budget_skips, selective.changed_choices,
+        selective.candidates_previewed, selective.replay_merges,
+        selective.source_leaf_cells_built,
         result.exact_elapsed_ns, exact.exact_work.additions,
         exact.exact_work.multiplications, exact.exact_work.bit_work_proxy,
         total_exact_and_preview_bit_proxy, exact.exact_work.max_coefficient_bits,

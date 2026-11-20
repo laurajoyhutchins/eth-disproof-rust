@@ -1,0 +1,156 @@
+name: Original accumulator indexed instruction probe (no Meta)
+
+on:
+  pull_request:
+    branches:
+      - feat/query-aot-source-20261113
+    paths:
+      - '.github/workflows/original-accumulate-core-index.yml'
+      - 'rust/lean_eth_reference/tools/query_accumulate_core_index.lean'
+
+permissions:
+  contents: read
+
+# Experimental source-only lookup. Preserve a typed refusal on any error.
+jobs:
+  indexed-source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    env:
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      LEAN_ROOT: instrumentation/lean-env
+      ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Checkout pinned original OpenAI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth=1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test "$(git -C upstream/openai-math hash-object lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.lean)" = 3e1664be261748c6e12a2d1cafb033dc26131bf9
+          ln -s "$ORIGINAL_SOURCE/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Restore pinned Lean 4.34.1 and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Confirm toolchain and Mathlib pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$LEAN_ROOT/lean-toolchain")" = 'leanprover/lean4:v4.34.1'
+          test "$(git -C "$LEAN_ROOT/.lake/packages/mathlib" rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+
+      - name: Restore exact original module compilation cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-indexed-${{ github.run_id }}
+          restore-keys: |
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-
+
+      - name: Query actual original compiled instruction addresses in Lean core
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ACC_INDEX_OUTPUT="$RUNNER_TEMP/acc-index"
+          mkdir -p "$ACC_INDEX_OUTPUT"
+          python3 - <<'PY'
+          import hashlib, json, os, re, sys
+          from pathlib import Path
+          sys.path.insert(0,"rust/lean_eth_reference/tools")
+          from query_stream_aot import run_bounded, MAX_EXPORT_RSS_BYTES
+          base=Path(os.environ["ACC_INDEX_OUTPUT"])
+          lake=Path(os.environ["GITHUB_WORKSPACE"])/"instrumentation/lean-env"
+          lean=Path(os.environ["GITHUB_WORKSPACE"])/"rust/lean_eth_reference/tools/query_accumulate_core_index.lean"
+          olean=lake/".lake/build/lib/lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.olean"
+          receipt={
+              "status":"REFUSED",
+              "original_commit":os.environ["ORIGINAL_SOURCE_SHA"],
+              "original_source_git_blob":"3e1664be261748c6e12a2d1cafb033dc26131bf9",
+              "full_source_graph":False,
+              "lean_kernel_code_certificate":False,
+              "native_rust_correspondence":False,
+              "uniform_complexity_proof":False,
+          }
+          try:
+              if not olean.is_file() or olean.is_symlink():
+                  raise ValueError("pinned original numerical accumulator .olean missing; no rebuild")
+              receipt["original_olean_sha256"]=hashlib.sha256(olean.read_bytes()).hexdigest()
+              receipt["index_lean_sha256"]=hashlib.sha256(lean.read_bytes()).hexdigest()
+              checked=run_bounded(
+                  ["lake","env","lean","-j","1","-M","9216",str(lean)],
+                  lake,300,log_base=base/"lean-index",rss_limit_bytes=MAX_EXPORT_RSS_BYTES
+              )
+              if checked.returncode:
+                  raise ValueError("original core indexing failed exit="+str(checked.returncode)+
+                                   " tail="+checked.stdout[-1800:]+checked.stderr[-1200:])
+              if checked.stderr.strip():
+                  raise ValueError("Lean emitted unexpected stderr: "+checked.stderr[-1000:])
+              lines=checked.stdout.strip().splitlines()
+              data={}
+              for line in lines:
+                  if not line.startswith("ORIGINAL_ACCUMULATE_") or "=" not in line:
+                      raise ValueError("unrecognized original index output: "+line[:200])
+                  k,v=line.split("=",1)
+                  if k in data and data[k]!=v:
+                      raise ValueError("conflicting original index line: "+k)
+                  data[k]=v
+              count=int(data["ORIGINAL_ACCUMULATE_LABELS"])
+              entry=int(data["ORIGINAL_ACCUMULATE_ENTRY"])
+              if not (0<count<=1000000000 and 0<=entry<count and
+                      data["ORIGINAL_ACCUMULATE_INPUT"]=="15" and
+                      data["ORIGINAL_ACCUMULATE_OUTPUT"]=="17"):
+                  raise ValueError("original source ABI or label count refused")
+              for label in {0,1,entry,count-1}:
+                  if label<count:
+                      key="ORIGINAL_ACCUMULATE_CODE_AT["+str(label)+"]"
+                      if key not in data or not re.fullmatch(
+                          r"(?:halt|(?:goto|set|copy|not|and|or|xor|branch|push|peek|pop):[0-9:]+)",data[key]
+                      ):
+                          raise ValueError("missing or malformed original code_at "+str(label))
+              if data["ORIGINAL_ACCUMULATE_CODE_AT["+str(count-1)+"]"]!="halt":
+                  raise ValueError("original compiled final instruction is not halt")
+              receipt.update({
+                  "status":"ORIGINAL_LEAN_CORE_CODE_AT_OBSERVED",
+                  "labels":count,"entry":entry,"input":15,"output":17,
+                  "code_at":{k:v for k,v in data.items() if k.startswith("ORIGINAL_ACCUMULATE_CODE_AT[")},
+                  "observation_only":True,
+              })
+          except Exception as e:
+              receipt["status"]="REFUSED"
+              receipt["reason"]=str(e)[-3000:]
+          (base/"report.json").write_text(json.dumps(receipt,sort_keys=True,indent=2)+"\n")
+          print("ACCUMULATOR_CORE_INDEX="+json.dumps(receipt,sort_keys=True))
+          if receipt["status"]!="ORIGINAL_LEAN_CORE_CODE_AT_OBSERVED":
+              raise SystemExit(2)
+          PY
+
+      - name: Preserve exact original source instructions or typed refusal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-accumulator-core-index-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/acc-index/
+          if-no-files-found: warn
+          retention-days: 14

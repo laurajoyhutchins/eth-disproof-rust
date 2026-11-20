@@ -282,11 +282,24 @@ pub fn verify_recurrence_receipt(
             x.push(x[i] ^ x[i + 1] ^ rhs);
         }
 
-        // Evaluate the signed CSR directly; parity and OR logic are not
-        // reused from the receipt producer.
-        let is_satisfied = csr.row_offsets.windows(2).all(|offsets| {
-            (offsets[0]..offsets[1]).any(|p| x[csr.column_indices[p]] == (csr.signs[p] == 1))
-        });
+        // Evaluate the *validated source rows* independently of the
+        // producer's parity/OR computation. The set was decoded from the
+        // original CSR before expected rows were constructed; both source
+        // reads and assignment lookups are checked and fail closed.
+        let mut is_satisfied = true;
+        for (columns, signs) in &actual {
+            let mut clause_satisfied = false;
+            for (&column, &sign) in columns.iter().zip(signs.iter()) {
+                let bit = *x
+                    .get(column)
+                    .ok_or_else(|| refuse("decoded source column outside assignment"))?;
+                clause_satisfied |= bit == (sign == 1);
+            }
+            if !clause_satisfied {
+                is_satisfied = false;
+                break;
+            }
+        }
         if !is_satisfied {
             observed_mask |= 1 << seed;
         }

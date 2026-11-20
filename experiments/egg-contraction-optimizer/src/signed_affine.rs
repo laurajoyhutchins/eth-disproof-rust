@@ -986,7 +986,17 @@ impl SignedChain {
         let mut operations = 0usize;
         let mut checked_steps = Vec::with_capacity(self.steps.len());
         for (stage, step) in self.steps.iter().enumerate() {
-            let receipt = step.certificate.verify_with_policy(&current, &step.output, policy)?;
+            // Pass the *remaining* allowance to the stage verifier. Checking
+            // the aggregate only after a stage returns would allow that stage
+            // to spend samples beyond the caller's hard budget before refusing.
+            let remaining = policy.max_interpolation_samples
+                .checked_sub(samples)
+                .ok_or("signed chain aggregate interpolation budget exceeded")?;
+            let receipt = step.certificate.verify_with_policy(
+                &current,
+                &step.output,
+                PhaseVerificationPolicy { max_interpolation_samples: remaining },
+            )?;
             samples = samples
                 .checked_add(receipt.interpolation_samples)
                 .ok_or("signed chain sample counter overflow")?;
@@ -1217,14 +1227,17 @@ mod chain_tests {
         // First stage: two exterior ports, 4 interpolation samples.
         // Second stage: one exterior port, 2 interpolation samples.
         assert_eq!(receipt.total_interpolation_samples, 6);
-        assert!(chain
-            .verify_with_policy(
-                &source,
-                PhaseVerificationPolicy {
-                    max_interpolation_samples: 4,
-                },
-            )
-            .is_err());
+        // The next stage must refuse before its two interpolation evaluations,
+        // not run them and notice the aggregate excess afterward.
+        for budget in [4, 5] {
+            assert_eq!(
+                chain.verify_with_policy(
+                    &source,
+                    PhaseVerificationPolicy { max_interpolation_samples: budget },
+                ).unwrap_err(),
+                "signed phase interpolation budget exceeded",
+            );
+        }
         assert!(chain
             .verify_with_policy(
                 &source,

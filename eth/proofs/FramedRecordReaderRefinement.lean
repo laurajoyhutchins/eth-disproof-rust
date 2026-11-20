@@ -103,4 +103,36 @@ theorem mappedFrame_compiled_halt_trace {r s : ℕ}
   StructuredCalls.compiled_halt_trace
     (mappedFrame_reader_eval p base bits tail out v pr f) input output
 
+/-- The exact physical output of compiling the seven-instruction reader
+as one StructuredCalls.Call: source sites occupy addresses 1..7, the
+callee's halt becomes a return jump at 7, and address 0 is the single
+new outer halt. This is different from the seven-label lifted program. -/
+def mappedCompiledFrameProgram {r s : ℕ} (p : RecordPrograms.Ports r s)
+    (input output : Fin s) : Program r s 8 where
+  inputStack := input
+  outputStack := output
+  entry := 1
+  code pc := match pc.val with
+    | 0 => .halt
+    | 1 => .pop p.source p.tag p.present 2
+    | 2 => .branch p.present 3 7
+    | 3 => .branch p.tag 4 7
+    | 4 => .pop p.source p.tag p.present 5
+    | 5 => .branch p.present 6 7
+    | 6 => .push p.payload p.tag 1
+    | _ => .goto 0
+
+/-- Universal *Lean* compiler-field agreement, independent of the runtime
+contents of either stack and of the numerical values of valid port maps. -/
+theorem mappedCompiledFrameProgram_eq_source {r s : ℕ}
+    (p : RecordPrograms.Ports r s) (input output : Fin s) :
+    mappedCompiledFrameProgram p input output =
+      StructuredCalls.compiled (.call (mappedFrameProgram p)) input output := by
+  apply program_eq_of_fields
+  · rfl
+  · rfl
+  · rfl
+  · intro pc
+    fin_cases pc <;> rfl
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

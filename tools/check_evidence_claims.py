@@ -124,8 +124,8 @@ def audit(payload: object, root: Path, fetcher=None) -> list[dict]:
     ledger = fields(payload, {"schema", "claims"}, "ledger")
     if ledger["schema"] != "eth-scoped-receipts/v1" or not isinstance(ledger["claims"], list):
         raise ReceiptError("unrecognized receipt schema or claims list")
-    if not ledger["claims"]:
-        raise ReceiptError("an empty ledger cannot establish an evidence audit")
+    # No claim is a safe state. Never force a replacement receipt before its
+    # new exact-head workflow run exists; removing stale claims must work.
     seen_ids: set[str] = set()
     observations: list[dict] = []
     for entry in ledger["claims"]:
@@ -141,7 +141,11 @@ def audit(payload: object, root: Path, fetcher=None) -> list[dict]:
         if kind not in CLAIM_KINDS or claim["quantifier"] != CLAIM_KINDS[kind]:
             raise ReceiptError(f"{name}: unsupported proof tier/quantifier; no implicit promotion")
         if kind == "abstract_lean_model":
-            text_value(claim["theorem"], f"{name}.theorem")
+            theorem_name = text_value(claim["theorem"], f"{name}.theorem")
+            if "." not in theorem_name or not all(
+                part.isidentifier() for part in theorem_name.split(".")
+            ):
+                raise ReceiptError(f"{name}: expected fully qualified Lean theorem")
         elif claim["theorem"] is not None:
             raise ReceiptError(f"{name}: finite guard must not claim a Lean theorem")
         if not isinstance(claim["excluded"], list) or not claim["excluded"]:
@@ -175,6 +179,21 @@ def audit(payload: object, root: Path, fetcher=None) -> list[dict]:
             observed = git_blob_sha(checked_path(root, path).read_bytes())
             if observed != file_ref["blob_sha"]:
                 raise ReceiptError(f"{name}: stale source blob {path}; expected {file_ref['blob_sha']}, found {observed}")
+        if kind == "abstract_lean_model":
+            # The exact checked source bytes must at least contain the claimed
+            # declaration and an axiom audit. This does NOT inspect the proof.
+            local_name = theorem_name.rsplit(".", 1)[1]
+            lean_sources = [
+                checked_path(root, file_ref["path"]).read_text()
+                for file_ref in claim["files"]
+                if file_ref["path"].endswith(".lean")
+            ]
+            if not any(
+                re.search(r"\\btheorem\\s+" + re.escape(local_name) + r"\\b", source)
+                and f"#print axioms {theorem_name}" in source
+                for source in lean_sources
+            ):
+                raise ReceiptError(f"{name}: pinned Lean theorem/axiom audit not present")
         if fetcher is not None:
             verify_remote(receipt, fetcher)
         observations.append({

@@ -88,9 +88,41 @@ theorem future_refutation_eliminates
   rintro ⟨a, ha, hs⟩
   exact hrefute a ha hs
 
+/-- Reusable nogoods are monotone under *extension* of the assumptions
+used for a checked contradiction. A cached proof may have been replayed
+under fewer assumptions than the original source boundary assignment.
+It remains valid under every assignment extending those assumptions. -/
+theorem cached_refutation_monotone
+    (future : CNF) (weak strong : Partial)
+    (hsub : ∀ name value, weak name = some value →
+      strong name = some value)
+    (hrefute : ∀ a, extendsPartial a weak → ¬ cnfTrue a future) :
+    ∀ a, extendsPartial a strong → ¬ cnfTrue a future := by
+  intro a hext
+  apply hrefute a
+  intro name value hw
+  exact hext name value (hsub name value hw)
+
+/-- The final natural #SAT sum is unchanged by dropping a processed
+prefix's boundary contribution only when its *future* count is certified
+zero. The pruned prefix alone is NOT generally equal to the original. -/
+theorem contextual_zero_count_preserved {α : Type} (s : Finset α)
+    (prefix future : α → ℕ) (cachedMatch : α → Prop)
+    (hsound : ∀ i ∈ s, cachedMatch i → future i = 0) :
+    (∑ i ∈ s, prefix i * future i) =
+      ∑ i ∈ s, if cachedMatch i then 0 else prefix i * future i := by
+  classical
+  apply Finset.sum_congr rfl
+  intro i hi
+  by_cases hc : cachedMatch i
+  · simp [hc, hsound i hi hc]
+  · simp [hc]
+
 #print axioms empty_reason_sound
 #print axioms unit_reason_forces
 #print axioms two_branches_refute
 #print axioms future_refutation_eliminates
+#print axioms cached_refutation_monotone
+#print axioms contextual_zero_count_preserved
 
 end IndependentETH.UnitRefutation

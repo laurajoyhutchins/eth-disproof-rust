@@ -188,11 +188,15 @@ lean -c "$out/SourceDelDriver.c" runtime/lean-c/SourceDelDriver.lean
 # Only the two source C units and the existing Rust/C adapter get call-site
 # ownership hooks; test-host operations and runtime internals do not.
 for unit in RuntimeHeapKernels RuntimeHeapDelKernels; do
-  printf '#include "%s/runtime/lean-c/source_del_event_hooks.h"\\n#include "%s/%s.c"\\n' \
-    "$(pwd)" "$out" "$unit" > "$out/${unit}-traced.c"
+  cat > "$out/${unit}-traced.c" <<EOF
+#include "$(pwd)/runtime/lean-c/source_del_event_hooks.h"
+#include "$out/${unit}.c"
+EOF
 done
-printf '#define LR_TRACE_SOURCE_DEL 1\\n#include "%s/runtime/lean-c/abi.c"\\n' \
-  "$(pwd)" > "$out/abi-traced.c"
+cat > "$out/abi-traced.c" <<EOF
+#define LR_TRACE_SOURCE_DEL 1
+#include "$(pwd)/runtime/lean-c/abi.c"
+EOF
 leanc -O2 -o "$out/source-del-execute" \
   "$out/RuntimeHeapKernels-traced.c" "$out/RuntimeHeapDelKernels-traced.c" \
   "$out/SourceDelDriver.c" runtime/lean-c/source_del_oracle.c \

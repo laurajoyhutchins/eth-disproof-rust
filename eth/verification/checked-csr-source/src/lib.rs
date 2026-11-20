@@ -47,10 +47,7 @@ mod tests {
             checked_row_source(&[usize::MAX, 3], &columns, &signs, 4, 0),
             None
         );
-        assert_eq!(
-            checked_row_source(&[0, 3], &[0, 0, 2], &signs, 4, 0),
-            None
-        );
+        assert_eq!(checked_row_source(&[0, 3], &[0, 0, 2], &signs, 4, 0), None);
         assert_eq!(
             checked_row_source(&[0, 3], &columns, &[1, 0, 1], 4, 0),
             None

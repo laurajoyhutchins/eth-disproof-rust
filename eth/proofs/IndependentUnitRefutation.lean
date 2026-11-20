@@ -187,6 +187,44 @@ theorem source_preproduct_pruning_commutes_with_fiber_sum
   · simp [h]
   · simp [h]
 
+/-- A memoized source-guard decision is correct only if every stored
+answer agrees with the predicate computed from the *same checked*
+source clause set, variable order, and retained boundary.
+
+An absent entry falls back to the original source guard. The hypothesis
+is a cache invariant; a separate executable check must establish that
+Rust only inserts complete checked decisions and scopes the cache to
+one frontier. An interrupted source scan is NOT a valid false entry. -/
+theorem checked_frontier_memo_lookup_sound
+    {β : Type} (sourceGuard : β → Bool)
+    (memo : β → Option Bool)
+    (hchecked : ∀ key result, memo key = some result →
+      result = sourceGuard key)
+    (key : β) :
+    (memo key).getD (sourceGuard key) = sourceGuard key := by
+  cases h : memo key with
+  | none => simp [h]
+  | some result =>
+      simp [h, hchecked key result h]
+
+/-- Repeated guard decisions cached under the exact same source
+frontier cannot change the sum of surviving exact contributions.
+This establishes logical memo equivalence, not that BTreeMap
+keys or allocator contents satisfy the invariant in production. -/
+theorem checked_frontier_memo_preserves_pair_sum
+    {α β : Type} (pairs : Finset α)
+    (outputOf : α → β) (weight : α → ℕ)
+    (sourceGuard : β → Bool) (memo : β → Option Bool)
+    (hchecked : ∀ key result, memo key = some result →
+      result = sourceGuard key) :
+    (∑ p ∈ pairs,
+      if (memo (outputOf p)).getD (sourceGuard (outputOf p))
+      then 0 else weight p) =
+    ∑ p ∈ pairs, if sourceGuard (outputOf p) then 0 else weight p := by
+  apply Finset.sum_congr rfl
+  intro p _hp
+  rw [checked_frontier_memo_lookup_sound sourceGuard memo hchecked (outputOf p)]
+
 #print axioms empty_reason_sound
 #print axioms unit_reason_forces
 #print axioms two_branches_refute
@@ -195,5 +233,7 @@ theorem source_preproduct_pruning_commutes_with_fiber_sum
 #print axioms contextual_zero_count_preserved
 #print axioms source_resolution_sound
 #print axioms source_preproduct_pruning_commutes_with_fiber_sum
+#print axioms checked_frontier_memo_lookup_sound
+#print axioms checked_frontier_memo_preserves_pair_sum
 
 end IndependentETH.UnitRefutation

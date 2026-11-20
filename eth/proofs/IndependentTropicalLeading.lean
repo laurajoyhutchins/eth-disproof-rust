@@ -158,6 +158,11 @@ theorem plus_comm (a b : Leading) : plus a b = plus b a := by
               · exact heq
               · exact Nat.add_comm _ _
 
+theorem plus_zero (x : Leading) : plus x none = x := by
+  cases x <;> rfl
+
+theorem zero_plus (x : Leading) : plus none x = x := rfl
+
 /-- Addition combines the minimum degree and sums equal-degree multiplicities. -/
 theorem plus_assoc (a b c : Leading) :
     plus (plus a b) c = plus a (plus b c) := by
@@ -168,8 +173,7 @@ theorem plus_assoc (a b c : Leading) :
       | none => rfl
       | some b =>
           cases c with
-          | none =>
-              cases h : plus (some a) (some b) <;> rfl
+          | none => simp only [plus_zero]
           | some c =>
               by_cases hab : a.degree < b.degree
               all_goals by_cases hba : b.degree < a.degree
@@ -215,11 +219,6 @@ theorem times_plus (a b c : Leading) :
 theorem plus_times (a b c : Leading) :
     times a (plus b c) = plus (times a b) (times a c) := by
   rw [times_comm a (plus b c), times_plus, times_comm b a, times_comm c a]
-
-theorem plus_zero (x : Leading) : plus x none = x := by
-  cases x <;> rfl
-
-theorem zero_plus (x : Leading) : plus none x = x := rfl
 
 theorem times_zero (x : Leading) : times x none = none := by
   cases x <;> rfl

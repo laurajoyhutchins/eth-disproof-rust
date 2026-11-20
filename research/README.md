@@ -10,6 +10,10 @@ The appendix is a recursive **2-adic tensor contraction**, not the body’s glob
 
 [Independent ETH formulations and comparison levels](independent-formulations.md) records the Anthropic reference encoding, bounded cross-model tests, and the mathematical/physical-machine boundary.
 
+## Certified arithmetic circuit development
+
+[ACC typed circuit IR and annotated proof DAG](circuit-ir-proof-dag.md) describes the shared source-factor semantics, the first boundary-composition theorem, the Anthropic grouping adapter, and the still-open shared-DAG and asymptotic obligations.
+
 ## Spectral compression and arithmetic
 
 Pair swaps give a natural joint spectrum. Krawtchouk/Walsh methods compress symmetric coordinates. Neither observation is a counting algorithm until the source incidence, integer measurements, denominators and exact recovery survive the change of basis.

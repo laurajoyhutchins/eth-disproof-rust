@@ -348,6 +348,233 @@ example : exhaustiveAgreement emptySnapshot = true := by decide
 #print axioms IndependentETH.AffineNativeAudit.sourceOK_names_valid
 
 
+
+/-! ## Universal occurrence-to-coefficient parity
+
+The next lemmas use the *actual* occurrenceBit function in sourceRows.
+They establish parity correspondence for every finite occurrence list,
+including repeated names, under the independent source admission
+condition of unique declared names and complete occurrence coverage.
+No exhaustive assignment enumeration or native producer assumptions.
+-/
+
+private def xorAll (xs : List Bool) : Bool :=
+  xs.foldr (fun x total => x ^^ total) false
+
+private theorem xorAll_map_xor {α : Type*}
+    (xs : List α) (f g : α → Bool) :
+    xorAll (xs.map (fun x => f x ^^ g x)) =
+      xorAll (xs.map f) ^^ xorAll (xs.map g) := by
+  induction xs with
+  | nil => rfl
+  | cons x xs ih =>
+      calc
+        xorAll ((x :: xs).map (fun a => f a ^^ g a)) =
+            (f x ^^ g x) ^^
+              xorAll (xs.map (fun a => f a ^^ g a)) := rfl
+        _ = (f x ^^ g x) ^^
+              (xorAll (xs.map f) ^^ xorAll (xs.map g)) := by rw [ih]
+        _ = xorAll ((x :: xs).map f) ^^
+              xorAll ((x :: xs).map g) := by
+              cases f x <;> cases g x <;>
+                cases xorAll (xs.map f) <;>
+                cases xorAll (xs.map g) <;> decide
+
+private theorem occurrenceFold_acc
+    (xs : List Name) (target : Name) (acc : Bool) :
+    xs.foldl (fun p name => p ^^ (name == target)) acc =
+      acc ^^ xs.foldl (fun p name => p ^^ (name == target)) false := by
+  induction xs generalizing acc with
+  | nil => cases acc <;> decide
+  | cons x xs ih =>
+      simp only [List.foldl_cons]
+      rw [ih (acc ^^ (x == target)), ih (false ^^ (x == target))]
+      cases acc <;> cases x == target <;>
+        cases xs.foldl (fun p name => p ^^ (name == target)) false <;> decide
+
+private theorem occurrenceBit_cons (x : Name) (xs : List Name)
+    (target : Name) :
+    occurrenceBit (x :: xs) target =
+      (x == target) ^^ occurrenceBit xs target := by
+  simp only [occurrenceBit, List.foldl_cons]
+  simpa using occurrenceFold_acc xs target (x == target)
+
+private theorem xorAll_delta_none (ns : List Name)
+    (target : Name) (assignment : Name → Bool)
+    (h : target ∉ ns) :
+    xorAll (ns.map (fun name => (target == name) && assignment name)) =
+      false := by
+  induction ns with
+  | nil => rfl
+  | cons x xs ih =>
+      have hx : target ≠ x := by
+        intro heq
+        apply h
+        exact List.mem_cons.mpr (Or.inl heq)
+      have ht : target ∉ xs := by
+        intro hmem
+        exact h (List.mem_cons_of_mem _ hmem)
+      calc
+        xorAll ((x :: xs).map
+          (fun name => (target == name) && assignment name)) =
+            ((target == x) && assignment x) ^^
+            xorAll (xs.map
+              (fun name => (target == name) && assignment name)) := rfl
+        _ = false := by simp [hx, ih ht]
+
+private theorem xorAll_delta (ns : List Name)
+    (target : Name) (assignment : Name → Bool)
+    (hn : ns.Nodup) :
+    xorAll (ns.map (fun name => (target == name) && assignment name)) =
+      if target ∈ ns then assignment target else false := by
+  induction ns with
+  | nil => rfl
+  | cons x xs ih =>
+      have hn' := (List.nodup_cons.mp hn)
+      by_cases hx : target = x
+      · subst target
+        have htail := xorAll_delta_none xs x assignment hn'.1
+        simp [xorAll, htail]
+      · have hrest := ih hn'.2
+        simp [xorAll, hx, hrest]
+
+private def coefficientEval
+    (ns occ : List Name) (assignment : Name → Bool) : Bool :=
+  xorAll (ns.map (fun n => occurrenceBit occ n && assignment n))
+
+private theorem coefficientEval_nil (ns : List Name)
+    (assignment : Name → Bool) :
+    coefficientEval ns [] assignment = false := by
+  induction ns with
+  | nil => rfl
+  | cons x xs ih =>
+      simpa [coefficientEval, xorAll, occurrenceBit] using ih
+
+private theorem coefficientEval_cons (ns : List Name)
+    (x : Name) (xs : List Name) (assignment : Name → Bool)
+    (hn : ns.Nodup) :
+    coefficientEval ns (x :: xs) assignment =
+      (if x ∈ ns then assignment x else false) ^^
+        coefficientEval ns xs assignment := by
+  have hpoint (n : Name) :
+      (occurrenceBit (x :: xs) n && assignment n) =
+        ((x == n) && assignment n) ^^
+          (occurrenceBit xs n && assignment n) := by
+    rw [occurrenceBit_cons]
+    cases x == n <;> cases occurrenceBit xs n <;>
+      cases assignment n <;> decide
+  unfold coefficientEval
+  simp_rw [hpoint]
+  rw [xorAll_map_xor]
+  rw [xorAll_delta ns x assignment hn]
+
+private def occurrenceEval (xs : List Name)
+    (assignment : Name → Bool) : Bool :=
+  xs.foldl (fun parity n => parity ^^ assignment n) false
+
+private theorem occurrenceEval_acc (xs : List Name)
+    (assignment : Name → Bool) (acc : Bool) :
+    xs.foldl (fun parity n => parity ^^ assignment n) acc =
+      acc ^^ occurrenceEval xs assignment := by
+  induction xs generalizing acc with
+  | nil => cases acc <;> decide
+  | cons x xs ih =>
+      simp only [List.foldl_cons, occurrenceEval]
+      rw [ih (acc ^^ assignment x), ih (false ^^ assignment x)]
+      cases acc <;> cases assignment x <;>
+        cases xs.foldl (fun parity n => parity ^^ assignment n) false <;> decide
+
+private theorem occurrenceEval_cons (x : Name) (xs : List Name)
+    (assignment : Name → Bool) :
+    occurrenceEval (x :: xs) assignment =
+      assignment x ^^ occurrenceEval xs assignment := by
+  simp only [occurrenceEval, List.foldl_cons]
+  simpa using occurrenceEval_acc xs assignment (assignment x)
+
+/-- Every repeated source occurrence toggles exactly its corresponding
+matrix coefficient. In particular two occurrences cancel. The statement
+quantifies over *all* assignments and arbitrarily long source lists. -/
+theorem occurrence_parity_eq_source_coefficients
+    (ns occ : List Name) (assignment : Name → Bool)
+    (hn : ns.Nodup) (hcoverage : ∀ x ∈ occ, x ∈ ns) :
+    occurrenceEval occ assignment = coefficientEval ns occ assignment := by
+  induction occ with
+  | nil =>
+      simp [occurrenceEval, coefficientEval_nil]
+  | cons x xs ih =>
+      have hx : x ∈ ns := hcoverage x (by simp)
+      have hxs : ∀ y ∈ xs, y ∈ ns := by
+        intro y hy
+        exact hcoverage y (List.mem_cons_of_mem _ hy)
+      rw [occurrenceEval_cons, ih hxs, coefficientEval_cons ns x xs assignment hn]
+      simp [hx]
+
+/-- The coefficient vector used in the parity theorem is *literally*
+the prefix of the row constructed by the independent audit. -/
+theorem occurrence_matrix_row_is_sourceRow (s : Source)
+    (e : SourceEquation) (he : e ∈ s.equations) :
+    ((names s).map (occurrenceBit e.occurrences) ++ [e.rhs]) ∈
+      sourceRows s := by
+  exact List.mem_map.mpr ⟨e, he, rfl⟩
+
+/-! ## Universal pivot/free reindexing for arbitrary column sets
+
+The pivot positions need not be consecutive or start at zero.
+Functions on all internal coordinates are in bijection with
+functions on the declared pivot coordinates and their complement.
+This is a constructive exact coordinate split, not a count oracle.
+-/
+
+private def splitCoordinates {k : Nat} (pivots : Finset (Fin k))
+    (values : Fin k → Bool) :
+    (↥pivots → Bool) × (↥(Finset.univ \ pivots) → Bool) :=
+  (fun i => values i.val, fun i => values i.val)
+
+private def joinCoordinates {k : Nat} (pivots : Finset (Fin k))
+    (parts : (↥pivots → Bool) ×
+      (↥(Finset.univ \ pivots) → Bool)) :
+    Fin k → Bool :=
+  fun i =>
+    if h : i ∈ pivots then parts.1 ⟨i, h⟩
+    else parts.2 ⟨i, by simp [h]⟩
+
+/-- An arbitrary noncontiguous set of pivot columns can be reindexed
+with its full complement, without losing or duplicating assignments. -/
+def pivotFreeCoordinates {k : Nat} (pivots : Finset (Fin k)) :
+    (Fin k → Bool) ≃
+      ((↥pivots → Bool) × (↥(Finset.univ \ pivots) → Bool)) where
+  toFun := splitCoordinates pivots
+  invFun := joinCoordinates pivots
+  left_inv := by
+    intro values
+    funext i
+    by_cases hi : i ∈ pivots
+    · simp [splitCoordinates, joinCoordinates, hi]
+    · simp [splitCoordinates, joinCoordinates, hi]
+  right_inv := by
+    intro parts
+    apply Prod.ext
+    · funext i
+      simp [splitCoordinates, joinCoordinates, i.property]
+    · funext i
+      have hi : i.val ∉ pivots := (Finset.mem_sdiff.mp i.property).2
+      simp [splitCoordinates, joinCoordinates, hi]
+
+/-- Exactly k - r coordinates remain free when r distinct pivot
+columns are selected, for every k and every pivot subset. -/
+theorem pivotFree_card {k : Nat} (pivots : Finset (Fin k)) :
+    Fintype.card ↥(Finset.univ \ pivots) = k - pivots.card := by
+  classical
+  rw [Fintype.card_coe]
+  rw [Finset.card_sdiff (Finset.subset_univ pivots)]
+  simp
+
+#print axioms IndependentETH.AffineNativeAudit.occurrence_parity_eq_source_coefficients
+#print axioms IndependentETH.AffineNativeAudit.occurrence_matrix_row_is_sourceRow
+#print axioms IndependentETH.AffineNativeAudit.pivotFreeCoordinates
+#print axioms IndependentETH.AffineNativeAudit.pivotFree_card
+
+
 /-! ## Independent, source-derived ordered-port receipt checks
 
 The accepted port witness must refer to exactly the factor scopes and

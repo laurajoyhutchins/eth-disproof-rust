@@ -13,7 +13,7 @@ its machine execution.
 
 namespace ACC.BitProgramFields
 
-open BitProgram
+open OAI.Algorithms.SubexponentialSAT.BitProgram
 
 /-- Agreement of all physical program fields determines the whole program. -/
 theorem eq_of_fields {r s l : ℕ} (p q : Program r s l)

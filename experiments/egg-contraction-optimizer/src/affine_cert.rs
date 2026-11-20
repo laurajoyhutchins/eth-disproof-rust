@@ -39,10 +39,11 @@ struct CheckedColumns<'a> {
 
 impl<'a> CheckedColumns<'a> {
     fn from_source(source: &'a AffineRegion) -> Result<Self, String> {
-        let mut names = Vec::with_capacity(
-            source.internal.len().checked_add(source.boundary.len())
-                .ok_or("checker source name count overflow")?,
-        );
+        let source_count = source.internal.len().checked_add(source.boundary.len())
+            .ok_or("checker source name count overflow")?;
+        let mut names = Vec::new();
+        names.try_reserve_exact(source_count)
+            .map_err(|_| "checker source name reservation failed")?;
         let mut positions = BTreeMap::new();
         for name in source.internal.iter().chain(&source.boundary) {
             if !crate::affine::valid_source_identifier(name) {
@@ -67,6 +68,35 @@ impl<'a> CheckedColumns<'a> {
     }
 }
 
+
+/// Fallible allocation of the dense Boolean witness matrix. The
+/// caller must first enforce its checked cell budget. A failed capacity
+/// reservation returns an explicit error instead of panicking in vec!.
+/// This does not prove that an operating system cannot terminate a
+/// process after overcommitting memory.
+fn try_zeroed_matrix(height: usize, width: usize) -> Result<Vec<Vec<bool>>, String> {
+    let mut matrix = Vec::new();
+    matrix.try_reserve_exact(height)
+        .map_err(|_| "checker matrix row reservation failed")?;
+    for _ in 0..height {
+        let mut row = Vec::new();
+        row.try_reserve_exact(width)
+            .map_err(|_| "checker matrix column reservation failed")?;
+        row.resize(width, false);
+        matrix.push(row);
+    }
+    Ok(matrix)
+}
+
+/// Row-XOR replay must copy the source before mutating the target.
+/// Reserve explicitly so failure occurs before the target row changes.
+fn try_copy_row(row: &[bool]) -> Result<Vec<bool>, String> {
+    let mut copy = Vec::new();
+    copy.try_reserve_exact(row.len())
+        .map_err(|_| "checker row snapshot reservation failed")?;
+    copy.extend_from_slice(row);
+    Ok(copy)
+}
 
 /// Explicit verifier resources. These bound the *independent checker*, not
 /// the producer or the arbitrary-precision result allocation.
@@ -233,7 +263,7 @@ impl EliminationCertificate {
             return Err("boundary names/order were changed".into());
         }
         let columns = CheckedColumns::from_source(source)?;
-        let mut rows = vec![vec![false; width]; source.equations.len()];
+        let mut rows = try_zeroed_matrix(source.equations.len(), width)?;
         for (i, equation) in source.equations.iter().enumerate() {
             for variable in &equation.variables {
                 columns.toggle_occurrence(&mut rows[i], variable)?;
@@ -254,7 +284,7 @@ impl EliminationCertificate {
                     }
                     // Deliberately dense, independent of the producer's u64
                     // packed-mask XOR operation.
-                    let read = rows[source].clone();
+                    let read = try_copy_row(&rows[source])?;
                     for (bit, other) in rows[target].iter_mut().zip(read) {
                         *bit ^= other;
                     }
@@ -404,6 +434,30 @@ mod tests {
         assert!(certificate.verify(&other, &interface).is_err());
     }
 
+
+    #[test]
+    fn matrix_reservation_fails_closed_before_any_partial_result_escapes() {
+        let row = try_zeroed_matrix(2, 3).unwrap();
+        assert_eq!(row, vec![vec![false; 3]; 2]);
+        assert_eq!(try_zeroed_matrix(0, 0).unwrap().len(), 0);
+        assert!(try_zeroed_matrix(1, usize::MAX).unwrap_err()
+            .contains("column reservation failed"));
+        assert!(try_zeroed_matrix(usize::MAX, 1).unwrap_err()
+            .contains("row reservation failed"));
+        assert!(try_copy_row(&[true, false, true]).unwrap() == vec![true, false, true]);
+    }
+
+    #[test]
+    fn preflight_resource_refusal_cannot_reach_dense_allocation() {
+        let source = example();
+        let (claimed, cert) = source.eliminate_with_certificate().unwrap();
+        // An empty cell budget refuses before matrix reconstruction.
+        let refusal = cert.verify_with_terminal(&source, &claimed, VerificationLimits {
+            max_cells: 0,
+            max_steps: 0,
+        });
+        assert!(refusal.unwrap_err().contains("storage budget exceeded"));
+    }
 
     #[test]
     fn checked_registry_refuses_corrupted_indices_before_bit_mutation() {

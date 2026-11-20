@@ -12,7 +12,7 @@ use crate::Error;
 
 /// An instruction of `BitProgram.Instr`. All indexes are validated when a
 /// program is created, corresponding to Lean's `Fin` index types.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub enum Instr {
     Halt,
     Goto {
@@ -262,7 +262,7 @@ impl Instr {
 
 /// `BitProgram.Program r s l`, with the finite label type represented by the
 /// length of an immutable instruction table.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Program<const R: usize, const S: usize> {
     input_stack: usize,
     output_stack: usize,
@@ -641,7 +641,12 @@ pub struct RunStats {
 }
 
 mod deferred;
+pub mod frame_programs;
+pub mod physical_encoding;
+pub(crate) mod record_iteration;
+pub(crate) mod source_commands;
 mod source_json;
+pub mod stack_routines;
 mod structured;
 pub use deferred::{Block, DeferredProgram, relocate_ports, run_with_instruction_at};
 pub use source_json::{SourceGraphBinding, emit_original_source_rust};

@@ -27,6 +27,10 @@ and new mathematical conjectures without separately testing each claim.
 Follow the [PR template](.github/PULL_REQUEST_TEMPLATE.md) and
 [execution/evidence matrix](eth/docs/evidence.md).
 
+For Rust implementation and diagnostic binaries, follow the
+[Rust code conventions](docs/RUST_STYLE.md). Keep style-only changes separate
+from Lean correspondence and algorithmic changes.
+
 ## One Lean-to-Rust compiler path
 
 The authoritative language pipeline is **Lean 4 source → Lean frontend and
@@ -92,6 +96,29 @@ and never claim that a source-graph test fixture proves original Lean parity.
 A green Rust workflow validates Rust formatting/tests/lints, **not** the
 original Lean semantics, native TM2 refinement or the theorem. Original Lean
 execution and mathematical resource accounting require separate evidence.
+
+### Verification with a distinct failure mode
+
+Before adding a CI step, name the bug or invariant it would detect and check
+whether an existing step already exercises it. In the root Rust workspace,
+`cargo test --locked --offline --all-targets` already executes
+`profile_source_accounting` (including nonterminal refusal and four-stage
+accounting) and `native_query_first_node_composition`. Re-running those
+tests under separate step names adds no independent evidence.
+
+The profiling binary's Rust-vs-Rust state replay is useful for finding
+instrumentation and accounting mistakes; it is **not** an independent
+original-Lean execution and its elapsed times are not a complexity bound.
+Keep its diagnostic CSV available on demand without making a second
+unasserted invocation part of ordinary PR acceptance.
+
+A new required gate should have: a named source/implementation failure mode,
+a failing mutation or counterexample that demonstrates detection, an
+independent observation when claiming cross-language equivalence, and an
+explicit statement of what passing does *not* establish. Delete or subsume
+obsolete gates when a stronger check already covers the same domain. Keep
+different failure modes separate; this is not a license to delete actual
+kernel, original-source differential, refusal, or checked-decoding obligations.
 
 For a bug report, supply the affected commit, Rust toolchain, smallest
 reproducing input (DIMACS when applicable), expected vs actual state/output,

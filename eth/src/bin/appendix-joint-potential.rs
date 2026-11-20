@@ -1,10 +1,12 @@
 //! Fail-closed quantitative audit and tiny exact joint-potential witness.
 //! No original source schedule, tensor recursion or SAT count is executed.
+
+use std::process::ExitCode;
+
 use lean_eth_reference::matching_packing::BipartiteGraph;
 use lean_eth_reference::two_adic_joint_derandomize::construct_joint_potential_labels_small;
 use lean_eth_reference::two_adic_joint_potential::JointPotentialArithmetic;
 use serde_json::json;
-use std::process::ExitCode;
 
 fn parse_u128(s: &str, name: &str) -> Result<u128, String> {
     s.parse::<u128>().map_err(|_| format!("invalid {name}"))
@@ -114,11 +116,9 @@ fn run() -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::from(2),
-        Err(message) => {
-            eprintln!("{message}");
-            ExitCode::from(2)
-        }
+    if let Err(error) = run() {
+        eprintln!("{error}");
     }
+    // An arithmetic receipt is not an execution of the original algorithm.
+    ExitCode::from(2)
 }

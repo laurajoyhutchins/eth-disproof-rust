@@ -2,6 +2,8 @@
 
 This page distinguishes source-defined executable paths, generated artifacts, and the independent verification still required.
 
+The [read-only source-stage evidence graph](stage-evidence.md) lists the existing registry's pinned Lean symbols, source-blob entries, prerequisite stages and unfinished paths. It reports all cross-language and resource correspondence as unassessed unless separately established; implementation status is not proof status.
+
 ## Implemented execution paths
 
 | Runs or exists on main | What that establishes |
@@ -20,7 +22,27 @@ Evidence is attached to its **exact commit**. The canonical stage registry lives
 
 **One original nonterminal count.** Run the source-defined query, high/leaf, DFS and outer composition on a nontrivial CNF. Do not invoke the host oracle when a source constructor is missing. [The remaining dependency map](remaining-lean-port.md) and [counting gate #100](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/100) describe the route.
 
-**One independent machine differential.** Execute the pinned original Lean program and the Rust result on identical initial states. Compare PC, *all* registers and stacks, ports, transitions, output, halting and refusal. Historical [draft #156](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/156) worked toward the original-source gate; a cached fixture is not an independent producer.
+**General physical interpreter correspondence.** The existing
+[`lean_physical_differential.py`](../tools/lean_physical_differential.py)
+extracts the original pinned `BitProgram.execInstr` and `step`
+definitions, runs Lean and the actual Rust `Program::step` with the same
+initial states, and compares PC, every register, and every stack at
+each bounded transition. Six independently exported original programs
+check source-derived behavior; a **separately identified synthetic
+20-label basis** exercises all twelve physical instruction constructors,
+both `Set` values, both outcomes of `Branch`, distinct/aliased
+register operands, and empty/nonempty stack handling across sixteen
+register seeds. The synthetic basis is **not an original Lean program
+export** and cannot establish source graph identity.
+
+**Still open:** a *universal* refinement theorem from the actual Rust
+interpreter, including arbitrary `usize` indices after admission,
+memory representation, allocation and refusal behavior, to the original
+Lean semantics. Bounded transitions, even with every opcode covered,
+are useful falsification evidence rather than that theorem.
+Historical [draft #156](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/156)
+worked toward the source-bound differential; cached fixtures alone are
+not independent Lean execution.
 
 **One primitive resource argument.** Rust instruction counts, occupied stack bits, wall time and allocations are **not** TM2 transitions or visited tape cells. The abstract identity under source-graph agreement proved in [#178](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/178) is useful but leaves the Rust source-refinement and full counting graph obligations. See [resource gate #110](https://github.com/laurajoyhutchins/eth-disproof-rust/issues/110).
 
@@ -47,5 +69,22 @@ printf 'p cnf 3 2\n1 2 0\n1 3 0\n' | \
 ```
 
 The [Rust workflow](../../.github/workflows/rust.yml) reports the exact head checked. A green run from yesterday validates yesterday's commit, not today's.
+
+### Why the root gate has no extra profiling or first-node step
+
+`cargo test --locked --offline --all-targets` already runs the
+`profile_source_accounting` integration tests, which invoke
+`profile-full-machine --nonterminal` and `--terminal`, assert both
+unsupported-count refusal and measured stage accounting, and reject invalid
+observer modes. The same command runs
+`native_query_first_node_composition`, checking stage-replay states and
+explicit absence of a fabricated QueryStream count. Running either again as
+a named CI step repeats the *same implementation* and does not diversify
+evidence. The standalone profiling commands remain available for diagnosis.
+
+Distinct gates still matter: pinned Lean kernel checks, fresh original-Lean
+execution against generated Rust, independent certificates with adversarial
+mutations, and explicit fail-closed input decoding each test a different
+failure mode. Rust test success alone establishes none of those claims.
 
 [Compiler acceptance](../../research/lean-rust-acceptance.md) · [Independent differential specification](independent-differential-and-accounting.md)

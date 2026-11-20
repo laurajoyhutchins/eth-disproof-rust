@@ -14,16 +14,13 @@
 //! No runtime mathematical coefficients are injected as an oracle.
 
 use crate::Error;
+use crate::bit_program::source_commands::{clear_many, reset_false};
 use crate::bit_program::{Atom, Cmd, Instr, Program};
 use crate::native_flatten::integer_cache_program;
-use crate::native_high::{clear_program, copy_program};
+use crate::native_high::copy_program;
 
 const TEMPORARY: usize = 659;
 const WORK_BASE: usize = 340;
-
-fn clear<const R: usize, const S: usize>(port: usize) -> Result<Cmd<R, S>, Error> {
-    Ok(Cmd::Call(clear_program(port, 0, 1)?))
-}
 
 fn copy<const R: usize, const S: usize>(
     src: usize,
@@ -31,14 +28,6 @@ fn copy<const R: usize, const S: usize>(
     tmp: usize,
 ) -> Result<Cmd<R, S>, Error> {
     Ok(Cmd::Call(copy_program(src, dst, tmp, 0, 1)?))
-}
-
-fn clear_many<const R: usize, const S: usize>(ports: &[usize]) -> Result<Cmd<R, S>, Error> {
-    let mut out = Cmd::Skip;
-    for &port in ports.iter().rev() {
-        out = Cmd::seq(clear(port)?, out);
-    }
-    Ok(out)
 }
 
 fn copy_many<const R: usize, const S: usize>(
@@ -50,12 +39,6 @@ fn copy_many<const R: usize, const S: usize>(
         out = Cmd::seq(copy(src, dst, tmp)?, out);
     }
     Ok(out)
-}
-
-fn reset_work() -> Cmd<16, 768> {
-    (0..9).rev().fold(Cmd::Skip, |rest, dst| {
-        Cmd::seq(Cmd::Atom(Atom::Set { dst, value: false }), rest)
-    })
 }
 
 /// `BasisTransposePlanProgram.multiply` uses the literal `UnaryForPrograms.forCmd`:
@@ -190,7 +173,7 @@ pub(crate) fn stage<const R: usize, const S: usize>(
         clear_many(&[TEMPORARY])?,
         Cmd::seq(
             clear_many(&work)?,
-            Cmd::seq(reset_work(), copy_many(TEMPORARY, &input_copies)?),
+            Cmd::seq(reset_false(0..9), copy_many(TEMPORARY, &input_copies)?),
         ),
     );
     let call =
@@ -200,7 +183,7 @@ pub(crate) fn stage<const R: usize, const S: usize>(
         clear_many(&destinations)?,
         Cmd::seq(
             copy_many(TEMPORARY, &output_copies)?,
-            Cmd::seq(clear_many(&work)?, reset_work()),
+            Cmd::seq(clear_many(&work)?, reset_false(0..9)),
         ),
     );
     Ok(Cmd::seq(prepare, Cmd::seq(call, finish)))

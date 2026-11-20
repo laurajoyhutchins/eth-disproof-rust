@@ -60,6 +60,17 @@ jobs:
           test "$(grep -c '"policy":"selective-tropical"' /tmp/adaptive-order-receipts.jsonl)" -eq 40
           grep -F '"kind":"frustrated-xor3-cnf"' /tmp/adaptive-order-receipts.jsonl | grep -F '"satisfying_count":"0"' >/dev/null
 
+      - name: Verify exact zero-coefficient sparse support and pruning across the same source cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin zero-coefficient-study | tee /tmp/zero-coefficient-study.jsonl
+          test "$(wc -l < /tmp/zero-coefficient-study.jsonl)" -eq 120
+          test "$(grep -c '"oracle":"checked"' /tmp/zero-coefficient-study.jsonl)" -eq 120
+          for strategy in dense-zero dense-zero-pruned indexed-support; do
+            test "$(grep -c "\"strategy\":\"$strategy\"" /tmp/zero-coefficient-study.jsonl)" -eq 40
+          done
+
       - name: Run contraction-order study and check small-case oracle
         shell: bash
         run: |
@@ -91,7 +102,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean eth/proofs/IndependentTropicalLeading.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean eth/proofs/IndependentOverlappingFactors.lean eth/proofs/IndependentTropicalLeading.lean eth/proofs/IndependentZeroCoefficientPruning.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
@@ -104,3 +115,4 @@ jobs:
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentLivePortFold.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentOverlappingFactors.lean"
           lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentTropicalLeading.lean"
+          lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentZeroCoefficientPruning.lean"

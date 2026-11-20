@@ -168,7 +168,8 @@ theorem plus_assoc (a b c : Leading) :
       | none => rfl
       | some b =>
           cases c with
-          | none => simp [plus]
+          | none =>
+              cases h : plus (some a) (some b) <;> rfl
           | some c =>
               by_cases hab : a.degree < b.degree
               all_goals by_cases hba : b.degree < a.degree

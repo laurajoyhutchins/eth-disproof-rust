@@ -1,6 +1,12 @@
 name: Original QueryStream modular source extraction
 
 on:
+  # One scoped experimental branch run; not a recurring main/PR deep gate.
+  push:
+    branches:
+      - feat/query-modular-source-extraction-20261120
+    paths:
+      - '.github/workflows/original-query-modules.yml'
   workflow_dispatch:
     inputs:
       stage:
@@ -22,7 +28,7 @@ permissions:
 # One module per attempt avoids combining every original QueryStream dependency
 # with the exporter in the same live Lean process.
 concurrency:
-  group: query-modular-source-${{ github.ref }}-${{ inputs.stage }}
+  group: query-modular-source-${{ github.ref }}-${{ inputs.stage || 'moments_readout' }}
   cancel-in-progress: false
 
 jobs:
@@ -34,7 +40,7 @@ jobs:
       ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
       PINNED_ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
       LEAN_ROOT: instrumentation/lean-env
-      QUERY_MODULE_STAGE: ${{ inputs.stage }}
+      QUERY_MODULE_STAGE: ${{ inputs.stage || 'moments_readout' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,7 +105,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: original-query-module-${{ inputs.stage }}-${{ github.sha }}-${{ github.run_attempt }}
+          name: original-query-module-${{ inputs.stage || 'moments_readout' }}-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/query-modular-source/
           if-no-files-found: warn
           retention-days: 14

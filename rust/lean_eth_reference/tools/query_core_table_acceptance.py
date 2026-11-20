@@ -158,6 +158,22 @@ def accept(lake: Path, output: Path, timeout: int) -> dict:
         # handwritten instruction semantics. Lean reimports the original module
         # and proves candidate/source code equality at EVERY address.
         certificate, cert = certificate_source(graph_path, RECORD)
+        # The existing generic serializer uses `fin_cases` for every label.
+        # On this 309-site original OAI module that expansion exhausted the
+        # 12 GiB process limit. Retain the exact SAME equality theorem, but
+        # prove its finite universal proposition by kernel reduction of
+        # `decide`, rather than creating 309 elaborator tactic branches.
+        # This is not an axiom, admission bypass, or replacement semantics.
+        old = "  fin_cases pc <;> rfl"
+        if certificate.count(old) != 1:
+            raise ValueError("canonical source theorem layout changed")
+        assertion = (
+            f"  have h : ∀ q : Fin {fields['labels']}, candidate.code q = "
+            f"{DECL}.code q := of_decide_true rfl\\n"
+            "  exact h pc"
+        )
+        certificate = certificate.replace(old, assertion)
+        cert["certificate_sha256"] = hashlib.sha256(certificate.encode()).hexdigest()
         cert_path = output / "kernel-certificate.lean"
         cert_path.write_text(certificate)
         result["certificate_sha256"] = cert["certificate_sha256"]

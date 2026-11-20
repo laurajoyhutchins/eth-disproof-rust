@@ -47,6 +47,12 @@ class EvidenceReceiptTests(unittest.TestCase):
         }
 
     def remote(self, url):
+        if "/git/trees/" in url:
+            return {"truncated": False, "tree": [{
+                "type": "blob",
+                "path": "src/model.lean",
+                "sha": git_blob_sha(self.subject.read_bytes()),
+            }]}
         if url.endswith("/jobs?per_page=100"):
             return {"total_count": 1, "jobs": [{
                 "name": "native-ffi-smoke",
@@ -79,6 +85,24 @@ class EvidenceReceiptTests(unittest.TestCase):
         payload["claims"][0]["receipt"]["checked_head"] = "2" * 40
         with self.assertRaisesRegex(ReceiptError, "wrong repository/head/workflow"):
             audit(payload, self.root, fetcher=self.remote)
+
+    def test_run_head_does_not_own_claimed_blob_refuses(self):
+        def wrong_tree(url):
+            result = self.remote(url)
+            if "/git/trees/" in url:
+                result["tree"][0]["sha"] = "f" * 40
+            return result
+        with self.assertRaisesRegex(ReceiptError, "claimed blob not present"):
+            audit(self.example, self.root, fetcher=wrong_tree)
+
+    def test_truncated_historical_tree_refuses(self):
+        def truncated(url):
+            result = self.remote(url)
+            if "/git/trees/" in url:
+                result["truncated"] = True
+            return result
+        with self.assertRaisesRegex(ReceiptError, "incomplete historical source tree"):
+            audit(self.example, self.root, fetcher=truncated)
 
     def test_workflow_success_without_required_step_refuses(self):
         def wrong_step(url):

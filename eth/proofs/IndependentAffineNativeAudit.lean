@@ -188,7 +188,7 @@ theorem audit_implies_sourceOK (snapshot : Snapshot)
     (h : audit snapshot maxCells maxSteps = true) :
     sourceOK snapshot.source = true := by
   cases hs : sourceOK snapshot.source with
-  | true => exact hs
+  | true => rfl
   | false =>
       simp [audit, hs] at h
 
@@ -198,9 +198,8 @@ theorem audit_implies_version (snapshot : Snapshot)
     (maxCells maxSteps : Nat)
     (h : audit snapshot maxCells maxSteps = true) :
     snapshot.cert.version = 1 := by
-  have hs := audit_implies_sourceOK snapshot maxCells maxSteps h
   by_contra hv
-  simp [audit, hs, hv] at h
+  simp [audit, hv] at h
 
 /-- The accepted free exponent must equal the number of original
 internal columns minus the exact admitted pivot count. This is an
@@ -210,8 +209,13 @@ theorem audit_implies_free_dimension (snapshot : Snapshot)
     (h : audit snapshot maxCells maxSteps = true) :
     snapshot.claim.free =
       snapshot.source.internal.length - snapshot.cert.pivots.length := by
-  unfold audit at h
-  split_ifs at h <;> simp_all
+  by_contra hf
+  have hg :
+      (snapshot.claim.rank != snapshot.cert.pivots.length ||
+       snapshot.claim.free !=
+         (snapshot.source.internal.length - snapshot.cert.pivots.length)) = true := by
+    simp [hf]
+  simp [audit, hg] at h
 
 #print axioms IndependentETH.AffineNativeAudit.audit_implies_sourceOK
 #print axioms IndependentETH.AffineNativeAudit.audit_implies_version

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'eth/proofs/**'
+      - 'instrumentation/lean-env/ACC/**'
       - 'eth/AGENTS.md'
       - 'tools/check_lean_proof_style.py'
       - 'tools/test_lean_proof_style.py'

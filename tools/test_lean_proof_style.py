@@ -1,7 +1,13 @@
 """Positive and negative controls for the Lean proof style boundary."""
+from pathlib import Path
+import tempfile
 import unittest
 
-from check_lean_proof_style import check_text, undocumented_declarations
+from check_lean_proof_style import (
+    check_text,
+    discover_proof_modules,
+    undocumented_declarations,
+)
 
 
 GOOD = """import Mathlib
@@ -21,6 +27,30 @@ end Example
 
 
 class ProofStyleTests(unittest.TestCase):
+    def test_discovers_both_authored_proof_roots_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            selected = (
+                Path("eth/proofs/IndependentExample.lean"),
+                Path("instrumentation/lean-env/ACC/ExampleProof.lean"),
+            )
+            for relative in selected:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(GOOD, encoding="utf-8")
+            upstream = root / "upstream/anthropic/Proof.lean"
+            upstream.parent.mkdir(parents=True)
+            upstream.write_text(GOOD, encoding="utf-8")
+            self.assertEqual(
+                [path.relative_to(root) for path in discover_proof_modules(root)],
+                sorted(selected),
+            )
+
+    def test_annotated_undocumented_theorem_is_reported(self):
+        source = GOOD.replace("/-- An elementary proposition. -/\\n", "")
+        source = source.replace("theorem self_evident", "@[simp] theorem self_evident")
+        self.assertEqual(len(undocumented_declarations(source)), 1)
+
     def test_valid_module(self):
         self.assertEqual(check_text(GOOD), [])
 

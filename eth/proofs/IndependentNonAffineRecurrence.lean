@@ -546,6 +546,58 @@ def wordSolutionsSeedEquiv (ds : List Bool) :
     exact sourceCNFWord_seed
       (fullTrace_to_sourceCNFWord (accepted_fullTrace s.1 ds s.2))
 
+/-! ## One-step composition along the three-variable boundary
+
+Removing the first parity gadget and the first positive OR clause leaves
+the same source problem on the shifted variable assignment. This theorem
+is about the existing indexed signed-row semantics, not a replacement
+definition of a new formula. -/
+
+def shiftAssignment (x : Nat → Bool) : Nat → Bool := fun i => x (i + 1)
+
+theorem sourceRows_step (d : Bool) (ds : List Bool) (x : Nat → Bool) :
+    allRowsHold x (sourceRows (d :: ds)) ↔
+      parityState (tripleAt x 0 1 3) = d ∧
+      tripleAt x 0 1 2 ≠ zeroState ∧
+      allRowsHold (shiftAssignment x) (sourceRows ds) := by
+  rw [sourceRows_exact (d :: ds) x,
+      sourceRows_exact ds (shiftAssignment x)]
+  constructor
+  · rintro ⟨hp, ho⟩
+    refine ⟨?_, ?_, ?_, ?_⟩
+    · simpa [tripleAt] using hp 0 (by simp)
+    · simpa [tripleAt] using ho 0 (by simp)
+    · intro i hi
+      have h := hp (i + 1) (by simp; omega)
+      simpa [shiftAssignment, tripleAt, Nat.add_assoc,
+        Nat.add_left_comm, Nat.add_comm] using h
+    · intro i hi
+      have h := ho (i + 1) (by simp; omega)
+      simpa [shiftAssignment, tripleAt, Nat.add_assoc,
+        Nat.add_left_comm, Nat.add_comm] using h
+  · rintro ⟨hpar, hor, hp, ho⟩
+    constructor
+    · intro i hi
+      cases i with
+      | zero =>
+          simpa [tripleAt] using hpar
+      | succ i =>
+          have hi' : i < ds.length := by simp at hi; omega
+          have h := hp i hi'
+          simpa [shiftAssignment, tripleAt, Nat.add_assoc,
+            Nat.add_left_comm, Nat.add_comm] using h
+    · intro i hi
+      cases i with
+      | zero =>
+          simpa [tripleAt] using hor
+      | succ i =>
+          have hi' : i < ds.length + 1 := by simp at hi; omega
+          have h := ho i hi'
+          simpa [shiftAssignment, tripleAt, Nat.add_assoc,
+            Nat.add_left_comm, Nat.add_comm] using h
+
+#print axioms IndependentETH.NonAffine.sourceRows_step
+
 /-! ## Checked signed CSR input and proof-producing receipt semantics
 
 This is an executable Lean reference decoder for Rust-shaped offsets,

@@ -239,7 +239,7 @@ mod tests {
         };
         let factors = source_case(case).unwrap();
         let scopes = factors.iter().map(|f| f.ports.clone()).collect::<Vec<_>>();
-        let structural = super::make_plan(&factors, Policy::MinFillAdmission).unwrap();
+        let structural = super::super::make_plan(&factors, Policy::MinFillAdmission).unwrap();
         let leaves = factors.iter().map(Tables::from_factor)
             .collect::<Result<Vec<_>, _>>().unwrap();
         let mut exact = leaves[structural.order[0]].clone();

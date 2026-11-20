@@ -1,7 +1,8 @@
 //! Actual source `ExecClauseRelationScan.command mode`, not host set logic.
 //! Source has 15 one-bit registers and 12 Boolean stacks.
 use crate::Error;
-use crate::bit_program::{Atom, Cmd, Instr, Program};
+use crate::bit_program::stack_routines::transfer_program;
+use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_clause_relations::relation_program;
 use crate::native_high::clear_program;
 use crate::native_query_prefix::frame_program;
@@ -23,30 +24,7 @@ impl Mode {
 }
 
 pub fn transfer_candidate() -> Result<Program<15, 12>, Error> {
-    Program::new(
-        11,
-        8,
-        0,
-        vec![
-            Instr::Pop {
-                stack: 11,
-                value: 0,
-                present: 1,
-                next: 1,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 2,
-                no: 3,
-            },
-            Instr::Push {
-                stack: 8,
-                src: 0,
-                next: 0,
-            },
-            Instr::Halt,
-        ],
-    )
+    transfer_program(11, 8, 0, 1)
 }
 
 pub fn relation_lift() -> Result<Program<15, 12>, Error> {

@@ -2,7 +2,8 @@
 //! Uses the preserving three-mode scanner to remove equivalent clauses while
 //! retaining only the *last* occurrence and original order of surviving clauses.
 use crate::Error;
-use crate::bit_program::{Atom, Cmd, Instr, Program};
+use crate::bit_program::stack_routines::transfer_program;
+use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_clause_relation_scan::{self, Mode};
 use crate::native_high::{clear_program, copy_program};
 use crate::native_normalization_primitives::{
@@ -14,30 +15,7 @@ pub fn transfer(src: usize, dst: usize) -> Result<Program<15, 16>, Error> {
     if src == dst {
         return Err(Error::Invalid("transfer ports must differ".into()));
     }
-    Program::new(
-        src,
-        dst,
-        0,
-        vec![
-            Instr::Pop {
-                stack: src,
-                value: 0,
-                present: 1,
-                next: 1,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 2,
-                no: 3,
-            },
-            Instr::Push {
-                stack: dst,
-                src: 0,
-                next: 0,
-            },
-            Instr::Halt,
-        ],
-    )
+    transfer_program(src, dst, 0, 1)
 }
 
 /// Original `ExecClauseRelationScan.Preserving.command` 15x13:

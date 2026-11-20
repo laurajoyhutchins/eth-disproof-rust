@@ -22,6 +22,10 @@ not proof of behavioral equivalence.
   it implements and what remains outside its execution boundary. Use `///`
   for public contracts and `//` for local invariants. State facts once;
   avoid repeating a paragraph of qualifications on every function.
+- Keep the source `StackRoutines.clearProgram`, `copyProgram`, and
+  `transferProgram` label tables in `bit_program/stack_routines.rs`. Use
+  compatibility re-exports rather than copying instruction tables into
+  normalization, query, or counting modules.
 - Extract a helper when distinct callers share a genuine representation
   contract. Keep diagnostic-only helpers in the diagnostic surface, rather
   than exposing them as library APIs or duplicating them in each binary.

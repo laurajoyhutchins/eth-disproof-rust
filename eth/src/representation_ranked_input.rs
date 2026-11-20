@@ -16,8 +16,7 @@
 //! raw-byte decoder still require proof, not merely tests.
 use crate::Error;
 use crate::representation_ranked_certificate::{
-    RankedComponentCertificate, VerifiedRankedCertificate,
-    verify_ranked_component_certificate,
+    RankedComponentCertificate, VerifiedRankedCertificate, verify_ranked_component_certificate,
 };
 
 const MAGIC: &[u8; 4] = b"RKC1";
@@ -48,8 +47,10 @@ impl RankedContractionInput {
 /// checked against the same raw byte sequence.
 pub fn execute_ranked_wire(
     bytes: &[u8],
-) -> (Result<crate::representation_ranked_certificate::RankedCountReceipt, Error>,
-      Vec<crate::representation_ranked_certificate::ArithmeticReceipt>) {
+) -> (
+    Result<crate::representation_ranked_certificate::RankedCountReceipt, Error>,
+    Vec<crate::representation_ranked_certificate::ArithmeticReceipt>,
+) {
     use crate::representation_ranked_certificate::contract_checked_ranked_weights_with_trace;
     match decode_ranked_input(bytes) {
         Err(error) => (Err(error), Vec::new()),

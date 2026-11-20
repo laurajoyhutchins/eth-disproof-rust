@@ -37,12 +37,11 @@ pub struct VerifiedRankedCertificate {
 // function returns from a loop. No suffix is visited after the first failure.
 fn check_edge_bounds(n: usize, source_edges: &[(usize, usize)]) -> Result<(), Error> {
     let mut invalid = false;
-    for index in 0..source_edges.len() {
+    let mut index = 0;
+    while index < source_edges.len() && !invalid {
         let (a, b) = source_edges[index];
-        if a >= n || b >= n {
-            invalid = true;
-            break;
-        }
+        invalid = a >= n || b >= n;
+        index += 1;
     }
     if invalid {
         Err(Error::Invalid("source edge outside declared region".into()))
@@ -53,11 +52,10 @@ fn check_edge_bounds(n: usize, source_edges: &[(usize, usize)]) -> Result<(), Er
 
 fn check_label_bounds(classes: usize, labels: &[usize]) -> Result<(), Error> {
     let mut invalid = false;
-    for index in 0..labels.len() {
-        if labels[index] >= classes {
-            invalid = true;
-            break;
-        }
+    let mut index = 0;
+    while index < labels.len() && !invalid {
+        invalid = labels[index] >= classes;
+        index += 1;
     }
     if invalid {
         Err(Error::Invalid(
@@ -93,12 +91,11 @@ fn check_edge_class_closure(
     labels: &[usize],
 ) -> Result<(), Error> {
     let mut invalid = false;
-    for index in 0..source_edges.len() {
+    let mut index = 0;
+    while index < source_edges.len() && !invalid {
         let (a, b) = source_edges[index];
-        if labels[a] != labels[b] {
-            invalid = true;
-            break;
-        }
+        invalid = labels[a] != labels[b];
+        index += 1;
     }
     if invalid {
         Err(Error::Invalid("source edge crosses claimed classes".into()))

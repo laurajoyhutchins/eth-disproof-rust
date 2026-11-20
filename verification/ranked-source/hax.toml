@@ -53,3 +53,19 @@ include = ["ranked_source_proof_harness::borrow_return_probe::p6_checked_optiona
 [scenario.probe-p7]
 backend = "lean"
 include = ["ranked_source_proof_harness::borrow_return_probe::p7_checked_owned"]
+
+[scenario.probe-p8]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p8_checked_only"]
+
+[scenario.probe-p9]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p9_option_payload"]
+
+[scenario.probe-p10]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p10_checked_scalar_sink"]
+
+[scenario.probe-p11]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p11_checked_option_sink"]

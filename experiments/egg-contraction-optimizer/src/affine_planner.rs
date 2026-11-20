@@ -118,7 +118,7 @@ impl Stage {
             .ok_or("multiplicity exponent overflow")?;
         let metrics = measure(&interface, checked.operations_checked)?;
         let hidden = self.hidden.union(&other.hidden)
-            .cloned().chain(region.internal).collect();
+            .cloned().chain(region.internal.iter().cloned()).collect();
         Ok((Self { interface, hidden, metrics }, region, certificate, local_claim))
     }
 

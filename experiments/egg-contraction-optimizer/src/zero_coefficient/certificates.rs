@@ -91,6 +91,9 @@ pub struct Receipt {
     pub elapsed_ns: u128,
     pub satisfying_count: BigUint,
     pub unguarded_sparse_count: BigUint,
+    pub unguarded_sparse_elapsed_ns: u128,
+    pub unguarded_sparse_exact_mult: u64,
+    pub unguarded_sparse_bit_work_proxy: u128,
     pub work: CertificateWork,
     pub independent_oracle: &'static str,
 }
@@ -374,12 +377,16 @@ fn run_with_baseline(
         ));
     }
     let elapsed_ns = start.elapsed().as_nanos();
-    let unguarded_sparse_count = baseline.variants.iter()
+    let unguarded = baseline.variants.iter()
         .find(|v| v.strategy == Strategy::IndexedSupport)
-        .ok_or("no unguarded support baseline")?.satisfying_count.clone();
+        .ok_or("no unguarded support baseline")?;
     Ok(Receipt {
         case, mode, order, elapsed_ns, satisfying_count: count,
-        unguarded_sparse_count, work: m, independent_oracle: "checked",
+        unguarded_sparse_count: unguarded.satisfying_count.clone(),
+        unguarded_sparse_elapsed_ns: unguarded.elapsed_ns,
+        unguarded_sparse_exact_mult: unguarded.work.multiplications,
+        unguarded_sparse_bit_work_proxy: unguarded.work.bit_work_proxy,
+        work: m, independent_oracle: "checked",
     })
 }
 

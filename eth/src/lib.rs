@@ -417,6 +417,7 @@ pub mod lean_codegen;
 pub mod native_high;
 #[path = "query/native_tuple.rs"]
 pub mod native_tuple;
+pub mod representation_equality_components;
 pub mod representation_matching;
 
 #[path = "counting/finite_fallback.rs"]

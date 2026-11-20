@@ -19,6 +19,8 @@ operations refine these mathematical operations.
 
 namespace IndependentETH.AffineMatrixReplay
 
+attribute [local instance] Classical.propDecidable
+
 open IndependentETH.AffineRowOps
 
 abbrev GF2 := ZMod 2

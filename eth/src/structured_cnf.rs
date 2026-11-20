@@ -357,7 +357,7 @@ mod tests {
             }
         }
 
-        let rows = vec![vec![1_i64, 2, 3]];
+        let rows = [vec![1_i64, 2, 3]];
         let refs = rows.iter().map(Vec::as_slice).collect::<Vec<_>>();
         let unsupported = Cnf::from_signed(4, &refs).unwrap();
         assert!(count_recognized_cnf(&unsupported).is_err());

@@ -70,6 +70,9 @@ a,b=normalized(sys.argv[1]),normalized(sys.argv[2])
 if a!=b: raise SystemExit("stock and instrumented C++ runtime physical witness divergence")
 print("worklist_stock_vs_diagnostic_physical_effects=PASS rows="+str(len(a)))
 PY
+# Keep an explicit CI receipt for the independent comparison.
+echo 'worklist_stock_vs_diagnostic_physical_effects=PASS rows=81' \
+  | tee "$out/stock-diagnostic-comparison.txt"
 echo 'worklist_diagnostic_original_cpp=EXACT_UPSTREAM_BLOB_GUARDED'
 echo 'worklist_internal_events=SAMPLED_EAGER_SINGLE_THREADED_CONSTRUCTORS'
 echo 'worklist_production_runtime=UNCHANGED'

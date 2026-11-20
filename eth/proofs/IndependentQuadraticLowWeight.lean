@@ -250,12 +250,18 @@ deriving Repr, DecidableEq
 def pairBefore (a b : Nat × Nat) : Bool :=
   decide (a.1 < b.1 ∨ (a.1 = b.1 ∧ a.2 < b.2))
 
+/-- Adjacent-pair monotonicity is the exact native Rust previous-pair check.
+Since lexicographic order is transitive, this excludes all duplicates and
+reorderings; no undecidable Pairwise relation is needed to compute it. -/
+def sparsePairsInOrder (pairs : List (Nat × Nat)) : Bool :=
+  (pairs.zip (pairs.drop 1)).all (fun p => pairBefore p.1 p.2)
+
 /-- Width, bounds, ascending pair entries and globally increasing pair order.
 The latter excludes duplicate entries as well as reordered pairs. -/
 def SparseCoefficientRecord.wellFormed (r : SparseCoefficientRecord) (n : ℕ) : Prop :=
   r.linear.length = n ∧
   r.orderedPairs.Forall (fun p => p.1 < p.2 ∧ p.2 < n) ∧
-  r.orderedPairs.Pairwise (fun a b => pairBefore a b = true)
+  sparsePairsInOrder r.orderedPairs = true
 
 def SparseCoefficientRecord.checkShape (r : SparseCoefficientRecord) (n : ℕ) : Bool :=
   decide (r.wellFormed n)
@@ -408,7 +414,9 @@ def nativeSignedOutput {n : ℕ} (out : NativeOutputRecord)
 
 /-- A squarefree degree-two native monomial with ordered, in-range indices. -/
 def nativeTermWellFormed (width : ℕ) (term : List Nat) : Prop :=
-  term.length ≤ 2 ∧ term.Pairwise (· < ·) ∧ term.Forall (· < width)
+  term.length ≤ 2 ∧
+  ((term.zip (term.drop 1)).all (fun p => decide (p.1 < p.2))) = true ∧
+  term.Forall (· < width)
 
 def nativeSourceShape (n : ℕ) (src : NativeSourceRecord) : Prop :=
   src.phaseTerms.Forall (nativeTermWellFormed (n + 1)) ∧

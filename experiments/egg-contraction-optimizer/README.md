@@ -322,3 +322,7 @@ The verifier now uses fallible `Vec::try_reserve_exact` for its dense Boolean ma
 The tests include allocation reservation refusals before returning a result, zero-dimensional and overflow boundary cases, and direct slice flips at 0, 1, 63, 64, 65, 127, 128, 129 and 1025 positions plus `usize::MAX` refusal. `try_reserve_exact` does **not** make all allocations fallible or guarantee that an overcommitting OS cannot terminate execution.
 
 **Still open:** The actual compiled Rust matrix reconstruction, row swaps/XOR, terminal accept/reject branches, BTreeMap/Vec operations, remaining `collect`/`clone`/BigUint allocations and machine resource semantics are not universally refined to the Lean model. The [universal refinement notebook study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-checker-universal-refinement.md) defines the exact source-derived proof obligations and evaluates an Aeneas Rust-to-Lean extraction path.
+
+## Exact DIMACS counting CLI
+
+See [COUNTING.md](COUNTING.md) for the fail-closed source-to-affine counting executable, certificate replay, JSON resource receipts, and supported CNF grammar.

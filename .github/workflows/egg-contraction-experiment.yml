@@ -17,8 +17,7 @@ on:
       - "instrumentation/lean-env/lakefile.lean"
       - "instrumentation/lean-env/lake-manifest.json"
       - ".github/workflows/egg-contraction-experiment.yml"
-  # A standalone Cargo workspace is not covered by root Rust CI; accept it
-  # on the merged main revision whenever its implementation or proof inputs change.
+  # The independent Cargo workspace needs exact-head checks after merge.
   push:
     branches: [main]
     paths:
@@ -48,6 +47,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test standalone experiment against committed dependency lock
         run: cargo test --locked --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
+      # CLI process invocation is a distinct observable from library tests.
+      - name: Run exact counting CLI smoke case
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'p cnf 3 2\n1 -2 0\n-1 2 0\n' | cargo run --quiet --locked --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin exact-cnf-count -- - | grep -F '"count":"4"'
 
   affine-lean:
     runs-on: ubuntu-24.04
@@ -113,7 +118,7 @@ jobs:
           # arbitrary user-controlled Lean syntax.
           generated="$RUNNER_TEMP/affine-native-generated.lean"
           combined="$RUNNER_TEMP/affine-native-audited.lean"
-          if ! cargo run --quiet \
+          if ! cargo run --quiet --locked \
             --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
             -- --emit-lean-certificates > "$generated"; then
             failures=1

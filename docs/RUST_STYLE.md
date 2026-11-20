@@ -57,10 +57,17 @@ not proof of behavioral equivalence.
   unique Lean finite-program renderer. New source-specific receipts should
   supply *data plus source-bound equality obligations*, never new opcode
   serializers, proof libraries, or an inferred source identity.
+- For each Rust physical program receipt, require a second, independently
+  derived `serde::Serialize` structure of the **same** Rust `Program`
+  value. `verify_source_graph.check_rust_serde_program` must compare
+  exact variant and field identities with canonical row data before Lean
+  proof generation; maintain all-opcode coverage and both `Set` bits.
+  A mismatch must refuse, not be normalized or silently repaired.
 - Keep source-aware Lean kernel equality, independent Rust execution tests,
-  and mutational negative controls distinct. A successful JSON parse is not
-  an original-Lean certificate, and a kernel-checked printed table does not
-  prove that Rust serialized its internal values faithfully.
+  and two distinct mutation controls: one representation changed (serializer
+  inconsistency), then both changed coherently (source-mathematics failure).
+  Neither a successful JSON parse nor a kernel-checked printed table proves
+  that all Rust memory and executions are faithfully represented.
 
 ## Source and execution boundaries
 

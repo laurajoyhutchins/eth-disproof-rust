@@ -78,7 +78,7 @@ if grep -Fq 'sorryAx' artifacts/reader-heap-events-axioms.txt; then
   echo 'Heap-event operational proof contains sorryAx' >&2
   exit 2
 fi
-for theorem in retain_requires_live release_requires_live release_last_leaf retain_changes_only_named_object seed_changes_only_named_object observation_preserves_heap nested_release_keeps_only_explicit_descendants seed_duplicate_is_refused release_of_dead_object_is_refused cannot_retain_source_freed_descendant; do
+for theorem in retain_requires_live release_requires_live release_last_leaf release_shared_stops_at_node release_shared_preserves_other retain_changes_only_named_object seed_changes_only_named_object observation_preserves_heap nested_release_keeps_only_explicit_descendants seed_duplicate_is_refused release_of_dead_object_is_refused cannot_retain_source_freed_descendant; do
   if ! grep -Fq "'ReaderHeapEvents.${theorem}' " artifacts/reader-heap-events-axioms.txt; then
     echo "Missing heap-event theorem axiom receipt: ${theorem}" >&2
     exit 2

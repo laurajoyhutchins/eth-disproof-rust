@@ -14,8 +14,8 @@ from typing import Any
 
 from source_graph_kernel_certificate import physical_program_definition
 from verify_source_graph import (
-    SOURCE_SHA, closed_keys, insist, number, parse_program,
-    parse_source_graph_json,
+    SOURCE_SHA, KINDS, check_rust_serde_program, closed_keys, insist,
+    number, parse_program, parse_source_graph_json,
 )
 
 # The physical caller ABI is independently pinned here. The callbacks remain
@@ -34,11 +34,30 @@ PORT_FIELDS = ('tag', 'present', 'found', 'source', 'payload', 'input', 'output'
 
 def certificate_source(raw: bytes) -> str:
     receipt = parse_source_graph_json(raw)
-    closed_keys(receipt, {'kind', 'source_commit', 'cases'})
-    insist(receipt['kind'] == 'rust-physical-programs-v1',
+    closed_keys(receipt, {'kind', 'source_commit', 'encoding_corpus', 'cases'})
+    insist(receipt['kind'] == 'rust-physical-programs-v2',
            'unsupported Rust physical receipt format')
     insist(receipt['source_commit'] == SOURCE_SHA,
            'Rust physical receipt has wrong original source pin')
+
+    # The production framed readers exercise only some opcodes. The separate
+    # admitted corpus must exercise every opcode, both Boolean Set values,
+    # and the same two encoders used to report the real programs. It carries
+    # no source-equality claim.
+    corpus = receipt['encoding_corpus']
+    insist(type(corpus) is dict, 'missing physical-format coverage corpus')
+    closed_keys(corpus, {'physical', 'structure'})
+    coverage = parse_program(corpus['physical'], [1])
+    insist(coverage.kind == 'table' and
+           (coverage.r, coverage.s, coverage.labels) == (4, 3, len(KINDS) + 1),
+           'physical-format coverage dimensions changed')
+    check_rust_serde_program(coverage, corpus['structure'])
+    kinds = [opcode for opcode, _ in coverage.rows]
+    insist(set(kinds) == set(KINDS) and
+           all(kinds.count(op) == (2 if op == 'set' else 1) for op in KINDS),
+           'physical-format corpus omits or duplicates opcode constructors')
+    insist({args[1] for opcode, args in coverage.rows if opcode == 'set'} == {0, 1},
+           'physical-format corpus does not cover both Boolean values')
     cases = receipt['cases']
     insist(type(cases) is list and len(cases) == len(CASES),
            'Rust physical receipt is missing or duplicating a caller')
@@ -50,7 +69,7 @@ def certificate_source(raw: bytes) -> str:
     ]
     for case in cases:
         insist(type(case) is dict, 'Rust physical case must be an object')
-        closed_keys(case, {'name', 'ports', 'lifted', 'compiled'})
+        closed_keys(case, {'name', 'ports', 'lifted', 'compiled', 'structure'})
         name = case['name']
         insist(type(name) is str and name in CASES and name not in seen,
                'unknown or duplicated Rust physical caller')
@@ -65,6 +84,11 @@ def certificate_source(raw: bytes) -> str:
 
         lifted = parse_program(case['lifted'], [1])
         compiled = parse_program(case['compiled'], [1])
+        structure = case['structure']
+        insist(type(structure) is dict, 'missing independent Rust structure')
+        closed_keys(structure, {'lifted', 'compiled'})
+        check_rust_serde_program(lifted, structure['lifted'])
+        check_rust_serde_program(compiled, structure['compiled'])
         insist(lifted.kind == 'table' and compiled.kind == 'table',
                'expected physical tables, not interpreted linked program')
         insist((lifted.r, lifted.s, lifted.labels, lifted.input, lifted.output)

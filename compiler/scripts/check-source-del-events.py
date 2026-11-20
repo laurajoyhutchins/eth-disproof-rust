@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import csv
 import dataclasses
+import hashlib
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -21,6 +22,60 @@ COLUMNS = ["case", "lane", "index", "op", "object", "related", "field", "before"
 CASES = set(range(8))
 LANES = ("lean-c", "reader-rust")
 OPCODES = {"inc", "dec", "del", "alloc", "set"}
+
+# The fixture's exact source IR (Lean 4.34.1, source-del-final-ir.txt).
+# Changing the compiler's operation graph requires reviewing the branch
+# expectations below rather than silently accepting matching omissions.
+SOURCE_IR_ROOT = "=== RuntimeHeapDel.rebuildOrExtractByPayload ===\\n"
+SOURCE_IR_SHA256 = "0792bdfda06f6996932edd4dc5108604e8ba7bf2d70ed6d61ff7a928703111f6"
+
+# Complete source-visible heap ownership event sequences for the eight
+# selected branches. Case bits: heap stamp=4, shared parent=2, match=1.
+# Tagged Nat dec and del are source operations with no physical RC effect.
+# The payload helper's inc(child) and the final dec(Box) are included.
+EXPECTED = {
+    0: [("del", "parent", "_", 0, -1)],
+    1: [("set", "parent", "small:28", 1, 0),
+        ("inc", "child", "_", 0, 1),
+        ("dec", "parent", "_", 0, -1)],
+    2: [("inc", "child", "_", 0, 1),
+        ("dec", "parent", "_", 0, -1)],
+    3: [("inc", "child", "_", 0, 1),
+        ("dec", "parent", "_", 0, -1),
+        ("alloc", "created:0", "_", 2, 1),
+        ("set", "created:0", "child", 0, 0),
+        ("set", "created:0", "small:28", 1, 0),
+        ("inc", "child", "_", 0, 1),
+        ("dec", "created:0", "_", 0, -1)],
+    4: [("dec", "oldStamp", "_", 0, -1),
+        ("del", "parent", "_", 0, -1)],
+    5: [("dec", "oldStamp", "_", 0, -1),
+        ("set", "parent", "small:23", 1, 0),
+        ("inc", "child", "_", 0, 1),
+        ("dec", "parent", "_", 0, -1)],
+    6: [("inc", "child", "_", 0, 1),
+        ("dec", "parent", "_", 0, -1)],
+    7: [("inc", "child", "_", 0, 1),
+        ("dec", "parent", "_", 0, -1),
+        ("alloc", "created:0", "_", 2, 1),
+        ("set", "created:0", "child", 0, 0),
+        ("set", "created:0", "small:23", 1, 0),
+        ("inc", "child", "_", 0, 1),
+        ("dec", "created:0", "_", 0, -1)],
+}
+
+
+def require_pinned_ir(path: Path) -> None:
+    source = path.read_text()
+    if source.count(SOURCE_IR_ROOT) != 1:
+        raise ValueError("original Lean final-IR root missing or duplicated")
+    root = source.split(SOURCE_IR_ROOT, 1)[1]
+    actual = hashlib.sha256(root.encode()).hexdigest()
+    if actual != SOURCE_IR_SHA256:
+        raise ValueError(
+            f"source final IR drift: got {actual}, expected {SOURCE_IR_SHA256}; "
+            "review source-origin ownership branches before updating the gate"
+        )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -99,6 +154,11 @@ def compare(lanes: dict[tuple[int, str], list[Event]]) -> None:
         r = lanes[(case, "reader-rust")]
         c_signatures = [e.signature for e in c]
         r_signatures = [e.signature for e in r]
+        if c_signatures != EXPECTED[case]:
+            raise ValueError(
+                f"case={case} original Lean C event trace differs from pinned "
+                f"source IR: expected={EXPECTED[case]}, observed={c_signatures}"
+            )
         if c_signatures != r_signatures:
             prefix = 0
             while (prefix < min(len(c), len(r))
@@ -118,6 +178,22 @@ def check(rows: list[dict[str, str]]) -> dict[tuple[int, str], list[Event]]:
     return lanes
 
 
+def corrupt_both_lanes(rows: list[dict[str, str]]) -> None:
+    """Remove an operation in BOTH backends while keeping valid event indices."""
+    for lane in LANES:
+        candidates = [
+            (i, row) for i, row in enumerate(rows)
+            if row["case"] == "1" and row["lane"] == lane and row["op"] == "set"
+        ]
+        if len(candidates) != 1:
+            raise ValueError("missing expected paired set event for mutation")
+        index = candidates[0][0]
+        rows.pop(index)
+        for row in rows:
+            if row["case"] == "1" and row["lane"] == lane and int(row["index"]) > 1:
+                row["index"] = str(int(row["index"]) - 1)
+
+
 def self_test(rows: list[dict[str, str]]) -> None:
     if not rows:
         raise ValueError("missing fixture")
@@ -130,6 +206,7 @@ def self_test(rows: list[dict[str, str]]) -> None:
              if v["op"] == "BEGIN").__setitem__("lane", "host")),
         ("wrong identity", lambda r: next(v for v in r
              if v["op"] in OPCODES).__setitem__("object", "tampered")),
+        ("correlated C and Rust omission", corrupt_both_lanes),
     ):
         copy = [dict(x) for x in rows]
         try:
@@ -144,17 +221,18 @@ def self_test(rows: list[dict[str, str]]) -> None:
 
 
 def main() -> None:
-    if len(sys.argv) not in (2, 3) or (len(sys.argv) == 3 and sys.argv[2] != "--self-test"):
-        raise SystemExit("usage: check-source-del-events.py TRACE.tsv [--self-test]")
+    if len(sys.argv) not in (3, 4) or (len(sys.argv) == 4 and sys.argv[3] != "--self-test"):
+        raise SystemExit("usage: check-source-del-events.py TRACE.tsv SOURCE_IR.txt [--self-test]")
+    require_pinned_ir(Path(sys.argv[2]))
     with Path(sys.argv[1]).open(newline="") as file:
         reader = csv.DictReader(file, delimiter="\t")
         if reader.fieldnames != COLUMNS:
             raise SystemExit(f"source event TSV schema drift: {reader.fieldnames}")
         rows = list(reader)
     lanes = check(rows)
-    if len(sys.argv) == 3:
+    if len(sys.argv) == 4:
         self_test(rows)
-        print("source_del_event_mutations=MISSING_DELTA_LANE_IDENTITY_REFUSED")
+        print("source_del_event_mutations=MISSING_DELTA_LANE_IDENTITY_CORRELATED_OMISSION_REFUSED")
     print("source_del_original_C_vs_exact_Reader_event_parity=PASS "
           f"cases=8 lanes=16 events={sum(map(len, lanes.values()))} "
           "boundary=source_visible_ownership_primitives")

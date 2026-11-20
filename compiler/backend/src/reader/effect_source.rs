@@ -3,8 +3,8 @@
 //! This reads the *actual borrowed Lean compiler IR*, not a handwritten
 //! transcript. Branches, joins, calls, and non-literal expressions have no
 //! claim in this checker. Distinct IR variables are not presumed nonaliasing.
-use super::*;
 use super::effect_order::Event;
+use super::*;
 
 impl Reader {
     pub(super) unsafe fn linear_source_effects(
@@ -15,7 +15,10 @@ impl Reader {
             let current = body;
             match Self::body_view(current)? {
                 FnBodyView::Decl {
-                    defined, expr, next, ..
+                    defined,
+                    expr,
+                    next,
+                    ..
                 } => {
                     match Self::checked_tag(expr, "Expr")? {
                         11 => {} // Pure compiler literal; no source effect.

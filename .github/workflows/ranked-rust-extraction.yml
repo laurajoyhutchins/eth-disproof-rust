@@ -5,6 +5,7 @@ on:
     paths:
       - 'verification/ranked-source/hax.toml'
       - 'verification/ranked-source/src/lib.rs'
+      - 'eth/src/error.rs'
       - 'eth/src/representation_ranked_input.rs'
       - 'eth/src/representation_ranked_certificate.rs'
       - '.github/workflows/ranked-rust-extraction.yml'

@@ -294,6 +294,27 @@ mod tests {
     }
 
     #[test]
+    fn inconsistent_constraints_count_minimizers_not_solutions() {
+        use crate::affine::Equation;
+        let factors = [false, true].map(|rhs| AffineRegion {
+            internal: Vec::new(),
+            boundary: vec!["x".to_string()],
+            equations: vec![Equation { variables: vec!["x".to_string()], rhs }],
+        });
+        let trace = fold(&factors, Schedule::Sequential, &[]).unwrap();
+        let polynomial = polynomial_oracle(&factors, &BTreeMap::new()).unwrap();
+        assert_eq!(polynomial, vec![BigUint::from(0u8), BigUint::from(2u8), BigUint::from(0u8)]);
+        assert_eq!(trace.final_interface.cells, vec![Some(Leading {
+            energy: 1,
+            count: BigUint::from(2u8),
+        })]);
+        let satisfying = affine_orders::fold(
+            &factors, &Schedule::Sequential.indices(2), &[], &Limits::default()
+        ).unwrap().stage.count_at(&BTreeMap::new()).unwrap();
+        assert_eq!(satisfying, BigUint::from(0u8));
+    }
+
+    #[test]
     fn refusal_and_tie_counts_are_explicit() {
         let factors = generate(Family::FreeAmplifiers, 3).unwrap();
         let trace = fold(&factors, Schedule::Sequential, &[]).unwrap();

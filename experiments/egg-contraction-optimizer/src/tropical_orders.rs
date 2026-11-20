@@ -160,10 +160,11 @@ pub fn fold(
     let order = schedule.indices(factors.len());
     let leaves = factors.iter().map(Interface::from_region)
         .collect::<Result<Vec<_>, _>>()?;
-    let output = output.iter().cloned().collect::<BTreeSet<_>>();
-    if output.len() != output.iter().count() {
+    let outputs = output.iter().cloned().collect::<BTreeSet<_>>();
+    if outputs.len() != output.len() {
         return Err("duplicate output ports".into());
     }
+    let output = outputs;
     let all_ports = leaves.iter().flat_map(|f| f.ports.iter().cloned())
         .collect::<BTreeSet<_>>();
     if !output.is_subset(&all_ports) {

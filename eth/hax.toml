@@ -1,0 +1,11 @@
+# Source-derived Rust/Lean correspondence experiment.
+# Extraction must target the *production* function transitively including
+# source-byte decoding, ranked guard, scan and finalizer. Do not substitute
+# a second hand-written proof-friendly Rust implementation.
+#
+# hax 0.4.2 -> Charon (Rust MIR) -> Aeneas (Lean). A successful extraction
+# alone is NOT a proof of external models, panic freedom or correspondence
+# to ACC.CompleteExecutionTrace: follow with kernel proofs.
+[scenario.ranked-source]
+backend = "lean"
+include = ["lean_eth_reference::representation_ranked_input::execute_ranked_wire"]

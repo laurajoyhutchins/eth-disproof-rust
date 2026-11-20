@@ -27,7 +27,9 @@ python3 scripts/instrument-pinned-worklist.py "$out/upstream-lean" \
 # Compile the ORIGINAL full object.cpp translation unit with observation
 # calls inserted at exact-checked sites. It exports lean_dec_ref_cold as
 # the pinned runtime does. The linker resolves it from this object first.
-clang++ -O2 -std=c++20 -stdlib=libc++ -fPIC -ftls-model=local-exec -c -I"$out/upstream-lean/src" \
+test -f /usr/include/c++/v1/atomic
+clang++ -O2 -std=c++20 -stdlib=libc++ -fPIC -ftls-model=local-exec -c \
+  -isystem /usr/include/c++/v1 -I"$out/upstream-lean/src" \
   -I"$out/upstream-lean/src/include" \
   -I"$LEAN_PREFIX/include" \
   "$out/object-worklist-instrumented.cpp" \

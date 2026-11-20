@@ -83,6 +83,19 @@ fn refuse(reason: &str) -> Error {
     ))
 }
 
+/// One checked source of truth for the restricted recurrence's CSR shape.
+/// At n >= 4, successful multiplication implies both the row count
+/// (5*n - 14) and the trailing offset count (5*n - 13) fit in usize.
+/// Never substitute saturation for a representability check.
+fn expected_csr_shape(n: usize) -> Result<(usize, usize), Error> {
+    let rows = n
+        .checked_mul(5)
+        .and_then(|v| v.checked_sub(14))
+        .ok_or(Error::Overflow)?;
+    let offsets = rows.checked_add(1).ok_or(Error::Overflow)?;
+    Ok((rows, offsets))
+}
+
 impl SignedCsr<'_> {
     /// Verify the complete formula, not just some matching XOR/OR subgraph.
     ///
@@ -94,11 +107,8 @@ impl SignedCsr<'_> {
         if n < 4 {
             return Err(refuse("requires at least four variables"));
         }
-        let expected_rows = n
-            .checked_mul(5)
-            .and_then(|v| v.checked_sub(14))
-            .ok_or(Error::Overflow)?;
-        if self.row_offsets.len() != expected_rows.saturating_add(1)
+        let (_, expected_offsets) = expected_csr_shape(n)?;
+        if self.row_offsets.len() != expected_offsets
             || self.column_indices.len() != self.signs.len()
             || self.row_offsets.first() != Some(&0)
             || self.row_offsets.last() != Some(&self.column_indices.len())
@@ -213,11 +223,8 @@ pub fn verify_recurrence_receipt(
         expected.insert(([i, i + 1, i + 2], [1, 1, 1]));
     }
 
-    let row_count = n
-        .checked_mul(5)
-        .and_then(|v| v.checked_sub(14))
-        .ok_or(Error::Overflow)?;
-    if csr.row_offsets.len() != row_count + 1
+    let (_, expected_offsets) = expected_csr_shape(n)?;
+    if csr.row_offsets.len() != expected_offsets
         || csr.row_offsets.first() != Some(&0)
         || csr.row_offsets.last() != Some(&csr.column_indices.len())
         || csr.column_indices.len() != csr.signs.len()

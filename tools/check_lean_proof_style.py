@@ -36,6 +36,11 @@ def preceding_doc(lines: list[str], index: int) -> bool:
     pos = index - 1
     while pos >= 0 and not lines[pos].strip():
         pos -= 1
+    # An attribute on its own line belongs to the following declaration.
+    while pos >= 0 and lines[pos].strip().startswith("@[") and lines[pos].strip().endswith("]"):
+        pos -= 1
+        while pos >= 0 and not lines[pos].strip():
+            pos -= 1
     if pos < 0 or not lines[pos].rstrip().endswith("-/"):
         return False
     while pos >= 0:

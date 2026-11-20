@@ -51,6 +51,12 @@ class ProofStyleTests(unittest.TestCase):
         source = source.replace("theorem self_evident", "@[simp] theorem self_evident")
         self.assertEqual(len(undocumented_declarations(source)), 1)
 
+    def test_doc_before_separate_attribute_line(self):
+        source = GOOD.replace(
+            "theorem self_evident", "@[simp]\ntheorem self_evident",
+        )
+        self.assertEqual(undocumented_declarations(source), [])
+
     def test_valid_module(self):
         self.assertEqual(check_text(GOOD), [])
 

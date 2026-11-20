@@ -82,6 +82,17 @@ jobs:
           test "$(grep -c '"mode":"unit-refutation"' /tmp/source-certificates.jsonl)" -eq 40
           test "$(grep -c '"mode":"one-split-refutation"' /tmp/source-certificates.jsonl)" -eq 40
 
+      - name: Verify frontier-scoped source nogood reuse on previous and fresh cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin nogood-reuse-study | tee /tmp/nogood-reuse-receipts.jsonl
+          test "$(wc -l < /tmp/nogood-reuse-receipts.jsonl)" -eq 112
+          test "$(grep -c '"oracle":"checked"' /tmp/nogood-reuse-receipts.jsonl)" -eq 112
+          test "$(grep -c '"cohort":"fresh-validation"' /tmp/nogood-reuse-receipts.jsonl)" -eq 32
+          test "$(grep -c '"mode":"nogood-full-assignment"' /tmp/nogood-reuse-receipts.jsonl)" -eq 56
+          test "$(grep -c '"mode":"nogood-minimized"' /tmp/nogood-reuse-receipts.jsonl)" -eq 56
+
       - name: Run contraction-order study and check small-case oracle
         shell: bash
         run: |

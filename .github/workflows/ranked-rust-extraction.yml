@@ -99,6 +99,27 @@ jobs:
           done
           exit "$status"
 
+      - name: Kernel-typecheck source-derived guard and decoder definitions
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Generated Lean packages are pinned to a different toolchain than
+          # ACC's independent proof project. Do not silently use Lean 4.34.1.
+          for scenario in ranked-guard ranked-decoder; do
+            grep -Fx 'leanprover/lean4:v4.31.0' "verification/ranked-source/proofs/$scenario/lean/lean-toolchain"
+          done
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$RUNNER_TEMP/elan-init.sh"
+          sh "$RUNNER_TEMP/elan-init.sh" -y --no-modify-path
+          export PATH="$HOME/.elan/bin:$PATH"
+          for scenario in ranked-guard ranked-decoder; do
+            (
+              cd "verification/ranked-source/proofs/$scenario/lean"
+              lake -K maxJobs=2 build
+            )
+            echo "SOURCE_DERIVED_LEAN_PACKAGE=$scenario:KERNEL_TYPECHECKED" >> "$GITHUB_STEP_SUMMARY"
+          done
+
       - name: Preserve extraction receipts and source-derived Lean
         if: always()
         uses: actions/upload-artifact@v4

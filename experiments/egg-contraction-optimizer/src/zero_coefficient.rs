@@ -239,6 +239,9 @@ pub struct VariantReceipt {
     pub work: Metrics,
     pub elapsed_ns: u128,
     pub satisfying_count: BigUint,
+    /// All requested boundary assignments, not only mask zero. This
+    /// remains a bounded explicit table for the experimental oracle.
+    pub boundary_counts: Vec<BigUint>,
     pub output_ports: Vec<String>,
 }
 
@@ -291,10 +294,12 @@ fn fold(factors: &[Factor], order: &[usize], output: &[String],
         stage = merged;
     }
     if stage.ports != output { return Err("zero study output boundary mismatch".into()); }
-    let satisfying_count = stage.get(0);
+    let boundary_counts = (0..count_masks(stage.ports.len())?)
+        .map(|mask| stage.get(mask)).collect::<Vec<_>>();
+    let satisfying_count = boundary_counts[0].clone();
     Ok(VariantReceipt {
         strategy, work, elapsed_ns: start.elapsed().as_nanos(),
-        satisfying_count, output_ports: stage.ports,
+        satisfying_count, boundary_counts, output_ports: stage.ports,
     })
 }
 
@@ -407,8 +412,13 @@ mod tests {
             assert_eq!(result.output_ports, output);
             let exact = execute_order(&factors, "chain", factors.len(), "test",
                 &order, &output).unwrap();
-            // Final open boundary has two satisfying assignments with x0=x4.
+            // The two retained endpoint variables must agree. Check all
+            // four assignments independently, not only output mask zero.
             assert_eq!(result.satisfying_count, exact.satisfying_count);
+            for mask in 0..count_masks(output.len()).unwrap() {
+                let original = source_oracle(&factors, &output, mask).unwrap();
+                assert_eq!(result.boundary_counts[mask], original.count_at_zero());
+            }
         }
     }
 
@@ -429,6 +439,39 @@ mod tests {
                 v.satisfying_count == r.source_satisfying_count));
             assert!(r.variants[1].work.certified_zero_skips > 0);
         }
+    }
+
+
+    #[test]
+    fn dense_support_is_not_a_general_sparse_growth_bound() {
+        // Every source assignment satisfies these free-amplifier factors,
+        // so the support index must carry all leaf assignments. There is
+        // no promised sparsity or exponential compression.
+        for size in [4, 6, 8] {
+            let factors = generate(StudyFamily::FreeAmplifier, size).unwrap();
+            let order = Schedule::Sequential.indices(factors.len());
+            let dense = fold(&factors, &order, &[], Strategy::DenseSkipZero).unwrap();
+            let sparse = fold(&factors, &order, &[], Strategy::IndexedSupport).unwrap();
+            let expected = BigUint::from(1u8) << (2 * size);
+            assert_eq!(dense.satisfying_count, expected);
+            assert_eq!(sparse.satisfying_count, expected);
+            assert_eq!(dense.work.certified_zero_skips, 0);
+            assert!(sparse.work.support_index_insertions > 0);
+            assert!(sparse.work.compatible_pair_visits > 0);
+        }
+    }
+
+    #[test]
+    fn contradictory_ring_does_not_require_minimum_energy_recovery() {
+        let factors = generate(StudyFamily::FrustratedXor3Cnf, 8).unwrap();
+        let order = Schedule::Sequential.indices(factors.len());
+        let dense = fold(&factors, &order, &[], Strategy::DenseSkipZero).unwrap();
+        let sparse = fold(&factors, &order, &[], Strategy::IndexedSupport).unwrap();
+        assert_eq!(dense.satisfying_count, BigUint::default());
+        assert_eq!(sparse.satisfying_count, BigUint::default());
+        // For #SAT the zero certificate is sufficient, without computing
+        // that the true minimum violated-clause count is exactly one.
+        assert!(dense.work.certified_zero_skips > 0);
     }
 
     #[test]

@@ -78,6 +78,17 @@ jobs:
           mkdir -p "$proof/AffineCheckedToggle/Code"
           cp "$generated/Funs.lean" "$generated/Types.lean" "$proof/AffineCheckedToggle/Code/"
 
+      - name: Generate pinned Lean dependency manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --no-modify-path --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          cd experiments/egg-contraction-optimizer/verification/source-derived/proofs
+          "$HOME/.elan/bin/lake" update
+          test -f lake-manifest.json
+
       - name: Set up independently pinned Lean 4.36 for extracted Rust
         uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
         with:

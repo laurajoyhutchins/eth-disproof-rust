@@ -5,6 +5,9 @@ on:
     paths:
       - 'eth/proofs/IndependentCnfBridge.lean'
       - 'eth/proofs/IndependentNonAffineRecurrence.lean'
+      - 'eth/examples/emit_nonaffine_csr_certificate.rs'
+      - 'eth/fixtures/connected_n4.cnf'
+      - 'eth/src/structured_cnf.rs'
       - 'eth/proofs/IndependentSwapIdentity.lean'
       - 'eth/proofs/IndependentRoutingBoundary.lean'
       - 'eth/proofs/IndependentTwoAdicJointPotential.lean'
@@ -105,6 +108,19 @@ jobs:
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentTwoAdicMatchingGraph.lean"
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/IndependentAnthropicNetworkAdapter.lean"
           )
+          # Verify a real Rust-produced normalized CSR transcript using
+          # the independently proved Lean decoder, row-to-word bridge, and
+          # exact counting theorem. This checks the emitted data, not the
+          # compiled Rust implementation itself.
+          cargo fetch --locked
+          cert="$RUNNER_TEMP/nonaffine-rust-csr-certificate.lean"
+          cp eth/proofs/IndependentNonAffineRecurrence.lean "$cert"
+          cargo run --locked --offline -p lean-eth-reference --example emit_nonaffine_csr_certificate -- eth/fixtures/connected_n4.cnf >> "$cert"
+          (
+            cd instrumentation/lean-env
+            lake env lean "$cert"
+          )
+          echo 'NONAFFINE_RUST_CSR_RECEIPT=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'NONAFFINE_FORBIDDEN_MASK=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'INDEPENDENT_CNF_COUNT_BRIDGE=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'INDEPENDENT_SWAP_IDENTITY=TYPECHECKED' >> "$GITHUB_STEP_SUMMARY"

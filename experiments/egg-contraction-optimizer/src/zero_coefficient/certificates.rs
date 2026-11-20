@@ -470,6 +470,49 @@ mod tests {
     }
 
     #[test]
+    fn exhausted_certificate_budget_falls_back_without_losing_support() {
+        let factors = vec![
+            factor(&["p"], &[]),
+            factor(&["p", "x"], &[&[("p", true), ("x", true)]]),
+            factor(&["p", "x"], &[&[("p", true), ("x", false)]]),
+        ];
+        let mut arithmetic = Metrics::default();
+        let mut stage = Stage::leaf(
+            &factors[0], Strategy::IndexedSupport, &mut arithmetic,
+        ).unwrap();
+        let baseline_count = stage.entries();
+        let mut cert = CertificateWork {
+            queries: MAX_QUERIES, ..CertificateWork::default()
+        };
+        filter_stage(&mut stage, &factors, &[0, 1, 2], 0, Mode::Unit, &mut cert)
+            .unwrap();
+        assert_eq!(stage.entries(), baseline_count);
+        assert_eq!(cert.removed_entries, 0);
+        assert_eq!(cert.budget_skips, 1);
+    }
+
+    #[test]
+    fn unsupported_future_parity_is_rejected_not_assumed_cnf() {
+        let factors = vec![
+            factor(&["p"], &[]),
+            Factor {
+                ports: vec!["p".into()],
+                constraints: vec![Constraint::Parity(vec!["p".into()], true)],
+            },
+        ];
+        let mut arithmetic = Metrics::default();
+        let mut stage = Stage::leaf(
+            &factors[0], Strategy::IndexedSupport, &mut arithmetic,
+        ).unwrap();
+        let mut cert = CertificateWork::default();
+        let refusal = filter_stage(
+            &mut stage, &factors, &[0, 1], 0, Mode::OneSplit, &mut cert,
+        ).unwrap_err();
+        assert!(refusal.contains("non-CNF parity"));
+        assert_eq!(stage.entries(), 2);
+    }
+
+    #[test]
     fn checked_predictions_preserve_original_oracle_on_generated_cases() {
         for case in [
             Case { kind: adaptive::CaseKind::Random3Cnf,

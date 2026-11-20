@@ -242,11 +242,15 @@ fn add_bounded_resolvents(nodes: &mut Vec<Node>, work: &mut IndexWork) {
 /// parent nodes by a separate literal-set union implementation, without
 /// calling derive_clause, accepting pivot absence, or accepting tautologies.
 fn check_nodes(
-    nodes: &[Node], factors: &[Factor], work: &mut IndexWork,
+    nodes: &[Node], factors: &[Factor],
+    allowed_future: &BTreeSet<usize>, work: &mut IndexWork,
 ) -> Result<(), String> {
     for (i, node) in nodes.iter().enumerate() {
         let expected = match &node.origin {
             Origin::Source { factor, constraint } => {
+                if !allowed_future.contains(factor) {
+                    return Err("source proof clause is absent from current future frontier".into());
+                }
                 let Some(Constraint::Clause(original)) = factors.get(*factor)
                     .and_then(|f| f.constraints.get(*constraint))
                 else { return Err("source witness points outside original CNF".into()); };
@@ -364,7 +368,8 @@ fn filter(
     }
     // No candidate is trusted until all its parent source references and
     // resolution steps are independently rechecked.
-    check_nodes(&nodes, factors, work)?;
+    let allowed_future = order[step + 1..].iter().copied().collect::<BTreeSet<_>>();
+    check_nodes(&nodes, factors, &allowed_future, work)?;
     let rules = indexed_patterns(&nodes, &state.ports, work)?;
     work.frontier_compilations += 1;
     work.peak_source_nodes = work.peak_source_nodes.max(source_count);
@@ -530,7 +535,24 @@ mod tests {
                 depth: 1,
             },
         ];
-        assert!(check_nodes(&nodes, &factors, &mut IndexWork::default()).is_err());
+        assert!(check_nodes(&nodes, &factors, &BTreeSet::from([0, 1]),
+            &mut IndexWork::default()).is_err());
+    }
+
+    #[test]
+    fn source_proof_from_previous_frontier_cannot_be_replayed() {
+        let factors = vec![
+            factor(&["p"], &[&[("p", true)]]),
+            factor(&["q"], &[&[("q", true)]]),
+        ];
+        let forged_source = vec![Node {
+            clause: vec![("p".into(), true)],
+            origin: Origin::Source { factor: 0, constraint: 0 },
+            depth: 0,
+        }];
+        let err = check_nodes(&forged_source, &factors,
+            &BTreeSet::from([1]), &mut IndexWork::default()).unwrap_err();
+        assert!(err.contains("absent from current future frontier"));
     }
 
     #[test]

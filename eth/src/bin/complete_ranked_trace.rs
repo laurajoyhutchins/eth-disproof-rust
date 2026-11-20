@@ -293,7 +293,9 @@ fn main() {
 mod tests {
     use super::*;
 
-    fn traced(fixture: &Fixture) -> (Result<lean_eth_reference::representation_ranked_certificate::RankedCountReceipt, Error>, Vec<ArithmeticReceipt>) {
+    use lean_eth_reference::representation_ranked_certificate::RankedCountReceipt;
+
+    fn traced(fixture: &Fixture) -> (Result<RankedCountReceipt, Error>, Vec<ArithmeticReceipt>) {
         let source = RankedContractionInput {
             weights: fixture.weights.clone(),
             source_edges: fixture.edges.clone(),

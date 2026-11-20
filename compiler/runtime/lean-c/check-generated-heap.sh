@@ -22,7 +22,9 @@ import re, sys
 from pathlib import Path
 raw=Path(sys.argv[1]).read_text()
 allowed={"propext","Quot.sound","Classical.choice"}
-for name in ("store_fresh_does_not_increment",
+for name in ("cStep_represent",
+             "runC_represent",
+             "store_fresh_does_not_increment",
              "shell_del_preserves_child_rc",
              "last_parent_release_drops_unretained_child",
              "last_parent_release_preserves_retained_child",

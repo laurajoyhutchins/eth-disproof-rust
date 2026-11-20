@@ -46,8 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin representation-study | tee /tmp/representation-study-receipts.jsonl
-          test "$(wc -l < /tmp/representation-study-receipts.jsonl)" -eq 39
-          test "$(grep -c '"oracle":"checked"' /tmp/representation-study-receipts.jsonl)" -eq 39
+          test "$(wc -l < /tmp/representation-study-receipts.jsonl)" -eq 51
+          test "$(grep -c '"oracle":"checked"' /tmp/representation-study-receipts.jsonl)" -eq 51
 
       - name: Run contraction-order study and check small-case oracle
         shell: bash

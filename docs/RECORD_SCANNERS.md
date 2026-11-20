@@ -93,6 +93,41 @@ written oracle; the full Rust compiler/interpreter and serialized
 source import are still independent obligations. No ETH complexity
 claim follows from this result.
 
+## Rust-emitted Lean translation validation (lift and compiled Call)
+
+The previous independent Rust table witness was limited to comparing
+handwritten Rust instructions. The more consequential cross-language
+receipt now comes from an **actual Rust executable**, not from a second
+Rust implementation of the expected frame table:
+
+[`framed-reader-certificate.rs`](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/eth/src/bin/framed-reader-certificate.rs)
+calls the production `frame_program()`, `Program::lift`, and
+`Cmd::Call(...).compiled(...)`. It emits every resulting instruction,
+real entry label, and I/O port as Lean `Program` definitions, then
+appends equality obligations against the original pinned source.
+
+The [source-refinement workflow](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/.github/workflows/lean-source-refinement.yml)
+checks that emitted Lean file **using the pinned Lean 4.34.1 kernel**.
+It compares both the seven-label mapped reader and the eight-label
+compiled source `Call` on all six scanner ABIs. The latter must have
+an outer halt at physical label 0; its relocated source halt at
+label 7 must be `goto 0`. A second check mutates one emitted compiled
+instruction; the kernel must reject the altered receipt.
+
+A universal Lean theorem,
+`mappedCompiledFrameProgram_eq_source`, independently states the
+complete eight-label compilation identity for arbitrary valid Lean
+port maps, not merely the six exercised instances.
+
+**Boundary:** the kernel validates the *Lean representation of the bytes
+that the Rust executable prints*. The serializer that maps Rust `Instr`
+to Lean text and the compiler that produced those `Instr` values are
+still Rust code, not mechanically extracted Lean functions. Source
+binding, exact instruction emission, mutation rejection, and
+independent Rust tests strengthen the implementation evidence; they
+do not constitute a general Rust-to-Lean proof, and cannot establish
+the claimed ETH complexity bound.
+
 ## Regression obligations
 
 `eth/tests/source_record_iteration.rs` independently reconstructs the

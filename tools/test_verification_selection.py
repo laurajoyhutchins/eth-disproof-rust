@@ -6,7 +6,8 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from verify_workflow_selection import (
-    ROOT, covered, pull_request_paths, verify_all, verify_selection,
+    ROOT, _rust_external_modules, covered, pull_request_paths,
+    rust_certificate_inputs, verify_all, verify_selection,
 )
 
 
@@ -19,6 +20,39 @@ def put(root: Path, name: str, contents: str) -> None:
 class VerificationSelectionTests(unittest.TestCase):
     def test_actual_workflows_cover_their_executed_dependencies(self):
         verify_all(ROOT)
+
+    def test_physical_certificate_tracks_rust_build_and_nested_modules(self):
+        workflow = (ROOT / ".github/workflows/lean-source-refinement.yml").read_text()
+        inputs = rust_certificate_inputs(ROOT, workflow)
+        for expected in (
+            "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
+            "eth/Cargo.toml", "compiler/cli/Cargo.toml",
+            "eth/src/lib.rs", "eth/src/bin/framed-reader-certificate.rs",
+            "eth/src/bit_program.rs", "eth/src/bit_program/physical_encoding.rs",
+            "eth/src/bit_program/source_json/codegen.rs",
+        ):
+            self.assertIn(expected, inputs)
+
+        for missing in ("Cargo.lock", "eth/src/lib.rs", "rust-toolchain.toml"):
+            with self.subTest(missing=missing):
+                mutated = workflow.replace(f"      - '{missing}'\n", "", 1)
+                self.assertNotEqual(mutated, workflow)
+                with self.assertRaisesRegex(ValueError, "skips actual verification dependencies"):
+                    verify_selection(ROOT, "lean-source-refinement.yml", mutated)
+
+    def test_rust_file_module_growth_and_unmodeled_path_refuse(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            put(root, "eth/src/bit_program.rs", "mod child;\n")
+            put(root, "eth/src/bit_program/child.rs", "mod newly_imported;\n")
+            put(root, "eth/src/bit_program/child/newly_imported.rs",
+                "pub fn count() -> usize { 1 }\n")
+            files = _rust_external_modules(root, "eth/src/bit_program.rs")
+            self.assertIn("eth/src/bit_program/child/newly_imported.rs", files)
+            put(root, "eth/src/bit_program/child.rs",
+                "#[path = \"foreign.rs\"]\nmod extra;\n")
+            with self.assertRaisesRegex(ValueError, "unmodeled Rust module path override"):
+                _rust_external_modules(root, "eth/src/bit_program.rs")
 
     def test_github_globs_do_not_allow_a_single_star_to_cross_directory(self):
         self.assertFalse(covered("eth/proofs/nested/Example.lean", ("eth/proofs/*.lean",)))

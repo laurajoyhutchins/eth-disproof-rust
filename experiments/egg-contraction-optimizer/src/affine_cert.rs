@@ -7,7 +7,9 @@
 
 use crate::affine::{AffineInterface, AffineRegion, BoundaryRow};
 use num_bigint::BigUint;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+#[cfg(test)]
+use std::collections::BTreeSet;
 
 /// An arbitrary BTreeMap index is treated only as a *proposal*.
 /// The original source name must match before any row mutation.
@@ -307,11 +309,12 @@ impl EliminationCertificate {
         if claimed.rank != r || claimed.free_internal != k - r {
             return Err("claimed rank or free dimension disagrees with certificate".into());
         }
-        let mut pivots = BTreeSet::new();
+        // Pivots are required to be strictly increasing, so the
+        // receipt itself is a sorted index. Avoid a second BTreeSet
+        // allocation and use binary search for membership checks.
         let mut previous = None;
         for (row_index, &column) in self.pivot_columns.iter().enumerate() {
-            if column >= k || previous.is_some_and(|p| column <= p) ||
-                !pivots.insert(column) {
+            if column >= k || previous.is_some_and(|p| column <= p) {
                 return Err("invalid or unsorted internal pivot columns".into());
             }
             previous = Some(column);
@@ -325,7 +328,7 @@ impl EliminationCertificate {
         // each pivot variable as a function of free bits and boundary.
         // They must be absent only from residual (nonpivot) rows.
         for column in 0..k {
-            if !pivots.contains(&column) &&
+            if self.pivot_columns.binary_search(&column).is_err() &&
                 rows.iter().skip(r).any(|row| row[column]) {
                 return Err("free internal column survives in residual rows".into());
             }
@@ -354,7 +357,8 @@ impl EliminationCertificate {
         // The checker has proved all pivot columns isolated and all
         // residual internal columns zero. Materialize the corresponding
         // pivot/free system from replayed rows, not from the claimed result.
-        let free_columns = (0..k).filter(|col| !pivots.contains(col))
+        let free_columns = (0..k)
+            .filter(|col| self.pivot_columns.binary_search(col).is_err())
             .collect::<Vec<_>>();
         let pivot_free_coefficients = rows.iter().take(r).map(|row| {
             free_columns.iter().enumerate()

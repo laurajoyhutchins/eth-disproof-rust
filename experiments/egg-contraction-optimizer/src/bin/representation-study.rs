@@ -11,9 +11,11 @@ fn main() -> Result<(), String> {
         StudyFamily::CirculantXor3,
         StudyFamily::FreeAmplifier,
         StudyFamily::Overlapping3Cnf,
+        StudyFamily::FrustratedXor3Cnf,
     ] {
         let sizes: &[usize] = match family {
             StudyFamily::Overlapping3Cnf => &[3, 5, 8, 10],
+            StudyFamily::FrustratedXor3Cnf => &[4, 6, 8, 10],
             _ => &[3, 5, 8],
         };
         for &size in sizes {
@@ -35,6 +37,8 @@ fn main() -> Result<(), String> {
                         "\"tropical_additions\":{},\"tropical_multiplications\":{},",
                         "\"tropical_max_count_bits\":{},",
                         "\"tropical_positive_energy_final_cells\":{},",
+                        "\"tropical_staged_cells\":{},",
+                        "\"tropical_staged_positive_energy_cells\":{},",
                         "\"factored_ast_nodes\":{},\"factored_elimination_binders\":{},",
                         "\"factored_forced_cached_states\":{},",
                         "\"factored_forced_cached_coefficient_slots\":{},",
@@ -51,6 +55,7 @@ fn main() -> Result<(), String> {
                     r.tropical_work.additions, r.tropical_work.multiplications,
                     r.tropical_work.max_coefficient_bits,
                     r.tropical_positive_energy_cells,
+                    r.staged_tropical_cells, r.staged_positive_energy_cells,
                     r.symbolic_nodes, r.symbolic_eliminated_binders,
                     r.forced_cache_entries, r.forced_cache_coefficient_slots,
                     r.symbolic_work.additions, r.symbolic_work.multiplications,

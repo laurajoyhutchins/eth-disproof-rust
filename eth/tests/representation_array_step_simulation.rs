@@ -8,11 +8,7 @@
 use lean_eth_reference::Error;
 use lean_eth_reference::representation_ranked_certificate::checked_component_product_step;
 
-fn reference_step(
-    slots: &[[i128; 2]],
-    class: usize,
-    weights: [i128; 2],
-) -> Option<Vec<[i128; 2]>> {
+fn reference_step(slots: &[[i128; 2]], class: usize, weights: [i128; 2]) -> Option<Vec<[i128; 2]>> {
     let old = *slots.get(class)?;
     let zero = old[0].checked_mul(weights[0])?;
     let one = old[1].checked_mul(weights[1])?;
@@ -29,7 +25,10 @@ fn every_small_array_update_matches_independent_model() {
                 let original: Vec<_> = (0..len)
                     .map(|i| {
                         let x = i as i128;
-                        [((x * 13 + seed * 7) % 17) - 8, ((x * 5 + seed * 3) % 19) - 9]
+                        [
+                            ((x * 13 + seed * 7) % 17) - 8,
+                            ((x * 5 + seed * 3) % 19) - 9,
+                        ]
                     })
                     .collect();
                 let weights = [((seed * 3) % 13) - 6, ((seed * 7) % 11) - 5];

@@ -266,18 +266,12 @@ instance : CommSemiring Leading where
   add := plus
   mul := times
   natCast := natLeading
-  nsmul := nsmulRec
-  npow := npowRec
+  nsmul := fun n x => Nat.rec none (fun _ acc => plus acc x) n
+  npow := fun n x => Nat.rec (monomial 0 1 (by omega)) (fun _ acc => times acc x) n
   nsmul_zero := by intro _; rfl
-  nsmul_succ := by
-    intro n x
-    dsimp [nsmulRec]
-    exact plus_comm _ _
+  nsmul_succ := by intro _ _; rfl
   npow_zero := by intro _; rfl
-  npow_succ := by
-    intro n x
-    dsimp [npowRec]
-    exact times_comm _ _
+  npow_succ := by intro _ _; rfl
   add_assoc := plus_assoc
   zero_add := zero_plus
   add_zero := plus_zero

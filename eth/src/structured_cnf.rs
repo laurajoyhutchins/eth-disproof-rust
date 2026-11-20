@@ -489,9 +489,6 @@ mod tests {
         }
     }
 
-    /// Row-set semantics must not accidentally depend on the canonical
-    /// serialization order. Conversely, a duplicate signed row must refuse
-    /// even when the number of CSR entries and row widths are unchanged.
     /// Any change to a canonical CSR row boundary must refuse, even when the
     /// replacement remains within the flattened literal arrays. This tests
     /// both adjacent row widths, not only the first offset or a huge sentinel.
@@ -539,6 +536,9 @@ mod tests {
         }
     }
 
+    /// Row-set semantics must not accidentally depend on serialization
+    /// order. A duplicate exact signed row must refuse even when lengths
+    /// and row widths are unchanged.
     #[test]
     fn row_permutations_preserve_receipts_and_duplicates_refuse() {
         for n in [4_usize, 5, 8, 12] {
@@ -590,6 +590,116 @@ mod tests {
             duplicate.signs[b..c].copy_from_slice(&base.signs[a..b]);
             assert!(duplicate.view().recognize_recurrence().is_err());
             assert!(verify_recurrence_receipt(duplicate.view(), &expected).is_err());
+        }
+    }
+
+    /// A second, test-only decoder of Lean's signed-CSR *input* semantics.
+    /// This deliberately does not call either the Rust recognizer or receipt
+    /// verifier. It keeps duplicate rows, malformed widths, missing elements,
+    /// and out-of-range columns observable as an Option refusal.
+    fn model_signed_csr_rows(
+        csr: SignedCsr<'_>,
+    ) -> Option<std::collections::BTreeSet<([usize; 3], [i8; 3])>> {
+        use std::collections::BTreeSet;
+
+        if csr.variables < 4 {
+            return None;
+        }
+        let rows = csr.variables.checked_mul(5)?.checked_sub(14)?;
+        if csr.row_offsets.len() != rows.checked_add(1)?
+            || csr.column_indices.len() != csr.signs.len()
+            || csr.row_offsets.first().copied() != Some(0)
+            || csr.row_offsets.get(rows).copied() != Some(csr.column_indices.len())
+        {
+            return None;
+        }
+
+        let mut decoded = BTreeSet::new();
+        for i in 0..rows {
+            let start = *csr.row_offsets.get(i)?;
+            let stop = *csr.row_offsets.get(i + 1)?;
+            if stop != start.checked_add(3)? {
+                return None;
+            }
+            let columns = [
+                *csr.column_indices.get(start)?,
+                *csr.column_indices.get(start.checked_add(1)?)?,
+                *csr.column_indices.get(start.checked_add(2)?)?,
+            ];
+            let signs = [
+                *csr.signs.get(start)?,
+                *csr.signs.get(start.checked_add(1)?)?,
+                *csr.signs.get(start.checked_add(2)?)?,
+            ];
+            if columns[0] >= columns[1]
+                || columns[1] >= columns[2]
+                || columns[2] >= csr.variables
+                || signs.iter().any(|s| *s != -1 && *s != 1)
+                || !decoded.insert((columns, signs))
+            {
+                return None;
+            }
+        }
+        Some(decoded)
+    }
+
+    /// On the actual Rust execution path, acceptance of an independent
+    /// receipt must imply *complete* equality with the separately decoded
+    /// source rows. Systematic mutations test both acceptance and refusal.
+    /// This is differential implementation evidence, not formal refinement.
+    #[test]
+    fn receipt_execution_agrees_with_independent_csr_decoder() {
+        for n in [4_usize, 5, 8] {
+            let rhs = (0..n - 3).map(|i| i % 2 == 0).collect::<Vec<_>>();
+            let original = OwnedSignedCsr::from_cnf(&source(n, &rhs));
+            let receipt = original.view().recognize_recurrence().unwrap();
+            let expected = model_signed_csr_rows(original.view()).unwrap();
+
+            let agrees = |case: &OwnedSignedCsr| {
+                let decoded = model_signed_csr_rows(case.view());
+                let should_accept = decoded.as_ref() == Some(&expected);
+                let actual = verify_recurrence_receipt(case.view(), &receipt);
+                assert_eq!(
+                    actual.is_ok(),
+                    should_accept,
+                    "independent CSR model disagrees for n={n}, case={case:?}"
+                );
+                if should_accept {
+                    assert_eq!(actual, Ok(receipt.count()));
+                }
+            };
+            agrees(&original);
+
+            let nnz = original.column_indices.len();
+            for index in 0..original.row_offsets.len() {
+                for value in [
+                    0,
+                    nnz,
+                    usize::MAX,
+                    original.row_offsets[index].saturating_sub(1),
+                    original.row_offsets[index].saturating_add(1),
+                ] {
+                    let mut case = original.clone();
+                    case.row_offsets[index] = value;
+                    agrees(&case);
+                }
+            }
+
+            for index in 0..original.column_indices.len() {
+                for value in [0, 1, n - 1, n, usize::MAX] {
+                    let mut case = original.clone();
+                    case.column_indices[index] = value;
+                    agrees(&case);
+                }
+            }
+
+            for index in 0..original.signs.len() {
+                for value in [-2, -1, 0, 1, 2, i8::MIN, i8::MAX] {
+                    let mut case = original.clone();
+                    case.signs[index] = value;
+                    agrees(&case);
+                }
+            }
         }
     }
 

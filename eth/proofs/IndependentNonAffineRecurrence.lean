@@ -301,6 +301,109 @@ theorem checked_signed_cnf_exact
   rw [rawRows_equiv_rowHolds]
   exact checked_source_rows_exact actual ds x h
 
+
+/-! ## Length-exact full assignments, without a seed-count shortcut
+
+The following inductive relation describes *every bit* of a complete
+satisfying word, rather than merely the three-bit starting state.
+Its last constructor requires the final positive OR clause. Each step
+writes the next complete-word bit and advances the recurrence state.
+-/
+
+def fullWord : State → List Bool → List Bool
+  | (a, b, c), [] => [a, b, c]
+  | (a, b, c), d :: ds => a :: fullWord (next d (a, b, c)) ds
+
+theorem fullWord_length (s : State) (ds : List Bool) :
+    (fullWord s ds).length = ds.length + 3 := by
+  induction ds generalizing s with
+  | nil =>
+      rcases s with ⟨a, b, c⟩
+      rfl
+  | cons d ds ih =>
+      rcases s with ⟨a, b, c⟩
+      simp only [fullWord, List.length_cons]
+      rw [ih]
+      omega
+
+inductive FullTrace : State → List Bool → List Bool → Prop
+  | last (a b c : Bool) (h : nonzero (a, b, c) = true) :
+      FullTrace (a, b, c) [] [a, b, c]
+  | step (a b c d : Bool) (ds tail : List Bool)
+      (h : nonzero (a, b, c) = true)
+      (ht : FullTrace (next d (a, b, c)) ds tail) :
+      FullTrace (a, b, c) (d :: ds) (a :: tail)
+
+theorem fullTrace_word {s : State} {ds w : List Bool}
+    (h : FullTrace s ds w) : w = fullWord s ds := by
+  induction h with
+  | last a b c h => rfl
+  | step a b c d ds tail h ht ih => simpa [fullWord] using congrArg (List.cons a) ih
+
+theorem fullTrace_length {s : State} {ds w : List Bool}
+    (h : FullTrace s ds w) : w.length = ds.length + 3 := by
+  rw [fullTrace_word h]
+  exact fullWord_length s ds
+
+theorem fullTrace_accepts {s : State} {ds w : List Bool}
+    (h : FullTrace s ds w) : accepts s ds = true := by
+  induction h with
+  | last a b c h => exact h
+  | step a b c d ds tail h ht ih =>
+      change (nonzero (a, b, c) && accepts (next d (a, b, c)) ds) = true
+      simp [h, ih]
+
+theorem accepted_fullTrace (s : State) (ds : List Bool)
+    (h : accepts s ds = true) : FullTrace s ds (fullWord s ds) := by
+  induction ds generalizing s with
+  | nil =>
+      rcases s with ⟨a, b, c⟩
+      exact FullTrace.last a b c h
+  | cons d ds ih =>
+      rcases s with ⟨a, b, c⟩
+      have hs : nonzero (a, b, c) = true := by
+        have h' : nonzero (a, b, c) && accepts (next d (a, b, c)) ds = true := h
+        exact (Bool.and_eq_true.mp h').1
+      have ht : accepts (next d (a, b, c)) ds = true := by
+        have h' : nonzero (a, b, c) && accepts (next d (a, b, c)) ds = true := h
+        exact (Bool.and_eq_true.mp h').2
+      exact FullTrace.step a b c d ds
+        (fullWord (next d (a, b, c)) ds) hs (ih _ ht)
+
+/-- Complete, length-checked witnesses of the recurrence plus all positive
+sliding-window clauses. This is *not* the type of arbitrary decoded CSR
+bytes; the independent checked-source-row theorem handles that predicate. -/
+def FullWitnesses (ds : List Bool) :=
+  { p : State × List Bool // FullTrace p.1 ds p.2 }
+
+def AcceptedSeeds (ds : List Bool) :=
+  { s : State // accepts s ds = true }
+
+/-- Every certified full word, including its exact length, is uniquely
+determined by one accepted seed; conversely every accepted seed extends to
+exactly one full word. No assignment over 2^n is enumerated. -/
+def fullWitnessSeedEquiv (ds : List Bool) :
+    FullWitnesses ds ≃ AcceptedSeeds ds where
+  toFun p := ⟨p.1.1, fullTrace_accepts p.2⟩
+  invFun s := ⟨(s.1, fullWord s.1 ds), accepted_fullTrace s.1 ds s.2⟩
+  left_inv := by
+    rintro ⟨⟨s, w⟩, h⟩
+    apply Subtype.ext
+    apply Prod.ext
+    · rfl
+    · exact (fullTrace_word h).symm
+  right_inv := by
+    intro s
+    apply Subtype.ext
+    rfl
+
+#print axioms IndependentETH.NonAffine.fullWord_length
+#print axioms IndependentETH.NonAffine.fullTrace_word
+#print axioms IndependentETH.NonAffine.fullTrace_length
+#print axioms IndependentETH.NonAffine.fullTrace_accepts
+#print axioms IndependentETH.NonAffine.accepted_fullTrace
+#print axioms IndependentETH.NonAffine.fullWitnessSeedEquiv
+
 #print axioms IndependentETH.NonAffine.signedClause_exact
 #print axioms IndependentETH.NonAffine.rawRows_equiv_rowHolds
 #print axioms IndependentETH.NonAffine.checked_signed_cnf_exact

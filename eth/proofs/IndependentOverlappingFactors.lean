@@ -138,8 +138,10 @@ def nextKept (active : Finset V) (f : ScopedFactor V R)
     Finset V :=
   (active ∪ f.scope) ∩ (scopeUnion rest ∪ output)
 
-/-- Newly dead ports, deterministically converted to an elimination list. -/
-def nextDead (active : Finset V) (f : ScopedFactor V R)
+/-- Newly dead ports, converted to a mathematical elimination list.
+A finite set has no canonical list order without an explicit ordering;
+this reference conversion is noncomputable, unlike Rust's BTreeSet. -/
+noncomputable def nextDead (active : Finset V) (f : ScopedFactor V R)
     (rest : List (ScopedFactor V R)) (output : Finset V) :
     List V :=
   ((active ∪ f.scope) \ (scopeUnion rest ∪ output)).toList
@@ -147,7 +149,7 @@ def nextDead (active : Finset V) (f : ScopedFactor V R)
 /-- A complete order-respecting plan. Source factors may share ports
 with preceding and following factors; only actual future dependencies
 prevent elimination. -/
-def makePlan (active output : Finset V) :
+noncomputable def makePlan (active output : Finset V) :
     List (ScopedFactor V R) → List (Step V R)
   | [] => []
   | f :: rest =>

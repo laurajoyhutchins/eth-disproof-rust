@@ -62,6 +62,9 @@ enum Witness {
 #[derive(Clone, Debug, Default)]
 pub struct CertificateWork {
     pub queries: u64,
+    pub future_clause_collections: u64,
+    pub source_clause_copies: u64,
+    pub copied_literal_instances: u64,
     pub clause_visits: u64,
     pub literal_reads: u64,
     pub derived_units: u64,
@@ -98,14 +101,19 @@ enum Search {
     Refuted(UnitRefutation),
 }
 
-fn future_clauses(factors: &[Factor], order: &[usize], step: usize)
-    -> Result<Vec<Clause>, String>
+fn future_clauses(factors: &[Factor], order: &[usize], step: usize,
+    m: &mut CertificateWork) -> Result<Vec<Clause>, String>
 {
+    m.future_clause_collections += 1;
     let mut clauses = Vec::new();
     for &idx in &order[step + 1..] {
         for constraint in &factors[idx].constraints {
             match constraint {
-                Constraint::Clause(literals) => clauses.push(literals.clone()),
+                Constraint::Clause(literals) => {
+                    m.source_clause_copies += 1;
+                    m.copied_literal_instances += literals.len() as u64;
+                    clauses.push(literals.clone());
+                },
                 Constraint::Parity(_, _) =>
                     return Err("source UP adapter refuses non-CNF parity factors".into()),
             }
@@ -218,6 +226,7 @@ fn check_witness(
     match witness {
         Witness::Unit(trace) => check_refutation(clauses, initial, trace, m),
         Witness::Split { variable, false_branch, true_branch } => {
+            m.checked_reason_literals += clauses.iter().map(|c| c.len() as u64).sum::<u64>();
             if initial.contains_key(variable) ||
                 !clauses.iter().flatten().any(|(name, _)| name == variable)
             {
@@ -235,10 +244,12 @@ fn check_witness(
 
 fn highest_frequency_unfixed(
     clauses: &[Clause], fixed: &BTreeMap<String, bool>,
+    m: &mut CertificateWork,
 ) -> Option<String> {
     let mut frequency = BTreeMap::<String, usize>::new();
     for clause in clauses {
         for (name, _) in clause {
+            m.literal_reads += 1;
             if !fixed.contains_key(name) {
                 *frequency.entry(name.clone()).or_default() += 1;
             }
@@ -262,7 +273,7 @@ fn detect(
         Search::Budget => { m.budget_skips += 1; return None; }
         Search::Open => (),
     }
-    let Some(var) = highest_frequency_unfixed(clauses, initial) else { return None; };
+    let Some(var) = highest_frequency_unfixed(clauses, initial, m) else { return None; };
     for _ in 0..MAX_SPLIT_PROBES {
         let mut assumptions = initial.clone();
         assumptions.insert(var.clone(), false);
@@ -284,7 +295,7 @@ fn filter_stage(
     stage: &mut Stage, factors: &[Factor], order: &[usize], step: usize,
     mode: Mode, m: &mut CertificateWork,
 ) -> Result<(), String> {
-    let clauses = future_clauses(factors, order, step)?;
+    let clauses = future_clauses(factors, order, step, m)?;
     if clauses.is_empty() { return Ok(()); }
     if clauses.len() > MAX_FUTURE_CLAUSES {
         m.budget_skips += 1;
@@ -326,9 +337,9 @@ fn filter_stage(
 /// The resulting stage is only required to preserve the FINAL global #SAT
 /// count. Intermediate stages intentionally discard processed-prefix
 /// solutions incompatible with future factors.
-pub fn run_case(case: Case, mode: Mode) -> Result<Receipt, String> {
-    let baseline = super::run_case(case)?;
-    let original = adaptive::source_case(case)?;
+fn run_with_baseline(
+    case: Case, mode: Mode, baseline: &super::Receipt, original: &[Factor],
+) -> Result<Receipt, String> {
     let order = baseline.order.clone();
     let start = Instant::now();
     let mut m = CertificateWork::default();
@@ -370,6 +381,22 @@ pub fn run_case(case: Case, mode: Mode) -> Result<Receipt, String> {
         case, mode, order, elapsed_ns, satisfying_count: count,
         unguarded_sparse_count, work: m, independent_oracle: "checked",
     })
+}
+
+/// Reuse one independently checked source/full-polynomial baseline for both
+/// certificate modes; neither source oracle nor full polynomial is part
+/// of the measured certificate variant's fold time.
+pub fn run_modes(case: Case) -> Result<Vec<Receipt>, String> {
+    let baseline = super::run_case(case)?;
+    let original = adaptive::source_case(case)?;
+    Mode::ALL.into_iter().map(|mode|
+        run_with_baseline(case, mode, &baseline, &original)).collect()
+}
+
+pub fn run_case(case: Case, mode: Mode) -> Result<Receipt, String> {
+    let baseline = super::run_case(case)?;
+    let original = adaptive::source_case(case)?;
+    run_with_baseline(case, mode, &baseline, &original)
 }
 
 #[cfg(test)]

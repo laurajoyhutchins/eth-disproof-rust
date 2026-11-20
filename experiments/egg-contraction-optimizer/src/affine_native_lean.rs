@@ -247,6 +247,67 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
     };
     emit_positive(&mut out, "one unused internal source variable", &free, true)?;
 
+    // Preserve PR #360's mathematically distinct source cases.
+    // The 130-bit case is structural only: no exponential enumeration.
+    let noncontiguous = AffineRegion {
+        internal: (0..6).map(|i| format!("u{i}")).collect(),
+        boundary: vec!["b".into(), "c".into(), "d".into()],
+        equations: vec![
+            Equation { variables: vec!["u1".into(), "u3".into(), "b".into()], rhs: false },
+            Equation { variables: vec!["u4".into(), "u5".into(), "c".into()], rhs: true },
+            Equation { variables: vec!["u1".into(), "u3".into(), "d".into()], rhs: false },
+        ],
+    };
+    emit_positive(
+        &mut out, "Noncontiguous pivots and a row swap", &noncontiguous, true,
+    )?;
+
+    let duplicates = AffineRegion {
+        internal: vec!["u".into(), "v".into()],
+        boundary: vec!["b".into()],
+        equations: vec![Equation {
+            variables: vec![
+                "u".into(), "u".into(), "v".into(), "b".into(),
+            ],
+            rhs: true,
+        }],
+    };
+    emit_positive(
+        &mut out, "Repeated source occurrences cancel in GF2", &duplicates, true,
+    )?;
+
+    let inconsistent = AffineRegion {
+        internal: vec![], boundary: vec![],
+        equations: vec![Equation { variables: vec![], rhs: true }],
+    };
+    emit_positive(
+        &mut out, "Impossible constant equation", &inconsistent, true,
+    )?;
+
+    // Exercise native packing across 64-bit word boundaries without
+    // exponential reference enumeration in the Lean test.
+    let wide = AffineRegion {
+        internal: (0..130).map(|i| format!("u{i}")).collect(),
+        boundary: vec!["b".into(), "c".into()],
+        equations: vec![
+            Equation {
+                variables: vec!["u63".into(), "u64".into(), "b".into()],
+                rhs: false,
+            },
+            Equation {
+                variables: vec!["u63".into(), "u64".into(), "c".into()],
+                rhs: true,
+            },
+            Equation {
+                variables: vec!["u127".into(), "u128".into()],
+                rhs: false,
+            },
+        ],
+    };
+    emit_positive(
+        &mut out, "130 internal bits across three packed words", &wide, false,
+    )?;
+
     // The current ordered planner's actual sequence of retained ports
     // drives each merge. The receipt contains exactly the local source
     // region constructed and checked inside Stage::merge_with_receipt.
@@ -320,6 +381,8 @@ mod tests {
         assert!(text.contains("native merge CirculantXor3 Reverse"));
         assert!(text.contains("mutated residual parity"));
         assert!(text.contains("out-of-range u64 row index"));
+        assert!(text.contains("130 internal bits across three packed words"));
+        assert!(text.contains("Repeated source occurrences cancel in GF2"));
         assert!(text.contains("unsupported raw version"));
         assert!(text.contains("native ordered ports Chain Sequential"));
         assert!(text.contains("duplicate source factor index"));

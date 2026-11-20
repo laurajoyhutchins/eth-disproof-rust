@@ -112,6 +112,19 @@ pub fn p11_checked_option_sink(
     Ok(left)
 }
 
+/// Same recorded Option and returned Result as p5, but conversion happens
+/// only after Vec::push. This removes the temporary shared borrow of a
+/// stored Result across a mutable vector effect.
+pub fn p12_option_then_result(
+    events: &mut Vec<Option<i128>>,
+    left: i128,
+    right: i128,
+) -> Result<i128, u8> {
+    let observed = left.checked_add(right);
+    events.push(observed);
+    observed.ok_or(9u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,6 +177,26 @@ mod tests {
             Ok(i128::MAX)
         );
         assert_eq!(option_events, vec![Some(5), None]);
+    }
+
+    #[test]
+    fn option_then_result_matches_original_checked_recorder_on_observed_cases() {
+        for (left, right) in [
+            (0, 0),
+            (2, 3),
+            (-2, 3),
+            (i128::MAX, 1),
+            (i128::MIN, -1),
+            (i128::MIN, i128::MAX),
+        ] {
+            let mut original = vec![Some(99)];
+            let mut reordered = vec![Some(99)];
+            assert_eq!(
+                p5_checked_direct(&mut original, left, right),
+                p12_option_then_result(&mut reordered, left, right),
+            );
+            assert_eq!(original, reordered);
+        }
     }
 
     #[test]

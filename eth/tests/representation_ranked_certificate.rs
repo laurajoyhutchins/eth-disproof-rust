@@ -142,6 +142,59 @@ fn malformed_roots_labels_parent_links_and_ranks_refuse() {
 }
 
 #[test]
+fn parent_refusal_codes_preserve_precise_error_and_first_bad_vertex() {
+    let base = RankedComponentCertificate {
+        labels: vec![0, 0, 0],
+        roots: vec![0],
+        parent_edge_indices: vec![None, Some(0), Some(1)],
+        rank: vec![0, 1, 2],
+    };
+    let edges = [(0, 1), (1, 2)];
+    assert_eq!(
+        verify_ranked_component_certificate(3, &edges, &base)
+            .unwrap()
+            .parent_links,
+        2
+    );
+    // Either orientation of a source edge may serve as a parent witness.
+    assert_eq!(
+        verify_ranked_component_certificate(3, &[(1, 0), (2, 1)], &base)
+            .unwrap()
+            .parent_links,
+        2
+    );
+
+    for (parent2, rank2, message) in [
+        (None, 2, "unjustified ranked component root"),
+        (Some(99), 2, "ranked parent edge absent from source"),
+        (Some(0), 2, "ranked parent edge misses vertex"),
+        (
+            Some(1),
+            1,
+            "ranked parent does not preserve label and decrease rank",
+        ),
+    ] {
+        let mut invalid = base.clone();
+        invalid.parent_edge_indices[2] = parent2;
+        invalid.rank[2] = rank2;
+        assert_eq!(
+            verify_ranked_component_certificate(3, &edges, &invalid).unwrap_err(),
+            Error::Invalid(message.into())
+        );
+    }
+
+    // The validator examines vertices in source order. Later failures may
+    // never replace the first error, including when their codes differ.
+    let mut two_invalid = base.clone();
+    two_invalid.parent_edge_indices[1] = Some(99);
+    two_invalid.parent_edge_indices[2] = None;
+    assert_eq!(
+        verify_ranked_component_certificate(3, &edges, &two_invalid).unwrap_err(),
+        Error::Invalid("ranked parent edge absent from source".into())
+    );
+}
+
+#[test]
 fn source_change_invalidates_certificate_without_reusable_receipt() {
     let good = RankedComponentCertificate {
         labels: vec![0, 0, 1],

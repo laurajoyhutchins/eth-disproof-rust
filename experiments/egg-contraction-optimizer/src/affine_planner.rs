@@ -56,9 +56,8 @@ impl Stage {
         if hidden.len() != region.internal.len() {
             return Err("duplicate hidden variable".into());
         }
-        let (interface, raw) = region.eliminate_with_raw_certificate()?;
-        let checked = raw.verify(region, &interface,
-            crate::affine_cert::VerificationLimits::default())?;
+        let (interface, _raw, checked) =
+            region.eliminate_with_verified_raw_certificate()?;
         let metrics = measure(&interface, checked.operations_checked)?;
         Ok(Self { interface, hidden, metrics })
     }
@@ -110,9 +109,8 @@ impl Stage {
             }
         }
         let region = AffineRegion { internal, boundary, equations };
-        let (mut interface, raw) = region.eliminate_with_raw_certificate()?;
-        let checked = raw.verify(&region, &interface,
-            crate::affine_cert::VerificationLimits::default())?;
+        let (mut interface, raw, checked) =
+            region.eliminate_with_verified_raw_certificate()?;
         let local_claim = interface.clone();
         interface.free_internal = interface.free_internal
             .checked_add(self.interface.free_internal)

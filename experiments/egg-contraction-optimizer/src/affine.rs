@@ -148,10 +148,27 @@ impl AffineRegion {
     pub fn eliminate_with_raw_certificate(
         &self,
     ) -> Result<(AffineInterface, crate::affine_wire::RawCertificate), String> {
+        let (result, raw, _verified) =
+            self.eliminate_with_verified_raw_certificate()?;
+        Ok((result, raw))
+    }
+
+    /// Return the independent replay result alongside the raw receipt.
+    /// Staged callers need the operation count; returning this receipt
+    /// avoids replaying the entire Boolean matrix a second time.
+    pub(crate) fn eliminate_with_verified_raw_certificate(
+        &self,
+    ) -> Result<(
+        AffineInterface,
+        crate::affine_wire::RawCertificate,
+        crate::affine_cert::VerificationReceipt,
+    ), String> {
         let (result, typed) = self.eliminate_with_certificate()?;
         let raw = crate::affine_wire::RawCertificate::from_typed(&typed)?;
-        raw.verify(self, &result, crate::affine_cert::VerificationLimits::default())?;
-        Ok((result, raw))
+        let verified = raw.verify(
+            self, &result, crate::affine_cert::VerificationLimits::default(),
+        )?;
+        Ok((result, raw, verified))
     }
 
     /// The producer also emits a replayable row-operation witness.

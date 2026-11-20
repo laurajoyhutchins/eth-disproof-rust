@@ -21,7 +21,7 @@ impl Reader {
                     ..
                 } => {
                     match Self::checked_tag(expr, "Expr")? {
-                        11 => {} // Pure compiler literal; no source effect.
+                        11 => {} // No explicit RC event; possible allocation is outside this receipt.
                         12 => events.push(Event::Observe {
                             result: Self::var(defined)?,
                             var: Self::var(Self::field(expr, 0)?)?,

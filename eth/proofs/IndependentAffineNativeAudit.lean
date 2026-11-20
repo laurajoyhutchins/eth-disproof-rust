@@ -364,18 +364,18 @@ private def xorAll (xs : List Bool) : Bool :=
 private theorem xorAll_map_xor {α : Type*}
     (xs : List α) (f g : α → Bool) :
     xorAll (xs.map (fun x => f x ^^ g x)) =
-      xorAll (xs.map f) ^^ xorAll (xs.map g) := by
+      (xorAll (xs.map f) ^^ xorAll (xs.map g)) := by
   induction xs with
   | nil => rfl
   | cons x xs ih =>
       calc
         xorAll ((x :: xs).map (fun a => f a ^^ g a)) =
-            (f x ^^ g x) ^^
-              xorAll (xs.map (fun a => f a ^^ g a)) := rfl
-        _ = (f x ^^ g x) ^^
-              (xorAll (xs.map f) ^^ xorAll (xs.map g)) := by rw [ih]
-        _ = xorAll ((x :: xs).map f) ^^
-              xorAll ((x :: xs).map g) := by
+            ((f x ^^ g x) ^^
+              xorAll (xs.map (fun a => f a ^^ g a))) := rfl
+        _ = ((f x ^^ g x) ^^
+              (xorAll (xs.map f) ^^ xorAll (xs.map g))) := by rw [ih]
+        _ = (xorAll ((x :: xs).map f) ^^
+              xorAll ((x :: xs).map g)) := by
               cases f x <;> cases g x <;>
                 cases xorAll (xs.map f) <;>
                 cases xorAll (xs.map g) <;> decide
@@ -383,7 +383,7 @@ private theorem xorAll_map_xor {α : Type*}
 private theorem occurrenceFold_acc
     (xs : List Name) (target : Name) (acc : Bool) :
     xs.foldl (fun p name => p ^^ (name == target)) acc =
-      acc ^^ xs.foldl (fun p name => p ^^ (name == target)) false := by
+      (acc ^^ xs.foldl (fun p name => p ^^ (name == target)) false) := by
   induction xs generalizing acc with
   | nil => cases acc <;> decide
   | cons x xs ih =>
@@ -395,7 +395,7 @@ private theorem occurrenceFold_acc
 private theorem occurrenceBit_cons (x : Name) (xs : List Name)
     (target : Name) :
     occurrenceBit (x :: xs) target =
-      (x == target) ^^ occurrenceBit xs target := by
+      ((x == target) ^^ occurrenceBit xs target) := by
   simp only [occurrenceBit, List.foldl_cons]
   simpa using occurrenceFold_acc xs target (x == target)
 
@@ -417,9 +417,9 @@ private theorem xorAll_delta_none (ns : List Name)
       calc
         xorAll ((x :: xs).map
           (fun name => (target == name) && assignment name)) =
-            ((target == x) && assignment x) ^^
+            (((target == x) && assignment x) ^^
             xorAll (xs.map
-              (fun name => (target == name) && assignment name)) := rfl
+              (fun name => (target == name) && assignment name))) := rfl
         _ = false := by simp [hx, ih ht]
 
 private theorem xorAll_delta (ns : List Name)
@@ -454,12 +454,12 @@ private theorem coefficientEval_cons (ns : List Name)
     (x : Name) (xs : List Name) (assignment : Name → Bool)
     (hn : ns.Nodup) :
     coefficientEval ns (x :: xs) assignment =
-      (if x ∈ ns then assignment x else false) ^^
-        coefficientEval ns xs assignment := by
+      ((if x ∈ ns then assignment x else false) ^^
+        coefficientEval ns xs assignment) := by
   have hpoint (n : Name) :
       (occurrenceBit (x :: xs) n && assignment n) =
-        ((x == n) && assignment n) ^^
-          (occurrenceBit xs n && assignment n) := by
+        (((x == n) && assignment n) ^^
+          (occurrenceBit xs n && assignment n)) := by
     rw [occurrenceBit_cons]
     cases x == n <;> cases occurrenceBit xs n <;>
       cases assignment n <;> decide
@@ -475,7 +475,7 @@ private def occurrenceEval (xs : List Name)
 private theorem occurrenceEval_acc (xs : List Name)
     (assignment : Name → Bool) (acc : Bool) :
     xs.foldl (fun parity n => parity ^^ assignment n) acc =
-      acc ^^ occurrenceEval xs assignment := by
+      (acc ^^ occurrenceEval xs assignment) := by
   induction xs generalizing acc with
   | nil => cases acc <;> decide
   | cons x xs ih =>
@@ -487,7 +487,7 @@ private theorem occurrenceEval_acc (xs : List Name)
 private theorem occurrenceEval_cons (x : Name) (xs : List Name)
     (assignment : Name → Bool) :
     occurrenceEval (x :: xs) assignment =
-      assignment x ^^ occurrenceEval xs assignment := by
+      (assignment x ^^ occurrenceEval xs assignment) := by
   simp only [occurrenceEval, List.foldl_cons]
   simpa using occurrenceEval_acc xs assignment (assignment x)
 

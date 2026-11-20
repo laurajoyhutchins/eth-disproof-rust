@@ -1,0 +1,46 @@
+name: Scoped ETH evidence receipts
+
+on:
+  pull_request:
+    paths:
+      - 'eth/evidence/claims.json'
+      - 'tools/check_evidence_claims.py'
+      - 'tools/test_evidence_claims.py'
+      - '.github/workflows/evidence-receipts.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'eth/evidence/claims.json'
+      - 'tools/check_evidence_claims.py'
+      - 'tools/test_evidence_claims.py'
+      - '.github/workflows/evidence-receipts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+# No network checks on unrelated ETH Rust commits. This job only certifies
+# authentic historical receipts for the exact declared source/toolchain bytes.
+concurrency:
+  group: scoped-eth-receipts-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  receipt-audit:
+    name: receipt-audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Check fail-closed evidence receipt tests
+        run: python3 -m unittest discover -s tools -p 'test_evidence_claims.py' -v
+      - name: Authenticate historical Git blobs and named workflow steps
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/check_evidence_claims.py --verify-remote --json > "$RUNNER_TEMP/scoped-evidence-audit.json"
+          cat "$RUNNER_TEMP/scoped-evidence-audit.json"

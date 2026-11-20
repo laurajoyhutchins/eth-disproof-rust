@@ -34,9 +34,9 @@ The generated code is not a separately typed or handwritten Rust
 replacement. The wrapper only adapts the exported scalar C ABI.
 Keep the exact emitted-file digest in the CI receipt.
 
-## Still open
+## Bounded generated Rust/C heap execution
 
-**A bounded generated heap mode now uses the physical Lean C adapter.**
+**A bounded generated heap mode uses the physical Lean C adapter.**
 `--cfg 'feature="lean-c-runtime"'` selects `generated_value.rs` for the
 *unchanged* IR-emitted functions. `check-generated-heap.sh` compiles the
 original `RuntimeHeapKernels.lean` source independently to Lean C and
@@ -66,11 +66,20 @@ ownership. Combining both as if they proved all constructor,
 borrowed-projection, call/join and destructor semantics would be
 incorrect.
 
-The next acceptance target is one *compiler-emitted* heap constructor
-and projection executed with these Lean C handles, followed by
-ownership-sensitive call/join and nested release. Persistent and
-multithreaded reference counts, arbitrary externs and all original
-ETH G2 obligations remain unproved.
+The source-derived `RuntimeHeapDel` tests now execute an **actual
+Reader-generated function containing one final-IR `del` and two joins**
+against pinned Lean C, comparing 720 selected original-C and Rust/C
+physical observations. The bounded event comparison in
+[PR #407](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/407)
+checks selected source-visible ownership calls, while the separately
+instrumented diagnostic in [PR #419](https://github.com/laurajoyhutchins/eth-disproof-rust/pull/419)
+observes pinned C++ destructor worklist internals. Neither generalizes
+these traces to all compiler control flow or heap graphs.
+
+Next extend **general ownership-sensitive control flow, aliasing and
+layout admission** against the original runtime and derive a true
+source-to-runtime simulation for the supported model. Persistent and
+multithreaded counts, arbitrary externs and ETH G2 remain open.
 
 See [runtime contract](../../docs/execution-runtime-contract.md)
 and [status](../../docs/compiler-status.md).

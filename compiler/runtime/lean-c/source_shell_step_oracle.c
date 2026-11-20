@@ -38,6 +38,8 @@ typedef struct {
     int borrowed;
     int unique;
     const char *stamp_slot;
+    /* Capture identities before any shell is freed. */
+    uintptr_t parentId, childId, oldStampId;
 } episode;
 
 static int checked_rc(lean_object *o) {
@@ -49,8 +51,8 @@ static int checked_rc(lean_object *o) {
 
 /* Do not infer liveness from an address after free. */
 static void checkpoint(episode *e, const char *event, const char *outcome) {
-    REQUIRE(e->parent != e->child && e->child != e->old_stamp &&
-           e->parent != e->old_stamp);
+    REQUIRE(e->parentId != e->childId && e->childId != e->oldStampId &&
+           e->parentId != e->oldStampId);
     REQUIRE(e->child_field == e->parent_live);
     if (e->parent_live) {
         REQUIRE(lean_is_ctor(e->parent));
@@ -63,9 +65,9 @@ static void checkpoint(episode *e, const char *event, const char *outcome) {
         e->parent_live ? checked_rc(e->parent) : 0,
         checked_rc(e->child), checked_rc(e->old_stamp),
         e->child_field, e->borrowed, e->stamp_slot, e->unique,
-        (unsigned long long)(uintptr_t)e->parent,
-        (unsigned long long)(uintptr_t)e->child,
-        (unsigned long long)(uintptr_t)e->old_stamp);
+        (unsigned long long)e->parentId,
+        (unsigned long long)e->childId,
+        (unsigned long long)e->oldStampId);
 }
 
 static episode new_episode(FILE *f, const char *name, lean_object *external_stamp) {
@@ -78,7 +80,9 @@ static episode new_episode(FILE *f, const char *name, lean_object *external_stam
     lean_object *parent = lean_alloc_ctor(1, 2, 0);
     lean_ctor_set(parent, 0, child);
     lean_ctor_set(parent, 1, external_stamp);
-    episode e = {name, f, parent, child, external_stamp, 1, 1, 0, 0, "old"};
+    episode e = {name, f, parent, child, external_stamp, 1, 1, 0, 0, "old",
+                 (uintptr_t)parent, (uintptr_t)child,
+                 (uintptr_t)external_stamp};
     REQUIRE(checked_rc(parent) == 1 && checked_rc(child) == 1);
     checkpoint(&e, "initial", "start");
     return e;
@@ -118,7 +122,7 @@ static void do_shell_del(episode *e) {
     lean_del_object(e->parent);
     e->parent_live = 0;
     e->child_field = 0;
-    /* Never touch e->parent again, except to print its saved identity. */
+    /* The checkpoint prints only the pre-release integer identity token. */
     checkpoint(e, "shellDel", "ok");
 }
 static void refuse_shell_del(episode *e) {

@@ -78,12 +78,62 @@ if grep -Fq 'sorryAx' artifacts/reader-heap-events-axioms.txt; then
   echo 'Heap-event operational proof contains sorryAx' >&2
   exit 2
 fi
-for theorem in retain_requires_live release_requires_live release_last_leaf retain_changes_only_named_object seed_changes_only_named_object observation_preserves_heap nested_release_keeps_only_explicit_descendants seed_duplicate_is_refused release_of_dead_object_is_refused cannot_retain_source_freed_descendant; do
+for theorem in retain_requires_live release_requires_live release_last_leaf release_shared_stops_at_node release_shared_preserves_other retain_changes_only_named_object seed_changes_only_named_object observation_preserves_heap nested_release_keeps_only_explicit_descendants seed_duplicate_is_refused release_of_dead_object_is_refused cannot_retain_source_freed_descendant; do
   if ! grep -Fq "'ReaderHeapEvents.${theorem}' " artifacts/reader-heap-events-axioms.txt; then
     echo "Missing heap-event theorem axiom receipt: ${theorem}" >&2
     exit 2
   fi
 done
+# This is a mathematical tree-order theorem, NOT a C++ refinement claim.
+# The separate diagnostic executable checks physical worklist events.
+lean proofs/ReaderWorklistOrder.lean | tee artifacts/reader-worklist-order-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-worklist-order-axioms.txt; then
+  echo 'Worklist order theorem contains sorryAx' >&2
+  exit 2
+fi
+for theorem in same_visited_identities same_number_of_visits retained_subtree_is_a_frontier fork_lifo_visitation same_released_nodes_but_different_order retained_right_branch_stops; do
+  if ! grep -Fq "'ReaderWorklistOrder.${theorem}' " artifacts/reader-worklist-order-axioms.txt; then
+    echo "Missing kernel worklist order theorem receipt: ${theorem}" >&2
+    exit 2
+  fi
+done
+# Alias edges require an ownership-count theorem independent of tree identity.
+# Refusals here are a model property, not evidence of C++ use-after-free safety.
+lean proofs/ReaderWorklistAliases.lean | tee artifacts/reader-worklist-aliases-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-worklist-aliases-axioms.txt; then
+  echo 'Aliased worklist proof contains sorryAx' >&2
+  exit 2
+fi
+python3 - artifacts/reader-worklist-aliases-axioms.txt <<'PY'
+import re
+import sys
+from pathlib import Path
+
+receipt = Path(sys.argv[1]).read_text()
+allowed = {"propext", "Quot.sound", "Classical.choice"}
+theorems = (
+    "alias_fields_spend_exactly_their_credits",
+    "aliased_fields_preserve_external_owner",
+    "alias_last_owner_enqueues_once",
+    "duplicate_field_last_credit",
+    "retained_diamond_stops",
+    "spent_alias_cannot_release_again",
+    "physical_drop_simulates_source",
+    "physical_trace_simulates_source",
+    "queued_last_owner_has_physical_rc_one",
+    "alias_physical_counter_at_queue_boundary",
+)
+for name in theorems:
+    pattern = re.escape(f"'ReaderWorklistAliases.{name}'")
+    pattern += r" (does not depend on any axioms|depends on axioms: \[([^]]*)\])"
+    match = re.search(pattern, receipt, re.S)
+    if not match:
+        raise SystemExit(f"missing alias kernel axiom receipt: {name}")
+    used = {s.strip() for s in (match.group(2) or "").split(",") if s.strip()}
+    if not used <= allowed:
+        raise SystemExit(f"unapproved alias kernel axioms: {name}: {used - allowed}")
+print("worklist_alias_kernel=STANDARD_AXIOMS_ONLY declarations=10")
+PY
 lean proofs/ReaderObjectCredits.lean | tee artifacts/reader-object-credits-axioms.txt
 if grep -Fq 'sorryAx' artifacts/reader-object-credits-axioms.txt; then
   echo 'Multi-allocation ownership theorem contains sorryAx' >&2
@@ -92,6 +142,20 @@ fi
 for theorem in stepAt_conserves_each every_successful_trace_conserves_each transfer_does_not_touch_other_object incAt_target incAt_other crossing_object_identities_is_not_an_admitted_transfer interleaved_distinct_objects; do
   if ! grep -Fq "'ReaderObjectCredits.${theorem}' " artifacts/reader-object-credits-axioms.txt; then
     echo "No axiom receipt for object-indexed theorem ${theorem}" >&2
+    exit 2
+  fi
+done
+# Kernel-check the restricted effect-order theorem and its negative witness.
+# This models abstract allocation identities; it does not certify actual
+# Lean C object graphs or native Rust runtime behavior.
+lean proofs/ReaderEffectOrder.lean | tee artifacts/reader-effect-order-axioms.txt
+if grep -Fq 'sorryAx' artifacts/reader-effect-order-axioms.txt; then
+  echo 'Effect-order proof contains sorryAx' >&2
+  exit 2
+fi
+for theorem in retain_preserves_other_count retain_preserves_other_sharing retain_commutes retaining_once_changes_sharing independent_retain_observe replay_exact_order observed_retain_cannot_swap; do
+  if ! grep -Fq "'ReaderEffectOrder.${theorem}' " artifacts/reader-effect-order-axioms.txt; then
+    echo "Missing effect-order proof axiom receipt: ${theorem}" >&2
     exit 2
   fi
 done

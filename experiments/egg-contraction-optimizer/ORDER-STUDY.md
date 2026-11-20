@@ -121,3 +121,55 @@ semantics for general cyclic graphs: it must still be composed with an
 exact theorem for elimination over overlapping scopes and with the
 Rust GF(2) certificate/refinement boundary. The existing small-instance
 CNF and affine oracles remain independent implementation evidence.
+
+
+## Source-declared variables and final closure
+
+The `fold_declared` entry point accepts a **complete source-declared
+Boolean variable set**, not merely variables visible in factor equations.
+It rejects source factors mentioning undeclared variables, repeated or
+undeclared output names, and attempts to expose factor-owned interiors.
+
+It adds one explicit neutral region containing:
+
+- Every declared but absent non-output variable in its **internal** list.
+  This contributes a factor \(2\) per genuinely unconstrained Boolean bit.
+- Every declared but absent output variable in its **boundary** list.
+  This remains a free exterior input and contributes **no** factor \(2\)
+  until the caller actually closes that boundary.
+
+An empty source uses a separate neutral starter region because the low-level
+fold deliberately requires at least two stages. All new regions still pass
+through the same source-region validation, packed GF(2) producer,
+independent row-transcript checker, and exact `BigUint`
+reconstruction. No truth-table fallback is introduced.
+
+**Witnesses:** zero-factor inputs with 0–9 declared variables and all
+output assignments; eight declared variables with one XOR2 constraint
+and six absent variables; malformed source names/outputs/orders; and
+130 unconstrained declared bits counted as \(2^{130}\) without enumeration.
+These are Rust implementation tests, not an end-to-end source parser
+refinement theorem.
+
+In Lean, `makePlan` now has a **terminal neutral step** that
+eliminates any remaining active non-output names, even if the factor list
+is empty. A separate declared-universe proof distinguishes names appearing
+in factor scopes from declarations absent from all factors. The intended
+acceptance contract is both set coverage and list uniqueness:
+
+\[
+\operatorname{set}(E) = D\setminus O,\qquad
+E.\operatorname{Nodup},
+\]
+
+where \(D\) is the full declared universe, \(O\subseteq D\) is the
+requested output and \(E\) is the list of actually summed variable
+names. Only together do these establish that each intended bit is
+summed **exactly once**. A name-membership proof alone cannot rule out
+a duplicated sum, which would erroneously multiply a count by two.
+
+**Current boundary:** the Lean inventory theorem, the Rust
+`fold_declared` helper, and the existing DIMACS source recognizer
+remain three separately validated components until a formal correspondence
+connects them. Resource budgets and the restricted canonical-XOR CNF
+recognition policy remain unchanged.

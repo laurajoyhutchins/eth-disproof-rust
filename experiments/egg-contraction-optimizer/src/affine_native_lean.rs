@@ -159,6 +159,46 @@ fn plan_datum(
     }
 }
 
+type NativeSnapshot = (AffineRegion, RawCertificate, AffineInterface);
+
+#[derive(Clone)]
+struct MultiplicityDatum {
+    plan: OrderedPortDatum,
+    leaves: Vec<NativeSnapshot>,
+    merges: Vec<NativeSnapshot>,
+    stage_free: Vec<usize>,
+}
+
+fn multiplicity_literal(trace: &MultiplicityDatum) -> String {
+    let leaves = list(trace.leaves.iter().map(|(source, cert, claim)|
+        snapshot_literal(source, cert, claim)));
+    let merges = list(trace.merges.iter().map(|(source, cert, claim)|
+        snapshot_literal(source, cert, claim)));
+    let stage_free = list(trace.stage_free.iter().map(usize::to_string));
+    format!(
+        "{{ plan := {}, leaves := {leaves}, merges := {merges}, stageFree := {stage_free} }}",
+        port_plan_literal(&trace.plan),
+    )
+}
+
+fn emit_multiplicity_case(
+    out: &mut String,
+    label: &str,
+    trace: &MultiplicityDatum,
+    accepted: bool,
+) {
+    let id = out.matches("def native_multiplicity_").count();
+    let name = format!("native_multiplicity_{id}");
+    out.push_str(&format!(
+        "\n-- {label}\ndef {name} : IndependentETH.AffineNativeAudit.MultiplicityTrace :=\n  {}\n",
+        multiplicity_literal(trace),
+    ));
+    out.push_str(&format!(
+        "example : IndependentETH.AffineNativeAudit.auditMultiplicityTrace {name} = {} := by decide\n",
+        bool_literal(accepted),
+    ));
+}
+
 fn emit_positive(
     out: &mut String,
     label: &str,
@@ -315,11 +355,27 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
         (Family::Chain, Schedule::Sequential),
         (Family::Chain, Schedule::EvenFirst),
         (Family::CirculantXor3, Schedule::Reverse),
+        (Family::FreeAmplifiers, Schedule::EvenFirst),
     ] {
         let factors = generate(family, 5)?;
         let order = order_kind.indices(factors.len());
         let output: Vec<String> = Vec::new();
         let trace = fold(&factors, &order, &output, &Limits::default())?;
+        // The trace checker independently audits the *actual producer*
+        // output for every source leaf. These are native raw-admitted
+        // certificates, not truth tables or fabricated expected claims.
+        let leaves = factors.iter().map(|source| {
+            let (claim, certificate) = source.eliminate_with_raw_certificate()?;
+            let actual = Stage::from_region(source)?;
+            if actual.interface.boundary != claim.boundary ||
+                actual.interface.residual != claim.residual ||
+                actual.interface.free_internal != claim.free_internal
+            {
+                return Err("source leaf differs from audited producer".to_string());
+            }
+            Ok((source.clone(), certificate, claim))
+        }).collect::<Result<Vec<NativeSnapshot>, String>>()?;
+        let mut merges : Vec<NativeSnapshot> = Vec::new();
         let mut accumulated = Stage::from_region(&factors[order[0]])?;
         for (i, &next_index) in order.iter().enumerate().skip(1) {
             let next = Stage::from_region(&factors[next_index])?;
@@ -339,12 +395,55 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
                 &format!("native merge {family:?} {order_kind:?} step {i}"),
                 &merge_source, &merge_cert, &local_claim, true, true,
             );
+            // Keep the real local input, raw transcript and pre-inheritance
+            // claim so Lean can reconstruct the entire ordered merge chain.
+            merges.push((merge_source, merge_cert, local_claim));
             accumulated = merged;
         }
         let order_receipt = plan_datum(&factors, &order, &output, &trace);
         emit_plan_case(&mut out,
             &format!("native ordered ports {family:?} {order_kind:?}"),
             &order_receipt, true);
+        let multiplicity = MultiplicityDatum {
+            plan: order_receipt.clone(),
+            leaves,
+            merges,
+            stage_free: trace.steps.iter()
+                .map(|step| step.metrics.free_internal).collect(),
+        };
+        emit_multiplicity_case(
+            &mut out,
+            &format!("composed native {family:?} {order_kind:?}"),
+            &multiplicity, true,
+        );
+        if family == Family::FreeAmplifiers {
+            // These free private bits would not be detected by auditing
+            // local row certificates alone. The composed trace checks
+            // their inherited exponents at every staged prefix.
+            let mut altered = multiplicity.clone();
+            altered.stage_free[2] += 1;
+            emit_multiplicity_case(
+                &mut out, "inflated inherited free exponent", &altered, false,
+            );
+            let mut altered = multiplicity.clone();
+            altered.leaves[0].2.free_internal += 1;
+            emit_multiplicity_case(
+                &mut out, "corrupted leaf fiber multiplicity", &altered, false,
+            );
+            let mut altered = multiplicity.clone();
+            altered.merges[0].0.equations.push(Equation {
+                variables: vec!["bogus".to_owned()], rhs: false,
+            });
+            emit_multiplicity_case(
+                &mut out, "merge equations do not match child residuals",
+                &altered, false,
+            );
+            let mut altered = multiplicity.clone();
+            altered.merges.pop();
+            emit_multiplicity_case(
+                &mut out, "omitted local merge certificate", &altered, false,
+            );
+        }
         if family == Family::Chain && order_kind == Schedule::Sequential {
             let mut altered = order_receipt.clone();
             altered.receipts[0].dead.push("invalid".into());
@@ -387,6 +486,10 @@ mod tests {
         assert!(text.contains("native ordered ports Chain Sequential"));
         assert!(text.contains("duplicate source factor index"));
         assert!(text.contains("auditPortPlan"));
+        assert!(text.contains("auditMultiplicityTrace"));
+        assert!(text.contains("inflated inherited free exponent"));
+        assert!(text.contains("merge equations do not match child residuals"));
+        assert!(text.contains("FreeAmplifiers EvenFirst"));
         assert!(text.matches("= true := by decide").count() >= 12);
         assert!(text.matches("= false := by decide").count() >= 3);
     }

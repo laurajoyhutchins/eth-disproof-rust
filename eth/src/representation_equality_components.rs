@@ -139,6 +139,36 @@ impl EqualityComponentRegion {
         Ok(())
     }
 
+    /// Canonical contiguous component labels in first-vertex encounter order.
+    ///
+    /// Every output label is used by at least one vertex, matching the
+    /// surjectivity premise of the Lean component-contraction theorem.
+    /// This method is a *representation witness*, not a formally verified
+    /// proof that the union-find parent forest matches all source edges.
+    /// It uses O(n) temporary words and O(n log n) worst-case parent
+    /// traversals with the current read-only lookup.
+    pub fn component_labels(&self) -> Result<Vec<usize>, Error> {
+        let n = self.len();
+        let mut root_to_label = vec![usize::MAX; n];
+        let mut labels = Vec::with_capacity(n);
+        let mut next = 0usize;
+        let mut hops = 0u64;
+        for i in 0..n {
+            let root = self.find_readonly(i, &mut hops)?;
+            if root_to_label[root] == usize::MAX {
+                root_to_label[root] = next;
+                next = next.checked_add(1).ok_or(Error::Overflow)?;
+            }
+            labels.push(root_to_label[root]);
+        }
+        if next != self.component_count {
+            return Err(Error::Invalid(
+                "union-find component count disagrees with partition labels".into(),
+            ));
+        }
+        Ok(labels)
+    }
+
     /// Exact pointwise semantics; useful as an independent finite oracle.
     pub fn value_at(&self, assignment: &[bool]) -> Result<i128, Error> {
         if assignment.len() != self.len() {

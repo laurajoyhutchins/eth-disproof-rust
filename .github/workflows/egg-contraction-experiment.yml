@@ -115,6 +115,17 @@ jobs:
           test "$(grep -c '"placement":"postjoin-source-mask"' /tmp/preproduct-source-receipts.jsonl)" -eq 88
           test "$(grep -c '"placement":"preproduct-source-mask"' /tmp/preproduct-source-receipts.jsonl)" -eq 88
 
+      - name: Verify bounded source-checked frontier decision memoization
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin frontier-decision-memo-study | tee /tmp/frontier-decision-memo-receipts.jsonl
+          test "$(wc -l < /tmp/frontier-decision-memo-receipts.jsonl)" -eq 208
+          test "$(grep -c '"oracle":"checked"' /tmp/frontier-decision-memo-receipts.jsonl)" -eq 208
+          test "$(grep -c '"cohort":"fresh-validation"' /tmp/frontier-decision-memo-receipts.jsonl)" -eq 32
+          test "$(grep -c '"mode":"memo-forbidden-only"' /tmp/frontier-decision-memo-receipts.jsonl)" -eq 104
+          test "$(grep -c '"mode":"memo-both-decisions"' /tmp/frontier-decision-memo-receipts.jsonl)" -eq 104
+
       - name: Run contraction-order study and check small-case oracle
         shell: bash
         run: |

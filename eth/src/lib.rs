@@ -358,6 +358,8 @@ fn encode_list(items: impl IntoIterator<Item = String>) -> String {
 
 #[path = "counting/semantic_count.rs"]
 mod semantic_count;
+pub mod structured_cnf;
+
 pub use semantic_count::{
     CountState, CountStats, Entry, EnumeratingLeaf, LeafCounter, Limits, count_cnf, count_step,
     disjoint_children, priority_select, selected,

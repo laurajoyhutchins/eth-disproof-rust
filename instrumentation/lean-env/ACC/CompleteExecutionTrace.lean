@@ -108,12 +108,11 @@ def checkComplete {n c : ℕ}
     (rank : Fin n → ℕ)
     (weight : Fin n → Bool → Word)
     (trace : List Receipt) (reported : Option Word) : Bool :=
-  checkIndexed edges label root sourceIndex rank &&
-  checkTrace trace &&
-  decide (expectedExecution label weight = (trace, reported)) &&
-  decide (checkedArrayContraction
-    (sourceItems label (fun i bit => (weight i bit).toInt)) =
-      reported.map BitVec.toInt)
+  (checkIndexed edges label root sourceIndex rank && checkTrace trace) &&
+  (decide (expectedExecution label weight = (trace, reported)) &&
+   decide (checkedArrayContraction
+     (sourceItems label (fun i bit => (weight i bit).toInt)) =
+       reported.map BitVec.toInt))
 
 /-- An accepted witness is the whole reconstructed schedule. In particular
     dropping, reordering, or appending any operation changes the answer
@@ -128,7 +127,7 @@ theorem checkComplete_schedule {n c : ℕ}
       weight trace reported = true) :
     expectedExecution label weight = (trace, reported) := by
   simp only [checkComplete, Bool.and_eq_true, decide_eq_true_eq] at h
-  exact h.1.2
+  exact h.2.1
 
 /-- Every accepted reported operation is valid against the signed-word
     specification, including all overflow refusals. -/
@@ -144,7 +143,7 @@ theorem checkComplete_receipts {n c : ℕ}
       receipt.observed =
         expected receipt.kind receipt.left receipt.right := by
   simp only [checkComplete, Bool.and_eq_true, decide_eq_true_eq] at h
-  exact checkTrace_sound trace h.1.1.2
+  exact checkTrace_sound trace h.1.2
 
 /-- Kernel-level finite-execution soundness for a successful witness:
     the accepted reported integer is the *literal source-edge count*.
@@ -166,7 +165,7 @@ theorem checkComplete_success_sound {n c : ℕ}
   exact checkedArrayContraction_source_edges
     edges label root sourceIndex rank
     (fun i bit => (weight i bit).toInt) value.toInt
-    h.1.1.1.1 (by simpa using h.2)
+    h.1.1 (by simpa using h.2.2)
 
 /-- Zero vertices and zero classes require no reported operations. -/
 example :

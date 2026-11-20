@@ -4,6 +4,8 @@ This repository studies the counting machine defined in [OpenAI's Lean ETH const
 
 **Current boundary:** the source-defined frontend and selected machine fragments run. A complete general nonterminal #SAT count and its primitive-machine complexity bound are not yet established on `main`.
 
+For structured Sudoku input benchmarks, see [GSS-to-DIMACS adapters](docs/gss-eth-inputs.md). The optional three-clause reduction uses uniquely determined auxiliary variables, preserving the ordinary model count.
+
 ## Build and run
 
 The Rust toolchain is pinned to **1.99.1**. From the repository root:

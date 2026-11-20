@@ -1,0 +1,10 @@
+# Standard 4x4 Sudoku, deliberately empty; no exact count is claimed by the ETH machine.
+<size>16
+<blocksize>4
+<standardblocks>
+<sudoku>
+. . . .
+. . . .
+. . . .
+. . . .
+<endsudoku>

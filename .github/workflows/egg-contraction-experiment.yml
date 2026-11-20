@@ -6,6 +6,7 @@ on:
       - "experiments/egg-contraction-optimizer/**"
       - "eth/proofs/IndependentAffineBoundary.lean"
       - "eth/proofs/IndependentLivePortComposition.lean"
+      - "eth/proofs/IndependentLivePortFold.lean"
       - "eth/proofs/IndependentAffineRankNullity.lean"
       - "eth/proofs/IndependentAffineRowOps.lean"
       - "eth/proofs/IndependentAffinePackedRows.lean"
@@ -25,6 +26,7 @@ on:
       - "experiments/egg-contraction-optimizer/**"
       - "eth/proofs/IndependentAffineBoundary.lean"
       - "eth/proofs/IndependentLivePortComposition.lean"
+      - "eth/proofs/IndependentLivePortFold.lean"
       - "eth/proofs/IndependentAffineRankNullity.lean"
       - "eth/proofs/IndependentAffineRowOps.lean"
       - "eth/proofs/IndependentAffinePackedRows.lean"
@@ -87,7 +89,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(cat instrumentation/lean-env/lean-toolchain)" = "leanprover/lean4:v4.34.1"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean eth/proofs/IndependentAffineNativeAudit.lean eth/proofs/IndependentAffineIndexToggle.lean eth/proofs/IndependentAffineMatrixReplay.lean eth/proofs/IndependentLivePortComposition.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/IndependentAffineBoundary.lean eth/proofs/IndependentAffineRankNullity.lean eth/proofs/IndependentAffineRowOps.lean eth/proofs/IndependentAffinePackedRows.lean eth/proofs/IndependentAffineTerminal.lean eth/proofs/IndependentAffineSourceRows.lean eth/proofs/IndependentAffineNativeAudit.lean eth/proofs/IndependentAffineIndexToggle.lean eth/proofs/IndependentAffineMatrixReplay.lean eth/proofs/IndependentLivePortComposition.lean eth/proofs/IndependentLivePortFold.lean; then
             echo "Unresolved proof admission" >&2
             exit 1
           fi
@@ -102,7 +104,8 @@ jobs:
             IndependentAffineSourceRows \
             IndependentAffineNativeAudit \
             IndependentAffineIndexToggle \
-            IndependentLivePortComposition; do
+            IndependentLivePortComposition \
+            IndependentLivePortFold; do
             echo "::group::Lean proof: $proof"
             if ! lake env lean "$GITHUB_WORKSPACE/eth/proofs/${proof}.lean"; then
               failures=1

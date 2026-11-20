@@ -106,6 +106,9 @@ pub struct Step {
     pub index: usize,
     pub absorbed_factor: usize,
     pub metrics: StageMetrics,
+    /// Exact ordered stage boundary names. These are checked against the
+    /// independent processed/future support-set oracle for every merge.
+    pub retained_ports: Vec<String>,
     /// Number of cells in the newly constructed dense logical matrix.
     /// This is a proxy for input footprint, not peak RSS or bit operations.
     pub merge_matrix_cells: usize,
@@ -125,6 +128,21 @@ pub struct Trace {
     pub sum_merge_matrix_cells: usize,
     pub sum_xors: usize,
     pub sum_replay_steps: usize,
+}
+
+/// Ordered-set analogue of IndependentETH.LivePortFold.nextPorts.
+/// A port survives precisely when it occurs in a current/next interface and
+/// is needed by at least one future factor or the requested output.
+/// This helper is pure; it does not assert that the numerical kernel is proved.
+pub fn kept_port_set(
+    current: &BTreeSet<String>,
+    next: &BTreeSet<String>,
+    future: &BTreeSet<String>,
+    output: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let union = current.union(next).cloned().collect::<BTreeSet<_>>();
+    let live = future.union(output).cloned().collect::<BTreeSet<_>>();
+    union.intersection(&live).cloned().collect()
 }
 
 /// Exact left-fold for an explicit permutation of the same factor network.
@@ -170,22 +188,25 @@ pub fn fold(
     let (mut sum_cells, mut sum_xors, mut sum_steps) = (0usize, 0usize, 0usize);
     let mut steps = vec![Step {
         index: 0, absorbed_factor: order[0],
-        metrics: stage.metrics.clone(), merge_matrix_cells: 0,
+        metrics: stage.metrics.clone(),
+        retained_ports: stage.interface.boundary.clone(),
+        merge_matrix_cells: 0,
         cumulative_merge_cells: 0, cumulative_xors: 0, cumulative_replay_steps: 0,
     }];
 
     for (step_index, &leaf_index) in order.iter().enumerate().skip(1) {
         let leaf = &leaves[leaf_index];
-        let mut live = outputs.clone();
+        let mut future = BTreeSet::new();
         // A port is live if any not-yet-merged factor needs it, even when
         // the two currently merged regions share that port.
         for &remaining in &order[step_index + 1..] {
-            live.extend(leaves[remaining].interface.boundary.iter().cloned());
+            future.extend(leaves[remaining].interface.boundary.iter().cloned());
         }
-        let union = stage.interface.boundary.iter()
-            .chain(&leaf.interface.boundary)
-            .cloned().collect::<BTreeSet<_>>();
-        let kept = union.intersection(&live).cloned().collect::<Vec<_>>();
+        let active = stage.interface.boundary.iter().cloned().collect::<BTreeSet<_>>();
+        let added = leaf.interface.boundary.iter().cloned().collect::<BTreeSet<_>>();
+        let union = active.union(&added).cloned().collect::<BTreeSet<_>>();
+        let kept = kept_port_set(&active, &added, &future, &outputs)
+            .into_iter().collect::<Vec<_>>();
 
         let rows = stage.interface.residual.len()
             .checked_add(leaf.interface.residual.len())
@@ -209,7 +230,9 @@ pub fn fold(
         peak_b = peak_b.max(stage.metrics.b);
         steps.push(Step {
             index: step_index, absorbed_factor: leaf_index,
-            metrics: stage.metrics.clone(), merge_matrix_cells: cells,
+            metrics: stage.metrics.clone(),
+            retained_ports: stage.interface.boundary.clone(),
+            merge_matrix_cells: cells,
             cumulative_merge_cells: sum_cells,
             cumulative_xors: sum_xors, cumulative_replay_steps: sum_steps,
         });
@@ -349,6 +372,60 @@ mod tests {
             assert_eq!(trace.peak_b, 2 * n + 1);
             assert_eq!(trace.steps[0].metrics.b, 2);
             assert!(trace.steps.windows(2).all(|pair| pair[1].metrics.b > pair[0].metrics.b));
+        }
+    }
+
+    #[test]
+    fn rust_kept_ports_refine_live_set_update_at_every_merge() {
+        // Rust witness for the Lean nextPorts_eq_livePorts and
+        // runPorts_from_raw_first set-level statements. No numerical
+        // correctness claim follows solely from this witness.
+        for family in [Family::Chain, Family::CirculantXor3, Family::FreeAmplifiers] {
+            for size in 3..=10 {
+                let factors = generate(family, size).unwrap();
+                let scopes = factors.iter().map(|f| {
+                    f.boundary.iter().cloned().collect::<BTreeSet<_>>()
+                }).collect::<Vec<_>>();
+                for schedule in [Schedule::Sequential, Schedule::Reverse, Schedule::EvenFirst] {
+                    let order = schedule.indices(size);
+                    for output in [
+                        Vec::<String>::new(),
+                        vec!["x0".into(), "x1".into()],
+                    ] {
+                        let trace = fold(&factors, &order, &output, &Limits::default()).unwrap();
+                        let outputs = output.iter().cloned().collect::<BTreeSet<_>>();
+                        let mut seen = scopes[order[0]].clone();
+                        // The source fold intentionally starts with an
+                        // unprojected first leaf; the live invariant
+                        // begins immediately after its first merge.
+                        assert_eq!(
+                            trace.steps[0].retained_ports.iter().cloned()
+                                .collect::<BTreeSet<_>>(), seen
+                        );
+                        for (index, &factor_index) in order.iter().enumerate().skip(1) {
+                            let future = order[index + 1..].iter()
+                                .flat_map(|&j| scopes[j].iter().cloned())
+                                .collect::<BTreeSet<_>>();
+                            let old_ports = trace.steps[index - 1].retained_ports.iter()
+                                .cloned().collect::<BTreeSet<_>>();
+                            let predicted = kept_port_set(
+                                &old_ports, &scopes[factor_index], &future, &outputs,
+                            );
+                            seen.extend(scopes[factor_index].iter().cloned());
+                            let needed = future.union(&outputs)
+                                .cloned().collect::<BTreeSet<_>>();
+                            let expected = seen.intersection(&needed)
+                                .cloned().collect::<BTreeSet<_>>();
+                            let actual = trace.steps[index].retained_ports.iter()
+                                .cloned().collect::<BTreeSet<_>>();
+                            assert_eq!(predicted, expected,
+                                "{family:?} {size} {schedule:?} step {index}");
+                            assert_eq!(actual, expected,
+                                "{family:?} {size} {schedule:?} step {index}");
+                        }
+                    }
+                }
+            }
         }
     }
 

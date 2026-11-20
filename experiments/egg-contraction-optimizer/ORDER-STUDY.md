@@ -76,3 +76,48 @@ Resource options are `--max-merge-cells` and
 producer/checker budgets also apply. No exponential fallback is invoked.
 
 Related: [COMPOSITION.md](COMPOSITION.md), [COUNTING.md](COUNTING.md).
+
+## Live-port invariants and Rust witness (November 19)
+
+The standalone Lean module `eth/proofs/IndependentLivePortFold.lean`
+distinguishes the **set-theoretic liveness calculation** from the
+**numerical meaning** of a boundary interface.
+
+For already processed variable support `S`, next factor port support `T`,
+future support `U`, and required external output `O`:
+
+```text
+live(S, T ∪ U, O) = S ∩ (T ∪ U ∪ O)
+kept = (current_ports ∪ T) ∩ (U ∪ O)
+```
+
+If `current_ports = live(S, T ∪ U, O)`, Lean proves
+`kept = live(S ∪ T, U, O)`. The proof is Boolean set algebra,
+not a GF(2) assumption. A Lean induction applies this update across
+an **arbitrary list of factor port sets**.
+
+There is a deliberate startup exception: the Rust fold starts with the
+first factor's entire declared port set, not a normalized live set.
+Consequently the live-set equality need not hold at `step = 0`.
+The first merge removes stale ports, after which the invariant holds.
+The Lean theorem `runPorts_from_raw_first` handles this exact
+initialization.
+
+The Rust test `rust_kept_ports_refine_live_set_update_at_every_merge`
+recomputes the union of all processed factor port sets independently,
+intersects it with future/output support, and compares that expected
+set against the **actual retained names in each recorded stage**.
+The test exercises all three schedules, all three factor families,
+sizes 3..10, and both closed and two-port-output contexts. This is
+finite differential evidence that the Rust set implementation follows
+the Lean definition, not a proof of the Rust implementation.
+
+Separately, `independent_private_fold_correct` proves by induction
+that the nested direct sum of any finite sequence of independently
+quantified private factor blocks equals their product of exact local
+fibers at a fixed shared boundary assignment, over an arbitrary
+commutative semiring. This does **not** establish full variable-sharing
+semantics for general cyclic graphs: it must still be composed with an
+exact theorem for elimination over overlapping scopes and with the
+Rust GF(2) certificate/refinement boundary. The existing small-instance
+CNF and affine oracles remain independent implementation evidence.

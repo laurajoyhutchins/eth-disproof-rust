@@ -186,6 +186,109 @@ mod tests {
         }
     }
 
+    /// Independent arithmetic predicate for all raw admission branches.
+    /// Unlike decode(), it never converts raw indices into usize.
+    fn reference_acceptance(
+        certificate: &RawCertificate,
+        rows: usize,
+        internal: usize,
+        max_steps: usize,
+        address_bits: u32,
+    ) -> bool {
+        let addressable = (1u128 << address_bits) - 1;
+        if certificate.version != 1 ||
+            certificate.steps.len() > max_steps ||
+            certificate.pivot_columns.len() > rows ||
+            certificate.pivot_columns.len() > internal
+        {
+            return false;
+        }
+        let pivots_ok = certificate.pivot_columns.iter().all(|&value| {
+            (value as u128) <= addressable && (value as u128) < internal as u128
+        }) && certificate.pivot_columns.windows(2)
+            .all(|pair| pair[0] < pair[1]);
+        let steps_ok = certificate.steps.iter().all(|step| {
+            (step.tag == 0 || step.tag == 1) &&
+            (step.first as u128) <= addressable &&
+            (step.second as u128) <= addressable &&
+            (step.first as u128) < rows as u128 &&
+            (step.second as u128) < rows as u128 &&
+            step.first != step.second
+        });
+        pivots_ok && steps_ok
+    }
+
+    #[test]
+    fn full_width_raw_admission_matches_independent_arithmetic_contract() {
+        // Exercises complete 8/64-bit values without indexing a huge matrix.
+        // This is implementation evidence; the corresponding Lean theorem
+        // quantifies over all raw values and arbitrary transcript lengths.
+        let mut state = 0x9E3779B97F4A7C15u64;
+        let mut random = || {
+            state ^= state >> 12;
+            state ^= state << 25;
+            state ^= state >> 27;
+            state.wrapping_mul(2685821657736338717)
+        };
+        for case in 0..4096usize {
+            let rows = match case % 7 {
+                0 => 0,
+                1 => 1,
+                2 => 4,
+                3 => 64,
+                4 => 1usize << 16,
+                5 => usize::MAX,
+                _ => 1usize << 20,
+            };
+            let internal = match case % 5 {
+                0 => 0,
+                1 => 3,
+                2 => 64,
+                3 => usize::MAX,
+                _ => 1usize << 20,
+            };
+            let max_steps = case % 4;
+            let raw = RawCertificate {
+                version: if case % 13 == 0 { 1 } else { random() as u8 },
+                steps: (0..case % 4).map(|i| {
+                    let first = if i == 0 && case % 3 == 0 {
+                        (case % 5) as u64
+                    } else { random() };
+                    RawStep {
+                        tag: if case % 7 == 0 { (case % 3) as u8 }
+                            else { random() as u8 },
+                        first,
+                        second: if case % 9 == 0 { first } else { random() },
+                    }
+                }).collect(),
+                pivot_columns: (0..case % 5).map(|_| random()).collect(),
+            };
+            let expected = reference_acceptance(
+                &raw, rows, internal, max_steps, usize::BITS,
+            );
+            assert_eq!(raw.decode(rows, internal, max_steps).is_ok(), expected,
+                "case={case} rows={rows} internal={internal}");
+        }
+
+        // Target-specific width matters. On a 32-bit architecture a
+        // 2^40 raw index must refuse before converting to usize, whereas
+        // a 64-bit architecture can represent it when rows permit.
+        let huge = RawCertificate {
+            version: 1,
+            steps: vec![RawStep {
+                tag: 1, first: 1u64 << 40, second: 2,
+            }],
+            pivot_columns: vec![],
+        };
+        assert!(!reference_acceptance(
+            &huge, usize::MAX, 0, 1, 32,
+        ));
+        assert_eq!(
+            huge.decode(usize::MAX, 0, 1).is_ok(),
+            reference_acceptance(&huge, usize::MAX, 0, 1, usize::BITS),
+        );
+    }
+
     #[test]
     fn native_to_raw_to_independent_replay_roundtrip() {
         let source = two_equations("b", "c");

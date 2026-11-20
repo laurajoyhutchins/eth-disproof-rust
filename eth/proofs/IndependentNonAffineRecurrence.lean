@@ -945,6 +945,80 @@ theorem verifiedCsr_indexedWordCount
   rw [Nat.card_congr (indexedRowWordsEquiv ds)]
   exact verifyCsrCount_sound csr ds mask out h
 
+/-! ## Final decoded-CSR word semantics
+
+The counted objects below are *only* finite Boolean words. Their predicate
+evaluates the actual rows produced by the checked CSR decoder, rather than
+silently substituting the expected canonical source rows. -/
+
+def DecodedCsrWords (csr : SignedCsrInput) (ds : List Bool) :=
+  { w : List Bool // w.length = ds.length + 3 ∧
+    ∃ rows : Finset SignedRow,
+      decodeSignedCsr csr = some rows ∧
+      allRowsHold (wordAssignment w) rows }
+
+theorem verifyCsrCount_implies_check
+    (csr : SignedCsrInput) (ds : List Bool)
+    (mask : Finset State) (out : Nat)
+    (h : verifyCsrCount csr ds mask = some out) :
+    checkCsrReceipt csr ds mask = true := by
+  unfold verifyCsrCount at h
+  split at h
+  · assumption
+  · simp at h
+
+theorem decodedCsrWords_condition
+    (csr : SignedCsrInput) (ds : List Bool) (mask : Finset State)
+    (hcheck : checkCsrReceipt csr ds mask = true) (w : List Bool) :
+    (w.length = ds.length + 3 ∧
+      ∃ rows : Finset SignedRow,
+        decodeSignedCsr csr = some rows ∧
+        allRowsHold (wordAssignment w) rows) ↔
+    (w.length = ds.length + 3 ∧
+      allRowsHold (wordAssignment w) (sourceRows ds)) := by
+  have hd : decodeSignedCsr csr = some (sourceRows ds) :=
+    (checkCsrReceipt_fields csr ds mask hcheck).2.1
+  constructor
+  · rintro ⟨hlen, rows, hdecoded, hholds⟩
+    have heq : rows = sourceRows ds :=
+      Option.some.inj (hdecoded.symm.trans hd)
+    subst rows
+    exact ⟨hlen, hholds⟩
+  · rintro ⟨hlen, hholds⟩
+    exact ⟨hlen, sourceRows ds, hd, hholds⟩
+
+def decodedCsrWordsEquiv
+    (csr : SignedCsrInput) (ds : List Bool) (mask : Finset State)
+    (hcheck : checkCsrReceipt csr ds mask = true) :
+    DecodedCsrWords csr ds ≃ IndexedRowWords ds where
+  toFun w := ⟨w.1, (decodedCsrWords_condition csr ds mask hcheck w.1).mp w.2⟩
+  invFun w := ⟨w.1, (decodedCsrWords_condition csr ds mask hcheck w.1).mpr w.2⟩
+  left_inv := by
+    intro w
+    apply Subtype.ext
+    rfl
+  right_inv := by
+    intro w
+    apply Subtype.ext
+    rfl
+
+/-- A successful executable Lean CSR verification returns exactly the
+number of finite Boolean words satisfying all of the *decoded input rows*.
+No untrusted reconstructed RHS or mask is assumed correct. -/
+theorem verifiedCsr_decodedWordCount
+    (csr : SignedCsrInput) (ds : List Bool)
+    (mask : Finset State) (out : Nat)
+    (h : verifyCsrCount csr ds mask = some out) :
+    Nat.card (DecodedCsrWords csr ds) = out := by
+  have hc := verifyCsrCount_implies_check csr ds mask out h
+  rw [Nat.card_congr (decodedCsrWordsEquiv csr ds mask hc)]
+  exact verifiedCsr_indexedWordCount csr ds mask out h
+
+#print axioms IndependentETH.NonAffine.verifyCsrCount_implies_check
+#print axioms IndependentETH.NonAffine.decodedCsrWords_condition
+#print axioms IndependentETH.NonAffine.decodedCsrWordsEquiv
+#print axioms IndependentETH.NonAffine.verifiedCsr_decodedWordCount
+
 #print axioms IndependentETH.NonAffine.verifiedCsr_indexedWordCount
 
 #print axioms IndependentETH.NonAffine.sourceCNFWord_prefix

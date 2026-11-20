@@ -273,13 +273,13 @@ theorem expectedExecution_refines {n c : ℕ}
   have hscan := scanTrace_refines initial items
   rw [hinit, hitems] at hscan
   cases hp : scanTrace initial items with
-  | mk receipts partial =>
+  | mk receipts scanResult =>
       have hs :
-          Option.map decodeArray partial =
+          Option.map decodeArray scanResult =
             checkedArrayScanFrom (Array.replicate c (1, 1))
               (sourceItems label (fun i bit => (weight i bit).toInt)) := by
         simpa only [hp, Prod.snd] using hscan
-      cases partial with
+      cases scanResult with
       | none =>
           have hsnone :
               checkedArrayScanFrom (Array.replicate c (1, 1))

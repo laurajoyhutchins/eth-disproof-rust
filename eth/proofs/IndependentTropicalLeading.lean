@@ -238,6 +238,40 @@ theorem times_unit (x : Leading) :
     times x (monomial 0 1 (by omega)) = x := by
   rw [times_comm, unit_times]
 
+/-- Canonical naturals are concentrated in degree zero. -/
+def natLeading (n : ℕ) : Leading :=
+  if h : n = 0 then none else monomial 0 n (Nat.pos_of_ne_zero h)
+
+theorem natLeading_succ (n : ℕ) :
+    natLeading (n + 1) = plus (natLeading n) (monomial 0 1 (by omega)) := by
+  cases n with
+  | zero => rfl
+  | succ n =>
+      simp [natLeading, plus, monomial, Nat.succ_eq_add_one,
+        Nat.add_assoc, Nat.add_comm]
+
+/-- The exact leading-pair operations form a commutative semiring. -/
+instance : CommSemiring Leading where
+  zero := none
+  one := monomial 0 1 (by omega)
+  add := plus
+  mul := times
+  natCast := natLeading
+  add_assoc := plus_assoc
+  zero_add := zero_plus
+  add_zero := plus_zero
+  add_comm := plus_comm
+  mul_assoc := times_assoc
+  one_mul := unit_times
+  mul_one := times_unit
+  mul_comm := times_comm
+  left_distrib := plus_times
+  right_distrib := times_plus
+  zero_mul := zero_times
+  mul_zero := times_zero
+  natCast_zero := rfl
+  natCast_succ := natLeading_succ
+
 theorem monomial_times (d e a b : ℕ) (ha : 0 < a) (hb : 0 < b) :
     times (monomial d a ha) (monomial e b hb) =
       monomial (d + e) (a * b) (Nat.mul_pos ha hb) := rfl
@@ -265,6 +299,7 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.times_plus
 #print axioms IndependentETH.Tropical.plus_times
 #print axioms IndependentETH.Tropical.unit_times
+#print axioms IndependentETH.Tropical.natLeading_succ
 #print axioms IndependentETH.Tropical.times_assoc
 #print axioms IndependentETH.Tropical.monomial_times
 #print axioms IndependentETH.Tropical.monomial_plus_equal

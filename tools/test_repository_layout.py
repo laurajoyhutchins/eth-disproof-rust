@@ -111,11 +111,105 @@ class RepositoryLayoutTests(unittest.TestCase):
             "eth/src/bin/framed-reader-certificate.rs",
             "eth/tools/verify_rust_physical_receipt.py",
             "eth/proofs/SourceGraphRefinement.lean",
+            "instrumentation/lean-env/lean-toolchain",
+            "instrumentation/lean-env/lakefile.lean",
+            "instrumentation/lean-env/lake-manifest.json",
         ):
             self.assertTrue(
                 any(fnmatchcase(producer, pattern) for pattern in patterns),
                 f"source-refinement workflow misses {producer}",
             )
+
+
+    def test_affine_verification_follows_its_inputs_and_dependency_lock(self):
+        """One existing check follows its inputs, including source pins."""
+        path = ROOT / ".github/workflows/egg-contraction-experiment.yml"
+        workflow = path.read_text()
+        manifest = ROOT / "experiments/egg-contraction-optimizer/Cargo.toml"
+        lock = manifest.with_name("Cargo.lock")
+
+        def event_paths(source: str, event: str) -> list[str]:
+            # This workflow uses a literal paths list. Parse only that event
+            # block, never unrelated job steps or a different event's paths.
+            lines = source.splitlines()
+            marker = f"  {event}:"
+            self.assertIn(marker, lines)
+            start = lines.index(marker) + 1
+            block: list[str] = []
+            for line in lines[start:]:
+                if (line.startswith("  ") and not line.startswith("    ")
+                        and not line.lstrip().startswith("#")) or line.startswith("jobs:"):
+                    break
+                block.append(line)
+            self.assertIn("    paths:", block, f"missing {event} path filter")
+            paths: list[str] = []
+            for line in block[block.index("    paths:") + 1:]:
+                stripped = line.strip()
+                if stripped.startswith('- "') and stripped.endswith('"'):
+                    paths.append(stripped[3:-1])
+                elif stripped.startswith("- '") and stripped.endswith("'"):
+                    paths.append(stripped[3:-1])
+            self.assertTrue(paths, f"empty {event} path filter")
+            return paths
+
+        inputs = (
+            "experiments/egg-contraction-optimizer/Cargo.toml",
+            "experiments/egg-contraction-optimizer/Cargo.lock",
+            "experiments/egg-contraction-optimizer/src/affine_native_lean.rs",
+            "eth/proofs/IndependentAffineBoundary.lean",
+            "eth/proofs/IndependentAffineRankNullity.lean",
+            "eth/proofs/IndependentAffineRowOps.lean",
+            "eth/proofs/IndependentAffinePackedRows.lean",
+            "eth/proofs/IndependentAffineTerminal.lean",
+            "eth/proofs/IndependentAffineSourceRows.lean",
+            "eth/proofs/IndependentAffineNativeAudit.lean",
+            "eth/proofs/IndependentAffineIndexToggle.lean",
+            "eth/proofs/IndependentAffineMatrixReplay.lean",
+            "instrumentation/lean-env/lean-toolchain",
+            "instrumentation/lean-env/lakefile.lean",
+            "instrumentation/lean-env/lake-manifest.json",
+        )
+        for event in ("pull_request", "push"):
+            paths = event_paths(workflow, event)
+            for dependency in inputs:
+                self.assertTrue(
+                    any(fnmatchcase(dependency, pattern) for pattern in paths),
+                    f"{event} does not verify {dependency}",
+                )
+            # A non-affected documentation file must not start a deep proof.
+            self.assertFalse(
+                any(fnmatchcase("docs/STYLE.md", pattern) for pattern in paths),
+                f"{event} path filter is broader than the proof inputs",
+            )
+
+        # Negative control: deleting both environment-manifest triggers
+        # makes the very same matching rule fail.
+        mutated = workflow.replace(
+            '      - "instrumentation/lean-env/lake-manifest.json"\n', ""
+        )
+        for event in ("pull_request", "push"):
+            self.assertFalse(any(
+                fnmatchcase("instrumentation/lean-env/lake-manifest.json", pattern)
+                for pattern in event_paths(mutated, event)
+            ))
+
+        self.assertIn(
+            "cargo test --locked --manifest-path experiments/egg-contraction-optimizer/Cargo.toml",
+            workflow,
+        )
+        self.assertNotIn("Capture resolved experiment dependency lock", workflow)
+        self.assertIn("[workspace]", manifest.read_text())
+        self.assertTrue(lock.is_file(), "standalone Cargo.lock must be committed")
+        entries = tomllib.loads(lock.read_text())
+        self.assertEqual(entries["version"], 4)
+        packages = {package["name"]: package for package in entries["package"]}
+        self.assertEqual(packages["egg"]["version"], "0.9.5")
+        self.assertEqual(packages["num-bigint"]["version"], "0.4.6")
+        self.assertIn("egg-contraction-experiment", packages)
+        for package in entries["package"]:
+            if package.get("source", "").startswith("registry+"):
+                self.assertEqual(len(package.get("checksum", "")), 64, package["name"])
+
 
 
 if __name__ == "__main__":

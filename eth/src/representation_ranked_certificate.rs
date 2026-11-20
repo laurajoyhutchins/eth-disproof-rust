@@ -270,12 +270,7 @@ where
     // This rechecks the *supplied* graph and certificate on every execution.
     let verified = verify_ranked_component_certificate(weights.len(), source_edges, certificate)?;
     let mut products = vec![[1i128, 1i128]; verified.components];
-    checked_component_product_scan_with(
-        &mut products,
-        &certificate.labels,
-        weights,
-        arithmetic,
-    )?;
+    checked_component_product_scan_with(&mut products, &certificate.labels, weights, arithmetic)?;
     let value = checked_component_product_finish_with(&products, arithmetic)?;
     let multiplications = weights
         .len()

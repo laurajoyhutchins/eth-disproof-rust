@@ -191,15 +191,15 @@ pub fn emit_native_lean_fixtures() -> Result<String, String> {
         boundary: vec!["b".into(), "c".into()],
         equations: vec![
             Equation {
-                variables: vec!"u63".into(), "u64".into(), "b".into()],
+                variables: vec!["u63".into(), "u64".into(), "b".into()],
                 rhs: false,
             },
             Equation {
-                variables: vec!"u63".into(), "u64".into(), "c".into()],
+                variables: vec!["u63".into(), "u64".into(), "c".into()],
                 rhs: true,
             },
             Equation {
-                variables: vec!"u127".into(), "u128".into()],
+                variables: vec!["u127".into(), "u128".into()],
                 rhs: false,
             },
         ],

@@ -35,6 +35,30 @@ register operands, and empty/nonempty stack handling across sixteen
 register seeds. The synthetic basis is **not an original Lean program
 export** and cannot establish source graph identity.
 
+**Native deque-to-list operation witness.** The existing
+[`bit_program_adversarial.rs`](../tests/bit_program_adversarial.rs)
+uses a logical `Vec<bool>` list oracle for `Push`, `Peek`, and
+`Pop`, rather than applying `VecDeque::push_front`, `front`, or
+`pop_front` to its expected state. Its focused wraparound test
+constructs a genuinely split-ring native `VecDeque`, drains it past
+empty, refills it, and repeatedly runs the actual
+`Program::step` on both stack ports. Every post-step register,
+stack bit, and PC must agree with the independent list oracle,
+including aliased `value` and `present` registers. The test
+explicitly refuses to count a supposedly wrapped fixture unless
+`as_slices()` actually exposes two nonempty segments.
+
+This closes an **oracle independence and host-operation test-coverage
+gap**, not the universal host-library refinement obligation.
+The Rust standard library's `VecDeque` implementation remains a
+trusted native component, and a passing bounded test does not
+establish the semantics of arbitrary allocation or execution.
+The universal
+[`PhysicalArrayInterpreterRefinement.lean`](../proofs/PhysicalArrayInterpreterRefinement.lean)
+theorem applies to the mathematically modeled list operations;
+the Rust test independently probes whether the production deque
+operations obey that contract in the exercised states.
+
 **Still open:** a *universal* refinement theorem from the actual Rust
 interpreter, including arbitrary `usize` indices after admission,
 memory representation, allocation and refusal behavior, to the original

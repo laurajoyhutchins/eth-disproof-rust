@@ -259,6 +259,14 @@ theorem natLeading_succ (n : ℕ) :
       simp [natLeading, plus, monomial, Nat.succ_eq_add_one,
         Nat.add_assoc, Nat.add_comm]
 
+/-- The recursive-power instance is defined before the composite semiring
+so that the semiring's power-zero law has a concrete elaboration target. -/
+private def leadingPower (n : ℕ) (x : Leading) : Leading :=
+  Nat.rec (monomial 0 1 (by omega)) (fun _ acc => times acc x) n
+
+instance : One Leading := ⟨monomial 0 1 (by omega)⟩
+instance : NPow Leading := ⟨leadingPower⟩
+
 /-- The exact leading-pair operations form a commutative semiring. -/
 instance : CommSemiring Leading where
   zero := none
@@ -267,7 +275,7 @@ instance : CommSemiring Leading where
   mul := times
   natCast := natLeading
   nsmul := fun n x => Nat.rec none (fun _ acc => plus acc x) n
-  npow := fun n x => Nat.rec (monomial 0 1 (by omega)) (fun _ acc => times acc x) n
+  npow := leadingPower
   nsmul_zero := by intro _; rfl
   nsmul_succ := by intro _ _; rfl
   npow_zero := by intro _; rfl

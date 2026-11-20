@@ -1,7 +1,8 @@
 //! Original SubexpTautologyFilterProgram: process each CNF clause through the
 //! actual 10x8 tautology machine, retain only nontautologies, restore order.
 use crate::Error;
-use crate::bit_program::{Atom, Cmd, Instr, Program};
+use crate::bit_program::stack_routines::transfer_program;
+use crate::bit_program::{Atom, Cmd, Program};
 use crate::native_high::clear_program;
 use crate::native_normalization_primitives::{
     emit_if_selected_command, tautology_filter_reverse_program,
@@ -13,30 +14,7 @@ fn transfer(src: usize, dst: usize) -> Result<Program<13, 11>, Error> {
     if src == dst {
         return Err(Error::Invalid("transfer ports must differ".into()));
     }
-    Program::new(
-        src,
-        dst,
-        0,
-        vec![
-            Instr::Pop {
-                stack: src,
-                value: 0,
-                present: 1,
-                next: 1,
-            },
-            Instr::Branch {
-                test: 1,
-                yes: 2,
-                no: 3,
-            },
-            Instr::Push {
-                stack: dst,
-                src: 0,
-                next: 0,
-            },
-            Instr::Halt,
-        ],
-    )
+    transfer_program(src, dst, 0, 1)
 }
 pub fn core_program() -> Result<Program<13, 11>, Error> {
     native_tautology_core::program()?

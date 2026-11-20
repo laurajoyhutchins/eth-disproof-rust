@@ -642,6 +642,7 @@ pub struct RunStats {
 
 mod deferred;
 mod source_json;
+pub mod stack_routines;
 mod structured;
 pub use deferred::{Block, DeferredProgram, relocate_ports, run_with_instruction_at};
 pub use source_json::{SourceGraphBinding, emit_original_source_rust};

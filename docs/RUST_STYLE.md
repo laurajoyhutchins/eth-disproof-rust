@@ -61,5 +61,5 @@ not proof of behavioral equivalence.
 4. Record checks against the exact changed head. A passing Rust test does not
    verify the original Lean program or the complexity theorem.
 
-See [the contribution contract](../CONTRIBUTING.md) and
-[the evidence stages](../AGENTS.md).
+See [the contribution contract](CONTRIBUTING.md) and
+[the evidence stages](https://github.com/laurajoyhutchins/eth-disproof-rust/blob/main/AGENTS.md).

@@ -13,6 +13,28 @@ on:
       - "eth/proofs/IndependentAffineNativeAudit.lean"
       - "eth/proofs/IndependentAffineIndexToggle.lean"
       - "eth/proofs/IndependentAffineMatrixReplay.lean"
+      - "instrumentation/lean-env/lean-toolchain"
+      - "instrumentation/lean-env/lakefile.lean"
+      - "instrumentation/lean-env/lake-manifest.json"
+      - ".github/workflows/egg-contraction-experiment.yml"
+  # A standalone Cargo workspace is not covered by root Rust CI; accept it
+  # on the merged main revision whenever its implementation or proof inputs change.
+  push:
+    branches: [main]
+    paths:
+      - "experiments/egg-contraction-optimizer/**"
+      - "eth/proofs/IndependentAffineBoundary.lean"
+      - "eth/proofs/IndependentAffineRankNullity.lean"
+      - "eth/proofs/IndependentAffineRowOps.lean"
+      - "eth/proofs/IndependentAffinePackedRows.lean"
+      - "eth/proofs/IndependentAffineTerminal.lean"
+      - "eth/proofs/IndependentAffineSourceRows.lean"
+      - "eth/proofs/IndependentAffineNativeAudit.lean"
+      - "eth/proofs/IndependentAffineIndexToggle.lean"
+      - "eth/proofs/IndependentAffineMatrixReplay.lean"
+      - "instrumentation/lean-env/lean-toolchain"
+      - "instrumentation/lean-env/lakefile.lean"
+      - "instrumentation/lean-env/lake-manifest.json"
       - ".github/workflows/egg-contraction-experiment.yml"
   workflow_dispatch:
 
@@ -26,8 +48,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test standalone experiment
         run: cargo test --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
-      - name: Run reproducible examples
-        run: cargo run --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
+      # Bootstrap once from Cargo's actual resolver, then commit Cargo.lock
+      # and replace this diagnostic with --locked test/receipt commands.
+      - name: Capture resolved experiment dependency lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'EXPERIMENT_LOCK_BEGIN'
+          cat experiments/egg-contraction-optimizer/Cargo.lock
+          echo 'EXPERIMENT_LOCK_END'
 
   affine-lean:
     runs-on: ubuntu-24.04

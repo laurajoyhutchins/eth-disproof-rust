@@ -205,7 +205,7 @@ def probe_one(stage: Stage, upstream: Path, lake: Path, output: Path,
             result["cached_olean_sha256"] = hashlib.sha256(olean.read_bytes()).hexdigest()
             with tempfile.TemporaryDirectory(prefix="query-module-import-") as scratch:
                 check = Path(scratch) / "FreshImport.lean"
-                check.write_text(f"import {stage.module}\\n", encoding="utf-8")
+                check.write_text(f"import {stage.module}\n", encoding="utf-8")
                 result["fresh_import"] = run_stage_process(
                     ["lake", "env", "lean", "-j", "1", "-M", "8192", str(check)],
                     lake, directory / "fresh-import", build_timeout, rss_limit

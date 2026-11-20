@@ -66,6 +66,15 @@ theorem count_satisfying {n : ℕ} (φ : CNF n) :
       exact h ((energy_eq_zero_iff φ a).mpr hc)
     simp only [if_neg h, if_neg hs]
 
+/-- The coefficient at the first supported degree counts exactly
+assignments having that number of violated clauses. This identifies the
+multiplicity independently of the optimized Rust contraction algorithm. -/
+theorem generating_trailing_multiplicity {n : ℕ} (φ : CNF n) :
+    (generating φ).trailingCoeff =
+      multiplicity φ ((generating φ).natTrailingDegree) := by
+  simpa only [Polynomial.trailingCoeff] using
+    (coeff_generating φ (generating φ).natTrailingDegree)
+
 /-- The nonzero leading pair stores a degree and a strictly positive count. -/
 structure Term where
   degree : ℕ
@@ -380,6 +389,7 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.coeff_generating
 #print axioms IndependentETH.Tropical.energy_eq_zero_iff
 #print axioms IndependentETH.Tropical.count_satisfying
+#print axioms IndependentETH.Tropical.generating_trailing_multiplicity
 #print axioms IndependentETH.Tropical.plus_comm
 #print axioms IndependentETH.Tropical.plus_assoc
 #print axioms IndependentETH.Tropical.times_plus

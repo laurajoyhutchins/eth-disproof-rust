@@ -137,14 +137,7 @@ theorem product_of_powers_is_power_of_sum
     (∏ v : V, z ^ exponent v) =
       z ^ (∑ v : V, exponent v) := by
   classical
-  have h (s : Finset V) :
-      (∏ v ∈ s, z ^ exponent v) =
-        z ^ (∑ v ∈ s, exponent v) := by
-    induction s using Finset.induction_on with
-    | empty => simp
-    | @insert v s hv ih =>
-        simp [hv, ih, pow_add]
-  exact h Finset.univ
+  rw [← Finset.prod_pow_eq_pow_sum]
 
 /--
 The exact real-port exponential is a product of independent local
@@ -309,7 +302,6 @@ theorem matching_ordered_pair_moment
 #print axioms TwoAdicIndependentMoments.matching_class_exponential_moment
 #print axioms TwoAdicIndependentMoments.matching_two_exponential_moment
 #print axioms TwoAdicIndependentMoments.degree_weighted_symbol_port_moment
-#print axioms TwoAdicIndependentMoments.matching_ordered_pair_moment
 #print axioms TwoAdicIndependentMoments.product_of_powers_is_power_of_sum
 #print axioms TwoAdicIndependentMoments.port_power_equals_local_product
 #print axioms TwoAdicIndependentMoments.matching_count_power_moment
@@ -317,6 +309,6 @@ theorem matching_ordered_pair_moment
 #print axioms TwoAdicIndependentMoments.normalized_matching_count_moment
 #print axioms TwoAdicIndependentMoments.normalized_degree_weighted_port_moment
 #print axioms TwoAdicIndependentMoments.normalized_degree_weighted_port_source_factor
-
+#print axioms TwoAdicIndependentMoments.matching_ordered_pair_moment
 
 end TwoAdicIndependentMoments

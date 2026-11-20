@@ -90,6 +90,51 @@ def parse_instr(value: Any, r: int, s: int, l: int, atom=False) -> tuple[str, tu
     return kind,tuple(args)
 
 
+def check_rust_serde_program(program: ProgramNode, raw: Any) -> None:
+    """Compare a typed Serde-derived Rust Program with the canonical row table.
+
+    This is independent *structural evidence* from Rust's derived enum/struct
+    serializer, not a proof about arbitrary Rust memory or compiler behavior.
+    Decode the physical rows with parse_program before calling this routine.
+    No alternate opcode grammar or Lean code generator is introduced.
+    """
+    insist(type(raw) is dict, 'Rust structural program must be an object')
+    closed_keys(raw, {'input_stack', 'output_stack', 'entry', 'code'})
+    for field, expected in (
+        ('input_stack', program.input),
+        ('output_stack', program.output),
+        ('entry', program.entry),
+    ):
+        actual = raw[field]
+        insist(type(actual) is int and actual == expected,
+               f'Rust-derived {field} differs from physical table')
+    data = raw['code']
+    insist(type(data) is list and len(data) == program.labels,
+           'Rust-derived instruction count differs from physical table')
+    for index, ((opcode, operands), typed) in enumerate(zip(program.rows, data)):
+        if opcode == 'halt':
+            insist(type(typed) is str and typed == RUST_NAMES[opcode],
+                   f'Rust-derived halt tag mismatch at label {index}')
+            continue
+        insist(type(typed) is dict and len(typed) == 1,
+               f'Rust-derived instruction variant malformed at label {index}')
+        name = RUST_NAMES[opcode]
+        insist(name in typed, f'Rust-derived instruction tag mismatch at label {index}')
+        fields = FIELDS[opcode]
+        values = typed[name]
+        insist(type(values) is dict, f'Rust-derived fields missing at label {index}')
+        closed_keys(values, set(fields))
+        insist(len(fields) == len(operands),
+               'source opcode contract differs from typed Rust fields')
+        for field, expected in zip(fields, operands):
+            actual = values[field]
+            if opcode == 'set' and field == 'value':
+                valid = type(actual) is bool and actual is bool(expected)
+            else:
+                valid = type(actual) is int and actual == expected
+            insist(valid, f'Rust-derived {opcode}.{field} mismatch at label {index}')
+
+
 def fmt(op: tuple[str, tuple[int,...]]) -> str:
     return ':'.join([op[0],*(str(x) for x in op[1])])
 

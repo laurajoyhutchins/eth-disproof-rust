@@ -1,29 +1,20 @@
 //! Fail-closed preflight for the paper's fixed appendix recursion schedule.
 //! Exit 2 denotes refusal; the output never contains a #SAT count.
-use lean_eth_reference::two_adic_admission::{NECESSARY_ROOT_LAMBDA, ScheduleAudit};
-use serde_json::json;
+
 use std::process::ExitCode;
 
-fn main() -> ExitCode {
+use lean_eth_reference::two_adic_admission::{NECESSARY_ROOT_LAMBDA, ScheduleAudit};
+use serde_json::json;
+
+fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
-        eprintln!("usage: appendix-admission <positive tensor-network edge count>");
-        return ExitCode::from(2);
+        return Err("usage: appendix-admission <positive tensor-network edge count>".into());
     }
-    let edges = match args[1].parse::<u128>() {
-        Ok(edges) => edges,
-        Err(_) => {
-            eprintln!("invalid positive tensor-network edge count");
-            return ExitCode::from(2);
-        }
-    };
-    let audit = match ScheduleAudit::new(edges) {
-        Ok(audit) => audit,
-        Err(err) => {
-            eprintln!("{err}");
-            return ExitCode::from(2);
-        }
-    };
+    let edges = args[1]
+        .parse::<u128>()
+        .map_err(|_| "invalid positive tensor-network edge count".to_owned())?;
+    let audit = ScheduleAudit::new(edges).map_err(|error| error.to_string())?;
     // Decimal strings preserve exactness for counts above JavaScript's
     // 53-bit integer range. This is an admission audit, not execution.
     println!(
@@ -43,5 +34,13 @@ fn main() -> ExitCode {
             "sat_count": null
         })
     );
+    Ok(())
+}
+
+fn main() -> ExitCode {
+    if let Err(error) = run() {
+        eprintln!("{error}");
+    }
+    // An arithmetic receipt is not an execution of the original algorithm.
     ExitCode::from(2)
 }

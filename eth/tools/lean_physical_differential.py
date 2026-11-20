@@ -23,10 +23,12 @@ import tempfile
 
 from export_compiled_batch import ensure_pinned
 from extract_compiled_catalog import blob_hash, discover
-from verify_source_graph import parse_golden, rust_instr, SOURCE_SHA
+from verify_source_graph import KINDS, parse_golden, rust_instr, SOURCE_SHA
 
 RUN_SEEDS = 4
 RUN_STEPS = 24
+BASIS_SEEDS = 16
+BASIS_STEPS = 12
 MAX_PROGRAMS = 6
 MAX_LABELS = 4096
 RUST_CRATE = 'lean_eth_reference'
@@ -66,6 +68,56 @@ def source_semantics(upstream: Path) -> tuple[str, dict[str, str]]:
     }
 
 
+
+def semantic_basis() -> dict:
+    """Additional cross-language cases, not original source-program exports.
+
+    Actual *instruction semantics* come from the pinned original Lean
+    BitProgram source, but these small programs are synthetic. Keep them
+    separate from the six source-identity certified physical programs.
+    Covers all opcode constructors, Boolean values, register aliases,
+    empty/nonempty stack reads, operand ordering, and both branch paths.
+    """
+    rows = [
+        ('halt', ()),
+        ('goto', (0,)),
+        ('set', (0, 0, 0)),
+        ('set', (3, 1, 0)),
+        ('copy', (0, 3, 0)),
+        ('copy', (3, 3, 0)),      # self-copy
+        ('not', (0, 0, 0)),       # in-place Boolean negation
+        ('not', (3, 0, 0)),
+        ('and', (0, 0, 3, 0)),   # destination aliases input
+        ('or', (3, 0, 3, 0)),
+        ('xor', (0, 0, 3, 0)),
+        ('branch', (3, 1, 2)),   # both successor labels matter
+        ('push', (2, 3, 0)),
+        ('peek', (0, 0, 0, 0)),  # value=present; last write wins
+        ('peek', (2, 0, 3, 0)),
+        ('pop', (0, 1, 1, 0)),   # value=present
+        ('pop', (2, 3, 0, 0)),
+        ('pop', (1, 3, 3, 0)),   # value=present, nonzero register
+        ('peek', (1, 1, 1, 0)),
+        ('branch', (0, 12, 13)),
+    ]
+    require({kind for kind, _ in rows} == set(KINDS),
+            'synthetic interpreter basis must cover all 12 instructions')
+    require({args[1] for kind, args in rows if kind == 'set'} == {0, 1},
+            'synthetic interpreter basis must cover both Set Boolean values')
+    require(any(kind == 'pop' and args[1] == args[2] for kind, args in rows),
+            'synthetic interpreter basis must cover aliased Pop registers')
+    require(any(kind == 'peek' and args[1] == args[2] for kind, args in rows),
+            'synthetic interpreter basis must cover aliased Peek registers')
+    require(len(rows) == 20, 'synthetic interpreter basis label count')
+    return {
+        'id': 'synthetic-instruction-semantics',
+        'abi': (4, 3, len(rows), 0, 0, 1),
+        'rows': rows,
+        'seeds': BASIS_SEEDS,
+        'steps': BASIS_STEPS,
+    }
+
+
 def lean_instruction(op: tuple[str, tuple[int, ...]]) -> str:
     kind, args = op
     kind = {'not': 'bnot', 'and': 'band', 'or': 'bor', 'xor': 'bxor'}.get(kind, kind)
@@ -95,11 +147,12 @@ private def initial {r s l : Nat} (label : Fin l) (seed : Nat) : Cfg r s l := {
    fun j => ((j + seed + i.val) % 3) == 0
 }
 
-private def traceMachine {r s l : Nat} (name : String) (p : Program r s l) : IO Unit := do
+private def traceMachine {r s l : Nat} (name : String) (p : Program r s l)
+    (seeds steps : Nat) : IO Unit := do
  for label in List.finRange l do
-  for seed in [:4] do
+  for seed in [:seeds] do
    let mut cfg := initial label seed
-   for index in [:24] do
+   for index in [:steps] do
     match step p cfg with
     | none => break
     | some next =>
@@ -116,7 +169,7 @@ fn state<const R:usize,const S:usize>(c:&Config<R,S>)->String {
  let stacks=c.stacks.iter().map(|s|s.iter().map(|b|if *b{'1'}else{'0'}).collect::<String>()).collect::<Vec<_>>().join(",");
  format!("{pc}|{regs}|{stacks}")
 }
-fn compare<const R:usize,const S:usize>(p:Program<R,S>,raw:&str,name:&str)->usize {
+fn compare<const R:usize,const S:usize>(p:Program<R,S>,raw:&str,name:&str,seeds:usize,steps:usize)->usize {
  let mut count=0;
  let mut seen=std::collections::HashSet::new();
  for line in raw.lines() {
@@ -127,7 +180,7 @@ fn compare<const R:usize,const S:usize>(p:Program<R,S>,raw:&str,name:&str)->usiz
   let label=words[2].parse::<usize>().unwrap();
   let seed=words[3].parse::<usize>().unwrap();
   let step=words[4].parse::<usize>().unwrap();
-  assert!(label<p.code().len() && seed<4 && step<24);
+  assert!(label<p.code().len() && seed<seeds && step<steps);
   seen.insert((label,seed));
   let mut c=p.initial(Vec::<bool>::new());
   c.pc=Some(label);
@@ -137,7 +190,7 @@ fn compare<const R:usize,const S:usize>(p:Program<R,S>,raw:&str,name:&str)->usiz
   assert_eq!(state(&c),words[5..].join("|"),"Lean/Rust transition mismatch: {line}");
   count+=1;
  }
- assert_eq!(seen.len(),p.code().len()*4,"incomplete Lean trace coverage for {name}");
+ assert_eq!(seen.len(),p.code().len()*seeds,"incomplete Lean trace coverage for {name}");
  count
 }
 '''
@@ -151,18 +204,20 @@ def emit_code(programs: list[dict], upstream: Path) -> tuple[str, str]:
     for index, p in enumerate(programs):
         r, s, l, entry, input_stack, output_stack = p['abi']
         rows = p['rows']
+        seeds = p.get('seeds', RUN_SEEDS)
+        steps = p.get('steps', RUN_STEPS)
         original = ', '.join(lean_instruction(op) for op in rows)
         lean += (f'\nprivate def original_{index} : Program {r} {s} {l} := {{\n'
                  f' inputStack := {input_stack}\n outputStack := {output_stack}\n'
                  f' entry := {entry}\n code := fun i => '
                  f'(#[ {original} ] : Array (Instr {r} {s} {l}))[i.val]\' '
                  '(by simpa using i.isLt)\n}\n')
-        calls.append(f' traceMachine "{p["id"]}" original_{index}')
+        calls.append(f' traceMachine "{p["id"]}" original_{index} {seeds} {steps}')
         rust += (f'\n#[test]\nfn physical_trace_{index}() {{\n'
                  f' let p=Program::<{r},{s}>::new({input_stack},{output_stack},{entry},vec![\n')
         rust += ''.join(f'  {rust_instr(op)},\n' for op in rows)
-        rust += (f' ]).unwrap();\n let n=compare(p,include_str!("../lean-traces.txt"),"{p["id"]}");\n'
-                 f' assert!(n>={l}*4);\n eprintln!("LEAN_RUST_MATCH {p["id"]} transitions={{n}}");\n}}\n')
+        rust += (f' ]).unwrap();\n let n=compare(p,include_str!("../lean-traces.txt"),"{p["id"]}",{seeds},{steps});\n'
+                 f' assert!(n>={l}*{seeds});\n eprintln!("LEAN_RUST_MATCH {p["id"]} transitions={{n}}");\n}}\n')
     lean += '\ndef main : IO Unit := do\n' + '\n'.join(calls) + '\n'
     return lean, rust
 
@@ -183,9 +238,12 @@ def verify_trace(output: str, programs: list[dict]) -> dict[str, int]:
         require(len(parts)==8 and parts[0]=='TRACE', 'unexpected Lean runtime output')
         ident = parts[1]
         require(ident in ids,'unknown Lean program in trace')
-        l = ids[ident]['abi'][2]
+        p = ids[ident]
+        l = p['abi'][2]
+        seeds = p.get('seeds', RUN_SEEDS)
+        steps = p.get('steps', RUN_STEPS)
         label, seed, step = map(int, parts[2:5])
-        require(0<=label<l and 0<=seed<RUN_SEEDS and 0<=step<RUN_STEPS, 'invalid Lean case selector')
+        require(0<=label<l and 0<=seed<seeds and 0<=step<steps, 'invalid Lean case selector')
         require((label,seed,step) not in seen[ident],'duplicate Lean machine state')
         seen[ident].add((label,seed,step))
         require(parts[5]=='none' or (parts[5].isdigit() and int(parts[5])<l),
@@ -199,13 +257,13 @@ def verify_trace(output: str, programs: list[dict]) -> dict[str, int]:
     for ident, state_set in seen.items():
         labels = ids[ident]['abi'][2]
         for label in range(labels):
-            for seed in range(RUN_SEEDS):
+            for seed in range(ids[ident].get('seeds', RUN_SEEDS)):
                 steps = sorted(k for a, b, k in state_set if a == label and b == seed)
                 require(steps == list(range(len(steps))),
                         f'discontinuous Lean transition sequence: {ident} label={label} seed={seed}')
     for p in programs:
         l = p['abi'][2]
-        require(set((label,seed,0) for label in range(l) for seed in range(RUN_SEEDS))
+        require(set((label,seed,0) for label in range(l) for seed in range(p.get('seeds', RUN_SEEDS)))
                 <= seen[p['id']],f'missing initial label coverage: {p["id"]}')
     return dict(count)
 
@@ -231,14 +289,19 @@ def differential(upstream:Path,lake:Path,golden:Path,rust_crate:Path,dest:Path,
         require(abi[2]<=MAX_LABELS, 'source table too large for trace differential')
         programs.append({'id':name,'declaration':rec['fqn'],'source_blob':rec['git_blob'],
                          'table_sha256':expected['sha256'],'abi':abi,'rows':rows})
-    lean_code,rust_code=emit_code(programs,upstream)
+    # Preserve the original six source identities. The synthetic
+    # interpreter basis only checks the semantics of the imported original
+    # BitProgram.execInstr definition, never source-program provenance.
+    basis = semantic_basis()
+    all_programs = [*programs, basis]
+    lean_code,rust_code=emit_code(all_programs,upstream)
     with tempfile.TemporaryDirectory(prefix='.physical-diff-',dir=lake) as tmp:
         work=Path(tmp)
         # Files must reside beneath Lake root for the Lean toolchain sandbox.
         (work/'Trace.lean').write_text(lean_code,encoding='utf8')
         env={**os.environ,'ORIGINAL_MAX_LABELS':str(MAX_LABELS)}
         output=run('lake','env','lean','--run',str(work/'Trace.lean'),cwd=lake,timeout=timeout,env=env)
-        counts=verify_trace(output,programs)
+        counts=verify_trace(output,all_programs)
         dest.mkdir(parents=True,exist_ok=True)
         (dest/'lean-traces.txt').write_text(output,encoding='utf8')
         (dest/'source-semantics.lean').write_text(lean_code,encoding='utf8')
@@ -258,6 +321,13 @@ def differential(upstream:Path,lake:Path,golden:Path,rust_crate:Path,dest:Path,
                 'source':span,'programs':[{'id':p['id'],'labels':p['abi'][2],
                     'table_sha256':p['table_sha256'],'source_blob':p['source_blob'],
                     'transitions':counts[p['id']]} for p in programs],
+                'synthetic_semantic_basis': {
+                    'id': basis['id'], 'labels': basis['abi'][2],
+                    'seeds': basis['seeds'], 'steps': basis['steps'],
+                    'opcode_count': len({kind for kind, _ in basis['rows']}),
+                    'transitions': counts[basis['id']],
+                    'source_program_identity': 'NOT_CLAIMED',
+                },
                 'transition_count':sum(counts.values()),
                 'source_semantics_lean_sha256':hashlib.sha256(lean_code.encode()).hexdigest(),
                 'trace_sha256':hashlib.sha256(output.encode()).hexdigest(),
@@ -265,9 +335,11 @@ def differential(upstream:Path,lake:Path,golden:Path,rust_crate:Path,dest:Path,
                 'limitations':['original OAI module not imported',
                                'only proof-only Fintype derivation removed',
                                'original source graph not yet exported',
+                               'synthetic opcode/alias basis is not an exported original program',
+                               'bounded states/traces do not prove universal Rust-to-Lean refinement',
                                'Rust reference step interpreter tested, not complete ETH port']}
         (dest/'report.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n')
-        print('LEAN_RUST_PHYSICAL_PARITY',len(programs),'programs',sum(counts.values()),'transitions',flush=True)
+        print('LEAN_RUST_PHYSICAL_PARITY',len(programs),'original programs, plus one synthetic opcode basis',sum(counts.values()),'transitions',flush=True)
         return report
 
 

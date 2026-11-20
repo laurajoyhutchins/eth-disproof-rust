@@ -1,9 +1,11 @@
 //! Reproducible bounded orbit-sparse packet *structure* receipts.
 //! This CLI does not run tensor coefficients, modes, interpolation or #SAT.
+
+use std::process::ExitCode;
+
 use lean_eth_reference::two_adic_orbit_sparse::construct_orbit_sparse_bounded;
 use lean_eth_reference::two_adic_packet_layout::BipartiteEdge;
 use serde_json::json;
-use std::process::ExitCode;
 
 type Fixture = (
     Vec<BipartiteEdge>,
@@ -121,11 +123,9 @@ fn run() -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::from(2),
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::from(2)
-        }
+    if let Err(error) = run() {
+        eprintln!("{error}");
     }
+    // An arithmetic receipt is not an execution of the original algorithm.
+    ExitCode::from(2)
 }

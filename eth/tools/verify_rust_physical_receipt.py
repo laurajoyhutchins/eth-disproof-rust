@@ -122,7 +122,7 @@ def certificate_source(raw: bytes) -> str:
                 program.input, program.output, list(program.rows)))
             lines.extend([
                 f'private theorem {binding}_eq : {binding} = {target} {rhs} := by',
-                '  apply program_eq_of_fields',
+                '  apply ACC.BitProgramFields.eq_of_fields',
                 '  · rfl',
                 '  · rfl',
                 '  · rfl',

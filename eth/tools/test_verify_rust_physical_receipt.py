@@ -84,6 +84,8 @@ class RustPhysicalReceiptTests(unittest.TestCase):
         self.assertIn('Instr.halt', text)
         self.assertEqual(text.count('private theorem rust_compiled_'), 6)
         self.assertEqual(text.count('theorem rust_compiled_'), 12)
+        self.assertEqual(text.count('apply ACC.BitProgramFields.eq_of_fields'), 12)
+        self.assertNotIn('apply program_eq_of_fields', text)
 
     def test_invalid_source_pin_and_duplicate_receipts_refuse(self):
         for mutate in (

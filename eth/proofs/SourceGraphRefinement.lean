@@ -1,4 +1,5 @@
 import OAI.Algorithms.SubexponentialSAT.StructuredCalls
+import ACC.BitProgramFields
 import OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.GuardedCompiler
 
 /-!
@@ -126,32 +127,13 @@ theorem WholeAgreement.code_eq {r s : ℕ} {c : StructuredCalls.Cmd r s}
       simpa only [StructuredCalls.siteAddress, StructuredCalls.compiled_site]
         using h.sites site
 
-/-- Exact agreement of ports, entry and *every* physical instruction gives
-equality of the complete Lean bit program. No sampled states are involved. -/
-private theorem program_eq_of_fields {r s l : ℕ} (p q : Program r s l)
-    (hinput : p.inputStack = q.inputStack)
-    (houtput : p.outputStack = q.outputStack)
-    (hentry : p.entry = q.entry)
-    (hcode : ∀ label, p.code label = q.code label) : p = q := by
-  cases p with
-  | mk pi po pe pc =>
-    cases q with
-    | mk qi qo qe qc =>
-      dsimp at hinput houtput hentry hcode
-      cases hinput
-      cases houtput
-      cases hentry
-      have htable : pc = qc := funext hcode
-      cases htable
-      rfl
-
 /-- A certificate identifies the *entire* Lean source physical program,
 not merely its bounded output or a selection of transitions. -/
 theorem WholeAgreement.program_eq {r s : ℕ} {c : StructuredCalls.Cmd r s}
     {p : Program r s (StructuredCalls.size c + 1)}
     {input output : Fin s} (h : WholeAgreement c p input output) :
     p = StructuredCalls.compiled c input output :=
-  program_eq_of_fields p _ h.input_port h.output_port h.source_entry h.code_eq
+  ACC.BitProgramFields.eq_of_fields p _ h.input_port h.output_port h.source_entry h.code_eq
 
 /-- Therefore the abstract primitive TM2 machine is exactly the original
 Lean primitive machine. Its proven trace, running-time, and visited-space

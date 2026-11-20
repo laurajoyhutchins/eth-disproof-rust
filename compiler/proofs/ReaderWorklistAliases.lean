@@ -102,6 +102,81 @@ runtime would safely reject a use-after-free pointer. -/
 theorem spent_alias_cannot_release_again :
     dropField ⟨0, true⟩ = none := by rfl
 
+/-- Independent physical state of the eager C++ constructor-field
+`dec` path. The queued pointer still stores RC=1: scheduling the last
+credit is not a physical decrement to zero. Its actual deallocation is
+a separate worklist step, deliberately outside this one-identity model. -/
+structure PhysicalCredit where
+  rc : Nat
+  pending : Bool
+  deriving Repr, DecidableEq
+
+/-- A single logical credit can be gone even though its queued, still-live
+physical object has an RC field of one until its pending work is popped. -/
+def represent (s : Credit) : PhysicalCredit :=
+  ⟨if s.queued then 1 else s.refs, s.queued⟩
+
+/-- An independently specified physical transition for pinned eager,
+single-threaded, ordinary RC fields, not a call to `dropField`. -/
+def physicalDrop (p : PhysicalCredit) : Option PhysicalCredit :=
+  if p.pending then none
+  else match p.rc with
+    | 0 => none
+    | 1 => some ⟨1, true⟩
+    | n + 2 => some ⟨n + 1, false⟩
+
+def physicalDrops : Nat → PhysicalCredit → Option PhysicalCredit
+  | 0, p => some p
+  | n + 1, p => (physicalDrop p).bind (physicalDrops n)
+
+/-- Every modeled credit step, including refusals, is simulated by the
+independent physical RC/pending transition after the representation map. -/
+theorem physical_drop_simulates_source (s : Credit) :
+    physicalDrop (represent s) = (dropField s).map represent := by
+  rcases s with ⟨rc, queued⟩
+  cases queued with
+  | false =>
+      cases rc with
+      | zero => rfl
+      | succ n =>
+          cases n with
+          | zero => rfl
+          | succ k => rfl
+  | true =>
+      cases rc <;> rfl
+
+/-- The step simulation lifts to arbitrary finite aliased-field traces.
+This is a universal theorem of the two RESTRICTED machines, not a proof
+that the compiled C++ code implements either transition semantics. -/
+theorem physical_trace_simulates_source (n : Nat) (s : Credit) :
+    physicalDrops n (represent s) = (dropFields n s).map represent := by
+  induction n generalizing s with
+  | zero => rfl
+  | succ n ih =>
+      change (physicalDrop (represent s)).bind (physicalDrops n) =
+        ((dropField s).bind (dropFields n)).map represent
+      rw [physical_drop_simulates_source]
+      cases h : dropField s with
+      | none => simp [h]
+      | some next =>
+          simpa [h] using ih next
+
+/-- A queued last-credit release keeps physical RC=1 until worklist
+processing. This rules out the tempting but false physical RC=0 model. -/
+theorem queued_last_owner_has_physical_rc_one :
+    represent ⟨0, true⟩ = ⟨1, true⟩ := by rfl
+
+/-- Arbitrary finite incoming alias multiplicity has the expected
+observable physical counter at the *enqueue* boundary. -/
+theorem alias_physical_counter_at_queue_boundary (external k : Nat) :
+    physicalDrops (k + 1) (represent ⟨external + k + 1, false⟩) =
+      some ⟨if external == 0 then 1 else external, external == 0⟩ := by
+  rw [physical_trace_simulates_source]
+  rw [alias_fields_spend_exactly_their_credits]
+  cases external with
+  | zero => rfl
+  | succ e => rfl
+
 end ReaderWorklistAliases
 
 #print axioms ReaderWorklistAliases.alias_fields_spend_exactly_their_credits
@@ -110,3 +185,8 @@ end ReaderWorklistAliases
 #print axioms ReaderWorklistAliases.duplicate_field_last_credit
 #print axioms ReaderWorklistAliases.retained_diamond_stops
 #print axioms ReaderWorklistAliases.spent_alias_cannot_release_again
+
+#print axioms ReaderWorklistAliases.physical_drop_simulates_source
+#print axioms ReaderWorklistAliases.physical_trace_simulates_source
+#print axioms ReaderWorklistAliases.queued_last_owner_has_physical_rc_one
+#print axioms ReaderWorklistAliases.alias_physical_counter_at_queue_boundary

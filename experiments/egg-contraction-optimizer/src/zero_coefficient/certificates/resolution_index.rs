@@ -184,17 +184,19 @@ fn add_bounded_resolvents(nodes: &mut Vec<Node>, work: &mut IndexWork) {
         .collect::<BTreeSet<_>>();
     let source_len = nodes.len();
     let mut budget_exhausted = false;
+    let mut frontier_pair_scans = 0u64;
     'rounds: for round in 1..=MAX_RESOLUTION_DEPTH {
         let limit = nodes.len();
         for left in 0..limit {
             for right in (left + 1)..limit {
                 let depth = nodes[left].depth.max(nodes[right].depth) + 1;
                 if depth != round { continue; }
-                if work.pair_scans >= MAX_PAIR_SCANS_PER_FRONTIER {
+                if frontier_pair_scans >= MAX_PAIR_SCANS_PER_FRONTIER {
                     budget_exhausted = true;
                     break 'rounds;
                 }
                 work.pair_scans += 1;
+                frontier_pair_scans += 1;
                 // Inspect every complementary pivot, not only the first.
                 let possible = nodes[left].clause.clone();
                 for (pivot, sign) in possible {
@@ -352,7 +354,7 @@ fn filter(
     }
     let mut nodes = source_nodes(factors, order, step, work)?;
     if nodes.is_empty() { return Ok(()); }
-    if work.collected_clauses > 100_000 || nodes.len() > MAX_SOURCE_CLAUSES {
+    if nodes.len() > MAX_SOURCE_CLAUSES {
         work.skipped_large_source += 1;
         return Ok(());
     }
@@ -536,16 +538,19 @@ mod tests {
         // A source clause containing x cannot be tested on a boundary
         // that retains only p. It is NOT a contradiction for p=false.
         let factors = vec![
-            factor(&["p"], &[]),
+            factor(&["p", "q", "r"], &[]),
             factor(&["p", "x"], &[&[("p", true), ("x", true)]]),
         ];
         let order = [0, 1];
         let mut m = Metrics::default();
         let mut stage = Stage::leaf(&factors[0], Strategy::IndexedSupport, &mut m)
             .unwrap();
+        let mut work = IndexWork::default();
         filter(&mut stage, &factors, &order, 0,
-            IndexMode::CheckedResolution, &mut IndexWork::default()).unwrap();
-        assert_eq!(stage.entries(), 2);
+            IndexMode::CheckedResolution, &mut work).unwrap();
+        assert_eq!(stage.entries(), 8);
+        assert!(work.source_nodes_checked > 0);
+        assert_eq!(work.verified_patterns, 0);
     }
 
     #[test]

@@ -163,8 +163,16 @@ fn emit_source(fixture: &Fixture) {
 fn emit_wire_bytes(name: &str, bytes: &[u8]) {
     println!("def {name}Bytes : List UInt8 := [");
     for (index, chunk) in bytes.chunks(16).enumerate() {
-        let row = chunk.iter().map(u8::to_string).collect::<Vec<_>>().join(", ");
-        let suffix = if (index + 1) * 16 < bytes.len() { "," } else { "" };
+        let row = chunk
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        let suffix = if (index + 1) * 16 < bytes.len() {
+            ","
+        } else {
+            ""
+        };
         println!("  {row}{suffix}");
     }
     println!("]");
@@ -200,9 +208,15 @@ fn emit_checks(name: &str, successful: bool) {
     let args =
         format!("{name}Edges {name}Labels {name}Roots {name}Parents {name}Rank {name}Weights");
     println!("example : checkComplete {args} {name}Trace {name}Result = true := by decide");
-    println!("example : checkWireClaim {name}Bytes {args} {name}Trace {name}Result = true := by decide");
-    println!("example : checkWireClaim ({name}Bytes ++ [0]) {args} {name}Trace {name}Result = false := by decide");
-    println!("example : checkWireClaim ({name}Bytes.drop 1) {args} {name}Trace {name}Result = false := by decide");
+    println!(
+        "example : checkWireClaim {name}Bytes {args} {name}Trace {name}Result = true := by decide"
+    );
+    println!(
+        "example : checkWireClaim ({name}Bytes ++ [0]) {args} {name}Trace {name}Result = false := by decide"
+    );
+    println!(
+        "example : checkWireClaim ({name}Bytes.drop 1) {args} {name}Trace {name}Result = false := by decide"
+    );
     println!(
         "example : checkComplete {args} ({name}Trace.drop 1) {name}Result = false := by decide"
     );

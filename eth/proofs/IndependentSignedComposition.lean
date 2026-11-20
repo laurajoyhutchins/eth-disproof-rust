@@ -67,6 +67,7 @@ def StepChain (before : List Bool → ℤ) :
         after tail = ∑ x : Bool, before (x :: tail)) ∧
       StepChain after later
 
+/-- The final boundary function after applying a list of certified local rewrites. -/
 def terminal (before : List Bool → ℤ) :
     List (List Bool → ℤ) → (List Bool → ℤ)
   | [] => before

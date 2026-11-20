@@ -38,6 +38,7 @@ def Coeff.eval {α : Type*} [LinearOrder α]
     (p : Coeff α) (i : α) : p.eval {i} = p.constant + p.linear i := by
   simp [Coeff.eval]
 
+/-- Evaluating a two-element support isolates one ordered quadratic coefficient. -/
 theorem eval_pair {α : Type*} [LinearOrder α]
     (p : Coeff α) (i j : α) (hij : i < j) :
     p.eval ({i, j} : Finset α) =
@@ -47,11 +48,13 @@ theorem eval_pair {α : Type*} [LinearOrder α]
   simp [Coeff.eval, hne, Ne.symm hne, hij, hnot,
     add_assoc, add_left_comm, add_comm]
 
+/-- Recover a linear coefficient from its singleton and empty samples. -/
 theorem linear_from_samples {α : Type*} [LinearOrder α]
     (p : Coeff α) (i : α) :
     p.linear i = p.eval {i} - p.eval ∅ := by
   simp [eval_singleton, eval_empty]
 
+/-- Recover an ordered pair coefficient from zero-, one-, and two-bit samples. -/
 theorem pair_from_samples {α : Type*} [LinearOrder α]
     (p : Coeff α) (i j : α) (hij : i < j) :
     p.pair i j =
@@ -240,6 +243,7 @@ It does not assert that Rust memory, usize, serde or the checker control flow
 implements this Lean model; those correspondences remain separate obligations.
 -/
 
+/-- Logical shape of the native sparse quadratic coefficient receipt. -/
 structure SparseCoefficientRecord where
   constant : Bool
   linear : List Bool
@@ -257,6 +261,7 @@ def sparsePairsInOrder (pairs : List (Nat × Nat)) : Bool :=
   (pairs.zip (pairs.drop 1)).all (fun p => pairBefore p.1 p.2)
 
 /-- Exact native-style executable width, bounds and canonical pair order. -/
+/-- Decide whether the native sparse coefficient record satisfies its shape contract. -/
 def SparseCoefficientRecord.checkShape (r : SparseCoefficientRecord) (n : ℕ) : Bool :=
   decide (r.linear.length = n) &&
     r.orderedPairs.all (fun p => decide (p.1 < p.2 ∧ p.2 < n)) &&
@@ -266,6 +271,7 @@ def SparseCoefficientRecord.checkShape (r : SparseCoefficientRecord) (n : ℕ) :
 def SparseCoefficientRecord.wellFormed (r : SparseCoefficientRecord) (n : ℕ) : Prop :=
   r.checkShape n = true
 
+/-- Acceptance by the structural checker implies the exact well-formedness predicate. -/
 theorem SparseCoefficientRecord.checkShape_sound
     (r : SparseCoefficientRecord) (n : ℕ)
     (accepted : r.checkShape n = true) : r.wellFormed n :=
@@ -298,6 +304,7 @@ def SparseCoefficientRecord.evalZMod (r : SparseCoefficientRecord) (n : ℕ)
         (if (i.val, j.val) ∈ r.orderedPairs then 1 else 0)
       else 0)
 
+/-- Decoding a record preserves its direct modular polynomial interpretation. -/
 theorem SparseCoefficientRecord.decode_eval (r : SparseCoefficientRecord) (n : ℕ)
     (support : Finset (Fin n)) :
     (r.decode n).eval support = r.evalZMod n support := by
@@ -310,6 +317,7 @@ def checkSparseSamples {n : ℕ}
     (claimed.checkShape n &&
       checkSamples (expected.decode n) (claimed.decode n))
 
+/-- Accepted sparse-record samples agree as integer signs on every boundary support. -/
 theorem checkSparseSamples_sign_sound {n : ℕ}
     (expected claimed : SparseCoefficientRecord)
     (accepted : checkSparseSamples (n := n) expected claimed = true)
@@ -322,6 +330,7 @@ theorem checkSparseSamples_sign_sound {n : ℕ}
 /-- XOR on Boolean bits is addition modulo two, exactly, not heuristically. -/
 def boolZMod (bit : Bool) : ZMod 2 := if bit then 1 else 0
 
+/-- Boolean XOR is addition in the two-element coefficient ring. -/
 theorem boolZMod_xor (a b : Bool) :
     boolZMod (a ^^ b) = boolZMod a + boolZMod b := by
   cases a <;> cases b <;> decide
@@ -369,12 +378,14 @@ Rust data must faithfully serialize these fields; that converter is outside
 this Lean kernel theorem's trust boundary.
 -/
 
+/-- Raw source phase, affine constraints, and power-of-two coefficient. -/
 structure NativeSourceRecord where
   phaseTerms : List (List Nat)
   rows : List (List Nat × Bool)
   exponent : Nat
 deriving Repr
 
+/-- Raw projected phase, affine constraints, optional row, and coefficient receipt. -/
 structure NativeOutputRecord where
   phaseTerms : List (List Nat)
   rows : List (List Nat × Bool)
@@ -392,18 +403,22 @@ XOR across monomials. This remains defined even on malformed raw data. -/
 def nativePhase (bits : Nat → Bool) (terms : List (List Nat)) : Bool :=
   terms.foldl (fun parity term => parity ^^ term.all bits) false
 
+/-- Map source coordinate zero to the internal bit and later coordinates to boundary bits. -/
 def nativeSourceBit {n : ℕ} (x : Bool) (boundary : Fin n → Bool)
     (index : Nat) : Bool :=
   if index == 0 then x else ((List.ofFn boundary)[index - 1]?).getD false
 
+/-- Interpret projected coordinates directly in the boundary assignment. -/
 def nativeOutputBit {n : ℕ} (boundary : Fin n → Bool)
     (index : Nat) : Bool :=
   ((List.ofFn boundary)[index]?).getD false
 
+/-- Check every raw affine parity constraint against the given coordinate interpreter. -/
 def nativeRowsHold (bits : Nat → Bool)
     (rows : List (List Nat × Bool)) : Bool :=
   rows.all (fun row => nativeXorRow bits row.1 == row.2)
 
+/-- Evaluate the source as an integer sign with affine support and multiplicity. -/
 def nativeSignedSource {n : ℕ} (src : NativeSourceRecord)
     (x : Bool) (boundary : Fin n → Bool) : ℤ :=
   let bits := nativeSourceBit x boundary
@@ -411,6 +426,7 @@ def nativeSignedSource {n : ℕ} (src : NativeSourceRecord)
     (2 : ℤ) ^ src.exponent * signedBit (nativePhase bits src.phaseTerms)
   else 0
 
+/-- Evaluate the projected output, including its optional new affine constraint. -/
 def nativeSignedOutput {n : ℕ} (out : NativeOutputRecord)
     (boundary : Fin n → Bool) : ℤ :=
   let bits := nativeOutputBit boundary
@@ -425,16 +441,19 @@ def nativeTermWellFormed (width : ℕ) (term : List Nat) : Bool :=
     (term.zip (term.drop 1)).all (fun p => decide (p.1 < p.2)) &&
     term.all (fun i => decide (i < width))
 
+/-- Require degree-two squarefree source monomials and in-range affine row indices. -/
 def nativeSourceShape (n : ℕ) (src : NativeSourceRecord) : Prop :=
   src.phaseTerms.all (nativeTermWellFormed (n + 1)) = true ∧
     src.rows.all (fun row => row.1.all (fun i => decide (i < n + 1))) = true
 
+/-- Require in-range projected terms and rows and a well-formed coefficient receipt. -/
 def nativeOutputShape (n : ℕ) (out : NativeOutputRecord) : Prop :=
   out.phaseTerms.all (nativeTermWellFormed n) = true ∧
     out.rows.all (fun row => row.1.all (fun i => decide (i < n))) = true ∧
     out.added.toList.all (fun row => row.1.all (fun i => decide (i < n))) = true ∧
     out.receipt.checkShape n = true
 
+/-- The finite set of boundary coordinates assigned true. -/
 def nativeSupport {n : ℕ} (boundary : Fin n → Bool) :
     Finset (Fin n) :=
   Finset.univ.filter (fun i => boundary i = true)
@@ -458,6 +477,7 @@ def checkNativeInstance {n : ℕ}
       nativeSignedOutput out boundary =
         ∑ x : Bool, nativeSignedSource src x boundary))
 
+/-- Exhaustive instance acceptance implies exact source-to-output signed projection. -/
 theorem checkNativeInstance_sound {n : ℕ}
     (src : NativeSourceRecord) (out : NativeOutputRecord)
     (accepted : checkNativeInstance (n := n) src out = true)
@@ -472,6 +492,7 @@ theorem checkNativeInstance_sound {n : ℕ}
     simpa only [checkNativeInstance, decide_eq_true_eq] using accepted
   exact h.2.2.2 boundary
 
+/-- Exhaustive acceptance also validates the output coefficient receipt. -/
 theorem checkNativeInstance_receipt_sound {n : ℕ}
     (src : NativeSourceRecord) (out : NativeOutputRecord)
     (accepted : checkNativeInstance (n := n) src out = true)

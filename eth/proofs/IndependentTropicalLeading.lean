@@ -305,6 +305,21 @@ theorem polynomialToLeading_monomial (d n : ℕ) :
       times (natLeading n) ((monomial 1 1 (by omega)) ^ d) := by
   simp [polynomialToLeading, Polynomial.eval₂_monomial, natLeading]
 
+/-- The universal homomorphism evaluates precisely the finite source
+coefficient support, without inventing terms or treating absent coefficients
+as satisfying assignments. This is a specification, not a complexity bound. -/
+theorem polynomialToLeading_as_sum (p : Polynomial ℕ) :
+    polynomialToLeading p =
+      ∑ k ∈ p.support,
+        times (natLeading (p.coeff k))
+          ((monomial 1 1 (by omega)) ^ k) := by
+  classical
+  conv_lhs => rw [Polynomial.as_sum_support p]
+  simp_rw [map_sum]
+  apply Finset.sum_congr rfl
+  intro k _
+  exact polynomialToLeading_monomial k (p.coeff k)
+
 /-- Signed coefficients can cancel the purported tropical leading term. -/
 theorem signed_cancellation :
     ((Polynomial.X ^ 2 + Polynomial.X ^ 7 : Polynomial ℤ) -
@@ -331,6 +346,7 @@ theorem modular_prune (term p : ℕ) (h : 2 ^ p ∣ term) :
 #print axioms IndependentETH.Tropical.polynomialToLeading_add
 #print axioms IndependentETH.Tropical.polynomialToLeading_mul
 #print axioms IndependentETH.Tropical.polynomialToLeading_monomial
+#print axioms IndependentETH.Tropical.polynomialToLeading_as_sum
 #print axioms IndependentETH.Tropical.modular_prune
 
 end IndependentETH.Tropical

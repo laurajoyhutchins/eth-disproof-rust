@@ -26,6 +26,10 @@ jobs:
           # Preserve exact-head evidence; merge-commit tests are a separate obligation.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Query modular source contracts (offline, fail early)
+        run: |
+          python3 -m compileall -q eth/tools/query_modular_extract.py
+          python3 -m unittest discover -s eth/tools -p 'test_query_modular_extract.py' -v
       # rust-toolchain.toml pins Rust 1.99.1, rustfmt and Clippy.
       - name: Restore locked crate dependencies
         run: cargo fetch --locked
@@ -49,6 +53,5 @@ jobs:
       - name: Source-graph compiler contract tests (offline)
         run: |
           python3 -m unittest discover -s eth/tools -p 'test_verify_source_graph.py'
-          python3 -m unittest discover -s eth/tools -p 'test_query_modular_extract.py' -v
       - name: Strict Clippy
         run: cargo clippy --locked --offline --all-targets -- -D warnings

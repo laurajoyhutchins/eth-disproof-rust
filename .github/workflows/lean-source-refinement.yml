@@ -6,6 +6,10 @@ on:
       - 'eth/proofs/SourceGraphRefinement.lean'
       - 'eth/proofs/FramedRecordReaderRefinement.lean'
       - 'instrumentation/lean-env/ACC/BitProgramFields.lean'
+      # The proof and original-source imports are elaborated in this Lake environment.
+      - 'instrumentation/lean-env/lean-toolchain'
+      - 'instrumentation/lean-env/lakefile.lean'
+      - 'instrumentation/lean-env/lake-manifest.json'
       - 'eth/src/bin/framed-reader-certificate.rs'
       - 'eth/tools/verify_rust_physical_receipt.py'
       - 'eth/tools/test_verify_rust_physical_receipt.py'

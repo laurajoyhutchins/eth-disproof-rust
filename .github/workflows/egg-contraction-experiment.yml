@@ -13,6 +13,27 @@ on:
       - "eth/proofs/IndependentAffineNativeAudit.lean"
       - "eth/proofs/IndependentAffineIndexToggle.lean"
       - "eth/proofs/IndependentAffineMatrixReplay.lean"
+      - "instrumentation/lean-env/lean-toolchain"
+      - "instrumentation/lean-env/lakefile.lean"
+      - "instrumentation/lean-env/lake-manifest.json"
+      - ".github/workflows/egg-contraction-experiment.yml"
+  # The independent Cargo workspace needs exact-head checks after merge.
+  push:
+    branches: [main]
+    paths:
+      - "experiments/egg-contraction-optimizer/**"
+      - "eth/proofs/IndependentAffineBoundary.lean"
+      - "eth/proofs/IndependentAffineRankNullity.lean"
+      - "eth/proofs/IndependentAffineRowOps.lean"
+      - "eth/proofs/IndependentAffinePackedRows.lean"
+      - "eth/proofs/IndependentAffineTerminal.lean"
+      - "eth/proofs/IndependentAffineSourceRows.lean"
+      - "eth/proofs/IndependentAffineNativeAudit.lean"
+      - "eth/proofs/IndependentAffineIndexToggle.lean"
+      - "eth/proofs/IndependentAffineMatrixReplay.lean"
+      - "instrumentation/lean-env/lean-toolchain"
+      - "instrumentation/lean-env/lakefile.lean"
+      - "instrumentation/lean-env/lake-manifest.json"
       - ".github/workflows/egg-contraction-experiment.yml"
   workflow_dispatch:
 
@@ -24,15 +45,14 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Test standalone experiment
-        run: cargo test --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
-      - name: Run reproducible examples
-        run: cargo run --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
+      - name: Test standalone experiment against committed dependency lock
+        run: cargo test --locked --manifest-path experiments/egg-contraction-optimizer/Cargo.toml
+      # CLI process invocation is a distinct observable from library tests.
       - name: Run exact counting CLI smoke case
         shell: bash
         run: |
           set -euo pipefail
-          printf 'p cnf 3 2\n1 -2 0\n-1 2 0\n' | cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin exact-cnf-count -- - | grep -F '"count":"4"'
+          printf 'p cnf 3 2\n1 -2 0\n-1 2 0\n' | cargo run --quiet --locked --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin exact-cnf-count -- - | grep -F '"count":"4"'
 
   affine-lean:
     runs-on: ubuntu-24.04
@@ -98,7 +118,7 @@ jobs:
           # arbitrary user-controlled Lean syntax.
           generated="$RUNNER_TEMP/affine-native-generated.lean"
           combined="$RUNNER_TEMP/affine-native-audited.lean"
-          if ! cargo run --quiet \
+          if ! cargo run --quiet --locked \
             --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
             -- --emit-lean-certificates > "$generated"; then
             failures=1

@@ -269,3 +269,27 @@ The pinned [exact-head CI run #44743370753](https://github.com/laurajoyhutchins/
 **Trust boundary:** This is a finite, actual-Rust-output cross-implementation test with kernel-checked Lean propositions, not a universal formal refinement of the Rust source, compiler or binary. The fixed Lean auditor and limited fixture emitter are not an arbitrary byte protocol parser. The Rust data structures, every input/rejection path, machine memory semantics and worst-case costs remain separately unverified.
 
 Notebook: [Affine elimination certificates](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).
+
+
+## Source-name admission and indexed row construction
+
+The producer formerly enforced `[A-Za-z][A-Za-z0-9_]*`, while the independent Rust checker accepted some other nonempty names. This was a supported-input domain mismatch, not an algebraic counterexample. Producer and checker now use the same explicit Rust identifier validator; the separate Lean receipt auditor independently implements the grammar on UTF-8 byte lists.
+
+The regression test renames a **declared variable and all its equation occurrences together**. Although the mathematical affine system remains identical, malformed source names must be refused. The Rust-to-Lean emitted corpus includes leading-digit, hyphenated and non-ASCII negative controls.
+
+[IndependentAffineIndexToggle.lean](../../eth/proofs/IndependentAffineIndexToggle.lean) proves a universal correspondence for the specified row-construction algorithm: given distinct registered names and a lookup returning the registered column for each source occurrence, performing all indexed Boolean toggles produces exactly the source-occurrence parity coefficients, for any finite number of variables and occurrence-list length. Duplicate occurrences cancel. This is a **theorem with explicit lookup-correctness assumptions**, not a formal proof of the Rust `BTreeMap`, `Vec`, allocator or binary.
+
+[Pinned experiment CI #44745997859](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44745997859) passed the new Lean theorem without `sorryAx`, the Rust-to-Lean corpus and **41 Rust tests**. The [original ETH Rust workflow #44745997807](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44745997807) also passed at the same code commit.
+
+Remaining implementation gap: demonstrate that native map insertion/lookup and bit-vector indexing actually refine the specified lookup/update operations across all supported inputs, followed by the rest of the independent Rust checker. See [the notebook derivation](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md).
+
+
+## Checked source-name lookup at the mutation boundary
+
+The independent Rust checker now retains the original ordered declarations beside the BTreeMap index. The map only supplies a **candidate** column: every lookup checks that the original name at that index equals the requested name, and every bit update uses bounds-checked mutable access. Wrong-but-in-range indices, missing entries, RHS-pointing indices and short rows are refused before mutation.
+
+The universal [Lean checked-index theorem](../../eth/proofs/IndependentAffineIndexToggle.lean) proves that **every accepted raw name/index transcript** has the same coefficient bits as parity over its source variable occurrences, for pairwise-distinct registered names. It no longer assumes the candidate map index is correct, because checking the original ordered names discharges that property on success. This is a mathematical proof of the **checked algorithm**, not of Rust BTreeMap or Vec internals.
+
+Native tests corrupt the registry with wrong in-range and out-of-range indices, RHS indices and missing entries; none may mutate the row. Another test compares 128 seeded 128-occurrence sequences to direct source-name parity after every toggle. The [pinned CI run](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44748607741) passed the Lean source-parity theorem, the Rust-to-Lean receipt audit and **43 Rust tests**; [Lean proof style](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44748607611) and [original ETH Rust CI](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44748607721) also passed.
+
+**Still open:** Source- or compiler-level proof of the actual Rust lookup, bounds-checked indexing, memory operations and complete verifier control flow, as well as runtime resource and generic SAT/ETH complexity claims. The [notebook study](https://github.com/laurajoyhutchins/technical-notebook/blob/main/content/studies/affine-elimination-certificates.md) explains the proof obligations and negative findings.

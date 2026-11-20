@@ -167,14 +167,19 @@ theorem plus_assoc (a b c : Leading) :
       | none => rfl
       | some b =>
           cases c with
-          | none => simp [plus]
+          | none =>
+              cases h : plus (some a) (some b) <;> simp [plus]
           | some c =>
-              simp only [plus]
-              split_ifs <;> simp_all [plus] <;>
-                first
-                | rfl
-                | (apply congrArg Option.some; apply term_ext <;> omega)
-                | omega
+              by_cases hab : a.degree < b.degree <;>
+              by_cases hba : b.degree < a.degree <;>
+              by_cases hac : a.degree < c.degree <;>
+              by_cases hca : c.degree < a.degree <;>
+              by_cases hbc : b.degree < c.degree <;>
+              by_cases hcb : c.degree < b.degree <;>
+              simp_all [plus, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] <;>
+              first
+              | omega
+              | (apply congrArg Option.some; apply term_ext <;> omega)
 
 theorem plus_zero (x : Leading) : plus x none = x := by
   cases x <;> rfl

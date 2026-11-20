@@ -79,6 +79,39 @@ pub fn p7_checked_owned(
     (outcome, events)
 }
 
+/// Arithmetic control: checked i128 result without vector effects.
+pub fn p8_checked_only(left: i128, right: i128) -> Result<i128, u8> {
+    left.checked_add(right).ok_or(9u8)
+}
+
+/// Container control: option-valued vector payload without arithmetic.
+pub fn p9_option_payload(events: &mut Vec<Option<i128>>, value: i128) -> Result<i128, u8> {
+    events.push(Some(value));
+    Ok(value)
+}
+
+/// Direct scalar vector mutation, with a checked result returned afterward.
+pub fn p10_checked_scalar_sink(
+    events: &mut Vec<i128>,
+    left: i128,
+    right: i128,
+) -> Result<i128, u8> {
+    let outcome = left.checked_add(right).ok_or(9u8);
+    events.push(left);
+    outcome
+}
+
+/// Record the checked Option into the vector, but return a fresh Ok.
+pub fn p11_checked_option_sink(
+    events: &mut Vec<Option<i128>>,
+    left: i128,
+    right: i128,
+) -> Result<i128, u8> {
+    let observed = left.checked_add(right);
+    events.push(observed);
+    Ok(left)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,6 +138,26 @@ mod tests {
         assert_eq!(p3_optional_scalar(&mut absent, 11), Ok(11));
         assert_eq!(p4_optional_result(&mut absent, 13, true), Err(7));
         assert!(absent.is_none());
+    }
+
+    #[test]
+    fn arithmetic_option_payload_and_result_controls_are_distinct() {
+        assert_eq!(p8_checked_only(2, 3), Ok(5));
+        assert_eq!(p8_checked_only(i128::MAX, 1), Err(9));
+
+        let mut option_payload = Vec::new();
+        assert_eq!(p9_option_payload(&mut option_payload, 7), Ok(7));
+        assert_eq!(option_payload, vec![Some(7)]);
+
+        let mut scalar_events = Vec::new();
+        assert_eq!(p10_checked_scalar_sink(&mut scalar_events, 2, 3), Ok(5));
+        assert_eq!(p10_checked_scalar_sink(&mut scalar_events, i128::MAX, 1), Err(9));
+        assert_eq!(scalar_events, vec![2, i128::MAX]);
+
+        let mut option_events = Vec::new();
+        assert_eq!(p11_checked_option_sink(&mut option_events, 2, 3), Ok(2));
+        assert_eq!(p11_checked_option_sink(&mut option_events, i128::MAX, 1), Ok(i128::MAX));
+        assert_eq!(option_events, vec![Some(5), None]);
     }
 
     #[test]

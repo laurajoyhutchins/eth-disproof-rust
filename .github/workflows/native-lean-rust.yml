@@ -179,6 +179,11 @@ jobs:
             compiler/artifacts/lean-c-generated-heap/source-del-trace.txt
             compiler/artifacts/lean-c-generated-heap/source-shell-physical.tsv
             compiler/artifacts/lean-c-generated-heap/source-shell-trace-audit.txt
+            compiler/artifacts/lean-c-generated-heap/source-release-physical.tsv
+            compiler/artifacts/lean-c-generated-heap/source-release-trace-audit.txt
+            compiler/artifacts/lean-c-generated-heap/reader-c-release-axioms.txt
+            compiler/artifacts/lean-c-generated-heap/source-release-mutated-*.tsv
+            compiler/artifacts/lean-c-generated-heap/source-release-rejected-*.txt
             compiler/artifacts/lean-c-generated-heap/source-shell-mutated-*.tsv
             compiler/artifacts/lean-c-generated-heap/source-shell-rejected-*.txt
             compiler/artifacts/lean-c-generated-heap/source-shell-simulation-lean.txt

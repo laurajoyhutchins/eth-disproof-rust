@@ -1,8 +1,10 @@
 //! Inspect an intentionally optimistic *replacement* direct-leaf cutoff.
 //! This never executes a tensor contraction or returns a SAT count.
+
+use std::process::ExitCode;
+
 use lean_eth_reference::two_adic_basecase_gap::BasecaseGapAudit;
 use serde_json::json;
-use std::process::ExitCode;
 
 fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().collect();
@@ -79,11 +81,9 @@ fn run() -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::from(2),
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::from(2)
-        }
+    if let Err(error) = run() {
+        eprintln!("{error}");
     }
+    // An arithmetic receipt is not an execution of the original algorithm.
+    ExitCode::from(2)
 }

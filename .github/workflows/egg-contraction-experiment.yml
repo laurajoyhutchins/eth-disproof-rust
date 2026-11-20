@@ -80,7 +80,7 @@ jobs:
             --manifest-path "$GITHUB_WORKSPACE/experiments/egg-contraction-optimizer/Cargo.toml" \
             -- --emit-lean-certificates > "$generated"; then
             failures=1
-          elif grep -nE '\\b(sorry|admit|axiom|unsafe)\\b' "$generated"; then
+          elif grep -nE '\b(sorry|admit|axiom|unsafe)\b' "$generated"; then
             echo "Unsafe generated Lean witness" >&2
             failures=1
           else

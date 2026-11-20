@@ -22,6 +22,7 @@ pub mod affine_cert;
 pub mod cnf_count;
 pub mod affine_planner;
 pub mod affine_orders;
+pub mod tropical_orders;
 
 pub use arith::{exact_polynomial_equivalent, Evaluation, Plan};
 pub use search::{optimize, Report};

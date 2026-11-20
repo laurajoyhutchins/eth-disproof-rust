@@ -275,4 +275,3 @@ theorem generated_plan_correct
 
 #print axioms IndependentETH.OverlappingFactors.makePlan_safe
 #print axioms IndependentETH.OverlappingFactors.generated_plan_correct
-

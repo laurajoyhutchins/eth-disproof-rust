@@ -46,6 +46,22 @@ not proof of behavioral equivalence.
   contract. Keep diagnostic-only helpers in the diagnostic surface, rather
   than exposing them as library APIs or duplicating them in each binary.
 
+## Verification infrastructure
+
+- Represent finite physical `BitProgram` tables with the already established
+  source-graph tuple `(r,s,labels,entry,input,output,code)` and canonical
+  `opcode:operand...` row syntax. Do not emit a second independent Lean
+  instruction syntax from an individual Rust diagnostic.
+- Reuse `verify_source_graph.parse_program` for strict table decoding and
+  `source_graph_kernel_certificate.physical_program_definition` for the
+  unique Lean finite-program renderer. New source-specific receipts should
+  supply *data plus source-bound equality obligations*, never new opcode
+  serializers, proof libraries, or an inferred source identity.
+- Keep source-aware Lean kernel equality, independent Rust execution tests,
+  and mutational negative controls distinct. A successful JSON parse is not
+  an original-Lean certificate, and a kernel-checked printed table does not
+  prove that Rust serialized its internal values faithfully.
+
 ## Source and execution boundaries
 
 - Refer to a pinned Lean declaration precisely; distinguish source commands,

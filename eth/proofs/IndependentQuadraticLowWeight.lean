@@ -456,7 +456,7 @@ theorem canonicalTerm_value (bits : ℕ → Bool) (term : List ℕ) :
   | true =>
       have ht : ∀ i ∈ canonicalTerm term, bits i = true :=
         h.mpr (by simp [hv])
-      simp [canonicalTermValue, boolZMod, hv, ht]
+      simp [canonicalTermValue, boolZMod, hv] <;> exact ht
 
 /-- A single set toggle adds exactly one monomial contribution modulo two. -/
 theorem toggleCanonical_value (bits : ℕ → Bool)
@@ -474,7 +474,12 @@ theorem toggleCanonical_value (bits : ℕ → Bool)
               exact congrArg (canonicalPhaseValue bits) (Finset.insert_erase h).symm
         _ = canonicalTermValue bits term +
             canonicalPhaseValue bits (state.erase term) := by
-              simp [canonicalPhaseValue]
+              change (insert term (state.erase term)).sum
+                  (canonicalTermValue bits) =
+                canonicalTermValue bits term +
+                  (state.erase term).sum (canonicalTermValue bits)
+              have hnot : term ∉ state.erase term := by simp
+              exact Finset.sum_insert hnot
     have htwo : (2 : ZMod 2) = 0 := by decide
     calc
       canonicalPhaseValue bits (toggleCanonical state term) =
@@ -523,8 +528,26 @@ theorem canonicalization_value (bits : ℕ → Bool) (raw : List (List ℕ)) :
     _ = (raw.map (fun term => boolZMod (term.all bits))).sum := by
           simp only [canonicalTerm_value]
     _ = boolZMod (nativePhase bits raw) := by
-          simpa [nativePhase, boolZMod, List.map_map, Function.comp_def] using
+          change (raw.map (fun term => boolZMod (term.all bits))).sum =
+            boolZMod (raw.foldl
+              (fun parity term => parity ^^ term.all bits) false)
+          have hfold : ∀ (ts : List (List ℕ)) (acc : Bool),
+              (ts.map (fun term => term.all bits)).foldl (· ^^ ·) acc =
+                ts.foldl (fun parity term => parity ^^ term.all bits) acc := by
+            intro ts
+            induction ts with
+            | nil =>
+                intro acc
+                rfl
+            | cons term rest ih =>
+                intro acc
+                simpa only [List.map_cons, List.foldl_cons] using
+                  ih (acc ^^ term.all bits)
+          have hsum :=
             (xorFold_eq_zmod_sum false (raw.map (fun term => term.all bits))).symm
+          have hzero : boolZMod false = 0 := rfl
+          rw [hzero, zero_add] at hsum
+          simpa only [List.map_map, Function.comp_def, hfold] using hsum
 
 /-- Native constructor acceptance, stated over the mathematical width.
 Rust's usize representability and allocation are separate obligations.
@@ -546,8 +569,7 @@ theorem nativeConstructorOK_sound (width : ℕ) (raw : List (List ℕ))
   have ht := h term hmem
   constructor
   · intro i himem
-    have hbits := List.all_eq_true.mp ht.1 i himem
-    exact of_decide_true hbits
+    exact ht.1 i himem
   · exact ht.2
 
 /-- Mathematical accepted-or-refused constructor, with no partial state exposed. -/

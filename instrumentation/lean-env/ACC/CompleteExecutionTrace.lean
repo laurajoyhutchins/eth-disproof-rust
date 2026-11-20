@@ -286,7 +286,12 @@ theorem expectedExecution_refines {n c : ℕ}
                 (sourceItems label (fun i bit => (weight i bit).toInt)) =
                   none := by
             simpa using hs.symm
-          simp [expectedExecution, one, initial, items, hp,
+          have hstopped :
+              (scanTrace (Array.replicate c
+                (BitVec.ofInt 128 1, BitVec.ofInt 128 1))
+                (wordItems label weight)).2 = none := by
+            simpa [initial, items, one] using congrArg Prod.snd hp
+          simp [expectedExecution, hstopped,
             checkedArrayContraction, hsnone]
       | some products =>
           have hssome :
@@ -301,7 +306,12 @@ theorem expectedExecution_refines {n c : ℕ}
                   1 (List.finRange c) := by
             simpa [one] using
               finishTrace_refines products one (List.finRange c)
-          simpa [expectedExecution, one, initial, items, hp,
+          have hcontinued :
+              (scanTrace (Array.replicate c
+                (BitVec.ofInt 128 1, BitVec.ofInt 128 1))
+                (wordItems label weight)).2 = some products := by
+            simpa [initial, items, one] using congrArg Prod.snd hp
+          simpa [expectedExecution, hcontinued,
             checkedArrayContraction, hssome] using hf
 
 

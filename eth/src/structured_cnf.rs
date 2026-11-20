@@ -209,20 +209,6 @@ pub fn verify_recurrence_receipt(
         return Err(refuse("receipt has incorrect variable count or RHS length"));
     }
 
-    let mut expected = BTreeSet::<([usize; 3], [i8; 3])>::new();
-    for (i, rhs) in receipt.rhs.iter().copied().enumerate() {
-        for mask in 0..8u8 {
-            if (mask.count_ones() % 2 == 1) != rhs {
-                let columns = [i, i + 1, i + 3];
-                let signs = std::array::from_fn(|j| if mask & (1 << j) != 0 { -1 } else { 1 });
-                expected.insert((columns, signs));
-            }
-        }
-    }
-    for i in 0..n - 2 {
-        expected.insert(([i, i + 1, i + 2], [1, 1, 1]));
-    }
-
     let (_, expected_offsets) = expected_csr_shape(n)?;
     if csr.row_offsets.len() != expected_offsets
         || csr.row_offsets.first() != Some(&0)
@@ -253,6 +239,23 @@ pub fn verify_recurrence_receipt(
             return Err(refuse("noncanonical, duplicated, or out-of-domain row"));
         }
     }
+    // Source shape and every row are validated before expanding the
+    // receipt into a potentially large expected set. A malformed CSR
+    // must not pay for receipt-derived allocations.
+    let mut expected = BTreeSet::<([usize; 3], [i8; 3])>::new();
+    for (i, rhs) in receipt.rhs.iter().copied().enumerate() {
+        for mask in 0..8u8 {
+            if (mask.count_ones() % 2 == 1) != rhs {
+                let columns = [i, i + 1, i + 3];
+                let signs = std::array::from_fn(|j| if mask & (1 << j) != 0 { -1 } else { 1 });
+                expected.insert((columns, signs));
+            }
+        }
+    }
+    for i in 0..n - 2 {
+        expected.insert(([i, i + 1, i + 2], [1, 1, 1]));
+    }
+
     if actual != expected {
         return Err(refuse("receipt does not describe all source clauses"));
     }
@@ -373,6 +376,30 @@ mod tests {
     /// Exercise the production recognizer and independent receipt replay on
     /// invalid one-row representations. In particular, no usize boundary or
     /// i8 sentinel may become a valid signed literal or trigger a panic.
+    /// Malformed outer shapes must refuse before the verifier expands a
+    /// large, untrusted RHS receipt into a BTreeSet of expected clauses.
+    /// The result is checked independently from the recognized CNF path.
+    #[test]
+    fn malformed_shape_refuses_before_receipt_expansion() {
+        let n = 100_000_usize;
+        let rhs = vec![false; n - 3];
+        let receipt = RecurrenceReceipt {
+            rhs,
+            forbidden_seeds: 0,
+        };
+        let offsets = [0_usize];
+        let csr = SignedCsr {
+            variables: n,
+            row_offsets: &offsets,
+            column_indices: &[],
+            signs: &[],
+        };
+        assert!(matches!(
+            verify_recurrence_receipt(csr, &receipt),
+            Err(Error::Invalid(_))
+        ));
+    }
+
     #[test]
     fn machine_row_boundaries_refuse_without_panicking() {
         let good = OwnedSignedCsr::from_cnf(&source(4, &[false]));

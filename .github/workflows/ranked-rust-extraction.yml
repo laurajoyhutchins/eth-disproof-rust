@@ -27,8 +27,12 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
-      - name: Reuse pinned hax frontend executable
-        uses: actions/cache@v4
+      # Cache immediately after installation: the research extraction stage
+      # is deliberately fail-closed, and a post-job cache/save on failure does
+      # not persist the verified cargo-hax binary.
+      - name: Restore pinned hax frontend executable
+        id: hax-cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cargo/bin/cargo-hax
           key: pinned-cargo-hax-v0.4.2-ubuntu24-rust199
@@ -42,6 +46,13 @@ jobs:
           fi
           cargo hax --version | tee "$RUNNER_TEMP/hax-version.txt"
           grep -Fx 'version=0.4.2' "$RUNNER_TEMP/hax-version.txt"
+
+      - name: Cache verified pinned hax before proof experiments
+        if: steps.hax-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cargo/bin/cargo-hax
+          key: pinned-cargo-hax-v0.4.2-ubuntu24-rust199
 
       - name: Extract actual guard, decoder and complete execution source
         shell: bash
@@ -58,6 +69,32 @@ jobs:
             else
               echo "EXTRACTION_$scenario=BLOCKED" >> "$GITHUB_STEP_SUMMARY"
               status=1
+            fi
+          done
+          # Extraction exit code is not enough: never count generated stubs
+          # as source-derived semantics. Both target declarations must be
+          # present with no sorry/admit/axiom in their generated definitions.
+          for scenario in ranked-guard ranked-decoder; do
+            case "$scenario" in
+              ranked-guard)
+                dir=RankedGuard
+                target='^def representation_ranked_certificate.verify_ranked_component_certificate'
+                ;;
+              ranked-decoder)
+                dir=RankedDecoder
+                target='^def representation_ranked_input.decode_ranked_input'
+                ;;
+            esac
+            generated="proofs/$scenario/lean/$dir/Extraction"
+            if ! grep -q "$target" "$generated/Funs.lean"; then
+              echo "MISSING_SOURCE_BODY=$scenario" >> "$GITHUB_STEP_SUMMARY"
+              status=1
+            fi
+            if grep -nE '\\b(sorry|admit|axiom)\\b' "$generated/Funs.lean" "$generated/Types.lean"; then
+              echo "UNPROVED_GENERATED_DECLARATION=$scenario" >> "$GITHUB_STEP_SUMMARY"
+              status=1
+            else
+              echo "SOURCE_DERIVED_LEAN_DECLARATIONS=$scenario:NO_PLACEHOLDERS" >> "$GITHUB_STEP_SUMMARY"
             fi
           done
           exit "$status"

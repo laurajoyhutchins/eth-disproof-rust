@@ -86,6 +86,13 @@ pub fn node_append_readout_prefix() -> Result<Cmd<40, 896>, Error> {
 /// program is only a composition/ABI diagnostic and is NEVER evidence that
 /// the actual node result or full QueryStream is computed.
 pub fn node_append_with_readout(readout: Program<8, 40>) -> Result<Cmd<40, 896>, Error> {
+    // Original SqrtLog.MomentsReadoutProgramNative: program := compiled command 15 0.
+    // Reject a wrong caller contract before constructing any outer code.
+    if readout.input_stack() != 15 || readout.output_stack() != 0 {
+        return Err(Error::Invalid(
+            "source MomentsReadoutProgram requires local input 15 and output 0".into(),
+        ));
+    }
     Ok(Cmd::seq(
         crate::native_node_append::prepare_command()?,
         Cmd::seq(

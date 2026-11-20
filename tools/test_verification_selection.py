@@ -84,7 +84,7 @@ class VerificationSelectionTests(unittest.TestCase):
         with TemporaryDirectory() as folder:
             root = Path(folder)
             put(root, "eth/tools/driver.py", "from helper import main\n")
-            put(root, "eth/tools/helper.py", "from nested import work\n")
+            put(root, "eth/tools/helper.py", "def evaluate():\n    from nested import work\n")
             put(root, "eth/tools/nested.py", "def work(): pass\n")
             for pin in ("lean-toolchain", "lakefile.lean", "lake-manifest.json"):
                 put(root, "instrumentation/lean-env/" + pin, "pin\n")

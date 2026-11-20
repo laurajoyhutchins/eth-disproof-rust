@@ -47,7 +47,7 @@ class ProofStyleTests(unittest.TestCase):
             )
 
     def test_annotated_undocumented_theorem_is_reported(self):
-        source = GOOD.replace("/-- An elementary proposition. -/\\n", "")
+        source = GOOD.replace("/-- An elementary proposition. -/", "")
         source = source.replace("theorem self_evident", "@[simp] theorem self_evident")
         self.assertEqual(len(undocumented_declarations(source)), 1)
 

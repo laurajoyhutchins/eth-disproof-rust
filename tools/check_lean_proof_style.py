@@ -16,7 +16,7 @@ PROOF_DIRECTORIES = (
     Path("instrumentation/lean-env/ACC"),
 )
 DECLARATION = re.compile(
-    r"^(?:@\\[[^\\]\\n]*\\]\\s*)*"
+    r"^(?:@\[[^\]]+\]\s*)*"
     r"(?:(?:private|protected|noncomputable|partial|unsafe)\s+)*"
     r"(?:def|theorem|lemma|structure|inductive|class|abbrev|instance|opaque)\b"
 )

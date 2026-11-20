@@ -339,6 +339,40 @@ mod tests {
     /// Exercise the production recognizer and independent receipt replay on
     /// invalid one-row representations. In particular, no usize boundary or
     /// i8 sentinel may become a valid signed literal or trigger a panic.
+    /// Test the shared usize computation independently of CSR allocation.
+    /// A successful row shape must equal both unbounded integer formulas;
+    /// overflow must refuse rather than wrap or saturate.
+    #[test]
+    fn checked_csr_shape_matches_machine_bounds() {
+        for n in 4..=4096usize {
+            let (rows, offsets) = expected_csr_shape(n).unwrap();
+            assert_eq!(rows, 5 * n - 14);
+            assert_eq!(offsets, rows + 1);
+            assert_eq!(offsets, 5 * n - 13);
+        }
+
+        let largest_fitting_n = usize::MAX / 5;
+        for n in [
+            largest_fitting_n - 1,
+            largest_fitting_n,
+            largest_fitting_n + 1,
+            usize::MAX,
+        ] {
+            match expected_csr_shape(n) {
+                Ok((rows, offsets)) => {
+                    let product = n.checked_mul(5).expect("accepted overflow");
+                    assert_eq!(rows, product - 14);
+                    assert_eq!(offsets, rows + 1);
+                    assert_eq!(offsets, product - 13);
+                }
+                Err(Error::Overflow) => {
+                    assert!(n.checked_mul(5).is_none(), "unexpected refusal for n={n}");
+                }
+                Err(other) => panic!("unexpected shape error for n={n}: {other}"),
+            }
+        }
+    }
+
     #[test]
     fn machine_row_boundaries_refuse_without_panicking() {
         let good = OwnedSignedCsr::from_cnf(&source(4, &[false]));

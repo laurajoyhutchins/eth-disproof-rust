@@ -60,6 +60,17 @@ class SourceModuleContractTests(unittest.TestCase):
                     [sys.executable,"-c","raise SystemExit(7)"],
                     root,root/"bad",5
                 )
+            with patch.object(q,"MAX_OUTPUT_BYTES",16):
+                with self.assertRaisesRegex(q.Refusal,"bounded log budget"):
+                    q.run_stage_process(
+                        [sys.executable,"-c","print('x'*128)"],
+                        root,root/"oversized",5
+                    )
+            with self.assertRaisesRegex(q.Refusal,"RSS bytes"):
+                q.run_stage_process(
+                    [sys.executable,"-c","import time; time.sleep(1)"],
+                    root,root/"overmemory",5,rss_limit=1
+                )
 
 
 class ModuleReceiptContractTests(unittest.TestCase):

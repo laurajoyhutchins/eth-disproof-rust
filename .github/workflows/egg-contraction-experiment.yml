@@ -41,6 +41,14 @@ jobs:
           test "$(wc -l < /tmp/tropical-order-receipts.jsonl)" -eq 27
           grep -F '"oracle":"checked"' /tmp/tropical-order-receipts.jsonl
 
+      - name: Compare exact polynomial tropical and factored representations
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path experiments/egg-contraction-optimizer/Cargo.toml --bin representation-study | tee /tmp/representation-study-receipts.jsonl
+          test "$(wc -l < /tmp/representation-study-receipts.jsonl)" -eq 39
+          test "$(grep -c '"oracle":"checked"' /tmp/representation-study-receipts.jsonl)" -eq 39
+
       - name: Run contraction-order study and check small-case oracle
         shell: bash
         run: |

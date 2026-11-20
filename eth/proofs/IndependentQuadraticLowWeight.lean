@@ -229,6 +229,122 @@ theorem checkedForcedLocalExact {n : ℕ}
             simp [hf, hx, Fintype.sum_bool]
     _ = _ := by rw [hsource support]
 
+/-!
+## Sparse native-record model (a typed specification, not Rust FFI refinement)
+
+Rust's QuadraticCoefficientWitness stores a Boolean constant, a fixed-width
+linear vector and lexicographically increasing in-range pairs of usize indices.
+This executable Lean model stores the same *logical* fields as lists of Nat
+indices. It checks their shape before decoding into Coeff (Fin n).
+It does not assert that Rust memory, usize, serde or the checker control flow
+implements this Lean model; those correspondences remain separate obligations.
+-/
+
+structure SparseCoefficientRecord where
+  constant : Bool
+  linear : List Bool
+  orderedPairs : List (Nat × Nat)
+deriving Repr, DecidableEq
+
+/-- Strict lexicographic order on the pair representation used by Rust. -/
+def pairBefore (a b : Nat × Nat) : Prop :=
+  a.1 < b.1 ∨ (a.1 = b.1 ∧ a.2 < b.2)
+
+/-- Width, bounds, ascending pair entries and globally increasing pair order.
+The latter excludes duplicate entries as well as reordered pairs. -/
+def SparseCoefficientRecord.wellFormed (r : SparseCoefficientRecord) (n : ℕ) : Prop :=
+  r.linear.length = n ∧
+  (∀ p ∈ r.orderedPairs, p.1 < p.2 ∧ p.2 < n) ∧
+  r.orderedPairs.Pairwise pairBefore
+
+def SparseCoefficientRecord.checkShape (r : SparseCoefficientRecord) (n : ℕ) : Bool :=
+  decide (r.wellFormed n)
+
+theorem SparseCoefficientRecord.checkShape_sound
+    (r : SparseCoefficientRecord) (n : ℕ)
+    (accepted : r.checkShape n = true) : r.wellFormed n := by
+  simpa only [SparseCoefficientRecord.checkShape, decide_eq_true_eq] using accepted
+
+/-- Total logical decoding; use only a shape-checked record for native claims.
+The Option fallback keeps this model total on malformed lists, while checkShape
+refuses their use as a valid native certificate. -/
+def SparseCoefficientRecord.decode (r : SparseCoefficientRecord) (n : ℕ) :
+    Coeff (Fin n) where
+  constant := if r.constant then 1 else 0
+  linear := fun i => if (r.linear[i.val]?).getD false then 1 else 0
+  pair := fun i j => if (i.val, j.val) ∈ r.orderedPairs then 1 else 0
+
+/-- A directly stated ZMod 2 interpretation of the record's bits.
+This is not yet a proof about Rust's sequence of XOR instructions. -/
+def SparseCoefficientRecord.evalZMod (r : SparseCoefficientRecord) (n : ℕ)
+    (support : Finset (Fin n)) : ZMod 2 :=
+  (if r.constant then 1 else 0) +
+    (∑ i ∈ support, if (r.linear[i.val]?).getD false then 1 else 0) +
+    (∑ i ∈ support, ∑ j ∈ support,
+      if i < j then
+        (if (i.val, j.val) ∈ r.orderedPairs then 1 else 0)
+      else 0)
+
+theorem SparseCoefficientRecord.decode_eval (r : SparseCoefficientRecord) (n : ℕ)
+    (support : Finset (Fin n)) :
+    (r.decode n).eval support = r.evalZMod n support := by
+  rfl
+
+/-- Apply the existing low-weight theorem to well-shaped sparse records. -/
+def checkSparseSamples {n : ℕ}
+    (expected claimed : SparseCoefficientRecord) : Bool :=
+  expected.checkShape n &&
+    (claimed.checkShape n &&
+      checkSamples (expected.decode n) (claimed.decode n))
+
+theorem checkSparseSamples_sign_sound {n : ℕ}
+    (expected claimed : SparseCoefficientRecord)
+    (accepted : checkSparseSamples (n := n) expected claimed = true)
+    (support : Finset (Fin n)) :
+    signedBit (phaseBit (expected.decode n) support) =
+      signedBit (phaseBit (claimed.decode n) support) := by
+  simp only [checkSparseSamples, Bool.and_eq_true] at accepted
+  exact checkSamples_sign_sound _ _ accepted.2.2 support
+
+/-- XOR on Boolean bits is addition modulo two, exactly, not heuristically. -/
+def boolZMod (bit : Bool) : ZMod 2 := if bit then 1 else 0
+
+theorem boolZMod_xor (a b : Bool) :
+    boolZMod (a ^^ b) = boolZMod a + boolZMod b := by
+  cases a <;> cases b <;> decide
+
+/-- The Rust-style left XOR-fold agrees with the modular sum of input bits. -/
+theorem xorFold_eq_zmod_sum (acc : Bool) (bits : List Bool) :
+    boolZMod (bits.foldl (fun x y => x ^^ y) acc) =
+      boolZMod acc + (bits.map boolZMod).sum := by
+  induction bits generalizing acc with
+  | nil =>
+      simp
+  | cons b bs ih =>
+      change boolZMod (bs.foldl (fun x y => x ^^ y) (acc ^^ b)) =
+        boolZMod acc + (boolZMod b + (bs.map boolZMod).sum)
+      rw [ih, boolZMod_xor]
+      ring
+
+example :
+    (SparseCoefficientRecord.checkShape
+      { constant := false, linear := [true, false],
+        orderedPairs := [(0, 1)] } 2) = true := by decide
+
+example :
+    (SparseCoefficientRecord.checkShape
+      { constant := false, linear := [true, false],
+        orderedPairs := [(1, 0)] } 2) = false := by decide
+
+example :
+    (SparseCoefficientRecord.checkShape
+      { constant := false, linear := [true, false],
+        orderedPairs := [(0, 1), (0, 1)] } 2) = false := by decide
+
+#print axioms IndependentETH.QuadraticLowWeight.SparseCoefficientRecord.decode_eval
+#print axioms IndependentETH.QuadraticLowWeight.checkSparseSamples_sign_sound
+#print axioms IndependentETH.QuadraticLowWeight.xorFold_eq_zmod_sum
+
 #print axioms IndependentETH.QuadraticLowWeight.checkSamples_sound
 #print axioms IndependentETH.QuadraticLowWeight.checkSamples_complete
 #print axioms IndependentETH.QuadraticLowWeight.checkSamples_sign_sound

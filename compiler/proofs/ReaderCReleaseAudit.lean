@@ -111,7 +111,7 @@ theorem modeled_c_step_has_source (s : Source) (op : Op) (measured : Physical)
   | none =>
       simp [hs] at h
   | some next =>
-      refine ⟨next, hs, ?_⟩
+      refine ⟨next, rfl, ?_⟩
       simpa [hs] using h
 
 /-- Independently replay both the source-credit ledger and the selected

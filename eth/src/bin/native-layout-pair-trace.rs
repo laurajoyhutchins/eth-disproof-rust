@@ -1,21 +1,22 @@
 //! Physical trace paired with `reference/lean_native_layout_pair_trace.lean`.
 //! This is only the Rust-side producer, not a Lean differential pass.
-use lean_eth_reference::bit_program::{Config, RunLimits};
-use lean_eth_reference::{native_layout, native_pair_setup};
+
+#[path = "trace/format.rs"]
+mod trace_format;
+
 use std::collections::VecDeque;
 
-fn bits(d: &Config<40, 896>, port: usize) -> String {
-    d.stacks[port]
-        .iter()
-        .map(|b| if *b { '1' } else { '0' })
-        .collect()
-}
+use lean_eth_reference::bit_program::{Config, RunLimits};
+use lean_eth_reference::{native_layout, native_pair_setup};
+
+use trace_format::{stack_bits};
+
 fn flag(b: bool) -> &'static str {
     if b { "1" } else { "0" }
 }
 fn masters(d: &Config<40, 896>, start: usize) -> String {
     (start..start + 14)
-        .map(|p| bits(d, p))
+        .map(|p| stack_bits(d, p))
         .collect::<Vec<_>>()
         .join(",")
 }
@@ -46,9 +47,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             stats.instructions,
             masters(&d, 128),
             masters(&d, 730),
-            bits(&d, 684),
-            bits(&d, 660),
-            bits(&d, 665),
+            stack_bits(&d, 684),
+            stack_bits(&d, 660),
+            stack_bits(&d, 665),
             flag(d.regs[16]),
             flag(d.regs[39])
         );
@@ -73,16 +74,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "pair|{seed}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             stats.instructions,
-            bits(&d, 338),
-            bits(&d, 243),
-            bits(&d, 832),
-            bits(&d, 833),
+            stack_bits(&d, 338),
+            stack_bits(&d, 243),
+            stack_bits(&d, 832),
+            stack_bits(&d, 833),
             (325..330)
-                .map(|i| bits(&d, i))
+                .map(|i| stack_bits(&d, i))
                 .collect::<Vec<_>>()
                 .join(","),
-            bits(&d, 834),
-            bits(&d, 835),
+            stack_bits(&d, 834),
+            stack_bits(&d, 835),
             flag(d.regs[9]),
             flag(d.regs[39])
         );

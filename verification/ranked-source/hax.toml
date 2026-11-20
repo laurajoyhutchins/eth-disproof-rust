@@ -1,0 +1,7 @@
+# The very same production Rust files are imported via #[path] in src/lib.rs.
+# Extract only the actual library entrypoint, with no binary target collection.
+# Successful translation is NOT semantic correctness: the generated Lean
+# closure still needs kernel-checked correspondence and audited assumptions.
+[scenario.ranked-source]
+backend = "lean"
+include = ["ranked_source_proof_harness::representation_ranked_input::execute_ranked_wire"]

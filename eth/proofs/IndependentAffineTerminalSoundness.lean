@@ -31,7 +31,7 @@ def satisfies {r f b : Nat} (t : Terminal r f b)
     t.residual boundary = true
 
 private theorem xor_rhs_iff (a correction rhs : Bool) :
-    (a ^^ correction = rhs) ↔ a = rhs ^^ correction := by
+    (a ^^ correction = rhs) ↔ (a = rhs ^^ correction) := by
   cases a <;> cases correction <;> cases rhs <;> decide
 
 theorem satisfies_iff {r f b : Nat} (t : Terminal r f b)
@@ -76,7 +76,7 @@ def solutionsEquivFree {r f b : Nat}
     intro x
     apply Subtype.ext
     apply Prod.ext
-    · exact ((satisfies_iff t x.val.1 x.val.2 boundary).mp x.property).1
+    · exact (((satisfies_iff t x.val.1 x.val.2 boundary).mp x.property).1).symm
     · rfl
   right_inv := by
     intro free
@@ -104,7 +104,9 @@ theorem terminal_count {r f b : Nat}
             Fintype.card (Bits f) :=
           Fintype.card_congr hequiv
         _ = (if t.residual boundary then 2 ^ f else 0) := by
-          simp [Bits, hres]
+          have hc : Fintype.card (Bits f) = 2 ^ f := by simp [Bits]
+          rw [hc]
+          simp [hres]
 
 theorem inconsistent_boundary_zero {r f b : Nat}
     (t : Terminal r f b) (boundary : Bits b)

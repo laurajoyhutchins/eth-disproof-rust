@@ -8,9 +8,7 @@
 //! decoder and step semantics. A divergence reports its first physical step.
 //!
 //! See technical notebook: studies/source-readout-visit-costs.
-use lean_eth_reference::bit_program::{
-    Config, DeferredProgram, Program, SourceGraphBinding,
-};
+use lean_eth_reference::bit_program::{Config, DeferredProgram, Program, SourceGraphBinding};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, VecDeque};
 use std::error::Error;
@@ -52,7 +50,9 @@ fn parse_frame(pc: &str, regs: &str, stacks: &str) -> Result<Frame, Box<dyn Erro
         Some(label)
     };
     if regs.len() != 8 {
-        return Err(invalid("original source trace requires eight register bits"));
+        return Err(invalid(
+            "original source trace requires eight register bits",
+        ));
     }
     let registers = bits(regs)?;
     let regs: [bool; 8] = registers
@@ -69,7 +69,9 @@ fn parse_frame(pc: &str, regs: &str, stacks: &str) -> Result<Frame, Box<dyn Erro
 
 fn flat_observation() -> Result<Program<8, 27>, Box<dyn Error>> {
     if format!("{:x}", Sha256::digest(SOURCE_GRAPH)) != GRAPH_SHA256 {
-        return Err(invalid("observed-only original source fixture hash changed"));
+        return Err(invalid(
+            "observed-only original source fixture hash changed",
+        ));
     }
     let source = DeferredProgram::<8, 27>::from_original_source_json(
         SOURCE_GRAPH,
@@ -93,10 +95,7 @@ fn flat_observation() -> Result<Program<8, 27>, Box<dyn Error>> {
     Ok(Program::<8, 27>::new(15, 17, 1, code)?)
 }
 
-fn param<'a>(
-    params: &'a BTreeMap<String, String>,
-    key: &str,
-) -> Result<&'a str, Box<dyn Error>> {
+fn param<'a>(params: &'a BTreeMap<String, String>, key: &str) -> Result<&'a str, Box<dyn Error>> {
     params
         .get(key)
         .map(String::as_str)
@@ -109,7 +108,9 @@ fn assert_source_input(
     params: &BTreeMap<String, String>,
 ) -> Result<(), Box<dyn Error>> {
     if state.pc != Some(1) || state.regs != [false; 8] {
-        return Err(invalid(format!("{case}: invalid source initial PC/registers")));
+        return Err(invalid(format!(
+            "{case}: invalid source initial PC/registers"
+        )));
     }
     let expected_query = match case {
         "hit" => param(params, "hit_query")?,
@@ -126,7 +127,9 @@ fn assert_source_input(
     }
     let width = param(params, "width")?.parse::<usize>()?;
     if width == 0 || width > 1024 {
-        return Err(invalid("source coefficient width outside bounded fixture domain"));
+        return Err(invalid(
+            "source coefficient width outside bounded fixture domain",
+        ));
     }
     let source_coefficient = bits(param(params, "coefficient")?)?;
     if source_coefficient.len() != width {
@@ -138,7 +141,9 @@ fn assert_source_input(
         || state.stacks[24] != VecDeque::from(vec![true])
         || state.stacks[17] != source_coefficient
     {
-        return Err(invalid("source initial modulus/width/count/coefficient mismatch"));
+        return Err(invalid(
+            "source initial modulus/width/count/coefficient mismatch",
+        ));
     }
     let reverse_query = bits(&expected_query.chars().rev().collect::<String>())?;
     if state.stacks[16] != reverse_query || state.stacks[15].is_empty() {
@@ -170,7 +175,10 @@ fn compare_trace(text: &str) -> Result<(usize, usize), Box<dyn Error>> {
         let parts: Vec<_> = line.split('|').collect();
         match parts.as_slice() {
             ["PARAM", key, value] if !started => {
-                if params.insert((*key).to_owned(), (*value).to_owned()).is_some() {
+                if params
+                    .insert((*key).to_owned(), (*value).to_owned())
+                    .is_some()
+                {
                     return Err(invalid("duplicate source parameter"));
                 }
             }
@@ -199,7 +207,9 @@ fn compare_trace(text: &str) -> Result<(usize, usize), Box<dyn Error>> {
                 if index != step + 1 {
                     return Err(invalid(format!("{case}: source trace step discontinuity")));
                 }
-                let state = current.as_mut().ok_or_else(|| invalid("missing current frame"))?;
+                let state = current
+                    .as_mut()
+                    .ok_or_else(|| invalid("missing current frame"))?;
                 if !machine.step(state)? {
                     return Err(invalid(format!(
                         "{case}: Rust halted before source step {index}"
@@ -225,9 +235,13 @@ fn compare_trace(text: &str) -> Result<(usize, usize), Box<dyn Error>> {
                     return Err(invalid("unexpected source end record"));
                 }
                 let count = count.parse::<usize>()?;
-                let state = current.take().ok_or_else(|| invalid("missing final frame"))?;
+                let state = current
+                    .take()
+                    .ok_or_else(|| invalid("missing final frame"))?;
                 if count != step || count == 0 || state.pc.is_some() {
-                    return Err(invalid(format!("{case}: incomplete/nonterminal physical trace")));
+                    return Err(invalid(format!(
+                        "{case}: incomplete/nonterminal physical trace"
+                    )));
                 }
                 if finished[0].is_none() {
                     finished[0] = Some(count);
@@ -236,7 +250,12 @@ fn compare_trace(text: &str) -> Result<(usize, usize), Box<dyn Error>> {
                 }
                 active_case = None;
             }
-            _ => return Err(invalid(format!("invalid source trace record: {}", &line[..line.len().min(90)]))),
+            _ => {
+                return Err(invalid(format!(
+                    "invalid source trace record: {}",
+                    line.chars().take(90).collect::<String>()
+                )));
+            }
         }
     }
     match (finished[0], finished[1]) {
@@ -247,7 +266,9 @@ fn compare_trace(text: &str) -> Result<(usize, usize), Box<dyn Error>> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args_os().skip(1);
-    let path = args.next().ok_or("usage: original-accumulator-observed-trace-compare TRACE.stdout.log")?;
+    let path = args
+        .next()
+        .ok_or("usage: original-accumulator-observed-trace-compare TRACE.stdout.log")?;
     if args.next().is_some() {
         return Err(invalid("unexpected extra CLI arguments"));
     }
@@ -256,7 +277,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err(invalid("trace must be a regular, nonsymlink file"));
     }
     if path.metadata()?.len() == 0 || path.metadata()?.len() > MAX_TRACE_BYTES {
-        return Err(invalid("original source trace exceeds bounded evidence size"));
+        return Err(invalid(
+            "original source trace exceeds bounded evidence size",
+        ));
     }
     let trace = fs::read_to_string(path)?;
     let (hit, miss) = compare_trace(&trace)?;

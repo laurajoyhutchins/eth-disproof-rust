@@ -477,8 +477,8 @@ where
         // limit admits it. Make this allocation fallible *before* any logical
         // state mutation. Rust's VecDeque::try_reserve(1) preserves contents
         // on failure and guarantees one insertion without further growth.
-        if let Instr::Push { stack, .. } = instruction {
-            config.stacks[stack]
+        if let Instr::Push { stack, .. } = &instruction {
+            config.stacks[*stack]
                 .try_reserve(1)
                 .map_err(|_| Error::Capacity("BitProgram host stack allocation".into()))?;
         }

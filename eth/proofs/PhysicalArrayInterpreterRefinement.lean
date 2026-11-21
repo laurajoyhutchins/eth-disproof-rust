@@ -1199,30 +1199,30 @@ theorem arrayRunnerTrace_refines {r s l : ℕ}
       (arrayRunnerOne program maxBits maxSteps)
       executed cached raw result := by
   induction htrace generalizing raw with
-  | terminal hresult =>
+  | @terminal ex ca state terminalResult hresult =>
       have hsim := arrayRunnerOne_refines program maxBits maxSteps
-        executed cached raw cfg hrep
+        ex ca raw state hrep
       rcases hresult with h | h | h | h | h
       · rcases h with ⟨hsource, rfl⟩
-        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+        cases harray : arrayRunnerOne program maxBits maxSteps ex ca raw <;>
           simp [RunnerOneRepresents, hsource, harray] at hsim
         exact BoundedRunnerTrace.terminal (Or.inl ⟨harray, rfl⟩)
       · rcases h with ⟨hsource, rfl⟩
-        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+        cases harray : arrayRunnerOne program maxBits maxSteps ex ca raw <;>
           simp [RunnerOneRepresents, hsource, harray] at hsim
         exact BoundedRunnerTrace.terminal (Or.inr (Or.inl ⟨harray, rfl⟩))
       · rcases h with ⟨hsource, rfl⟩
-        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+        cases harray : arrayRunnerOne program maxBits maxSteps ex ca raw <;>
           simp [RunnerOneRepresents, hsource, harray] at hsim
         exact BoundedRunnerTrace.terminal
           (Or.inr (Or.inr (Or.inl ⟨harray, rfl⟩)))
       · rcases h with ⟨hsource, rfl⟩
-        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+        cases harray : arrayRunnerOne program maxBits maxSteps ex ca raw <;>
           simp [RunnerOneRepresents, hsource, harray] at hsim
         exact BoundedRunnerTrace.terminal
           (Or.inr (Or.inr (Or.inr (Or.inl ⟨harray, rfl⟩))))
       · rcases h with ⟨hsource, rfl⟩
-        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+        cases harray : arrayRunnerOne program maxBits maxSteps ex ca raw <;>
           simp [RunnerOneRepresents, hsource, harray] at hsim
         exact BoundedRunnerTrace.terminal
           (Or.inr (Or.inr (Or.inr (Or.inr ⟨harray, rfl⟩))))

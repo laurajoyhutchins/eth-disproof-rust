@@ -1,4 +1,4 @@
-name: Original numerical accumulator first instruction kernel probe
+name: Original numerical accumulator twelve source-site kernel probe
 
 on:
   pull_request:
@@ -69,7 +69,7 @@ jobs:
           restore-keys: |
             original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-
 
-      - name: Kernel-check original physical pc one without complete-table normalization
+      - name: Kernel-check twelve distributed original opcodes without complete-table normalization
         shell: bash
         run: |
           set -euo pipefail
@@ -87,8 +87,8 @@ jobs:
           output=Path(os.environ["SOURCE_ONE_SITE_OUT"])
           result={"status":"REFUSED", "original_commit":os.environ["ORIGINAL_SOURCE_SHA"],
                   "source_blob":"3e1664be261748c6e12a2d1cafb033dc26131bf9",
-                  "physical_pc":1,"opcode":"pop:15:0:1:2",
-                  "scope":"one_original_source_physical_address_only",
+                  "physical_pcs":[0,1,3,10,11,12,30,75,103,158,248,308],
+                  "scope":"twelve_distributed_original_source_physical_addresses_only",
                   "whole_309_opcode_certificate":False,"actual_rust_refinement":False}
           try:
             if not olean.is_file() or olean.is_symlink():
@@ -99,15 +99,15 @@ jobs:
                                 lake,300,log_base=output/"kernel",
                                 rss_limit_bytes=MAX_EXPORT_RSS_BYTES)
             if checked.returncode or checked.stdout.strip() or checked.stderr.strip():
-              raise ValueError("original physical pc1 proof refused exit="+
+              raise ValueError("original twelve-site physical proof refused exit="+
                                str(checked.returncode)+"; stdout="+checked.stdout[-1800:]+
                                "; stderr="+checked.stderr[-1800:])
-            result["status"]="ORIGINAL_SOURCE_PC1_KERNEL_CHECKED"
+            result["status"]="ORIGINAL_SOURCE_TWELVE_SITES_KERNEL_CHECKED"
           except Exception as e:
             result["reason"]=str(e)[-3500:]
           (output/"receipt.json").write_text(json.dumps(result,sort_keys=True,indent=2)+"\n")
-          print("ORIGINAL_ACCUMULATE_PC1="+json.dumps(result,sort_keys=True),flush=True)
-          if result["status"]!="ORIGINAL_SOURCE_PC1_KERNEL_CHECKED":
+          print("ORIGINAL_ACCUMULATE_SELECTED_SITES="+json.dumps(result,sort_keys=True),flush=True)
+          if result["status"]!="ORIGINAL_SOURCE_TWELVE_SITES_KERNEL_CHECKED":
             raise SystemExit(2)
           PY
 

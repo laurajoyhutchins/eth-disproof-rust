@@ -153,8 +153,9 @@ fn source_legal_accumulator_input(hit: bool) -> Config<8, 27> {
         stacks: std::array::from_fn(|_| VecDeque::new()),
     };
     // Original SubexpLiftRing.baseWidth 2 1 = 2.
-    // Original canonicalModulus 2 1 = little-endian modulus 2: 01.
-    initial.stacks[5].extend([false, true]);
+    // Actual pinned original Lean canonicalModulus 2 1 serializes to 010.
+    // The third bit is a zero width+1 modulus slot, not omitted padding.
+    initial.stacks[5].extend([false, true, false]);
     initial.stacks[12].extend([true, true]);
     initial.stacks[24].push_back(true);
     // Original literalWordRun 2 1 [true] = little-endian one: 10.
@@ -207,13 +208,21 @@ fn observed_original_accumulator_executes_real_modular_hit_and_absent_key_miss()
             stats.instructions > 1,
             "no actual arithmetic/dictionary execution"
         );
+        // Executable observation of the genuine original Lean program,
+        // run #44873057634: 959 physical instructions on hit, 169 on miss.
+        // This is empirical differential evidence, NOT a kernel theorem.
+        assert_eq!(
+            stats.instructions,
+            if hit { 959 } else { 169 },
+            "source-observed Rust step count differs from pinned original Lean"
+        );
         // Expected one-word sum modulo 2: hit 1+1=0, absent key 1+0=1.
         assert_bits(
             &cfg.stacks[17],
             if hit { &[false, false] } else { &[true, false] },
             "17",
         );
-        assert_bits(&cfg.stacks[5], &[false, true], "5");
+        assert_bits(&cfg.stacks[5], &[false, true, false], "5");
         assert_bits(&cfg.stacks[12], &[true, true], "12");
         assert_bits(&cfg.stacks[24], &[true], "24");
         assert_bits(

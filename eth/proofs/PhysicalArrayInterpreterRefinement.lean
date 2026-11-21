@@ -465,4 +465,148 @@ theorem deque_pop_preserves_represents {D : Type u} (c : DequeContract D)
     exact represents_setStack h port (cfg.«stacks» port).tail
   · rw [c.pop_value_spec host, hport]
 
+
+/-!
+## Exact source live-stack accounting, including resource refusal
+
+The Rust bit-program interpreter maintains a running count of live deque cells
+rather than scanning all stacks on every instruction. A pushed bit increases
+that count by one; a nonempty pop decreases it by one; an empty pop does
+nothing. All other instructions conserve it.
+
+These are *universal Lean source-machine facts*. The Rust implementation and
+the source graph's serialized representation remain independent proof
+boundaries. Importantly, the cap test below justifies the local Rust
+`live_bits >= max_stack_bits` preflight on pushes, not any claim about OS
+memory or CPU complexity.
+-/
+
+open scoped BigOperators
+
+/-- Total live source stack cells, counting the top of each stack as one bit. -/
+def sourceLiveStackBits {r s l : ℕ} (cfg : Cfg r s l) : ℕ :=
+  ∑ port : Fin s, (cfg.«stacks» port).length
+
+/-- Per-stack gain: only the target of a physical Push receives one bit. -/
+private def localPushGain {r s l : ℕ}
+    (instr : Instr r s l) (port : Fin s) : ℕ :=
+  match instr with
+  | .push changed _ _ => if port = changed then 1 else 0
+  | _ => 0
+
+/-- Per-stack loss: only a nonempty physical Pop removes one bit. -/
+private def localPopLoss {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l) (port : Fin s) : ℕ :=
+  match instr with
+  | .pop changed _ _ _ =>
+      if port = changed ∧ (cfg.«stacks» changed).head? ≠ none then 1 else 0
+  | _ => 0
+
+/-- The scalar push increment used in the actual Rust live-bit preflight. -/
+def sourcePushGain {r s l : ℕ} (instr : Instr r s l) : ℕ :=
+  match instr with
+  | .push _ _ _ => 1
+  | _ => 0
+
+/-- The scalar pop decrement used in the actual Rust live-bit preflight. -/
+def sourcePopLoss {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l) : ℕ :=
+  match instr with
+  | .pop changed _ _ _ =>
+      if (cfg.«stacks» changed).head? ≠ none then 1 else 0
+  | _ => 0
+
+/-- At *every* stack, for all twelve instructions, the change in length
+is exactly the local push gain minus the local nonempty-pop loss. -/
+theorem sourceStackLength_balance {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l) (port : Fin s) :
+    ((BitProgram.execInstr instr cfg).«stacks» port).length +
+      localPopLoss instr cfg port =
+    (cfg.«stacks» port).length + localPushGain instr port := by
+  cases instr with
+  | halt => rfl
+  | goto next => rfl
+  | set dst value next => rfl
+  | copy dst src next => rfl
+  | bnot dst src next => rfl
+  | band dst a b next => rfl
+  | bor dst a b next => rfl
+  | bxor dst a b next => rfl
+  | branch test yes no => rfl
+  | push stack src next =>
+      by_cases h : port = stack
+      · subst port
+        simp [localPushGain, localPopLoss, BitProgram.execInstr]
+      · simp [localPushGain, localPopLoss, BitProgram.execInstr, h]
+  | peek stack value present next => rfl
+  | pop stack value present next =>
+      by_cases h : port = stack
+      · subst port
+        cases hs : cfg.«stacks» stack with
+        | nil =>
+            simp [localPushGain, localPopLoss, BitProgram.execInstr, hs]
+        | cons bit tail =>
+            simp [localPushGain, localPopLoss, BitProgram.execInstr, hs]
+      · simp [localPushGain, localPopLoss, BitProgram.execInstr, h]
+
+private theorem sourcePushGain_sum {r s l : ℕ} (instr : Instr r s l) :
+    (∑ port : Fin s, localPushGain instr port) = sourcePushGain instr := by
+  cases instr <;> simp [localPushGain, sourcePushGain]
+
+private theorem sourcePopLoss_sum {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l) :
+    (∑ port : Fin s, localPopLoss instr cfg port) = sourcePopLoss instr cfg := by
+  cases instr with
+  | pop stack value present next =>
+      cases hs : cfg.«stacks» stack with
+      | nil => simp [localPopLoss, sourcePopLoss, hs]
+      | cons bit tail => simp [localPopLoss, sourcePopLoss, hs]
+  | halt => simp [localPopLoss, sourcePopLoss]
+  | goto next => simp [localPopLoss, sourcePopLoss]
+  | set dst value next => simp [localPopLoss, sourcePopLoss]
+  | copy dst src next => simp [localPopLoss, sourcePopLoss]
+  | bnot dst src next => simp [localPopLoss, sourcePopLoss]
+  | band dst a b next => simp [localPopLoss, sourcePopLoss]
+  | bor dst a b next => simp [localPopLoss, sourcePopLoss]
+  | bxor dst a b next => simp [localPopLoss, sourcePopLoss]
+  | branch test yes no => simp [localPopLoss, sourcePopLoss]
+  | push stack src next => simp [localPopLoss, sourcePopLoss]
+  | peek stack value present next => simp [localPopLoss, sourcePopLoss]
+
+/-- Universal exact live-stack accounting for a physical source instruction.
+This covers empty pops and arbitrary register aliases without a state sample. -/
+theorem sourceLiveStackBits_step {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l) :
+    sourceLiveStackBits (BitProgram.execInstr instr cfg) +
+      sourcePopLoss instr cfg =
+    sourceLiveStackBits cfg + sourcePushGain instr := by
+  have hsum :
+      (Finset.univ.sum (fun port : Fin s =>
+        ((BitProgram.execInstr instr cfg).«stacks» port).length +
+          localPopLoss instr cfg port)) =
+      (Finset.univ.sum (fun port : Fin s =>
+        (cfg.«stacks» port).length + localPushGain instr port)) := by
+    apply Finset.sum_congr rfl
+    intro port _
+    exact sourceStackLength_balance instr cfg port
+  simpa only [Finset.sum_add_distrib, sourceLiveStackBits,
+    sourcePushGain_sum, sourcePopLoss_sum] using hsum
+
+/-- The exact Rust push preflight is sufficient for source live-bit capacity:
+non-push operations never increase the number of live bits, and a push is
+accepted only with a strictly available cell. No fixed stack or width bound. -/
+theorem sourceLiveStackBits_step_capacity {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l) (maxBits : ℕ)
+    (hcurrent : sourceLiveStackBits cfg ≤ maxBits)
+    (hpush : sourcePushGain instr = 1 →
+      sourceLiveStackBits cfg < maxBits) :
+    sourceLiveStackBits (BitProgram.execInstr instr cfg) ≤ maxBits := by
+  have hbalance := sourceLiveStackBits_step instr cfg
+  have hgain : sourcePushGain instr ≤ 1 := by
+    cases instr <;> simp [sourcePushGain]
+  by_cases hp : sourcePushGain instr = 1
+  · have havail := hpush hp
+    omega
+  · omega
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

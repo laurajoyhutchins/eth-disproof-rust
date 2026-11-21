@@ -10,8 +10,8 @@
 use lean_eth_reference::bit_program::{
     Config, DeferredProgram, Instr, Program, RunLimits, SourceGraphBinding,
 };
-use std::collections::VecDeque;
 use sha2::{Digest, Sha256};
+use std::collections::VecDeque;
 
 const GRAPH: &[u8] = include_bytes!("../fixtures/original-accumulate-observed-unverified.json");
 const GRAPH_SHA256: &str = "0af370ad3ca3f8a5a9c0a144e8ffc82c07bc9b24acd206fa3ed863d8a58d2ea3";
@@ -163,7 +163,10 @@ fn source_legal_accumulator_input(hit: bool) -> Config<8, 27> {
     // This must be 11011100 under the source's Encoding.frame.
     let mut dictionary = source_frame(&[true]);
     dictionary.extend(source_frame(&[true, false]));
-    assert_eq!(dictionary, [true, true, false, true, true, true, false, false]);
+    assert_eq!(
+        dictionary,
+        [true, true, false, true, true, true, false, false]
+    );
     initial.stacks[15].extend(dictionary);
     // Original inputTape reverses the query before placing it on stack 16.
     initial.stacks[16].push_back(hit);
@@ -182,11 +185,8 @@ fn observed_original_accumulator_executes_real_modular_hit_and_absent_key_miss()
     // The exact original instruction table is a source-observed fixture,
     // NOT an all-label Lean kernel-certified graph. This is an empirical
     // execution test of the existing canonical Rust BitProgram interpreter.
-    let source = DeferredProgram::<8, 27>::from_original_source_json(
-        GRAPH,
-        binding(GRAPH_SHA256),
-    )
-    .unwrap();
+    let source =
+        DeferredProgram::<8, 27>::from_original_source_json(GRAPH, binding(GRAPH_SHA256)).unwrap();
     let code = (0..309)
         .map(|pc| source.instruction_at(pc).unwrap())
         .collect::<Vec<_>>();
@@ -203,17 +203,31 @@ fn observed_original_accumulator_executes_real_modular_hit_and_absent_key_miss()
             )
             .expect("source-observed accumulator refused source-legal p=2,d=1 input");
         assert_eq!(cfg.pc, None, "original observed accumulator did not halt");
-        assert!(stats.instructions > 1, "no actual arithmetic/dictionary execution");
+        assert!(
+            stats.instructions > 1,
+            "no actual arithmetic/dictionary execution"
+        );
         // Expected one-word sum modulo 2: hit 1+1=0, absent key 1+0=1.
-        assert_bits(&cfg.stacks[17], if hit { &[false, false] } else { &[true, false] }, "17");
+        assert_bits(
+            &cfg.stacks[17],
+            if hit { &[false, false] } else { &[true, false] },
+            "17",
+        );
         assert_bits(&cfg.stacks[5], &[false, true], "5");
         assert_bits(&cfg.stacks[12], &[true, true], "12");
         assert_bits(&cfg.stacks[24], &[true], "24");
-        assert_bits(&cfg.stacks[15], &[true, true, false, true, true, true, false, false], "15");
+        assert_bits(
+            &cfg.stacks[15],
+            &[true, true, false, true, true, true, false, false],
+            "15",
+        );
         assert_bits(&cfg.stacks[16], &[hit], "16");
         for i in 0..27 {
             if ![5, 12, 15, 16, 17, 24].contains(&i) {
-                assert!(cfg.stacks[i].is_empty(), "source scratch stack {i} not cleared");
+                assert!(
+                    cfg.stacks[i].is_empty(),
+                    "source scratch stack {i} not cleared"
+                );
             }
         }
         println!(

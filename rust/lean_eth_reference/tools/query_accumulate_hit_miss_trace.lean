@@ -49,34 +49,53 @@ private def traceCase (label : String) (tape : Tape)
   let status := if c.pc.isNone then "HALTED" else "CAPPED"
   IO.println s!"END|{label}|{steps}|{status}"
 
-private def runOriginalCases : IO Unit := do
+-- Define the prepared source words once at top level. These are the exact
+-- same inputs as the prior experiments, but avoid any scope ambiguity across
+-- the top-level `#eval` command's elaborated do-notation.
+private def sourceModulus : List Bool := by
   letI : Fact (Nat.Prime 2) := ⟨by decide⟩
-  let modulus := (SubexpPreparedQuartic.canonicalModulus 2 1).bits
-  let width := List.replicate (SubexpLiftRing.baseWidth 2 1) true
-  let count := [true]
-  let one := (SubexpPreparedQuartic.literalWordRun 2 1 [true]).1.val
-  let entries : List (List Bool × List Bool) := [([true], one)]
-  let hitQuery := [true]
-  let missQuery := [false]
-  let validInputs : Bool :=
-    (entries.lookup hitQuery == some one) &&
-    (entries.lookup missQuery == none) &&
-    (one.length == SubexpLiftRing.baseWidth 2 1)
-  if validInputs then
-    pure ()
-  else
-    throw (IO.userError "original dictionary hit/miss or coefficient width refused")
+  exact (SubexpPreparedQuartic.canonicalModulus 2 1).bits
+
+private def sourceCoefficient : List Bool := by
+  letI : Fact (Nat.Prime 2) := ⟨by decide⟩
+  exact (SubexpPreparedQuartic.literalWordRun 2 1 [true]).1.val
+
+private def sourceWidth : List Bool :=
+  List.replicate (SubexpLiftRing.baseWidth 2 1) true
+
+private def sourceCount : List Bool := [true]
+private def sourceHitKey : List Bool := [true]
+private def sourceMissKey : List Bool := [false]
+
+private def sourceEntries : List (List Bool × List Bool) :=
+  [(sourceHitKey, sourceCoefficient)]
+
+private def sourceHitPresent : Bool :=
+  sourceEntries.lookup sourceHitKey == some sourceCoefficient
+
+private def sourceMissAbsent : Bool :=
+  sourceEntries.lookup sourceMissKey == none
+
+private def sourceWidthValid : Bool :=
+  sourceCoefficient.length == SubexpLiftRing.baseWidth 2 1
+
+private def runOriginalCases : IO Unit := do
   IO.println "ORIGINAL_ACCUMULATE_TRACE_V1"
-  IO.println s!"PARAM|prime|2"
-  IO.println s!"PARAM|exponent|1"
+  IO.println "PARAM|prime|2"
+  IO.println "PARAM|exponent|1"
   IO.println s!"PARAM|width|{SubexpLiftRing.baseWidth 2 1}"
-  IO.println s!"PARAM|modulus|{encodeBits modulus}"
-  IO.println s!"PARAM|entries|1"
-  IO.println s!"PARAM|coefficient|{encodeBits one}"
-  IO.println s!"PARAM|hit_query|{encodeBits hitQuery}"
-  IO.println s!"PARAM|miss_query|{encodeBits missQuery}"
-  traceCase "hit" (inputTape modulus width count entries hitQuery one) 2500
-  traceCase "miss" (inputTape modulus width count entries missQuery one) 2500
+  IO.println s!"PARAM|modulus|{encodeBits sourceModulus}"
+  IO.println "PARAM|entries|1"
+  IO.println s!"PARAM|coefficient|{encodeBits sourceCoefficient}"
+  IO.println s!"PARAM|hit_query|{encodeBits sourceHitKey}"
+  IO.println s!"PARAM|miss_query|{encodeBits sourceMissKey}"
+  IO.println s!"PARAM|hit_present|{sourceHitPresent}"
+  IO.println s!"PARAM|miss_absent|{sourceMissAbsent}"
+  IO.println s!"PARAM|width_valid|{sourceWidthValid}"
+  traceCase "hit" (inputTape sourceModulus sourceWidth sourceCount
+    sourceEntries sourceHitKey sourceCoefficient) 2500
+  traceCase "miss" (inputTape sourceModulus sourceWidth sourceCount
+    sourceEntries sourceMissKey sourceCoefficient) 2500
 
 #eval runOriginalCases
 

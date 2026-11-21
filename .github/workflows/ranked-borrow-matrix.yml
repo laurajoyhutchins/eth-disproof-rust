@@ -1,0 +1,171 @@
+name: Aeneas borrowed-vector return matrix
+
+on:
+  pull_request:
+    paths:
+      - 'verification/ranked-source/src/borrow_return_probe.rs'
+      - 'verification/ranked-source/src/lib.rs'
+      - 'verification/ranked-source/proofs/BorrowReturnP2.lean'
+      - 'verification/ranked-source/hax.toml'
+      - '.github/workflows/ranked-borrow-matrix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ranked-borrow-matrix-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  borrow-matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Rust behavior and formatting controls
+        run: |
+          cargo fmt --all -- --check
+          cargo test --locked -p ranked-source-proof-harness --lib
+          cargo clippy --locked -p ranked-source-proof-harness --all-targets -- -D warnings
+
+      - name: Restore pinned hax
+        id: hax-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cargo/bin/cargo-hax
+          key: pinned-cargo-hax-v0.4.2-ubuntu24-rust199
+
+      - name: Verify pinned hax 0.4.2
+        run: |
+          set -euo pipefail
+          if ! command -v cargo-hax >/dev/null 2>&1; then
+            cargo install --version 0.4.2 --locked cargo-hax
+          fi
+          cargo hax --version | tee "$RUNNER_TEMP/hax-version.txt"
+          grep -Fx 'version=0.4.2' "$RUNNER_TEMP/hax-version.txt"
+
+      - name: Cache pinned hax before negative experiments
+        if: steps.hax-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cargo/bin/cargo-hax
+          key: pinned-cargo-hax-v0.4.2-ubuntu24-rust199
+
+      - name: Extract each original probe and the production executor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd verification/ranked-source
+          mkdir -p probe-logs
+          printf 'scenario\textraction\tsource_body\tlocal_placeholders\n' > probe-logs/matrix.tsv
+          # Must reject known dishonest/generated Lean, not just look for
+          # the existence of a placeholder filter.
+          forbidden='(^|[^[:alnum:]_])(sorry|admit|axiom|sorryAx)([^[:alnum:]_]|$)'
+          for poison in 'def x := by sorry' 'def x := by admit' 'axiom x : False' 'def x := sorryAx'; do
+            if ! printf '%s\n' "$poison" | grep -Eq "$forbidden"; then
+              echo "broken placeholder detector: $poison" >&2
+              exit 1
+            fi
+          done
+          if printf '%s\n' 'def x := unsorryed' | grep -Eq "$forbidden"; then
+            echo 'false-positive placeholder detector' >&2
+            exit 1
+          fi
+
+          result=0
+          for spec in \
+              'probe-p0:ProbeP0:p0_result_only' \
+              'probe-p1:ProbeP1:p1_direct_scalar' \
+              'probe-p2:ProbeP2:p2_direct_result' \
+              'probe-p3:ProbeP3:p3_optional_scalar' \
+              'probe-p4:ProbeP4:p4_optional_result' \
+              'probe-p5:ProbeP5:p5_checked_direct' \
+              'probe-p6:ProbeP6:p6_checked_optional' \
+              'probe-p7:ProbeP7:p7_checked_owned' \
+              'probe-p8:ProbeP8:p8_checked_only' \
+              'probe-p9:ProbeP9:p9_option_payload' \
+              'probe-p10:ProbeP10:p10_checked_scalar_sink' \
+              'probe-p11:ProbeP11:p11_checked_option_sink' \
+              'probe-p12:ProbeP12:p12_option_then_result' \
+              'ranked-source:RankedSource:execute_ranked_wire'; do
+            IFS=: read -r scenario dir function <<< "$spec"
+            extracted=blocked
+            body=missing
+            placeholders=unassessed
+            if cargo hax extract "$scenario" --locked > "probe-logs/$scenario.log" 2>&1; then
+              extracted=passed
+            fi
+            generated="proofs/$scenario/lean/$dir/Extraction"
+            if [ -f "$generated/Funs.lean" ] && [ -f "$generated/Types.lean" ]; then
+              if [ "$scenario" = ranked-source ]; then
+                declaration="^def representation_ranked_input.$function"
+              else
+                declaration="^def borrow_return_probe.$function"
+              fi
+              if grep -Eq "$declaration" "$generated/Funs.lean"; then
+                body=present
+              fi
+              if grep -En "$forbidden" "$generated/Funs.lean" "$generated/Types.lean" > "probe-logs/$scenario-placeholders.txt"; then
+                placeholders=present
+              else
+                code=$?
+                if [ "$code" -eq 1 ]; then
+                  placeholders=absent_locally
+                else
+                  placeholders=scan_error
+                fi
+              fi
+            fi
+            if [ "$extracted" != passed ] || [ "$body" != present ] || [ "$placeholders" != absent_locally ]; then
+              result=1
+            fi
+            printf '%s\t%s\t%s\t%s\n' "$scenario" "$extracted" "$body" "$placeholders" >> probe-logs/matrix.tsv
+            echo "$scenario: extraction=$extracted; source_body=$body; local_placeholders=$placeholders" >> "$GITHUB_STEP_SUMMARY"
+            # Failure diagnostics are independent of whether later cases pass.
+            grep -E 'Internal error|Could not translate|Source:|Unreachable|hax: aeneas exited|hax: .*failed' "probe-logs/$scenario.log" | tail -20 >> "probe-logs/diagnostics.txt" || true
+          done
+          cat probe-logs/matrix.tsv
+          echo "Probe results are extraction observations, NOT Lean typechecks or a Rust correspondence theorem." >> "$GITHUB_STEP_SUMMARY"
+          exit "$result"
+
+      - name: Kernel-check conditional theorem about actual P2 extraction
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="verification/ranked-source/proofs/probe-p2/lean"
+          generated="$package/ProbeP2/Extraction/Funs.lean"
+          test -f "$generated"
+          grep -q '^def borrow_return_probe.p2_direct_result' "$generated"
+          grep -Fx 'leanprover/lean4:v4.31.0' "$package/lean-toolchain"
+          cp verification/ranked-source/proofs/BorrowReturnP2.lean "$package/BorrowReturnP2.lean"
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$RUNNER_TEMP/elan-init.sh"
+          sh "$RUNNER_TEMP/elan-init.sh" -y --no-modify-path
+          export PATH="$HOME/.elan/bin:$PATH"
+          (
+            cd "$package"
+            lake -K maxJobs=2 build
+            lake env lean BorrowReturnP2.lean | tee "$RUNNER_TEMP/p2-theorem-axioms.txt"
+          )
+          if grep -Eq 'sorryAx' "$RUNNER_TEMP/p2-theorem-axioms.txt"; then
+            echo 'EXTRACTED_P2_CONDITIONAL_EFFECT=UNPROVED_AXIOMS' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'EXTRACTED_P2_CONDITIONAL_EFFECT=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve failed and successful LLBC/Lean evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ranked-borrow-matrix-extraction
+          path: |
+            verification/ranked-source/probe-logs/
+            verification/ranked-source/proofs/probe-p*/lean/
+            verification/ranked-source/proofs/ranked-source/lean/
+          if-no-files-found: warn
+          retention-days: 7

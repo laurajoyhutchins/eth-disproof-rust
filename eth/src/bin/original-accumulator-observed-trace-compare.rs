@@ -137,8 +137,10 @@ fn assert_source_input(
     }
     let source_modulus = bits(param(params, "modulus")?)?;
     if state.stacks[5] != source_modulus
-        || state.stacks[12] != VecDeque::from(vec![true; width])
-        || state.stacks[24] != VecDeque::from(vec![true])
+        || state.stacks[12].len() != width
+        || !state.stacks[12].iter().all(|bit| *bit)
+        || state.stacks[24].len() != 1
+        || state.stacks[24].front() != Some(&true)
         || state.stacks[17] != source_coefficient
     {
         return Err(invalid(

@@ -403,6 +403,34 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
     }
 }
 
+/// Checked scalar analogue of the Lean source live-stack balance law.
+///
+/// The caller validates all instruction operands first, so any indexed stack
+/// access below is safe. No state is mutated on refusal. Under an accurate
+/// cached count, a nonempty Pop cannot underflow and an admitted Push cannot
+/// overflow usize, but use checked operations anyway so a violated invariant
+/// causes an explicit refusal rather than a wrapped or panicking counter.
+fn next_live_bit_count<const R: usize, const S: usize>(
+    instruction: &Instr,
+    config: &Config<R, S>,
+    cached: usize,
+    limit: usize,
+) -> Result<usize, Error> {
+    match *instruction {
+        Instr::Push { .. } => {
+            if cached >= limit {
+                Err(Error::Capacity("BitProgram stack-bit limit".into()))
+            } else {
+                cached.checked_add(1).ok_or(Error::Overflow)
+            }
+        }
+        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => {
+            cached.checked_sub(1).ok_or(Error::Overflow)
+        }
+        _ => Ok(cached),
+    }
+}
+
 /// Execute the exact physical BitProgram machine against an instruction lookup.
 /// The caller supplies the finite number of physical labels so both the active PC
 /// and every decoded successor must be admitted before any state mutation.
@@ -439,23 +467,83 @@ where
         // operand and *all* successor labels against the actual finite table
         // before indexing any stack or modifying the configuration.
         instruction.validate::<R, S>(label_count)?;
-        match instruction {
-            Instr::Push { .. } => {
-                if live_bits >= limits.max_stack_bits {
-                    return Err(Error::Capacity("BitProgram stack-bit limit".into()));
-                }
-                live_bits = live_bits.checked_add(1).ok_or(Error::Overflow)?;
-            }
-            Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => {
-                live_bits -= 1;
-            }
-            _ => {}
-        }
+        // Compute all fallible scalar operations *before* mutating the
+        // configuration. This makes arithmetic refusal atomic at the
+        // instruction boundary, including an inconsistent cached counter.
+        let next_live_bits =
+            next_live_bit_count(&instruction, config, live_bits, limits.max_stack_bits)?;
+        let next_instructions = stats.instructions.checked_add(1).ok_or(Error::Overflow)?;
         execute_instr(&instruction, config);
-        stats.instructions += 1;
+        live_bits = next_live_bits;
+        stats.instructions = next_instructions;
         stats.peak_stack_bits = stats.peak_stack_bits.max(live_bits);
     }
     Ok(stats)
+}
+
+#[cfg(test)]
+mod checked_counter_tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    #[test]
+    fn push_preflight_is_exact_up_to_machine_word_maximum() {
+        let cfg = Config::<1, 1> {
+            pc: Some(0),
+            regs: [true],
+            stacks: [VecDeque::new()],
+        };
+        let push = Instr::Push {
+            stack: 0,
+            src: 0,
+            next: 0,
+        };
+        // All machine-word values are tested without allocating a giant stack.
+        assert_eq!(
+            next_live_bit_count(&push, &cfg, usize::MAX - 1, usize::MAX),
+            Ok(usize::MAX)
+        );
+        assert!(matches!(
+            next_live_bit_count(&push, &cfg, usize::MAX, usize::MAX),
+            Err(Error::Capacity(_))
+        ));
+        assert!(matches!(
+            next_live_bit_count(&push, &cfg, 0, 0),
+            Err(Error::Capacity(_))
+        ));
+        assert_eq!(next_live_bit_count(&push, &cfg, 0, 1), Ok(1));
+    }
+
+    #[test]
+    fn nonempty_pop_and_empty_pop_preserve_checked_counter_contract() {
+        let pop = Instr::Pop {
+            stack: 0,
+            value: 0,
+            present: 0,
+            next: 0,
+        };
+        let mut cfg = Config::<1, 1> {
+            pc: Some(0),
+            regs: [false],
+            stacks: [VecDeque::new()],
+        };
+        let before = cfg.clone();
+        assert_eq!(next_live_bit_count(&pop, &cfg, 0, 0), Ok(0));
+        assert_eq!(cfg, before);
+        cfg.stacks[0].push_front(true);
+        let before = cfg.clone();
+        assert_eq!(next_live_bit_count(&pop, &cfg, 1, 1), Ok(0));
+        assert_eq!(
+            next_live_bit_count(&pop, &cfg, usize::MAX, usize::MAX),
+            Ok(usize::MAX - 1)
+        );
+        assert_eq!(
+            next_live_bit_count(&pop, &cfg, 0, 1),
+            Err(Error::Overflow),
+            "corrupted cache must refuse instead of underflowing"
+        );
+        assert_eq!(cfg, before, "scalar refusal must not mutate any state");
+    }
 }
 
 #[derive(Clone, Debug)]

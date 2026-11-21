@@ -1151,4 +1151,95 @@ theorem arrayRunnerOne_refines_scanned {r s l : ℕ}
   exact arrayRunnerOne_refines program maxBits maxSteps executed
     (sourceLiveStackBits cfg) raw cfg h
 
+
+/-!
+## Arbitrarily long finite bounded-runner traces
+
+A one-step simulation is not itself a trace theorem: after every successful
+instruction the cache, complete state, and executed-step count must remain
+related. The following small-step trace relation records terminal outcomes
+and counts every successful instruction, rather than treating a step-limit
+refusal as a halt. It does not require the original 309-instruction table.
+-/
+
+/-- Trace of a bounded runner, stopping at a *specific* outcome. The step
+budget is fixed, while the executed count and cached stack-bit count evolve.
+The only recursion is on an explicitly witnessed successful transition. -/
+inductive BoundedRunnerTrace {α : Type}
+    (step : Nat → Nat → α → RunnerOneOutcome (α × Nat)) :
+    Nat → Nat → α → RunnerOneOutcome Unit → Prop where
+  | terminal {executed cached : Nat} {state : α}
+      {result : RunnerOneOutcome Unit}
+      (hresult :
+        (step executed cached state = .halted ∧ result = .halted) ∨
+        (step executed cached state = .initialCapacity ∧ result = .initialCapacity) ∨
+        (step executed cached state = .stepLimit ∧ result = .stepLimit) ∨
+        (step executed cached state = .stackCapacity ∧ result = .stackCapacity) ∨
+        (step executed cached state = .invalid ∧ result = .invalid)) :
+      BoundedRunnerTrace step executed cached state result
+  | advance {executed cached nextCached : Nat}
+      {state next : α} {result : RunnerOneOutcome Unit}
+      (hstep : step executed cached state = .advanced (next, nextCached))
+      (hrest : BoundedRunnerTrace step (executed + 1) nextCached next result) :
+      BoundedRunnerTrace step executed cached state result
+
+/-- Every finite source trace has a matching independently executed
+array-shaped trace. This is not merely a one-step theorem: the induction
+preserves full state representation and cached count across arbitrarily
+many successful steps, and preserves the exact terminal/refusal category. -/
+theorem arrayRunnerTrace_refines {r s l : ℕ}
+    (program : Program r s l) (maxBits maxSteps : Nat)
+    (raw : ArrayCfg) (cfg : Cfg r s l)
+    (executed cached : Nat) (result : RunnerOneOutcome Unit)
+    (hrep : Represents raw cfg)
+    (htrace : BoundedRunnerTrace
+      (sourceRunnerOne program maxBits maxSteps)
+      executed cached cfg result) :
+    BoundedRunnerTrace
+      (arrayRunnerOne program maxBits maxSteps)
+      executed cached raw result := by
+  induction htrace generalizing raw with
+  | terminal hresult =>
+      have hsim := arrayRunnerOne_refines program maxBits maxSteps
+        executed cached raw cfg hrep
+      rcases hresult with h | h | h | h | h
+      · rcases h with ⟨hsource, rfl⟩
+        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+          simp [RunnerOneRepresents, hsource, harray] at hsim
+        exact BoundedRunnerTrace.terminal (Or.inl ⟨harray, rfl⟩)
+      · rcases h with ⟨hsource, rfl⟩
+        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+          simp [RunnerOneRepresents, hsource, harray] at hsim
+        exact BoundedRunnerTrace.terminal (Or.inr (Or.inl ⟨harray, rfl⟩))
+      · rcases h with ⟨hsource, rfl⟩
+        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+          simp [RunnerOneRepresents, hsource, harray] at hsim
+        exact BoundedRunnerTrace.terminal
+          (Or.inr (Or.inr (Or.inl ⟨harray, rfl⟩)))
+      · rcases h with ⟨hsource, rfl⟩
+        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+          simp [RunnerOneRepresents, hsource, harray] at hsim
+        exact BoundedRunnerTrace.terminal
+          (Or.inr (Or.inr (Or.inr (Or.inl ⟨harray, rfl⟩))))
+      · rcases h with ⟨hsource, rfl⟩
+        cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw <;>
+          simp [RunnerOneRepresents, hsource, harray] at hsim
+        exact BoundedRunnerTrace.terminal
+          (Or.inr (Or.inr (Or.inr (Or.inr ⟨harray, rfl⟩))))
+  | @advance executed cached nextCached cfg next result hstep hrest ih =>
+      have hsim := arrayRunnerOne_refines program maxBits maxSteps
+        executed cached raw cfg hrep
+      cases harray : arrayRunnerOne program maxBits maxSteps executed cached raw with
+      | invalid => simp [RunnerOneRepresents, hstep, harray] at hsim
+      | initialCapacity => simp [RunnerOneRepresents, hstep, harray] at hsim
+      | halted => simp [RunnerOneRepresents, hstep, harray] at hsim
+      | stepLimit => simp [RunnerOneRepresents, hstep, harray] at hsim
+      | stackCapacity => simp [RunnerOneRepresents, hstep, harray] at hsim
+      | advanced pair =>
+          rcases pair with ⟨nextRaw, countRaw⟩
+          have hpair : countRaw = nextCached ∧ Represents nextRaw next := by
+            simpa [RunnerOneRepresents, hstep, harray] using hsim
+          rcases hpair with ⟨rfl, hnext⟩
+          exact BoundedRunnerTrace.advance harray (ih nextRaw hnext)
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

@@ -969,4 +969,186 @@ theorem sourceCachedStep_refines_of_invariant {r s l : ℕ}
   subst cached
   exact sourceCachedStep_refines program maxBits cfg
 
+
+/-!
+## Array-shaped bounded runner and explicit terminal/refusal outcomes
+
+The source BitProgram.step is unbounded and returns none on an already
+halted state. The Rust runner has distinct error outcomes. This next
+machine-shaped model adds width and numeric PC validation, an initial
+capacity gate, a physical-step budget, a push gate, and an incremental
+count. Crucially, its successful physical instruction is executed through
+the *independent* execArrayInstr, not the source execInstr.
+
+This is a pure Lean mathematical interpreter: all numerals are natural
+numbers, and any application to the production Rust implementation must
+separately justify usize, native deque and allocation semantics.
+-/
+
+/-- Outcomes observable at the bounded Rust-style runner boundary.
+An invalid array/PC cannot be decoded to a source configuration. -/
+inductive RunnerOneOutcome (α : Type) where
+  | invalid
+  | initialCapacity
+  | halted
+  | stepLimit
+  | stackCapacity
+  | advanced (next : α)
+deriving Repr
+
+/-- Native-array-style Pop accounting: inspect the head of the current
+raw stack, independently of the source function-valued stack map. -/
+private def arrayPopLoss {r s l : ℕ}
+    (instr : Instr r s l) (raw : ArrayCfg) : Nat :=
+  match instr with
+  | .pop changed _ _ _ =>
+      if (readStack raw changed).head? ≠ none then 1 else 0
+  | _ => 0
+
+private theorem arrayPopLoss_refines {r s l : ℕ}
+    {raw : ArrayCfg} {cfg : Cfg r s l}
+    (h : Represents raw cfg) (instr : Instr r s l) :
+    arrayPopLoss instr raw = sourcePopLoss instr cfg := by
+  cases instr with
+  | pop stack _ _ _ =>
+      simp [arrayPopLoss, sourcePopLoss, represents_readStack h stack]
+  | halt => rfl
+  | goto _ => rfl
+  | set _ _ _ => rfl
+  | copy _ _ _ => rfl
+  | bnot _ _ _ => rfl
+  | band _ _ _ _ => rfl
+  | bor _ _ _ _ => rfl
+  | bxor _ _ _ _ => rfl
+  | branch _ _ _ => rfl
+  | push _ _ _ => rfl
+  | peek _ _ _ _ => rfl
+
+/-- Source outcome with the same visible guard order as the shared Rust
+runner: initial capacity, halt, step budget, then push capacity. -/
+def sourceRunnerOne {r s l : ℕ} (program : Program r s l)
+    (maxBits maxSteps executed cached : Nat) (cfg : Cfg r s l) :
+    RunnerOneOutcome (Cfg r s l × Nat) :=
+  if maxBits < cached then .initialCapacity
+  else
+    match cfg.pc with
+    | none => .halted
+    | some pc =>
+        if maxSteps ≤ executed then .stepLimit
+        else
+          let instr := program.code pc
+          if sourcePushGain instr = 1 ∧ maxBits ≤ cached then
+            .stackCapacity
+          else
+            .advanced (BitProgram.execInstr instr cfg,
+              sourceCachedCountAfter instr cfg cached)
+
+/-- Independently executed array-shaped counterpart. All source operands
+are typed; concrete numeric PC and array widths need separate admission. -/
+def arrayRunnerOne {r s l : ℕ} (program : Program r s l)
+    (maxBits maxSteps executed cached : Nat) (raw : ArrayCfg) :
+    RunnerOneOutcome (ArrayCfg × Nat) :=
+  if raw.regs.size = r ∧ raw.«stacks».size = s then
+    if maxBits < cached then .initialCapacity
+    else
+      match raw.pc with
+      | none => .halted
+      | some n =>
+          if maxSteps ≤ executed then .stepLimit
+          else if hn : n < l then
+            let instr := program.code ⟨n, hn⟩
+            if sourcePushGain instr = 1 ∧ maxBits ≤ cached then
+              .stackCapacity
+            else
+              .advanced (execArrayInstr instr raw,
+                cached + sourcePushGain instr - arrayPopLoss instr raw)
+          else .invalid
+  else .invalid
+
+/-- A successful step relates all registers, PC, stacks and cached count.
+Halting and each distinct capacity refusal must agree *by constructor*. -/
+def RunnerOneRepresents {r s l : ℕ}
+    (raw : RunnerOneOutcome (ArrayCfg × Nat))
+    (source : RunnerOneOutcome (Cfg r s l × Nat)) : Prop :=
+  match raw, source with
+  | .initialCapacity, .initialCapacity => True
+  | .halted, .halted => True
+  | .stepLimit, .stepLimit => True
+  | .stackCapacity, .stackCapacity => True
+  | .advanced (rawNext, rawCount), .advanced (sourceNext, sourceCount) =>
+      rawCount = sourceCount ∧ Represents rawNext sourceNext
+  | _, _ => False
+
+/-- Universal outcome-level simulation of the independently defined
+array runner by the original source instruction semantics, including
+halt, initial capacity, step budget and push-capacity refusal.
+No physical instruction table is enumerated. -/
+theorem arrayRunnerOne_refines {r s l : ℕ}
+    (program : Program r s l) (maxBits maxSteps executed cached : Nat)
+    (raw : ArrayCfg) (cfg : Cfg r s l)
+    (h : Represents raw cfg) :
+    RunnerOneRepresents
+      (arrayRunnerOne program maxBits maxSteps executed cached raw)
+      (sourceRunnerOne program maxBits maxSteps executed cached cfg) := by
+  rcases h with ⟨hpc, hr, hregs, hs, hstacks⟩
+  have hwidth : raw.regs.size = r ∧ raw.«stacks».size = s := ⟨hr, hs⟩
+  have hrep : Represents raw cfg := ⟨hpc, hr, hregs, hs, hstacks⟩
+  by_cases hinit : maxBits < cached
+  · simp [arrayRunnerOne, sourceRunnerOne, RunnerOneRepresents, hwidth, hinit]
+  · cases hc : cfg.pc with
+    | none =>
+        have hraw : raw.pc = none := by simpa [hc] using hpc
+        simp [arrayRunnerOne, sourceRunnerOne, RunnerOneRepresents,
+          hwidth, hinit, hc, hraw]
+    | some pc =>
+        have hraw : raw.pc = some pc.val := by simpa [hc] using hpc
+        by_cases hsteps : maxSteps ≤ executed
+        · simp [arrayRunnerOne, sourceRunnerOne, RunnerOneRepresents,
+            hwidth, hinit, hc, hraw, hsteps]
+        · let instr := program.code pc
+          by_cases hpush :
+              sourcePushGain instr = 1 ∧ maxBits ≤ cached
+          · simp [arrayRunnerOne, sourceRunnerOne, RunnerOneRepresents,
+              hwidth, hinit, hc, hraw, hsteps, pc.isLt, instr, hpush]
+          · have hpop := arrayPopLoss_refines hrep instr
+            have hnext := execArrayInstr_refines hrep instr
+            have hcounter :
+                cached + sourcePushGain instr - arrayPopLoss instr raw =
+                  sourceCachedCountAfter instr cfg cached := by
+              simp [sourceCachedCountAfter, hpop]
+            simpa [arrayRunnerOne, sourceRunnerOne, RunnerOneRepresents,
+              hwidth, hinit, hc, hraw, hsteps, pc.isLt, instr, hpush,
+              hcounter] using (And.intro hcounter hnext)
+
+/-- A full index-based scan of represented raw stack lengths, corresponding
+to the logical value computed at Rust runner initialization. -/
+def arrayLiveStackBits {s : ℕ} (raw : ArrayCfg) : Nat :=
+  ∑ port : Fin s, (readStack raw port).length
+
+/-- The array-shaped full scan agrees with the source full stack-length
+sum, including empty stacks and arbitrary numbers of ports. -/
+theorem arrayLiveStackBits_refines {r s l : ℕ}
+    {raw : ArrayCfg} {cfg : Cfg r s l}
+    (h : Represents raw cfg) :
+    arrayLiveStackBits (s := s) raw = sourceLiveStackBits cfg := by
+  unfold arrayLiveStackBits sourceLiveStackBits
+  apply Finset.sum_congr rfl
+  intro port _
+  rw [represents_readStack h port]
+
+/-- The independently represented initial count can be derived by a
+full array scan rather than supplied as an unexplained invariant. -/
+theorem arrayRunnerOne_refines_scanned {r s l : ℕ}
+    (program : Program r s l) (maxBits maxSteps executed : Nat)
+    (raw : ArrayCfg) (cfg : Cfg r s l)
+    (h : Represents raw cfg) :
+    RunnerOneRepresents
+      (arrayRunnerOne program maxBits maxSteps executed
+        (arrayLiveStackBits (s := s) raw) raw)
+      (sourceRunnerOne program maxBits maxSteps executed
+        (sourceLiveStackBits cfg) cfg) := by
+  rw [arrayLiveStackBits_refines h]
+  exact arrayRunnerOne_refines program maxBits maxSteps executed
+    (sourceLiveStackBits cfg) raw cfg h
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

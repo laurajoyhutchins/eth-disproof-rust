@@ -704,9 +704,13 @@ theorem sourceBoundedTrace_capacity {r s l : ℕ}
     (htrace : SourceBoundedTrace program maxBits n initial final)
     (hin : sourceLiveStackBits initial ≤ maxBits) :
     sourceLiveStackBits final ≤ maxBits := by
+  revert hin
   induction htrace with
-  | refl cfg => exact hin
+  | refl cfg =>
+      intro hin
+      exact hin
   | @cons n cfg mid final hstep htail ih =>
+      intro hin
       cases hpc : cfg.pc with
       | none =>
           simp [sourceBoundedStep, hpc] at hstep

@@ -1,0 +1,121 @@
+name: Original numerical accumulator first instruction kernel probe
+
+on:
+  pull_request:
+    branches:
+      - feat/query-aot-source-20261113
+    paths:
+      - '.github/workflows/original-accumulate-pc1-kernel.yml'
+      - 'rust/lean_eth_reference/tools/query_accumulate_single_pc_kernel.lean'
+
+permissions:
+  contents: read
+
+# Expensive original-source-only diagnostic. Not a routine main CI gate.
+jobs:
+  original-one-site:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      LEAN_ROOT: instrumentation/lean-env
+      PINNED_ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Checkout pinned real OpenAI SAT source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth=1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test "$(git -C upstream/openai-math hash-object lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.lean)" = 3e1664be261748c6e12a2d1cafb033dc26131bf9
+          ln -s "$PINNED_ORIGINAL_SOURCE/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Restore pinned Lean and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Verify exact Lean 4.34.1 and pinned Mathlib revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$LEAN_ROOT/lean-toolchain")" = leanprover/lean4:v4.34.1
+          test "$(git -C "$LEAN_ROOT/.lake/packages/mathlib" rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+
+      - name: Restore original cached OAI modules
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-hit-miss-${{ github.run_id }}
+          restore-keys: |
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-
+
+      - name: Kernel-check original physical pc one without complete-table normalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SOURCE_ONE_SITE_OUT="$RUNNER_TEMP/original-accumulate-pc1"
+          mkdir -p "$SOURCE_ONE_SITE_OUT"
+          python3 - <<'PY'
+          import hashlib, json, os, sys
+          from pathlib import Path
+          sys.path.insert(0,"rust/lean_eth_reference/tools")
+          from query_stream_aot import run_bounded, MAX_EXPORT_RSS_BYTES
+          root=Path(os.environ["GITHUB_WORKSPACE"])
+          lake=root/"instrumentation/lean-env"
+          proof=root/"rust/lean_eth_reference/tools/query_accumulate_single_pc_kernel.lean"
+          olean=lake/".lake/build/lib/lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.olean"
+          output=Path(os.environ["SOURCE_ONE_SITE_OUT"])
+          result={"status":"REFUSED", "original_commit":os.environ["ORIGINAL_SOURCE_SHA"],
+                  "source_blob":"3e1664be261748c6e12a2d1cafb033dc26131bf9",
+                  "physical_pc":1,"opcode":"pop:15:0:1:2",
+                  "scope":"one_original_source_physical_address_only",
+                  "whole_309_opcode_certificate":False,"actual_rust_refinement":False}
+          try:
+            if not olean.is_file() or olean.is_symlink():
+              raise ValueError("pinned original accumulate .olean cache missing")
+            result["original_olean_sha256"]=hashlib.sha256(olean.read_bytes()).hexdigest()
+            result["proof_sha256"]=hashlib.sha256(proof.read_bytes()).hexdigest()
+            checked=run_bounded(["lake","env","lean","-j","1","-M","9216",str(proof)],
+                                lake,300,log_base=output/"kernel",
+                                rss_limit_bytes=MAX_EXPORT_RSS_BYTES)
+            if checked.returncode or checked.stdout.strip() or checked.stderr.strip():
+              raise ValueError("original physical pc1 proof refused exit="+
+                               str(checked.returncode)+"; stdout="+checked.stdout[-1800:]+
+                               "; stderr="+checked.stderr[-1800:])
+            result["status"]="ORIGINAL_SOURCE_PC1_KERNEL_CHECKED"
+          except Exception as e:
+            result["reason"]=str(e)[-3500:]
+          (output/"receipt.json").write_text(json.dumps(result,sort_keys=True,indent=2)+"\n")
+          print("ORIGINAL_ACCUMULATE_PC1="+json.dumps(result,sort_keys=True),flush=True)
+          if result["status"]!="ORIGINAL_SOURCE_PC1_KERNEL_CHECKED":
+            raise SystemExit(2)
+          PY
+
+      - name: Preserve original one-site kernel result or exact refusal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-accumulate-pc1-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/original-accumulate-pc1/
+          if-no-files-found: warn
+          retention-days: 14

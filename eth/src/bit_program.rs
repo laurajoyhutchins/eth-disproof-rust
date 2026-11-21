@@ -469,49 +469,21 @@ impl<const R: usize, const S: usize> Program<R, S> {
         Ok(true)
     }
 
-    /// Refuses before a step that would exceed either limit; never returns an
-    /// incomplete execution as a completed answer. Counts *source instructions*,
-    /// not primitive TM2 microsteps or heap memory.
+    /// Run through the *same* bounded machine as deferred source graphs.
+    /// In particular, there is only one cached live-bit counter and one
+    /// capacity/refusal preflight for both instruction lookup strategies.
+    /// Counts source instructions, not primitive TM2 steps or heap memory.
     pub fn run(&self, config: &mut Config<R, S>, limits: RunLimits) -> Result<RunStats, Error> {
-        let mut stats = RunStats {
-            peak_stack_bits: config.stack_bits()?,
-            ..RunStats::default()
-        };
-        if stats.peak_stack_bits > limits.max_stack_bits {
-            return Err(Error::Capacity("initial bit-stack capacity".into()));
-        }
-        // Maintain exact live stack cells incrementally. Re-scanning every
-        // stack after each instruction would add an O(S) interpreter tax to
-        // Lean's O(1)-stack-operation source machine.
-        let mut live_bits = stats.peak_stack_bits;
-        while let Some(pc) = config.pc {
-            if stats.instructions >= limits.max_steps {
-                return Err(Error::Capacity("BitProgram instruction limit".into()));
-            }
-            let instruction = self.code.get(pc).ok_or_else(|| {
+        run_with_instruction_at(config, limits, |pc| {
+            self.code.get(pc).cloned().ok_or_else(|| {
                 Error::Invalid(format!(
                     "configuration pc {pc} outside Fin {}",
                     self.code.len()
                 ))
-            })?;
-            match *instruction {
-                Instr::Push { .. } => {
-                    if live_bits >= limits.max_stack_bits {
-                        return Err(Error::Capacity("BitProgram stack-bit limit".into()));
-                    }
-                    live_bits = live_bits.checked_add(1).ok_or(Error::Overflow)?;
-                }
-                Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => {
-                    live_bits -= 1;
-                }
-                _ => {}
-            }
-            self.step(config)?;
-            stats.instructions += 1;
-            stats.peak_stack_bits = stats.peak_stack_bits.max(live_bits);
-        }
-        Ok(stats)
+            })
+        })
     }
+
 }
 
 /// Single physical source instruction, shared by the flat and deferred executors.

@@ -483,7 +483,6 @@ impl<const R: usize, const S: usize> Program<R, S> {
             })
         })
     }
-
 }
 
 /// Single physical source instruction, shared by the flat and deferred executors.

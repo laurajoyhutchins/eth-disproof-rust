@@ -1,6 +1,6 @@
 //! Deterministic property tests of the physical source machine. No external
 //! proptest dependency or exponential SAT oracle is involved.
-use lean_eth_reference::bit_program::{Config, Instr, Program, RunLimits};
+use lean_eth_reference::bit_program::{Config, Instr, Program, RunLimits, run_with_instruction_at};
 use lean_eth_reference::{Cnf, Error, Literal};
 use std::collections::VecDeque;
 
@@ -724,4 +724,66 @@ fn bounded_run_matches_independent_poststate_oracle_at_every_small_capacity() {
         }
     }
     assert!(accepted > 0 && refused > 0);
+}
+
+#[test]
+fn arbitrary_callback_refuses_bad_operands_without_mutating_any_state() {
+    // Program::new already rejects these. The public generic callback has
+    // no such construction-time guarantee and must reject before indexing.
+    let malformed = [
+        Instr::Push {
+            stack: 2,
+            src: 0,
+            next: 0,
+        },
+        Instr::Push {
+            stack: 0,
+            src: 2,
+            next: 0,
+        },
+        Instr::Pop {
+            stack: 2,
+            value: 0,
+            present: 0,
+            next: 0,
+        },
+        Instr::Peek {
+            stack: 0,
+            value: 2,
+            present: 0,
+            next: 0,
+        },
+        Instr::Branch {
+            test: 2,
+            yes: 0,
+            no: 0,
+        },
+        Instr::Goto { next: usize::MAX },
+    ];
+    for instruction in malformed {
+        for cap in [0, 1, 2] {
+            let initial = Config::<2, 2> {
+                pc: Some(0),
+                regs: [true, false],
+                stacks: std::array::from_fn(|_| VecDeque::new()),
+            };
+            let mut actual = initial.clone();
+            let result = run_with_instruction_at(
+                &mut actual,
+                RunLimits {
+                    max_steps: 1,
+                    max_stack_bits: cap,
+                },
+                |_| Ok(instruction.clone()),
+            );
+            assert!(
+                matches!(result, Err(Error::Invalid(_))),
+                "invalid callback opcode {instruction:?} was not rejected: {result:?}"
+            );
+            assert_eq!(
+                actual, initial,
+                "invalid callback opcode mutated state before refusal"
+            );
+        }
+    }
 }

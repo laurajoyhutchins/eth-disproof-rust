@@ -180,18 +180,19 @@ fn compare_trace(text: &str) -> Result<(usize, usize), Box<dyn Error>> {
                 if *case != required || (*case == "hit" && finished[1].is_some()) {
                     return Err(invalid("source case order or coverage mismatch"));
                 }
-                let index = index.parse::<usize>()?;
-                if index > MAX_STEPS_PER_CASE || index.to_string() != *index {
+                let source_index = *index;
+                let index = source_index.parse::<usize>()?;
+                if index > MAX_STEPS_PER_CASE || index.to_string() != source_index {
                     return Err(invalid("original source trace step out of range"));
                 }
                 let expected = parse_frame(pc, regs, stacks)?;
-                if active_case != Some(case) {
+                if active_case != Some(*case) {
                     if index != 0 || current.is_some() || active_case.is_some() {
                         return Err(invalid("source case restarted or nonzero first index"));
                     }
                     assert_source_input(case, &expected, &params)?;
                     current = Some(expected);
-                    active_case = Some(case);
+                    active_case = Some(required);
                     step = 0;
                     continue;
                 }
@@ -220,7 +221,7 @@ fn compare_trace(text: &str) -> Result<(usize, usize), Box<dyn Error>> {
             }
             ["END", case, count, "HALTED"] => {
                 let required = if finished[0].is_none() { "hit" } else { "miss" };
-                if *case != required || active_case != Some(case) {
+                if *case != required || active_case != Some(*case) {
                     return Err(invalid("unexpected source end record"));
                 }
                 let count = count.parse::<usize>()?;

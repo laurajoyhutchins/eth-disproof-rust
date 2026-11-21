@@ -6,6 +6,7 @@ on:
       - 'verification/ranked-source/src/borrow_return_probe.rs'
       - 'verification/ranked-source/src/lib.rs'
       - 'verification/ranked-source/proofs/BorrowReturnP2.lean'
+      - 'verification/ranked-source/proofs/BorrowReturnP12.lean'
       - 'verification/ranked-source/hax.toml'
       - '.github/workflows/ranked-borrow-matrix.yml'
   workflow_dispatch:
@@ -157,6 +158,33 @@ jobs:
             exit 1
           fi
           echo 'EXTRACTED_P2_CONDITIONAL_EFFECT=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Kernel-check source-derived checked I128 recorder P12
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="verification/ranked-source/proofs/probe-p12/lean"
+          generated="$package/ProbeP12/Extraction/Funs.lean"
+          test -f "$generated"
+          grep -q '^def borrow_return_probe.p12_option_then_result' "$generated"
+          grep -Fx 'leanprover/lean4:v4.31.0' "$package/lean-toolchain"
+          cp verification/ranked-source/proofs/BorrowReturnP12.lean "$package/BorrowReturnP12.lean"
+          export PATH="$HOME/.elan/bin:$PATH"
+          if ! command -v lean >/dev/null 2>&1; then
+            curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o "$RUNNER_TEMP/elan-init.sh"
+            sh "$RUNNER_TEMP/elan-init.sh" -y --no-modify-path
+          fi
+          (
+            cd "$package"
+            lake -K maxJobs=2 build
+            lake env lean BorrowReturnP12.lean | tee "$RUNNER_TEMP/p12-theorem-axioms.txt"
+          )
+          if grep -Eq 'sorryAx' "$RUNNER_TEMP/p12-theorem-axioms.txt"; then
+            echo 'EXTRACTED_P12_CHECKED_OUTCOME=UNPROVED_AXIOMS' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo 'EXTRACTED_P12_CHECKED_OUTCOME=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Preserve failed and successful LLBC/Lean evidence
         if: always()

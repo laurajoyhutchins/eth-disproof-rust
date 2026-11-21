@@ -12,8 +12,13 @@ NOT prove Rust allocator capacity, Aeneas model adequacy, or the production
 ranked tracer (which is blocked separately).
 -/
 
-open Aeneas Aeneas.Std
-open RustM
+-- Mirror the namespace resolution of the generated Funs.lean itself.
+-- Without CoreModels, names such as core.result.Result resolve to Aeneas's
+-- distinct core namespace and the proposed theorem is ill-typed.
+open CoreModels Aeneas
+open Aeneas.Std hiding namespace core alloc
+open RustM ControlFlow Error
+open Std.Do
 namespace ranked_source_proof_harness
 
 /-- Independent functional specification of the Result part. -/

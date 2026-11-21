@@ -676,8 +676,8 @@ fn bounded_run_matches_independent_poststate_oracle_at_every_small_capacity() {
     let mut accepted = 0;
     let mut refused = 0;
     for instruction in instructions {
-        let program = Program::<2, 2>::new(0, 1, 0, vec![instruction.clone(), Instr::Halt])
-            .unwrap();
+        let program =
+            Program::<2, 2>::new(0, 1, 0, vec![instruction.clone(), Instr::Halt]).unwrap();
         for first_len in 0..=2 {
             for second_len in 0..=2 {
                 for first_reg in [false, true] {

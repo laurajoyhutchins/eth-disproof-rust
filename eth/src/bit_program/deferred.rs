@@ -445,17 +445,11 @@ pub fn run_with_instruction_at<const R: usize, const S: usize, F>(
 where
     F: FnMut(usize) -> Result<Instr, Error>,
 {
-    run_with_instruction_at_and_reserve(
-        config,
-        limits,
-        label_count,
-        instruction_at,
-        |stack| {
-            stack
-                .try_reserve(1)
-                .map_err(|_| Error::Capacity("BitProgram host stack allocation".into()))
-        },
-    )
+    run_with_instruction_at_and_reserve(config, limits, label_count, instruction_at, |stack| {
+        stack
+            .try_reserve(1)
+            .map_err(|_| Error::Capacity("BitProgram host stack allocation".into()))
+    })
 }
 
 /// A single shared execution loop, with the host's fallible Push reservation
@@ -604,7 +598,10 @@ mod checked_counter_tests {
         assert!(matches!(result, Err(Error::Capacity(_))));
         assert_eq!(calls, 2);
         assert_eq!(current.pc, Some(1));
-        assert_eq!(current.stacks[0].iter().copied().collect::<Vec<_>>(), [true]);
+        assert_eq!(
+            current.stacks[0].iter().copied().collect::<Vec<_>>(),
+            [true]
+        );
 
         let remaining = run_with_instruction_at_and_reserve(
             &mut current,
@@ -624,7 +621,10 @@ mod checked_counter_tests {
         assert_eq!(remaining.instructions, 2);
         assert_eq!(remaining.peak_stack_bits, 2);
         assert_eq!(current.pc, None);
-        assert_eq!(current.stacks[0].iter().copied().collect::<Vec<_>>(), [true, true]);
+        assert_eq!(
+            current.stacks[0].iter().copied().collect::<Vec<_>>(),
+            [true, true]
+        );
     }
 
     #[test]

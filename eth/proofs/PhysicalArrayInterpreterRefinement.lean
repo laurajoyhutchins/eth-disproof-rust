@@ -1241,4 +1241,89 @@ theorem arrayRunnerTrace_refines {r s l : ℕ}
           rcases hpair with ⟨rfl, hnext⟩
           exact BoundedRunnerTrace.advance harray (ih nextRaw hnext)
 
+
+/-!
+## Checked host-word boundaries of the source stack counter
+
+The shared Rust runner operates on usize counters, not unbounded Nat.
+These propositions isolate the arithmetic conditions needed for its
+checked_add(1), checked_sub(1), and u64 instruction-count increment.
+The maximum word value is an explicit parameter; setting it to usize::MAX
+or u64::MAX is a host-side representation obligation, not an axiom here.
+
+This is a mathematical safety argument conditional on a correct cached count,
+not a proof about the Rust compiler, standard-library VecDeque, or allocator.
+-/
+
+/-- If a Pop removes one source stack cell then it cannot be a Push. -/
+private theorem sourcePopLoss_one_no_push {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l)
+    (hloss : sourcePopLoss instr cfg = 1) :
+    sourcePushGain instr = 0 := by
+  cases instr <;> simp_all [sourcePopLoss, sourcePushGain]
+
+/-- A nonempty Pop can only occur when the total source stack count is
+positive. Consequently, a faithful cached usize value is positive too. -/
+theorem sourcePopLoss_one_live_positive {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l)
+    (hloss : sourcePopLoss instr cfg = 1) :
+    0 < sourceLiveStackBits cfg := by
+  have hbalance := sourceLiveStackBits_step instr cfg
+  have hgain := sourcePopLoss_one_no_push instr cfg hloss
+  rw [hloss, hgain] at hbalance
+  omega
+
+/-- Under the cache representation invariant, the native checked_sub(1)
+preflight for an actual nonempty Pop can never underflow. -/
+theorem sourceCachedPop_sub_safe {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l) (cached : ℕ)
+    (hcache : cached = sourceLiveStackBits cfg)
+    (hloss : sourcePopLoss instr cfg = 1) :
+    1 ≤ cached := by
+  rw [hcache]
+  exact sourcePopLoss_one_live_positive instr cfg hloss
+
+/-- An admitted Push has a representable increment when its user-chosen
+usize limit is itself representable. No wraparound is necessary. -/
+theorem sourceCachedPush_add_safe
+    (maxWord maxBits cached : ℕ)
+    (hword : maxBits ≤ maxWord)
+    (hadmit : cached < maxBits) :
+    cached + 1 ≤ maxWord := by
+  omega
+
+/-- Likewise a completed Rust instruction-count increment cannot overflow
+its u64 representation while the count is strictly below the u64 budget. -/
+theorem sourceInstructionCount_add_safe
+    (maxWord maxSteps executed : ℕ)
+    (hword : maxSteps ≤ maxWord)
+    (hadmit : executed < maxSteps) :
+    executed + 1 ≤ maxWord := by
+  omega
+
+/-- Together, the exact source balance identity and the checked push gate
+ensure that the complete next cached count stays within the host word
+range, including an empty Pop and a full-capacity non-Push. -/
+theorem sourceCachedCounter_next_word_safe {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l)
+    (cached maxBits maxWord : ℕ)
+    (hcache : cached = sourceLiveStackBits cfg)
+    (hcap : cached ≤ maxBits)
+    (hword : maxBits ≤ maxWord)
+    (hpush : sourcePushGain instr = 1 → cached < maxBits) :
+    sourceCachedCountAfter instr cfg cached ≤ maxWord := by
+  have hcurrent : sourceLiveStackBits cfg ≤ maxBits := by
+    omega
+  have havail : sourcePushGain instr = 1 →
+      sourceLiveStackBits cfg < maxBits := by
+    intro hp
+    have h := hpush hp
+    omega
+  have hstep := sourceLiveStackBits_step_capacity
+    instr cfg maxBits hcurrent havail
+  have heq : sourceCachedCountAfter instr cfg cached =
+      sourceLiveStackBits (BitProgram.execInstr instr cfg) := by
+    simpa [hcache] using sourceCachedCountAfter_exact instr cfg
+  omega
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

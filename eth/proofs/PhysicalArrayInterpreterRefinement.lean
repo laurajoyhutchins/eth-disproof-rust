@@ -754,4 +754,138 @@ theorem sourceBoundedTrace_unbounded {r s l : ℕ}
       exact .cons (sourceBoundedStep_unbounded
         program maxBits cfg mid hstep) ih
 
+
+/-!
+## Exact bounded/source trace correspondence with intermediate capacities
+
+The previous projection theorem is intentionally one-way: an unrestricted
+source trace may exceed capacity and subsequently pop its large stack.
+The exact converse must carry the capacity premise at each intermediate
+configuration. This section expresses that premise as an inductive trace
+*in the original source transition relation*, then proves the equivalence.
+-/
+
+/-- A source Push never simultaneously pops a stack cell. -/
+theorem sourcePushGain_one_popLoss_zero {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l)
+    (hpush : sourcePushGain instr = 1) :
+    sourcePopLoss instr cfg = 0 := by
+  cases instr <;> simp_all [sourcePushGain, sourcePopLoss]
+
+/-- A source transition is accepted by the bounded machine if both its
+endpoints fit capacity. For a Push at full capacity the exact live-bit
+balance would force the *next* size beyond that bound, a contradiction. -/
+theorem sourceBoundedStep_complete {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    (cfg next : Cfg r s l)
+    (hstep : BitProgram.step program cfg = some next)
+    (hcurrent : sourceLiveStackBits cfg ≤ maxBits)
+    (hnext : sourceLiveStackBits next ≤ maxBits) :
+    sourceBoundedStep program maxBits cfg = some next := by
+  cases hpc : cfg.pc with
+  | none =>
+      simp [BitProgram.step, hpc] at hstep
+  | some pc =>
+      have hsource : BitProgram.execInstr (program.code pc) cfg = next := by
+        simpa [BitProgram.step, hpc] using hstep
+      have hnot : ¬ (sourcePushGain (program.code pc) = 1 ∧
+          maxBits ≤ sourceLiveStackBits cfg) := by
+        rintro ⟨hpush, hfull⟩
+        have hzero :=
+          sourcePushGain_one_popLoss_zero (program.code pc) cfg hpush
+        have hbalance := sourceLiveStackBits_step (program.code pc) cfg
+        rw [hsource, hzero, hpush] at hbalance
+        omega
+      simp [sourceBoundedStep, hpc, sourceBoundedInstr, hnot, hsource]
+
+/-- A successful bounded physical step preserves capacity in both the
+array-independent source model and the next decoded source configuration. -/
+theorem sourceBoundedStep_capacity {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    (cfg next : Cfg r s l)
+    (hcurrent : sourceLiveStackBits cfg ≤ maxBits)
+    (hstep : sourceBoundedStep program maxBits cfg = some next) :
+    sourceLiveStackBits next ≤ maxBits := by
+  cases hpc : cfg.pc with
+  | none =>
+      simp [sourceBoundedStep, hpc] at hstep
+  | some pc =>
+      have hinstr :
+          sourceBoundedInstr maxBits (program.code pc) cfg = some next := by
+        simpa [sourceBoundedStep, hpc] using hstep
+      exact sourceBoundedInstr_preserves_capacity maxBits
+        (program.code pc) cfg next hcurrent hinstr
+
+/-- The original unbounded source trace, carrying proof that every state,
+including intermediate configurations, fits the fixed capacity. -/
+inductive SourceCapacityTrace {r s l : ℕ} (program : Program r s l)
+    (maxBits : ℕ) : ℕ → Cfg r s l → Cfg r s l → Prop where
+  | refl (cfg : Cfg r s l) (hcap : sourceLiveStackBits cfg ≤ maxBits) :
+      SourceCapacityTrace program maxBits 0 cfg cfg
+  | cons {n : ℕ} {cfg mid final : Cfg r s l}
+      (hcap : sourceLiveStackBits cfg ≤ maxBits)
+      (hstep : BitProgram.step program cfg = some mid)
+      (htail : SourceCapacityTrace program maxBits n mid final) :
+      SourceCapacityTrace program maxBits (n + 1) cfg final
+
+theorem sourceCapacityTrace_initial_capacity {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    {n : ℕ} {initial final : Cfg r s l}
+    (htrace : SourceCapacityTrace program maxBits n initial final) :
+    sourceLiveStackBits initial ≤ maxBits := by
+  cases htrace with
+  | refl _ hcap => exact hcap
+  | cons hcap _ _ => exact hcap
+
+/-- Complete the bounded trace from its original source trace *and*
+the complete capacity evidence, without enumerating program instructions. -/
+theorem sourceCapacityTrace_to_bounded {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    {n : ℕ} {initial final : Cfg r s l}
+    (htrace : SourceCapacityTrace program maxBits n initial final) :
+    SourceBoundedTrace program maxBits n initial final := by
+  induction htrace with
+  | refl cfg hcap =>
+      exact .refl cfg
+  | @cons n cfg mid final hcap hstep htail ih =>
+      apply SourceBoundedTrace.cons
+      · exact sourceBoundedStep_complete program maxBits cfg mid
+          hstep hcap (sourceCapacityTrace_initial_capacity
+            program maxBits htail)
+      · exact ih
+
+/-- Conversely a bounded trace from an admitted starting state yields
+a source trace with capacity evidence at *every* intermediate state. -/
+theorem sourceBoundedTrace_to_capacity {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    {n : ℕ} {initial final : Cfg r s l}
+    (htrace : SourceBoundedTrace program maxBits n initial final)
+    (hin : sourceLiveStackBits initial ≤ maxBits) :
+    SourceCapacityTrace program maxBits n initial final := by
+  revert hin
+  induction htrace with
+  | refl cfg =>
+      intro hin
+      exact .refl cfg hin
+  | @cons n cfg mid final hstep htail ih =>
+      intro hin
+      exact .cons hin
+        (sourceBoundedStep_unbounded program maxBits cfg mid hstep)
+        (ih (sourceBoundedStep_capacity program maxBits cfg mid hin hstep))
+
+/-- An exact iff, with identical step count and complete endpoints:
+the bounded machine executes a trace precisely when the ORIGINAL source
+trace exists with capacity respected at every intermediate state. -/
+theorem sourceBoundedTrace_iff_capacityTrace {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    {n : ℕ} {initial final : Cfg r s l}
+    (hin : sourceLiveStackBits initial ≤ maxBits) :
+    SourceBoundedTrace program maxBits n initial final ↔
+      SourceCapacityTrace program maxBits n initial final := by
+  constructor
+  · intro ht
+    exact sourceBoundedTrace_to_capacity program maxBits ht hin
+  · intro ht
+    exact sourceCapacityTrace_to_bounded program maxBits ht
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

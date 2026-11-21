@@ -572,3 +572,156 @@ fn malformed_program_addresses_are_rejected_before_execution() {
         Err(Error::Invalid(_)),
     ));
 }
+
+/*
+ * Capacity oracle for the *actual* Rust bounded runner.
+ *
+ * The oracle intentionally pays for a full state copy and exact rescan after
+ * every unbounded Program::step. Unlike the production cached counter, it
+ * calculates admission from the candidate post-state, so it detects missed
+ * increments/decrements and verifies that rejected operations leave the
+ * complete configuration unchanged. This is adversarial testing, not a
+ * Rust-to-Lean proof or an allocation bound.
+ */
+fn reference_bounded_run<const R: usize, const S: usize>(
+    program: &Program<R, S>,
+    state: &mut Config<R, S>,
+    limits: RunLimits,
+) -> Result<(u64, usize), Error> {
+    let mut peak = state.stack_bits()?;
+    if peak > limits.max_stack_bits {
+        return Err(Error::Capacity("oracle initial stack-bit limit".into()));
+    }
+    let mut steps = 0_u64;
+    while state.pc.is_some() {
+        if steps >= limits.max_steps {
+            return Err(Error::Capacity("oracle instruction limit".into()));
+        }
+        let mut candidate = state.clone();
+        program.step(&mut candidate)?;
+        let live = candidate.stack_bits()?;
+        if live > limits.max_stack_bits {
+            return Err(Error::Capacity("oracle candidate stack-bit limit".into()));
+        }
+        *state = candidate;
+        peak = peak.max(live);
+        steps += 1;
+    }
+    Ok((steps, peak))
+}
+
+#[test]
+fn bounded_run_matches_independent_poststate_oracle_at_every_small_capacity() {
+    // All 12 instruction constructors, including aliased read registers,
+    // empty/nonempty Pops, both branch outcomes, and multiple live stacks.
+    let instructions = [
+        Instr::Halt,
+        Instr::Goto { next: 1 },
+        Instr::Set {
+            dst: 0,
+            value: true,
+            next: 1,
+        },
+        Instr::Copy {
+            dst: 0,
+            src: 0,
+            next: 1,
+        },
+        Instr::Not {
+            dst: 0,
+            src: 0,
+            next: 1,
+        },
+        Instr::And {
+            dst: 0,
+            left: 0,
+            right: 1,
+            next: 1,
+        },
+        Instr::Or {
+            dst: 0,
+            left: 0,
+            right: 1,
+            next: 1,
+        },
+        Instr::Xor {
+            dst: 0,
+            left: 0,
+            right: 1,
+            next: 1,
+        },
+        Instr::Branch {
+            test: 0,
+            yes: 1,
+            no: 1,
+        },
+        Instr::Push {
+            stack: 1,
+            src: 0,
+            next: 1,
+        },
+        Instr::Peek {
+            stack: 1,
+            value: 0,
+            present: 0,
+            next: 1,
+        },
+        Instr::Pop {
+            stack: 1,
+            value: 0,
+            present: 0,
+            next: 1,
+        },
+    ];
+    let mut accepted = 0;
+    let mut refused = 0;
+    for instruction in instructions {
+        let program =
+            Program::<2, 2>::new(0, 1, 0, vec![instruction.clone(), Instr::Halt]).unwrap();
+        for first_len in 0..=2 {
+            for second_len in 0..=2 {
+                for first_reg in [false, true] {
+                    for capacity in 0..=5 {
+                        for step_limit in [0, 1, 2] {
+                            let mut state = program.initial([]);
+                            state.regs = [first_reg, !first_reg];
+                            state.stacks[0].extend((0..first_len).map(|i| i % 2 == 0));
+                            state.stacks[1].extend((0..second_len).map(|i| i % 2 != 0));
+                            let limits = RunLimits {
+                                max_steps: step_limit,
+                                max_stack_bits: capacity,
+                            };
+                            let mut actual = state.clone();
+                            let mut reference = state;
+                            let result = program.run(&mut actual, limits);
+                            let expected = reference_bounded_run(&program, &mut reference, limits);
+                            assert_eq!(
+                                actual, reference,
+                                "state mismatch for {instruction:?}, {limits:?}"
+                            );
+                            match (result, expected) {
+                                (Ok(stats), Ok((steps, peak))) => {
+                                    assert_eq!(stats.instructions, steps);
+                                    assert_eq!(stats.peak_stack_bits, peak);
+                                    assert!(actual.stack_bits().unwrap() <= capacity);
+                                    accepted += 1;
+                                }
+                                (Err(Error::Capacity(_)), Err(Error::Capacity(_))) => {
+                                    // Both machines refuse before committing the failing step.
+                                    refused += 1;
+                                }
+                                (actual_result, oracle_result) => {
+                                    panic!(
+                                        "bounded runner diverged for {instruction:?}, {limits:?}: \
+                                         {actual_result:?} vs {oracle_result:?}"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(accepted > 0 && refused > 0);
+}

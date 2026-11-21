@@ -609,4 +609,65 @@ theorem sourceLiveStackBits_step_capacity {r s l : ℕ}
     omega
   · omega
 
+
+/-!
+## Exact admission and refusal at a bounded source instruction
+
+The original \`execInstr\` is unbounded. This *partial* operation adds the
+push-only capacity gate used by the Rust bounded runner without changing the
+source instruction. \`none\` means capacity refusal, not source halting or a
+valid final answer. This is a pure Lean model of the admission rule; the
+host's cached usize counter and allocation behavior are still to be verified.
+-/
+
+/-- Preflight a single original source instruction. No state is produced on
+refusal; accepted instructions use the original source transition exactly. -/
+def sourceBoundedInstr {r s l : ℕ} (maxBits : ℕ)
+    (instr : Instr r s l) (cfg : Cfg r s l) : Option (Cfg r s l) :=
+  if sourcePushGain instr = 1 ∧ maxBits ≤ sourceLiveStackBits cfg then
+    none
+  else
+    some (BitProgram.execInstr instr cfg)
+
+/-- A bounded source instruction refuses *exactly* on a push at full
+capacity, not on a non-push or an empty pop. -/
+theorem sourceBoundedInstr_refuses_iff {r s l : ℕ}
+    (maxBits : ℕ) (instr : Instr r s l) (cfg : Cfg r s l) :
+    sourceBoundedInstr maxBits instr cfg = none ↔
+      sourcePushGain instr = 1 ∧ maxBits ≤ sourceLiveStackBits cfg := by
+  by_cases h : sourcePushGain instr = 1 ∧ maxBits ≤ sourceLiveStackBits cfg
+  · simp [sourceBoundedInstr, h]
+  · simp [sourceBoundedInstr, h]
+
+/-- Admission has no alternative successor: the result is exactly the
+original unbounded source instruction, and the refusal guard was false. -/
+theorem sourceBoundedInstr_success {r s l : ℕ}
+    (maxBits : ℕ) (instr : Instr r s l) (cfg next : Cfg r s l)
+    (hstep : sourceBoundedInstr maxBits instr cfg = some next) :
+    next = BitProgram.execInstr instr cfg ∧
+      ¬ (sourcePushGain instr = 1 ∧
+        maxBits ≤ sourceLiveStackBits cfg) := by
+  by_cases h : sourcePushGain instr = 1 ∧ maxBits ≤ sourceLiveStackBits cfg
+  · simp [sourceBoundedInstr, h] at hstep
+  · have heq : BitProgram.execInstr instr cfg = next := by
+      simpa [sourceBoundedInstr, h] using hstep
+    exact ⟨heq.symm, h⟩
+
+/-- Every successful bounded transition is within the configured logical
+stack cap, including zero cap and aliased registers. The initial cap is
+necessary: an already oversized state is rejected by Rust before stepping. -/
+theorem sourceBoundedInstr_preserves_capacity {r s l : ℕ}
+    (maxBits : ℕ) (instr : Instr r s l) (cfg next : Cfg r s l)
+    (hcurrent : sourceLiveStackBits cfg ≤ maxBits)
+    (hstep : sourceBoundedInstr maxBits instr cfg = some next) :
+    sourceLiveStackBits next ≤ maxBits := by
+  obtain ⟨rfl, hnot⟩ :=
+    sourceBoundedInstr_success maxBits instr cfg next hstep
+  apply sourceLiveStackBits_step_capacity instr cfg maxBits hcurrent
+  intro hp
+  have havail : ¬ maxBits ≤ sourceLiveStackBits cfg := by
+    intro hfull
+    exact hnot ⟨hp, hfull⟩
+  omega
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

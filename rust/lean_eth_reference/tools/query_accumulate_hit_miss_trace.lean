@@ -26,9 +26,9 @@ private def frame {l : Nat} (c : BitProgram.Cfg 8 27 l) : String :=
     | none => "X"
     | some j => toString j.val
   let regs := encodeBits (List.ofFn fun j : Fin 8 => c.regs j)
-  let stacks := String.intercalate "," ((List.ofFn fun j : Fin 27 =>
+  let stackText := String.intercalate "," ((List.ofFn fun j : Fin 27 =>
     encodeBits (c.stacks j)) : List String)
-  s!"{pc}|{regs}|{stacks}"
+  s!"{pc}|{regs}|{stackText}"
 
 private def traceCase (label : String) (tape : Tape)
     (maxSteps : Nat) : IO Unit := do
@@ -58,10 +58,12 @@ private def traceCase (label : String) (tape : Tape)
   let entries : List (List Bool × List Bool) := [([true], one)]
   let hitQuery := [true]
   let missQuery := [false]
-  if entries.lookup hitQuery != some one ||
-     entries.lookup missQuery != none ||
-     one.length != SubexpLiftRing.baseWidth 2 1 then
-    throw (IO.userError "original hit/miss or finite-width precondition refused")
+  unless entries.lookup hitQuery == some one do
+    throw (IO.userError "real dictionary hit precondition refused")
+  unless entries.lookup missQuery == none do
+    throw (IO.userError "real dictionary miss precondition refused")
+  unless one.length == SubexpLiftRing.baseWidth 2 1 do
+    throw (IO.userError "canonical source coefficient width refused")
   IO.println "ORIGINAL_ACCUMULATE_TRACE_V1"
   IO.println s!"PARAM|prime|2"
   IO.println s!"PARAM|exponent|1"

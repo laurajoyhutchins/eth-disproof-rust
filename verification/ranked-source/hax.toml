@@ -20,3 +20,56 @@ include = ["ranked_source_proof_harness::representation_ranked_input::decode_ran
 [scenario.ranked-source]
 backend = "lean"
 include = ["ranked_source_proof_harness::representation_ranked_input::execute_ranked_wire"]
+
+# Controlled probes: these do not replace or certify production execution.
+[scenario.probe-p0]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p0_result_only"]
+
+[scenario.probe-p1]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p1_direct_scalar"]
+
+[scenario.probe-p2]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p2_direct_result"]
+
+[scenario.probe-p3]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p3_optional_scalar"]
+
+[scenario.probe-p4]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p4_optional_result"]
+
+[scenario.probe-p5]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p5_checked_direct"]
+
+[scenario.probe-p6]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p6_checked_optional"]
+
+[scenario.probe-p7]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p7_checked_owned"]
+
+[scenario.probe-p8]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p8_checked_only"]
+
+[scenario.probe-p9]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p9_option_payload"]
+
+[scenario.probe-p10]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p10_checked_scalar_sink"]
+
+[scenario.probe-p11]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p11_checked_option_sink"]
+
+[scenario.probe-p12]
+backend = "lean"
+include = ["ranked_source_proof_harness::borrow_return_probe::p12_option_then_result"]

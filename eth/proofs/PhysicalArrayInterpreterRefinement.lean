@@ -1120,8 +1120,6 @@ theorem arrayRunnerOne_refines {r s l : ℕ}
               hwidth, hinit, hc, hraw, hsteps, pc.isLt, instr, hpush,
               hcounter] using (And.intro hcounter hnext)
 
-
-
 /-- A full index-based scan of represented raw stack lengths, corresponding
 to the logical value computed at Rust runner initialization. -/
 def arrayLiveStackBits {s : ℕ} (raw : ArrayCfg) : Nat :=

@@ -774,6 +774,7 @@ fn arbitrary_callback_refuses_bad_operands_without_mutating_any_state() {
                     max_steps: 1,
                     max_stack_bits: cap,
                 },
+                2,
                 |_| Ok(instruction.clone()),
             );
             assert!(

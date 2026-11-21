@@ -1326,4 +1326,148 @@ theorem sourceCachedCounter_next_word_safe {r s l : ℕ}
     simpa [hcache] using sourceCachedCountAfter_exact instr cfg
   omega
 
+
+/-!
+## Explicit host allocation outcomes
+
+The host allocator can refuse a Rust Push that is logically admitted by the
+source machine. Such a refusal is *not* a source halt and must not be used as
+evidence of an original source execution. The host-specific outcome below
+retains this distinction without assigning an allocator success law to
+compiled Rust. The native runner exercises this boundary through a fallible
+pre-reservation callback, tested with forced failures.
+-/
+
+/-- A bounded runner either returns its already distinguished logical outcome,
+or encounters an implementation-only host allocation refusal. -/
+inductive HostAdmission (α : Type) where
+  | logical (outcome : RunnerOneOutcome α)
+  | allocationCapacity
+
+/-- Host pre-reservation happens only after the bounded logical instruction is
+admitted. An allocator refusal must not fabricate a source successor or halt. -/
+def applyHostReservation {α : Type}
+    (attemptPush allocated : Bool) :
+    RunnerOneOutcome α → HostAdmission α
+  | .advanced next =>
+      if attemptPush = true ∧ allocated = false then
+        .allocationCapacity
+      else
+        .logical (.advanced next)
+  | .invalid => .logical .invalid
+  | .initialCapacity => .logical .initialCapacity
+  | .halted => .logical .halted
+  | .stepLimit => .logical .stepLimit
+  | .stackCapacity => .logical .stackCapacity
+
+/-- An implementation-only allocation refusal happens if and only if an
+already admitted physical Push is denied host storage. In particular, it is
+impossible for a logical capacity, step-limit or halted outcome. -/
+theorem applyHostReservation_refuses_iff {α : Type}
+    (attemptPush allocated : Bool) (outcome : RunnerOneOutcome α) :
+    applyHostReservation attemptPush allocated outcome = .allocationCapacity ↔
+      attemptPush = true ∧ allocated = false ∧
+        ∃ next, outcome = .advanced next := by
+  cases outcome <;> cases attemptPush <;> cases allocated <;>
+    simp [applyHostReservation]
+
+/-- If the host accepts the allocation request, the entire logical outcome
+is retained without modification. -/
+theorem applyHostReservation_granted {α : Type}
+    (attemptPush : Bool) (outcome : RunnerOneOutcome α) :
+    applyHostReservation attemptPush true outcome = .logical outcome := by
+  cases outcome <;> simp [applyHostReservation]
+
+/-- Refined host outcome relation: genuine logical results must satisfy the
+prior source-state theorem. Host allocation refusal is permitted only for a
+source-admitted successor, never mistaken for an original source outcome. -/
+def HostAdmissionRefines {r s l : ℕ}
+    (attemptPush allocated : Bool)
+    (host : HostAdmission (ArrayCfg × Nat))
+    (source : RunnerOneOutcome (Cfg r s l × Nat)) : Prop :=
+  match host with
+  | .logical result => RunnerOneRepresents result source
+  | .allocationCapacity =>
+      attemptPush = true ∧ allocated = false ∧
+        ∃ next, source = .advanced next
+
+/-- A host-only refusal is the *sole* additional outcome allowed beyond the
+existing complete one-step array/source relation. Nothing about the native
+allocator is silently assumed; allocation acceptance is explicit input. -/
+theorem applyHostReservation_refines {r s l : ℕ}
+    (attemptPush allocated : Bool)
+    (raw : RunnerOneOutcome (ArrayCfg × Nat))
+    (source : RunnerOneOutcome (Cfg r s l × Nat))
+    (hrep : RunnerOneRepresents raw source) :
+    HostAdmissionRefines attemptPush allocated
+      (applyHostReservation attemptPush allocated raw) source := by
+  cases raw with
+  | invalid =>
+      simpa [applyHostReservation, HostAdmissionRefines] using hrep
+  | initialCapacity =>
+      simpa [applyHostReservation, HostAdmissionRefines] using hrep
+  | halted =>
+      simpa [applyHostReservation, HostAdmissionRefines] using hrep
+  | stepLimit =>
+      simpa [applyHostReservation, HostAdmissionRefines] using hrep
+  | stackCapacity =>
+      simpa [applyHostReservation, HostAdmissionRefines] using hrep
+  | advanced next =>
+      by_cases hdeny : attemptPush = true ∧ allocated = false
+      · have hsource : ∃ sourceNext, source = .advanced sourceNext := by
+          cases source with
+          | advanced sourceNext => exact ⟨sourceNext, rfl⟩
+          | invalid => simp [RunnerOneRepresents] at hrep
+          | initialCapacity => simp [RunnerOneRepresents] at hrep
+          | halted => simp [RunnerOneRepresents] at hrep
+          | stepLimit => simp [RunnerOneRepresents] at hrep
+          | stackCapacity => simp [RunnerOneRepresents] at hrep
+        simpa [applyHostReservation, HostAdmissionRefines, hdeny] using
+          (show attemptPush = true ∧ allocated = false ∧
+              ∃ sourceNext, source = .advanced sourceNext from
+            ⟨hdeny.1, hdeny.2, hsource⟩)
+      · simpa [applyHostReservation, HostAdmissionRefines, hdeny] using hrep
+
+/-- Whether the current valid numeric label selects a Push. This source-code
+predicate does not certify the contents of an arbitrary Rust callback. -/
+def arrayNeedsHostReservation {r s l : ℕ}
+    (program : Program r s l) (raw : ArrayCfg) : Bool :=
+  match raw.pc with
+  | none => false
+  | some pc =>
+      if hp : pc < l then
+        decide (sourcePushGain (program.code ⟨pc, hp⟩) = 1)
+      else
+        false
+
+/-- One complete model step after the production ordering of resource
+preflight and optional host reservation. -/
+def arrayRunnerWithHostReservation {r s l : ℕ}
+    (program : Program r s l)
+    (maxBits maxSteps executed cached : ℕ)
+    (allocated : Bool) (raw : ArrayCfg) :
+    HostAdmission (ArrayCfg × Nat) :=
+  applyHostReservation (arrayNeedsHostReservation program raw) allocated
+    (arrayRunnerOne program maxBits maxSteps executed cached raw)
+
+/-- Universal conditional host-step refinement: allocation acceptance
+preserves the already proved source step; allocation refusal is an explicit
+implementation-only outcome following a logically admitted source Push. -/
+theorem arrayRunnerWithHostReservation_refines {r s l : ℕ}
+    (program : Program r s l)
+    (maxBits maxSteps executed cached : ℕ)
+    (allocated : Bool) (raw : ArrayCfg) (cfg : Cfg r s l)
+    (hrep : Represents raw cfg) :
+    HostAdmissionRefines
+      (arrayNeedsHostReservation program raw) allocated
+      (arrayRunnerWithHostReservation
+        program maxBits maxSteps executed cached allocated raw)
+      (sourceRunnerOne program maxBits maxSteps executed cached cfg) := by
+  exact applyHostReservation_refines
+    (arrayNeedsHostReservation program raw) allocated
+    (arrayRunnerOne program maxBits maxSteps executed cached raw)
+    (sourceRunnerOne program maxBits maxSteps executed cached cfg)
+    (arrayRunnerOne_refines program maxBits maxSteps
+      executed cached raw cfg hrep)
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

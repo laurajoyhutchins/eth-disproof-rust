@@ -1,0 +1,162 @@
+name: Original numerical accumulator hit miss full-frame Lean trace
+
+on:
+  pull_request:
+    branches:
+      - feat/query-aot-source-20261113
+    paths:
+      - '.github/workflows/original-accumulate-hit-miss-trace.yml'
+      - 'rust/lean_eth_reference/tools/query_accumulate_hit_miss_trace.lean'
+
+permissions:
+  contents: read
+
+# Expensive original-source-only diagnostic. Not a routine main CI gate.
+jobs:
+  original-hit-miss:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+      LEAN_ROOT: instrumentation/lean-env
+      PINNED_ORIGINAL_SOURCE: ${{ github.workspace }}/upstream/openai-math
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Checkout pinned real OpenAI SAT source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth=1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test "$(git -C upstream/openai-math hash-object lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.lean)" = 3e1664be261748c6e12a2d1cafb033dc26131bf9
+          ln -s "$PINNED_ORIGINAL_SOURCE/lean/OAI" "$LEAN_ROOT/OAI"
+
+      - name: Restore pinned Lean and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Verify exact Lean 4.34.1 and pinned Mathlib revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat "$LEAN_ROOT/lean-toolchain")" = leanprover/lean4:v4.34.1
+          test "$(git -C "$LEAN_ROOT/.lake/packages/mathlib" rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+
+      - name: Restore original cached OAI modules
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: instrumentation/lean-env/.lake/build
+          key: original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-hit-miss-${{ github.run_id }}
+          restore-keys: |
+            original-query-v2-${{ runner.os }}-${{ hashFiles('instrumentation/lean-env/lean-toolchain', 'instrumentation/lean-env/lake-manifest.json') }}-${{ env.ORIGINAL_SOURCE_SHA }}-
+
+      - name: Execute genuine source hit/miss trace under bounded resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ACC_TRACE_OUT="$RUNNER_TEMP/original-accumulate-hit-miss"
+          mkdir -p "$ACC_TRACE_OUT"
+          python3 - <<'PY'
+          import hashlib,json,os,re,sys
+          from pathlib import Path
+          sys.path.insert(0,"rust/lean_eth_reference/tools")
+          from query_stream_aot import run_bounded,MAX_EXPORT_RSS_BYTES
+          root=Path(os.environ["GITHUB_WORKSPACE"])
+          lake=root/"instrumentation/lean-env"
+          source=root/"rust/lean_eth_reference/tools/query_accumulate_hit_miss_trace.lean"
+          olean=lake/".lake/build/lib/lean/OAI/Algorithms/SubexponentialSAT/SqrtLog/MomentsReadoutProgramAccumulate.olean"
+          output=Path(os.environ["ACC_TRACE_OUT"])
+          receipt={"status":"REFUSED","original_commit":os.environ["ORIGINAL_SOURCE_SHA"],
+                   "original_source_blob":"3e1664be261748c6e12a2d1cafb033dc26131bf9",
+                   "lean_to_rust_correspondence":False,"source_kernel_certificate":False,
+                   "universal_execution_refinement":False}
+          try:
+              if not olean.is_file() or olean.is_symlink():
+                  raise ValueError("original accumulator .olean not in trusted cache")
+              receipt["original_olean_sha256"]=hashlib.sha256(olean.read_bytes()).hexdigest()
+              receipt["source_trace_sha256"]=hashlib.sha256(source.read_bytes()).hexdigest()
+              result=run_bounded(["lake","env","lean","-j","1","-M","9216",str(source)],
+                                 lake,300,log_base=output/"original",
+                                 rss_limit_bytes=MAX_EXPORT_RSS_BYTES)
+              if result.returncode or result.stderr.strip():
+                  raise ValueError("pinned original source Lean trace refused exit="+
+                                   str(result.returncode)+ "; "+result.stderr[-1600:] +
+                                   "; "+result.stdout[-1500:])
+              lines=result.stdout.splitlines()
+              if not lines or lines[0]!="ORIGINAL_ACCUMULATE_TRACE_V1":
+                  raise ValueError("source trace protocol header missing")
+              summary={}
+              params={}
+              observed={}
+              for line in lines[1:]:
+                  fields=line.split("|")
+                  if fields[0]=="PARAM" and len(fields)==3:
+                      if fields[1] in params: raise ValueError("duplicate parameter")
+                      params[fields[1]]=fields[2]
+                  elif fields[0]=="TRACE" and len(fields)==6:
+                      case,idx,pc,regs,stacks=fields[1:]
+                      if case not in ("hit","miss") or not idx.isdecimal() or not (
+                          pc=="X" or (pc.isdecimal() and int(pc)<309)):
+                          raise ValueError("invalid source trace state")
+                      if len(regs)!=8 or set(regs)-set("01"):
+                          raise ValueError("invalid 8 source register bits")
+                      items=stacks.split(",")
+                      if len(items)!=27 or any(set(x)-set("01") for x in items):
+                          raise ValueError("invalid 27 source stacks")
+                      k=int(idx)
+                      expected=observed.get(case,-1)+1
+                      if k!=expected or k>2500: raise ValueError("trace step discontinuity")
+                      observed[case]=k
+                  elif fields[0]=="END" and len(fields)==4:
+                      case,steps,status=fields[1:]
+                      if case not in ("hit","miss") or case in summary or not steps.isdecimal():
+                          raise ValueError("invalid source end")
+                      if int(steps)!=observed.get(case,-1):
+                          raise ValueError("source trace end count mismatch")
+                      summary[case]={"steps":int(steps),"status":status}
+                  else:
+                      raise ValueError("unrecognized source trace record: "+line[:140])
+              if set(summary)!={"hit","miss"} or set(observed)!={"hit","miss"}:
+                  raise ValueError("missing hit or miss trace")
+              if not all(x["status"]=="HALTED" for x in summary.values()):
+                  raise ValueError("source trace did not halt within bounded steps: "+str(summary))
+              receipt.update({"status":"ORIGINAL_LEAN_HIT_MISS_FULL_TRACE_OBSERVED",
+                              "cases":summary,"params":params,
+                              "trace_sha256":hashlib.sha256(result.stdout.encode()).hexdigest(),
+                              "trace_states":sum(x["steps"]+1 for x in summary.values())})
+          except Exception as exc:
+              receipt["status"]="REFUSED"
+              receipt["reason"]=str(exc)[-3000:]
+          (output/"report.json").write_text(json.dumps(receipt,sort_keys=True,indent=2)+"\n")
+          print("ORIGINAL_ACCUMULATE_HIT_MISS="+json.dumps(receipt,sort_keys=True),flush=True)
+          if receipt["status"]!="ORIGINAL_LEAN_HIT_MISS_FULL_TRACE_OBSERVED":
+              raise SystemExit(2)
+          PY
+
+      - name: Preserve exact source trace or typed refusal
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-accumulator-hit-miss-${{ github.event.pull_request.head.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/original-accumulate-hit-miss/
+          if-no-files-found: warn
+          retention-days: 14

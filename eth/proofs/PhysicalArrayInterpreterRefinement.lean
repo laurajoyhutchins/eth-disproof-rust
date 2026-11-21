@@ -537,7 +537,7 @@ theorem sourceStackLength_balance {r s l : ℕ}
       by_cases h : port = stack
       · subst port
         simp [localPushGain, localPopLoss, BitProgram.execInstr]
-      · simp [localPushGain, localPopLoss, BitProgram.execInstr, h, Ne.symm h]
+      · simp [localPushGain, localPopLoss, BitProgram.execInstr, h]
   | peek stack value present next => rfl
   | pop stack value present next =>
       by_cases h : port = stack
@@ -547,7 +547,7 @@ theorem sourceStackLength_balance {r s l : ℕ}
             simp [localPushGain, localPopLoss, BitProgram.execInstr, hs]
         | cons bit tail =>
             simp [localPushGain, localPopLoss, BitProgram.execInstr, hs]
-      · simp [localPushGain, localPopLoss, BitProgram.execInstr, h, Ne.symm h]
+      · simp [localPushGain, localPopLoss, BitProgram.execInstr, h]
 
 private theorem sourcePushGain_sum {r s l : ℕ} (instr : Instr r s l) :
     (∑ port : Fin s, localPushGain instr port) = sourcePushGain instr := by
@@ -581,11 +581,11 @@ theorem sourceLiveStackBits_step {r s l : ℕ}
       sourcePopLoss instr cfg =
     sourceLiveStackBits cfg + sourcePushGain instr := by
   have hsum :
-      (∑ port : Fin s,
+      (Finset.univ.sum (fun port : Fin s =>
         ((BitProgram.execInstr instr cfg).«stacks» port).length +
-          localPopLoss instr cfg port) =
-      (∑ port : Fin s,
-        (cfg.«stacks» port).length + localPushGain instr port) := by
+          localPopLoss instr cfg port)) =
+      (Finset.univ.sum (fun port : Fin s =>
+        (cfg.«stacks» port).length + localPushGain instr port)) := by
     apply Finset.sum_congr rfl
     intro port _
     exact sourceStackLength_balance instr cfg port

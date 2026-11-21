@@ -524,6 +524,65 @@ mod checked_counter_tests {
     }
 
     #[test]
+    fn preflight_refusals_do_not_resize_or_mutate_native_stacks() {
+        let initial = Config::<1, 1> {
+            pc: Some(0),
+            regs: [true],
+            stacks: [VecDeque::new()],
+        };
+        let push = Instr::Push {
+            stack: 0,
+            src: 0,
+            next: 0,
+        };
+        for limits in [
+            RunLimits {
+                max_steps: 3,
+                max_stack_bits: 0,
+            },
+            RunLimits {
+                max_steps: 0,
+                max_stack_bits: 3,
+            },
+        ] {
+            let mut config = initial.clone();
+            let before_capacity = config.stacks[0].capacity();
+            let result = run_with_instruction_at(&mut config, limits, 1, |_| Ok(push.clone()));
+            assert!(matches!(result, Err(Error::Capacity(_))));
+            assert_eq!(config, initial);
+            assert_eq!(
+                config.stacks[0].capacity(),
+                before_capacity,
+                "logical refusal must precede host storage reservation"
+            );
+        }
+
+        let mut config = initial;
+        let stats = run_with_instruction_at(
+            &mut config,
+            RunLimits {
+                max_steps: u64::MAX,
+                max_stack_bits: usize::MAX,
+            },
+            1,
+            |_| Ok(Instr::Halt),
+        )
+        .unwrap();
+        assert_eq!(stats.instructions, 1);
+        assert_eq!(config.pc, None);
+    }
+
+    #[test]
+    fn host_deque_reserve_failure_preserves_logical_contents() {
+        let mut deque = VecDeque::from([true, false, true]);
+        let before = deque.clone();
+        // Deterministically exceeds the allocatable usize capacity,
+        // without requesting an actual huge allocation.
+        assert!(deque.try_reserve(usize::MAX).is_err());
+        assert_eq!(deque, before);
+    }
+
+    #[test]
     fn nonempty_pop_and_empty_pop_preserve_checked_counter_contract() {
         let pop = Instr::Pop {
             stack: 0,

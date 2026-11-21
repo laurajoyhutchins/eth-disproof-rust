@@ -7,8 +7,11 @@
 //! Accumulate source git blob: 3e1664be261748c6e12a2d1cafb033dc26131bf9
 //! Original Lean #eval: GH Actions #44827182079, artifact #14675006664.
 //! All-label proof attempts at #44827182079 / #44828568939 refused >12GiB.
-use lean_eth_reference::bit_program::{DeferredProgram, Instr, SourceGraphBinding};
+use lean_eth_reference::bit_program::{
+    Config, DeferredProgram, Instr, Program, RunLimits, SourceGraphBinding,
+};
 use sha2::{Digest, Sha256};
+use std::collections::VecDeque;
 
 const GRAPH: &[u8] = include_bytes!("../fixtures/original-accumulate-observed-unverified.json");
 const GRAPH_SHA256: &str = "0af370ad3ca3f8a5a9c0a144e8ffc82c07bc9b24acd206fa3ed863d8a58d2ea3";
@@ -128,4 +131,111 @@ fn uncertified_observation_cannot_be_rebound_to_another_graph() {
         DeferredProgram::<8, 27>::from_original_source_json(&changed, binding(GRAPH_SHA256),)
             .is_err()
     );
+}
+
+// Genuine original Encoding.frame (one escape bit per payload bit, then false)
+// and Squarefree.Program.rawEntries for ONE source dictionary record.
+// This is input construction only, never a second instruction interpreter.
+fn source_frame(bits: &[bool]) -> Vec<bool> {
+    let mut out = Vec::with_capacity(2 * bits.len() + 1);
+    for &bit in bits {
+        out.push(true);
+        out.push(bit);
+    }
+    out.push(false);
+    out
+}
+
+fn source_legal_accumulator_input(hit: bool) -> Config<8, 27> {
+    let mut initial = Config {
+        pc: Some(1),
+        regs: [false; 8],
+        stacks: std::array::from_fn(|_| VecDeque::new()),
+    };
+    // Original SubexpLiftRing.baseWidth 2 1 = 2.
+    // Original canonicalModulus 2 1 = little-endian modulus 2: 01.
+    initial.stacks[5].extend([false, true]);
+    initial.stacks[12].extend([true, true]);
+    initial.stacks[24].push_back(true);
+    // Original literalWordRun 2 1 [true] = little-endian one: 10.
+    initial.stacks[17].extend([true, false]);
+    // Original Squarefree.Program.rawEntries [([true], [true, false])].
+    // This must be 11011100 under the source's Encoding.frame.
+    let mut dictionary = source_frame(&[true]);
+    dictionary.extend(source_frame(&[true, false]));
+    assert_eq!(
+        dictionary,
+        [true, true, false, true, true, true, false, false]
+    );
+    initial.stacks[15].extend(dictionary);
+    // Original inputTape reverses the query before placing it on stack 16.
+    initial.stacks[16].push_back(hit);
+    initial
+}
+
+fn assert_bits(actual: &VecDeque<bool>, expected: &[bool], label: &str) {
+    assert!(
+        actual.iter().copied().eq(expected.iter().copied()),
+        "original observed accumulator final stack {label}: expected {expected:?}, got {actual:?}"
+    );
+}
+
+#[test]
+fn observed_original_accumulator_executes_real_modular_hit_and_absent_key_miss() {
+    // The exact original instruction table is a source-observed fixture,
+    // NOT an all-label Lean kernel-certified graph. This is an empirical
+    // execution test of the existing canonical Rust BitProgram interpreter.
+    let source =
+        DeferredProgram::<8, 27>::from_original_source_json(GRAPH, binding(GRAPH_SHA256)).unwrap();
+    let code = (0..309)
+        .map(|pc| source.instruction_at(pc).unwrap())
+        .collect::<Vec<_>>();
+    let flat = Program::<8, 27>::new(15, 17, 1, code).unwrap();
+    for hit in [true, false] {
+        let mut cfg = source_legal_accumulator_input(hit);
+        let stats = flat
+            .run(
+                &mut cfg,
+                RunLimits {
+                    max_steps: 100_000,
+                    max_stack_bits: 8192,
+                },
+            )
+            .expect("source-observed accumulator refused source-legal p=2,d=1 input");
+        assert_eq!(cfg.pc, None, "original observed accumulator did not halt");
+        assert!(
+            stats.instructions > 1,
+            "no actual arithmetic/dictionary execution"
+        );
+        // Expected one-word sum modulo 2: hit 1+1=0, absent key 1+0=1.
+        assert_bits(
+            &cfg.stacks[17],
+            if hit { &[false, false] } else { &[true, false] },
+            "17",
+        );
+        assert_bits(&cfg.stacks[5], &[false, true], "5");
+        assert_bits(&cfg.stacks[12], &[true, true], "12");
+        assert_bits(&cfg.stacks[24], &[true], "24");
+        assert_bits(
+            &cfg.stacks[15],
+            &[true, true, false, true, true, true, false, false],
+            "15",
+        );
+        assert_bits(&cfg.stacks[16], &[hit], "16");
+        for i in 0..27 {
+            if ![5, 12, 15, 16, 17, 24].contains(&i) {
+                assert!(
+                    cfg.stacks[i].is_empty(),
+                    "source scratch stack {i} not cleared"
+                );
+            }
+        }
+        println!(
+            "ORIGINAL_OBSERVED_ACCUMULATOR_EXECUTION case={} steps={} peak_bits={} \
+             observation_only=true",
+            if hit { "hit" } else { "miss" },
+            stats.instructions,
+            stats.peak_stack_bits
+        );
+    }
 }

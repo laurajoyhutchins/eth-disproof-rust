@@ -427,6 +427,12 @@ where
             return Err(Error::Capacity("BitProgram instruction limit".into()));
         }
         let instruction = instruction_at(pc)?;
+        // Unlike Program::new, this public callback boundary can receive an
+        // arbitrary Instr. Reject malformed register/stack operands *before*
+        // even the live-bit preflight indexes a stack, or execute_instr writes
+        // a register. A genuine finite table has < usize::MAX labels, so no
+        // valid source Fin label can equal usize::MAX.
+        instruction.validate::<R, S>(usize::MAX)?;
         match instruction {
             Instr::Push { .. } => {
                 if live_bits >= limits.max_stack_bits {

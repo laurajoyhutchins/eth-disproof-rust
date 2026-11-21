@@ -55,8 +55,29 @@ The theorem states that if the Aeneas `Vec.push` model succeeds with
 specified `Result` and the exact `events'` post-state. This is a scoped,
 conditional source-derived theorem and is *not* a model of allocation
 failure, actual CPU/Rust semantics, or the full ranked production recorder.
-Its kernel verdict must be checked on the exact head before reporting it
-as proved.
+The conditional P2 post-state theorem **was kernel-checked** at exact head `a0c29a2` in [run #44872606629](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/44872606629). The proof axiom report lists standard Lean axioms and no `sorryAx`. This is a model-level theorem about genuine generated p2, not a production Rust refinement.
+
+The [new P12 proof candidate](proofs/BorrowReturnP12.lean) imports
+`ProbeP12.Extraction.Funs`, the genuine Aeneas source-derived checked
+recorder. It states the ordered post-state under successful modelled checked
+addition and vector push, then specializes to both `Some value` success
+and `None` overflow refusal, preserving an event in both cases. The
+[change-scoped workflow](../../.github/workflows/ranked-borrow-matrix.yml)
+checks it with the pinned generated Lean 4.31.0 project and rejects
+`sorryAx` dependencies. Until that **exact-head step passes**, it remains
+an unverified proof candidate. Even a passing theorem does not independently
+verify `IScalar.overflowing_add` against CPU behavior.
+
+The arithmetic-model boundary is explicit in pinned
+[CoreModels `num.I128.checked_add`](https://github.com/cryspen/hax-lean/blob/v0.3.30/CoreModels/Core/Funs.lean):
+it calls `num.I128.overflowing_add`, and maps an overflow flag to
+`Option.None`. The pinned primitive model in
+[`CoreModels/RustPrimitives/Funs.lean`](https://github.com/cryspen/hax-lean/blob/v0.3.30/CoreModels/RustPrimitives/Funs.lean)
+uses `IScalar.overflowing_add`. The independent
+[`ACC.CheckedI128BitVec.checkedWordAdd_eq_checkedAdd`](../../instrumentation/lean-env/ACC/CheckedI128BitVec.lean)
+establishes a different Lean 4.34.1 BitVec/integer model. A complete
+cross-model theorem and source-to-machine implementation argument remain
+unproved.
 
 Even a green row is **only source-extraction evidence**. No row establishes
 Lean kernel typechecking, absence of placeholders in transitive dependencies,

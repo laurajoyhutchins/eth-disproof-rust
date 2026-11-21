@@ -774,6 +774,7 @@ fn arbitrary_callback_refuses_bad_operands_without_mutating_any_state() {
                     max_steps: 1,
                     max_stack_bits: cap,
                 },
+                2,
                 |_| Ok(instruction.clone()),
             );
             assert!(
@@ -786,4 +787,113 @@ fn arbitrary_callback_refuses_bad_operands_without_mutating_any_state() {
             );
         }
     }
+}
+
+#[test]
+fn callback_runner_rejects_nonfinite_successors_before_any_mutation() {
+    // All these instructions have valid register and stack operands. Their
+    // successor addresses, however, do not belong to the two-label machine.
+    // A branch must validate BOTH successors, not only the taken one.
+    let bad_instructions = [
+        Instr::Goto { next: 2 },
+        Instr::Set {
+            dst: 0,
+            value: false,
+            next: 2,
+        },
+        Instr::Branch {
+            test: 0,
+            yes: 1,
+            no: 2,
+        },
+        Instr::Push {
+            stack: 0,
+            src: 0,
+            next: 2,
+        },
+        Instr::Pop {
+            stack: 0,
+            value: 0,
+            present: 1,
+            next: 2,
+        },
+    ];
+    for instruction in bad_instructions {
+        let mut state = Config::<2, 2> {
+            pc: Some(0),
+            regs: [true, false],
+            stacks: std::array::from_fn(|i| {
+                if i == 0 {
+                    VecDeque::from([true])
+                } else {
+                    VecDeque::new()
+                }
+            }),
+        };
+        let before = state.clone();
+        let mut called = 0;
+        let result = run_with_instruction_at(
+            &mut state,
+            RunLimits {
+                max_steps: 3,
+                max_stack_bits: 3,
+            },
+            2,
+            |pc| {
+                called += 1;
+                assert_eq!(pc, 0);
+                Ok(instruction.clone())
+            },
+        );
+        assert!(
+            matches!(result, Err(Error::Invalid(_))),
+            "accepted out-of-range successor in {instruction:?}: {result:?}"
+        );
+        assert_eq!(called, 1);
+        assert_eq!(state, before, "invalid instruction mutated configuration");
+    }
+}
+
+#[test]
+fn callback_runner_refuses_invalid_active_pc_without_fetching() {
+    for active in [2, usize::MAX] {
+        let mut state = Config::<1, 1> {
+            pc: Some(active),
+            regs: [true],
+            stacks: [VecDeque::from([false])],
+        };
+        let before = state.clone();
+        let result = run_with_instruction_at(
+            &mut state,
+            RunLimits {
+                max_steps: 3,
+                max_stack_bits: 1,
+            },
+            2,
+            |_| panic!("invalid active program counter reached the callback"),
+        );
+        assert!(matches!(result, Err(Error::Invalid(_))));
+        assert_eq!(state, before);
+    }
+
+    // An already halted source machine must not fetch or manufacture a
+    // successor, even if the supplied label count is zero.
+    let mut halted = Config::<1, 1> {
+        pc: None,
+        regs: [false],
+        stacks: [VecDeque::new()],
+    };
+    let result = run_with_instruction_at(
+        &mut halted,
+        RunLimits {
+            max_steps: 0,
+            max_stack_bits: 0,
+        },
+        0,
+        |_| panic!("halted configuration reached callback"),
+    )
+    .expect("valid halted configuration was refused");
+    assert_eq!(result.instructions, 0);
+    assert_eq!(result.peak_stack_bits, 0);
+    assert_eq!(halted.pc, None);
 }

@@ -474,7 +474,7 @@ impl<const R: usize, const S: usize> Program<R, S> {
     /// capacity/refusal preflight for both instruction lookup strategies.
     /// Counts source instructions, not primitive TM2 steps or heap memory.
     pub fn run(&self, config: &mut Config<R, S>, limits: RunLimits) -> Result<RunStats, Error> {
-        run_with_instruction_at(config, limits, |pc| {
+        run_with_instruction_at(config, limits, self.code.len(), |pc| {
             self.code.get(pc).cloned().ok_or_else(|| {
                 Error::Invalid(format!(
                     "configuration pc {pc} outside Fin {}",

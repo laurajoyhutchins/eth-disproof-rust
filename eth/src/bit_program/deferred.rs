@@ -399,16 +399,19 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
     /// Physically faithful bounded execution, without a flat instruction table.
     /// The reported count is source BitProgram steps, not TM2 microsteps.
     pub fn run(&self, config: &mut Config<R, S>, limits: RunLimits) -> Result<RunStats, Error> {
-        run_with_instruction_at(config, limits, |pc| self.instruction_at(pc))
+        run_with_instruction_at(config, limits, self.labels, |pc| self.instruction_at(pc))
     }
 }
 
-/// Execute the exact physical BitProgram machine against any validated instruction lookup.
-/// The source-graph interpreter and ahead-of-time generated Rust share this runner,
+/// Execute the exact physical BitProgram machine against an instruction lookup.
+/// The caller supplies the finite number of physical labels so both the active PC
+/// and every decoded successor must be admitted before any state mutation.
+/// Flat, deferred, and generated source graphs share this bounded runner,
 /// including instruction and stack-bit limits and readRegs overwrite ordering.
 pub fn run_with_instruction_at<const R: usize, const S: usize, F>(
     config: &mut Config<R, S>,
     limits: RunLimits,
+    label_count: usize,
     mut instruction_at: F,
 ) -> Result<RunStats, Error>
 where
@@ -426,13 +429,16 @@ where
         if stats.instructions >= limits.max_steps {
             return Err(Error::Capacity("BitProgram instruction limit".into()));
         }
+        if pc >= label_count {
+            return Err(Error::Invalid(format!(
+                "configuration pc {pc} outside Fin {label_count}"
+            )));
+        }
         let instruction = instruction_at(pc)?;
-        // Unlike Program::new, this public callback boundary can receive an
-        // arbitrary Instr. Reject malformed register/stack operands *before*
-        // even the live-bit preflight indexes a stack, or execute_instr writes
-        // a register. A genuine finite table has < usize::MAX labels, so no
-        // valid source Fin label can equal usize::MAX.
-        instruction.validate::<R, S>(usize::MAX)?;
+        // A public callback can supply arbitrary instructions. Validate every
+        // operand and *all* successor labels against the actual finite table
+        // before indexing any stack or modifying the configuration.
+        instruction.validate::<R, S>(label_count)?;
         match instruction {
             Instr::Push { .. } => {
                 if live_bits >= limits.max_stack_bits {

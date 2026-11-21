@@ -339,6 +339,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let stats = run_with_instruction_at(
                 &mut config,
                 RunLimits { max_steps, max_stack_bits },
+                LABELS,
                 instruction_at,
             )?;
             println!(

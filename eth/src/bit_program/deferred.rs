@@ -639,29 +639,95 @@ mod checked_counter_tests {
             src: 0,
             next: 0,
         };
-        for (limits, label_count, instruction) in [
-            (RunLimits { max_steps: 3, max_stack_bits: 0 }, 1, push.clone()),
-            (RunLimits { max_steps: 0, max_stack_bits: 2 }, 1, push.clone()),
-            (RunLimits { max_steps: 3, max_stack_bits: 1 }, 1, push.clone()),
-            (RunLimits { max_steps: 3, max_stack_bits: 2 }, 0, push.clone()),
-            (RunLimits { max_steps: 3, max_stack_bits: 2 }, 1,
-                Instr::Push { stack: 0, src: 0, next: 1 }),
+        for (limits, label_count, instruction, invalid_label) in [
+            (
+                RunLimits {
+                    max_steps: 3,
+                    max_stack_bits: 0,
+                },
+                1,
+                push.clone(),
+                false,
+            ),
+            (
+                RunLimits {
+                    max_steps: 0,
+                    max_stack_bits: 2,
+                },
+                1,
+                push.clone(),
+                false,
+            ),
+            (
+                RunLimits {
+                    max_steps: 3,
+                    max_stack_bits: 1,
+                },
+                1,
+                push.clone(),
+                false,
+            ),
+            (
+                RunLimits {
+                    max_steps: 3,
+                    max_stack_bits: 2,
+                },
+                0,
+                push.clone(),
+                true,
+            ),
+            (
+                RunLimits {
+                    max_steps: 3,
+                    max_stack_bits: 2,
+                },
+                1,
+                Instr::Push {
+                    stack: 0,
+                    src: 0,
+                    next: 1,
+                },
+                true,
+            ),
         ] {
             let mut config = original.clone();
-            let mut allocations = 0;
-            let _ = run_with_instruction_at_and_reserve(
+            let result = run_with_instruction_at_and_reserve(
                 &mut config,
                 limits,
                 label_count,
                 |_| Ok(instruction.clone()),
-                |_| {
-                    allocations += 1;
-                    panic!("rejected instruction attempted to reserve: {allocations}")
-                },
+                |_| panic!("a rejected instruction must not request host reservation"),
             );
-            assert_eq!(allocations, 0);
+            if invalid_label {
+                assert!(matches!(result, Err(Error::Invalid(_))));
+            } else {
+                assert!(matches!(result, Err(Error::Capacity(_))));
+            }
             assert_eq!(config, original);
         }
+    }
+
+    #[test]
+    fn non_push_does_not_request_host_reservation() {
+        let mut config = Config::<1, 1> {
+            pc: Some(0),
+            regs: [false],
+            stacks: [VecDeque::new()],
+        };
+        let stats = run_with_instruction_at_and_reserve(
+            &mut config,
+            RunLimits {
+                max_steps: 1,
+                max_stack_bits: 0,
+            },
+            1,
+            |_| Ok(Instr::Halt),
+            |_| panic!("Halt must never attempt host reservation"),
+        )
+        .unwrap();
+        assert_eq!(stats.instructions, 1);
+        assert_eq!(stats.peak_stack_bits, 0);
+        assert_eq!(config.pc, None);
     }
 
     #[test]

@@ -473,6 +473,15 @@ where
         let next_live_bits =
             next_live_bit_count(&instruction, config, live_bits, limits.max_stack_bits)?;
         let next_instructions = stats.instructions.checked_add(1).ok_or(Error::Overflow)?;
+        // A source Push can grow the host VecDeque even when the logical bit
+        // limit admits it. Make this allocation fallible *before* any logical
+        // state mutation. Rust's VecDeque::try_reserve(1) preserves contents
+        // on failure and guarantees one insertion without further growth.
+        if let Instr::Push { stack, .. } = instruction {
+            config.stacks[stack]
+                .try_reserve(1)
+                .map_err(|_| Error::Capacity("BitProgram host stack allocation".into()))?;
+        }
         execute_instr(&instruction, config);
         live_bits = next_live_bits;
         stats.instructions = next_instructions;

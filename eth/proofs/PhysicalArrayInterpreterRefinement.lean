@@ -670,4 +670,84 @@ theorem sourceBoundedInstr_preserves_capacity {r s l : ℕ}
     exact hnot ⟨hp, hfull⟩
   omega
 
+
+/-!
+## Bounded multistep traces
+
+This is an instruction-granular successful-trace relation. It deliberately
+does not collapse capacity refusal into a halting state. Each constructor
+carries the actual source instruction selected at the current program counter,
+so no unrelated instruction can be inserted into a trace.
+-/
+
+/-- A successful bounded source transition at the current PC. A halted
+configuration has no successful transition; an admitted non-Halt instruction
+may nevertheless set the next PC to none. -/
+def sourceBoundedStep {r s l : ℕ} (program : Program r s l)
+    (maxBits : ℕ) (cfg : Cfg r s l) : Option (Cfg r s l) :=
+  cfg.pc.bind (fun pc => sourceBoundedInstr maxBits (program.code pc) cfg)
+
+/-- Exact successful bounded source traces, including intermediate states. -/
+inductive SourceBoundedTrace {r s l : ℕ} (program : Program r s l)
+    (maxBits : ℕ) : ℕ → Cfg r s l → Cfg r s l → Prop where
+  | refl (cfg) : SourceBoundedTrace program maxBits 0 cfg cfg
+  | cons {n : ℕ} {cfg mid final : Cfg r s l}
+      (hstep : sourceBoundedStep program maxBits cfg = some mid)
+      (htail : SourceBoundedTrace program maxBits n mid final) :
+      SourceBoundedTrace program maxBits (n + 1) cfg final
+
+/-- The entire successful bounded trace stays within capacity. This proof
+uses the existing one-instruction theorem rather than unfolding opcodes. -/
+theorem sourceBoundedTrace_capacity {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    {n : ℕ} {initial final : Cfg r s l}
+    (htrace : SourceBoundedTrace program maxBits n initial final)
+    (hin : sourceLiveStackBits initial ≤ maxBits) :
+    sourceLiveStackBits final ≤ maxBits := by
+  induction htrace with
+  | refl cfg => exact hin
+  | @cons n cfg mid final hstep htail ih =>
+      cases hpc : cfg.pc with
+      | none =>
+          simp [sourceBoundedStep, hpc] at hstep
+      | some pc =>
+          have hsingle :
+              sourceBoundedInstr maxBits (program.code pc) cfg = some mid := by
+            simpa [sourceBoundedStep, hpc] using hstep
+          exact ih (sourceBoundedInstr_preserves_capacity
+            maxBits (program.code pc) cfg mid hin hsingle)
+
+/-- Each admitted bounded source transition is also a transition of the
+original unbounded source program, with the *same* physical instruction. -/
+theorem sourceBoundedStep_unbounded {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    (cfg next : Cfg r s l)
+    (hstep : sourceBoundedStep program maxBits cfg = some next) :
+    BitProgram.step program cfg = some next := by
+  cases hpc : cfg.pc with
+  | none =>
+      simp [sourceBoundedStep, hpc] at hstep
+  | some pc =>
+      have hsingle :
+          sourceBoundedInstr maxBits (program.code pc) cfg = some next := by
+        simpa [sourceBoundedStep, hpc] using hstep
+      obtain ⟨heq, _⟩ :=
+        sourceBoundedInstr_success maxBits (program.code pc) cfg next hsingle
+      simp [BitProgram.step, hpc, heq]
+
+/-- Every bounded successful trace is an ordinary source trace with exactly
+the same step count and endpoints. The converse needs a capacity premise
+for *every* intermediate push, and is intentionally not asserted here. -/
+theorem sourceBoundedTrace_unbounded {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    {n : ℕ} {initial final : Cfg r s l}
+    (htrace : SourceBoundedTrace program maxBits n initial final) :
+    BitProgram.Trace program n initial final := by
+  induction htrace with
+  | refl cfg =>
+      exact .refl cfg
+  | @cons n cfg mid final hstep htail ih =>
+      exact .cons (sourceBoundedStep_unbounded
+        program maxBits cfg mid hstep) ih
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

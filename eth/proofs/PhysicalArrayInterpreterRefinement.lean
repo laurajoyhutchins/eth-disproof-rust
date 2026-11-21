@@ -1120,4 +1120,37 @@ theorem arrayRunnerOne_refines {r s l : ℕ}
               hwidth, hinit, hc, hraw, hsteps, pc.isLt, instr, hpush,
               hcounter] using (And.intro hcounter hnext)
 
+
+
+/-- A full index-based scan of represented raw stack lengths, corresponding
+to the logical value computed at Rust runner initialization. -/
+def arrayLiveStackBits {s : ℕ} (raw : ArrayCfg) : Nat :=
+  ∑ port : Fin s, (readStack raw port).length
+
+/-- The array-shaped full scan agrees with the source full stack-length
+sum, including empty stacks and arbitrary numbers of ports. -/
+theorem arrayLiveStackBits_refines {r s l : ℕ}
+    {raw : ArrayCfg} {cfg : Cfg r s l}
+    (h : Represents raw cfg) :
+    arrayLiveStackBits (s := s) raw = sourceLiveStackBits cfg := by
+  unfold arrayLiveStackBits sourceLiveStackBits
+  apply Finset.sum_congr rfl
+  intro port _
+  rw [represents_readStack h port]
+
+/-- The independently represented initial count can be derived by a
+full array scan rather than supplied as an unexplained invariant. -/
+theorem arrayRunnerOne_refines_scanned {r s l : ℕ}
+    (program : Program r s l) (maxBits maxSteps executed : Nat)
+    (raw : ArrayCfg) (cfg : Cfg r s l)
+    (h : Represents raw cfg) :
+    RunnerOneRepresents
+      (arrayRunnerOne program maxBits maxSteps executed
+        (arrayLiveStackBits (s := s) raw) raw)
+      (sourceRunnerOne program maxBits maxSteps executed
+        (sourceLiveStackBits cfg) cfg) := by
+  rw [arrayLiveStackBits_refines h]
+  exact arrayRunnerOne_refines program maxBits maxSteps executed
+    (sourceLiveStackBits cfg) raw cfg h
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

@@ -1222,10 +1222,9 @@ theorem arrayRunnerTrace_refines {r s l : ℕ}
         exact BoundedRunnerTrace.terminal
           (Or.inr (Or.inr (Or.inr (Or.inl ⟨harray, rfl⟩))))
       · rcases h with ⟨hsource, rfl⟩
+        -- Invalid is impossible for a represented source state.
         cases harray : arrayRunnerOne program maxBits maxSteps ex ca raw <;>
           simp [RunnerOneRepresents, hsource, harray] at hsim
-        exact BoundedRunnerTrace.terminal
-          (Or.inr (Or.inr (Or.inr (Or.inr ⟨harray, rfl⟩))))
   | @advance executed cached nextCached cfg next result hstep hrest ih =>
       have hsim := arrayRunnerOne_refines program maxBits maxSteps
         executed cached raw cfg hrep

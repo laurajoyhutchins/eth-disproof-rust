@@ -440,10 +440,39 @@ pub fn run_with_instruction_at<const R: usize, const S: usize, F>(
     config: &mut Config<R, S>,
     limits: RunLimits,
     label_count: usize,
-    mut instruction_at: F,
+    instruction_at: F,
 ) -> Result<RunStats, Error>
 where
     F: FnMut(usize) -> Result<Instr, Error>,
+{
+    run_with_instruction_at_and_reserve(
+        config,
+        limits,
+        label_count,
+        instruction_at,
+        |stack| {
+            stack
+                .try_reserve(1)
+                .map_err(|_| Error::Capacity("BitProgram host stack allocation".into()))
+        },
+    )
+}
+
+/// A single shared execution loop, with the host's fallible Push reservation
+/// made explicit. Production passes VecDeque::try_reserve(1); unit tests can
+/// force a refused reservation without exhausting host memory. The callback
+/// only observes the target stack after instruction and scalar validation.
+/// No source-visible instruction state may change before it returns Ok(()).
+fn run_with_instruction_at_and_reserve<const R: usize, const S: usize, F, G>(
+    config: &mut Config<R, S>,
+    limits: RunLimits,
+    label_count: usize,
+    mut instruction_at: F,
+    mut reserve_push: G,
+) -> Result<RunStats, Error>
+where
+    F: FnMut(usize) -> Result<Instr, Error>,
+    G: FnMut(&mut std::collections::VecDeque<bool>) -> Result<(), Error>,
 {
     let mut stats = RunStats {
         peak_stack_bits: config.stack_bits()?,
@@ -478,9 +507,7 @@ where
         // state mutation. Rust's VecDeque::try_reserve(1) preserves contents
         // on failure and guarantees one insertion without further growth.
         if let Instr::Push { stack, .. } = &instruction {
-            config.stacks[*stack]
-                .try_reserve(1)
-                .map_err(|_| Error::Capacity("BitProgram host stack allocation".into()))?;
+            reserve_push(&mut config.stacks[*stack])?;
         }
         execute_instr(&instruction, config);
         live_bits = next_live_bits;

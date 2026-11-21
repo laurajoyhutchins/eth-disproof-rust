@@ -898,7 +898,6 @@ fn callback_runner_refuses_invalid_active_pc_without_fetching() {
     assert_eq!(halted.pc, None);
 }
 
-
 /*
  * A genuinely independent finite-trace oracle for the *whole* bounded runner.
  * Unlike reference_bounded_run, this does not call production Program::step:
@@ -914,9 +913,7 @@ fn independently_model_bounded_run(
     state: &mut ListConfig,
     limits: RunLimits,
 ) -> Result<(u64, usize), Error> {
-    let live_bits = |cfg: &ListConfig| -> usize {
-        cfg.stacks.iter().map(Vec::len).sum()
-    };
+    let live_bits = |cfg: &ListConfig| -> usize { cfg.stacks.iter().map(Vec::len).sum() };
     let mut peak = live_bits(state);
     if peak > limits.max_stack_bits {
         return Err(Error::Capacity("model initial stack capacity".into()));
@@ -946,22 +943,85 @@ fn real_bounded_runner_matches_independent_list_semantics_over_finite_traces() {
     let instructions = [
         Instr::Halt,
         Instr::Goto { next: 1 },
-        Instr::Set { dst: 0, value: true, next: 1 },
-        Instr::Copy { dst: 0, src: 0, next: 1 },
-        Instr::Not { dst: 0, src: 0, next: 1 },
-        Instr::And { dst: 2, left: 0, right: 1, next: 1 },
-        Instr::Or { dst: 2, left: 0, right: 1, next: 1 },
-        Instr::Xor { dst: 2, left: 0, right: 1, next: 1 },
-        Instr::Branch { test: 0, yes: 1, no: 1 },
-        Instr::Push { stack: 1, src: 0, next: 1 },
-        Instr::Peek { stack: 1, value: 0, present: 0, next: 1 },
-        Instr::Pop { stack: 1, value: 0, present: 0, next: 1 },
+        Instr::Set {
+            dst: 0,
+            value: true,
+            next: 1,
+        },
+        Instr::Copy {
+            dst: 0,
+            src: 0,
+            next: 1,
+        },
+        Instr::Not {
+            dst: 0,
+            src: 0,
+            next: 1,
+        },
+        Instr::And {
+            dst: 2,
+            left: 0,
+            right: 1,
+            next: 1,
+        },
+        Instr::Or {
+            dst: 2,
+            left: 0,
+            right: 1,
+            next: 1,
+        },
+        Instr::Xor {
+            dst: 2,
+            left: 0,
+            right: 1,
+            next: 1,
+        },
+        Instr::Branch {
+            test: 0,
+            yes: 1,
+            no: 1,
+        },
+        Instr::Push {
+            stack: 1,
+            src: 0,
+            next: 1,
+        },
+        Instr::Peek {
+            stack: 1,
+            value: 0,
+            present: 0,
+            next: 1,
+        },
+        Instr::Pop {
+            stack: 1,
+            value: 0,
+            present: 0,
+            next: 1,
+        },
     ];
     let multi_step = vec![
-        Instr::Push { stack: 0, src: 0, next: 1 },
-        Instr::Push { stack: 1, src: 1, next: 2 },
-        Instr::Pop { stack: 0, value: 0, present: 0, next: 3 },
-        Instr::Pop { stack: 1, value: 1, present: 1, next: 4 },
+        Instr::Push {
+            stack: 0,
+            src: 0,
+            next: 1,
+        },
+        Instr::Push {
+            stack: 1,
+            src: 1,
+            next: 2,
+        },
+        Instr::Pop {
+            stack: 0,
+            value: 0,
+            present: 0,
+            next: 3,
+        },
+        Instr::Pop {
+            stack: 1,
+            value: 1,
+            present: 1,
+            next: 4,
+        },
         Instr::Halt,
     ];
     let mut tested = 0_u64;
@@ -988,9 +1048,8 @@ fn real_bounded_runner_matches_independent_list_semantics_over_finite_traces() {
                                     max_stack_bits: max_bits,
                                 };
                                 let result = program.run(&mut actual, limits);
-                                let reference = independently_model_bounded_run(
-                                    &code, &mut logical, limits,
-                                );
+                                let reference =
+                                    independently_model_bounded_run(&code, &mut logical, limits);
                                 assert_native_represents_list(
                                     &actual,
                                     &logical,

@@ -888,4 +888,85 @@ theorem sourceBoundedTrace_iff_capacityTrace {r s l : ℕ}
   · intro ht
     exact sourceCapacityTrace_to_bounded program maxBits ht
 
+
+/-!
+## Cached live-bit counter simulation
+
+The shared Rust runner computes the full live-bit count once at admission,
+then updates a scalar counter on Push and nonempty Pop. The following is an
+independently defined *Lean model* of this cached update, rather than a
+second implementation of the original source instruction semantics.
+The core relation states that this cached counter must equal the exact
+sum of stack lengths. Host \`usize\`, \`VecDeque\` and allocator behavior
+are separate obligations.
+-/
+
+/-- The scalar Rust-style update, where subtraction is natural-number
+subtraction. A Pop only subtracts when the source stack is nonempty. -/
+def sourceCachedCountAfter {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l) (cached : ℕ) : ℕ :=
+  cached + sourcePushGain instr - sourcePopLoss instr cfg
+
+/-- If the cached count is accurate before an original source step, the
+increment/decrement recurrence is accurate *after* it, for every opcode. -/
+theorem sourceCachedCountAfter_exact {r s l : ℕ}
+    (instr : Instr r s l) (cfg : Cfg r s l) :
+    sourceCachedCountAfter instr cfg (sourceLiveStackBits cfg) =
+      sourceLiveStackBits (BitProgram.execInstr instr cfg) := by
+  have hbalance := sourceLiveStackBits_step instr cfg
+  unfold sourceCachedCountAfter
+  omega
+
+/-- One physical program instruction, with the source counter updated only
+after the push-capacity gate admits execution. \`none\` covers preflight
+refusal and an already halted source configuration, not an answer. -/
+def sourceCachedStep {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    (cfg : Cfg r s l) (cached : ℕ) : Option (Cfg r s l × ℕ) :=
+  cfg.pc.bind fun pc =>
+    let instr := program.code pc
+    if sourcePushGain instr = 1 ∧ maxBits ≤ cached then
+      none
+    else
+      some (BitProgram.execInstr instr cfg,
+        sourceCachedCountAfter instr cfg cached)
+
+/-- The cached and rescan-style bounded source models take exactly the same
+steps and refuse in exactly the same cases whenever the cache equals the
+sum of live source stack bits. Their complete successor state and new
+cache are uniquely determined, not merely bounded. -/
+theorem sourceCachedStep_refines {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    (cfg : Cfg r s l) :
+    sourceCachedStep program maxBits cfg (sourceLiveStackBits cfg) =
+      (sourceBoundedStep program maxBits cfg).map
+        (fun next => (next, sourceLiveStackBits next)) := by
+  cases hpc : cfg.pc with
+  | none =>
+      simp [sourceCachedStep, sourceBoundedStep, hpc]
+  | some pc =>
+      let instr := program.code pc
+      have hcount : sourceCachedCountAfter instr cfg
+          (sourceLiveStackBits cfg) =
+            sourceLiveStackBits (BitProgram.execInstr instr cfg) :=
+        sourceCachedCountAfter_exact instr cfg
+      by_cases hfull :
+          sourcePushGain instr = 1 ∧ maxBits ≤ sourceLiveStackBits cfg
+      · simp [sourceCachedStep, sourceBoundedStep, sourceBoundedInstr,
+          hpc, instr, hfull]
+      · simp [sourceCachedStep, sourceBoundedStep, sourceBoundedInstr,
+          hpc, instr, hfull, hcount]
+
+/-- The cached count invariant is exact for any initial cached value already
+related to the actual stack lengths; it is not a sampled finite-bound claim. -/
+theorem sourceCachedStep_refines_of_invariant {r s l : ℕ}
+    (program : Program r s l) (maxBits : ℕ)
+    (cfg : Cfg r s l) (cached : ℕ)
+    (hinv : cached = sourceLiveStackBits cfg) :
+    sourceCachedStep program maxBits cfg cached =
+      (sourceBoundedStep program maxBits cfg).map
+        (fun next => (next, sourceLiveStackBits next)) := by
+  subst cached
+  exact sourceCachedStep_refines program maxBits cfg
+
 end OAI.Algorithms.SubexponentialSAT.LeanRustRefinement

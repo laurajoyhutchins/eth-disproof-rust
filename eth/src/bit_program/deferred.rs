@@ -440,10 +440,33 @@ pub fn run_with_instruction_at<const R: usize, const S: usize, F>(
     config: &mut Config<R, S>,
     limits: RunLimits,
     label_count: usize,
-    mut instruction_at: F,
+    instruction_at: F,
 ) -> Result<RunStats, Error>
 where
     F: FnMut(usize) -> Result<Instr, Error>,
+{
+    run_with_instruction_at_and_reserve(config, limits, label_count, instruction_at, |stack| {
+        stack
+            .try_reserve(1)
+            .map_err(|_| Error::Capacity("BitProgram host stack allocation".into()))
+    })
+}
+
+/// A single shared execution loop, with the host's fallible Push reservation
+/// made explicit. Production passes VecDeque::try_reserve(1); unit tests can
+/// force a refused reservation without exhausting host memory. The callback
+/// only observes the target stack after instruction and scalar validation.
+/// No source-visible instruction state may change before it returns Ok(()).
+fn run_with_instruction_at_and_reserve<const R: usize, const S: usize, F, G>(
+    config: &mut Config<R, S>,
+    limits: RunLimits,
+    label_count: usize,
+    mut instruction_at: F,
+    mut reserve_push: G,
+) -> Result<RunStats, Error>
+where
+    F: FnMut(usize) -> Result<Instr, Error>,
+    G: FnMut(&mut std::collections::VecDeque<bool>) -> Result<(), Error>,
 {
     let mut stats = RunStats {
         peak_stack_bits: config.stack_bits()?,
@@ -478,9 +501,7 @@ where
         // state mutation. Rust's VecDeque::try_reserve(1) preserves contents
         // on failure and guarantees one insertion without further growth.
         if let Instr::Push { stack, .. } = &instruction {
-            config.stacks[*stack]
-                .try_reserve(1)
-                .map_err(|_| Error::Capacity("BitProgram host stack allocation".into()))?;
+            reserve_push(&mut config.stacks[*stack])?;
         }
         execute_instr(&instruction, config);
         live_bits = next_live_bits;
@@ -494,6 +515,220 @@ where
 mod checked_counter_tests {
     use super::*;
     use std::collections::VecDeque;
+
+    #[test]
+    fn forced_host_refusal_does_not_commit_an_admitted_push() {
+        let original = Config::<1, 1> {
+            pc: Some(0),
+            regs: [true],
+            stacks: [VecDeque::new()],
+        };
+        let mut current = original.clone();
+        let mut reserve_calls = 0;
+        let mut fetch_calls = 0;
+        let failure = run_with_instruction_at_and_reserve(
+            &mut current,
+            RunLimits {
+                max_steps: 3,
+                max_stack_bits: 3,
+            },
+            1,
+            |_| {
+                fetch_calls += 1;
+                Ok(Instr::Push {
+                    stack: 0,
+                    src: 0,
+                    next: 0,
+                })
+            },
+            |stack| {
+                reserve_calls += 1;
+                assert!(stack.is_empty());
+                Err(Error::Capacity("injected host allocation refusal".into()))
+            },
+        );
+        assert!(matches!(failure, Err(Error::Capacity(_))));
+        assert_eq!(reserve_calls, 1);
+        assert_eq!(fetch_calls, 1);
+        assert_eq!(current, original, "no source step may be committed");
+    }
+
+    #[test]
+    fn forced_host_refusal_preserves_a_committed_prefix_and_allows_resume() {
+        let instruction_at = |pc| {
+            Ok(match pc {
+                0 => Instr::Push {
+                    stack: 0,
+                    src: 0,
+                    next: 1,
+                },
+                1 => Instr::Push {
+                    stack: 0,
+                    src: 0,
+                    next: 2,
+                },
+                2 => Instr::Halt,
+                _ => panic!("callback received invalid label"),
+            })
+        };
+        let mut current = Config::<1, 1> {
+            pc: Some(0),
+            regs: [true],
+            stacks: [VecDeque::new()],
+        };
+        let mut calls = 0;
+        let result = run_with_instruction_at_and_reserve(
+            &mut current,
+            RunLimits {
+                max_steps: 3,
+                max_stack_bits: 2,
+            },
+            3,
+            instruction_at,
+            |stack| {
+                calls += 1;
+                if calls == 2 {
+                    return Err(Error::Capacity("second push cannot allocate".into()));
+                }
+                stack
+                    .try_reserve(1)
+                    .map_err(|_| Error::Capacity("host stack allocation".into()))
+            },
+        );
+        assert!(matches!(result, Err(Error::Capacity(_))));
+        assert_eq!(calls, 2);
+        assert_eq!(current.pc, Some(1));
+        assert_eq!(
+            current.stacks[0].iter().copied().collect::<Vec<_>>(),
+            [true]
+        );
+
+        let remaining = run_with_instruction_at_and_reserve(
+            &mut current,
+            RunLimits {
+                max_steps: 2,
+                max_stack_bits: 2,
+            },
+            3,
+            instruction_at,
+            |stack| {
+                stack
+                    .try_reserve(1)
+                    .map_err(|_| Error::Capacity("host stack allocation".into()))
+            },
+        )
+        .unwrap();
+        assert_eq!(remaining.instructions, 2);
+        assert_eq!(remaining.peak_stack_bits, 2);
+        assert_eq!(current.pc, None);
+        assert_eq!(
+            current.stacks[0].iter().copied().collect::<Vec<_>>(),
+            [true, true]
+        );
+    }
+
+    #[test]
+    fn failure_guards_precede_host_reservation() {
+        let original = Config::<1, 1> {
+            pc: Some(0),
+            regs: [true],
+            stacks: [VecDeque::from([false])],
+        };
+        let push = Instr::Push {
+            stack: 0,
+            src: 0,
+            next: 0,
+        };
+        for (limits, label_count, instruction, invalid_label) in [
+            (
+                RunLimits {
+                    max_steps: 3,
+                    max_stack_bits: 0,
+                },
+                1,
+                push.clone(),
+                false,
+            ),
+            (
+                RunLimits {
+                    max_steps: 0,
+                    max_stack_bits: 2,
+                },
+                1,
+                push.clone(),
+                false,
+            ),
+            (
+                RunLimits {
+                    max_steps: 3,
+                    max_stack_bits: 1,
+                },
+                1,
+                push.clone(),
+                false,
+            ),
+            (
+                RunLimits {
+                    max_steps: 3,
+                    max_stack_bits: 2,
+                },
+                0,
+                push.clone(),
+                true,
+            ),
+            (
+                RunLimits {
+                    max_steps: 3,
+                    max_stack_bits: 2,
+                },
+                1,
+                Instr::Push {
+                    stack: 0,
+                    src: 0,
+                    next: 1,
+                },
+                true,
+            ),
+        ] {
+            let mut config = original.clone();
+            let result = run_with_instruction_at_and_reserve(
+                &mut config,
+                limits,
+                label_count,
+                |_| Ok(instruction.clone()),
+                |_| panic!("a rejected instruction must not request host reservation"),
+            );
+            if invalid_label {
+                assert!(matches!(result, Err(Error::Invalid(_))));
+            } else {
+                assert!(matches!(result, Err(Error::Capacity(_))));
+            }
+            assert_eq!(config, original);
+        }
+    }
+
+    #[test]
+    fn non_push_does_not_request_host_reservation() {
+        let mut config = Config::<1, 1> {
+            pc: Some(0),
+            regs: [false],
+            stacks: [VecDeque::new()],
+        };
+        let stats = run_with_instruction_at_and_reserve(
+            &mut config,
+            RunLimits {
+                max_steps: 1,
+                max_stack_bits: 0,
+            },
+            1,
+            |_| Ok(Instr::Halt),
+            |_| panic!("Halt must never attempt host reservation"),
+        )
+        .unwrap();
+        assert_eq!(stats.instructions, 1);
+        assert_eq!(stats.peak_stack_bits, 0);
+        assert_eq!(config.pc, None);
+    }
 
     #[test]
     fn push_preflight_is_exact_up_to_machine_word_maximum() {

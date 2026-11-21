@@ -897,3 +897,127 @@ fn callback_runner_refuses_invalid_active_pc_without_fetching() {
     assert_eq!(result.peak_stack_bits, 0);
     assert_eq!(halted.pc, None);
 }
+
+
+/*
+ * A genuinely independent finite-trace oracle for the *whole* bounded runner.
+ * Unlike reference_bounded_run, this does not call production Program::step:
+ * each candidate state is calculated through the ListConfig/Vec model above.
+ *
+ * The list model shares the literal opcode inputs with production (it is not
+ * a proof of source-table identity), but it neither uses VecDeque nor the
+ * production cached bit counter. Its refusals leave all previous committed
+ * steps intact and its success preserves complete source-shaped state.
+ */
+fn independently_model_bounded_run(
+    code: &[Instr],
+    state: &mut ListConfig,
+    limits: RunLimits,
+) -> Result<(u64, usize), Error> {
+    let live_bits = |cfg: &ListConfig| -> usize {
+        cfg.stacks.iter().map(Vec::len).sum()
+    };
+    let mut peak = live_bits(state);
+    if peak > limits.max_stack_bits {
+        return Err(Error::Capacity("model initial stack capacity".into()));
+    }
+    let mut executed = 0_u64;
+    while let Some(pc) = state.pc {
+        if executed >= limits.max_steps {
+            return Err(Error::Capacity("model instruction limit".into()));
+        }
+        let instr = code
+            .get(pc)
+            .ok_or_else(|| Error::Invalid("model nonfinite program counter".into()))?;
+        let next = model(instr, state);
+        let next_live = live_bits(&next);
+        if next_live > limits.max_stack_bits {
+            return Err(Error::Capacity("model push exceeds stack capacity".into()));
+        }
+        *state = next;
+        peak = peak.max(next_live);
+        executed += 1;
+    }
+    Ok((executed, peak))
+}
+
+#[test]
+fn real_bounded_runner_matches_independent_list_semantics_over_finite_traces() {
+    let instructions = [
+        Instr::Halt,
+        Instr::Goto { next: 1 },
+        Instr::Set { dst: 0, value: true, next: 1 },
+        Instr::Copy { dst: 0, src: 0, next: 1 },
+        Instr::Not { dst: 0, src: 0, next: 1 },
+        Instr::And { dst: 2, left: 0, right: 1, next: 1 },
+        Instr::Or { dst: 2, left: 0, right: 1, next: 1 },
+        Instr::Xor { dst: 2, left: 0, right: 1, next: 1 },
+        Instr::Branch { test: 0, yes: 1, no: 1 },
+        Instr::Push { stack: 1, src: 0, next: 1 },
+        Instr::Peek { stack: 1, value: 0, present: 0, next: 1 },
+        Instr::Pop { stack: 1, value: 0, present: 0, next: 1 },
+    ];
+    let multi_step = vec![
+        Instr::Push { stack: 0, src: 0, next: 1 },
+        Instr::Push { stack: 1, src: 1, next: 2 },
+        Instr::Pop { stack: 0, value: 0, present: 0, next: 3 },
+        Instr::Pop { stack: 1, value: 1, present: 1, next: 4 },
+        Instr::Halt,
+    ];
+    let mut tested = 0_u64;
+    let mut refusals = 0_u64;
+    for code in instructions
+        .into_iter()
+        .map(|instr| vec![instr, Instr::Halt])
+        .chain(std::iter::once(multi_step))
+    {
+        let program = Program::<3, 2>::new(0, 1, 0, code.clone()).unwrap();
+        for len0 in 0..=2 {
+            for len1 in 0..=2 {
+                for reg0 in [false, true] {
+                    for reg1 in [false, true] {
+                        for max_bits in 0..=6 {
+                            for max_steps in 0..=5 {
+                                let mut actual = program.initial([]);
+                                actual.regs = [reg0, reg1, !reg0];
+                                actual.stacks[0].extend((0..len0).map(|i| i % 2 == 0));
+                                actual.stacks[1].extend((0..len1).map(|i| i % 2 != 0));
+                                let mut logical = ListConfig::from_native(&actual);
+                                let limits = RunLimits {
+                                    max_steps,
+                                    max_stack_bits: max_bits,
+                                };
+                                let result = program.run(&mut actual, limits);
+                                let reference = independently_model_bounded_run(
+                                    &code, &mut logical, limits,
+                                );
+                                assert_native_represents_list(
+                                    &actual,
+                                    &logical,
+                                    &format!("{code:?} {limits:?} {len0}/{len1}"),
+                                );
+                                match (result, reference) {
+                                    (Ok(stats), Ok((steps, peak))) => {
+                                        assert_eq!(stats.instructions, steps);
+                                        assert_eq!(stats.peak_stack_bits, peak);
+                                    }
+                                    (Err(Error::Capacity(_)), Err(Error::Capacity(_))) => {
+                                        refusals += 1;
+                                    }
+                                    (actual_result, logical_result) => panic!(
+                                        "native/list bounded outcomes differ: \
+                                         code={code:?}, limits={limits:?}, \
+                                         actual={actual_result:?}, logical={logical_result:?}"
+                                    ),
+                                }
+                                tested += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(tested > 1000);
+    assert!(refusals > 0);
+}

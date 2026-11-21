@@ -49,7 +49,7 @@ private def traceCase (label : String) (tape : Tape)
   let status := if c.pc.isNone then "HALTED" else "CAPPED"
   IO.println s!"END|{label}|{steps}|{status}"
 
-#eval do
+private def runOriginalCases : IO Unit := do
   letI : Fact (Nat.Prime 2) := ⟨by decide⟩
   let modulus := (SubexpPreparedQuartic.canonicalModulus 2 1).bits
   let width := List.replicate (SubexpLiftRing.baseWidth 2 1) true
@@ -58,12 +58,14 @@ private def traceCase (label : String) (tape : Tape)
   let entries : List (List Bool × List Bool) := [([true], one)]
   let hitQuery := [true]
   let missQuery := [false]
-  unless entries.lookup hitQuery == some one do
-    throw (IO.userError "real dictionary hit precondition refused")
-  unless entries.lookup missQuery == none do
-    throw (IO.userError "real dictionary miss precondition refused")
-  unless one.length == SubexpLiftRing.baseWidth 2 1 do
-    throw (IO.userError "canonical source coefficient width refused")
+  let validInputs : Bool :=
+    (entries.lookup hitQuery == some one) &&
+    (entries.lookup missQuery == none) &&
+    (one.length == SubexpLiftRing.baseWidth 2 1)
+  if validInputs then
+    pure ()
+  else
+    throw (IO.userError "original dictionary hit/miss or coefficient width refused")
   IO.println "ORIGINAL_ACCUMULATE_TRACE_V1"
   IO.println s!"PARAM|prime|2"
   IO.println s!"PARAM|exponent|1"
@@ -75,5 +77,7 @@ private def traceCase (label : String) (tape : Tape)
   IO.println s!"PARAM|miss_query|{encodeBits missQuery}"
   traceCase "hit" (inputTape modulus width count entries hitQuery one) 2500
   traceCase "miss" (inputTape modulus width count entries missQuery one) 2500
+
+#eval runOriginalCases
 
 end OriginalAccumulateHitMissTrace

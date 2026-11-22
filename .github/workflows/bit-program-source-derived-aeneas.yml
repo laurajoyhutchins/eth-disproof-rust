@@ -1,0 +1,82 @@
+name: BitProgram checked counter source-derived Aeneas probe
+
+on:
+  pull_request:
+    paths:
+      - "eth/src/bit_program/checked_counter.rs"
+      - "eth/src/bit_program/deferred.rs"
+      - "eth/src/bit_program.rs"
+      - "eth/verification/source-derived-counter/**"
+      - ".github/workflows/bit-program-source-derived-aeneas.yml"
+  workflow_dispatch:
+
+# An isolated, deliberately expensive source-derived verification checkpoint.
+# Producing LLBC or generated Lean is not a theorem about actual Rust behavior.
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      AENEAS_PIN: 2e3d4488280bb8a95411db81019a7854a784861f
+      CHARON_PIN: 9e193f0317dacc822cc864c1798b117c70dcf7df
+      VERIFY_CRATE: eth/verification/source-derived-counter
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Enforce actual production-source identity and exercise native counter
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'mod checked_counter;' eth/src/bit_program.rs
+          grep -F 'checked_live_bit_step(action, cached, limit)' eth/src/bit_program/deferred.rs
+          grep -F '#[path = "../../../src/bit_program/checked_counter.rs"]' "$VERIFY_CRATE/src/lib.rs"
+          cargo test --offline --manifest-path "$VERIFY_CRATE/Cargo.toml" --all-targets
+          echo "A Rust build and tests are not a universal Rust/Lean refinement theorem."
+
+      - name: Install pinned Nix package manager
+        uses: cachix/install-nix-action@v31
+        with:
+          extra-substituters: https://hacl.cachix.org
+          extra-trusted-public-keys: hacl.cachix.org-1:FzsZ2xsByOwKwIWNPII7yMOelJNDZ12mDAj3d1eGX0c=
+
+      - name: Extract the actual Rust primitive using pinned Charon and Aeneas
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bit-program-counter-derived"
+          export LLBC="$RUNNER_TEMP/bit-program-counter-derived/checked_counter.llbc"
+          export GENERATED="$RUNNER_TEMP/bit-program-counter-derived/generated"
+          export VERIFY_CRATE="$GITHUB_WORKSPACE/$VERIFY_CRATE"
+          nix shell "github:AeneasVerif/aeneas/$AENEAS_PIN#aeneas" \
+            "github:AeneasVerif/charon/$CHARON_PIN#rustToolchain" \
+            --command bash -euo pipefail -c '
+              command -v charon
+              command -v aeneas
+              command -v cargo
+              cd "$VERIFY_CRATE"
+              charon cargo --preset=aeneas --dest-file="$LLBC"
+              test -s "$LLBC"
+              grep -F "checked_live_bit_step" "$LLBC"
+              mkdir -p "$GENERATED"
+              aeneas -backend lean "$LLBC" -dest "$GENERATED" \
+                -subdir /BitProgramCounter/Code -split-files -namespace BitProgramCounter
+              test -s "$GENERATED/BitProgramCounter/Code/Funs.lean"
+              grep -F "checked_live_bit_step" "$GENERATED/BitProgramCounter/Code/Funs.lean"
+              sha256sum "$GENERATED/BitProgramCounter/Code/"*.lean
+            '
+          echo "Extraction completed. No kernel-checked correspondence is claimed."
+
+      - name: Preserve exact source-derived LLBC and Lean for proof construction
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bit-program-checked-counter-source-derived
+          path: ${{ runner.temp }}/bit-program-counter-derived/
+          if-no-files-found: warn
+          retention-days: 7

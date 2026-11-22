@@ -123,6 +123,7 @@ jobs:
         with:
           path: eth/verification/source-derived-counter/proofs/.lake/packages/aeneas/backends/lean/.lake/build
           key: aeneas-lean-backend-v4.36.0-2e3d4488-v1
+          save-always: true
 
       - name: Kernel-check natural-number contract against generated Rust semantics
         shell: bash

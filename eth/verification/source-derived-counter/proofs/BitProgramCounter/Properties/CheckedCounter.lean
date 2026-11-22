@@ -31,9 +31,6 @@ def CounterMeaning (outcome : checked_counter.CounterOutcome)
   | .Unchanged, .Capacity => False
   | .Unchanged, .Overflow => False
 
-private theorem usize_one_value : (1#usize : Std.Usize).val = 1 := by
-  decide
-
 private theorem usize_within_max (x : Std.Usize) :
     x.val ≤ Usize.max := by
   have hb := UScalar.hrBounds x
@@ -47,11 +44,11 @@ private theorem checked_add_one_admitted (cached limit : Std.Usize)
   have hspec := Usize.checked_add_bv_spec cached 1#usize
   cases hs : Usize.checked_add cached 1#usize with
   | none =>
-      simp [hs, usize_one_value] at hspec
+      simp [hs] at hspec
       omega
   | some next =>
-      simp [hs, usize_one_value] at hspec
-      exact ⟨next, hs, hspec.2.1⟩
+      simp [hs] at hspec
+      exact ⟨next, rfl, hspec.2.1⟩
 
 private theorem checked_sub_one_nonempty (cached : Std.Usize)
     (hpositive : 0 < cached.val) :
@@ -60,20 +57,20 @@ private theorem checked_sub_one_nonempty (cached : Std.Usize)
   have hspec := Usize.checked_sub_bv_spec cached 1#usize
   cases hs : Usize.checked_sub cached 1#usize with
   | none =>
-      simp [hs, usize_one_value] at hspec
+      simp [hs] at hspec
       omega
   | some next =>
-      simp [hs, usize_one_value] at hspec
-      exact ⟨next, hs, hspec.2.1⟩
+      simp [hs] at hspec
+      exact ⟨next, rfl, hspec.2.1⟩
 
 private theorem checked_sub_one_empty (cached : Std.Usize)
     (hzero : cached.val = 0) :
     Usize.checked_sub cached 1#usize = none := by
   have hspec := Usize.checked_sub_bv_spec cached 1#usize
   cases hs : Usize.checked_sub cached 1#usize with
-  | none => exact hs
+  | none => rfl
   | some next =>
-      simp [hs, usize_one_value] at hspec
+      simp [hs] at hspec
       omega
 
 /-- Universal checked-refusal and arithmetic theorem for the actual
@@ -106,21 +103,21 @@ theorem extracted_counter_matches_nat_contract
           checked_add_one_admitted cached limit hlt
         refine ⟨.Allowed next, ?_, ?_⟩
         · simp [source_counter_step, checked_counter.checked_live_bit_step,
-            hcmp, hchecked]
+            hcmp, hchecked, Aeneas.Std.lift]
         · simp [CounterMeaning, hlt, hnext]
   | PopNonempty =>
       by_cases hzero : cached.val = 0
       · have hchecked := checked_sub_one_empty cached hzero
         refine ⟨.Overflow, ?_, ?_⟩
         · simp [source_counter_step, checked_counter.checked_live_bit_step,
-            hchecked]
+            hchecked, Aeneas.Std.lift]
         · simp [CounterMeaning, hzero]
       · have hpositive : 0 < cached.val := by omega
         obtain ⟨next, hchecked, hnext⟩ :=
           checked_sub_one_nonempty cached hpositive
         refine ⟨.Allowed next, ?_, ?_⟩
         · simp [source_counter_step, checked_counter.checked_live_bit_step,
-            hchecked]
+            hchecked, Aeneas.Std.lift]
         · simp [CounterMeaning, hpositive, hnext]
   | Unchanged =>
       refine ⟨.Allowed cached, ?_, ?_⟩

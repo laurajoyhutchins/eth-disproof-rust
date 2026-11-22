@@ -69,6 +69,9 @@ jobs:
               test -s "$GENERATED/BitProgramCounter/Code/Funs.lean"
               grep -F "checked_live_bit_step" "$GENERATED/BitProgramCounter/Code/Funs.lean"
               sha256sum "$GENERATED/BitProgramCounter/Code/"*.lean
+              echo "BEGIN SOURCE-DERIVED COUNTER FUNS (maximum 240 lines)"
+              sed -n "1,240p" "$GENERATED/BitProgramCounter/Code/Funs.lean"
+              echo "END SOURCE-DERIVED COUNTER FUNS"
             '
           echo "Extraction completed. No kernel-checked correspondence is claimed."
 

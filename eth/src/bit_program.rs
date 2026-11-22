@@ -611,6 +611,7 @@ pub struct RunStats {
     pub peak_stack_bits: usize,
 }
 
+mod checked_counter;
 mod deferred;
 pub mod frame_programs;
 pub mod physical_encoding;

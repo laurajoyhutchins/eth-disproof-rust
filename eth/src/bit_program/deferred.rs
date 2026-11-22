@@ -419,16 +419,12 @@ fn next_live_bit_count<const R: usize, const S: usize>(
 ) -> Result<usize, Error> {
     let action = match *instruction {
         Instr::Push { .. } => CounterAction::Push,
-        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => {
-            CounterAction::PopNonempty
-        }
+        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => CounterAction::PopNonempty,
         _ => CounterAction::Unchanged,
     };
     match checked_live_bit_step(action, cached, limit) {
         CounterOutcome::Allowed(next) => Ok(next),
-        CounterOutcome::Capacity => {
-            Err(Error::Capacity("BitProgram stack-bit limit".into()))
-        }
+        CounterOutcome::Capacity => Err(Error::Capacity("BitProgram stack-bit limit".into())),
         CounterOutcome::Overflow => Err(Error::Overflow),
     }
 }

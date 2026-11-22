@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 
+use super::checked_counter::{CounterAction, CounterOutcome, checked_live_bit_step};
 use super::{Atom, Config, Instr, Program, RunLimits, RunStats, execute_instr};
 use crate::Error;
 
@@ -416,18 +417,15 @@ fn next_live_bit_count<const R: usize, const S: usize>(
     cached: usize,
     limit: usize,
 ) -> Result<usize, Error> {
-    match *instruction {
-        Instr::Push { .. } => {
-            if cached >= limit {
-                Err(Error::Capacity("BitProgram stack-bit limit".into()))
-            } else {
-                cached.checked_add(1).ok_or(Error::Overflow)
-            }
-        }
-        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => {
-            cached.checked_sub(1).ok_or(Error::Overflow)
-        }
-        _ => Ok(cached),
+    let action = match *instruction {
+        Instr::Push { .. } => CounterAction::Push,
+        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => CounterAction::PopNonempty,
+        _ => CounterAction::Unchanged,
+    };
+    match checked_live_bit_step(action, cached, limit) {
+        CounterOutcome::Allowed(next) => Ok(next),
+        CounterOutcome::Capacity => Err(Error::Capacity("BitProgram stack-bit limit".into())),
+        CounterOutcome::Overflow => Err(Error::Overflow),
     }
 }
 

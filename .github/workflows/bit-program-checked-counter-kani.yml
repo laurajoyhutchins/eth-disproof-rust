@@ -1,0 +1,30 @@
+name: BitProgram checked counter native Kani verification
+
+on:
+  pull_request:
+    paths:
+      - "eth/src/bit_program/checked_counter.rs"
+      - ".github/workflows/bit-program-checked-counter-kani.yml"
+  workflow_dispatch:
+
+# Independent bounded model check against the *production Rust source*.
+# It is not a Lean kernel proof of compiler correctness or VecDeque behavior.
+permissions:
+  contents: read
+
+jobs:
+  checked-counter:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Model-check actual native checked-counter arithmetic (Kani 0.68.0)
+        uses: model-checking/kani-github-action@v1
+        with:
+          kani-version: "0.68.0"
+          command: kani
+          args: src/bit_program/checked_counter.rs
+          working-directory: ./eth

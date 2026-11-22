@@ -1,0 +1,144 @@
+name: BitProgram checked counter source-derived Aeneas probe
+
+on:
+  pull_request:
+    paths:
+      - "eth/src/bit_program/checked_counter.rs"
+      - "eth/src/bit_program/deferred.rs"
+      - "eth/src/bit_program.rs"
+      - "eth/verification/source-derived-counter/**"
+      - ".github/workflows/bit-program-source-derived-aeneas.yml"
+  workflow_dispatch:
+
+# An isolated, deliberately expensive source-derived verification checkpoint.
+# Producing LLBC or generated Lean is not a theorem about actual Rust behavior.
+permissions:
+  contents: read
+
+# The Charon/Aeneas toolchain is expensive to restore. Only the current
+# PR head is relevant for an exact source-derived proof receipt.
+concurrency:
+  group: bit-program-aeneas-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      AENEAS_PIN: 2e3d4488280bb8a95411db81019a7854a784861f
+      CHARON_PIN: 9e193f0317dacc822cc864c1798b117c70dcf7df
+      VERIFY_CRATE: eth/verification/source-derived-counter
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Enforce actual production-source identity and exercise native counter
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'mod checked_counter;' eth/src/bit_program.rs
+          grep -F 'checked_live_bit_step(action, cached, limit)' eth/src/bit_program/deferred.rs
+          grep -F '#[path = "../../../src/bit_program/checked_counter.rs"]' "$VERIFY_CRATE/src/lib.rs"
+          cargo test --offline --manifest-path "$VERIFY_CRATE/Cargo.toml" --all-targets
+          echo "A Rust build and tests are not a universal Rust/Lean refinement theorem."
+
+      - name: Install pinned Nix package manager
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            extra-substituters = https://hacl.cachix.org
+            extra-trusted-public-keys = hacl.cachix.org-1:FzsZ2xsByOwKwIWNPII7yMOelJNDZ12mDAj3d1eGX0c=
+
+      - name: Extract the actual Rust primitive using pinned Charon and Aeneas
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bit-program-counter-derived"
+          export LLBC="$RUNNER_TEMP/bit-program-counter-derived/checked_counter.llbc"
+          export GENERATED="$RUNNER_TEMP/bit-program-counter-derived/generated"
+          export VERIFY_CRATE="$GITHUB_WORKSPACE/$VERIFY_CRATE"
+          nix shell "github:AeneasVerif/aeneas/$AENEAS_PIN#aeneas" \
+            "github:AeneasVerif/charon/$CHARON_PIN#rustToolchain" \
+            --command bash -euo pipefail -c '
+              command -v charon
+              command -v aeneas
+              command -v cargo
+              cd "$VERIFY_CRATE"
+              charon cargo --preset=aeneas --dest-file="$LLBC"
+              test -s "$LLBC"
+              grep -F "checked_live_bit_step" "$LLBC"
+              mkdir -p "$GENERATED"
+              aeneas -backend lean "$LLBC" -dest "$GENERATED" \
+                -subdir /BitProgramCounter/Code -split-files -namespace BitProgramCounter
+              test -s "$GENERATED/BitProgramCounter/Code/Funs.lean"
+              grep -F "checked_live_bit_step" "$GENERATED/BitProgramCounter/Code/Funs.lean"
+              sha256sum "$GENERATED/BitProgramCounter/Code/"*.lean
+              echo "BEGIN SOURCE-DERIVED COUNTER FUNS (maximum 240 lines)"
+              sed -n "1,240p" "$GENERATED/BitProgramCounter/Code/Funs.lean"
+              echo "END SOURCE-DERIVED COUNTER FUNS"
+            '
+          echo "Extraction completed. No kernel-checked correspondence is claimed."
+
+      - name: Import regenerated operational Rust into pinned Lean proof project
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="eth/verification/source-derived-counter/proofs"
+          generated="$RUNNER_TEMP/bit-program-counter-derived/generated/BitProgramCounter/Code"
+          mkdir -p "$proof/BitProgramCounter/Code"
+          cp "$generated/Funs.lean" "$generated/Types.lean" "$proof/BitProgramCounter/Code/"
+          test "$(cat "$proof/lean-toolchain")" = "leanprover/lean4:v4.36.0"
+          ! grep -nE '(^|[^[:alnum:]_])(sorry|admit|axiom|unsafe)([^[:alnum:]_]|$)' \
+            "$proof/BitProgramCounter/Properties/CheckedCounter.lean"
+          sha256sum "$generated/Funs.lean" "$generated/Types.lean"
+
+      - name: Generate manifest for pinned Lean 4.36 and Aeneas project
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --no-modify-path --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          cd eth/verification/source-derived-counter/proofs
+          "$HOME/.elan/bin/lake" update
+          test -f lake-manifest.json
+
+      - name: Set up pinned Lean 4.36 for source-derived Rust proof
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: eth/verification/source-derived-counter/proofs
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Restore compiled Aeneas Lean backend dependencies
+        uses: actions/cache@v4
+        with:
+          path: eth/verification/source-derived-counter/proofs/.lake/packages/aeneas/backends/lean/.lake/build
+          key: aeneas-lean-backend-v4.36.0-2e3d4488-v1
+          save-always: true
+
+      - name: Kernel-check natural-number contract against generated Rust semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd eth/verification/source-derived-counter/proofs
+          lake exe cache get
+          lake build BitProgramCounter
+          echo "Source-derived Lean theorem checked against regenerated Rust counter."
+
+      - name: Preserve exact source-derived LLBC and Lean for proof construction
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bit-program-checked-counter-source-derived
+          path: ${{ runner.temp }}/bit-program-counter-derived/
+          if-no-files-found: warn
+          retention-days: 7

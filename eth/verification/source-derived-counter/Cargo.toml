@@ -1,0 +1,14 @@
+[package]
+name = "bit-program-source-derived-counter"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+resolver = "2"
+
+[lib]
+path = "src/lib.rs"
+
+# This standalone crate reuses the exact production source by relative path.
+# It must never carry a second hand-maintained implementation.

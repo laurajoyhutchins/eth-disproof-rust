@@ -48,8 +48,9 @@ jobs:
       - name: Install pinned Nix package manager
         uses: cachix/install-nix-action@v31
         with:
-          extra-substituters: https://hacl.cachix.org
-          extra-trusted-public-keys: hacl.cachix.org-1:FzsZ2xsByOwKwIWNPII7yMOelJNDZ12mDAj3d1eGX0c=
+          extra_nix_config: |
+            extra-substituters = https://hacl.cachix.org
+            extra-trusted-public-keys = hacl.cachix.org-1:FzsZ2xsByOwKwIWNPII7yMOelJNDZ12mDAj3d1eGX0c=
 
       - name: Extract the actual Rust primitive using pinned Charon and Aeneas
         shell: bash

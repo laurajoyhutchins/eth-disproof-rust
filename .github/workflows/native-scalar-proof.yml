@@ -5,12 +5,22 @@ on:
     paths:
       - 'compiler/proofs/**'
       - 'compiler/scripts/check.sh'
+      - 'compiler/lean-toolchain'
+      # Lean itself is installed through the shared pinned Lake environment.
+      - 'instrumentation/lean-env/lean-toolchain'
+      - 'instrumentation/lean-env/lakefile.lean'
+      - 'instrumentation/lean-env/lake-manifest.json'
       - '.github/workflows/native-scalar-proof.yml'
   push:
     branches: [main]
     paths:
       - 'compiler/proofs/**'
       - 'compiler/scripts/check.sh'
+      - 'compiler/lean-toolchain'
+      # Lean itself is installed through the shared pinned Lake environment.
+      - 'instrumentation/lean-env/lean-toolchain'
+      - 'instrumentation/lean-env/lakefile.lean'
+      - 'instrumentation/lean-env/lake-manifest.json'
       - '.github/workflows/native-scalar-proof.yml'
   workflow_dispatch:
 

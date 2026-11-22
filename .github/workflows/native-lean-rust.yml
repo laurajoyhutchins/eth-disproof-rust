@@ -7,6 +7,10 @@ on:
       - 'compiler/cli/**'
       - 'eth/src/bin/eth-compiler.rs'
       - 'eth/src/lean_codegen.rs'
+      # The runner restores Lean from the shared pinned Lake root.
+      - 'instrumentation/lean-env/lean-toolchain'
+      - 'instrumentation/lean-env/lakefile.lean'
+      - 'instrumentation/lean-env/lake-manifest.json'
       - '.github/workflows/native-lean-rust.yml'
   push:
     branches: [main]
@@ -15,6 +19,10 @@ on:
       - 'compiler/cli/**'
       - 'eth/src/bin/eth-compiler.rs'
       - 'eth/src/lean_codegen.rs'
+      # The runner restores Lean from the shared pinned Lake root.
+      - 'instrumentation/lean-env/lean-toolchain'
+      - 'instrumentation/lean-env/lakefile.lean'
+      - 'instrumentation/lean-env/lake-manifest.json'
       - '.github/workflows/native-lean-rust.yml'
   workflow_dispatch:
 

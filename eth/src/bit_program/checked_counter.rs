@@ -7,14 +7,14 @@
 //! instruction decoding, allocation, or the original source table.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CounterAction {
+pub enum CounterAction {
     Push,
     PopNonempty,
     Unchanged,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum CounterOutcome {
+pub enum CounterOutcome {
     Allowed(usize),
     Capacity,
     Overflow,
@@ -24,7 +24,7 @@ pub(crate) enum CounterOutcome {
 /// program state. A Push at the physical cap is a logical refusal; a
 /// nonempty Pop with zero cached cells is an invariant violation and is
 /// reported as overflow rather than wrapping or panicking.
-pub(crate) fn checked_live_bit_step(
+pub fn checked_live_bit_step(
     action: CounterAction,
     cached: usize,
     limit: usize,

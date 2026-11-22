@@ -24,7 +24,7 @@ concurrency:
 jobs:
   extract:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 45
     env:
       AENEAS_PIN: 2e3d4488280bb8a95411db81019a7854a784861f
       CHARON_PIN: 9e193f0317dacc822cc864c1798b117c70dcf7df
@@ -80,6 +80,57 @@ jobs:
               echo "END SOURCE-DERIVED COUNTER FUNS"
             '
           echo "Extraction completed. No kernel-checked correspondence is claimed."
+
+      - name: Import regenerated operational Rust into pinned Lean proof project
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof="eth/verification/source-derived-counter/proofs"
+          generated="$RUNNER_TEMP/bit-program-counter-derived/generated/BitProgramCounter/Code"
+          mkdir -p "$proof/BitProgramCounter/Code"
+          cp "$generated/Funs.lean" "$generated/Types.lean" "$proof/BitProgramCounter/Code/"
+          test "$(cat "$proof/lean-toolchain")" = "leanprover/lean4:v4.36.0"
+          ! grep -nE '(^|[^[:alnum:]_])(sorry|admit|axiom|unsafe)([^[:alnum:]_]|$)' \
+            "$proof/BitProgramCounter/Properties/CheckedCounter.lean"
+          sha256sum "$generated/Funs.lean" "$generated/Types.lean"
+
+      - name: Generate manifest for pinned Lean 4.36 and Aeneas project
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --no-modify-path --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          cd eth/verification/source-derived-counter/proofs
+          "$HOME/.elan/bin/lake" update
+          test -f lake-manifest.json
+
+      - name: Set up pinned Lean 4.36 for source-derived Rust proof
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: eth/verification/source-derived-counter/proofs
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Restore compiled Aeneas Lean backend dependencies
+        uses: actions/cache@v4
+        with:
+          path: eth/verification/source-derived-counter/proofs/.lake/packages/aeneas/backends/lean/.lake/build
+          key: aeneas-lean-backend-v4.36.0-2e3d4488-v1
+
+      - name: Kernel-check natural-number contract against generated Rust semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd eth/verification/source-derived-counter/proofs
+          lake exe cache get
+          lake build BitProgramCounter
+          echo "Source-derived Lean theorem checked against regenerated Rust counter."
 
       - name: Preserve exact source-derived LLBC and Lean for proof construction
         if: always()

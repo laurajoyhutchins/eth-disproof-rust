@@ -24,11 +24,7 @@ pub enum CounterOutcome {
 /// program state. A Push at the physical cap is a logical refusal; a
 /// nonempty Pop with zero cached cells is an invariant violation and is
 /// reported as overflow rather than wrapping or panicking.
-pub fn checked_live_bit_step(
-    action: CounterAction,
-    cached: usize,
-    limit: usize,
-) -> CounterOutcome {
+pub fn checked_live_bit_step(action: CounterAction, cached: usize, limit: usize) -> CounterOutcome {
     match action {
         CounterAction::Push => {
             if cached >= limit {
@@ -84,3 +80,53 @@ mod tests {
         );
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Model-check the *actual production Rust primitive*, with arbitrary
+    /// machine-word cached counts and limits and all action constructors.
+    /// This is CBMC/Kani evidence under its Rust models, not a Lean theorem.
+    #[kani::proof]
+    fn checked_counter_exact_for_all_machine_words() {
+        let choice: u8 = kani::any();
+        let cached: usize = kani::any();
+        let limit: usize = kani::any();
+        let action = if choice == 0 {
+            CounterAction::Push
+        } else if choice == 1 {
+            CounterAction::PopNonempty
+        } else {
+            CounterAction::Unchanged
+        };
+        let actual = checked_live_bit_step(action, cached, limit);
+        match action {
+            CounterAction::Push => {
+                if cached >= limit {
+                    assert_eq!(actual, CounterOutcome::Capacity);
+                } else {
+                    // The machine representability guard is a consequence
+                    // of comparing against a representable usize limit.
+                    assert!(cached < usize::MAX);
+                    assert_eq!(actual, CounterOutcome::Allowed(cached + 1));
+                    assert!(cached + 1 <= limit);
+                }
+            }
+            CounterAction::PopNonempty => {
+                if cached == 0 {
+                    assert_eq!(actual, CounterOutcome::Overflow);
+                } else {
+                    assert_eq!(actual, CounterOutcome::Allowed(cached - 1));
+                }
+            }
+            CounterAction::Unchanged => {
+                assert_eq!(actual, CounterOutcome::Allowed(cached));
+            }
+        }
+    }
+}
+
+// Direct invocation by Kani's single-file Rust harness, not a production main.
+#[cfg(kani)]
+fn main() {}

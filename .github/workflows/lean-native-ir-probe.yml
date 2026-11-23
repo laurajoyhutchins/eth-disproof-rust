@@ -1,0 +1,57 @@
+name: Experimental Lean-native IR emitter (bounded)
+
+on:
+  push:
+    branches: [experiment/lean-native-ir-emitter]
+    paths:
+      - 'compiler/LeanNativeRustIR.lean'
+      - 'compiler/examples/LeanNativeIR*.lean'
+      - 'compiler/scripts/check-lean-native-ir-probe.sh'
+      - '.github/workflows/lean-native-ir-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lean-native-ir-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.99.1
+      - name: Pinned Lean 4.34.1
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: false
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Headers for existing canonical emitter
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libgmp-dev libc++-dev libc++abi-dev libuv1-dev
+      - name: Check live IR, both emitters, source oracles, and refusals
+        shell: bash
+        run: |
+          set -euo pipefail
+          LEAN_BINARY="$(cd instrumentation/lean-env && elan which lean)"
+          export LEAN_PREFIX="$(dirname "$(dirname "$LEAN_BINARY")")"
+          bash compiler/scripts/check-lean-native-ir-probe.sh
+      - name: Preserve bounded experiment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lean-native-ir-probe
+          if-no-files-found: warn
+          retention-days: 7
+          path: compiler/artifacts/lean-native-ir-probe/

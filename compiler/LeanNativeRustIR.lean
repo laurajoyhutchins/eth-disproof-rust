@@ -134,14 +134,14 @@ private partial def renderBody (known : Array Name)
     return blockName j ++ "(" ++ String.intercalate ", " xs.toList ++ ")\n"
   | .case tyName x ty alts => do
     unless tyName == ``Bool && ty == .uint8 && alts.size == 2 do
-      return ← refusal "FnBody.case" "only exact two-constructor Bool cases"
+      return ← refusal "FnBody.case" s!"requires Bool 2 alternatives: type={tyName}, irType={repr ty}, n={alts.size}"
     let (.ctor f falseBody) := alts[0]!
-      | return ← refusal "FnBody.case" "first branch is not Bool.false"
+      | return ← refusal "FnBody.case" "first branch is not constructor, possibly default"
     let (.ctor t trueBody) := alts[1]!
-      | return ← refusal "FnBody.case" "second branch is not Bool.true"
+      | return ← refusal "FnBody.case" "second branch is not constructor, possibly default"
     unless f.name == ``Bool.false && f.cidx == 0 &&
            t.name == ``Bool.true && t.cidx == 1 do
-      return ← refusal "FnBody.case" "constructor identities/order mismatch"
+      return ← refusal "FnBody.case" s!"constructor mismatch: {f.name}[{f.cidx}], {t.name}[{t.cidx}]"
     let no ← renderBody known joins falseBody
     let yes ← renderBody known joins trueBody
     return "if " ++ localName x ++ " != 0 {\n" ++ yes ++ "} else {\n" ++ no ++ "}\n"

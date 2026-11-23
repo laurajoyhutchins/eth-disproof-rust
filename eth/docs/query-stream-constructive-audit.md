@@ -232,6 +232,37 @@ semantics, and a **constructive implementation of that actual numerical
 leaf value** (head product, ring representation and dense readout), are
 still needed. Do not substitute a #SAT oracle or a second CNF counter.
 
+**Coded numerical leaf implementation (verification in progress):**
+[`QueryStreamConstructiveLeaf.lean`](../proofs/QueryStreamConstructiveLeaf.lean)
+lifts the original `RingProgram.modelProgramRun` through the two
+finite coefficient truncations. It implements coordinate-wise
+addition/negation, bounded antidiagonal convolution, finite head product
+and final additive marker readout on code arrays; the semantic quotient
+ring appears only in decoding and correspondence. Preparation is counted
+in the model wrapper. The proposed `leafRun_correct_ofFn` theorem uses
+precisely the original indexed product of head values, conditional on
+correctly supplied encoded head sums.
+
+The three intended Lean regression outputs are `[0,0]`, `[3,0]`, and
+`[1,0]`: two lifting monomials at cutoff two, two heads `1+U`,
+and the empty product. An independent exact arithmetic experiment
+over `(Z/9)[X]/(X^2+1)` compared nested truncated convolution with
+full monomial expansion followed by truncation and readout. All
+256 deterministic cases (988 scalar coordinates, including zero
+cutoffs) agreed. This is separate from kernel verification.
+The [pinned CI run #45280221003](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/45280221003)
+checks the new implementation and must pass before the theorems count
+as certified.
+
+**Remaining source-specific input boundary:** the original
+`QueryTupleState.DenseWord` stores a normalized empty-support
+dictionary. `TruncatedRingProgram.rawValue_coeff` identifies each
+semantic coefficient with the actual key `(u,z,∅)`; the source
+lookup and denote-table lemmas permit a total code lookup with a zero
+default. Implement that adapter, then the actual restricted rescan
+producing those dictionaries. Do not treat supplied head-sum codes
+as proof that all numerical leaf inputs are already constructive.
+
 **Space-cost boundary:** the executable `∑ i : Fin N` can materialize
 `N` candidate indices. It is a proof-faithful numerical event
 contraction but not a reproduction of the original controller's

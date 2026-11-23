@@ -1,0 +1,68 @@
+name: Experimental Lean-native ownership IR audit
+
+on:
+  pull_request:
+    paths:
+      - 'compiler/LeanNativeOwnershipAudit.lean'
+      - 'compiler/examples/LeanNativeOwnershipFixture.lean'
+      - 'compiler/scripts/check-lean-native-ownership-*'
+      - '.github/workflows/lean-native-ownership-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audited-ownership-physical:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Pinned Rust toolchain and workspace crates
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          rustup default 1.99.1
+          cargo fetch --locked --manifest-path compiler/Cargo.toml
+      - name: Pinned Lean 4.34.1
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: false
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+      - name: Existing Lean C runtime prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libgmp-dev libc++-dev libc++abi-dev libuv1-dev
+      - name: Lean-native IR witness plus actual C/Reader physical parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          LEAN_BINARY="$(cd instrumentation/lean-env && elan which lean)"
+          export LEAN_PREFIX="$(dirname "$(dirname "$LEAN_BINARY")")"
+          bash compiler/scripts/check-lean-native-ownership-audit.sh
+      - name: Preserve exact-head ownership experiment
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lean-native-ownership-experiment
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            compiler/artifacts/lean-native-ownership/*.tsv
+            compiler/artifacts/lean-native-ownership-*log
+            compiler/artifacts/lean-native-ownership-*.txt
+            compiler/artifacts/lean-native-ownership-*.time
+            compiler/artifacts/source-del-final-ir.tsv
+            compiler/artifacts/source-del-final-ir-status.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-events.tsv
+            compiler/artifacts/lean-c-generated-heap/source-del-events-audit.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-trace.txt
+            compiler/artifacts/lean-c-generated-heap/source-del-exact-reader.rs

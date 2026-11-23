@@ -746,6 +746,186 @@ mod checked_counter_tests {
     }
 
     #[test]
+    fn every_opcode_has_one_exact_counter_and_reservation_decision() {
+        let cfg = Config::<4, 2> {
+            pc: Some(0),
+            regs: [true, false, true, false],
+            stacks: [VecDeque::new(), VecDeque::from([false, true])],
+        };
+        let cases = [
+            (Instr::Halt, 2, None),
+            (Instr::Goto { next: 1 }, 2, None),
+            (
+                Instr::Set {
+                    dst: 0,
+                    value: false,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Copy {
+                    dst: 0,
+                    src: 1,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Not {
+                    dst: 0,
+                    src: 1,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::And {
+                    dst: 0,
+                    left: 1,
+                    right: 2,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Or {
+                    dst: 0,
+                    left: 1,
+                    right: 2,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Xor {
+                    dst: 0,
+                    left: 1,
+                    right: 2,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Branch {
+                    test: 0,
+                    yes: 1,
+                    no: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Push {
+                    stack: 0,
+                    src: 0,
+                    next: 1,
+                },
+                3,
+                Some(0),
+            ),
+            (
+                Instr::Peek {
+                    stack: 1,
+                    value: 0,
+                    present: 1,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Pop {
+                    stack: 0,
+                    value: 0,
+                    present: 1,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Pop {
+                    stack: 1,
+                    value: 0,
+                    present: 1,
+                    next: 1,
+                },
+                1,
+                None,
+            ),
+        ];
+
+        for (instruction, expected_bits, reserve_stack) in cases {
+            let before = cfg.clone();
+            assert_eq!(
+                next_live_bit_count(&instruction, &cfg, 2, 3),
+                Ok(CounterPreflight {
+                    live_bits: expected_bits,
+                    reserve_stack,
+                }),
+                "incorrect effect decision for {instruction:?}"
+            );
+            assert_eq!(cfg, before, "preflight must be observationally pure");
+
+            let mut actual = cfg.clone();
+            let mut reservation_calls = 0;
+            let result = run_with_instruction_at_and_reserve(
+                &mut actual,
+                RunLimits {
+                    max_steps: 1,
+                    max_stack_bits: 3,
+                },
+                2,
+                |_| Ok(instruction.clone()),
+                |stack| {
+                    reservation_calls += 1;
+                    stack
+                        .try_reserve(1)
+                        .map_err(|_| Error::Capacity("host stack allocation".into()))
+                },
+            );
+            if matches!(instruction, Instr::Halt) {
+                assert!(result.is_ok(), "Halt must be a source terminal");
+            } else {
+                assert!(matches!(result, Err(Error::Capacity(_))));
+            }
+            assert_eq!(reservation_calls, usize::from(reserve_stack.is_some()));
+            assert_eq!(actual.stack_bits(), Ok(expected_bits));
+        }
+
+        // A rejected Push is not allowed to trigger any host reservation.
+        let rejected = Instr::Push {
+            stack: 1,
+            src: 0,
+            next: 1,
+        };
+        assert!(matches!(
+            next_live_bit_count(&rejected, &cfg, 2, 2),
+            Err(Error::Capacity(_))
+        ));
+        let mut unchanged = cfg.clone();
+        let result = run_with_instruction_at_and_reserve(
+            &mut unchanged,
+            RunLimits {
+                max_steps: 1,
+                max_stack_bits: 2,
+            },
+            2,
+            |_| Ok(rejected.clone()),
+            |_| panic!("refused Push must not reserve storage"),
+        );
+        assert!(matches!(result, Err(Error::Capacity(_))));
+        assert_eq!(unchanged, cfg);
+    }
+
+    #[test]
     fn push_preflight_is_exact_up_to_machine_word_maximum() {
         let cfg = Config::<1, 1> {
             pc: Some(0),
@@ -760,7 +940,10 @@ mod checked_counter_tests {
         // All machine-word values are tested without allocating a giant stack.
         assert_eq!(
             next_live_bit_count(&push, &cfg, usize::MAX - 1, usize::MAX),
-            Ok(usize::MAX)
+            Ok(CounterPreflight {
+                live_bits: usize::MAX,
+                reserve_stack: Some(0),
+            })
         );
         assert!(matches!(
             next_live_bit_count(&push, &cfg, usize::MAX, usize::MAX),
@@ -770,7 +953,13 @@ mod checked_counter_tests {
             next_live_bit_count(&push, &cfg, 0, 0),
             Err(Error::Capacity(_))
         ));
-        assert_eq!(next_live_bit_count(&push, &cfg, 0, 1), Ok(1));
+        assert_eq!(
+            next_live_bit_count(&push, &cfg, 0, 1),
+            Ok(CounterPreflight {
+                live_bits: 1,
+                reserve_stack: Some(0),
+            })
+        );
     }
 
     #[test]
@@ -846,14 +1035,29 @@ mod checked_counter_tests {
             stacks: [VecDeque::new()],
         };
         let before = cfg.clone();
-        assert_eq!(next_live_bit_count(&pop, &cfg, 0, 0), Ok(0));
+        assert_eq!(
+            next_live_bit_count(&pop, &cfg, 0, 0),
+            Ok(CounterPreflight {
+                live_bits: 0,
+                reserve_stack: None,
+            })
+        );
         assert_eq!(cfg, before);
         cfg.stacks[0].push_front(true);
         let before = cfg.clone();
-        assert_eq!(next_live_bit_count(&pop, &cfg, 1, 1), Ok(0));
+        assert_eq!(
+            next_live_bit_count(&pop, &cfg, 1, 1),
+            Ok(CounterPreflight {
+                live_bits: 0,
+                reserve_stack: None,
+            })
+        );
         assert_eq!(
             next_live_bit_count(&pop, &cfg, usize::MAX, usize::MAX),
-            Ok(usize::MAX - 1)
+            Ok(CounterPreflight {
+                live_bits: usize::MAX - 1,
+                reserve_stack: None,
+            })
         );
         assert_eq!(
             next_live_bit_count(&pop, &cfg, 0, 1),

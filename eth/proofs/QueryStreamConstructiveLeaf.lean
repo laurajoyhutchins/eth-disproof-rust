@@ -77,7 +77,8 @@ noncomputable def representedTrunc [CommRing R] (ops : RepresentedRing C R)
     simp [decodeArray, truncProgram, ops.zero_correct]
   one_correct := by
     ext i
-    by_cases h : i.val = 0 <;> simp [decodeArray, truncProgram, h, ops.zero_correct, ops.one_correct]
+    by_cases h : i.val = 0 <;>
+      simp [decodeArray, truncProgram, h, ops.zero_correct, ops.one_correct]
   add_correct := by
     intro a b
     ext i
@@ -143,6 +144,21 @@ theorem leafRun_correct [CommRing R] (ops : RepresentedRing C R) {t J : ℕ}
   congr 1
   exact productRun_correct (representedTrunc (representedTrunc ops J) t) heads
 
+/-- Indexed heads have the same finite product domain as the original
+    `SignatureTupleRun.emittedValue`. The hypothesis is precisely the
+    head-code correctness boundary, not an oracle for the final leaf. -/
+theorem leafRun_correct_ofFn [CommRing R] (ops : RepresentedRing C R)
+    {t J r : ℕ} (heads : Fin r → Fin t → Fin J → C)
+    (values : Fin r → Dense R t J)
+    (h : ∀ g, decodeArray (decodeArray ops.decode) (heads g) = values g) :
+    decodeArray ops.decode (leafRun ops.program (List.ofFn heads)).1 =
+      Dense.readout (∏ g : Fin r, values g) := by
+  rw [leafRun_correct, List.map_ofFn, List.prod_ofFn]
+  congr 1
+  apply Finset.prod_congr rfl
+  intro g _
+  exact h g
+
 /-- Specialization to the actual supplied-polynomial ternary model. The
     executable input is model data and paid scalar cache, not a noncomputable
     represented-ring record or a choice of a quotient representative. -/
@@ -152,7 +168,9 @@ def modelLeafRun (t : ℕ) {d J : ℕ}
     (cache : SqrtLog.RingProgram.ScalarCache 3 t)
     (heads : List (Fin t → Fin J →
       SqrtLog.RingProgram.Code (SqrtLog.RingProgram.ScalarCode 3 t) d)) :=
-  leafRun (SqrtLog.RingProgram.modelProgram t a M cache) heads
+  let prepared := SqrtLog.RingProgram.modelProgramRun t a M cache
+  let result := leafRun prepared.1 heads
+  (result.1, prepared.2 + result.2)
 
 theorem modelLeafRun_correct (t : ℕ) (ht : 0 < t) {d J : ℕ} (hd : 0 < d)
     (a : SqrtLog.RingModel.Data d)
@@ -164,7 +182,7 @@ theorem modelLeafRun_correct (t : ℕ) (ht : 0 < t) {d J : ℕ} (hd : 0 < d)
     decodeArray ops.decode (modelLeafRun t a M cache heads).1 =
       Dense.readout ((heads.map (decodeArray (decodeArray ops.decode))).prod) := by
   dsimp only
-  unfold modelLeafRun
+  simp only [modelLeafRun, SqrtLog.RingProgram.modelProgramRun_value]
   rw [← SqrtLog.RingProgram.modelRing_program t ht hd a M cache]
   exact leafRun_correct _ heads
 
@@ -195,6 +213,7 @@ example : List.ofFn (leafRun intProgram (t := 2) (J := 2) []).1 = [1, 0] := by d
 #print axioms convolution_correct
 #print axioms representedTrunc
 #print axioms leafRun_correct
+#print axioms leafRun_correct_ofFn
 #print axioms modelLeafRun_correct
 
 end OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamConstructiveLeaf

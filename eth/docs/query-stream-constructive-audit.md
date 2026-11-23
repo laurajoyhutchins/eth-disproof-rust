@@ -88,9 +88,12 @@ weightedSum weight n J =
     weight (DifferencePairs.encodePair E U).
 ```
 
-`signedSum` uses `(-1)^(number of some-false coordinates)`, matching
-the finite-difference sign in the source pair encoding, and proves the
-corresponding exact signed pair-family equation.
+`signedSum` uses `(-1)^(number of some-false coordinates)`.
+`differenceSign_encodePair` proves that the count of those coordinates
+is exactly `E.card - U.card` for `U ⊆ E`; hence
+`signedSum_eq_original_difference` identifies this executable sum
+with the source's exact Boolean finite-difference sign, **not merely**
+with a bit-encoded signed pair family.
 
 **Scope:** this is not an algorithm for producing `weight` from
 `QueryStreamProgram.pairCallback`. Correctness of the actual signed
@@ -169,10 +172,13 @@ these sample values, with the following expected rows:
 | 3 | 2 | 7 | 1 |
 | 3 | 4 | 27 | 1 |
 
-The new isolated CI gate imports the exact unchanged source and runs
-`#print axioms`. **Do not mark the new Lean theorem set kernel verified
-until that gate completes successfully.** Existing upstream theorems are
-reused rather than silently reproved. No CNF-wide input evaluation, original
+The isolated [CI run #45211897207](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/45211897207)
+**passed** against the unchanged pinned source at commit `7ebdf6b`, including
+all six new theorems, executable examples and `#print axioms`. The reported
+axioms were subsets of `propext`, `Classical.choice`, and `Quot.sound`;
+**no `sorryAx`** appears. Choice is in proof-level finite-set lemmas;
+the concrete `weightedSum` and `signedSum` operations are computable.
+Existing upstream theorems are reused rather than silently reproved. No CNF-wide input evaluation, original
 whole-program equality, numerical coefficient reconstruction, universal
 termination or subexponential bit-cost theorem is established by this PR.
 

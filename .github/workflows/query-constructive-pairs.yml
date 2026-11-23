@@ -5,6 +5,7 @@ on:
     paths:
       - 'eth/proofs/QueryStreamConstructivePairs.lean'
       - 'eth/proofs/QueryStreamConstructiveSignatures.lean'
+      - 'eth/proofs/QueryStreamConstructiveLeaf.lean'
       - '.github/workflows/query-constructive-pairs.yml'
   workflow_dispatch:
 
@@ -55,17 +56,19 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
-          if grep -nE '\b(sorry|admit)\b' eth/proofs/QueryStreamConstructivePairs.lean eth/proofs/QueryStreamConstructiveSignatures.lean; then
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/QueryStreamConstructivePairs.lean eth/proofs/QueryStreamConstructiveSignatures.lean eth/proofs/QueryStreamConstructiveLeaf.lean; then
             echo 'No admitted proofs allowed' >&2
             exit 1
           fi
           (
             cd instrumentation/lean-env
-            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DifferencePairs OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.SignatureTupleTraversal
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DifferencePairs OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.SignatureTupleTraversal OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.TruncatedRing OAI.Algorithms.SubexponentialSAT.SqrtLog.RingProgramModel
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/QueryStreamConstructivePairs.lean"
             lake env lean "$GITHUB_WORKSPACE/eth/proofs/QueryStreamConstructiveSignatures.lean"
+            lake env lean "$GITHUB_WORKSPACE/eth/proofs/QueryStreamConstructiveLeaf.lean"
           )
           echo 'QUERY_SOURCE_ORDERED_PAIR_CONTRACTION=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'QUERY_CODED_DENSE_LEAF_ARITHMETIC=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'QUERY_ATTAINED_SIGNATURE_SUBTREE=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
           echo 'QUERY_FULL_SUPPORT_PAIR_VISITS=EXACTLY_3_POW_N' >> "$GITHUB_STEP_SUMMARY"
           echo 'QUERY_WHOLE_PROGRAM_CORRECTNESS=NOT_CLAIMED' >> "$GITHUB_STEP_SUMMARY"

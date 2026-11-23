@@ -404,6 +404,15 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
     }
 }
 
+/// A single validated instruction-effect decision controls both the
+/// checked scalar count and whether a host Push reservation is required.
+/// An admitted Push must never be executed without first reserving its stack.
+#[derive(Debug, PartialEq, Eq)]
+struct CounterPreflight {
+    live_bits: usize,
+    reserve_stack: Option<usize>,
+}
+
 /// Checked scalar analogue of the Lean source live-stack balance law.
 ///
 /// The caller validates all instruction operands first, so any indexed stack
@@ -411,19 +420,27 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
 /// cached count, a nonempty Pop cannot underflow and an admitted Push cannot
 /// overflow usize, but use checked operations anyway so a violated invariant
 /// causes an explicit refusal rather than a wrapped or panicking counter.
+///
+/// The same match also determines the unique stack requiring host allocation,
+/// eliminating a second, potentially divergent Push predicate in the runner.
 fn next_live_bit_count<const R: usize, const S: usize>(
     instruction: &Instr,
     config: &Config<R, S>,
     cached: usize,
     limit: usize,
-) -> Result<usize, Error> {
-    let action = match *instruction {
-        Instr::Push { .. } => CounterAction::Push,
-        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => CounterAction::PopNonempty,
-        _ => CounterAction::Unchanged,
+) -> Result<CounterPreflight, Error> {
+    let (action, reserve_stack) = match *instruction {
+        Instr::Push { stack, .. } => (CounterAction::Push, Some(stack)),
+        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => {
+            (CounterAction::PopNonempty, None)
+        }
+        _ => (CounterAction::Unchanged, None),
     };
     match checked_live_bit_step(action, cached, limit) {
-        CounterOutcome::Allowed(next) => Ok(next),
+        CounterOutcome::Allowed(next) => Ok(CounterPreflight {
+            live_bits: next,
+            reserve_stack,
+        }),
         CounterOutcome::Capacity => Err(Error::Capacity("BitProgram stack-bit limit".into())),
         CounterOutcome::Overflow => Err(Error::Overflow),
     }
@@ -491,18 +508,18 @@ where
         // Compute all fallible scalar operations *before* mutating the
         // configuration. This makes arithmetic refusal atomic at the
         // instruction boundary, including an inconsistent cached counter.
-        let next_live_bits =
+        let preflight =
             next_live_bit_count(&instruction, config, live_bits, limits.max_stack_bits)?;
         let next_instructions = stats.instructions.checked_add(1).ok_or(Error::Overflow)?;
-        // A source Push can grow the host VecDeque even when the logical bit
-        // limit admits it. Make this allocation fallible *before* any logical
-        // state mutation. Rust's VecDeque::try_reserve(1) preserves contents
-        // on failure and guarantees one insertion without further growth.
-        if let Instr::Push { stack, .. } = &instruction {
-            reserve_push(&mut config.stacks[*stack])?;
+        // The same preflight decision that charges the source Push also
+        // authorizes the host reservation. Reserve before any logical state
+        // mutation. VecDeque::try_reserve(1) preserves contents on refusal
+        // and guarantees one insertion without additional growth on success.
+        if let Some(stack) = preflight.reserve_stack {
+            reserve_push(&mut config.stacks[stack])?;
         }
         execute_instr(&instruction, config);
-        live_bits = next_live_bits;
+        live_bits = preflight.live_bits;
         stats.instructions = next_instructions;
         stats.peak_stack_bits = stats.peak_stack_bits.max(live_bits);
     }
@@ -729,6 +746,186 @@ mod checked_counter_tests {
     }
 
     #[test]
+    fn every_opcode_has_one_exact_counter_and_reservation_decision() {
+        let cfg = Config::<4, 2> {
+            pc: Some(0),
+            regs: [true, false, true, false],
+            stacks: [VecDeque::new(), VecDeque::from([false, true])],
+        };
+        let cases = [
+            (Instr::Halt, 2, None),
+            (Instr::Goto { next: 1 }, 2, None),
+            (
+                Instr::Set {
+                    dst: 0,
+                    value: false,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Copy {
+                    dst: 0,
+                    src: 1,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Not {
+                    dst: 0,
+                    src: 1,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::And {
+                    dst: 0,
+                    left: 1,
+                    right: 2,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Or {
+                    dst: 0,
+                    left: 1,
+                    right: 2,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Xor {
+                    dst: 0,
+                    left: 1,
+                    right: 2,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Branch {
+                    test: 0,
+                    yes: 1,
+                    no: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Push {
+                    stack: 0,
+                    src: 0,
+                    next: 1,
+                },
+                3,
+                Some(0),
+            ),
+            (
+                Instr::Peek {
+                    stack: 1,
+                    value: 0,
+                    present: 1,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Pop {
+                    stack: 0,
+                    value: 0,
+                    present: 1,
+                    next: 1,
+                },
+                2,
+                None,
+            ),
+            (
+                Instr::Pop {
+                    stack: 1,
+                    value: 0,
+                    present: 1,
+                    next: 1,
+                },
+                1,
+                None,
+            ),
+        ];
+
+        for (instruction, expected_bits, reserve_stack) in cases {
+            let before = cfg.clone();
+            assert_eq!(
+                next_live_bit_count(&instruction, &cfg, 2, 3),
+                Ok(CounterPreflight {
+                    live_bits: expected_bits,
+                    reserve_stack,
+                }),
+                "incorrect effect decision for {instruction:?}"
+            );
+            assert_eq!(cfg, before, "preflight must be observationally pure");
+
+            let mut actual = cfg.clone();
+            let mut reservation_calls = 0;
+            let result = run_with_instruction_at_and_reserve(
+                &mut actual,
+                RunLimits {
+                    max_steps: 1,
+                    max_stack_bits: 3,
+                },
+                2,
+                |_| Ok(instruction.clone()),
+                |stack| {
+                    reservation_calls += 1;
+                    stack
+                        .try_reserve(1)
+                        .map_err(|_| Error::Capacity("host stack allocation".into()))
+                },
+            );
+            if matches!(instruction, Instr::Halt) {
+                assert!(result.is_ok(), "Halt must be a source terminal");
+            } else {
+                assert!(matches!(result, Err(Error::Capacity(_))));
+            }
+            assert_eq!(reservation_calls, usize::from(reserve_stack.is_some()));
+            assert_eq!(actual.stack_bits(), Ok(expected_bits));
+        }
+
+        // A rejected Push is not allowed to trigger any host reservation.
+        let rejected = Instr::Push {
+            stack: 1,
+            src: 0,
+            next: 1,
+        };
+        assert!(matches!(
+            next_live_bit_count(&rejected, &cfg, 2, 2),
+            Err(Error::Capacity(_))
+        ));
+        let mut unchanged = cfg.clone();
+        let result = run_with_instruction_at_and_reserve(
+            &mut unchanged,
+            RunLimits {
+                max_steps: 1,
+                max_stack_bits: 2,
+            },
+            2,
+            |_| Ok(rejected.clone()),
+            |_| panic!("refused Push must not reserve storage"),
+        );
+        assert!(matches!(result, Err(Error::Capacity(_))));
+        assert_eq!(unchanged, cfg);
+    }
+
+    #[test]
     fn push_preflight_is_exact_up_to_machine_word_maximum() {
         let cfg = Config::<1, 1> {
             pc: Some(0),
@@ -743,7 +940,10 @@ mod checked_counter_tests {
         // All machine-word values are tested without allocating a giant stack.
         assert_eq!(
             next_live_bit_count(&push, &cfg, usize::MAX - 1, usize::MAX),
-            Ok(usize::MAX)
+            Ok(CounterPreflight {
+                live_bits: usize::MAX,
+                reserve_stack: Some(0),
+            })
         );
         assert!(matches!(
             next_live_bit_count(&push, &cfg, usize::MAX, usize::MAX),
@@ -753,7 +953,13 @@ mod checked_counter_tests {
             next_live_bit_count(&push, &cfg, 0, 0),
             Err(Error::Capacity(_))
         ));
-        assert_eq!(next_live_bit_count(&push, &cfg, 0, 1), Ok(1));
+        assert_eq!(
+            next_live_bit_count(&push, &cfg, 0, 1),
+            Ok(CounterPreflight {
+                live_bits: 1,
+                reserve_stack: Some(0),
+            })
+        );
     }
 
     #[test]
@@ -829,14 +1035,29 @@ mod checked_counter_tests {
             stacks: [VecDeque::new()],
         };
         let before = cfg.clone();
-        assert_eq!(next_live_bit_count(&pop, &cfg, 0, 0), Ok(0));
+        assert_eq!(
+            next_live_bit_count(&pop, &cfg, 0, 0),
+            Ok(CounterPreflight {
+                live_bits: 0,
+                reserve_stack: None,
+            })
+        );
         assert_eq!(cfg, before);
         cfg.stacks[0].push_front(true);
         let before = cfg.clone();
-        assert_eq!(next_live_bit_count(&pop, &cfg, 1, 1), Ok(0));
+        assert_eq!(
+            next_live_bit_count(&pop, &cfg, 1, 1),
+            Ok(CounterPreflight {
+                live_bits: 0,
+                reserve_stack: None,
+            })
+        );
         assert_eq!(
             next_live_bit_count(&pop, &cfg, usize::MAX, usize::MAX),
-            Ok(usize::MAX - 1)
+            Ok(CounterPreflight {
+                live_bits: usize::MAX - 1,
+                reserve_stack: None,
+            })
         );
         assert_eq!(
             next_live_bit_count(&pop, &cfg, 0, 1),

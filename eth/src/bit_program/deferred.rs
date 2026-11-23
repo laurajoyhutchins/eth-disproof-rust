@@ -404,6 +404,15 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
     }
 }
 
+/// A single validated instruction-effect decision controls both the
+/// checked scalar count and whether a host Push reservation is required.
+/// An admitted Push must never be executed without first reserving its stack.
+#[derive(Debug, PartialEq, Eq)]
+struct CounterPreflight {
+    live_bits: usize,
+    reserve_stack: Option<usize>,
+}
+
 /// Checked scalar analogue of the Lean source live-stack balance law.
 ///
 /// The caller validates all instruction operands first, so any indexed stack
@@ -411,19 +420,27 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
 /// cached count, a nonempty Pop cannot underflow and an admitted Push cannot
 /// overflow usize, but use checked operations anyway so a violated invariant
 /// causes an explicit refusal rather than a wrapped or panicking counter.
+///
+/// The same match also determines the unique stack requiring host allocation,
+/// eliminating a second, potentially divergent Push predicate in the runner.
 fn next_live_bit_count<const R: usize, const S: usize>(
     instruction: &Instr,
     config: &Config<R, S>,
     cached: usize,
     limit: usize,
-) -> Result<usize, Error> {
-    let action = match *instruction {
-        Instr::Push { .. } => CounterAction::Push,
-        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => CounterAction::PopNonempty,
-        _ => CounterAction::Unchanged,
+) -> Result<CounterPreflight, Error> {
+    let (action, reserve_stack) = match *instruction {
+        Instr::Push { stack, .. } => (CounterAction::Push, Some(stack)),
+        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => {
+            (CounterAction::PopNonempty, None)
+        }
+        _ => (CounterAction::Unchanged, None),
     };
     match checked_live_bit_step(action, cached, limit) {
-        CounterOutcome::Allowed(next) => Ok(next),
+        CounterOutcome::Allowed(next) => Ok(CounterPreflight {
+            live_bits: next,
+            reserve_stack,
+        }),
         CounterOutcome::Capacity => Err(Error::Capacity("BitProgram stack-bit limit".into())),
         CounterOutcome::Overflow => Err(Error::Overflow),
     }
@@ -491,18 +508,18 @@ where
         // Compute all fallible scalar operations *before* mutating the
         // configuration. This makes arithmetic refusal atomic at the
         // instruction boundary, including an inconsistent cached counter.
-        let next_live_bits =
+        let preflight =
             next_live_bit_count(&instruction, config, live_bits, limits.max_stack_bits)?;
         let next_instructions = stats.instructions.checked_add(1).ok_or(Error::Overflow)?;
-        // A source Push can grow the host VecDeque even when the logical bit
-        // limit admits it. Make this allocation fallible *before* any logical
-        // state mutation. Rust's VecDeque::try_reserve(1) preserves contents
-        // on failure and guarantees one insertion without further growth.
-        if let Instr::Push { stack, .. } = &instruction {
-            reserve_push(&mut config.stacks[*stack])?;
+        // The same preflight decision that charges the source Push also
+        // authorizes the host reservation. Reserve before any logical state
+        // mutation. VecDeque::try_reserve(1) preserves contents on refusal
+        // and guarantees one insertion without additional growth on success.
+        if let Some(stack) = preflight.reserve_stack {
+            reserve_push(&mut config.stacks[stack])?;
         }
         execute_instr(&instruction, config);
-        live_bits = next_live_bits;
+        live_bits = preflight.live_bits;
         stats.instructions = next_instructions;
         stats.peak_stack_bits = stats.peak_stack_bits.max(live_bits);
     }

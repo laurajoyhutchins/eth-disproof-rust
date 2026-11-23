@@ -109,7 +109,7 @@ theorem subtreeTotal_eq_original (key : (d : ℕ) → Fin (N d) → κ d)
       rfl
   | succ remaining ih =>
       let d : Fin levels := ⟨depth, by omega⟩
-      simp only [subtreeTotal, SignatureTupleTraversal.subtreeTotal]
+      dsimp [subtreeTotal, SignatureTupleTraversal.subtreeTotal]
       congr 1
       rw [show
         (∑ i : Fin (N depth),

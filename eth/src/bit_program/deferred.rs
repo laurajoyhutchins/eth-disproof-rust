@@ -411,17 +411,28 @@ impl<const R: usize, const S: usize> DeferredProgram<R, S> {
 /// cached count, a nonempty Pop cannot underflow and an admitted Push cannot
 /// overflow usize, but use checked operations anyway so a violated invariant
 /// causes an explicit refusal rather than a wrapped or panicking counter.
+/// The unique bridge from a validated physical instruction to the
+/// source-derived checked-counter action. A Pop changes the live count only
+/// when its target stack is nonempty. The caller validates every operand
+/// before invoking this function; indexing is therefore in range.
+fn counter_action_for_instruction<const R: usize, const S: usize>(
+    instruction: &Instr,
+    config: &Config<R, S>,
+) -> CounterAction {
+    match *instruction {
+        Instr::Push { .. } => CounterAction::Push,
+        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => CounterAction::PopNonempty,
+        _ => CounterAction::Unchanged,
+    }
+}
+
 fn next_live_bit_count<const R: usize, const S: usize>(
     instruction: &Instr,
     config: &Config<R, S>,
     cached: usize,
     limit: usize,
 ) -> Result<usize, Error> {
-    let action = match *instruction {
-        Instr::Push { .. } => CounterAction::Push,
-        Instr::Pop { stack, .. } if !config.stacks[stack].is_empty() => CounterAction::PopNonempty,
-        _ => CounterAction::Unchanged,
-    };
+    let action = counter_action_for_instruction(instruction, config);
     match checked_live_bit_step(action, cached, limit) {
         CounterOutcome::Allowed(next) => Ok(next),
         CounterOutcome::Capacity => Err(Error::Capacity("BitProgram stack-bit limit".into())),
@@ -513,6 +524,105 @@ where
 mod checked_counter_tests {
     use super::*;
     use std::collections::VecDeque;
+
+
+    /// The action decoder is tested against *physical execution*, rather
+    /// than a second copy of the opcode-to-action match. This exercises
+    /// every source opcode, both Pop branches, and both stack targets.
+    #[test]
+    fn every_opcode_counter_action_matches_physical_stack_delta() {
+        let instructions = [
+            Instr::Halt,
+            Instr::Goto { next: 0 },
+            Instr::Set { dst: 0, value: true, next: 0 },
+            Instr::Copy { dst: 0, src: 1, next: 0 },
+            Instr::Not { dst: 0, src: 1, next: 0 },
+            Instr::And { dst: 0, left: 0, right: 1, next: 0 },
+            Instr::Or { dst: 0, left: 0, right: 1, next: 0 },
+            Instr::Xor { dst: 0, left: 0, right: 1, next: 0 },
+            Instr::Branch { test: 0, yes: 0, no: 0 },
+            Instr::Push { stack: 0, src: 1, next: 0 },
+            Instr::Push { stack: 1, src: 0, next: 0 },
+            Instr::Peek { stack: 0, value: 0, present: 1, next: 0 },
+            Instr::Pop { stack: 0, value: 0, present: 1, next: 0 },
+            Instr::Pop { stack: 1, value: 0, present: 1, next: 0 },
+        ];
+        for left_len in 0..=2 {
+            for right_len in 0..=2 {
+                for instr in &instructions {
+                    let mut config = Config::<2, 2> {
+                        pc: Some(0),
+                        regs: [true, false],
+                        stacks: [
+                            std::iter::repeat_n(true, left_len).collect(),
+                            std::iter::repeat_n(false, right_len).collect(),
+                        ],
+                    };
+                    instr.validate::<2, 2>(1).unwrap();
+                    let before = config.stack_bits().unwrap();
+                    let action = counter_action_for_instruction(instr, &config);
+                    let admitted = checked_live_bit_step(action, before, usize::MAX);
+                    let CounterOutcome::Allowed(predicted) = admitted else {
+                        panic!("valid instruction and accurate cache must be admitted: {instr:?}");
+                    };
+                    execute_instr(instr, &mut config);
+                    assert_eq!(
+                        predicted,
+                        config.stack_bits().unwrap(),
+                        "opcode={instr:?}, lengths=({left_len},{right_len})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// A logical capacity refusal and a successful physical instruction
+    /// are disjoint for every opcode. In particular Peek and empty Pop
+    /// cannot be misclassified as Push at the limit.
+    #[test]
+    fn every_opcode_refuses_only_a_growing_push_at_capacity() {
+        let instructions = [
+            Instr::Halt,
+            Instr::Goto { next: 0 },
+            Instr::Set { dst: 0, value: true, next: 0 },
+            Instr::Copy { dst: 0, src: 1, next: 0 },
+            Instr::Not { dst: 0, src: 1, next: 0 },
+            Instr::And { dst: 0, left: 0, right: 1, next: 0 },
+            Instr::Or { dst: 0, left: 0, right: 1, next: 0 },
+            Instr::Xor { dst: 0, left: 0, right: 1, next: 0 },
+            Instr::Branch { test: 0, yes: 0, no: 0 },
+            Instr::Push { stack: 0, src: 1, next: 0 },
+            Instr::Peek { stack: 0, value: 0, present: 1, next: 0 },
+            Instr::Pop { stack: 0, value: 0, present: 1, next: 0 },
+        ];
+        for nonempty in [false, true] {
+            let config = Config::<2, 1> {
+                pc: Some(0),
+                regs: [true, false],
+                stacks: [if nonempty {
+                    VecDeque::from([false])
+                } else {
+                    VecDeque::new()
+                }],
+            };
+            let cached = config.stack_bits().unwrap();
+            for instr in &instructions {
+                instr.validate::<2, 1>(1).unwrap();
+                let actual = next_live_bit_count(instr, &config, cached, cached);
+                if matches!(instr, Instr::Push { .. }) {
+                    assert!(matches!(actual, Err(Error::Capacity(_))), "{instr:?}");
+                } else {
+                    let mut expected = config.clone();
+                    execute_instr(instr, &mut expected);
+                    assert_eq!(
+                        actual.unwrap(),
+                        expected.stack_bits().unwrap(),
+                        "{instr:?}, nonempty={nonempty}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn forced_host_refusal_does_not_commit_an_admitted_push() {

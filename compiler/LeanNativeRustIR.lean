@@ -102,7 +102,7 @@ theorem arithmeticIRRulesSound (a b : UInt64) :
         .ok "_v1.wrapping_mul(_v2)") ∧
     ((a + b).toNat = (a.toNat + b.toNat) % (2 ^ 64)) ∧
     ((a * b).toNat = (a.toNat * b.toNat) % (2 ^ 64)) := by
-  refine ⟨by decide, by decide, ?_, ?_⟩
+  refine ⟨by rfl, by rfl, ?_, ?_⟩
   · exact UInt64.toNat_add a b
   · exact UInt64.toNat_mul a b
 

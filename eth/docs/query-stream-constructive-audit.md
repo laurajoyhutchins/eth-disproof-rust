@@ -54,9 +54,9 @@ larger source closure.
 | `QueryAssembler.Nodes.initializeNodes`, `QueryNodeFinish.guardCursor`, [QueryAssembler](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryAssembler.lean) and [QueryNodeFinish](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryNodeFinish.lean) | Encoded list of interpolation nodes, loop guard and cursor | Finite commands; some noncomputable *semantic state witnesses* rely on classical/state-extension functions | Extract computable node representation, preserve ordering, prove cursor termination and body invariant |
 | `SignatureHeadLoader.bootstrapProgram`, `PairNativeSetup.setupCaller` | Bootstrap signed coefficient/cache and pair controller | Source program syntax available; fully executable mathematical correspondence not reconstructed here | Constructive signed coefficient and source cache equivalence |
 | `DifferencePairs.fold`, [DifferencePairs](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DifferencePairs.lean) | Recursive ordered fold `(List (Option Bool) → α → α) → Nat → Nat → List (Option Bool) → α → α` | **Already total and computable**, by structural recursion on the remaining coordinates; no noncomputable replacement needed | For whole QueryStream, instantiate visit with the *actual* pair callback meaning |
-| `DifferencePairsProgram.command`, [DifferencePairsProgram](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DifferencePairsProgram.lean) | Physical source DFS with four protected controller stacks | Finite command; a relational source theorem is available under an explicit callback invariant | Prove its specific `pairCallback` implements the corresponding mathematical `visit` |
+| `DifferencePairsProgram.command`, [DifferencePairsProgram](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DifferencePairsProgram.lean) | Physical source DFS with four protected controller stacks | Finite command; a relational source theorem is available under an explicit callback invariant | Already proved conditionally by `QueryPairEvaluation.callback_run`, `callback_cursor_run`, and `run`; reuse these statements rather than reproving them |
 | `BooleanDifferences.pairFamily`, [BooleanDifferences](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/BooleanDifferences.lean) | Finite mathematical family `(E,U)`, `U ⊆ E`, `|E| < J` | Finite `Finset` specification; potentially materializes exponential family if used operationally | Use as *proof* denotation, not executable callback enumeration |
-| `QueryExecution.PairStart.command`, `SignatureTupleComplete.command`, `QueryAssembler.commitPair` | Source pair callback, attained-signature visit and signed accumulation | Fixed source commands; `SignatureTupleComplete` is also written inside a `noncomputable section` | **Primary numerical frontier:** constructive decoded callback result; source program/semantic fold correspondence, including sign and ring precision |
+| `QueryExecution.PairStart.command`, `SignatureTupleComplete.command`, `QueryAssembler.commitPair` | Source pair callback, attained-signature visit and signed accumulation | Fixed source commands; `SignatureTupleComplete` is also written inside a `noncomputable section` | The original callback's physical-to-mathematical conditional correspondence is already established in `QueryPairEvaluation`; constructive computation of its `pairValue` and discharged preparation hypotheses remain open |
 | `QueryNodeFinish.command` and original moments readout | Emit ordered coefficient words and advance node cursor | Source readout shell and unary iteration cost already proved under explicit `Visits` premises | Prove actual numerical row, coefficient value, and stream bytes |
 | `QueryCountReconstruction.jets_of_outputs`, [QueryCountReconstruction](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryCountReconstruction.lean) | Proof that emitted output bytes describe required `Q×J` Hermite jets | Proof uses `classical` and `choose` on per-node code existence; **not** a runtime choice in `QueryStreamProgram.command` | Implement a checked, finite coefficient-word parser and prove encode/decode correspondence with the *same emitted bytes* |
 | `QueryReconstruction.command`, [QueryReconstruction](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryReconstruction.lean) | Node stream handoff, Hermite reconstruction, canonical count readback | Finite source command; conditional output correctness theorem already exists | Discharge `HasJets`, degree and modulus precision conditions from actual preceding computation |
@@ -96,8 +96,7 @@ with the source's exact Boolean finite-difference sign, **not merely**
 with a bit-encoded signed pair family.
 
 **Scope:** this is not an algorithm for producing `weight` from
-`QueryStreamProgram.pairCallback`. Correctness of the actual signed
-coefficient callback is the first significant unresolved refinement.
+`QueryStreamProgram.pairCallback`. The original `QueryPairEvaluation.run` already proves conditional correctness of this actual callback, including its numerical sign and source trace, under explicit `ProducedSource`, ring and resource inputs. The next unresolved reconstruction is the *computable mathematical interpretation* of `pairValue` and its attained-signature tuple sum, not another proof of the same callback invariant.
 
 ## Exact visit complexity and explicit exponential regime
 
@@ -154,7 +153,7 @@ target.eval 0 = (count : extension-ring)
 
 These are mathematical *preconditions*, not proofs that runtime chosen
 parameters always satisfy them. Establish the executable coefficient
-parser and the true `pairCallback` semantic specification before deriving
+parser and executable attained-signature `pairValue` semantics before deriving
 uniform truncation/reconstruction bounds from a guessed schedule.
 
 ## Checks, claims and remaining work
@@ -182,8 +181,24 @@ Existing upstream theorems are reused rather than silently reproved. No CNF-wide
 whole-program equality, numerical coefficient reconstruction, universal
 termination or subexponential bit-cost theorem is established by this PR.
 
-**Next precise proof:** Define the mathematical `visit` of the actual
-`QueryStreamProgram.pairCallback`, then discharge the callback invariant in
-[`DifferencePairsRelational.CallbackSpec`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/DifferencePairsRelational.lean).
-Only after that connection should the numerical callback replace the
-parameterized `weight` in the computable contraction.
+**Next precise proof:** Connect a computable attained-signature subtree to
+`SignatureTupleRun.tupleTotal`, the noncomputable proof-side sum used by
+[`QueryPairEvaluation.pairValue`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/QueryPairEvaluation.lean).
+The upstream `QueryPairEvaluation.run` has **already** discharged the
+source callback's `DifferencePairsRelational.CallbackSpec` conditionally.
+Avoid duplicating that theorem. Extend the constructive subtotal through
+`SignatureTupleRun.emittedValue`, then discharge its produced-input and
+resource premises, preserving the original signed accumulator and eventual
+finite-precision reconstruction.
+
+**New constructive candidate, not yet included among verified claims:**
+[`QueryStreamConstructiveSignatures.lean`](../proofs/QueryStreamConstructiveSignatures.lean)
+provides `scanSum` over finite numeric signature candidates and a
+structurally recursive `subtreeTotal` charging **all** candidate probes,
+exhaustion events, and leaf visits. It compares at every subtree boundary with
+the *unchanged* noncomputable `SignatureTupleTraversal.subtreeTotal`.
+Use the pinned CI result to determine whether the full correspondence
+is kernel checked; the independent examples are event counts 1, 7 and 19
+for a four-candidate key `i % 2` and depths 0, 1 and 2. The code makes the
+first-occurrence membership decision explicit, but a full source-runtime
+comparison of its key equality and cost remains a separate obligation.

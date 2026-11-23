@@ -55,8 +55,7 @@ theorem convolution_correct [CommRing R] (ops : RepresentedRing C R)
   rw [Finset.Nat.sum_antidiagonal_eq_sum_range_succ_mk
     (fun uv => arrayCoeff (fun i => ops.decode (a i)) uv.1 *
       arrayCoeff (fun i => ops.decode (b i)) uv.2) k.val,
-    ← Fin.sum_univ_eq_sum_range]
-  rfl
+    ← Fin.sum_univ_eq_sum_range] <;> rfl
 
 /-- The code-level truncated-ring program. Tabulation materializes the output
     coefficients, and no semantic quotient-ring instance is executed. -/

@@ -96,16 +96,42 @@ private partial def callsInBody : IR.FnBody → Array Name
   | .del _ tail => callsInBody tail
   | _ => #[]
 
-private partial def renderBody (known : Array Name) : IR.FnBody →
-    Except String String
+private def blockName (j : IR.JoinPointId) : String :=
+  "_block" ++ toString j.idx
+
+/-- Join closures have scalar captured environments. A jump is admitted only
+    to a previously declared lexical join; self/mutual recursion refuse. -/
+private partial def renderBody (known : Array Name)
+    (joins : Array (IR.JoinPointId × Nat)) : IR.FnBody → Except String String
   | .vdecl x ty e rest => do
     let t ← scalarType ty
     let rhs ← renderExpr known ty e
-    let tail ← renderBody known rest
+    let tail ← renderBody known joins rest
     return s!"let {localName x}: {t} = {rhs};\n{tail}"
   | .ret arg => do
     let a ← renderArg arg
-    return s!"return {a};\n"
+    return s!"{a}\n"
+  | .jdecl j ps value tail => do
+    if joins.any (fun p => p.1 == j) then
+      return ← refusal "FnBody.jdecl" "duplicate join id"
+    let mut params := #[]
+    for p in ps do
+      if p.borrow then
+        return ← refusal "FnBody.jdecl" "borrowed join parameter"
+      let t ← scalarType p.ty
+      params := params.push s!"{localName p.x}: {t}"
+    let body ← renderBody known joins value
+    let cont ← renderBody known (joins.push (j, ps.size)) tail
+    return "let " ++ blockName j ++ " = |" ++
+      String.intercalate ", " params.toList ++
+      "| -> u64 {\n" ++ body ++ "};\n" ++ cont
+  | .jmp j args => do
+    let some (_, arity) := joins.find? (fun entry => entry.1 == j)
+      | return ← refusal "FnBody.jmp" "out-of-scope or recursive join"
+    unless args.size == arity do
+      return ← refusal "FnBody.jmp" "join parameter arity mismatch"
+    let xs ← renderArgs args
+    return blockName j ++ "(" ++ String.intercalate ", " xs.toList ++ ")\n"
   | .case tyName x ty alts => do
     unless tyName == ``Bool && ty == .uint8 && alts.size == 2 do
       return ← refusal "FnBody.case" "only exact two-constructor Bool cases"
@@ -116,8 +142,8 @@ private partial def renderBody (known : Array Name) : IR.FnBody →
     unless f.name == ``Bool.false && f.cidx == 0 &&
            t.name == ``Bool.true && t.cidx == 1 do
       return ← refusal "FnBody.case" "constructor identities/order mismatch"
-    let no ← renderBody known falseBody
-    let yes ← renderBody known trueBody
+    let no ← renderBody known joins falseBody
+    let yes ← renderBody known joins trueBody
     return s!"if {localName x} != 0 {{\n{yes}}} else {{\n{no}}}\n"
   | .unreachable => refusal "FnBody.unreachable" "unreachable is not admitted"
   | _ => refusal "FnBody" "unsupported instruction constructor"
@@ -162,7 +188,7 @@ private def renderDecl (known : Array Name) : IR.Decl → Except String String
       unless p.ty == .uint64 && !p.borrow do
         return ← refusal "Param" s!"unsupported parameter type/borrow in {n}"
       ps := ps.push s!"{localName p.x}: u64"
-    let code ← renderBody known body
+    let code ← renderBody known #[] body
     return "pub fn " ++ symbol n ++ "(" ++
       String.intercalate ", " ps.toList ++ ") -> u64 {\n" ++
       code ++ "}\n"

@@ -191,14 +191,38 @@ Avoid duplicating that theorem. Extend the constructive subtotal through
 resource premises, preserving the original signed accumulator and eventual
 finite-precision reconstruction.
 
-**New constructive candidate, not yet included among verified claims:**
+**Additional verified constructive boundary:**
 [`QueryStreamConstructiveSignatures.lean`](../proofs/QueryStreamConstructiveSignatures.lean)
 provides `scanSum` over finite numeric signature candidates and a
-structurally recursive `subtreeTotal` charging **all** candidate probes,
-exhaustion events, and leaf visits. It compares at every subtree boundary with
-the *unchanged* noncomputable `SignatureTupleTraversal.subtreeTotal`.
-Use the pinned CI result to determine whether the full correspondence
-is kernel checked; the independent examples are event counts 1, 7 and 19
-for a four-candidate key `i % 2` and depths 0, 1 and 2. The code makes the
-first-occurrence membership decision explicit, but a full source-runtime
-comparison of its key equality and cost remains a separate obligation.
+total, structurally recursive `subtreeTotal` charging **all** candidate
+probes, exhaustion events, and leaf visits.
+Theorems `scanSum_eq_representatives`,
+`subtreeTotal_eq_original` (at *every* subtree) and
+`runTotal_eq_original` (complete root) passed the
+[pinned kernel CI #45221657766](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/45221657766)
+at Lean commit `5474980`. The `#print axioms` outputs for these
+theorems contain `propext`, `Classical.choice`, `Quot.sound` and
+**no `sorryAx`**. Classical finite-set enumerators and constructive
+numeric scans are compared by `Finset.sum_congr` after *extensional*
+equality of the enumerated sets, never by assuming their Fintype
+instances are definitionally equal.
+
+The new `#eval` tests give **1, 7, 19** weighted events for a
+four-candidate source-shaped key `i % 2` and 0, 1, 2 levels, matching
+an independent event-tree oracle. These are **not** CNF counts.
+
+**Remaining mathematical bridge:** the original
+[`SignatureTupleTraversal.eventTotal_callbackWeight`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/SignatureTupleTraversal.lean)
+already proves that zero candidate/exhaustion weights reduce the full
+`eventTotal` to the sum of actual attained tuple leaf values. Connect
+the now computable `runTotal` to that original full event total to
+recover `SignatureTupleRun.tupleTotal`, then make the particular
+`emittedValue` constructive.
+
+**Space-cost boundary:** the executable `∑ i : Fin N` can materialize
+`N` candidate indices. It is a proof-faithful numerical event
+contraction but not a reproduction of the original controller's
+streaming peak space. The actual signature-key equality cost and
+candidate scanning schedule remain to be accounted for in a bit-cost
+theorem. Whole-CNF correctness and uniform subexponential complexity
+remain open.

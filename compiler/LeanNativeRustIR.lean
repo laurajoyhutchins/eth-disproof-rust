@@ -28,18 +28,18 @@ private def scalarType : IR.IRType → Except String String
   | other => refusal "IRType" s!"unsupported scalar type {repr other}"
 
 /-- Encode a string component as decimal UTF-8 bytes separated by underscores.
-    These byte codes contain no 's' or 'n', our component-kind delimiters. -/
+    These byte codes use only digits and x, not the s/n component-kind markers. -/
 private def encodeComponent (s : String) : String :=
-  s.toUTF8.foldl (fun out b => out ++ toString b.toNat ++ "_") ""
+  s.toUTF8.foldl (fun out b => out ++ toString b.toNat ++ "x") ""
 
 /-- Preserve the *structure* of Lean.Name, not just its potentially ambiguous
     display string; distinguish string, numeric, and nested components. -/
 def symbol : Name → String
   | .anonymous => "lean_a"
   | .str parent component =>
-    symbol parent ++ "_s_" ++ encodeComponent component
+    symbol parent ++ "_s" ++ encodeComponent component
   | .num parent component =>
-    symbol parent ++ "_n_" ++ toString component
+    symbol parent ++ "_n" ++ toString component
 
 private def localName (v : IR.VarId) : String :=
   "_v" ++ toString v.idx

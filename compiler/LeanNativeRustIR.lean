@@ -144,7 +144,7 @@ private partial def renderBody (known : Array Name)
       return ← refusal "FnBody.case" "constructor identities/order mismatch"
     let no ← renderBody known joins falseBody
     let yes ← renderBody known joins trueBody
-    return s!"if {localName x} != 0 {{\n{yes}}} else {{\n{no}}}\n"
+    return "if " ++ localName x ++ " != 0 {\n" ++ yes ++ "} else {\n" ++ no ++ "}\n"
   | .unreachable => refusal "FnBody.unreachable" "unreachable is not admitted"
   | _ => refusal "FnBody" "unsupported instruction constructor"
 

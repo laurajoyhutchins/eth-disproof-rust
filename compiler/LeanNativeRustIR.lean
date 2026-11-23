@@ -133,7 +133,7 @@ private partial def renderBody (known : Array Name)
     let xs ← renderArgs args
     return blockName j ++ "(" ++ String.intercalate ", " xs.toList ++ ")\n"
   | .case tyName x ty alts => do
-    unless tyName == ``Bool && ty == .uint8 && alts.size == 2 do
+    unless tyName == ``UInt8 && ty == .uint8 && alts.size == 2 do
       return ← refusal "FnBody.case" s!"requires Bool 2 alternatives: type={tyName}, irType={repr ty}, n={alts.size}"
     let (.ctor f falseBody) := alts[0]!
       | return ← refusal "FnBody.case" "first branch is not constructor, possibly default"
@@ -144,7 +144,7 @@ private partial def renderBody (known : Array Name)
       return ← refusal "FnBody.case" s!"constructor mismatch: {f.name}[{f.cidx}], {t.name}[{t.cidx}]"
     let no ← renderBody known joins falseBody
     let yes ← renderBody known joins trueBody
-    return "if " ++ localName x ++ " != 0 {\n" ++ yes ++ "} else {\n" ++ no ++ "}\n"
+    return "match " ++ localName x ++ " {\n0 => {\n" ++ no ++ "},\n1 => {\n" ++ yes ++ "},\n_ => unreachable!(\"invalid Lean Bool tag\"),\n}\n"
   | .unreachable => refusal "FnBody.unreachable" "unreachable is not admitted"
   | _ => refusal "FnBody" "unsupported instruction constructor"
 

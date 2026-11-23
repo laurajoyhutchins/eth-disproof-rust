@@ -141,12 +141,20 @@ Pinned compiler: Lean 4.34.1 (`5045d005`) and Rust 1.99.1
 (`58cf8f9c3`). The base prototype had 239 lines (including comments);
 the subsequently added local emitter rule theorem increases this count.
 
-The branch now also checks `arithmeticIRRulesSound`, a *local theorem
-about two genuine compiler-IR `Expr.fap` instruction shapes*: they render
-the prescribed Rust wrapping operation text, and that operation has the
-same modulo-`2^64` result as `UInt64` addition/multiplication for all
-inputs. This is not an emitted-program semantics theorem; its exact-head
-kernel and axiom audit status is recorded by the latest targeted CI run.
+The targeted check **rebuilds and audits the existing kernel-checked**
+[`ScalarOperationalRefinement.lean`](../proofs/ScalarOperationalRefinement.lean)
+rather than duplicating its all-inputs model theorem. An attempt to prove
+the exact `renderExpr` string output directly by `decide`/`rfl` did not
+close in the pinned kernel, so no new emitter-text theorem is claimed.
+A future generator rule proof needs a more explicit semantic emission plan
+or an adequate proof of the printer's normalization, without treating an
+executable string check as a kernel theorem.
+
+The experimental Rust symbol name encoder now distinguishes the inductive
+structure of `Lean.Name`: `str` versus `num` components and nested path
+boundaries. Treating `Name.toString` as an injective source identity
+would require a separate proof. The fixtures test names with dotted
+components and numeric-vs-string segments.
 
 ## Migration decision gate
 

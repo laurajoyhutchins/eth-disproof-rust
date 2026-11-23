@@ -201,7 +201,7 @@ def generate (decls : Array IR.Decl) : Except String String := do
     out := out ++ (← renderDecl names d) ++ "\n"
   return out
 
-private def publish (dest : System.FilePath) (source : String) : IO Unit := do
+def publish (dest : System.FilePath) (source : String) : IO Unit := do
   if ← dest.pathExists then
     throw <| IO.userError s!"Lean-native emitter refused existing destination {dest}"
   let tmp ← IO.FS.createTempDir
@@ -215,11 +215,11 @@ private def publish (dest : System.FilePath) (source : String) : IO Unit := do
     try IO.FS.removeDirAll tmp catch _ => pure ()
     throw err
 
-def compilePackage (roots : Array Name) (dest : System.FilePath) : CoreM Unit := do
+def compilePackage (roots : Array Name) : CoreM String := do
   let decls ← closure roots
   match generate decls with
   | .error why => throwError "Lean-native emitter refused: {why}"
-  | .ok code => liftIO <| publish dest code
+  | .ok code => return code
 
 end LeanNativeRustIR
 
@@ -233,6 +233,7 @@ def elabLeanNativeRustIRCmd : CommandElab := fun stx => do
   match stx with
   | `(#lean_native_ir_package [$roots:ident,*] to $dest:str) =>
     let names := roots.getElems.map (·.getId)
-    liftCoreM <| LeanNativeRustIR.compilePackage names dest.getString
+    let source ← liftCoreM <| LeanNativeRustIR.compilePackage names
+    liftIO <| LeanNativeRustIR.publish dest.getString source
     logInfo m!"Lean-native IR experiment emitted {names.size} source roots"
   | _ => throwUnsupportedSyntax

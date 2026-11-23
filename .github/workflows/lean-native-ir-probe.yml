@@ -31,6 +31,8 @@ jobs:
         run: |
           rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
           rustup default 1.99.1
+      - name: Restore canonical compiler workspace dependencies
+        run: cargo fetch --locked --manifest-path compiler/Cargo.toml
       - name: Pinned Lean 4.34.1
         uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64
         with:

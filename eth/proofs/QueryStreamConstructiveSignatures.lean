@@ -152,6 +152,16 @@ theorem runTotal_eq_original
   subtreeTotal_eq_original key levels weight levels 0 (by omega)
     (fun i => Fin.elim0 i)
 
+end OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamConstructiveSignatures
+
+namespace OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamSourceSummation
+
+open scoped BigOperators
+open Classical
+open SignatureTupleDFS SignatureTupleTraversal
+
+variable {N : ℕ → ℕ} {κ : ℕ → Type*}
+
 /-!
 ## Recover the source's event total
 
@@ -163,13 +173,6 @@ source's event weights and its representatives unchanged.
 
 /-- Reindex a full level of attained prefixes using the source's exact
 \`Fin.snocEquiv\`. No signature tuple is chosen by this proof. -/
-section SourceMathematicalSums
-
-open Classical
-
--- The original proof-side sums use classical finite-set instances, not the
--- executable key-equality decider. Keep them separately elaborated.
-omit [∀ d, DecidableEq (κ d)] in
 private theorem sum_snoc_for_source
     (key : (d : ℕ) → Fin (N d) → κ d) (depth : ℕ)
     {M : Type*} [AddCommMonoid M]
@@ -185,7 +188,6 @@ private theorem sum_snoc_for_source
 original's private \`sum_subtreeTotal\` lemma. It sums complete source
 subtrees at a depth, **including** rejected candidates and exhaustion.
 Only the already-verified source recurrence is unfolded. -/
-omit [∀ d, DecidableEq (κ d)] in
 theorem source_subtree_sum
     (key : (d : ℕ) → Fin (N d) → κ d) (levels : ℕ)
     {M : Type*} [AddCommMonoid M]
@@ -217,7 +219,16 @@ theorem source_subtree_sum
       simp only [SignatureTupleTraversal.levelTotal, dite_eq_left hd]
       simp only [add_assoc]
 
-end SourceMathematicalSums
+end OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamSourceSummation
+
+namespace OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamConstructiveSignatures
+
+open scoped BigOperators
+open SignatureTupleDFS SignatureTupleTraversal
+open QueryStreamSourceSummation
+
+variable {N : ℕ → ℕ} {κ : ℕ → Type*}
+variable [∀ d, DecidableEq (κ d)]
 
 /-- Fully general source-event bridge. \`runTotal\` is a total function of
 the decidable keys and concrete event weights, whereas \`eventTotal\` is

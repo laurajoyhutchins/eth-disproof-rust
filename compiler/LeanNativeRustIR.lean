@@ -79,7 +79,7 @@ private def renderExpr (known : Array Name) (result : IR.IRType)
     unless result == .uint64 do
       return ← refusal "Expr.fap" "non-UInt64 user call result"
     return symbol f ++ "(" ++ String.intercalate ", " xs.toList ++ ")"
-  | other => refusal "Expr" s!"unsupported expression: {repr other}"
+  | _ => refusal "Expr" "unsupported expression constructor"
 
 private partial def callsInBody : IR.FnBody → Array Name
   | .vdecl _ _ (.fap f _) tail => #[f] ++ callsInBody tail
@@ -120,7 +120,7 @@ private partial def renderBody (known : Array Name) : IR.FnBody →
     let yes ← renderBody known trueBody
     return s!"if {localName x} != 0 {{\n{yes}}} else {{\n{no}}}\n"
   | .unreachable => refusal "FnBody.unreachable" "unreachable is not admitted"
-  | other => refusal "FnBody" s!"unsupported instruction: {repr other}"
+  | _ => refusal "FnBody" "unsupported instruction constructor"
 
 /-- All executable dependencies remain Lean IR objects until emission. -/
 private def closure (roots : Array Name) : CoreM (Array IR.Decl) := do

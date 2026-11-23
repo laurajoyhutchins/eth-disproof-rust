@@ -71,6 +71,9 @@ sha256sum "$out/arithmetic/src/lib.rs" "$out/branches/src/lib.rs" \
   > "$out/determinism-before.sha256"
 rm -rf "$out/arithmetic" "$out/branches"
 lean examples/LeanNativeIRFixture.lean > "$out/native-second.log" 2>&1
+for target in arithmetic branches; do
+  cargo fmt --all --manifest-path "$out/$target/Cargo.toml"
+done
 sha256sum -c "$out/determinism-before.sha256"
 
 {

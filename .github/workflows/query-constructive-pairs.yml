@@ -1,0 +1,79 @@
+name: Original QueryStream constructive mathematical kernels
+
+on:
+  pull_request:
+    paths:
+      - 'eth/proofs/QueryStreamConstructivePairs.lean'
+      - 'eth/proofs/QueryStreamConstructiveSignatures.lean'
+      - 'eth/proofs/QueryStreamConstructiveLeaf.lean'
+      - '.github/workflows/query-constructive-pairs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: query-constructive-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  constructive-pairs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ORIGINAL_SOURCE_SHA: 4eaee87548250b2682affda7d05d947c05554bae
+      ORIGINAL_MATHLIB_SHA: d13f23b723b8a846827a245b89c10fc7d3f11612
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fetch the unchanged pinned OpenAI mathematical definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/openai-math
+          git -C upstream/openai-math init -q
+          git -C upstream/openai-math remote add origin https://github.com/openai/math.git
+          git -C upstream/openai-math sparse-checkout init --cone
+          git -C upstream/openai-math sparse-checkout set lean/OAI/Algorithms/SubexponentialSAT
+          git -C upstream/openai-math fetch --depth 1 --filter=blob:none origin "$ORIGINAL_SOURCE_SHA"
+          git -C upstream/openai-math checkout -q --detach FETCH_HEAD
+          test "$(git -C upstream/openai-math rev-parse HEAD)" = "$ORIGINAL_SOURCE_SHA"
+          test -z "$(git -C upstream/openai-math status --porcelain --untracked-files=no)"
+          ln -s "$GITHUB_WORKSPACE/upstream/openai-math/lean/OAI" instrumentation/lean-env/OAI
+
+      - name: Restore pinned Lean 4.34.1 and Mathlib
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: instrumentation/lean-env
+          auto-config: false
+          use-github-cache: false
+          use-mathlib-cache: true
+          build: false
+          test: false
+          lint: false
+          mk_all-check: false
+
+      - name: Verify source and kernel-check the constructive pair results
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C instrumentation/lean-env/.lake/packages/mathlib rev-parse HEAD)" = "$ORIGINAL_MATHLIB_SHA"
+          if grep -nE '\b(sorry|admit)\b' eth/proofs/QueryStreamConstructivePairs.lean eth/proofs/QueryStreamConstructiveSignatures.lean eth/proofs/QueryStreamConstructiveLeaf.lean; then
+            echo 'No admitted proofs allowed' >&2
+            exit 1
+          fi
+          (
+            cd instrumentation/lean-env
+            lake -K maxJobs=2 build OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.DifferencePairs OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.SignatureTupleTraversal OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.TruncatedRingProgram OAI.Algorithms.SubexponentialSAT.SqrtLog.RingProgramModel
+            lake env lean "$GITHUB_WORKSPACE/eth/proofs/QueryStreamConstructivePairs.lean"
+            lake env lean "$GITHUB_WORKSPACE/eth/proofs/QueryStreamConstructiveSignatures.lean"
+            lake env lean "$GITHUB_WORKSPACE/eth/proofs/QueryStreamConstructiveLeaf.lean"
+          )
+          echo 'QUERY_SOURCE_ORDERED_PAIR_CONTRACTION=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'QUERY_NORMALIZED_HEAD_DICTIONARY=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'QUERY_CODED_DENSE_LEAF_ARITHMETIC=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'QUERY_ATTAINED_SIGNATURE_SUBTREE=KERNEL_CHECKED' >> "$GITHUB_STEP_SUMMARY"
+          echo 'QUERY_FULL_SUPPORT_PAIR_VISITS=EXACTLY_3_POW_N' >> "$GITHUB_STEP_SUMMARY"
+          echo 'QUERY_WHOLE_PROGRAM_CORRECTNESS=NOT_CLAIMED' >> "$GITHUB_STEP_SUMMARY"

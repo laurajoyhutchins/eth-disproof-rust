@@ -211,13 +211,26 @@ The new `#eval` tests give **1, 7, 19** weighted events for a
 four-candidate source-shaped key `i % 2` and 0, 1, 2 levels, matching
 an independent event-tree oracle. These are **not** CNF counts.
 
-**Remaining mathematical bridge:** the original
-[`SignatureTupleTraversal.eventTotal_callbackWeight`](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/lean/OAI/Algorithms/SubexponentialSAT/SqrtLogSpace/SignatureTupleTraversal.lean)
-already proves that zero candidate/exhaustion weights reduce the full
-`eventTotal` to the sum of actual attained tuple leaf values. Connect
-the now computable `runTotal` to that original full event total to
-recover `SignatureTupleRun.tupleTotal`, then make the particular
-`emittedValue` constructive.
+**Verified original event/leaf bridge:** the completed
+[`QueryStreamConstructiveSignatures.lean`](../proofs/QueryStreamConstructiveSignatures.lean)
+now exports `runTotal_eq_eventTotal` for **arbitrary additive event weights**
+and `runTotal_callbackWeight`, proving exact equality to the original
+attained-tuple leaf sum. Both passed
+[pinned kernel CI #45230494416](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/45230494416)
+on [commit `a96151e`](https://github.com/laurajoyhutchins/eth-disproof-rust/commit/a96151eca38e9812fd315b2d51e87152c10e3cc3).
+Their `#print axioms` outputs list only `propext`, `Classical.choice`,
+`Quot.sound`, no `sorryAx`. The proof invokes the original source
+`SignatureTupleTraversal.eventTotal_callbackWeight` and exposes the
+private mathematical subtree-to-event rearrangement without editing
+the pinned source.
+
+**Next numerical frontier:** `SignatureTupleRun.tupleTotal` is by
+definition the attained-tuple leaf sum now computed symbolically by
+`runTotal_callbackWeight`. A theorem specifically importing and
+instantiating `SignatureTupleRun.emittedValue` under decidable source-key
+semantics, and a **constructive implementation of that actual numerical
+leaf value** (head product, ring representation and dense readout), are
+still needed. Do not substitute a #SAT oracle or a second CNF counter.
 
 **Space-cost boundary:** the executable `∑ i : Fin N` can materialize
 `N` candidate indices. It is a proof-faithful numerical event

@@ -62,11 +62,11 @@ private def renderExpr (known : Array Name) (result : IR.IRType)
       let a := xs[0]!
       let b := xs[1]!
       if f == ``UInt64.add && result == .uint64 then
-        return s!"({a}).wrapping_add({b})"
+        return s!"{a}.wrapping_add({b})"
       if f == ``UInt64.sub && result == .uint64 then
-        return s!"({a}).wrapping_sub({b})"
+        return s!"{a}.wrapping_sub({b})"
       if f == ``UInt64.mul && result == .uint64 then
-        return s!"({a}).wrapping_mul({b})"
+        return s!"{a}.wrapping_mul({b})"
       if f == ``UInt64.decEq && result == .uint8 then
         return s!"u8::from({a} == {b})"
       if f == ``UInt64.decLt && result == .uint8 then

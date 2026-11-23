@@ -110,10 +110,14 @@ def check(
         elif observed["FnBody.del"] != 0:
             raise ValueError(f"{root}: negative source-IR witness gained deletion")
     if reader_source is not None:
-        if reader_source.count(".source_del();") != 1:
-            raise ValueError("Reader-generated Rust must retain one real source_del")
-        if "Generated directly from Lean IR declaration: RuntimeHeapDel.rebuildOrExtractByPayload" not in reader_source:
-            raise ValueError("Reader output missing original declaration provenance")
+        marker = "// Generated directly from Lean IR declaration: RuntimeHeapDel.rebuildOrExtractByPayload"
+        if reader_source.count(marker) != 1:
+            raise ValueError("Reader output missing or duplicating source declaration provenance")
+        # The Reader includes an embedded runtime and its own tests. Only the
+        # exact source-derived function is eligible for comparing IR effects.
+        emitted_function = reader_source.split(marker, 1)[1].split("\nfn __pap_", 1)[0]
+        if emitted_function.count(".source_del();") != 1:
+            raise ValueError("actual Reader-emitted source function lost or duplicated source_del")
 
 
 def self_test(

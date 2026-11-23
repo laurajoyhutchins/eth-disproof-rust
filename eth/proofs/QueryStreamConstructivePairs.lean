@@ -140,6 +140,10 @@ theorem differenceSign_encodePair {n : ℕ} (E U : Finset (Fin n))
   simp_rw [hpoint]
   rw [← Finset.card_sdiff_of_subset hU]
   simp
+  all_goals
+    apply congrArg Finset.card
+    ext i
+    simp
 
 /-- Source-faithful signed coefficient formula with the exact exponent from
     `BooleanDifferences.difference`, rather than only a signed bit encoding. -/

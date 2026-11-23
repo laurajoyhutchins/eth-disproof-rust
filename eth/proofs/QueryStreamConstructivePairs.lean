@@ -119,6 +119,42 @@ theorem signedSum_eq_pairFamily (n J : ℕ)
           coefficient (DifferencePairs.encodePair p.1 p.2) := by
   exact weightedSum_eq_pairFamily _ n J
 
+/-- The executable sign really is the original Boolean finite-difference
+    sign: `some false` indexes precisely the coordinates of `E \\ U`.
+    This is a local semantic theorem, not an assertion that the full
+    QueryStream callback is already computable. -/
+theorem differenceSign_encodePair {n : ℕ} (E U : Finset (Fin n))
+    (hU : U ⊆ E) :
+    differenceSign (DifferencePairs.encodePair E U) =
+      (-1 : ℤ) ^ (E.card - U.card) := by
+  unfold differenceSign
+  congr 1
+  change (DifferencePairs.encodePair E U).countP
+    (fun x => x == some false) = E.card - U.card
+  rw [DifferencePairs.encodePair, DifferencePairs.countP_ofFn]
+  have hpoint (i : Fin n) :
+      (if (if i ∈ E then some (decide (i ∈ U)) else none) == some false
+        then 1 else 0 : ℕ) =
+      (if i ∈ E \\ U then 1 else 0 : ℕ) := by
+    by_cases hi : i ∈ E <;> by_cases hj : i ∈ U <;> simp [hi, hj]
+  simp_rw [hpoint]
+  rw [← Finset.card_sdiff_of_subset hU]
+  simp
+
+/-- Source-faithful signed coefficient formula with the exact exponent from
+    `BooleanDifferences.difference`, rather than only a signed bit encoding. -/
+theorem signedSum_eq_original_difference (n J : ℕ)
+    (coefficient : List (Option Bool) → ℤ) :
+    signedSum n J coefficient =
+      ∑ p ∈ BooleanDifferences.pairFamily n J,
+        (-1 : ℤ) ^ (p.1.card - p.2.card) *
+          coefficient (DifferencePairs.encodePair p.1 p.2) := by
+  rw [signedSum_eq_pairFamily]
+  apply Finset.sum_congr rfl
+  intro p hp
+  rw [differenceSign_encodePair p.1 p.2
+    (BooleanDifferences.mem_pairFamily.mp hp).2]
+
 -- The tests exercise this pair-contraction subroutine, not QueryStream's
 -- unimplemented numerical callback or a whole CNF-to-count computation.
 example : visits 0 0 = 0 := by decide
@@ -138,5 +174,7 @@ example : weightedSum (fun w => if w.countP Option.isSome == 1
 #print axioms pairCount_full_support
 #print axioms calls_full_support_lower
 #print axioms signedSum_eq_pairFamily
+#print axioms differenceSign_encodePair
+#print axioms signedSum_eq_original_difference
 
 end OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.QueryStreamConstructivePairs

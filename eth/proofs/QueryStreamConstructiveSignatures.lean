@@ -163,6 +163,13 @@ source's event weights and its representatives unchanged.
 
 /-- Reindex a full level of attained prefixes using the source's exact
 \`Fin.snocEquiv\`. No signature tuple is chosen by this proof. -/
+section SourceMathematicalSums
+
+open Classical
+
+-- The original proof-side sums use classical finite-set instances, not the
+-- executable key-equality decider. Keep them separately elaborated.
+omit [∀ d, DecidableEq (κ d)] in
 private theorem sum_snoc_for_source
     (key : (d : ℕ) → Fin (N d) → κ d) (depth : ℕ)
     {M : Type*} [AddCommMonoid M]
@@ -178,6 +185,7 @@ private theorem sum_snoc_for_source
 original's private \`sum_subtreeTotal\` lemma. It sums complete source
 subtrees at a depth, **including** rejected candidates and exhaustion.
 Only the already-verified source recurrence is unfolded. -/
+omit [∀ d, DecidableEq (κ d)] in
 theorem source_subtree_sum
     (key : (d : ℕ) → Fin (N d) → κ d) (levels : ℕ)
     {M : Type*} [AddCommMonoid M]
@@ -208,6 +216,8 @@ theorem source_subtree_sum
         Finset.sum_eq_sum_Ico_succ_bot hd]
       simp only [SignatureTupleTraversal.levelTotal, dite_eq_left hd]
       simp only [add_assoc]
+
+end SourceMathematicalSums
 
 /-- Fully general source-event bridge. \`runTotal\` is a total function of
 the decidable keys and concrete event weights, whereas \`eventTotal\` is

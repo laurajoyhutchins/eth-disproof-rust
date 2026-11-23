@@ -148,6 +148,95 @@ theorem runTotal_eq_original
   subtreeTotal_eq_original key levels weight levels 0 (by omega)
     (fun i => Fin.elim0 i)
 
+/-!
+## Recover the source's event total
+
+The original source has a **private** \`sum_subtreeTotal\` theorem and an
+exported \`eventTotal_callbackWeight\` theorem. The adapter below exposes
+only the equality needed for our new executable root, keeping the
+source's event weights and its representatives unchanged.
+-/
+
+/-- Reindex a full level of attained prefixes using the source's exact
+\`Fin.snocEquiv\`. No signature tuple is chosen by this proof. -/
+private theorem sum_snoc_for_source
+    (key : (d : ℕ) → Fin (N d) → κ d) (depth : ℕ)
+    {M : Type*} [AddCommMonoid M]
+    (f : Prefix (Representatives key) (depth + 1) → M) :
+    (∑ ancestors : Prefix (Representatives key) depth,
+      ∑ rep : Representatives key depth, f (Fin.snoc ancestors rep)) =
+      ∑ ancestors, f ancestors := by
+  classical
+  rw [Finset.sum_comm, ← Fintype.sum_prod_type']
+  exact (Fin.snocEquiv (fun i : Fin (depth + 1) => Representatives key i.val)).sum_comp f
+
+/-- A public bridge to the mathematical identity hidden in the unchanged
+original's private \`sum_subtreeTotal\` lemma. It sums complete source
+subtrees at a depth, **including** rejected candidates and exhaustion.
+Only the already-verified source recurrence is unfolded. -/
+theorem source_subtree_sum
+    (key : (d : ℕ) → Fin (N d) → κ d) (levels : ℕ)
+    {M : Type*} [AddCommMonoid M]
+    (weight : SignatureTupleTraversal.Event key levels → M)
+    (remaining depth : ℕ) (h : depth + remaining = levels) :
+    (∑ ancestors : Prefix (Representatives key) depth,
+      SignatureTupleTraversal.subtreeTotal key levels weight remaining depth h ancestors) =
+        (∑ d ∈ Finset.Ico depth levels,
+          SignatureTupleTraversal.levelTotal key levels weight d) +
+          ∑ ancestors : Prefix (Representatives key) levels,
+            weight (.leaf ancestors) := by
+  classical
+  induction remaining generalizing depth with
+  | zero =>
+      have he : depth = levels := by omega
+      subst depth
+      simp [SignatureTupleTraversal.subtreeTotal]
+  | succ remaining ih =>
+      have hd : depth < levels := by omega
+      change (∑ ancestors : Prefix (Representatives key) depth,
+        (((∑ i : Fin (N depth), weight (.candidate ⟨depth, hd⟩ ancestors i)) +
+          weight (.exhausted ⟨depth, hd⟩ ancestors)) +
+        ∑ rep : Representatives key depth,
+          SignatureTupleTraversal.subtreeTotal key levels weight remaining
+            (depth + 1) (by omega) (Fin.snoc ancestors rep))) = _
+      rw [Finset.sum_add_distrib, sum_snoc_for_source, ih (depth + 1) (by omega),
+        Finset.sum_eq_sum_Ico_succ_bot hd]
+      simp only [SignatureTupleTraversal.levelTotal, dite_eq_left hd]
+      simp only [add_assoc]
+
+/-- Fully general source-event bridge. \`runTotal\` is a total function of
+the decidable keys and concrete event weights, whereas \`eventTotal\` is
+the original mathematical noncomputable sum. Their results agree exactly. -/
+theorem runTotal_eq_eventTotal
+    (key : (d : ℕ) → Fin (N d) → κ d) (levels : ℕ)
+    {M : Type*} [AddCommMonoid M]
+    (weight : SignatureTupleTraversal.Event key levels → M) :
+    runTotal key levels weight =
+      SignatureTupleTraversal.eventTotal key levels weight := by
+  classical
+  rw [runTotal_eq_original]
+  have hs := source_subtree_sum key levels weight levels 0 (by omega)
+  rw [Fintype.sum_subsingleton _ (fun i => Fin.elim0 i)] at hs
+  simpa only [← Finset.range_eq_Ico, SignatureTupleTraversal.eventTotal]
+    using hs
+
+/-- The constructive complete DFS returns **exactly the original
+attained-tuple leaf sum** when candidate and exhaustion weights vanish.
+This lemma only replaces the proof-side signature enumeration, not the
+actual numerical \`emittedValue\` computation. -/
+theorem runTotal_callbackWeight
+    (key : (d : ℕ) → Fin (N d) → κ d) (levels : ℕ)
+    {M : Type*} [AddCommMonoid M]
+    (value : Prefix (Representatives key) levels → M) :
+    runTotal key levels
+      (SignatureTupleTraversal.callbackWeight key levels value) =
+        ∑ ancestors : Prefix (Representatives key) levels, value ancestors := by
+  rw [runTotal_eq_eventTotal]
+  exact SignatureTupleTraversal.eventTotal_callbackWeight key levels value
+
+#print axioms runTotal_eq_eventTotal
+#print axioms runTotal_callbackWeight
+
 /-- All candidates, including duplicates, and every exhausted generator cost
     one. Each completed attained tuple also costs one. -/
 def unitEventWeight {key : (d : ℕ) → Fin (N d) → κ d} {levels : ℕ} :

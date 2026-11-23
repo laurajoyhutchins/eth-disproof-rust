@@ -1,6 +1,12 @@
 name: Experimental Lean-native IR emitter (bounded)
 
 on:
+  pull_request:
+    paths:
+      - 'compiler/LeanNativeRustIR.lean'
+      - 'compiler/examples/LeanNativeIR*.lean'
+      - 'compiler/scripts/check-lean-native-ir-probe.sh'
+      - '.github/workflows/lean-native-ir-probe.yml'
   push:
     branches: [experiment/lean-native-ir-emitter]
     paths:

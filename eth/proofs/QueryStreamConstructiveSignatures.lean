@@ -245,14 +245,6 @@ theorem runTotal_eq_eventTotal
   refine hs.trans ?_
   unfold SignatureTupleTraversal.eventTotal
   rw [← Finset.range_eq_Ico]
-  apply congrArg (fun x : M =>
-    (∑ i ∈ Finset.range levels,
-      SignatureTupleTraversal.levelTotal key levels weight i) + x)
-  apply Finset.sum_congr
-  · ext a
-    simp
-  · intro a _
-    rfl
 
 /-- The constructive complete DFS returns **exactly the original
 attained-tuple leaf sum** when candidate and exhaustion weights vanish.

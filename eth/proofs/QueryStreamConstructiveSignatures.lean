@@ -242,22 +242,17 @@ theorem runTotal_eq_eventTotal
   rw [runTotal_eq_original]
   have hs := source_subtree_sum key levels weight levels 0 (by omega)
   rw [Fintype.sum_subsingleton _ (fun i => Fin.elim0 i)] at hs
-  calc
-    _ = (∑ i ∈ Finset.range levels,
-          SignatureTupleTraversal.levelTotal key levels weight i) +
-        ∑ ancestors : Prefix (Representatives key) levels,
-          weight (.leaf ancestors) := by
-      simpa only [← Finset.range_eq_Ico] using hs
-    _ = SignatureTupleTraversal.eventTotal key levels weight := by
-      unfold SignatureTupleTraversal.eventTotal
-      apply congrArg (fun x : M =>
-        (∑ i ∈ Finset.range levels,
-          SignatureTupleTraversal.levelTotal key levels weight i) + x)
-      apply Finset.sum_congr
-      · ext a
-        simp
-      · intro a _
-        rfl
+  refine hs.trans ?_
+  unfold SignatureTupleTraversal.eventTotal
+  rw [← Finset.range_eq_Ico]
+  apply congrArg (fun x : M =>
+    (∑ i ∈ Finset.range levels,
+      SignatureTupleTraversal.levelTotal key levels weight i) + x)
+  apply Finset.sum_congr
+  · ext a
+    simp
+  · intro a _
+    rfl
 
 /-- The constructive complete DFS returns **exactly the original
 attained-tuple leaf sum** when candidate and exhaustion weights vanish.

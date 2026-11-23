@@ -50,8 +50,13 @@ theorem convolution_correct [CommRing R] (ops : RepresentedRing C R)
     ops.decode (convolution ops.program a b k).1 =
       (decodeArray ops.decode a * decodeArray ops.decode b).coeff k := by
   rw [convolution, SqrtLog.RingProgram.sumRun_correct, Truncated.coeff_mul]
-  simp only [List.map_ofFn, List.sum_ofFn, ops.mul_correct, readCode_correct, decodeArray]
-  rw [Finset.Nat.sum_antidiagonal_eq_sum_range_succ, ← Fin.sum_univ_eq_sum_range]
+  simp only [List.map_ofFn, List.sum_ofFn, Function.comp_apply, ops.mul_correct,
+    readCode_correct, decodeArray]
+  rw [Finset.Nat.sum_antidiagonal_eq_sum_range_succ_mk
+    (fun uv => arrayCoeff (fun i => ops.decode (a i)) uv.1 *
+      arrayCoeff (fun i => ops.decode (b i)) uv.2) k.val,
+    ← Fin.sum_univ_eq_sum_range]
+  rfl
 
 /-- The code-level truncated-ring program. Tabulation materializes the output
     coefficients, and no semantic quotient-ring instance is executed. -/
@@ -86,7 +91,8 @@ noncomputable def representedTrunc [CommRing R] (ops : RepresentedRing C R)
   mul_correct := by
     intro a b
     ext i
-    exact convolution_correct ops a b i
+    simpa only [decodeArray, truncProgram, SqrtLog.RingProgram.tabulateRun_eq]
+      using convolution_correct ops a b i
   neg_correct := by
     intro a
     ext i
@@ -126,7 +132,7 @@ theorem readoutRun_correct [CommRing R] (ops : RepresentedRing C R) {t J : ℕ}
   ext z
   rw [Dense.coeff_readout]
   simp only [decodeArray, readoutRun, SqrtLog.RingProgram.tabulateRun_eq,
-    SqrtLog.RingProgram.sumRun_correct, List.map_ofFn, List.sum_ofFn]
+    SqrtLog.RingProgram.sumRun_correct, List.map_ofFn, List.sum_ofFn, Function.comp_apply]
 
 /-- Numerical leaf contraction on supplied head-sum codes, in the source's
     marker/Taylor order. Both truncations remain in force until readout. -/

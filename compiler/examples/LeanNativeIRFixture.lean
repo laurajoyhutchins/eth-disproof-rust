@@ -12,8 +12,7 @@ import LeanNativeIRSource
 
 open Lean Elab Command
 
-/-- Independently executed Lean source is the oracle, not a reimplementation
-    of the source functions inside the Rust code generator. -/
+-- Independently executed Lean source is the oracle, not reimplemented Rust.
 run_cmd do
   let path : System.FilePath := "artifacts/lean-native-ir-probe"
   let edges : Array UInt64 := #[
@@ -22,8 +21,8 @@ run_cmd do
   let add := LeanNativeRustIR.symbol ``LeanNativeIRFixture.add
   let pipeline := LeanNativeRustIR.symbol ``LeanNativeIRFixture.pipeline
   let choose := LeanNativeRustIR.symbol ``LeanNativeIRFixture.choose
-  let mut arithmetic := s!"use lean_native_ir_probe::{{{add}, {pipeline}}};\n#[test] fn lean_oracle_arithmetic() {{\n"
-  let mut branches := s!"use lean_native_ir_probe::{choose};\n#[test] fn lean_oracle_branches() {{\n"
+  let mut arithmetic := "use lean_native_ir_probe::{" ++ add ++ ", " ++ pipeline ++ "};\n#[test] fn lean_oracle_arithmetic() {\n"
+  let mut branches := "use lean_native_ir_probe::" ++ choose ++ ";\n#[test] fn lean_oracle_branches() {\n"
   for x in edges do
     for y in edges do
       let a := x.toNat

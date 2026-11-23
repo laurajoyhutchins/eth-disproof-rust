@@ -22,6 +22,7 @@ structure Event where
   op : String
   subject : String
   detail : String
+  deriving Inhabited
 
 private def event (path op subject detail : String) : Array Event :=
   #[⟨path, op, subject, detail⟩]
@@ -43,11 +44,11 @@ private def exprEvent (path : String) (x : IR.VarId) : IR.Expr → Array Event
   | .fap f ys => event path "Expr.fap" (var x) s!"{f}/{ys.size}"
   | .pap f ys => event path "Expr.pap" (var x) s!"{f}/{ys.size}"
   | .ap f ys => event path "Expr.ap" (var x) s!"{var f}/{ys.size}"
-  | .box ty from => event path "Expr.box" (var x) s!"{repr ty}/{var from}"
-  | .unbox from => event path "Expr.unbox" (var x) (var from)
+  | .box ty src => event path "Expr.box" (var x) s!"{repr ty}/{var src}"
+  | .unbox src => event path "Expr.unbox" (var x) (var src)
   | .lit (.num n) => event path "Expr.lit.num" (var x) s!"{n}"
   | .lit (.str _) => event path "Expr.lit.str" (var x) "string"
-  | .isShared from => event path "Expr.isShared" (var x) (var from)
+  | .isShared src => event path "Expr.isShared" (var x) (var src)
 
 /-- An ordered structural inventory, not an execution trace. The path
     distinguishes join-body vs join-continuation and alternative indices. -/

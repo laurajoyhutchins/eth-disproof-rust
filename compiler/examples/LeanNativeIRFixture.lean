@@ -1,6 +1,21 @@
 import LeanNativeRustIR
 import LeanNativeIRSource
 
+-- Rust symbols must preserve Lean.Name component boundaries and kinds.
+private def dottedComponent : Lean.Name :=
+  .str (.str .anonymous "Pkg") "a.b"
+
+private def segmentedComponent : Lean.Name :=
+  .str (.str (.str .anonymous "Pkg") "a") "b"
+
+private def stringDigit : Lean.Name := .str .anonymous "7"
+private def numericSegment : Lean.Name := .num .anonymous 7
+
+#guard LeanNativeRustIR.symbol dottedComponent !=
+  LeanNativeRustIR.symbol segmentedComponent
+#guard LeanNativeRustIR.symbol stringDigit !=
+  LeanNativeRustIR.symbol numericSegment
+
 -- Two distinct original functions and their genuine compiler-IR closure.
 #lean_native_ir_package [LeanNativeIRFixture.pipeline, LeanNativeIRFixture.add]
   to "artifacts/lean-native-ir-probe/arithmetic"

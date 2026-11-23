@@ -26,6 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Pinned Rust toolchain
         run: |
@@ -62,4 +63,10 @@ jobs:
           name: lean-native-ir-probe
           if-no-files-found: warn
           retention-days: 7
-          path: compiler/artifacts/lean-native-ir-probe/
+          path: |
+            compiler/artifacts/lean-native-ir-probe/*.txt
+            compiler/artifacts/lean-native-ir-probe/*.log
+            compiler/artifacts/lean-native-ir-probe/*.time
+            compiler/artifacts/lean-native-ir-probe/*.sha256
+            compiler/artifacts/lean-native-ir-probe/*/src/lib.rs
+            compiler/artifacts/lean-native-ir-probe/*/tests/oracle.rs

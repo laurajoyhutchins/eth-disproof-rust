@@ -174,7 +174,7 @@ these sample values, with the following expected rows:
 
 The isolated [CI run #45211897207](https://github.com/laurajoyhutchins/eth-disproof-rust/actions/runs/45211897207)
 **passed** against the unchanged pinned source at commit `7ebdf6b`, including
-all six new theorems, executable examples and `#print axioms`. The reported
+all new theorems, executable examples and `#print axioms`. The reported
 axioms were subsets of `propext`, `Classical.choice`, and `Quot.sound`;
 **no `sorryAx`** appears. Choice is in proof-level finite-set lemmas;
 the concrete `weightedSum` and `signedSum` operations are computable.

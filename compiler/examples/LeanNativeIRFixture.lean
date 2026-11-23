@@ -1,16 +1,5 @@
 import LeanNativeRustIR
-
-namespace LeanNativeIRFixture
-
-@[noinline] def add (x y : UInt64) : UInt64 := x + y
-
-@[noinline] def pipeline (x y : UInt64) : UInt64 :=
-  add (x + 7) (add x y)
-
-@[noinline] def choose (x y : UInt64) : UInt64 :=
-  if x == 0 then y else x
-
-end LeanNativeIRFixture
+import LeanNativeIRSource
 
 -- Two distinct original functions and their genuine compiler-IR closure.
 #lean_native_ir_package [LeanNativeIRFixture.pipeline, LeanNativeIRFixture.add]

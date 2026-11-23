@@ -1,4 +1,4 @@
-import OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.TruncatedRing
+import OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.TruncatedRingProgram
 import OAI.Algorithms.SubexponentialSAT.SqrtLog.RingProgramModel
 import Mathlib.Algebra.BigOperators.NatAntidiagonal
 
@@ -190,6 +190,67 @@ theorem modelLeafRun_correct (t : ℕ) (ht : 0 < t) {d J : ℕ} (hd : 0 < d)
   simp only [modelLeafRun, SqrtLog.RingProgram.modelProgramRun_value]
   rw [← SqrtLog.RingProgram.modelRing_program t ht hd a M cache]
   exact leafRun_correct _ heads
+
+section HeadDictionary
+
+open SqrtLog.MomentsProgram
+open TruncatedRingProgram
+
+/-- Direct executable lookup of the original sparse key. Missing coefficients
+    use the source zero code; retained zero records need not be removed. -/
+def dictionaryCodes {n B d : ℕ}
+    (zero : SqrtLog.RingProgram.Code (Word B) d)
+    (entries : List (Product.Entry n B d)) (t J : ℕ) :
+    Fin t → Fin J → SqrtLog.RingProgram.Code (Word B) d :=
+  fun u z => (entries.lookup (⟨u.val, z.val, ∅⟩ : SqrtLog.Squarefree.Index (Fin n))).getD zero
+
+/-- The original sparse fetch is a sum, so first-match lookup is sound
+    precisely under the normalized distinct-key invariant. -/
+theorem dictionaryCodes_correct {n B d t J : ℕ} [CommRing R]
+    (decode : SqrtLog.RingProgram.Code (Word B) d → R)
+    (zero : SqrtLog.RingProgram.Code (Word B) d) (hz : decode zero = 0)
+    (entries : List (Product.Entry n B d))
+    (hn : (SqrtLog.Squarefree.Sparse.keys entries).Nodup) :
+    decodeArray (decodeArray decode) (dictionaryCodes zero entries t J) =
+      rawValue t J decode entries := by
+  ext u z
+  rw [rawValue_coeff]
+  let key : SqrtLog.Squarefree.Index (Fin n) := ⟨u.val, z.val, ∅⟩
+  have hf := SqrtLog.Squarefree.Program.fetch_eq_lookup
+    (Dictionary.denoteTable decode entries) key
+    (by simpa only [Dictionary.denoteTable_keys] using hn)
+  rw [Dictionary.denoteTable_lookup] at hf
+  change decode ((entries.lookup key).getD zero) =
+    SqrtLog.Squarefree.Sparse.fetch key (Dictionary.denoteTable decode entries)
+  cases he : entries.lookup key with
+  | none => simpa [he, hz] using hf.symm
+  | some x => simpa [he] using hf.symm
+
+/-- Compose the actual normalized head dictionaries using the same
+    coefficient program as the dense leaf kernel. -/
+def dictionaryLeafRun {n B d t J r : ℕ}
+    (ops : RingProgram (SqrtLog.RingProgram.Code (Word B) d))
+    (heads : Fin r → List (Product.Entry n B d)) :=
+  leafRun ops (List.ofFn (fun g => dictionaryCodes ops.zeroRun.1 (heads g) t J))
+
+/-- Exact source dense head product and additive readout from the actual
+    normalized sparse dictionaries. The head rescan producing them remains
+    an independent upstream-to-executable obligation. -/
+theorem dictionaryLeafRun_correct {n B d t J r : ℕ} [CommRing R]
+    (ops : RepresentedRing (SqrtLog.RingProgram.Code (Word B) d) R)
+    (heads : Fin r → List (Product.Entry n B d))
+    (hn : ∀ g, (SqrtLog.Squarefree.Sparse.keys (heads g)).Nodup) :
+    decodeArray ops.decode (dictionaryLeafRun (t := t) (J := J) ops.program heads).1 =
+      Dense.readout (∏ g : Fin r, rawValue t J ops.decode (heads g)) := by
+  unfold dictionaryLeafRun
+  apply leafRun_correct_ofFn
+  intro g
+  exact dictionaryCodes_correct ops.decode ops.zeroRun.1 ops.zero_correct (heads g) (hn g)
+
+#print axioms dictionaryCodes_correct
+#print axioms dictionaryLeafRun_correct
+
+end HeadDictionary
 
 /-- Transparent arithmetic for regression tests. The production specialization
     above uses the original model program instead. -/

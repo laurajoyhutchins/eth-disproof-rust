@@ -109,19 +109,7 @@ theorem subtreeTotal_eq_original (key : (d : ℕ) → Fin (N d) → κ d)
       rfl
   | succ remaining ih =>
       let d : Fin levels := ⟨depth, by omega⟩
-      change
-        (∑ i : Fin (N depth), weight (.candidate d ancestors i)) +
-          weight (.exhausted d ancestors) +
-          (∑ i : Fin (N depth),
-            if hrep : ∀ j : Fin (N depth), j < i → key depth j ≠ key depth i then
-              subtreeTotal key levels weight remaining (depth + 1) (by omega)
-                (Fin.snoc ancestors ⟨i, hrep⟩)
-            else 0) =
-        (∑ i : Fin (N depth), weight (.candidate d ancestors i)) +
-          weight (.exhausted d ancestors) +
-          (∑ rep : Representatives key depth,
-            SignatureTupleTraversal.subtreeTotal key levels weight remaining
-              (depth + 1) (by omega) (Fin.snoc ancestors rep))
+      simp only [subtreeTotal, SignatureTupleTraversal.subtreeTotal]
       congr 1
       rw [show
         (∑ i : Fin (N depth),

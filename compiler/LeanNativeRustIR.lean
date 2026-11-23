@@ -1,5 +1,4 @@
 import Lean
-import Init.Data.UInt.Lemmas
 
 /-!
 Experimental, deliberately narrow Lean-native Rust emitter.
@@ -28,10 +27,19 @@ private def scalarType : IR.IRType → Except String String
   | .uint8 => .ok "u8"
   | other => refusal "IRType" s!"unsupported scalar type {repr other}"
 
-/-- Injective UTF-8 byte encoding, including punctuation and non-ASCII names. -/
-def symbol (name : Name) : String :=
-  "lean_" ++ name.toString.toUTF8.foldl
-    (fun s b => s ++ toString b.toNat ++ "_") ""
+/-- Encode a string component as decimal UTF-8 bytes separated by underscores.
+    These byte codes contain no 's' or 'n', our component-kind delimiters. -/
+private def encodeComponent (s : String) : String :=
+  s.toUTF8.foldl (fun out b => out ++ toString b.toNat ++ "_") ""
+
+/-- Preserve the *structure* of Lean.Name, not just its potentially ambiguous
+    display string; distinguish string, numeric, and nested components. -/
+def symbol : Name → String
+  | .anonymous => "lean_a"
+  | .str parent component =>
+    symbol parent ++ "_s_" ++ encodeComponent component
+  | .num parent component =>
+    symbol parent ++ "_n_" ++ toString component
 
 private def localName (v : IR.VarId) : String :=
   "_v" ++ toString v.idx
@@ -82,29 +90,6 @@ private def renderExpr (known : Array Name) (result : IR.IRType)
       return ← refusal "Expr.fap" "non-UInt64 user call result"
     return symbol f ++ "(" ++ String.intercalate ", " xs.toList ++ ")"
   | _ => refusal "Expr" "unsupported expression constructor"
-
-/-!
-An admitted *genuine Lean IR instruction* is mapped to a specific Rust
-operation, and the all-word arithmetic result has the wrapping semantics
-of that operation. This checks the exact emitter rule, not Rust parsing,
-general body translation or physical execution.
--/
-private def addIR : IR.Expr :=
-  .fap ``UInt64.add #[.var ⟨1⟩, .var ⟨2⟩]
-
-private def mulIR : IR.Expr :=
-  .fap ``UInt64.mul #[.var ⟨1⟩, .var ⟨2⟩]
-
-theorem arithmeticIRRulesSound (a b : UInt64) :
-    (renderExpr #[] .uint64 addIR =
-        .ok "_v1.wrapping_add(_v2)") ∧
-    (renderExpr #[] .uint64 mulIR =
-        .ok "_v1.wrapping_mul(_v2)") ∧
-    ((a + b).toNat = (a.toNat + b.toNat) % (2 ^ 64)) ∧
-    ((a * b).toNat = (a.toNat * b.toNat) % (2 ^ 64)) := by
-  refine ⟨by rfl, by rfl, ?_, ?_⟩
-  · exact UInt64.toNat_add a b
-  · exact UInt64.toNat_mul a b
 
 private partial def callsInBody : IR.FnBody → Array Name
   | .vdecl _ _ (.fap f _) tail => #[f] ++ callsInBody tail

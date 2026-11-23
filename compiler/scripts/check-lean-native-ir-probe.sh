@@ -22,6 +22,16 @@ if [[ -e "$out" ]]; then
 fi
 mkdir -p "$out"
 lean -o LeanNativeRustIR.olean LeanNativeRustIR.lean
+cat > "$out/CheckAxioms.lean" <<\x27LEAN\x27
+import LeanNativeRustIR
+#print axioms LeanNativeRustIR.arithmeticIRRulesSound
+LEAN
+lean "$out/CheckAxioms.lean" > "$out/axioms.log"
+if grep -Fq sorryAx "$out/axioms.log"; then
+  echo "Lean-native arithmetic rule theorem depends on sorryAx" >&2
+  exit 2
+fi
+grep -Fq "\x27LeanNativeRustIR.arithmeticIRRulesSound\x27" "$out/axioms.log"
 lean -o examples/LeanNativeIRSource.olean examples/LeanNativeIRSource.lean
 
 /usr/bin/time -f 'lean_native_elapsed_s=%e peak_kb=%M' -o "$out/native.time" \
@@ -88,5 +98,5 @@ sha256sum -c "$out/determinism-before.sha256"
   printf 'Existing output bytes: '; wc -c < "$out/existing/src/lib.rs"
   cat "$out/native.time" "$out/existing.time"
   echo 'Test domains: 49 arithmetic pairs (98 checks) + 49 Bool pairs + 147 existing checks'
-  echo 'Proof status: existing model-only scalar theorem; no emitted-Rust correctness theorem'
+  echo 'Proof status: kernel-checked local genuine-IR add/mul emission rules; whole-program Rust refinement open'
 } | tee "$out/receipt.txt"

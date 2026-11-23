@@ -24,6 +24,10 @@ open scoped BigOperators
 open SignatureTupleDFS
 open SignatureTupleTraversal
 
+-- Source-recursive finite sums require a larger elaboration budget, not more
+-- runtime fuel or a weaker theorem.
+set_option maxHeartbeats 2000000
+
 variable {N : ℕ → ℕ} {κ : ℕ → Type*}
 variable [∀ d, DecidableEq (κ d)]
 

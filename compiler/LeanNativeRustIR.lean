@@ -1,4 +1,5 @@
 import Lean
+import Init.Data.UInt.Lemmas
 
 /-!
 Experimental, deliberately narrow Lean-native Rust emitter.
@@ -6,8 +7,9 @@ Consumes the real Lean 4.34.1 `Lean.IR.Decl` and never constructs a substitute I
 The existing Rust backend, runtime, and source definitions are unchanged.
 
 Admitted: UInt64 parameters/results, UInt64 arithmetic, scalar UInt8 Bool
-conditions, exact Bool two-way cases, direct closed calls, and returns.
-No heap values, ownership events, joins, effects, or implicit primitive fallback.
+conditions, exact Bool two-way cases, direct closed calls, nonrecursive scalar
+join points, and returns.
+No heap values, ownership events, effects, or implicit primitive fallback.
 -/
 
 namespace LeanNativeRustIR
@@ -80,6 +82,29 @@ private def renderExpr (known : Array Name) (result : IR.IRType)
       return ← refusal "Expr.fap" "non-UInt64 user call result"
     return symbol f ++ "(" ++ String.intercalate ", " xs.toList ++ ")"
   | _ => refusal "Expr" "unsupported expression constructor"
+
+/-!
+An admitted *genuine Lean IR instruction* is mapped to a specific Rust
+operation, and the all-word arithmetic result has the wrapping semantics
+of that operation. This checks the exact emitter rule, not Rust parsing,
+general body translation or physical execution.
+-/
+private def addIR : IR.Expr :=
+  .fap ``UInt64.add #[.var ⟨1⟩, .var ⟨2⟩]
+
+private def mulIR : IR.Expr :=
+  .fap ``UInt64.mul #[.var ⟨1⟩, .var ⟨2⟩]
+
+theorem arithmeticIRRulesSound (a b : UInt64) :
+    (renderExpr #[] .uint64 addIR =
+        .ok "_v1.wrapping_add(_v2)") ∧
+    (renderExpr #[] .uint64 mulIR =
+        .ok "_v1.wrapping_mul(_v2)") ∧
+    ((a + b).toNat = (a.toNat + b.toNat) % (2 ^ 64)) ∧
+    ((a * b).toNat = (a.toNat * b.toNat) % (2 ^ 64)) := by
+  refine ⟨by decide, by decide, ?_, ?_⟩
+  · exact UInt64.toNat_add a b
+  · exact UInt64.toNat_mul a b
 
 private partial def callsInBody : IR.FnBody → Array Name
   | .vdecl _ _ (.fap f _) tail => #[f] ++ callsInBody tail

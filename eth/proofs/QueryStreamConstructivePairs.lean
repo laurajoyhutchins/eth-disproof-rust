@@ -120,7 +120,7 @@ theorem signedSum_eq_pairFamily (n J : ℕ)
   exact weightedSum_eq_pairFamily _ n J
 
 /-- The executable sign really is the original Boolean finite-difference
-    sign: `some false` indexes precisely the coordinates of `E \\ U`.
+    sign: `some false` indexes precisely the coordinates of `E \ U`.
     This is a local semantic theorem, not an assertion that the full
     QueryStream callback is already computable. -/
 theorem differenceSign_encodePair {n : ℕ} (E U : Finset (Fin n))
@@ -135,7 +135,7 @@ theorem differenceSign_encodePair {n : ℕ} (E U : Finset (Fin n))
   have hpoint (i : Fin n) :
       (if (if i ∈ E then some (decide (i ∈ U)) else none) == some false
         then 1 else 0 : ℕ) =
-      (if i ∈ E \\ U then 1 else 0 : ℕ) := by
+      (if i ∈ E \ U then 1 else 0 : ℕ) := by
     by_cases hi : i ∈ E <;> by_cases hj : i ∈ U <;> simp [hi, hj]
   simp_rw [hpoint]
   rw [← Finset.card_sdiff_of_subset hU]

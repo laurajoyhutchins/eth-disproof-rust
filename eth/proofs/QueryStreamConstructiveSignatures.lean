@@ -197,6 +197,7 @@ theorem source_subtree_sum
       simp [SignatureTupleTraversal.subtreeTotal]
   | succ remaining ih =>
       have hd : depth < levels := by omega
+      simp only [← Nat.succ_eq_add_one]
       change (∑ ancestors : Prefix (Representatives key) depth,
         (((∑ i : Fin (N depth), weight (.candidate ⟨depth, hd⟩ ancestors i)) +
           weight (.exhausted ⟨depth, hd⟩ ancestors)) +
@@ -217,12 +218,25 @@ theorem runTotal_eq_eventTotal
     (weight : SignatureTupleTraversal.Event key levels → M) :
     runTotal key levels weight =
       SignatureTupleTraversal.eventTotal key levels weight := by
-  classical
   rw [runTotal_eq_original]
   have hs := source_subtree_sum key levels weight levels 0 (by omega)
   rw [Fintype.sum_subsingleton _ (fun i => Fin.elim0 i)] at hs
-  simpa only [← Finset.range_eq_Ico, SignatureTupleTraversal.eventTotal]
-    using hs
+  calc
+    _ = (∑ i ∈ Finset.range levels,
+          SignatureTupleTraversal.levelTotal key levels weight i) +
+        ∑ ancestors : Prefix (Representatives key) levels,
+          weight (.leaf ancestors) := by
+      simpa only [← Finset.range_eq_Ico] using hs
+    _ = SignatureTupleTraversal.eventTotal key levels weight := by
+      unfold SignatureTupleTraversal.eventTotal
+      apply congrArg (fun x : M =>
+        (∑ i ∈ Finset.range levels,
+          SignatureTupleTraversal.levelTotal key levels weight i) + x)
+      apply Finset.sum_congr
+      · ext a
+        simp
+      · intro a _
+        rfl
 
 /-- The constructive complete DFS returns **exactly the original
 attained-tuple leaf sum** when candidate and exhaustion weights vanish.
@@ -236,7 +250,12 @@ theorem runTotal_callbackWeight
       (SignatureTupleTraversal.callbackWeight key levels value) =
         ∑ ancestors : Prefix (Representatives key) levels, value ancestors := by
   rw [runTotal_eq_eventTotal]
-  exact SignatureTupleTraversal.eventTotal_callbackWeight key levels value
+  refine (SignatureTupleTraversal.eventTotal_callbackWeight key levels value).trans ?_
+  apply Finset.sum_congr
+  · ext a
+    simp
+  · intro a _
+    rfl
 
 #print axioms runTotal_eq_eventTotal
 #print axioms runTotal_callbackWeight

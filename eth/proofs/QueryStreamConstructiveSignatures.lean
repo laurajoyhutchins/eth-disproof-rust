@@ -112,15 +112,13 @@ theorem subtreeTotal_eq_original (key : (d : ℕ) → Fin (N d) → κ d)
       simp only [← Nat.succ_eq_add_one]
       dsimp [subtreeTotal, SignatureTupleTraversal.subtreeTotal, Nat.recAux]
       congr 1
-      rw [show
-        (∑ i : Fin (N depth),
-          if hrep : ∀ j : Fin (N depth), j < i → key depth j ≠ key depth i then
-            subtreeTotal key levels weight remaining (depth + 1) (by omega)
-              (Fin.snoc ancestors ⟨i, hrep⟩)
-          else 0) =
+      change
         scanSum key depth (fun rep : Representatives key depth =>
           subtreeTotal key levels weight remaining (depth + 1) (by omega)
-            (Fin.snoc ancestors rep)) from rfl]
+            (Fin.snoc ancestors rep)) =
+        ∑ rep : Representatives key depth,
+          SignatureTupleTraversal.subtreeTotal key levels weight remaining
+            (depth + 1) (by omega) (Fin.snoc ancestors rep)
       rw [scanSum_eq_representatives]
       apply Finset.sum_congr rfl
       intro rep _

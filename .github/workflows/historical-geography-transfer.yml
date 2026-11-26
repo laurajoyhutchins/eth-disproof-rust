@@ -1,4 +1,4 @@
-name: Census 2000 public geography transfer
+name: Public climate map and errata evidence
 on:
   push:
     branches: ['data-transfer/historical-geography-20261126']
@@ -7,18 +7,21 @@ permissions:
 jobs:
   acquire:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 4
     steps:
-      - name: Fetch official Census 2000 county boundaries
+      - name: Fetch public corroborating images and errata
         run: |
           mkdir out
-          url=https://www2.census.gov/geo/tiger/PREVGENZ/co/co00shp/co99_d00_shp.zip
-          curl -fL --retry 2 --connect-timeout 15 --max-time 90 "$url" -o out/co99_d00_shp.zip
-          unzip -tq out/co99_d00_shp.zip
-          echo "$url" > out/urls.txt
-          (cd out && sha256sum co99_d00_shp.zip urls.txt > SHA256SUMS)
+          fetch() {
+            printf '%s %s\n' "$1" "$2" >> out/urls.txt
+            curl -fL --connect-timeout 10 --max-time 35 "$2" -o "out/$1" || { rm -f "out/$1"; echo "$1 failed" >> out/failures.txt; }
+          }
+          fetch world-handbook.jpg 'https://handbook.ashrae.org/Handbooks/A19/IP/a19_ch24/figures/A24_f13.jpg'
+          fetch county-handbook.jpg 'https://handbook.ashrae.org/Handbooks/A19/IP/a19_ch24/figures/A24_f14.jpg'
+          fetch 2019-errata-20210408.pdf 'https://www.ashrae.org/file%20library/technical%20resources/standards%20and%20guidelines/standards%20errata/errata%20for%20ashrae-ies%20standard%2090/90.1-2019-ip-erratasheet-4-8-2021-.pdf'
+          (cd out && sha256sum * > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: census-2000-county
+          name: climate-map-errata-evidence
           path: out/
           retention-days: 5

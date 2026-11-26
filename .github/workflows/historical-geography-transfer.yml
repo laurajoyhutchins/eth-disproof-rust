@@ -1,4 +1,4 @@
-name: Historical public geography transfer
+name: Census 2000 public geography transfer
 on:
   push:
     branches: ['data-transfer/historical-geography-20261126']
@@ -7,74 +7,18 @@ permissions:
 jobs:
   acquire:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 5
     steps:
-      - name: Retrieve public source files
-        shell: bash
+      - name: Fetch official Census 2000 county boundaries
         run: |
-          mkdir -p out
-          for pair in '2016 county' '2016 state' '2010 county'; do
-            read -r year kind <<< "$pair"
-            name="cb_${year}_us_${kind}_500k.zip"
-            if [ "$year" = 2016 ]; then
-              url="https://www2.census.gov/geo/tiger/GENZ2016/shp/$name"
-            else
-              name="gz_2010_us_050_00_500k.zip"
-              url="https://www2.census.gov/geo/tiger/GENZ2010/$name"
-            fi
-            printf '%s\n' "$url" >> out/urls.txt
-            if curl -fL --retry 1 --connect-timeout 15 --max-time 120 "$url" -o "out/$name.tmp" && unzip -tq "out/$name.tmp"; then
-              mv "out/$name.tmp" "out/$name"
-            else
-              rm -f "out/$name.tmp"
-              echo "failed $url" >> out/failures.txt
-            fi
-          done
-          curl -fL --connect-timeout 15 --max-time 60 https://data.openei.org/files/425/swera_data_map.txt -o out/swera_data_map.txt || echo 'SWERA index failed' >> out/failures.txt
-          curl -fL --connect-timeout 15 --max-time 30 'https://mapservices.nrel.gov/ows?service=WFS&version=1.0.0&request=GetCapabilities' -o out/swera-capabilities.xml || echo 'WFS failed' >> out/failures.txt
-          # Fetch central directory via bounded range requests, not whole archive.
-          python - <<'PY'
-          import urllib.request, zipfile, io, re, json
-          url='https://data.openei.org/files/425/SWERA.zip'
-          class Remote(io.RawIOBase):
-              def __init__(self):
-                  self.pos=0
-                  with urllib.request.urlopen(urllib.request.Request(url,headers={'Range':'bytes=0-0','Accept-Encoding':'identity'}),timeout=30) as r:
-                      if r.status!=206: raise ValueError('server does not support range')
-                      self.size=int(r.headers['Content-Range'].split('/')[-1])
-              def seekable(self): return True
-              def readable(self): return True
-              def tell(self): return self.pos
-              def seek(self,off,whence=0):
-                  self.pos=[0,self.pos,self.size][whence]+off
-                  return self.pos
-              def read(self,n=-1):
-                  n=min(n if n>=0 else self.size-self.pos,self.size-self.pos)
-                  if n<=0:return b''
-                  if n>100_000_000:raise ValueError('range exceeds cap')
-                  with urllib.request.urlopen(urllib.request.Request(url,headers={'Range':f'bytes={self.pos}-{self.pos+n-1}','Accept-Encoding':'identity'}),timeout=60) as r:
-                      if r.status!=206:raise ValueError('range ignored')
-                      b=r.read(n+1)
-                  if len(b)!=n:raise ValueError('short range')
-                  self.pos+=n
-                  return b
-          try:
-              with zipfile.ZipFile(Remote()) as z:
-                  with open('out/swera-members.json','w') as f:json.dump([{'name':i.filename,'size':i.file_size,'compressed':i.compress_size} for i in z.infolist()],f)
-                  for k,i in enumerate(z.infolist()):
-                      if i.is_dir() or i.file_size>40_000_000:continue
-                      if not re.search(r'hdd|cdd|degree.day|clim.*nasa|nasa.*clim|precip',i.filename,re.I):continue
-                      if k<0:continue
-                      # Preserve original member paths via manifest; bound total output.
-                      import pathlib
-                      if sum(p.stat().st_size for p in pathlib.Path('out').glob('swera-member-*'))+i.file_size>100_000_000:break
-                      with open('out/swera-member-'+str(k)+'-'+pathlib.PurePosixPath(i.filename).name,'wb') as f:f.write(z.read(i))
-          except Exception as e:
-              with open('out/failures.txt','a') as f:f.write('SWERA archive: '+repr(e)+'\n')
-          PY
-          (cd out && sha256sum * > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS)
+          mkdir out
+          url=https://www2.census.gov/geo/tiger/PREVGENZ/co/co00shp/co99_d00_shp.zip
+          curl -fL --retry 2 --connect-timeout 15 --max-time 90 "$url" -o out/co99_d00_shp.zip
+          unzip -tq out/co99_d00_shp.zip
+          echo "$url" > out/urls.txt
+          (cd out && sha256sum co99_d00_shp.zip urls.txt > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: historical-geography
+          name: census-2000-county
           path: out/
           retention-days: 5

@@ -1,0 +1,64 @@
+name: Engineering Python wheel ferry
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/engineering-python-ferry.yml']
+permissions:
+  contents: read
+jobs:
+  wheelhouse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Download and verify wheels
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p capsule/wheels
+          printf '%s\n' 'pint==0.26.2' 'maplib==0.24.0' 'pandapower==3.5.6' 'networkx==3.6.1' > capsule/requirements.in
+          python -m pip download --only-binary=:all: --dest capsule/wheels -r capsule/requirements.in
+          python - <<'PY'
+          import hashlib, pathlib, zipfile, email
+          root = pathlib.Path('capsule')
+          lines = []
+          for wheel in sorted((root/'wheels').glob('*.whl')):
+              with zipfile.ZipFile(wheel) as z:
+                  meta = email.message_from_bytes(z.read(next(n for n in z.namelist() if n.endswith('.dist-info/METADATA'))))
+              digest = hashlib.file_digest(wheel.open('rb'), 'sha256').hexdigest()
+              lines.append(f"{meta['Name']}=={meta['Version']} --hash=sha256:{digest}")
+          (root/'requirements.lock').write_text('\n'.join(lines)+'\n')
+          PY
+          python -m venv /tmp/ferry-test
+          /tmp/ferry-test/bin/pip install --no-index --find-links capsule/wheels --require-hashes -r capsule/requirements.lock
+          /tmp/ferry-test/bin/pip check
+          /tmp/ferry-test/bin/python - <<'PY'
+          import pint, maplib, pandapower as pp
+          from importlib.metadata import version
+          assert abs((1*pint.UnitRegistry().inch).to('mm').magnitude-25.4)<1e-10
+          m=maplib.Model()
+          m.update('INSERT DATA { <urn:s> <urn:p> <urn:o> }')
+          assert m.query('ASK { <urn:s> <urn:p> <urn:o> }')
+          net=pp.create_empty_network()
+          a=pp.create_bus(net,vn_kv=20)
+          b=pp.create_bus(net,vn_kv=20)
+          pp.create_ext_grid(net,a)
+          pp.create_line_from_parameters(net,a,b,1,0.1,0.1,0,1)
+          pp.create_load(net,b,p_mw=0.1)
+          pp.runpp(net)
+          assert net.converged
+          for name in ('pint','maplib','pandapower'): print(name,version(name))
+          PY
+          # NetworkX is already present in the target VM. Keep its pin but omit its wheel.
+          rm capsule/wheels/networkx-*.whl
+          sed -i '/^[Nn]etwork[Xx]==/d' capsule/requirements.lock
+          printf '%s\n' 'Requires existing NetworkX 3.6.1; install with pip --no-index --find-links wheels --require-hashes --no-deps -r requirements.lock; run pip check.' > capsule/README.txt
+          (cd capsule && sha256sum wheels/* requirements.* README.txt > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engineering-python-cp313-linux-x86_64
+          path: capsule/
+          retention-days: 7
+          compression-level: 0

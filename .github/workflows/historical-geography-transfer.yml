@@ -1,4 +1,4 @@
-name: Independent historical precipitation comparison
+name: GPCP historical precipitation comparison
 on:
   push:
     branches: ['data-transfer/historical-geography-20261126']
@@ -7,39 +7,33 @@ permissions:
 jobs:
   acquire:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     steps:
-      - name: Retrieve GPCC data for independent comparison
+      - name: Retrieve GPCP Version 2.3 monthly data
         run: |
           mkdir out
-          url='https://downloads.psl.noaa.gov/Datasets/gpcc/full_v2020/precip.mon.total.1x1.v2020.nc'
-          printf '%s\n' "$url" > out/urls.txt
-          curl -fL --connect-timeout 15 --max-time 100 "$url" -o out/gpcc.nc
+          url='https://downloads.psl.noaa.gov/Datasets/gpcp/precip.mon.mean.nc'
+          echo "$url" > out/urls.txt
+          curl -fL --connect-timeout 15 --max-time 90 "$url" -o out/gpcp.nc
           python -m pip install -q numpy netCDF4
           python - <<'PY'
-          import netCDF4 as nc, numpy as np, json, hashlib
-          f=nc.Dataset('out/gpcc.nc')
-          print(f)
-          t=f.variables['time']
-          dates=nc.num2date(t[:],t.units,getattr(t,'calendar','standard'))
-          inds=[i for i,d in enumerate(dates) if (1983,7)<=(d.year,d.month)<=(2005,6)]
-          assert len(inds)==264
-          p=f.variables['precip']
-          assert p.dimensions==('time','lat','lon')
-          a=p[inds,:,:]
-          assert a.shape==(264,180,360),a.shape
-          means=np.stack([np.ma.mean(a[[k for k,i in enumerate(inds) if dates[i].month==m]],axis=0).filled(np.nan) for m in range(1,13)])
-          counts=np.stack([np.sum(~np.ma.getmaskarray(a[[k for k,i in enumerate(inds) if dates[i].month==m]]),axis=0) for m in range(1,13)])
-          np.savez_compressed('out/gpcc-climatology.npz',lat=f.variables['lat'][:],lon=f.variables['lon'][:],precip=means,counts=counts)
-          with open('out/provenance.json','w') as o: json.dump(dict(source_sha256=hashlib.file_digest(open('out/gpcc.nc','rb'),'sha256').hexdigest(),source_size=__import__('os').stat('out/gpcc.nc').st_size,source_attributes={k:str(f.getncattr(k)) for k in f.ncattrs()},precip_attributes={k:str(p.getncattr(k)) for k in p.ncattrs()},months=[str(dates[i]) for i in inds],dimension_order=p.dimensions),o,indent=2)
+          import netCDF4 as nc, numpy as np, json, hashlib, calendar
+          f=nc.Dataset('out/gpcp.nc'); t=f['time']; d=nc.num2date(t[:],t.units,getattr(t,'calendar','standard'))
+          ix=[i for i,v in enumerate(d) if (1983,7)<=(v.year,v.month)<=(2005,6)]
+          assert len(ix)==264
+          p=f['precip']; assert p.dimensions==('time','lat','lon') and p.units.lower() in ('mm/day','mm day-1','mm/d'),p.units
+          a=p[ix,:,:]; assert a.shape==(264,72,144),a.shape
+          days=np.array([calendar.monthrange(d[i].year,d[i].month)[1] for i in ix])
+          a=a*days[:,None,None]
+          means=np.stack([np.ma.mean(a[[k for k,i in enumerate(ix) if d[i].month==m]],axis=0).filled(np.nan) for m in range(1,13)])
+          counts=np.stack([np.sum(~np.ma.getmaskarray(a[[k for k,i in enumerate(ix) if d[i].month==m]]),axis=0) for m in range(1,13)])
+          np.savez_compressed('out/gpcp-climatology.npz',lat=f['lat'][:],lon=f['lon'][:],precip=means,counts=counts)
+          with open('out/provenance.json','w') as o:json.dump(dict(source_sha256=hashlib.file_digest(open('out/gpcp.nc','rb'),'sha256').hexdigest(),source_attributes={k:str(f.getncattr(k)) for k in f.ncattrs()},precip_attributes={k:str(p.getncattr(k)) for k in p.ncattrs()},months=[str(d[i]) for i in ix],method='daily rate times actual days in each month, then calendar-month mean'),o,indent=2)
           PY
-          rm out/gpcc.nc
-          for id in 2011-33 2011-34 2011-35 2011-36 2011-60 2011-61; do
-            curl -fL --connect-timeout 10 --max-time 25 "https://www.lamtec.com/archdocs/$id.pdf" -o "out/$id.pdf" || rm -f "out/$id.pdf"
-          done
+          rm out/gpcp.nc
           (cd out && sha256sum * > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: gpcc-historical-comparison
+          name: gpcp-historical-comparison
           path: out/
           retention-days: 5

@@ -1,0 +1,74 @@
+name: Split Docling model artifact
+on:
+  push:
+    branches: [toolchain/docling-offline-20261127]
+    paths: ['.github/workflows/docling-models-split.yml']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  split:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: docling-models
+          run-id: 45951912626
+          github-token: ${{ github.token }}
+          path: source
+      - run: |
+          mkdir parts
+          split -b 90M -d -a 2 source/docling-models.tar parts/docling-models.tar.part-
+          (cd parts && sha256sum * > PARTS.sha256)
+          sha256sum source/docling-models.tar > parts/ARCHIVE.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-part-00
+          path: parts/docling-models.tar.part-00
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-part-01
+          path: parts/docling-models.tar.part-01
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-part-02
+          path: parts/docling-models.tar.part-02
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-part-03
+          path: parts/docling-models.tar.part-03
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-part-04
+          path: parts/docling-models.tar.part-04
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-part-05
+          path: parts/docling-models.tar.part-05
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-part-06
+          path: parts/docling-models.tar.part-06
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-part-07
+          path: parts/docling-models.tar.part-07
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-part-08
+          path: parts/docling-models.tar.part-08
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models-checksums
+          path: |
+            parts/PARTS.sha256
+            parts/ARCHIVE.sha256

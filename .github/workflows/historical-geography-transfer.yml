@@ -1,4 +1,4 @@
-name: Public climate map and errata evidence
+name: Independent historical precipitation comparison
 on:
   push:
     branches: ['data-transfer/historical-geography-20261126']
@@ -7,21 +7,36 @@ permissions:
 jobs:
   acquire:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 6
     steps:
-      - name: Fetch public corroborating images and errata
+      - name: Retrieve GPCC data for independent comparison
         run: |
           mkdir out
-          fetch() {
-            printf '%s %s\n' "$1" "$2" >> out/urls.txt
-            curl -fL --connect-timeout 10 --max-time 35 "$2" -o "out/$1" || { rm -f "out/$1"; echo "$1 failed" >> out/failures.txt; }
-          }
-          fetch world-handbook.jpg 'https://handbook.ashrae.org/Handbooks/A19/IP/a19_ch24/figures/A24_f13.jpg'
-          fetch county-handbook.jpg 'https://handbook.ashrae.org/Handbooks/A19/IP/a19_ch24/figures/A24_f14.jpg'
-          fetch 2019-errata-20210408.pdf 'https://www.ashrae.org/file%20library/technical%20resources/standards%20and%20guidelines/standards%20errata/errata%20for%20ashrae-ies%20standard%2090/90.1-2019-ip-erratasheet-4-8-2021-.pdf'
+          url='https://downloads.psl.noaa.gov/Datasets/gpcc/full_v2020/precip.mon.total.v2020.nc'
+          printf '%s\n' "$url" > out/urls.txt
+          curl -fL --connect-timeout 15 --max-time 100 "$url" -o out/gpcc.nc
+          python -m pip install -q numpy netCDF4
+          python - <<'PY'
+          import netCDF4 as nc, numpy as np, json, hashlib
+          f=nc.Dataset('out/gpcc.nc')
+          print(f)
+          t=f.variables['time']
+          dates=nc.num2date(t[:],t.units,getattr(t,'calendar','standard'))
+          inds=[i for i,d in enumerate(dates) if (1983,7)<=(d.year,d.month)<=(2005,6)]
+          assert len(inds)==264
+          p=f.variables['precip']
+          assert p.dimensions==('time','lat','lon')
+          a=p[inds,:,:]
+          assert a.shape==(264,180,360),a.shape
+          means=np.stack([np.ma.mean(a[[k for k,i in enumerate(inds) if dates[i].month==m]],axis=0).filled(np.nan) for m in range(1,13)])
+          counts=np.stack([np.sum(~np.ma.getmaskarray(a[[k for k,i in enumerate(inds) if dates[i].month==m]]),axis=0) for m in range(1,13)])
+          np.savez_compressed('out/gpcc-climatology.npz',lat=f.variables['lat'][:],lon=f.variables['lon'][:],precip=means,counts=counts)
+          with open('out/provenance.json','w') as o: json.dump(dict(source_sha256=hashlib.file_digest(open('out/gpcc.nc','rb'),'sha256').hexdigest(),source_size=__import__('os').stat('out/gpcc.nc').st_size,source_attributes={k:str(f.getncattr(k)) for k in f.ncattrs()},precip_attributes={k:str(p.getncattr(k)) for k in p.ncattrs()},months=[str(dates[i]) for i in inds],dimension_order=p.dimensions),o,indent=2)
+          PY
+          rm out/gpcc.nc
           (cd out && sha256sum * > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
-          name: climate-map-errata-evidence
+          name: gpcc-historical-comparison
           path: out/
           retention-days: 5

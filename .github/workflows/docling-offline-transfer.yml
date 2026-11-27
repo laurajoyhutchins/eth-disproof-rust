@@ -1,0 +1,70 @@
+name: Temporary Docling offline toolchain
+on:
+  push:
+    branches: [toolchain/docling-offline-20261127]
+    paths: ['.github/workflows/docling-offline-transfer.yml']
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build CPU bundle
+        shell: bash
+        run: |
+          set -euxo pipefail
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --index-url https://download.pytorch.org/whl/cpu 'torch==2.10.0+cpu' 'torchvision==0.25.0+cpu'
+          printf 'torch==2.10.0+cpu\ntorchvision==0.25.0+cpu\n' > constraints.txt
+          pip install -c constraints.txt 'docling==2.151.1'
+          pip check
+          mkdir -p bundle/wheels bundle/models
+          pip freeze --all > bundle/builder-freeze.txt
+          grep -Ei '^(torch|torchvision)==' bundle/builder-freeze.txt > bundle/base-runtime.txt
+          grep -Eiv '^(torch|torchvision|pip|setuptools|wheel)==' bundle/builder-freeze.txt > bundle/requirements.txt
+          pip download --only-binary=:all: --no-deps -r bundle/requirements.txt -d bundle/wheels
+          docling-tools models download layout tableformer rapidocr --output-dir bundle/models
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          from docling.datamodel.base_models import InputFormat
+          from docling.datamodel.pipeline_options import PdfPipelineOptions
+          from docling.document_converter import DocumentConverter, PdfFormatOption
+          import pypdfium2
+          # A PDF generated locally, with text and a small table, using a minimal PDF writer.
+          stream=b'BT /F1 16 Tf 50 750 Td (Offline Docling test) Tj ET'
+          objs=[b'<< /Type /Catalog /Pages 2 0 R >>',b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',b'<< /Length '+str(len(stream)).encode()+b' >>\nstream\n'+stream+b'\nendstream']
+          pdf=bytearray(b'%PDF-1.4\n'); offsets=[0]
+          for i,obj in enumerate(objs,1):
+              offsets.append(len(pdf)); pdf.extend(f'{i} 0 obj\n'.encode()+obj+b'\nendobj\n')
+          start=len(pdf); pdf.extend(f'xref\n0 {len(offsets)}\n0000000000 65535 f \n'.encode())
+          for offset in offsets[1:]: pdf.extend(f'{offset:010d} 00000 n \n'.encode())
+          pdf.extend(f'trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{start}\n%%EOF\n'.encode())
+          Path('bundle/smoke.pdf').write_bytes(pdf)
+          opts=PdfPipelineOptions(artifacts_path=Path('bundle/models').resolve(),do_ocr=False,do_table_structure=True,enable_remote_services=False)
+          conv=DocumentConverter(format_options={InputFormat.PDF:PdfFormatOption(pipeline_options=opts)})
+          result=conv.convert('bundle/smoke.pdf')
+          md=result.document.export_to_markdown()
+          assert 'Offline Docling test' in md, md
+          Path('bundle/smoke.md').write_text(md)
+          PY
+          (cd bundle && find -L . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          tar -chf docling-wheels.tar -C bundle wheels requirements.txt builder-freeze.txt base-runtime.txt smoke.pdf smoke.md SHA256SUMS
+          tar -chf docling-models.tar -C bundle models
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-wheels-cp313
+          path: docling-wheels.tar
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docling-models
+          path: docling-models.tar
+          retention-days: 1
+          compression-level: 0
